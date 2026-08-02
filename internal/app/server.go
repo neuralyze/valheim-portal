@@ -1665,7 +1665,7 @@ var loginPageTemplate = strings.Replace(strings.Replace(loginTemplate, `<head>`,
 
 var playerHomeTemplate = strings.NewReplacer(
 	`<h1>Your Valheim profiles, kept in sync.</h1>`,
-	`<h1>Valheim, ready when your world is.</h1>`,
+	`<h1>Fight trolls, not mod lists.</h1>`,
 	`<p>Choose an approved world and profile. Valheim Profile Sync verifies the selected files, updates only what changed, creates a Desktop shortcut for that profile, and launches your existing Steam Valheim installation.</p>`,
 	`<p>Choose an approved profile, keep its mods isolated on the drive you chose, and launch with confidence. Valheim Profile Sync verifies every update, refreshes only what changed, and checks your world before it opens Valheim.</p>`,
 ).Replace(strings.Replace(

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The signed-in player headline is now "Fight trolls, not mod lists." It replaces
+  "Valheim, ready when your world is.", which described the server's state rather
+  than anything the portal does, and it carries no first-person claim: a headline
+  reading "we handle the mods" would speak for whichever operator deployed the
+  build, not for this project. The README masthead carries the same line, and the
+  landing-page screenshot was regenerated to match.
+
 ## [0.1.0] - 2026-08-02
 
 ### Added
