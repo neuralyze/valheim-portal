@@ -1,0 +1,43 @@
+# Reference only. scripts/install-portal.sh generates the real unit with paths
+# resolved from your deployment configuration and installs it as
+# /etc/systemd/system/valheim-portal-agent.service.
+#
+# Every ALL_CAPS placeholder below is substituted by the installer. Installing
+# this file as-is produces a service that cannot start.
+#
+# The agent is the privileged half of the portal. It runs a fixed set of world
+# operations, refuses any world outside AGENT_ALLOWED_WORLDS, and is reachable
+# only through a mode 0660 Unix socket whose group the portal container joins.
+[Unit]
+Description=Valheim Portal restricted operations agent
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=AGENT_USER
+Group=AGENT_GROUP
+# 'docker' is required to manage server containers. Add the group owning the
+# world files when that tree is not owned by the agent account.
+SupplementaryGroups=docker
+EnvironmentFile=/etc/valheim-portal/agent.env
+Environment=HOME=PORTAL_AGENT_SOCKET_DIR
+ExecStart=/usr/local/bin/valheim-portal --mode=agent
+Restart=on-failure
+RestartSec=5
+# systemd creates the socket directory with a group the portal container joins.
+RuntimeDirectory=valheim-portal-agent
+RuntimeDirectoryMode=0750
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+# The agent writes world data and reads its operation scripts, their Python
+# helpers in the sibling tools/ directory, and the valheim-server-docker
+# checkout whose compose project those scripts drive. Nothing else on the
+# filesystem is writable.
+ReadWritePaths=PORTAL_AGENT_SOCKET_DIR VALHEIM_WORLD_ROOT
+ReadOnlyPaths=AGENT_SCRIPT_DIR AGENT_TOOLS_DIR VALHEIM_SERVER_DOCKER_DIR
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,101 @@
+# Valheim Portal deployment configuration.
+#
+#   cp deploy/install.conf.example deploy/install.conf
+#   sudo ./scripts/install-portal.sh install --config deploy/install.conf
+#
+# Values here are host facts and policy. The installer generates the CSRF secret
+# and the agent token itself and never prints them. The one credential this file
+# accepts is the optional Steam Web API key below; supply it through the
+# environment instead if you would rather not store it here.
+#
+# Every value may also be supplied through the environment. Comments and blank
+# lines are ignored; quotes around a value are stripped.
+
+# ---------------------------------------------------------------------------
+# Required
+# ---------------------------------------------------------------------------
+
+# Public HTTPS origin browsers use. It must match the certificate served by the
+# terminating proxy, because the portal issues secure cookies and builds the
+# valheim-profile-sync:// handoff URLs from it.
+PORTAL_PUBLIC_BASE_URL=https://valheim.example.com
+
+# Source range of the terminating proxy, as the portal sees it.
+#
+# This is the entire administrative trust boundary. Any request arriving from
+# inside this range that carries a non-empty identity header is treated as a
+# fully authenticated administrator. Use the proxy's exact address with a /32
+# (or /128) prefix. The installer refuses ranges that cover the public internet
+# or more than a small subnet.
+#
+# For a proxy in a Docker network, this is the gateway address the container
+# connects from, not the portal's own address.
+PORTAL_TRUSTED_PROXY_CIDR=172.17.0.1/32
+
+# Directory holding Valheim world data. The agent gets write access to exactly
+# this tree and the portal mounts it read-only for map generation.
+VALHEIM_WORLD_ROOT=/srv/valheim
+
+# Checkout of the modified valheim-server-docker fork whose compose project the
+# world operation scripts drive. It is a separate Apache-2.0 project and is not
+# vendored here, so it must be cloned and named. Provisioning also reads its
+# default.env for the PGID the container chowns its mounts to. There is no
+# default: the scripts run `docker compose down` and `docker compose rm -v`
+# against whatever project lives at this path.
+VALHEIM_SERVER_DOCKER_DIR=/srv/valheim-server-docker
+
+# Worlds the agent may control, comma separated. The agent refuses every world
+# outside this list, so a world absent here cannot be started, stopped, backed
+# up, or deleted through the portal. Keep it synchronized with reality and
+# restart the agent after a change.
+AGENT_ALLOWED_WORLDS=WorldOne,WorldTwo
+
+# ---------------------------------------------------------------------------
+# Optional
+# ---------------------------------------------------------------------------
+
+# Directory holding the world operation scripts the agent executes. They ship
+# in this repository as hostops/, which is the default, so leave this unset
+# unless the scripts are installed somewhere else. An override must name a
+# directory laid out like hostops/ -- the scripts, lib/common.sh, and a sibling
+# tools/ directory -- because the scripts resolve their Python helpers from it.
+# The installer verifies every script the agent can invoke is present and
+# executable either way.
+#AGENT_SCRIPT_DIR=/srv/valheim-portal/hostops
+
+# Where the portal listens on the host. Keep this on loopback: the admin routes
+# have no network protection of their own.
+#PORTAL_BIND_ADDR=127.0.0.1
+#PORTAL_BIND_PORT=18080
+
+# Header carrying the verified administrator identity. The proxy must set this
+# explicitly on every route it forwards, and blank it on public routes.
+#PORTAL_AUTH_HEADER=X-Forwarded-User
+
+# System account owning the agent process and the socket the portal joins.
+#AGENT_USER=valheim-agent
+#AGENT_GROUP=valheim-agent
+
+# Supplementary groups for the agent, comma separated. 'docker' is required to
+# manage server containers. Add the group owning the world files when that
+# tree is not owned by the agent account itself.
+#AGENT_EXTRA_GROUPS=docker
+
+# Runtime directory holding the agent's Unix socket.
+#PORTAL_AGENT_SOCKET_DIR=/run/valheim-portal-agent
+
+# Steam Web API key, used only to show persona names beside Steam IDs in /admin.
+# Empty resolves names from the public community profile XML endpoint and
+# therefore only for public profiles; a key (free at
+# https://steamcommunity.com/dev/apikey) is batched and resolves private
+# profiles too. Authorization never uses it.
+#PORTAL_STEAM_API_KEY=
+
+# Defaults prefilled by the server-creation wizard. Validation bounds stay in
+# code. Join host defaults to the public base URL's hostname.
+#PORTAL_DEFAULT_JOIN_HOST=valheim.example.com
+#PORTAL_DEFAULT_GAME_PORT=2456
+#PORTAL_DEFAULT_PLAYER_LIMIT=10
+#PORTAL_DEFAULT_BACKUP_INTERVAL=1h
+#PORTAL_DEFAULT_BACKUP_AGE_DAYS=7
+#PORTAL_DEFAULT_BACKUP_COUNT=168

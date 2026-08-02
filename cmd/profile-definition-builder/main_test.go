@@ -1,0 +1,297 @@
+package main
+
+import (
+	"archive/zip"
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+
+	"github.com/neuralyze/valheim-portal/internal/valheimvr"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestBuildProfileDefinitionSortsManifestAndCapturesHashes(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := writeManagedManifest(t, dir, `{
+		"schema_version": 1,
+		"world_name": "world-one",
+		"packages": [
+			{"identifier": "Team-Zeta", "version": "1.2.3"}
+		],
+		"client_only_packages": [
+			{"identifier": "Team-Alpha", "version": "2.0.1"}
+		]
+	}`)
+	configDir := filepath.Join(dir, "config")
+	if err := os.MkdirAll(filepath.Join(configDir, "empty"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(configDir, "nested"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "nested", "settings.cfg"), []byte("setting=true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	companion := filepath.Join(dir, "flat-companion.zip")
+	if err := os.WriteFile(companion, []byte("locally-built-companion"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	packages := map[string][]byte{
+		"Team-Alpha-2.0.1.zip": []byte("alpha package"),
+		"Team-Zeta-1.2.3.zip":  []byte("zeta package"),
+	}
+	requests := make([]string, 0, len(packages))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		requests = append(requests, name)
+		body, ok := packages[name]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+
+	options := builderOptions{
+		SourceManifestPath: manifestPath,
+		World:              "world-one",
+		Profile:            "profile-one",
+		ClientType:         "flat",
+		ConfigDir:          configDir,
+		Output:             filepath.Join(dir, "profile-one.zip"),
+		PackageBaseURL:     server.URL + "/",
+		HTTPClient:         server.Client(),
+		FlatCompanion:      companion,
+	}
+	if err := buildProfileDefinition(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+
+	manifestData := readZIPEntry(t, options.Output, "profile-manifest.json")
+	var manifest profileManifest
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Schema != 1 || manifest.World != options.World || manifest.Profile != options.Profile || manifest.ClientType != options.ClientType {
+		t.Fatalf("unexpected manifest identity: %+v", manifest)
+	}
+	if len(manifest.Packages) != 2 {
+		t.Fatalf("package count = %d, want 2", len(manifest.Packages))
+	}
+	if manifest.Packages[0].Filename != "Team-Alpha-2.0.1.zip" || manifest.Packages[1].Filename != "Team-Zeta-1.2.3.zip" {
+		t.Fatalf("packages are not filename sorted: %+v", manifest.Packages)
+	}
+	for _, pkg := range manifest.Packages {
+		body := packages[pkg.Filename]
+		if pkg.SHA256 != sha256Hex(body) || pkg.Size != int64(len(body)) {
+			t.Fatalf("unexpected digest for %s: %+v", pkg.Filename, pkg)
+		}
+	}
+	if manifest.Companion == nil || manifest.Companion.Filename != "flat-companion.zip" || manifest.Companion.SHA256 != sha256Hex([]byte("locally-built-companion")) || manifest.Companion.Size != int64(len("locally-built-companion")) {
+		t.Fatalf("unexpected companion metadata: %+v", manifest.Companion)
+	}
+	if !reflect.DeepEqual(requests, []string{"Team-Alpha-2.0.1.zip", "Team-Zeta-1.2.3.zip"}) {
+		t.Fatalf("unexpected package requests: %v", requests)
+	}
+
+	wantEntries := []string{"profile-manifest.json", "config/", "config/empty/", "config/nested/", "config/nested/settings.cfg"}
+	if entries := zipEntries(t, options.Output); !reflect.DeepEqual(entries, wantEntries) {
+		t.Fatalf("ZIP entries = %v, want %v", entries, wantEntries)
+	}
+	if got := string(readZIPEntry(t, options.Output, "config/nested/settings.cfg")); got != "setting=true\n" {
+		t.Fatalf("config content = %q", got)
+	}
+
+	secondOutput := filepath.Join(dir, "profile-one-again.zip")
+	options.Output = secondOutput
+	if err := buildProfileDefinition(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(filepath.Join(dir, "profile-one.zip"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.ReadFile(secondOutput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("profile ZIP is not deterministic")
+	}
+}
+
+func TestBuildProfileDefinitionRejectsInvalidInput(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	validManifest := writeManagedManifest(t, dir, `{"schema_version":1,"world_name":"world-one","packages":[]}`)
+	companion := filepath.Join(dir, "flat-companion.zip")
+	if err := os.WriteFile(companion, []byte("companion"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	invalidProfile := builderOptions{
+		SourceManifestPath: validManifest,
+		World:              "world-one",
+		Profile:            "not/a-profile",
+		ClientType:         "flat",
+		ConfigDir:          configDir,
+		Output:             filepath.Join(dir, "output.zip"),
+		FlatCompanion:      companion,
+	}
+	if err := buildProfileDefinition(context.Background(), invalidProfile); err == nil || !strings.Contains(err.Error(), "invalid profile identifier") {
+		t.Fatalf("invalid profile error = %v", err)
+	}
+
+	duplicateManifest := writeManagedManifest(t, dir, `{
+		"schema_version": 1,
+		"world_name": "world-one",
+		"packages": [
+			{"identifier": "Team-Duplicate", "version": "1.0.0"},
+			{"identifier": "Team-Duplicate", "version": "1.0.0"}
+		]
+	}`)
+	duplicatePackage := invalidProfile
+	duplicatePackage.SourceManifestPath = duplicateManifest
+	duplicatePackage.Profile = "valid-profile"
+	if err := buildProfileDefinition(context.Background(), duplicatePackage); err == nil || !strings.Contains(err.Error(), "duplicate package filename") {
+		t.Fatalf("duplicate package error = %v", err)
+	}
+
+	missingCompanion := duplicatePackage
+	missingCompanion.FlatCompanion = ""
+	if err := validateBuilderOptions(missingCompanion); err == nil || !strings.Contains(err.Error(), "flat-companion is required") {
+		t.Fatalf("missing Flat companion error = %v", err)
+	}
+
+	trueNonVR := missingCompanion
+	trueNonVR.TrueNonVR = true
+	if err := validateBuilderOptions(trueNonVR); err != nil {
+		t.Fatalf("true nonVR validation error = %v", err)
+	}
+	trueNonVR.FlatCompanion = companion
+	if err := validateBuilderOptions(trueNonVR); err == nil || !strings.Contains(err.Error(), "cannot include a flat-companion") {
+		t.Fatalf("true nonVR companion error = %v", err)
+	}
+	if err := validateTrueNonVRPackages([]packageManifest{{Namespace: "geekstreet", Name: "BackpacksVRFix"}}); err == nil || !strings.Contains(err.Error(), "contains ValheimVR package") {
+		t.Fatalf("true nonVR package error = %v", err)
+	}
+
+	vrWithCompanion := duplicatePackage
+	vrWithCompanion.ClientType = "vr"
+	if err := validateBuilderOptions(vrWithCompanion); err == nil || !strings.Contains(err.Error(), "flat-companion is not valid") {
+		t.Fatalf("VR Flat companion error = %v", err)
+	}
+}
+
+func writeManagedManifest(t *testing.T, dir, content string) string {
+	t.Helper()
+	file, err := os.CreateTemp(dir, "profile-manifest-*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(file, content); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return file.Name()
+}
+
+func readZIPEntry(t *testing.T, path, name string) []byte {
+	t.Helper()
+	archive, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	for _, entry := range archive.File {
+		if entry.Name != name {
+			continue
+		}
+		reader, err := entry.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(reader)
+		closeErr := reader.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if closeErr != nil {
+			t.Fatal(closeErr)
+		}
+		return data
+	}
+	t.Fatalf("ZIP entry %q not found", name)
+	return nil
+}
+
+func zipEntries(t *testing.T, path string) []string {
+	t.Helper()
+	archive, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	entries := make([]string, 0, len(archive.File))
+	for _, entry := range archive.File {
+		entries = append(entries, entry.Name)
+	}
+	return entries
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func TestStripValheimVRPackagesRemovesOnlyIntegrationPackages(t *testing.T) {
+	packages := []packageManifest{
+		{Namespace: "geekstreet", Name: "BackpacksVRFix"},
+		{Namespace: "Advize", Name: "PlantEasily"},
+		{Namespace: "Azumatt", Name: "AzuAutoStore"},
+	}
+	kept, removed := stripValheimVRPackages(packages)
+
+	if len(removed) != 1 || removed[0] != "geekstreet-BackpacksVRFix" {
+		t.Fatalf("removed = %v, want just the VR integration package", removed)
+	}
+	if len(kept) != 2 {
+		t.Fatalf("kept %d packages, want 2 non-VR packages", len(kept))
+	}
+	for _, packageInfo := range kept {
+		if valheimvr.IsIntegrationPackage(packageInfo.Namespace + "-" + packageInfo.Name) {
+			t.Fatalf("kept a VR integration package: %s-%s", packageInfo.Namespace, packageInfo.Name)
+		}
+	}
+	// The stripped set must satisfy the same invariant the builder asserts after stripping.
+	if err := validateTrueNonVRPackages(kept); err != nil {
+		t.Fatalf("stripped set still fails the true-nonvr invariant: %v", err)
+	}
+}
+
+func TestStripValheimVRPackagesLeavesCleanSetUntouched(t *testing.T) {
+	packages := []packageManifest{{Namespace: "Advize", Name: "PlantEasily"}}
+	kept, removed := stripValheimVRPackages(packages)
+	if len(removed) != 0 {
+		t.Fatalf("removed = %v, want nothing removed from an already VR-free set", removed)
+	}
+	if len(kept) != 1 {
+		t.Fatalf("kept %d, want 1", len(kept))
+	}
+}

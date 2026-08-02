@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Nothing here publishes or writes back to the repository.
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Tracks go.mod so the toolchain never silently diverges from the
+          # version the module declares.
+          go-version-file: go.mod
+
+      - name: gofmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          # gofmt -l exits 0 even when it lists unformatted files, so the
+          # listing itself has to be turned into the failure signal.
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            printf 'these files need gofmt -w:\n%s\n' "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: go mod tidy is a no-op
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A dirty go.mod/go.sum after tidy means a dependency was added or
+          # dropped without updating the module files in the same commit.
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          # -buildvcs=false is mandatory whenever the checkout sits inside
+          # another VCS working copy, which is how the reference deployment is
+          # laid out: a plain `go build ./...` there fails with
+          # "multiple VCS detected". It is harmless in a standalone clone, so
+          # every build path passes it unconditionally.
+          go build -buildvcs=false ./...
+
+      - name: vet
+        run: go vet ./...
+
+      - name: test
+        run: go test ./...
+
+      - name: test (race detector)
+        # The portal serves concurrent HTTP requests against shared world state,
+        # so the race detector is a separate required run, not an optional one.
+        run: go test -race ./...
+
+  windows-cross:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: vet for windows
+        shell: bash
+        # The Windows client is never compiled by the `go` job above (that runs
+        # linux/amd64), so GOOS-specific files need their own vet pass.
+        run: GOOS=windows go vet ./...
+
+      - name: build windows client
+        shell: bash
+        env:
+          # Without a stamp the binary cannot be tied back to a commit in a
+          # support report; the script otherwise falls back to `git describe`.
+          PORTAL_VERSION: ci-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          scripts/build-windows-client.sh
+
+      - name: assert windows GUI subsystem
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The client is linked with -H=windowsgui so double-clicking it does
+          # not flash a console window. `file` reports "(GUI)" for that
+          # subsystem and "(console)" otherwise, so this grep is the entire
+          # test: it is the only thing that catches a dropped -H=windowsgui.
+          # `file` ships on ubuntu-latest; install it rather than skip the
+          # assertion if a future image drops it.
+          if ! command -v file >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y file
+          fi
+          file dist/ValheimProfileSync.exe
+          file dist/ValheimProfileSync.exe | grep -q '(GUI)'
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: validate compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          # compose.yaml has seven `:?`-required variables; without an env file
+          # it cannot even be parsed, so supply the committed example values.
+          cp .env.example .env
+          # `docker compose config` only resolves interpolation and validates the
+          # merged configuration. It never creates, starts or pulls anything.
+          docker compose config
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          # Installer and build scripts run as root on an operator's host; a
+          # quoting bug there is a production incident, not a style nit.
+          # The host operation scripts run as the privileged agent user and stop,
+          # start and delete servers, so they are held to the same bar.
+          shellcheck scripts/*.sh
+          shellcheck -S style hostops/lib/common.sh hostops/*.sh hostops/tests/*.sh
+
+  hostops:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bash regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          # These run the real scripts against a sandbox world root with a
+          # stubbed docker, so they need no host state and touch no containers.
+          for test in hostops/tests/*.sh; do
+            printf '\n==> %s\n' "$test"
+            bash "$test"
+          done
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: python tool tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pytest
+          cd tools && python3 -m pytest -q
+
+      - name: VR scanner import check
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The two VR onboarding scanners have no unit tests of their own, so
+          # compiling and importing them is what catches a syntax error or a
+          # lost sibling import before someone runs a scan. dnfile is their only
+          # third-party dependency and nothing else here needs it, so it is
+          # installed for this step alone.
+          python3 -m pip install --quiet dnfile
+          python3 -m compileall -q tools
+          cd tools && python3 -c 'import vr_impact_scan, vr_perf_ingest, vr_scan_common'

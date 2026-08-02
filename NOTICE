@@ -1,0 +1,152 @@
+Valheim Portal
+Copyright (C) 2026 Neuralyze
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See LICENSE for the full text.
+
+Because this is network server software, section 13 of the AGPL applies: if you
+run a modified version and let other people use it over a network, you must
+offer those users the corresponding source of your modified version.
+
+
+THIRD-PARTY COMPONENTS
+======================
+
+This repository vendors no third-party source, but it does ship one compiled
+third-party-bearing artifact: dist/ValheimProfileSync.exe is a statically
+linked Go binary that embeds the Go standard library and the modules listed
+under GO DEPENDENCIES below. Their notices are reproduced there, as their
+licenses require of a binary distribution.
+
+The runtime components below are obtained separately by the operator. They keep
+their own licenses; the AGPL covers only the code in this repository.
+
+valheim-server-docker
+  Upstream:  https://github.com/lloesche/valheim-server-docker
+  License:   Apache License 2.0
+  Role:      Builds and runs the container that hosts the Valheim dedicated
+             server. The agent's start, stop, and build operations drive it
+             through docker compose.
+  Note:      No copy of it is distributed here. VALHEIM_SERVER_DOCKER_DIR names
+             the operator's own checkout, which the host operation scripts run
+             docker compose against. If you redistribute a modified copy of
+             valheim-server-docker itself, Apache-2.0 section 4 requires that
+             you retain its LICENSE, carry its NOTICE, and state the changes
+             you made.
+
+BepInEx
+  Upstream:  https://github.com/BepInEx/BepInEx
+  License:   LGPL-2.1
+  Role:      Mod loader bootstrapped into the client profile and used to load
+             the map export plugin.
+
+Thunderstore packages
+  Role:      Profile definitions reference mod packages such as ValheimVR,
+             EpicLoot, and Backpacks by exact version and SHA-256.
+  Note:      Each package carries its own license and its own terms about
+             repackaging. Redistribution of these payloads is UNRESOLVED and
+             must be settled before this portal serves the public. See
+             docs/public-distribution.md.
+
+Valheim and its assemblies
+  Publisher: Iron Gate AB
+  Role:      The map source exporter is compiled against the server's own
+             managed assemblies (assembly_valheim.dll, UnityEngine.dll, and
+             others) that are present on the host.
+  Note:      No Valheim game file, Unity runtime file, or server binary is
+             contained in this repository, and the build refuses to package
+             them. This is NOT the same as saying none is distributed: a
+             running portal serves profile definitions whose ValheimVR flat
+             companion and VR runtime artifacts contain Unity XR runtime
+             assemblies, Microsoft's non-redistributable debug CRT
+             (ucrtbased.dll), and paid Unity Asset Store libraries
+             (final_ik.dll, amplify_occlusion.dll). Those artifacts are built
+             and supplied by the operator, are deliberately absent from this
+             repository, and MUST NOT be redistributed. Serving them to
+             players is the UNRESOLVED question recorded under Thunderstore
+             packages above; see docs/public-distribution.md and
+             ../boilerplate/mods/valheimvr/README.md.
+
+
+GO DEPENDENCIES
+===============
+
+dist/ValheimProfileSync.exe is built with CGO disabled and statically links
+everything it needs. The following are embedded in that binary and in the
+valheim-portal server binary. `go version -m <binary>` reproduces this list.
+
+BSD-3-Clause
+  github.com/lxn/walk           Copyright (c) 2010 The Walk Authors
+  github.com/lxn/win            Copyright (c) 2010 The win Authors
+  github.com/remyoudompheng/bigfft
+                                Copyright (c) 2012 The Go Authors
+  golang.org/x/exp              Copyright (c) 2009 The Go Authors
+  golang.org/x/sys              Copyright (c) 2009 The Go Authors
+  github.com/google/uuid        Copyright (c) 2009,2014 Google Inc.
+                                (server binary only)
+  modernc.org/libc              Copyright (c) 2017 The Libc Authors
+  modernc.org/mathutil          Copyright (c) 2014 The mathutil Authors
+  modernc.org/memory            Copyright (c) 2017 The Memory Authors
+  modernc.org/sqlite            Copyright (c) 2017 The Sqlite Authors
+  The Go standard library       Copyright (c) 2009 The Go Authors
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+     * Redistributions of source code must retain the above copyright notice,
+       this list of conditions and the following disclaimer.
+     * Redistributions in binary form must reproduce the above copyright
+       notice, this list of conditions and the following disclaimer in the
+       documentation and/or other materials provided with the distribution.
+     * Neither the name of the copyright holder nor the names of its
+       contributors may be used to endorse or promote products derived from
+       this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+
+MIT
+  github.com/dustin/go-humanize Copyright (c) 2005-2008 Dustin Sallings
+  github.com/mattn/go-isatty    Copyright (c) Yasuhiro MATSUMOTO
+  github.com/ncruces/go-strftime
+                                Copyright (c) 2022 Nuno Cruces
+  gopkg.in/Knetic/govaluate.v3  Copyright (c) 2014-2016 George Lester
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to
+  deal in the Software without restriction, including without limitation the
+  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+  sell copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+  IN THE SOFTWARE.
+
+Public domain
+  SQLite. modernc.org/sqlite is a machine translation of the SQLite
+  amalgamation, which its authors dedicated to the public domain; see
+  SQLITE-LICENSE in that module.
+
+modernc.org/libc and modernc.org/memory carry further third-party notices of
+their own (LICENSE-3RD-PARTY.md, LICENSE-GO, LICENSE-MMAP-GO) covering the musl
+and Go code they were translated from. Those files travel with the modules in
+the Go module cache and are reproduced by `go mod download`.

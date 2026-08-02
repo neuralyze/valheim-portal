@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "packages": [
+    "ValheimVR-ValheimVR",
+    "geekstreet-BackpacksVRFix",
+    "geekstreet-CLLCVRFix",
+    "geekstreet-EpicLootVRFix"
+  ]
+}

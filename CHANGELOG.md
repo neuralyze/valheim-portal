@@ -1,0 +1,131 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-08-02
+
+### Added
+
+- AGPL-3.0 `LICENSE` and a `NOTICE` recording third-party components.
+- README screenshots of the player world list, the profile chooser, the
+  administration page and the world map, in `docs/images/`. They were captured
+  from a disposable instance seeded with synthetic worlds, players and releases,
+  so no real world name, player or address enters the repository.
+- First-class admin token. Administrative access now requires a
+  `X-Portal-Admin-Token` request header matching the contents of the file named
+  by the new required `PORTAL_ADMIN_TOKEN_FILE`, compared in constant time,
+  **in addition to** the trusted-proxy CIDR check and the non-empty
+  `PORTAL_AUTH_HEADER`. The proxy injects the header; the browser never sends
+  it. `scripts/install-portal.sh` generates the token (32 bytes of hex, same
+  mode and owner as the CSRF secret).
+- Public repository scaffolding: GitHub Actions CI, issue and pull request
+  templates, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, and this
+  changelog.
+- New documentation: `docs/repository-layout.md`, `docs/prerequisites.md`, and
+  `docs/command-reference.md`.
+- `hostops/`: the 20 world operation scripts the agent executes, plus the
+  operator scripts they call, `lib/common.sh`, and five bash regression tests.
+  They previously lived in a separate `ValheimConfig` Mercurial checkout, so no
+  portal commit pinned the operations it invoked.
+- `tools/portal_paths.py`: the world-root and `valheim-server-docker` resolvers
+  for the Python half of the host tooling, matching `hostops/lib/common.sh`
+  exit code for exit code.
+- `VALHEIM_SERVER_DOCKER_DIR`, a new required setting naming a checkout of the
+  modified valheim-server-docker fork. `install-portal.sh` validates it, writes
+  it into the agent's environment file, and grants the unit read access to it.
+- The Valheim and VHVR knowledge base, the mod-onboarding process, and the VR
+  scanning tooling, all previously stranded in an unpublished `ValheimConfig`
+  Mercurial checkout: `docs/valheim-vr-knowledge.md` (Valheim and VHVR internals
+  verified against decompiled IL, plus the instrument-discipline rules behind
+  them), `docs/mod-onboarding.md` (the gated process for admitting a mod),
+  `docs/mod-decisions.md` (the per-package decision log),
+  `docs/vr-impact-scan.md` (how to run and read the tooling), and
+  `tools/vr_impact_scan.py`, `tools/vr_perf_ingest.py`, `tools/vr_scan_common.py`.
+  None of it is deployment-specific and all of it was scrubbed of private world
+  names, host paths and account identifiers on the way in.
+- CI now runs the bash regression tests, the Python tool tests, a compile and
+  import check over the VR scanners, and `shellcheck -S style` over `hostops/`.
+
+### Changed
+
+- `docs/installation.md` is now seven numbered steps, each opening with the exact
+  commands to run, with the reasoning moved after the step it belongs to. It gained
+  a step the old flow never had: configuring the reverse proxy. Administration is
+  unreachable until the proxy sends `X-Portal-Admin-Token`, and the previous
+  quick start went straight from `install` to `verify` without saying so. Also
+  documents creating `default.env` in the `valheim-server-docker` checkout, which
+  upstream does not ship and the installer requires. The README's first-run section
+  is now the same sequence as one copy-pasteable block.
+- **Breaking for existing checkouts.** `release-targets.json` is no longer tracked; it
+  named the operator's real worlds. Copy `release-targets.json.example` to
+  `release-targets.json` and edit it. `scripts/build-flat-release-plan.sh` reads its
+  `flat` array (overridable as the script's fifth argument), and
+  `tools/valheim_mods.py` reads both arrays for the client-release
+  cutover guard — with the file absent that guard finds no targets and silently
+  passes.
+- **Breaking for existing deployments.** The repository is now self-contained.
+  The Python tools moved from `ValheimConfig/tools` to `tools/`, and every
+  outward path the scripts resolved relative to themselves is now configuration
+  or repository-relative:
+  - `../tools/*.py` resolves from `hostops/lib/common.sh`'s own location.
+  - `../valheim/` is `VALHEIM_ROOT` (also `AGENT_WORLD_ROOT`,
+    `VALHEIM_WORLD_ROOT`), which several scripts already used.
+  - `../valheim-server-docker` is `VALHEIM_SERVER_DOCKER_DIR`.
+
+  Neither path variable has a default; a script that needs one exits 78 naming
+  it. `AGENT_SCRIPT_DIR` now defaults to the installed `hostops/` directory and
+  an override must supply a `lib/common.sh` and a sibling `tools/`.
+  **Migration:** point `AGENT_SCRIPT_DIR` in `/etc/valheim-portal/agent.env` at
+  `<checkout>/hostops`, add `VALHEIM_SERVER_DOCKER_DIR`, and restart the agent —
+  or re-run the installer, which also regenerates the unit's `ReadOnlyPaths`.
+  `install-portal.sh verify` detects a stale value and prints both lines.
+- `add_note_valheim_world.sh` writes to `$VALHEIM_ROOT/world_notes/` instead of
+  a `notes/` directory inside the repository. Operator data does not belong in
+  a published tree.
+- Artifact upload bodies are capped at 512 MiB and rejected with HTTP 413 above it,
+  replacing an unenforced 2 GiB. `compose.yaml` gained `mem_limit: 1g`,
+  `pids_limit: 256`, and a size-capped `/tmp` tmpfs, since multipart spill past 16 MiB
+  lands there and a tmpfs counts against container memory.
+- `PORTAL_PUBLIC_BASE_URL` is now required with no default. Compose refuses to
+  start without it rather than falling back to one specific host.
+- World status is measured rather than operator-set. `internal/app/world_liveness.go`
+  reads `<world>/data/htdocs/status.json`, which the game container's
+  `valheim-status --update` rewrites every 10 seconds from an A2S query, and
+  derives `online` or `offline` from it. `maintenance` remains the only
+  operator-settable status and is returned untouched. Requires `STATUS_HTTP=true`
+  on the game container.
+- `scripts/install-portal.sh` preflight now refuses a `PORTAL_TRUSTED_PROXY_CIDR`
+  equal to the container bridge gateway `/32`, which would trust the whole
+  bridge network rather than the proxy.
+
+### Fixed
+
+- Corrected documentation throughout: the agent operation table is 20 scripts,
+  not 18 or 19; the portal container does mount the whole world tree read-only,
+  including each world's `valheim.env` and the live saves; a world publishes two
+  host UDP ports, not three.
+
+### Removed
+
+- the deployment-specific nginx vhost. `deploy/nginx-portal.conf.example`
+  is now the only nginx sample; `deploy/Caddyfile` remains, using `example.com`.
+
+### Security
+
+- Admin access can no longer be obtained by reaching the portal from inside the
+  trusted proxy range and setting one header. The `PORTAL_ADMIN_TOKEN_FILE`
+  secret is a second, unforgeable factor: the portal refuses to start if the
+  variable is unset, the file is unreadable, or its trimmed contents are shorter
+  than 32 bytes.
+- The reverse proxy examples no longer inline the admin token in the site file.
+  nginx sites are conventionally `0644`, so a pasted token was readable by every
+  local user and provided no factor at all against a local attacker. The
+  directive now lives in an `include`d snippet owned `root:www-data` at `0640`.
+
+[Unreleased]: https://github.com/neuralyze/valheim-portal/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/neuralyze/valheim-portal/releases/tag/v0.1.0

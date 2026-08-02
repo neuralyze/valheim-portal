@@ -1,0 +1,86 @@
+# Reference reverse proxy for the Valheim Portal. Replace portal.example.com
+# and the certificate paths, then install as an nginx site.
+#
+# THE SECURITY MODEL IN ONE SENTENCE
+#
+# The portal treats a request as administrative only when it arrives from
+# PORTAL_TRUSTED_PROXY_CIDR carrying a non-empty X-Forwarded-User AND an
+# X-Portal-Admin-Token matching the contents of PORTAL_ADMIN_TOKEN_FILE. It
+# does not verify the identity itself. This proxy is what makes that safe, so
+# every location block below sets both headers explicitly. A location that
+# forwards without setting them lets a browser send its own and take over the
+# deployment.
+#
+# The token is the second factor because X-Forwarded-User alone is not
+# authentication: Docker NATs every request to the bridge gateway, so any
+# container on that bridge appears to come from the trusted-proxy range.
+#
+# nginx passes unrecognised client request headers upstream unchanged. Omitting
+# proxy_set_header for either header is therefore not a neutral default; it is
+# a full authentication bypass.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name portal.example.com;
+
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name portal.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/portal.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/portal.example.com/privkey.pem;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # Profile payloads and VR runtimes are large; the client streams them.
+    client_max_body_size 2g;
+    proxy_read_timeout 1200s;
+
+    # Shared upstream settings. Note there is no X-Forwarded-User or
+    # X-Portal-Admin-Token here on purpose: each location sets both, so a new
+    # location cannot silently inherit an administrative identity.
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # Administration. Replace basic auth with your identity provider or an
+    # auth_request subrequest; the requirement is only that the value assigned
+    # below is one this proxy verified, never one the client supplied.
+    location ^~ /admin {
+        auth_basic "Valheim portal administration";
+        auth_basic_user_file /etc/nginx/valheim-portal.htpasswd;
+
+        proxy_set_header X-Forwarded-User $remote_user;
+        # scripts/install-portal.sh writes the token to
+        # /etc/valheim-portal/admin-token. Do NOT paste it here: site files are
+        # conventionally 0644, so the shared secret would be readable by every
+        # local user. Put the one directive in a file only nginx can read:
+        #
+        #   printf 'proxy_set_header X-Portal-Admin-Token "%s";\n' \
+        #     "$(sudo cat /etc/valheim-portal/admin-token)" \
+        #     | sudo tee /etc/nginx/snippets/valheim-portal-admin-token.conf >/dev/null
+        #   sudo chown root:www-data /etc/nginx/snippets/valheim-portal-admin-token.conf
+        #   sudo chmod 0640 /etc/nginx/snippets/valheim-portal-admin-token.conf
+        #
+        # Regenerate that file and reload nginx after rotating the token.
+        include snippets/valheim-portal-admin-token.conf;
+        proxy_pass http://127.0.0.1:18080;
+    }
+
+    # Everything a player reaches. Steam sign-in happens inside the portal, so
+    # this identity must be empty: a blank header grants no administration.
+    location / {
+        proxy_set_header X-Forwarded-User "";
+        proxy_set_header X-Portal-Admin-Token "";
+        proxy_pass http://127.0.0.1:18080;
+    }
+}

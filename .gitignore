@@ -1,0 +1,36 @@
+.env
+
+# dist/ is tracked: it holds the artifacts a deployment serves, so a clone can
+# hand a player an installer without a Windows cross-compile toolchain. Build
+# the client with scripts/build-windows-client.sh before committing it; a plain
+# `go build` produces a console-window, unstamped binary.
+
+# Compiled binaries the build scripts drop in the repository root. Anchored so
+# the tracked cmd/seed-release source package is unaffected; README.md builds
+# that command to a temporary path on demand.
+/seed-release
+/valheim-profile-sync.exe
+
+# Operator data: the live release targets are host-specific. Ship the .example.
+release-targets.json
+
+# Built by install-portal.sh; not a source artifact.
+/dist/valheim-portal
+
+# Operator data: the live world list is host-specific. Ship worlds.txt.example.
+/hostops/worlds.txt
+
+# Built by tools/worldseed/build.sh against a running server's own assemblies,
+# so the patch always matches the Valheim build it runs on. A committed copy
+# would silently go stale against a newer server; valheim_worldgen.py instead
+# fails naming the missing path, which points straight at build.sh.
+/tools/worldseed/*.dll
+
+# Python bytecode and pytest state from running tools/test_valheim_mods.py.
+__pycache__/
+.pytest_cache/
+
+# Build output. The client is built by scripts/build-windows-client.sh and served
+# by the portal at /client/ValheimProfileSync.exe; a committed copy cannot satisfy
+# its own release gate after a squashed history.
+dist/

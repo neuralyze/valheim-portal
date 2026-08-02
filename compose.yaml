@@ -1,0 +1,58 @@
+services:
+  portal:
+    build:
+      context: .
+      args:
+        PORTAL_VERSION: ${PORTAL_VERSION:-dev}
+    environment:
+      PORTAL_LISTEN_ADDR: :8080
+      PORTAL_DB_PATH: /var/lib/valheim-portal/portal.sqlite
+      PORTAL_ARTIFACT_ROOT: /var/lib/valheim-portal/artifacts
+      PORTAL_MAP_ROOT: /var/lib/valheim-portal/maps
+      PORTAL_MAP_SOURCE_ROOT: /var/lib/valheim-worlds
+      PORTAL_CSRF_SECRET_FILE: /run/secrets/csrf-secret
+      PORTAL_ADMIN_TOKEN_FILE: /run/secrets/admin-token
+      PORTAL_AGENT_TOKEN_FILE: /run/secrets/agent-token
+      PORTAL_AGENT_SOCKET: /run/agent/agent.sock
+      PORTAL_TRUSTED_PROXY_CIDR: ${PORTAL_TRUSTED_PROXY_CIDR:?set the reverse proxy CIDR}
+      PORTAL_AUTH_HEADER: ${PORTAL_AUTH_HEADER:-X-Forwarded-User}
+      PORTAL_COOKIE_SECURE: "true"
+      PORTAL_PUBLIC_BASE_URL: ${PORTAL_PUBLIC_BASE_URL:?set the public HTTPS origin}
+      PORTAL_CLIENT_EXECUTABLE: /srv/client/ValheimProfileSync.exe
+      # Optional. Empty falls back to the public community profile XML endpoint,
+      # which resolves persona names only for public Steam profiles.
+      PORTAL_STEAM_API_KEY: ${PORTAL_STEAM_API_KEY:-}
+      PORTAL_DEFAULT_JOIN_HOST: ${PORTAL_DEFAULT_JOIN_HOST:-}
+      PORTAL_DEFAULT_GAME_PORT: ${PORTAL_DEFAULT_GAME_PORT:-2456}
+      PORTAL_DEFAULT_PLAYER_LIMIT: ${PORTAL_DEFAULT_PLAYER_LIMIT:-10}
+      PORTAL_DEFAULT_BACKUP_INTERVAL: ${PORTAL_DEFAULT_BACKUP_INTERVAL:-1h}
+      PORTAL_DEFAULT_BACKUP_AGE_DAYS: ${PORTAL_DEFAULT_BACKUP_AGE_DAYS:-7}
+      PORTAL_DEFAULT_BACKUP_COUNT: ${PORTAL_DEFAULT_BACKUP_COUNT:-168}
+    group_add:
+      - "${PORTAL_AGENT_GID:?set the host agent socket group ID}"
+    volumes:
+      - portal-data:/var/lib/valheim-portal
+      - ${VALHEIM_WORLD_ROOT:?set the Valheim world root}:/var/lib/valheim-worlds:ro
+      - ${PORTAL_AGENT_SOCKET_DIR:?set host socket directory}:/run/agent:ro
+      - ${PORTAL_CSRF_SECRET_FILE:?set CSRF secret file}:/run/secrets/csrf-secret:ro
+      - ${PORTAL_ADMIN_TOKEN_FILE:?set admin token file}:/run/secrets/admin-token:ro
+      - ${PORTAL_AGENT_TOKEN_FILE:?set token file}:/run/secrets/agent-token:ro
+      - ./dist:/srv/client:ro
+    ports:
+      # Loopback by default. Binding this publicly removes the only network
+      # barrier in front of the admin routes; see docs/installation.md.
+      - "${PORTAL_BIND_ADDR:-127.0.0.1}:${PORTAL_BIND_PORT:-18080}:8080"
+    read_only: true
+    # /tmp is where a multipart upload spills past the portal's 16 MiB in-memory
+    # cap, and a tmpfs spill counts against the container's memory. Sized to
+    # hold one 512 MiB artifact, the largest body the portal accepts.
+    tmpfs: ["/tmp:size=640m"]
+    security_opt: [no-new-privileges:true]
+    # Ceilings so one runaway request cannot take the host down with it. The
+    # portal itself idles in tens of megabytes; the headroom is for that spill.
+    mem_limit: 1g
+    pids_limit: 256
+    restart: unless-stopped
+
+volumes:
+  portal-data:

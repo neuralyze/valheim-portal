@@ -1,0 +1,28 @@
+{
+  "name": "Neuralyze Valheim",
+  "short_name": "Valheim",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#081911",
+  "theme_color": "#123728",
+  "icons": [
+    {
+      "src": "/icons/neuralyze-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/neuralyze-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/neuralyze-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

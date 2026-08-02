@@ -1,0 +1,35 @@
+valheim.example.com {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	# Never pass a browser-supplied identity header to the authenticator, and
+	# never let a browser supply the admin token either.
+	request_header -X-Forwarded-User
+	request_header -X-Portal-Admin-Token
+
+	@admin path /admin /admin/*
+	handle @admin {
+		forward_auth {$PORTAL_AUTHENTICATOR_URL} {
+			uri /verify
+			copy_headers X-Forwarded-User
+		}
+		# Second factor the portal verifies itself; see the nginx sample's
+		# comment. X-Forwarded-User alone is not authentication.
+		#
+		# install-portal.sh writes the token to /etc/valheim-portal/admin-token
+		# but cannot export it for Caddy, because it owns the portal container
+		# and the host agent, not your proxy. Provide it to the Caddy process
+		# yourself, e.g. a systemd drop-in with
+		# EnvironmentFile=/etc/valheim-portal/caddy.env holding
+		# PORTAL_ADMIN_TOKEN=<contents of admin-token>. Caddy has no
+		# file-content placeholder (caddyserver/caddy#5374 is still open), so an
+		# environment placeholder is the only working option, and it is expanded
+		# at config load: restart Caddy after rotating the token.
+		request_header X-Portal-Admin-Token {$PORTAL_ADMIN_TOKEN}
+		reverse_proxy 127.0.0.1:18080
+	}
+
+	reverse_proxy 127.0.0.1:18080
+}

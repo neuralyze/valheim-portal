@@ -1,0 +1,84 @@
+name: Bug report
+description: Something in the portal, host agent, or Windows client behaves incorrectly.
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not report security vulnerabilities here.** Public issues are
+        visible to everyone, including anyone who could exploit the problem.
+        Follow `SECURITY.md` instead.
+
+        The portal runs a privileged host agent and holds world credentials, so
+        anything touching authentication, the agent socket, token files, or the
+        world mount is a security report, not a bug report.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect instead?
+      description: Both halves. "It broke" is not actionable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Exact reproduction steps
+      description: >-
+        The precise sequence, including the commands or UI actions in order.
+        State whether the world was running, stopped, or paused at the time.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Portal version
+      description: >-
+        The version banner printed by `valheim-portal -mode portal` at startup,
+        or the release tag you deployed.
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - portal container
+        - host agent
+        - Windows client
+        - install-portal.sh
+        - docs
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: OS and platform
+      description: >-
+        Host distribution and version for portal or agent issues; Windows
+        version for client issues. Include the Docker and Go versions when the
+        report is about installation or building.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: >-
+        Optional. Redact before pasting: `SERVER_PASS` and anything else out of
+        a `valheim.env`, Steam IDs, the admin and agent tokens, the CSRF
+        secret, and absolute world paths. Replace world names with `<WORLD>`.
+      render: text
+    validations:
+      required: false

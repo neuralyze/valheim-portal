@@ -1,0 +1,16 @@
+# Every issue must come through the bug form, so a security report cannot be
+# filed as a blank public issue by accident.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/neuralyze/valheim-portal/security/advisories/new
+    about: >-
+      Private advisory. Use this for anything touching authentication, the host
+      agent socket, token or secret files, or the world mount. See SECURITY.md.
+
+  - name: Usage and installation questions
+    url: https://github.com/neuralyze/valheim-portal/tree/main/docs
+    about: >-
+      Read the docs first. Installation, configuration, deployment, and the
+      Windows client are all documented there.
