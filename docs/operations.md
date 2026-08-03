@@ -25,13 +25,47 @@ sudo ./scripts/install-portal.sh verify
 ```
 
 Beyond `/healthz` and `/readyz`, this probes the public origin for identity
-spoofing. Administration is granted to any request from the trusted proxy range
-that carries a non-empty `X-Forwarded-User`, and the value is never verified, so
-a proxied route that fails to set the header is an authentication bypass rather
-than a harmless omission.
+spoofing. A proxied route that forwards a client-supplied `X-Forwarded-User`
+instead of blanking it hands a stranger one of the factors the proxy
+authorisation path needs, so it is half a bypass rather than a harmless
+omission — only the admin token is then left standing in the way. Treat a
+CRITICAL result as blocking.
 
 The portal remains loopback-only behind the authenticated HTTPS reverse proxy. Do not expose its admin routes directly. The portal does not mount Docker's socket and must not modify Valheim worlds, server mods, or save files.
 
+## Reaching the administration site
+
+Browse to the portal, sign in with Steam, and the **Administration** link is
+there if your SteamID64 is listed in `PORTAL_ADMIN_STEAM_IDS`. Nothing else is
+required: no password prompt, no URL to memorise, no session to renew. The list
+is deployment configuration rather than data, so adding or removing an operator
+is an edit to the portal's environment and a restart — deliberately not
+something the running portal can grant itself.
+
+This replaced an entry point that was gated behind itself. The link used to
+appear only once the browser held a 12-hour admin cookie, and the only way to
+get that cookie was to visit `/admin` directly. The header could never offer
+the link, because the proxy deliberately blanks the admin headers on player
+routes, so on the pages an operator actually browses the portal had no way to
+tell an operator from any other signed-in player. You had to already know the
+URL in order to be shown the URL, and twelve hours later the link disappeared
+again with no explanation. Authorising on the signed-in Steam identity removes
+both the circularity and the silent expiry.
+
+**The in-game admin role is a different thing and grants no portal access.**
+The per-world `admin` role in **Player access** writes that Steam ID into the
+world's `adminlist.txt`, which is in-game power on that one server — kick, ban,
+no-cost mode. It confers nothing in the portal. Portal administration comes
+from `PORTAL_ADMIN_STEAM_IDS` alone, and the two lists are kept apart on
+purpose: trusting someone with a ban hammer in one world is not the same as
+trusting them to delete it.
+
+Leaving `PORTAL_ADMIN_STEAM_IDS` empty means there are no Steam operators, and
+administration then works exactly as it did before — through the reverse proxy
+only. That path is retained either way as break-glass, for when Steam OpenID is
+unreachable or the allowlist is wrong. Both paths, and the nginx `auth_basic`
+change the allowlist requires, are in
+[installation.md](installation.md#the-security-model).
 
 ## Publish a Flat ValheimVR release
 

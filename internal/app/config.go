@@ -27,6 +27,12 @@ type Config struct {
 	// community profiles, which only cover accounts with a public profile.
 	SteamAPIKey  string
 	Provisioning ProvisioningDefaults
+	// AdminSteamIDs are the SteamID64s permitted to administer the portal after
+	// signing in with Steam. It is deliberately separate from the per-world
+	// world_members.role='admin' value, which is the in-game adminlist and
+	// confers nothing here. Empty means no Steam operator may administer, which
+	// leaves the reverse-proxy path as the only way in.
+	AdminSteamIDs map[string]struct{}
 }
 
 type ProvisioningDefaults struct {
@@ -58,6 +64,7 @@ func LoadConfig() (Config, error) {
 		ClientExecutable: getenv("PORTAL_CLIENT_EXECUTABLE", "/srv/client/ValheimProfileSync.exe"),
 		TrustedProxyCIDR: os.Getenv("PORTAL_TRUSTED_PROXY_CIDR"),
 		SteamAPIKey:      strings.TrimSpace(os.Getenv("PORTAL_STEAM_API_KEY")),
+		AdminSteamIDs:    map[string]struct{}{},
 		Provisioning:     provisioning,
 	}
 	// PORTAL_PUBLIC_BASE_URL has no safe default: guessing one silently emits
@@ -67,6 +74,17 @@ func LoadConfig() (Config, error) {
 	}
 	if c.AuthHeader == "" || strings.ContainsAny(c.AuthHeader, "\r\n") {
 		return Config{}, errors.New("PORTAL_AUTH_HEADER must be a single header name")
+	}
+	// An unparseable entry is a hard error rather than a silent omission: the
+	// operator would otherwise be locked out with no indication why.
+	for _, id := range strings.Split(os.Getenv("PORTAL_ADMIN_STEAM_IDS"), ",") {
+		if id = strings.TrimSpace(id); id == "" {
+			continue
+		}
+		if !validSteamID(id) {
+			return Config{}, errors.New("PORTAL_ADMIN_STEAM_IDS holds a value that is not a 17-digit SteamID64: " + id)
+		}
+		c.AdminSteamIDs[id] = struct{}{}
 	}
 	for _, p := range []string{c.DatabasePath, c.ArtifactRoot, c.MapRoot, c.MapSourceRoot, c.CSRFSecretFile, c.AgentTokenFile, c.ClientExecutable} {
 		if !filepath.IsAbs(p) {

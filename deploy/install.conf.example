@@ -72,6 +72,25 @@ AGENT_ALLOWED_WORLDS=WorldOne,WorldTwo
 # explicitly on every route it forwards, and blank it on public routes.
 #PORTAL_AUTH_HEADER=X-Forwarded-User
 
+# SteamID64s allowed to administer the portal, comma separated. These are
+# portal operators: a signed-in Steam account on this list may reach /admin and
+# perform every privileged action, audited as steam:<id>. Because the portal
+# recognises them from their own session rather than from a proxy header, the
+# Administration link is visible to them on the ordinary player pages.
+#
+# This is NOT the per-world in-game admin role. That role is the Valheim
+# server's own adminlist.txt, it applies inside one world, and it confers no
+# portal access whatsoever. The two lists are maintained separately and on
+# purpose.
+#
+# Empty, which is the default, keeps administration exactly as it was: only a
+# request from the trusted proxy carrying both the identity header and the
+# admin token may administer. That path remains available either way as a
+# break-glass route. With this list populated the proxy must stop challenging
+# /admin with auth_basic, or an allowlisted operator is stopped before the
+# portal ever sees them; see docs/installation.md.
+#PORTAL_ADMIN_STEAM_IDS=76561198000000001,76561198000000002
+
 # System account owning the agent process and the socket the portal joins.
 #AGENT_USER=valheim-agent
 #AGENT_GROUP=valheim-agent

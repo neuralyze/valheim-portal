@@ -711,8 +711,39 @@ func (s *Server) serveArtifact(w http.ResponseWriter, r *http.Request, a Artifac
 	w.Header().Set("X-Checksum-SHA256", a.SHA256)
 	http.ServeContent(w, r, a.Name, info.ModTime(), f)
 }
+
+// isAdmin reports whether the administration surface should be offered to this
+// request. The operator arm is what lets a player page know, on its first
+// render, that the signed-in Steam account may administer: the proxy blanks the
+// identity and token headers on player routes by design, so provenAdmin is
+// always false there and the answer has to come from the session instead.
 func (s *Server) isAdmin(r *http.Request) bool {
+	if _, ok := s.operatorSteamID(r); ok {
+		return true
+	}
 	return s.provenAdmin(r) || s.hasAdminSession(r)
+}
+
+// operatorSteamID returns the SteamID64 of a signed-in portal operator.
+//
+// The identity is the Steam session the portal verified itself, so it does not
+// depend on the proxy asserting anything. Membership is the explicit
+// PORTAL_ADMIN_STEAM_IDS allowlist and nothing else: world_members.role='admin'
+// is the in-game adminlist written into adminlist.txt, and treating it as
+// portal authorisation would hand the control surface to every in-game admin.
+func (s *Server) operatorSteamID(r *http.Request) (string, bool) {
+	if len(s.cfg.AdminSteamIDs) == 0 {
+		return "", false
+	}
+	steamID, ok := s.steamID(r)
+	if !ok {
+		return "", false
+	}
+	_, allowed := s.cfg.AdminSteamIDs[steamID]
+	if !allowed {
+		return "", false
+	}
+	return steamID, true
 }
 
 // provenAdmin demands all three independent factors: the request reached the
@@ -747,7 +778,10 @@ func (s *Server) guardAdmin(next http.HandlerFunc, limit func() int64) http.Hand
 		// documented no-ops on a second call, so a MaxBytesReader installed
 		// inside the handler never sees a byte of the request.
 		r.Body = http.MaxBytesReader(w, r.Body, limit())
-		if !s.provenAdmin(r) {
+		// Two independent routes in. The proxy route is retained as break-glass
+		// for a deployment with no allowlist, or an operator locked out of Steam.
+		operator, viaSteam := s.operatorSteamID(r)
+		if !viaSteam && !s.provenAdmin(r) {
 			http.Error(w, "admin authentication required", http.StatusUnauthorized)
 			return
 		}
@@ -766,7 +800,13 @@ func (s *Server) guardAdmin(next http.HandlerFunc, limit func() int64) http.Hand
 				return
 			}
 		}
-		r.Header.Set("X-Portal-Actor", strings.TrimSpace(r.Header.Get(s.cfg.AuthHeader)))
+		// Attribution must never be empty: the audit trail is the only record of
+		// who did what, and the store rejects a blank actor.
+		actor := strings.TrimSpace(r.Header.Get(s.cfg.AuthHeader))
+		if viaSteam {
+			actor = "steam:" + operator
+		}
+		r.Header.Set("X-Portal-Actor", actor)
 		next(w, r)
 	}
 }

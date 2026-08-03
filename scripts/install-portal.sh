@@ -50,6 +50,7 @@ PORTAL_BIND_PORT=${PORTAL_BIND_PORT:-18080}
 PORTAL_AUTH_HEADER=${PORTAL_AUTH_HEADER:-X-Forwarded-User}
 PORTAL_AGENT_SOCKET_DIR=${PORTAL_AGENT_SOCKET_DIR:-/run/valheim-portal-agent}
 PORTAL_STEAM_API_KEY=${PORTAL_STEAM_API_KEY:-}
+PORTAL_ADMIN_STEAM_IDS=${PORTAL_ADMIN_STEAM_IDS:-}
 AGENT_USER=${AGENT_USER:-valheim-agent}
 AGENT_GROUP=${AGENT_GROUP:-valheim-agent}
 AGENT_EXTRA_GROUPS=${AGENT_EXTRA_GROUPS:-docker}
@@ -107,6 +108,10 @@ Optional configuration worth knowing about:
                               /admin. Empty (the default) falls back to the
                               public community profile XML endpoint, which
                               resolves public Steam profiles only.
+  PORTAL_ADMIN_STEAM_IDS      Comma-separated SteamID64s that may administer
+                              the portal with their signed-in Steam identity.
+                              Empty (the default) leaves administration to the
+                              trusted proxy alone. Not the in-game admin role.
   AGENT_SCRIPT_DIR            Directory holding the world operation scripts.
                               Defaults to this repository's hostops/.
 
@@ -237,6 +242,7 @@ PORTAL_TRUSTED_PROXY_CIDR=$PORTAL_TRUSTED_PROXY_CIDR
 PORTAL_BIND_ADDR=$PORTAL_BIND_ADDR
 PORTAL_BIND_PORT=$PORTAL_BIND_PORT
 PORTAL_AUTH_HEADER=$PORTAL_AUTH_HEADER
+PORTAL_ADMIN_STEAM_IDS=$PORTAL_ADMIN_STEAM_IDS
 VALHEIM_WORLD_ROOT=$VALHEIM_WORLD_ROOT
 VALHEIM_SERVER_DOCKER_DIR=$VALHEIM_SERVER_DOCKER_DIR
 AGENT_SCRIPT_DIR=$AGENT_SCRIPT_DIR
@@ -509,6 +515,35 @@ check_allowed_worlds() {
   return 0
 }
 
+# Steam identities allowed to administer the portal. This is portal
+# authorisation and is unrelated to a world's in-game admin role, which grants
+# nothing here. A malformed entry fails silently at runtime -- the operator
+# simply never sees the administration link, with nothing to distinguish that
+# from a deliberately empty list -- so reject anything that is not a SteamID64
+# here, where the value can still be corrected.
+check_admin_steam_ids() {
+  [[ -n $PORTAL_ADMIN_STEAM_IDS ]] || {
+    note "no Steam portal operators; administration stays proxy-only"
+    return 0
+  }
+  local entry valid=0
+  local -a ids
+  IFS=',' read -ra ids <<<"$PORTAL_ADMIN_STEAM_IDS"
+  for entry in "${ids[@]}"; do
+    entry=${entry//[[:space:]]/}
+    if [[ -z $entry ]]; then
+      problem "PORTAL_ADMIN_STEAM_IDS contains an empty entry; remove the stray comma"
+    elif [[ $entry =~ ^7[0-9]{16}$ ]]; then
+      valid=$((valid + 1))
+    else
+      problem "invalid SteamID64 in PORTAL_ADMIN_STEAM_IDS: $entry. A SteamID64 is 17 digits beginning with 7, the trailing number in a profile URL such as https://steamcommunity.com/profiles/76561198000000001."
+    fi
+  done
+  ((valid == 0)) ||
+    note "Steam portal operators: $valid; the proxy must not challenge /admin with auth_basic"
+  return 0
+}
+
 preflight() {
   step "Preflight"
   [[ $(uname -s) == Linux ]] || problem "this installer supports Linux hosts only"
@@ -522,6 +557,7 @@ preflight() {
   check_server_docker_dir
   check_script_dir
   check_allowed_worlds
+  check_admin_steam_ids
   if [[ -z $install_root && $EUID -ne 0 ]] && ! $dry_run; then
     problem "installing to $etc_dir and $unit_dir requires root; re-run with sudo"
   fi
@@ -776,6 +812,7 @@ PORTAL_BIND_PORT=$PORTAL_BIND_PORT
 PORTAL_PUBLIC_BASE_URL=$PORTAL_PUBLIC_BASE_URL
 PORTAL_TRUSTED_PROXY_CIDR=$PORTAL_TRUSTED_PROXY_CIDR
 PORTAL_AUTH_HEADER=$PORTAL_AUTH_HEADER
+PORTAL_ADMIN_STEAM_IDS=$PORTAL_ADMIN_STEAM_IDS
 PORTAL_AGENT_GID=$gid
 PORTAL_AGENT_SOCKET_DIR=$PORTAL_AGENT_SOCKET_DIR
 PORTAL_STEAM_API_KEY=$PORTAL_STEAM_API_KEY

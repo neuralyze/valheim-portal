@@ -7,8 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `PORTAL_ADMIN_STEAM_IDS`, an optional comma-separated list of SteamID64s
+  allowed to administer the portal. Empty or unset means there are no Steam
+  operators, which preserves the previous behaviour exactly.
+
 ### Changed
 
+- Administration is now authorised by the signed-in Steam identity against
+  `PORTAL_ADMIN_STEAM_IDS`, **or** by the previous proxy factors — trusted
+  source range, non-empty identity header and matching admin token — which are
+  retained as break-glass. The audit actor is the identity header for the proxy
+  path and `steam:<steamid64>` for the allowlist path, so every privileged
+  action stays attributed.
+- The **Administration** link now appears on the player pages as soon as an
+  allowlisted operator signs in. What disappears is the old entry point: the
+  link used to require a prior manual visit to `/admin` to set a 12-hour admin
+  cookie, and it lapsed silently when that cookie expired. The proxy blanks the
+  admin headers on player routes, so the link could never advertise the page
+  that was the only way to obtain it.
+- Deployments setting the allowlist must remove `auth_basic` from the nginx
+  `location ^~ /admin`, which would otherwise challenge an allowlisted operator
+  before the portal saw the request. `$remote_user` is then empty, so the proxy
+  path grants nothing and the allowlist governs; restoring the two lines
+  restores break-glass. Keep the admin-token snippet include either way.
 - The signed-in player headline is now "Fight trolls, not mod lists." It replaces
   "Valheim, ready when your world is.", which described the server's state rather
   than anything the portal does, and it carries no first-person claim: a headline

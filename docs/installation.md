@@ -132,6 +132,26 @@ Everything else in the file is optional and commented out. Leave
 `AGENT_SCRIPT_DIR` unset unless the operation scripts live outside this
 repository — see [the world operation scripts](#the-world-operation-scripts).
 
+One optional key belongs here too, because it decides how you reach the
+administration site at all:
+
+| Key | What it is |
+|---|---|
+| `PORTAL_ADMIN_STEAM_IDS` | Comma-separated SteamID64s allowed to administer the portal once signed in with Steam |
+
+```
+PORTAL_ADMIN_STEAM_IDS=76561198000000001,76561198000000002
+```
+
+A request carrying a Steam session for one of those IDs may administer the
+portal, and the portal decides that itself — no proxy assertion is involved.
+Leaving the key empty or unset means there are no Steam operators, which
+preserves the previous behaviour exactly: the proxy factors in
+[the security model](#the-security-model) are then the only way in. Setting it
+is what puts the **Administration** link in front of you without your having to
+know a URL, and it changes what step 6 must configure. See
+[reaching the administration site](operations.md#reaching-the-administration-site).
+
 ## Step 5 — Install
 
 Preview first. This changes nothing:
@@ -152,9 +172,11 @@ configuration while preserving secrets. See
 
 ## Step 6 — Configure the reverse proxy
 
-**Administration does not work until this step is done**, and the portal cannot
-detect a proxy that is merely absent — it can only refuse requests that arrive
-without proof. Start from the shipped example:
+**Nothing is reachable until this step is done**, including Steam sign-in: the
+portal binds to loopback and the proxy is what terminates TLS on
+`PORTAL_PUBLIC_BASE_URL`. The portal also cannot detect a proxy that is merely
+absent — it can only refuse requests that arrive without proof. Start from the
+shipped example:
 
 ```sh
 sudo cp deploy/nginx-portal.conf.example /etc/nginx/sites-available/valheim-portal.conf
@@ -192,6 +214,29 @@ location / {
     proxy_pass http://127.0.0.1:18080;
 }
 ```
+
+**Delete the two `auth_basic` lines if `PORTAL_ADMIN_STEAM_IDS` is set.** nginx
+would otherwise demand a password before the portal ever sees the request, so
+an allowlisted operator is stopped at the door by the very proxy the allowlist
+exists to bypass:
+
+```diff
+ location ^~ /admin {
+-    auth_basic "Valheim portal administration";
+-    auth_basic_user_file /etc/nginx/valheim-portal.htpasswd;
+     proxy_set_header X-Forwarded-User $remote_user;
+     include snippets/valheim-portal-admin-token.conf;
+     proxy_pass http://127.0.0.1:18080;
+ }
+```
+
+This does not expose administration. Without `auth_basic`, `$remote_user` is
+empty, so the identity factor fails and the proxy grants nothing at all; the
+portal authorises against the signed-in Steam identity and the allowlist, and
+returns 401 to everyone else. Leave the token snippet and the
+`proxy_set_header` line in place either way — both are harmless when the
+identity is empty, and putting the two `auth_basic` lines back restores the
+break-glass path in one reload.
 
 Then reload:
 
@@ -307,8 +352,19 @@ AGENT_SCRIPT_DIR has no sibling tools/ directory: /srv/tools ...
 
 Read this before exposing the portal.
 
-Administrative access requires all three of the following, and the portal
-refuses the request if any one is missing:
+There are two ways a request may administer the portal. It is refused unless
+one of them holds completely.
+
+**Path A — the Steam operator allowlist.** The request carries a valid Steam
+session whose SteamID64 is listed in `PORTAL_ADMIN_STEAM_IDS`. The portal
+verifies this end to end by itself: the identity comes from a completed Steam
+OpenID sign-in, and the list is deployment configuration no request can
+influence. Nothing about the network path is trusted, so a misconfigured proxy
+cannot forge it. With the key empty or unset there are no Steam operators and
+this path never grants anything.
+
+**Path B — the proxy, kept as break-glass.** All three of the following, and
+the portal refuses the request if any one is missing:
 
 1. a source address inside `PORTAL_TRUSTED_PROXY_CIDR`,
 2. a non-empty `PORTAL_AUTH_HEADER` (default `X-Forwarded-User`), and
@@ -318,6 +374,11 @@ refuses the request if any one is missing:
 Only the third is verified by the portal itself. The first two are assertions
 the proxy makes, and the proxy is what injects the third — a browser never
 sends it and never sees it.
+
+Path B is retained rather than removed because it is the way back in when Steam
+OpenID is unreachable, when the allowlist is wrong, or when no operator has
+signed in yet. Everything below about the proxy therefore still applies in
+full, whether or not you use path A day to day.
 
 **Why the third factor exists.** Under the shipped compose deployment Docker
 NATs every inbound request to the bridge gateway address, and that gateway is
@@ -329,6 +390,16 @@ same reason.
 
 The portal will not start if `PORTAL_ADMIN_TOKEN_FILE` is unset, unreadable, or
 holds fewer than 32 bytes after trimming. There is no header-only fallback.
+
+**The audit log records which path authorised.** Actor is the identity header
+for path B and `steam:<steamid64>` for path A, so every privileged action stays
+attributed to a person and it is visible afterwards whether the proxy or the
+allowlist let them in.
+
+**The per-world `admin` role is not portal administration.** The admin role
+granted in **Player access** writes a Steam ID into that world's
+`adminlist.txt` — in-game powers on one server. It grants nothing in the
+portal, and no portal permission is derived from it.
 
 **The trusted range must still be exactly the proxy.** A range covering more
 hosts means any of them can attempt administration with a guessed or leaked
@@ -428,7 +499,8 @@ checkout as well. Prefer it to a hand edit unless the unit is already current.
 | `readyz` fails | The container cannot reach the socket. Check `PORTAL_AGENT_GID` matches the agent group and that the agent is running. |
 | `agent token must contain at least 32 bytes` | The token file is truncated. Stop both halves, remove it, re-run the installer, restart both. |
 | Agent socket never appears | `journalctl -u valheim-portal-agent`. Usually a missing operation script or an unreadable `AGENT_SCRIPT_DIR`. |
-| `/admin` returns 401 for a real operator | The proxy is not sending `X-Portal-Admin-Token`, or not setting `X-Forwarded-User`. Re-check step 6. |
+| `/admin` returns 401 for a real operator | With `PORTAL_ADMIN_STEAM_IDS` set: they are not signed in with Steam, or their SteamID64 is not in the list. Otherwise: the proxy is not sending `X-Portal-Admin-Token`, or not setting `X-Forwarded-User`. Re-check step 6. |
+| A password prompt appears before `/admin` | `auth_basic` is still in the administrative location. Remove it when using the Steam allowlist; step 6 has the diff. |
 | Admin routes return 401 from the proxy | The proxy's source address is outside `PORTAL_TRUSTED_PROXY_CIDR`. |
 | Spoofing probe reports CRITICAL | A proxied location forwards without setting the header. Fix before serving traffic. |
 | `conflicting server name` from nginx | A backup copy of the site is still in `sites-enabled/`; nginx includes every file there. |

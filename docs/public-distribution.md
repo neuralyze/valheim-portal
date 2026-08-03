@@ -77,11 +77,26 @@ installer's preflight now also rejects a trusted range equal to the bridge
 gateway `/32`, still rejects wide ranges, keeps the bind on loopback, and probes
 the public edge for spoofing after install.
 
-The proxy remains part of the authentication path — it injects both headers —
+The proxy remained part of the authentication path — it injects both headers —
 but a merely *ordinary* proxy that forwards client headers unchanged no longer
-grants administration, because the client cannot supply the token. Steam
-sign-in with an explicit admin allowlist would remove the proxy from the path
-entirely and stays on the roadmap.
+granted administration, because the client cannot supply the token.
+
+*Also resolved: the proxy is out of the path.* `PORTAL_ADMIN_STEAM_IDS` lists
+the SteamID64s permitted to administer the portal, and a request carrying a
+Steam session for one of them is authorised by the portal itself — no trusted
+range, no identity header, no token. The audit actor is `steam:<steamid64>`, so
+actions remain attributable. The proxy factors are kept as break-glass for when
+Steam OpenID is unreachable or the allowlist is wrong, and an empty allowlist
+leaves the previous behaviour untouched, so this is additive rather than a
+migration. What it removes is the failure mode the diagnosis above kept
+circling: administration no longer depends on an assertion made by a component
+that has no idea who the user is.
+
+One deployment consequence, because it bites immediately: the nginx `/admin`
+location runs `auth_basic`, which challenges an allowlisted operator before the
+portal ever sees the request. Drop those two lines when the allowlist is in
+use. `$remote_user` is then empty, the proxy path grants nothing, and putting
+them back re-enables break-glass in one reload.
 
 ### 3. No license — resolved
 
@@ -222,9 +237,10 @@ Worth recording, because these are the parts that make the rest worth fixing:
    versioning remains; pin both.
 2. ~~Decide the license.~~ Done: AGPL-3.0 in both repositories. Mod
    redistribution is still open and is now the last legal blocker.
-3. ~~Add first-class admin authentication.~~ Done: `PORTAL_ADMIN_TOKEN_FILE`
-   plus the proxy headers. Steam sign-in with an admin allowlist remains
-   desirable, to take the proxy out of the path entirely.
+3. ~~Add first-class admin authentication.~~ Done twice over:
+   `PORTAL_ADMIN_TOKEN_FILE` plus the proxy headers, then
+   `PORTAL_ADMIN_STEAM_IDS`, which authorises the signed-in Steam identity and
+   takes the proxy out of the path. The proxy factors survive as break-glass.
 4. Settle mod redistribution — enumerate package licences, or have clients
    fetch from Thunderstore against the hashes the portal already verifies.
 5. Extract branding to a runtime theme.

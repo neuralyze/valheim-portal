@@ -16,6 +16,11 @@ services:
       PORTAL_AGENT_SOCKET: /run/agent/agent.sock
       PORTAL_TRUSTED_PROXY_CIDR: ${PORTAL_TRUSTED_PROXY_CIDR:?set the reverse proxy CIDR}
       PORTAL_AUTH_HEADER: ${PORTAL_AUTH_HEADER:-X-Forwarded-User}
+      # Optional. Comma-separated SteamID64s permitted to administer the portal
+      # with their signed-in Steam identity, independently of the proxy headers.
+      # Empty leaves administration to the trusted-proxy path alone, which is
+      # the behaviour of every deployment that predates this key.
+      PORTAL_ADMIN_STEAM_IDS: ${PORTAL_ADMIN_STEAM_IDS:-}
       PORTAL_COOKIE_SECURE: "true"
       PORTAL_PUBLIC_BASE_URL: ${PORTAL_PUBLIC_BASE_URL:?set the public HTTPS origin}
       PORTAL_CLIENT_EXECUTABLE: /srv/client/ValheimProfileSync.exe

@@ -52,9 +52,22 @@ server {
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
 
-    # Administration. Replace basic auth with your identity provider or an
-    # auth_request subrequest; the requirement is only that the value assigned
-    # below is one this proxy verified, never one the client supplied.
+    # Administration.
+    #
+    # WITH PORTAL_ADMIN_STEAM_IDS SET, DELETE THE TWO auth_basic LINES BELOW.
+    # The portal then authorises administration against the Steam account the
+    # player signed in with, and returns 401 to everyone else. Leaving basic auth
+    # in place challenges an allowlisted operator before the portal ever sees the
+    # request, so the Administration link appears and then refuses to open.
+    # Removing it exposes nothing: authorisation moves into the portal rather
+    # than disappearing, and $remote_user is then empty, which makes the
+    # proxy-header path below inert on its own.
+    #
+    # Keeping them is the break-glass configuration, and the only one available
+    # when no allowlist is configured. Then the requirement is only that the
+    # identity assigned below is one this proxy verified, never one the client
+    # supplied; replace basic auth with your identity provider or an
+    # auth_request subrequest if you prefer.
     location ^~ /admin {
         auth_basic "Valheim portal administration";
         auth_basic_user_file /etc/nginx/valheim-portal.htpasswd;

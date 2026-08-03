@@ -256,6 +256,12 @@ Every command and build script in this repository is listed in
 
 ## Administration
 
+Sign in with Steam: the **Administration** link appears for any SteamID64 listed in
+`PORTAL_ADMIN_STEAM_IDS`, which the portal checks against the signed-in identity
+itself. The reverse-proxy identity and admin-token path is retained as break-glass,
+and an empty allowlist leaves it as the only way in — see
+[the security model](docs/installation.md#the-security-model).
+
 The authenticated admin site is one page of collapsible sections, ordered so server
 operations come first:
 
