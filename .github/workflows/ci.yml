@@ -162,7 +162,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet pytest
+          # tools/requirements.txt holds what the modules import at load time.
+          # Installing pytest alone collected test_valheim_mods.py, which imports
+          # valheim_mods, which imports requests and packaging, and the job died
+          # in collection before a single test ran.
+          python3 -m pip install --quiet pytest -r tools/requirements.txt
           cd tools && python3 -m pytest -q
 
       - name: VR scanner import check

@@ -46,11 +46,18 @@ go test ./...
 go test -race ./...
 shellcheck -S style scripts/*.sh hostops/*.sh hostops/lib/common.sh hostops/tests/*.sh
 for t in hostops/tests/*.sh; do bash "$t"; done
+python3 -m pip install -r tools/requirements.txt
 ( cd tools && python3 -m pytest -q )
 ```
 
 `gofmt -l .` must print nothing. `git diff --exit-code go.mod go.sum` must exit
 zero, which is what makes `go mod tidy` a check rather than a mutation.
+
+`tools/requirements.txt` is not optional convenience. `valheim_mods.py` imports
+`requests` and `packaging` at module scope, so pytest fails during collection
+without them, before running a single test. CI installed only pytest and was
+therefore red on this job from the repository's first commit; a system-wide
+`requests` on the author's machine hid it.
 
 ## `dist/ValheimProfileSync.exe` is a tracked artifact
 

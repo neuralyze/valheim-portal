@@ -242,6 +242,8 @@ for t in hostops/tests/*.sh; do bash "$t"; done
 | `start_valheim_server_gate.sh` | `start_valheim_server.sh` honours the client-release cutover gate and never reaches `docker` when it is pending. |
 | `valheim_root_resolution.sh` | Every root-consuming script honours `VALHEIM_ROOT` (and the two deployment aliases) and fails loudly, naming the variable, when none is set. |
 
-The Python tools have their own suite: `cd tools && python3 -m pytest test_valheim_mods.py -q`.
+The Python tools have their own suite: `cd tools && python3 -m pytest test_valheim_mods.py -q`, after
+`python3 -m pip install -r tools/requirements.txt`. Those imports happen at module
+scope, so without them pytest fails in collection rather than reporting a test.
 
 Both suites run in CI alongside `shellcheck -S style` over `hostops/`.

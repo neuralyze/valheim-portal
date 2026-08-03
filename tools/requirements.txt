@@ -1,0 +1,13 @@
+# Third-party imports the Python tools need to load.
+#
+# valheim_mods.py imports both at module scope, so importing it — which
+# test_valheim_mods.py does — fails without them. The test suite itself makes no
+# network call; requests is needed because the import is unconditional, not
+# because the tests reach Thunderstore.
+requests
+packaging
+
+# dnfile is deliberately absent. Only the VR scanners import it, nothing else in
+# tools/ needs it, and the CI job installs it for that one step. Adding it here
+# would make every contributor running the tool tests pull a .NET metadata
+# parser they will never execute.
