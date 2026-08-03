@@ -152,6 +152,26 @@ is what puts the **Administration** link in front of you without your having to
 know a URL, and it changes what step 6 must configure. See
 [reaching the administration site](operations.md#reaching-the-administration-site).
 
+One more optional key belongs in the same file, and it is a licence obligation
+rather than a preference:
+
+| Key | What it is |
+|---|---|
+| `PORTAL_SOURCE_URL` | Where the player-facing pages link for this program's source. Absolute http or https URL |
+
+```
+PORTAL_SOURCE_URL=https://git.example.com/your-org/valheim-portal
+```
+
+The player pages carry a source-code link because this is AGPL-3.0 network
+server software: section 13 obliges anyone running a **modified** version as a
+service to offer its users the corresponding source. The default names the
+upstream project, which is a truthful offer only while you run it unmodified.
+**If you deploy local changes, point this at the repository that holds them** —
+otherwise the link tells your players something false about what they are
+running. A value the browser cannot follow is refused at startup, because an
+offer that looks discharged and leads nowhere is worse than none.
+
 ## Step 5 — Install
 
 Preview first. This changes nothing:

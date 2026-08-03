@@ -14,11 +14,26 @@ offer those users the corresponding source of your modified version.
 THIRD-PARTY COMPONENTS
 ======================
 
-This repository vendors no third-party source, but it does ship one compiled
-third-party-bearing artifact: dist/ValheimProfileSync.exe is a statically
-linked Go binary that embeds the Go standard library and the modules listed
-under GO DEPENDENCIES below. Their notices are reproduced there, as their
-licenses require of a binary distribution.
+This repository vendors one piece of third-party source, recorded immediately
+below, and ships one compiled third-party-bearing artifact:
+dist/ValheimProfileSync.exe is a statically linked Go binary that embeds the Go
+standard library and the modules listed under GO DEPENDENCIES below. Their
+notices are reproduced there, as their licenses require of a binary
+distribution.
+
+Octicons (GitHub mark)
+  Upstream:  https://github.com/primer/octicons
+  License:   MIT
+  Copyright: (c) GitHub, Inc.
+  Role:      The mark-github-16 glyph is inlined in internal/app/server.go as
+             the icon on the source-code link the player-facing pages carry,
+             which is this program's AGPL section 13 source offer. It is inlined
+             rather than served as an image file so that fill:currentColor
+             matches it to the surrounding navigation.
+  Note:      The Invertocat mark is a GitHub trademark. It is used here only to
+             link to a repository hosted on GitHub, which GitHub's brand
+             guidelines permit. A deployment that moves its source elsewhere
+             should set PORTAL_SOURCE_URL and replace the glyph.
 
 The runtime components below are obtained separately by the operator. They keep
 their own licenses; the AGPL covers only the code in this repository.

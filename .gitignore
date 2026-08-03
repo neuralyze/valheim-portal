@@ -1,4 +1,12 @@
+# Every environment-file variant except the committed template. `.env` alone was
+# not enough: install-portal.sh writes `.env.replaced` beside compose.yaml when
+# it regenerates an existing deployment, and a `cp .env .env.<timestamp>` before
+# a deploy is the obvious operator habit. Both hold the live public hostname and
+# world root, and neither matched the old pattern, so `git add -A` would have
+# committed them.
 .env
+.env.*
+!.env.example
 
 # dist/ is tracked: it holds the artifacts a deployment serves, so a clone can
 # hand a player an installer without a Windows cross-compile toolchain. Build

@@ -474,7 +474,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	steamID, ok := s.steamID(r)
 	if !ok {
-		render(w, loginPageTemplate, map[string]any{"IsAdmin": s.isAdmin(r)})
+		render(w, loginPageTemplate, map[string]any{"IsAdmin": s.isAdmin(r), "SourceURL": s.cfg.SourceURL})
 		return
 	}
 	worlds, err := s.store.PublicWorldsForSteam(r.Context(), steamID)
@@ -509,7 +509,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	render(w, playerHomeTemplate, map[string]any{
-		"Worlds": playerHomeWorlds(worlds, filtered), "IsAdmin": s.isAdmin(r),
+		"Worlds": playerHomeWorlds(worlds, filtered), "IsAdmin": s.isAdmin(r), "SourceURL": s.cfg.SourceURL,
 		"SteamID": steamID, "ClientUnavailable": s.clientDownloadProblem() != "",
 	})
 }
@@ -549,7 +549,7 @@ func (s *Server) world(w http.ResponseWriter, r *http.Request) {
 		seed = metadataSeed
 	}
 	render(w, playerWorldTemplate, map[string]any{
-		"World": info, "Profiles": cards, "Seed": seed, "IsAdmin": s.isAdmin(r),
+		"World": info, "Profiles": cards, "Seed": seed, "IsAdmin": s.isAdmin(r), "SourceURL": s.cfg.SourceURL,
 		"ClientUnavailable": s.clientDownloadProblem() != "",
 	})
 }
@@ -1696,10 +1696,16 @@ const homeTemplate = `<!doctype html>
 .world .world-description{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;color:var(--muted);font-size:.92rem}
 </style></head><body><main class="shell"><header class="hero"><div><div class="brand"><span class="rune">ᛉ</span>Neuralyze gaming</div><h1>Your Valheim profiles, kept in sync.</h1><p>Choose an approved world and profile. Valheim Profile Sync verifies the selected files, updates only what changed, creates a Desktop shortcut for that profile, and launches your existing Steam Valheim installation.</p></div><aside class="install"><h2>Install once, then use your shortcut</h2><ol><li>Download and run Valheim Profile Sync once.</li><li>Open a world below and choose how you play: Desktop, Desktop VR-compatible, or VR headset.</li><li>Choose <strong>Install or update</strong>. The app synchronizes and launches it.</li></ol><p><strong>A shortcut is made on your Desktop.</strong> Use that shortcut whenever you play; it checks for profile updates before starting Valheim.</p>{{if .ClientUnavailable}}<button class="button" type="button" disabled>Download for Windows</button><p class="install-note">The Windows app is not available to download right now. Ask the world owner to publish it.</p>{{else}}<a class="button" href="/client/ValheimProfileSync.exe">Download for Windows</a>{{end}}</aside></header><section class="content"><div class="section-head"><h2>Your worlds</h2><span>Choose a world, then how you play</span></div><div class="worlds">{{range .Worlds}}<a class="world" href="/worlds/{{.Name}}"><div><h3>{{.Name}}</h3><p>{{if .JoinAddress}}{{.JoinAddress}}{{else}}Connection details pending{{end}}</p>{{if .Description}}<p class="world-description">{{.Description}}</p>{{end}}</div><div class="profile-types">{{if .ProfileCount}}<span class="chip">{{.ProfileCount}} profile{{if ne .ProfileCount 1}}s{{end}}</span>{{else}}<span class="chip chip-empty">no profile yet</span>{{end}}</div><div class="meta"><span class="status">{{.Status}}</span><span>Valheim {{.ServerVersion}}</span></div></a>{{else}}<div class="empty empty-access"><h3>No worlds yet</h3><p>Ask the world owner to grant access to this Steam ID:</p><p class="copy-row"><code class="copy-value">{{.SteamID}}</code><button class="copy-button" type="button" data-copy="{{.SteamID}}" hidden>Copy</button></p></div>{{end}}</div></section></main><script src="/assets/copy-value.js" defer></script></body></html>`
 
-const portalNavigationStyles = `<style>.portal-account-actions{position:fixed;top:1rem;right:1rem;z-index:2;display:flex;align-items:center;gap:.55rem}.portal-nav-button{display:inline-flex;align-items:center;min-height:2.45rem;padding:.55rem .85rem;border:0;border-radius:.45rem;font:inherit;font-weight:700;text-decoration:none;cursor:pointer}.portal-admin-link{background:#71c492;color:#081911}.portal-logout-button{border:1px solid #ffffff35;background:#173a2c;color:#eef7f1}.portal-account-actions form{margin:0}</style>`
+const portalNavigationStyles = `<style>.portal-account-actions{position:fixed;top:1rem;right:1rem;z-index:2;display:flex;align-items:center;gap:.55rem}.portal-nav-button{display:inline-flex;align-items:center;min-height:2.45rem;padding:.55rem .85rem;border:0;border-radius:.45rem;font:inherit;font-weight:700;text-decoration:none;cursor:pointer}.portal-admin-link{background:#71c492;color:#081911}.portal-logout-button{border:1px solid #ffffff35;background:#173a2c;color:#eef7f1}.portal-source-link{border:1px solid #ffffff35;background:#173a2c;color:#eef7f1;padding:.55rem}.portal-source-link svg{display:block;width:1.15rem;height:1.15rem;fill:currentColor}.portal-account-actions form{margin:0}</style>`
 const adminNavigation = `{{if .IsAdmin}}<a class="portal-nav-button portal-admin-link" href="/admin">Administration</a>{{end}}`
-const loginAdminNavigation = portalNavigationStyles + `<nav class="portal-account-actions" aria-label="Account">` + adminNavigation + `</nav>`
-const playerAccountNavigation = portalNavigationStyles + `<nav class="portal-account-actions" aria-label="Account">` + adminNavigation + `<form method="post" action="/logout"><button class="portal-nav-button portal-logout-button" type="submit">Log out</button></form></nav>`
+
+// sourceNavigation is the AGPL section 13 source offer. The mark is Octicons'
+// mark-github-16 (MIT, (c) GitHub), inlined rather than served as an image so
+// fill:currentColor matches it to the surrounding navigation.
+const sourceNavigation = `<a class="portal-nav-button portal-source-link" href="{{.SourceURL}}" rel="noopener noreferrer external" target="_blank" title="Valheim Portal source code" aria-label="Valheim Portal source code">` +
+	`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/></svg></a>`
+const loginAdminNavigation = portalNavigationStyles + `<nav class="portal-account-actions" aria-label="Account">` + sourceNavigation + adminNavigation + `</nav>`
+const playerAccountNavigation = portalNavigationStyles + `<nav class="portal-account-actions" aria-label="Account">` + sourceNavigation + adminNavigation + `<form method="post" action="/logout"><button class="portal-nav-button portal-logout-button" type="submit">Log out</button></form></nav>`
 
 var loginPageTemplate = strings.Replace(strings.Replace(loginTemplate, `<head>`, `<head><link rel="icon" href="/favicon.ico" sizes="any"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#123728">`, 1), `<body>`, `<body>`+loginAdminNavigation, 1)
 

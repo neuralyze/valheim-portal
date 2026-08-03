@@ -51,6 +51,7 @@ PORTAL_AUTH_HEADER=${PORTAL_AUTH_HEADER:-X-Forwarded-User}
 PORTAL_AGENT_SOCKET_DIR=${PORTAL_AGENT_SOCKET_DIR:-/run/valheim-portal-agent}
 PORTAL_STEAM_API_KEY=${PORTAL_STEAM_API_KEY:-}
 PORTAL_ADMIN_STEAM_IDS=${PORTAL_ADMIN_STEAM_IDS:-}
+PORTAL_SOURCE_URL=${PORTAL_SOURCE_URL:-}
 AGENT_USER=${AGENT_USER:-valheim-agent}
 AGENT_GROUP=${AGENT_GROUP:-valheim-agent}
 AGENT_EXTRA_GROUPS=${AGENT_EXTRA_GROUPS:-docker}
@@ -108,6 +109,9 @@ Optional configuration worth knowing about:
                               /admin. Empty (the default) falls back to the
                               public community profile XML endpoint, which
                               resolves public Steam profiles only.
+  PORTAL_SOURCE_URL           Source-code link on the player pages, the AGPL
+                              section 13 offer. Defaults to the upstream
+                              project; set it if you deploy modified code.
   PORTAL_ADMIN_STEAM_IDS      Comma-separated SteamID64s that may administer
                               the portal with their signed-in Steam identity.
                               Empty (the default) leaves administration to the
@@ -243,6 +247,7 @@ PORTAL_BIND_ADDR=$PORTAL_BIND_ADDR
 PORTAL_BIND_PORT=$PORTAL_BIND_PORT
 PORTAL_AUTH_HEADER=$PORTAL_AUTH_HEADER
 PORTAL_ADMIN_STEAM_IDS=$PORTAL_ADMIN_STEAM_IDS
+PORTAL_SOURCE_URL=$PORTAL_SOURCE_URL
 VALHEIM_WORLD_ROOT=$VALHEIM_WORLD_ROOT
 VALHEIM_SERVER_DOCKER_DIR=$VALHEIM_SERVER_DOCKER_DIR
 AGENT_SCRIPT_DIR=$AGENT_SCRIPT_DIR
@@ -813,6 +818,7 @@ PORTAL_PUBLIC_BASE_URL=$PORTAL_PUBLIC_BASE_URL
 PORTAL_TRUSTED_PROXY_CIDR=$PORTAL_TRUSTED_PROXY_CIDR
 PORTAL_AUTH_HEADER=$PORTAL_AUTH_HEADER
 PORTAL_ADMIN_STEAM_IDS=$PORTAL_ADMIN_STEAM_IDS
+PORTAL_SOURCE_URL=$PORTAL_SOURCE_URL
 PORTAL_AGENT_GID=$gid
 PORTAL_AGENT_SOCKET_DIR=$PORTAL_AGENT_SOCKET_DIR
 PORTAL_STEAM_API_KEY=$PORTAL_STEAM_API_KEY

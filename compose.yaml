@@ -21,6 +21,9 @@ services:
       # Empty leaves administration to the trusted-proxy path alone, which is
       # the behaviour of every deployment that predates this key.
       PORTAL_ADMIN_STEAM_IDS: ${PORTAL_ADMIN_STEAM_IDS:-}
+      # Where the player pages offer this program's source, which is the AGPL
+      # section 13 offer. Change it if you deploy modified code.
+      PORTAL_SOURCE_URL: ${PORTAL_SOURCE_URL:-}
       PORTAL_COOKIE_SECURE: "true"
       PORTAL_PUBLIC_BASE_URL: ${PORTAL_PUBLIC_BASE_URL:?set the public HTTPS origin}
       PORTAL_CLIENT_EXECUTABLE: /srv/client/ValheimProfileSync.exe

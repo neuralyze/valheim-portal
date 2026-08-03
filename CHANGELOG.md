@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A source-code link on the player-facing pages, carrying the official GitHub
+  mark. This is the AGPL-3.0 section 13 offer, which the interface previously
+  did not make anywhere: a network service running modified code owes its users
+  the corresponding source. `PORTAL_SOURCE_URL` sets the target and defaults to
+  the upstream repository, which is a truthful offer only for an unmodified
+  build; a value a browser cannot follow is refused at startup. The mark is
+  Octicons' `mark-github-16` (MIT, (c) GitHub), inlined so `fill:currentColor`
+  colour-matches it to the navigation, and recorded in `NOTICE`, which no longer
+  claims the repository vendors no third-party source, because it now does.
+  Administration pages are unchanged: the offer is owed to remote users.
 - `PORTAL_ADMIN_STEAM_IDS`, an optional comma-separated list of SteamID64s
   allowed to administer the portal. Empty or unset means there are no Steam
   operators, which preserves the previous behaviour exactly.

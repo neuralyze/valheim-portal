@@ -91,6 +91,13 @@ AGENT_ALLOWED_WORLDS=WorldOne,WorldTwo
 # portal ever sees them; see docs/installation.md.
 #PORTAL_ADMIN_STEAM_IDS=76561198000000001,76561198000000002
 
+# Source-code link shown on the player-facing pages. This is the program's
+# AGPL-3.0 section 13 offer: run modified code as a network service and you owe
+# its users the corresponding source. The default names the upstream project,
+# which is only truthful for an unmodified build; point it at your own
+# repository if you carry local changes. Absolute http or https URL.
+#PORTAL_SOURCE_URL=https://github.com/neuralyze/valheim-portal
+
 # System account owning the agent process and the socket the portal joins.
 #AGENT_USER=valheim-agent
 #AGENT_GROUP=valheim-agent

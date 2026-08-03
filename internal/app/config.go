@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -33,6 +34,13 @@ type Config struct {
 	// confers nothing here. Empty means no Steam operator may administer, which
 	// leaves the reverse-proxy path as the only way in.
 	AdminSteamIDs map[string]struct{}
+	// SourceURL is where the player-facing pages offer this program's source.
+	//
+	// AGPL-3.0 section 13 obliges anyone running a modified version as a network
+	// service to offer its users the corresponding source, so a deployment that
+	// carries local changes must point this at its own repository. The default
+	// is correct only for an unmodified build.
+	SourceURL string
 }
 
 type ProvisioningDefaults struct {
@@ -65,6 +73,7 @@ func LoadConfig() (Config, error) {
 		TrustedProxyCIDR: os.Getenv("PORTAL_TRUSTED_PROXY_CIDR"),
 		SteamAPIKey:      strings.TrimSpace(os.Getenv("PORTAL_STEAM_API_KEY")),
 		AdminSteamIDs:    map[string]struct{}{},
+		SourceURL:        getenv("PORTAL_SOURCE_URL", "https://github.com/neuralyze/valheim-portal"),
 		Provisioning:     provisioning,
 	}
 	// PORTAL_PUBLIC_BASE_URL has no safe default: guessing one silently emits
@@ -74,6 +83,12 @@ func LoadConfig() (Config, error) {
 	}
 	if c.AuthHeader == "" || strings.ContainsAny(c.AuthHeader, "\r\n") {
 		return Config{}, errors.New("PORTAL_AUTH_HEADER must be a single header name")
+	}
+	// A source offer pointing somewhere a browser cannot follow is worse than
+	// none: it looks discharged while telling the reader nothing.
+	if source, err := url.Parse(c.SourceURL); err != nil ||
+		(source.Scheme != "https" && source.Scheme != "http") || source.Host == "" {
+		return Config{}, errors.New("PORTAL_SOURCE_URL must be an absolute http or https URL: " + c.SourceURL)
 	}
 	// An unparseable entry is a hard error rather than a silent omission: the
 	// operator would otherwise be locked out with no indication why.
