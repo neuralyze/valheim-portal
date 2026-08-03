@@ -1,6 +1,6 @@
 # Valheim Portal
 
-### *Fight trolls, not mod lists.*
+### *Fight trolls, not mods.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26.5%2B-00ADD8?logo=go&logoColor=white)](go.mod)

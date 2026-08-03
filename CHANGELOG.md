@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before the portal saw the request. `$remote_user` is then empty, so the proxy
   path grants nothing and the allowlist governs; restoring the two lines
   restores break-glass. Keep the admin-token snippet include either way.
-- The signed-in player headline is now "Fight trolls, not mod lists." It replaces
+- The signed-in player headline is now "Fight trolls, not mods." It replaces
   "Valheim, ready when your world is.", which described the server's state rather
   than anything the portal does, and it carries no first-person claim: a headline
   reading "we handle the mods" would speak for whichever operator deployed the
