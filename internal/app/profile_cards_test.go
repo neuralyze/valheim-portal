@@ -104,13 +104,16 @@ func TestWorldPageDistinguishesTheThreeProfilesFromTheirDefinitions(t *testing.T
 	if count := strings.Count(page, "profile-card-recommended"); count != 1 {
 		t.Fatalf("recommended cards = %d: %s", count, page)
 	}
-	desktop := page[strings.Index(page, "<h2>Desktop</h2>"):]
 	if !strings.Contains(page[:strings.Index(page, "<h2>Desktop</h2>")], "profile-card-recommended") {
 		t.Fatalf("the Desktop card is not the recommended one: %s", page)
 	}
-	// Every other install is demoted, so the recommendation means something.
-	if secondary := strings.Count(desktop, "sync-secondary"); secondary != 2 {
-		t.Fatalf("demoted install links = %d: %s", secondary, desktop)
+	// Every install button looks equally usable, because it is. A filled button beside
+	// two transparent outlined ones does not read as "recommended" -- operators reported
+	// players taking it to mean the other two profiles were unavailable to them, which
+	// on a mostly-VR server hid the profile most of them wanted. The recommendation is
+	// carried by the card, not by demoting the action.
+	if secondary := strings.Count(page, "sync-secondary"); secondary != 0 {
+		t.Fatalf("install buttons are still demoted in %d places: %s", secondary, page)
 	}
 
 	// The old chips restated client_type, which called two different profiles
