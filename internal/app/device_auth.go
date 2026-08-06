@@ -247,6 +247,14 @@ func (s *Server) deviceAuthorize(w http.ResponseWriter, r *http.Request) {
 		s.completeDeviceAuthorization(w, r, code, steamID)
 		return
 	}
+	if s.cfg.SkipDeviceCode {
+		// Single-operator install: the Steam sign-in above already proved who this is,
+		// and completeDeviceAuthorization still enforces that this Steam account owns
+		// the grant's world and profile. Retyping a code the same person is looking at
+		// on the same machine adds no second party to check, so skip it.
+		s.completeDeviceAuthorization(w, r, code, steamID)
+		return
+	}
 	s.renderDeviceConfirmation(w, r, http.StatusOK, code, grant, steamID, "")
 }
 

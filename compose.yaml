@@ -25,6 +25,12 @@ services:
       # section 13 offer. Change it if you deploy modified code.
       PORTAL_SOURCE_URL: ${PORTAL_SOURCE_URL:-}
       PORTAL_COOKIE_SECURE: "true"
+      # "Confirm this sign-in": the player retypes a code only the desktop application
+      # shows, so a stranger's browser session cannot authorize somebody else's app.
+      # Set false ONLY on a single-operator install -- one person, their own proxy --
+      # where there is no second party to check and the step is a login tax on the only
+      # user. Any value other than exactly "false" keeps it on.
+      PORTAL_REQUIRE_DEVICE_CODE: ${PORTAL_REQUIRE_DEVICE_CODE:-true}
       PORTAL_PUBLIC_BASE_URL: ${PORTAL_PUBLIC_BASE_URL:?set the public HTTPS origin}
       PORTAL_CLIENT_EXECUTABLE: /srv/client/ValheimProfileSync.exe
       # Optional. Empty falls back to the public community profile XML endpoint,

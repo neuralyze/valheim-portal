@@ -233,3 +233,79 @@ func TestDeviceConfirmationRejectsAnotherSteamAccount(t *testing.T) {
 		t.Fatalf("second Steam account = %d: %s", response.Code, response.Body.String())
 	}
 }
+
+// PORTAL_REQUIRE_DEVICE_CODE=false is for a SINGLE-OPERATOR install: one person, their
+// own proxy, their own machine. The confirmation step exists so a stranger's browser
+// session cannot authorize somebody else's desktop app, and with no second party in the
+// picture it is a login tax on the only user. Skipping it must NOT skip the ownership
+// check, so both halves are asserted here: the sign-in completes without a code, and a
+// different Steam account is still refused.
+func TestSkipDeviceCodeAuthorizesWithoutTheCodeButStillChecksOwnership(t *testing.T) {
+	release := Release{ID: "skip-release", World: "Ashlands", Profile: "raiders", ClientType: "flat", Version: "1.0.0", Notes: "test"}
+	server := deviceTestServer(t, release)
+	server.cfg.SkipDeviceCode = true
+	device := startDevice(t, server, release.World, release.Profile, release.ClientType)
+
+	page := httptest.NewRequest(http.MethodGet, "/client/authorize/"+device.DeviceCode, nil)
+	page.AddCookie(steamCookie(t, server, testSteamID))
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, page)
+	if response.Code != http.StatusOK {
+		t.Fatalf("authorize = %d: %s", response.Code, response.Body.String())
+	}
+	if body := response.Body.String(); strings.Contains(body, `name="user_code"`) {
+		t.Fatalf("still asked for a confirmation code with the step disabled: %s", body)
+	}
+	if devicePending(t, server, device.DeviceCode) {
+		t.Fatal("the device was never authorized, so the app would still have no token")
+	}
+}
+
+func TestSkipDeviceCodeStillRefusesAnotherSteamAccount(t *testing.T) {
+	release := Release{ID: "skip-owner-release", World: "Ashlands", Profile: "raiders", ClientType: "flat", Version: "1.0.0", Notes: "test"}
+	server := deviceTestServer(t, release)
+	server.cfg.SkipDeviceCode = true
+	device := startDevice(t, server, release.World, release.Profile, release.ClientType)
+
+	page := httptest.NewRequest(http.MethodGet, "/client/authorize/"+device.DeviceCode, nil)
+	page.AddCookie(steamCookie(t, server, "76561190000000000"))
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, page)
+	if response.Code == http.StatusOK && !devicePending(t, server, device.DeviceCode) {
+		t.Fatalf("a Steam account without world access authorized the device: %d %s", response.Code, response.Body.String())
+	}
+}
+
+// The default must stay safe: a Config that nobody configured keeps the confirmation.
+func TestDeviceCodeIsRequiredByDefault(t *testing.T) {
+	if (Config{}).SkipDeviceCode {
+		t.Fatal("the zero-value Config skips the confirmation step")
+	}
+	t.Setenv("PORTAL_REQUIRE_DEVICE_CODE", "")
+	if loadTestConfig(t).SkipDeviceCode {
+		t.Fatal("an unset PORTAL_REQUIRE_DEVICE_CODE skips the confirmation step")
+	}
+	t.Setenv("PORTAL_REQUIRE_DEVICE_CODE", "no")
+	if loadTestConfig(t).SkipDeviceCode {
+		t.Fatal("a value other than the exact string \"false\" disabled the step")
+	}
+	t.Setenv("PORTAL_REQUIRE_DEVICE_CODE", "false")
+	if !loadTestConfig(t).SkipDeviceCode {
+		t.Fatal("PORTAL_REQUIRE_DEVICE_CODE=false did not disable the step")
+	}
+}
+
+// LoadConfig refuses outright when unrelated required settings are absent, returning an
+// empty Config, so supply the four it demands and then read the flag under test.
+func loadTestConfig(t *testing.T) Config {
+	t.Helper()
+	t.Setenv("PORTAL_CSRF_SECRET_FILE", "/dev/null")
+	t.Setenv("PORTAL_AGENT_TOKEN_FILE", "/dev/null")
+	t.Setenv("PORTAL_TRUSTED_PROXY_CIDR", "127.0.0.1/32")
+	t.Setenv("PORTAL_PUBLIC_BASE_URL", "https://portal.test")
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	return cfg
+}

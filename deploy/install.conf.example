@@ -91,6 +91,13 @@ AGENT_ALLOWED_WORLDS=WorldOne,WorldTwo
 # portal ever sees them; see docs/installation.md.
 #PORTAL_ADMIN_STEAM_IDS=76561198000000001,76561198000000002
 
+# "Confirm this sign-in": the player retypes a code only Valheim Profile Sync shows,
+# so a stranger's browser session cannot authorize somebody else's desktop app.
+# Set false ONLY on a single-operator install -- one person, their own proxy, their
+# own machine -- where there is no second party to check and the step is a login tax
+# on the only user. Any value other than exactly "false" keeps it on.
+#PORTAL_REQUIRE_DEVICE_CODE=true
+
 # Source-code link shown on the player-facing pages. This is the program's
 # AGPL-3.0 section 13 offer: run modified code as a network service and you owe
 # its users the corresponding source. The default names the upstream project,

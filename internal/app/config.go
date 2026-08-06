@@ -23,6 +23,16 @@ type Config struct {
 	PublicBaseURL    string
 	ClientExecutable string
 	TrustedProxyCIDR string
+	// SkipDeviceCode disables the "Confirm this sign-in" step, where the player
+	// retypes a code that only the desktop application shows. It defends a PUBLIC
+	// deployment, where a stranger's browser session must not be able to authorize
+	// somebody else's app. On a single-operator install -- one person, their own
+	// proxy, their own machine -- there is no second party to defend against, and the
+	// step is a login tax on the only user. Phrased as SKIP, not REQUIRE, so the zero
+	// value is the safe one: a Config built in a test, or by a future caller that has
+	// not heard of this field, keeps the confirmation. Set PORTAL_REQUIRE_DEVICE_CODE
+	// =false to go straight to authorization once the Steam sign-in has succeeded.
+	SkipDeviceCode bool
 	// SteamAPIKey is optional. With a key the portal resolves Steam persona
 	// names through the official Web API; without one it falls back to public
 	// community profiles, which only cover accounts with a public profile.
@@ -71,10 +81,14 @@ func LoadConfig() (Config, error) {
 		PublicBaseURL:    os.Getenv("PORTAL_PUBLIC_BASE_URL"),
 		ClientExecutable: getenv("PORTAL_CLIENT_EXECUTABLE", "/srv/client/ValheimProfileSync.exe"),
 		TrustedProxyCIDR: os.Getenv("PORTAL_TRUSTED_PROXY_CIDR"),
-		SteamAPIKey:      strings.TrimSpace(os.Getenv("PORTAL_STEAM_API_KEY")),
-		AdminSteamIDs:    map[string]struct{}{},
-		SourceURL:        getenv("PORTAL_SOURCE_URL", "https://github.com/neuralyze/valheim-portal"),
-		Provisioning:     provisioning,
+		// Opt OUT explicitly, like PORTAL_COOKIE_SECURE: only the exact string "false"
+		// disables the step, so a typo cannot silently switch off a public deployment's
+		// protection.
+		SkipDeviceCode: getenv("PORTAL_REQUIRE_DEVICE_CODE", "true") == "false",
+		SteamAPIKey:    strings.TrimSpace(os.Getenv("PORTAL_STEAM_API_KEY")),
+		AdminSteamIDs:  map[string]struct{}{},
+		SourceURL:      getenv("PORTAL_SOURCE_URL", "https://github.com/neuralyze/valheim-portal"),
+		Provisioning:   provisioning,
 	}
 	// PORTAL_PUBLIC_BASE_URL has no safe default: guessing one silently emits
 	// links and redirects pointing at someone else's host.
