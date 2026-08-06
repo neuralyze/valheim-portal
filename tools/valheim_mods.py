@@ -75,8 +75,9 @@ def package_install_name(identifier):
 def matching_manifest_entries(manifest, identifier):
     matches = []
     for key in MANIFEST_PACKAGE_KEYS:
-        matches.extend((key, item) for item in manifest.get(key, []) if item.get('identifier') == identifier)
-    matches.extend(('custom_packages', item) for item in custom_packages(manifest) if item.get('id') == identifier)
+        matches.extend((key, item) for item in manifest.get(key, []) if package_identifier(item) == identifier)
+    matches.extend(('custom_packages', item) for item in custom_packages(manifest)
+                   if (item.get('id') if isinstance(item, dict) else item) == identifier)
     return matches
 
 def plugin_config_files(world_root, identifier):
@@ -230,6 +231,16 @@ def require_release_cutover_complete(world_root):
         )
 
 def package_identifier(item):
+    # A manifest list may hold either a package OBJECT or a bare identifier STRING, and a
+    # real profile carries both in the SAME list: an exclusion needs only a name, while a
+    # selection also carries its version and hashes. This is the one place either shape is
+    # read, because `'identifier' in item` is a substring test on a string and the `.get`
+    # below then raises AttributeError -- which is exactly how `remove` came to crash on
+    # every profile whose excluded_packages mixed the two.
+    if isinstance(item, str):
+        return item.strip() or None
+    if not isinstance(item, dict):
+        return None
     if 'identifier' in item:
         return item['identifier']
     namespace = item.get('namespace')
