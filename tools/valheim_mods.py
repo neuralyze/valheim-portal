@@ -554,7 +554,7 @@ def cmd_add(root,m,args):
     for item in added:
         if item['identifier'] not in ids:
             m['client_only_packages' if item['scope']=='client-only' else 'packages'].append(item); ids.add(item['identifier'])
-    m['excluded_packages']=[item for item in m.get('excluded_packages', []) if item['identifier'] not in ids]
+    m['excluded_packages']=[item for item in m.get('excluded_packages', []) if package_identifier(item) not in ids]
     save(args.manifest,m); print('added=' + ','.join(x['identifier'] for x in added))
 def cmd_sync(root, m, args):
     item=next((item for item in all_packages(m) if item['identifier'] == args.identifier), None)
@@ -572,9 +572,14 @@ def cmd_remove(root, m, args):
     paths = package_paths(root, args.identifier)
     configs = plugin_config_files(root.parents[2], args.identifier)
     backup = backup_removal_inputs(root, args.manifest, paths, configs)
+    # Filter through the same shape-tolerant reader the lookup above uses: a package list
+    # may hold objects and bare identifier strings side by side, and `.get` on a string
+    # raises. Rebuilding these lists is what actually deselects the package, so a crash
+    # here left the manifest untouched while the caller had already been told it matched.
     for key in MANIFEST_PACKAGE_KEYS:
-        m[key] = [item for item in m.get(key, []) if item.get('identifier') != args.identifier]
-    m['custom_packages'] = [item for item in custom_packages(m) if item.get('id') != args.identifier]
+        m[key] = [item for item in m.get(key, []) if package_identifier(item) != args.identifier]
+    m['custom_packages'] = [item for item in custom_packages(m)
+                            if (item.get('id') if isinstance(item, dict) else item) != args.identifier]
     save(args.manifest, m)
     remove_paths(paths)
     remove_paths(configs)
@@ -611,9 +616,9 @@ def cmd_purge(root, m, args):
     print(f'purged={args.identifier}\nbackup={backup}')
 
 def cmd_exclude(root, m, args):
-    if any(item.get('identifier') == args.identifier for item in all_packages(m)):
+    if any(package_identifier(item) == args.identifier for item in all_packages(m)):
         raise RuntimeError(f'Remove {args.identifier} before excluding it')
-    m['excluded_packages'] = [item for item in m.get('excluded_packages', []) if item.get('identifier') != args.identifier]
+    m['excluded_packages'] = [item for item in m.get('excluded_packages', []) if package_identifier(item) != args.identifier]
     m['excluded_packages'].append({'identifier': args.identifier, 'version': args.version, 'reason': args.reason})
     save(args.manifest, m)
     print(f'excluded={args.identifier}')
@@ -623,7 +628,7 @@ def cmd_disable(root, m, args):
         raise RuntimeError(f'Enabled package not found: {args.identifier}')
     registry = index()
     for key in ('packages', 'client_only_packages'):
-        m[key] = [item for item in m.get(key, []) if item['identifier'] != args.identifier]
+        m[key] = [item for item in m.get(key, []) if package_identifier(item) != args.identifier]
     m.setdefault('disabled_packages', []).append(found)
     remove_package_files(root, package_plugin_name(registry, args.identifier))
     save(args.manifest, m)
