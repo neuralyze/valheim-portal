@@ -112,9 +112,18 @@ func TestDiagnosticPluginArtifactAcceptsVRFixPlugin(t *testing.T) {
 	if err := ValidateDiagnosticPluginArtifact(both); err != nil {
 		t.Fatalf("rejected a valid two-plugin artifact: %v", err)
 	}
-	// The diagnostics assembly stays mandatory.
+	// An archive carrying ONLY the fixes is valid. It has to be: the fixes correct real
+	// VR defects and must stay installed, while the diagnostics plugin keeps its Harmony
+	// patches and watchers running even when its logging is silenced. Requiring the
+	// diagnostics assembly meant the two could never be separated.
 	if err := ValidateDiagnosticPluginArtifact(writeDiagZip(t, map[string]string{
 		"BepInEx/plugins/NeuralyzeVRFixes/NeuralyzeVRFixes.dll": "fixes",
+	})); err != nil {
+		t.Fatalf("rejected a fixes-only artifact: %v", err)
+	}
+	// An archive carrying neither is still refused.
+	if err := ValidateDiagnosticPluginArtifact(writeDiagZip(t, map[string]string{
+		"BepInEx/plugins/NeuralyzeVRFixes/notes.cfg": "x",
 	})); err == nil {
 		t.Fatal("accepted an artifact with no diagnostics assembly")
 	}

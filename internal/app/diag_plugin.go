@@ -15,7 +15,14 @@ const (
 	pluginParent                  = "bepinex/plugins/"
 	diagnosticPluginRoot          = "bepinex/plugins/valheimdiagnostics/"
 	diagnosticPluginAssembly      = "bepinex/plugins/valheimdiagnostics/valheimdiagnostics.dll"
-	vrFixPluginRoot               = "bepinex/plugins/neuralyzevrfixes/"
+	// The same artifact also delivers NeuralyzeVRFixes, which corrects real VR defects
+	// and has to stay installed whether or not verbose logging is wanted. Requiring the
+	// diagnostics assembly specifically meant the two could never be separated: an
+	// archive carrying only the fixes was rejected at publish time, so every VR client
+	// that needed the fixes also got a plugin that logged about 1,500 lines a session
+	// and kept its Harmony patches installed even when silenced.
+	vrFixesPluginAssembly = "bepinex/plugins/neuralyzevrfixes/neuralyzevrfixes.dll"
+	vrFixPluginRoot       = "bepinex/plugins/neuralyzevrfixes/"
 )
 
 // portalPluginRoots are the plugin directories the portal is permitted to publish
@@ -81,12 +88,14 @@ func ValidateDiagnosticPluginArtifact(artifactPath string) error {
 		if !strings.HasSuffix(entry, ".dll") && !strings.HasSuffix(entry, ".cfg") {
 			return fmt.Errorf("diagnostics plugin archive contains an unsupported file %q", name)
 		}
-		if key == diagnosticPluginAssembly {
+		if key == diagnosticPluginAssembly || key == vrFixesPluginAssembly {
 			assembly = true
 		}
 	}
 	if !assembly {
-		return errors.New("diagnostics plugin archive is missing BepInEx/plugins/ValheimDiagnostics/ValheimDiagnostics.dll")
+		return errors.New("plugin archive carries neither " +
+			"BepInEx/plugins/ValheimDiagnostics/ValheimDiagnostics.dll nor " +
+			"BepInEx/plugins/NeuralyzeVRFixes/NeuralyzeVRFixes.dll")
 	}
 	return nil
 }
