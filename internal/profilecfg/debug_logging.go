@@ -20,6 +20,12 @@ import (
 const (
 	BepInExConfigName  = "config/BepInEx.cfg"
 	ProfilerConfigName = "config/sighsorry.LoadTimeProfiler.cfg"
+	// VRFixesConfigName carries the switches that make NeuralyzeVRFixes and its
+	// watchers talk. They belong to this toggle: they are diagnostics, they cost a
+	// synchronous disk write on the frame the headset is waiting for, and leaving
+	// them out of the quiet set is why a VR session still logged about 1,500 lines
+	// after an operator switched debug logging off (2026-08-06).
+	VRFixesConfigName = "config/neuralyze.vrfixes.cfg"
 )
 
 // DebugLoggingPatches force verbose client diagnostics. Absent keys are appended,
@@ -36,6 +42,10 @@ var DebugLoggingPatches = map[string]map[string]string{
 		"Logging.Disk|LogLevels":     "All",
 	},
 	ProfilerConfigName: {"General|ProfilingEnabled": "true"},
+	VRFixesConfigName: {
+		"5 - Hover text|LogDistinctHoverText": "true",
+		"7 - Diagnostics|LogJumpInput":        "true",
+	},
 }
 
 // QuietLoggingPatches are the explicit counterpart used when the toggle is turned
@@ -46,11 +56,20 @@ var DebugLoggingPatches = map[string]map[string]string{
 var QuietLoggingPatches = map[string]map[string]string{
 	BepInExConfigName: {
 		"Harmony.Logger|LogChannels": "Warn, Error",
-		"Logging.Console|LogLevels":  "Fatal, Error, Warning, Message, Info",
-		"Logging.Disk|AppendLog":     "false",
-		"Logging.Disk|LogLevels":     "Fatal, Error, Warning, Message, Info",
+		// Info is where the diagnostics flood lives: every ValheimDiagnostics,
+		// HudWatch, PanelWatch and HudTree line is an Info line, so admitting Info
+		// left "quiet" logging about 1,500 lines per VR session. Message and Info are
+		// dropped here; Warning and above still reach the log, which is what an
+		// operator reading a crash actually needs.
+		"Logging.Console|LogLevels": "Fatal, Error, Warning",
+		"Logging.Disk|AppendLog":    "false",
+		"Logging.Disk|LogLevels":    "Fatal, Error, Warning",
 	},
 	ProfilerConfigName: {"General|ProfilingEnabled": "false"},
+	VRFixesConfigName: {
+		"5 - Hover text|LogDistinctHoverText": "false",
+		"7 - Diagnostics|LogJumpInput":        "false",
+	},
 }
 
 // Patches selects the patch set for a debug-logging state.
