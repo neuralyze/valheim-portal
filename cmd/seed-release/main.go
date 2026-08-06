@@ -15,10 +15,23 @@ import (
 	"github.com/neuralyze/valheim-portal/internal/app"
 )
 
+// The paths the deployed portal reads. Both are the flag defaults, and the artifact root is
+// additionally enforced below, because a release whose artifacts were staged anywhere else
+// records a path the portal cannot resolve from inside its container.
+const (
+	deployedArtifactRoot = "/var/lib/valheim-portal/artifacts"
+	deployedDatabase     = "/var/lib/valheim-portal/portal.sqlite"
+)
+
 func main() {
 	var database, artifactRoot, world, profile, clientType, version, payload, runtime, companion, diagPlugin, actor, joinAddress, serverVersion, archiveDraft, archiveRelease, notes string
-	flag.StringVar(&database, "database", "/var/lib/valheim-portal/portal.sqlite", "absolute SQLite database path")
-	flag.StringVar(&artifactRoot, "artifact-root", "/var/lib/valheim-portal/artifacts", "absolute immutable artifact root")
+	var allowForeignRoot, skipDownloadCheck bool
+	flag.StringVar(&database, "database", deployedDatabase, "absolute SQLite database path")
+	flag.StringVar(&artifactRoot, "artifact-root", deployedArtifactRoot, "absolute immutable artifact root")
+	flag.BoolVar(&allowForeignRoot, "allow-foreign-artifact-root", false,
+		"stage artifacts outside the deployed root; only correct when that prefix is mounted at the deployed path")
+	flag.BoolVar(&skipDownloadCheck, "skip-download-check", false,
+		"do not verify the published payload is readable at its recorded path")
 	flag.StringVar(&world, "world", "", "world name (required when publishing)")
 	flag.StringVar(&profile, "profile", "", "player profile identifier")
 	flag.StringVar(&clientType, "client-type", "", "client type: vr or flat")
@@ -57,6 +70,20 @@ func main() {
 	}
 	if !filepath.IsAbs(database) || !filepath.IsAbs(artifactRoot) {
 		fatal("database and artifact-root must be absolute")
+	}
+	// The recorded artifact path is read back by the PORTAL, which serves the payload from
+	// inside its container, so the only usable root is the deployed one. Passing the host
+	// path of the same bytes -- the docker volume, say -- stages the files correctly, records
+	// a path the portal cannot resolve, and every download 404s while the release row reads
+	// `published`. That happened on 2026-08-06 to all ten profiles at once. Refuse it here
+	// rather than leave it to whoever is reading the client's error message later.
+	if artifactRoot != deployedArtifactRoot && !allowForeignRoot {
+		fatal(fmt.Sprintf(
+			"artifact-root %s is not the deployed root %s: the portal resolves recorded paths from "+
+				"inside its container, so a release staged elsewhere serves 404 to every client. "+
+				"Omit -artifact-root, or pass -allow-foreign-artifact-root if this is a staging prefix "+
+				"whose contents are mounted at the deployed path.",
+			artifactRoot, deployedArtifactRoot))
 	}
 	store, err := app.OpenStore(database)
 	if err != nil {
@@ -142,6 +169,16 @@ func main() {
 	if err := store.Publish(ctx, id, actor); err != nil {
 		fatal(err.Error())
 	}
+	// "Published" has to mean a player can fetch it. A row reading `published` beside artifacts
+	// the portal cannot open is the failure this check exists for: on 2026-08-06 ten profiles
+	// published cleanly and every client download returned 404, because the recorded paths were
+	// host paths. Read each artifact back through its RECORDED path and compare the digest the
+	// row claims, which is exactly what the portal does when serving it.
+	if !skipDownloadCheck {
+		if err := verifyRecordedArtifacts(ctx, store, id); err != nil {
+			fatal(fmt.Sprintf("published %s but its artifacts are not readable as recorded: %v", id, err))
+		}
+	}
 	fmt.Printf("published %s (%s)\n", id, version)
 }
 
@@ -198,3 +235,36 @@ func verifySource(artifact app.Artifact, source string) error {
 }
 
 func fatal(message string) { fmt.Fprintln(os.Stderr, message); os.Exit(1) }
+
+// verifyRecordedArtifacts reads every artifact of a published release back through the path and
+// digest RECORDED IN THE DATABASE, which is what the portal does when a client asks for a payload.
+// Staging succeeded and the row says published, so nothing before this point can tell the operator
+// whether a download works; this can, and it costs one read per artifact.
+func verifyRecordedArtifacts(ctx context.Context, store *app.Store, releaseID string) error {
+	artifacts, err := store.PublishedArtifacts(ctx, releaseID)
+	if err != nil {
+		return err
+	}
+	if len(artifacts) == 0 {
+		return fmt.Errorf("no artifacts recorded")
+	}
+	for _, artifact := range artifacts {
+		file, err := os.Open(artifact.Path)
+		if err != nil {
+			return fmt.Errorf("%s at recorded path %s: %w", artifact.Kind, artifact.Path, err)
+		}
+		digest := sha256.New()
+		n, copyErr := io.Copy(digest, file)
+		file.Close()
+		if copyErr != nil {
+			return fmt.Errorf("%s at %s: %w", artifact.Kind, artifact.Path, copyErr)
+		}
+		if n != artifact.Size {
+			return fmt.Errorf("%s at %s: recorded %d bytes, read %d", artifact.Kind, artifact.Path, artifact.Size, n)
+		}
+		if got := hex.EncodeToString(digest.Sum(nil)); got != artifact.SHA256 {
+			return fmt.Errorf("%s at %s: recorded sha256 %s, read %s", artifact.Kind, artifact.Path, artifact.SHA256, got)
+		}
+	}
+	return nil
+}
