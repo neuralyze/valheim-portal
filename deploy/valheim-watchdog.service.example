@@ -1,0 +1,18 @@
+# Reference copy. Install as /etc/systemd/system/valheim-watchdog.service with
+# REPO_ROOT substituted, paired with valheim-watchdog.timer.
+#
+# Restarts a world server that is running but wedged. See the script header for
+# the incident this exists for: a live process, a healthy container, an
+# answering status endpoint, and nobody able to connect for forty minutes.
+#
+# Runs as root because restarting a world goes through the privileged hostops
+# scripts as the agent user. It performs no other action.
+
+[Unit]
+Description=Restart Valheim world servers that stop responding
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=REPO_ROOT/hostops/watch_valheim_servers.sh

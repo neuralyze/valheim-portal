@@ -64,6 +64,9 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<float> LaserReach;
         internal static ConfigEntry<float> AttackReach;
         internal static ConfigEntry<bool> GripJumpDodges;
+        internal static ConfigEntry<bool> BuildMenuTapOpens;
+        internal static ConfigEntry<bool> GripRemovesPiece;
+        internal static ConfigEntry<bool> FlyControls;
         internal static ConfigEntry<bool> TriggerAttacks;
         internal static ConfigEntry<bool> DirectCrouch;
         internal static ConfigEntry<bool> Profile;
@@ -167,6 +170,30 @@ namespace NeuralyzeVRFixes
                 "swing momentum, and measured hand speed is 0.00 m/s on both hands in every sample - the physics " +
                 "estimator supplies nothing, so no real swing can pass hasMomentum and no attack is reachable at all. " +
                 "Pointing at something still interacts; only an untargeted pull attacks.");
+            FlyControls = Config.Bind("8 - Input bridge", "FlyAscendDescend", true,
+                "Ascend and descend while debug-flying. Character.UpdateMotion reads ascent from " +
+                "ZInput.GetButton(\"Jump\")/(\"JoyJump\") and descent from ZInput.GetButtonPressedTimer(\"JoyCrouch\"). " +
+                "VHVR only patches GetButton, GetButtonDown and GetButtonUp, so descent is unreachable in VR by " +
+                "construction - nothing feeds the timer and it stays zero however long the stick is held. Both reads " +
+                "are answered here from the SteamVR actions, only while actually debug-flying, so ordinary jumping " +
+                "and crouching are untouched.");
+            GripRemovesPiece = Config.Bind("8 - Input bridge", "GripPlusARemovesPiece", true,
+                "Removes the piece you are pointing at with the right grip held and A pressed, which is VHVR's own " +
+                "arrangement: canRemovePiece() requires place mode, the right grip, and a live BuildingManager, and " +
+                "canJump() yields to it because \"removing piece takes higher priority than jump\". That arbitration " +
+                "lives in VHVR's ZInput path; this plugin invokes jump directly because that path does not deliver " +
+                "it, so without this the press is consumed as a jump and nothing is ever removed - measured as three " +
+                "jumps and no removal. Calls Player.RemovePiece directly, and suppresses the jump for that press.");
+            BuildMenuTapOpens = Config.Bind("8 - Input bridge", "TapOpensBuildMenu", true,
+                "Opens the build menu, which is otherwise unreachable in VR. Valheim opens piece selection from " +
+                "Player.UpdateBuildGuiInput, which reads the vanilla button \"BuildMenu\"; VHVR maps that name to " +
+                "laserPointers_RightClick (B) and injects VR input by OR-ing GetStateDown into ZInput.GetButtonDown. " +
+                "Measured with a hammer equipped and every VHVR precondition true - place mode, active pointer, " +
+                "active LaserPointers set, the action firing - ZInput.GetButtonDown(\"BuildMenu\") was false on every " +
+                "frame: the level arrives, the edge never does, so the game is never told the button was pressed. " +
+                "This reads the level, derives the edge, and calls Hud.TogglePieceSelection directly, exactly as " +
+                "dodge calls Player.Dodge. Toggled on release of a press under 0.3s, matching VHVR's own timer, so " +
+                "holding B still opens the quick-select radial and grip+B still forces it.");
             Profile = Config.Bind("9 - Profiling", "FrameAndVrReport", true,
                 "Report frame pacing (mean/p50/p95/p99), per-eye VR render resolution read from OpenVR rather than " +
                 "XRSettings, active camera census, and OpenVR compositor timing including reprojected and dropped " +
@@ -352,6 +379,7 @@ namespace NeuralyzeVRFixes
             if (MeasureCombatLatency.Value) CombatLatency.Tick();
             SwingWatch.Tick();
             FullActionWatch.Tick();
+            BuildMenuProbe.Tick();
             if (SuppressKeyHints.Value || LogHoverText.Value) HoverTextSweeper.Tick();
             if (HideMinimap.Value) MinimapHider.Tick();
             if (LogJumpInput.Value) JumpInputWatch.Tick();
@@ -865,8 +893,8 @@ namespace NeuralyzeVRFixes
     internal static class DirectActionInvoker
     {
         private static bool _ready, _failed;
-        private static object _jump, _crouch, _use, _inv, _map, _grab, _walk, _menu, _dodge;
-        private static MethodInfo _mDodge, _mInDodge, _mStartAttack, _mInAttack;
+        private static object _jump, _crouch, _use, _inv, _map, _grab, _walk, _menu, _dodge, _buildMenu;
+        private static MethodInfo _mDodge, _mInDodge, _mStartAttack, _mInAttack, _mTogglePieces, _mInPlaceMode, _mRemovePiece;
         private static FieldInfo _fCrouchToggled;
         private static MethodInfo _mJump, _mSetCrouch, _mIsCrouching, _mOnGround, _mIsAttached, _mInteract, _mSetMapMode;
         private static FieldInfo _fHovering;
@@ -890,6 +918,13 @@ namespace NeuralyzeVRFixes
                 _inv    = Get(actions, "valheim_ToggleInventory");
                 _map    = Get(actions, "valheim_ToggleMap");
                 _menu   = Get(actions, "valheim_ToggleMenu");
+                // The build menu gets the same treatment dodge did, and for the same
+                // reason: the game never sees the press. Player.UpdateBuildGuiInput reads
+                // the vanilla "BuildMenu" button, and measurement shows that button is
+                // never down in VR even while laserPointers_RightClick is bound, active and
+                // firing - so repairing the game's own path is pointless. Read the action
+                // and call Hud.TogglePieceSelection directly.
+                _buildMenu = Get(actions, "laserPointers_RightClick");
                 _dodge  = Get(actions, "valheim_Dodge");
 
                 _mJump        = AccessTools.Method(typeof(Character), "Jump", new Type[0]) ?? AccessTools.Method(typeof(Character), "Jump");
@@ -902,6 +937,9 @@ namespace NeuralyzeVRFixes
                 _fHovering    = AccessTools.Field(typeof(Player), "m_hovering");
                 _mDodge       = AccessTools.Method(typeof(Player), "Dodge");
                 _mInDodge     = AccessTools.Method(typeof(Character), "InDodge");
+                _mTogglePieces = AccessTools.Method(typeof(Hud), "TogglePieceSelection");
+                _mInPlaceMode  = AccessTools.Method(typeof(Player), "InPlaceMode");
+                _mRemovePiece  = AccessTools.Method(typeof(Player), "RemovePiece");
                 _mStartAttack = AccessTools.Method(typeof(Humanoid), "StartAttack");
                 _mInAttack    = AccessTools.Method(typeof(Character), "InAttack");
                 _fCrouchToggled = AccessTools.Field(typeof(Player), "m_crouchToggled");
@@ -935,6 +973,23 @@ namespace NeuralyzeVRFixes
             r = SteamVRProbe.Call(action, "GetStateDown", SteamVRProbe.Left);
             if (r is bool && (bool)r) return true;
             r = SteamVRProbe.Call(action, "GetStateDown", SteamVRProbe.Right);
+            return r is bool && (bool)r;
+        }
+
+        // Level, not edge. VHVR delivers VR input to the game by OR-ing
+        // action.GetStateDown into ZInput.GetButtonDown, and measurement shows the rising
+        // edge for laserPointers_RightClick is never observed there: the action's level
+        // goes true - the audit records it firing - while ZInput.GetButtonDown("BuildMenu")
+        // stays false on every frame, so Valheim never opens piece selection. Reading the
+        // level and deriving the edge here sidesteps that entirely.
+        private static bool Held(object action)
+        {
+            if (action == null) return false;
+            object r = SteamVRProbe.Call(action, "GetState", SteamVRProbe.Any);
+            if (r is bool && (bool)r) return true;
+            r = SteamVRProbe.Call(action, "GetState", SteamVRProbe.Right);
+            if (r is bool && (bool)r) return true;
+            r = SteamVRProbe.Call(action, "GetState", SteamVRProbe.Left);
             return r is bool && (bool)r;
         }
 
@@ -990,7 +1045,18 @@ namespace NeuralyzeVRFixes
                             + " blocking=" + Flag(AccessTools.Method(typeof(Character), "IsBlocking"), p)
                             + " attached=" + Flag(_mIsAttached, p)
                             + " takeInput=" + Flag(AccessTools.Method(typeof(Character), "TakeInput"), p)
-                            + " hovering=" + (Hover(p) != null));
+                            + " hovering=" + (Hover(p) != null)
+                            // The build menu lives only in the LaserPointers action set, and VHVR
+                            // activates that set only while a laser pointer is active - which
+                            // shouldLaserPointersBeActive() ties to place mode. If pointer is false
+                            // while inPlaceMode is true, the set never activates, a tap of the
+                            // BuildMenu button never reaches Valheim, and the shared button falls
+                            // through to QuickSwitch. That is the difference between "the menu is
+                            // hidden" and "the button is dead", so it is recorded here.
+                            + " pointer=" + BuildMenuProbe.PointerActive()
+                            + " laserSet=" + BuildMenuProbe.LaserSetActive()
+                            + " pieceMenu=" + BuildMenuProbe.PieceSelectionVisible()
+                            + (FlyControls.Flying() ? "  FLY " + FlyControls.Gates() : ""));
                     }
                 }
 
@@ -1002,6 +1068,11 @@ namespace NeuralyzeVRFixes
                         _mDodge.Invoke(p, DodgeArgs(dir));
                         Say("DODGE invoked dir=" + dir.ToString("F2"));
                     }
+                }
+                else if (Down(_jump) && RemovePieceTap(p))
+                {
+                    // Handled as a removal; jump is deliberately not invoked, mirroring
+                    // VHVR's own rule that removing a piece outranks jumping.
                 }
                 else if (Down(_jump))
                 {
@@ -1080,6 +1151,7 @@ namespace NeuralyzeVRFixes
                     _mDodge.Invoke(p, DodgeArgs(dir));
                     Say("DODGE invoked dir=" + dir.ToString("F2") + " (stick)");
                 }
+                BuildMenuTap(p);
                 if (Down(_map)) ToggleMap();
             }
             catch (Exception e)
@@ -1087,6 +1159,98 @@ namespace NeuralyzeVRFixes
                 NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "direct action failed: " + e.Message);
                 _failed = true;
             }
+        }
+
+        // Opens the build menu, because nothing else can.
+        //
+        // Valheim opens piece selection from Player.UpdateBuildGuiInput, which reads the
+        // vanilla button "BuildMenu". VHVR maps that name to laserPointers_RightClick (the
+        // B button) and injects VR input by OR-ing action.GetStateDown into
+        // ZInput.GetButtonDown. Measured on this client, with a hammer equipped and every
+        // VHVR precondition satisfied - place mode true, pointer active, LaserPointers set
+        // active, the action itself firing four times - ZInput.GetButtonDown("BuildMenu")
+        // was false on every single frame. The level is delivered; the edge is not. So the
+        // game is never told the button was pressed, and no repair inside Valheim's or
+        // VHVR's input path can help.
+        //
+        // This reads the action's level, derives the edge here, and calls
+        // Hud.TogglePieceSelection directly - the same approach dodge uses for the same
+        // reason.
+        //
+        // Tap versus hold matches VHVR's own arbitration of that shared button
+        // (VRControls.checkQuickItems): it accumulates a timer while RightClick is held in
+        // place mode and opens the quick-select radial once that passes 0.3s. So the menu
+        // is toggled on RELEASE and only for a press shorter than that, leaving hold to the
+        // radial exactly as before. Grip held forces the radial in VHVR, so a grip-held
+        // press is ignored here too.
+        // Removes the piece you are pointing at, because our own jump swallows the press.
+        //
+        // VHVR gates removal on canRemovePiece(): place mode, the RIGHT grip held, a live
+        // BuildingManager, and no move/precise-move/hold-place in progress. It then raises
+        // the vanilla button "Remove", which VHVR maps to the same action as Jump, and
+        // canJump() returns false whenever canRemovePiece() is true - "Removing piece takes
+        // higher priority than jump" in its own words.
+        //
+        // That arbitration lives in VHVR's ZInput path, which this plugin bypasses: jump is
+        // invoked directly because VHVR's path does not deliver it either. The measured
+        // result was three JUMP invocations while trying to remove, and no removal. So the
+        // same priority has to be implemented here: with a build tool out and the right grip
+        // held, an A press removes rather than jumps.
+        private static bool RemovePieceTap(Player p)
+        {
+            if (NeuralyzeVRFixesPlugin.GripRemovesPiece == null
+                || !NeuralyzeVRFixesPlugin.GripRemovesPiece.Value
+                || _mRemovePiece == null) return false;
+            if (!Flag(_mInPlaceMode, p)) return false;
+            if (!RightGrabHeld()) return false;
+            object result = _mRemovePiece.Invoke(p, null);
+            Say("REMOVE PIECE invoked -> " + Convert.ToString(result));
+            return true;
+        }
+
+        // Right hand specifically. GrabHeld() accepts either hand, which is right for the
+        // dodge chord but wrong here: VHVR requires the right grip, and the left grip is the
+        // snap/reference-point modifier while building.
+        // Exposed for the fly patches: flight reads the jump and crouch inputs as held
+        // levels, not presses, and those patches must answer from the same actions this
+        // class already owns.
+        internal static bool JumpHeld()   { return Held(_jump); }
+        internal static bool CrouchHeld() { return Held(_crouch); }
+
+        private static bool RightGrabHeld()
+        {
+            object r = SteamVRProbe.Call(_grab, "GetState", SteamVRProbe.Right);
+            return r is bool && (bool)r;
+        }
+
+        private const float BuildMenuTapSeconds = 0.3f;
+        private static float _buildMenuHeldSince = -1f;
+
+        private static void BuildMenuTap(Player p)
+        {
+            if (NeuralyzeVRFixesPlugin.BuildMenuTapOpens == null
+                || !NeuralyzeVRFixesPlugin.BuildMenuTapOpens.Value
+                || _mTogglePieces == null || _buildMenu == null) return;
+
+            bool held = Held(_buildMenu);
+            if (held)
+            {
+                if (_buildMenuHeldSince < 0f) _buildMenuHeldSince = Time.realtimeSinceStartup;
+                return;
+            }
+            if (_buildMenuHeldSince < 0f) return;
+
+            float duration = Time.realtimeSinceStartup - _buildMenuHeldSince;
+            _buildMenuHeldSince = -1f;
+            if (duration >= BuildMenuTapSeconds) return;      // a hold: VHVR's radial owns it
+            if (GrabHeld()) return;                           // grip+press also means the radial
+            if (!Flag(_mInPlaceMode, p)) return;              // only with a build tool out
+
+            object hud = Get(typeof(Hud), "instance");
+            if (hud == null) return;
+            _mTogglePieces.Invoke(hud, null);
+            Say("BUILD MENU toggled after " + duration.ToString("F2") + "s tap -> visible="
+                + BuildMenuProbe.PieceSelectionVisible());
         }
 
         // VHVR's Attack.Start prefix is the whole melee damage path and it reads these

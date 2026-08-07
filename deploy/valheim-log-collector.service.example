@@ -1,0 +1,33 @@
+# Reference copy. Install as /etc/systemd/system/valheim-log-collector.service
+# after substituting REPO_ROOT and COLLECTOR_USER for your deployment.
+#
+# Keeps world server output on the host so an incident can be diagnosed after
+# the container is gone. Container stdout is the only copy of that log, and
+# `docker compose` deletes it when it recreates a container - which is exactly
+# what a restart does, so the act of recovering destroys the evidence.
+#
+# Runs as a plain follower with no access to the game or the portal database.
+# Losing it costs future evidence, nothing operational, so it restarts quietly
+# and never blocks anything else.
+
+[Unit]
+Description=Persist Valheim world server logs to the host
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=COLLECTOR_USER
+ExecStart=REPO_ROOT/hostops/collect_valheim_server_logs.sh
+Environment=VALHEIM_LOG_ROOT=/var/log/valheim-worlds
+Restart=always
+RestartSec=10
+# Writes only to its own log directory.
+ProtectSystem=strict
+ReadWritePaths=/var/log/valheim-worlds
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

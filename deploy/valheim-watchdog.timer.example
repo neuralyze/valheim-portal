@@ -1,0 +1,16 @@
+# Reference copy. Install as /etc/systemd/system/valheim-watchdog.timer.
+#
+# Five minutes is well inside the thresholds the check uses (25 minutes without
+# a save, 7 without output), so a wedge is caught within roughly half an hour of
+# starting rather than at game time.
+
+[Unit]
+Description=Periodic Valheim world server health check
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
