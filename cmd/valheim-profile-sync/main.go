@@ -63,10 +63,6 @@ func synchronizeProfile(ctx context.Context, request profileRequest, gameDir str
 	if err != nil {
 		return false, err
 	}
-	report(reporter, progressUpdate{Stage: "Creating Desktop shortcut", Detail: request.Profile, Percent: 6})
-	if _, err := writeShortcut(desktop, request, shortcutIconPath(executable)); err != nil {
-		return false, err
-	}
 	localAppData, err := localApplicationData()
 	if err != nil {
 		return false, err
@@ -75,8 +71,32 @@ func synchronizeProfile(ctx context.Context, request profileRequest, gameDir str
 	if err != nil {
 		return false, err
 	}
+	// Once, not on every update. Writing it on the sync path meant every
+	// "Install or update" recreated the file, so a shortcut the player had
+	// deliberately deleted came back, and its timestamp churned for no reason.
+	// Installers do not work that way: they place shortcuts during install,
+	// record that they did, and leave them alone afterwards - resurrecting a
+	// deleted one is what "Repair" is for. The stamp below is this app's
+	// equivalent of the registry value an installer would write, kept beside the
+	// profile so it is removed when the profile is.
+	//
+	// Players who already have a shortcut have no stamp yet, so it is written
+	// once more on the next sync and left alone from then on.
+	shortcutWritten, err := shortcutAlreadyCreated(root)
+	if err != nil {
+		return false, err
+	}
+	if !shortcutWritten {
+		report(reporter, progressUpdate{Stage: "Creating Desktop shortcut", Detail: request.Profile, Percent: 6})
+		if _, err := writeShortcut(desktop, request, shortcutIconPath(executable)); err != nil {
+			return false, err
+		}
+		if err := recordShortcutCreated(root); err != nil {
+			return false, err
+		}
+	}
 	if !launch {
-		report(reporter, progressUpdate{Stage: "Profile is ready", Detail: request.Profile + " is up to date. A shortcut was created on your Desktop; use it whenever you play this profile.", Percent: 100, Terminal: true})
+		report(reporter, progressUpdate{Stage: "Profile is ready", Detail: request.Profile + " is up to date. Use the Desktop shortcut whenever you play this profile.", Percent: 100, Terminal: true})
 		return changed, nil
 	}
 	if gameDir == "" {
@@ -220,4 +240,35 @@ func writeTextAtomically(path, content string) error {
 func fatal(message string) {
 	fmt.Fprintln(os.Stderr, message)
 	os.Exit(1)
+}
+
+// shortcutStampName records that this profile's Desktop shortcut has been
+// created. Its presence is the only thing consulted; its contents are for a
+// human reading the folder.
+const shortcutStampName = ".desktop-shortcut-created"
+
+// shortcutAlreadyCreated reports whether the Desktop shortcut for this profile
+// has been written before. A missing profile directory counts as "not yet",
+// because the first sync creates it.
+func shortcutAlreadyCreated(root string) (bool, error) {
+	if root == "" {
+		return false, errors.New("profile directory is required")
+	}
+	_, err := os.Stat(filepath.Join(root, shortcutStampName))
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
+
+func recordShortcutCreated(root string) error {
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return err
+	}
+	return writeTextAtomically(filepath.Join(root, shortcutStampName),
+		"This profile's Desktop shortcut has been created.\r\n"+
+			"Delete this file to have it recreated on the next update.\r\n")
 }
