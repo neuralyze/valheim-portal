@@ -19,5 +19,9 @@ cp -a "$root/." "$staging/source/"
     -ldflags="-H=windowsgui -s -w -X github.com/neuralyze/valheim-portal/internal/version.Version=$version" \
     -o "$out" ./cmd/valheim-profile-sync
 )
+# Sign it if credentials are available. Unsigned is what Defender's heuristic keys on, and an
+# unsigned build that gets quarantined mid-session is worse than a slower build.
+"$root/scripts/sign-windows-client.sh" "$out" || true
+
 printf 'built %s\n' "$version" >&2
 printf '%s\n' "$out"
