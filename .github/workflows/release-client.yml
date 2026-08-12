@@ -1,0 +1,91 @@
+name: Release Windows client
+
+# Builds the player-facing client and, when a signing certificate is available, signs it.
+#
+# This workflow exists because of a real incident: an unsigned build was classified by Defender as
+# Trojan:Win32/Bearfoos.A!ml and deleted from a player's machine, which broke their shortcut. Two
+# things prevent a repeat - not behaving like a dropper (the client no longer copies itself into
+# AppData), and a signature from a certificate authority Windows already trusts.
+#
+# SignPath Foundation issues those certificates to open-source projects at no cost, and signs from
+# CI rather than handing anyone a private key. That requires the build to be public, reproducible,
+# and traceable to a commit, which is what everything below is for.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write        # SignPath verifies the build came from this workflow, not a laptop
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      sha256: ${{ steps.digest.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # the build stamps a version from git describe
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      # -trimpath and -buildvcs=false keep the output identical across machines, so anyone can
+      # rebuild this commit and compare digests with the published one.
+      - name: Build
+        run: |
+          PORTAL_VERSION="${GITHUB_REF_NAME#v}" ./scripts/build-windows-client.sh dist/ValheimProfileSync.exe
+
+      - name: Digest
+        id: digest
+        run: |
+          digest=$(sha256sum dist/ValheimProfileSync.exe | cut -d' ' -f1)
+          printf 'sha256=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          printf 'SHA-256: %s\n' "$digest" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-client
+          path: dist/ValheimProfileSync.exe
+
+  sign:
+    needs: build
+    runs-on: ubuntu-latest
+    # Skipped until the SignPath project is approved and its ids are set as repository variables,
+    # so the workflow is useful before the certificate exists rather than blocked on it.
+    if: vars.SIGNPATH_PROJECT_SLUG != ''
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-client
+          path: dist
+
+      - uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: windows-client
+          github-artifact-id: ${{ github.run_id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-client
+          path: signed/ValheimProfileSync.exe
+
+      # The digest changes when the signature is attached, so the published one must be taken from
+      # the signed file. Publishing the unsigned digest would send players checking against bytes
+      # nobody can download.
+      - name: Publish digest
+        run: |
+          printf 'signed SHA-256: %s\n' "$(sha256sum signed/ValheimProfileSync.exe | cut -d' ' -f1)" >> "$GITHUB_STEP_SUMMARY"

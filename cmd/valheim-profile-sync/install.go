@@ -9,59 +9,50 @@ import (
 	"path/filepath"
 )
 
-const installedExecutableName = "ValheimProfileSync.exe"
-
+// Register where the application already is. Do not copy it anywhere.
+//
+// The previous version copied the running executable into %LOCALAPPDATA% and pointed the URL
+// protocol at that copy. Windows Defender classified the result as Trojan:Win32/Bearfoos.A!ml and
+// deleted it, which left the protocol registered against a path that no longer existed - the
+// Desktop shortcut then reported "Application Not Found" while looking perfectly intact.
+//
+// That detection is a machine-learning heuristic, and self-copying into AppData is the loudest
+// signal in the profile it matches: an unsigned binary that duplicates itself into a user data
+// directory, registers a handler aimed at the duplicate, downloads more executables and launches
+// them. Every part is legitimate here and the duplication is the only part that buys nothing. The
+// executable now stays wherever the player put it, and the protocol points there.
+//
+// Re-registering on every run makes this self-healing: if the file is moved, restored from
+// quarantine, or replaced by a newer download, running it once repairs the registration.
 func installCurrentApplication() (string, error) {
 	source, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	localAppData, err := localApplicationData()
-	if err != nil {
-		return "", err
-	}
-	root, _, err := loadProfileStorageDirectory(localAppData)
-	if err != nil {
-		return "", err
-	}
-	return installApplication(source, root, runCommand)
+	return installApplication(source, "", runCommand)
 }
 
-// installedApplicationPath reports where the application keeps its own copy,
-// without installing anything. The Desktop shortcut records this rather than
-// os.Executable() so its icon survives the downloaded copy being replaced or
-// cleaned up.
+// installedApplicationPath reports the executable the shortcut and protocol should point at, which
+// is simply where this build is running from.
 func installedApplicationPath() (string, error) {
-	localAppData, err := localApplicationData()
-	if err != nil {
-		return "", err
-	}
-	root, _, err := loadProfileStorageDirectory(localAppData)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, installedExecutableName), nil
+	return os.Executable()
 }
 
-// shortcutIconPath prefers the installed copy for the shortcut's icon. A shortcut
-// created while running straight from a browser download points its icon at that
-// download, so the art disappears as soon as the file is cleaned up or superseded by
-// a newer download - which looks exactly like the shortcut being deleted. The
-// shortcut still launches either way, because it stores a protocol URL rather than a
-// path to the executable.
+// shortcutIconPath uses the running executable's own icon.
 func shortcutIconPath(current string) string {
-	installed, err := installedApplicationPath()
-	if err != nil {
+	if current != "" {
 		return current
 	}
-	if info, statErr := os.Stat(installed); statErr == nil && info.Mode().IsRegular() {
-		return installed
+	if executable, err := os.Executable(); err == nil {
+		return executable
 	}
 	return current
 }
 
+// installApplication registers the URL protocol against an executable. The root argument is
+// retained for callers that still pass a storage directory; nothing is written into it.
 func installApplication(source, root string, run commandRunner) (string, error) {
-	if source == "" || root == "" || run == nil {
+	if source == "" || run == nil {
 		return "", errors.New("cannot install Valheim Profile Sync")
 	}
 	source, err := filepath.Abs(source)
@@ -72,31 +63,27 @@ func installApplication(source, root string, run commandRunner) (string, error) 
 	if err != nil || !info.Mode().IsRegular() {
 		return "", errors.New("the selected Valheim Profile Sync executable is unavailable")
 	}
-	root, err = filepath.Abs(root)
+	if err := registerProtocol(source, run); err != nil {
+		return "", err
+	}
+	return source, nil
+}
+
+func fileDigest(path string) (string, error) {
+	file, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(root, 0o700); err != nil {
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
 		return "", err
 	}
-	destination := filepath.Join(root, installedExecutableName)
-	if filepath.Clean(source) != filepath.Clean(destination) {
-		same, err := sameFileContents(source, destination)
-		if err != nil {
-			return "", err
-		}
-		if !same {
-			if err := copyFileAtomically(source, destination); err != nil {
-				return "", fmt.Errorf("install Valheim Profile Sync: %w", err)
-			}
-		}
-	}
-	if err := registerProtocol(destination, run); err != nil {
-		return "", err
-	}
-	return destination, nil
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
+// sameFileContents reports whether two paths hold identical bytes. Still used by the sync path to
+// avoid rewriting files that have not changed.
 func sameFileContents(first, second string) (bool, error) {
 	firstInfo, err := os.Stat(first)
 	if err != nil {
@@ -121,17 +108,4 @@ func sameFileContents(first, second string) (bool, error) {
 		return false, err
 	}
 	return firstDigest == secondDigest, nil
-}
-
-func fileDigest(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
