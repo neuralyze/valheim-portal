@@ -23,6 +23,7 @@ namespace NeuralyzeVRFixes
         private const int MaxChars = 8;
 
         private static readonly Dictionary<string, Sprite> _cache = new Dictionary<string, Sprite>();
+        private static int _regenerated;
 
         private static readonly Dictionary<char, string> Font = new Dictionary<char, string>
         {
@@ -89,6 +90,17 @@ namespace NeuralyzeVRFixes
             if (key.Length == 0) key = "?";
             Sprite cached;
             if (_cache.TryGetValue(key, out cached) && cached != null) return cached;
+            if (_cache.ContainsKey(key))
+            {
+                _regenerated++;
+                if (_regenerated == 1 || _regenerated == 50)
+                {
+                    NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                        + "label sprite '" + key + "' was destroyed and had to be redrawn ("
+                        + _regenerated + " so far) - something is unloading our textures despite"
+                        + " HideAndDontSave, and redrawing them costs whole frames");
+                }
+            }
             try
             {
                 Sprite made = Build(Wrap(key));
@@ -144,6 +156,13 @@ namespace NeuralyzeVRFixes
         private static Sprite Build(List<string> lines)
         {
             var tex = new Texture2D(Size, Size, TextureFormat.RGBA32, false);
+            // Survive Resources.UnloadUnusedAssets().
+            //
+            // Nothing in the Unity scene references these textures - only our dictionary does - so
+            // an unload destroys them. Unity's overloaded == then reports the cached sprite as null,
+            // the cache misses, and every label is redrawn. Measured while the inventory was open,
+            // which is what triggers the unload: miscRing = 168ms in a single frame, about 6fps.
+            tex.hideFlags = HideFlags.HideAndDontSave;
             tex.filterMode = FilterMode.Bilinear;
 
             Color32 bg     = new Color32(18, 18, 22, 230);
@@ -207,7 +226,9 @@ namespace NeuralyzeVRFixes
 
             tex.SetPixels32(pixels);
             tex.Apply(false, false);
-            return Sprite.Create(tex, new Rect(0f, 0f, Size, Size), new Vector2(0.5f, 0.5f), 500f);
+            Sprite made = Sprite.Create(tex, new Rect(0f, 0f, Size, Size), new Vector2(0.5f, 0.5f), 500f);
+            made.hideFlags = HideFlags.HideAndDontSave;
+            return made;
         }
     }
 }

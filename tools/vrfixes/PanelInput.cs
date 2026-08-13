@@ -20,8 +20,11 @@ namespace NeuralyzeVRFixes
     // barber still stop input, because those are cases where movement genuinely conflicts.
     internal static class PanelInput
     {
+        private static MethodInfo _pieceSelection, _minimapOpen;
         private static MethodInfo _consoleVisible, _chatFocus, _chatInstance;
         private static MethodInfo _inventoryVisible, _menuVisible, _storeVisible, _textInputVisible;
+        private static MethodInfo _isAttached;
+        private static FieldInfo _localPlayer;
         private static bool _resolved;
         private static int _allowed;
 
@@ -35,9 +38,25 @@ namespace NeuralyzeVRFixes
                     + "Player.TakeInput not found; movement stays frozen while panels are open");
                 return;
             }
-            harmony.Patch(take, postfix: new HarmonyMethod(
-                typeof(PanelInput).GetMethod("After", BindingFlags.Static | BindingFlags.NonPublic)));
-            ProbeHealth.Announce("PanelInput", true, "movement allowed while console/chat is open");
+            HarmonyMethod after = new HarmonyMethod(
+                typeof(PanelInput).GetMethod("After", BindingFlags.Static | BindingFlags.NonPublic));
+            harmony.Patch(take, postfix: after);
+
+            // Player.TakeInput() gates actions; MOVEMENT asks PlayerController.TakeInput(bool look),
+            // a separate private method with its own copy of the same gates. Patching only the
+            // first unfroze actions while the stick stayed dead with the inventory or build menu
+            // open - the log showed this postfix firing and the player still unable to walk.
+            Type controller = AccessTools.TypeByName("PlayerController");
+            MethodInfo controllerTake = controller == null
+                ? null
+                : AccessTools.Method(controller, "TakeInput", new[] { typeof(bool) });
+            if (controllerTake != null)
+            {
+                harmony.Patch(controllerTake, postfix: after);
+            }
+            ProbeHealth.Announce("PanelInput", true,
+                "movement allowed while panels are open (Player and PlayerController gates)"
+                + (controllerTake == null ? "; PlayerController.TakeInput NOT FOUND, movement stays frozen" : ""));
         }
 
         private static void Resolve()
@@ -49,6 +68,12 @@ namespace NeuralyzeVRFixes
             _menuVisible      = Method("Menu", "IsVisible");
             _storeVisible     = Method("StoreGui", "IsVisible");
             _textInputVisible = Method("TextInput", "IsVisible");
+            _pieceSelection   = Method("Hud", "IsPieceSelectionVisible");
+            Type character = AccessTools.TypeByName("Character");
+            Type playerType = AccessTools.TypeByName("Player");
+            _isAttached  = character  == null ? null : AccessTools.Method(character, "IsAttached");
+            _localPlayer = playerType == null ? null : AccessTools.Field(playerType, "m_localPlayer");
+            _minimapOpen      = Method("Minimap", "IsOpen");
             Type chat = AccessTools.TypeByName("Chat");
             if (chat != null)
             {
@@ -72,6 +97,12 @@ namespace NeuralyzeVRFixes
 
         private static void After(ref bool __result)
         {
+            long _t = HookProfiler.Start();
+            try { AfterBody(ref __result); } finally { HookProfiler.Stop(HookProfiler.Panel, _t); }
+        }
+
+        private static void AfterBody(ref bool __result)
+        {
             if (__result) { _lastReason = null; return; }
             if (!NeuralyzeVRFixesPlugin.MoveWhilePanelOpen.Value) return;
             Resolve();
@@ -81,30 +112,73 @@ namespace NeuralyzeVRFixes
             // reconstructed by asking each gate individually.
             // Only reached when TakeInput() already returned false, i.e. something IS open, so the
             // reflective probes below run rarely. They must never run on a normal frame.
+            // Once per frame, not once per call. TakeInput is asked 400-465 times a frame and the
+            // measured cost of probing every gate that often was 9.6ms in a single frame - two
+            // thirds of a 72Hz frame, spent answering the same question repeatedly.
+            if (_reasonFrame == UnityEngine.Time.frameCount)
+            {
+                if (_frameDecline) return;
+                __result = true;
+                _allowed++;
+                return;
+            }
+            _reasonFrame = UnityEngine.Time.frameCount;
+
             string reason = True(_consoleVisible) ? "console"
                           : ChatFocused() ? "chat"
                           : True(_textInputVisible) ? "textInput"
                           : True(_inventoryVisible) ? "inventory"
                           : True(_storeVisible) ? "store"
                           : True(_menuVisible) ? "menu"
+                          : True(_pieceSelection) ? "buildMenu"
+                          : True(_minimapOpen) ? "map"
                           : "unknown";
+
+            // Two gates must stay shut, both learned from a stuck session.
+            //
+            // The escape menu is the player's last resort: forcing input through it left a player
+            // unable to open the menu and quit at all.
+            //
+            // Attachment - a helm, a saddle, a chair - routes movement into the mounted controller
+            // instead of the legs. Overriding that is what made a raft's rudder impossible to let go
+            // of: the player was steering, and every grip kept feeding the helm.
+            bool decline = reason == "menu" || Attached();
 
             if (reason != _lastReason)
             {
                 _lastReason = reason;
                 NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
-                    + "input was blocked by '" + reason + "'; movement re-enabled");
+                    + "input was blocked by '" + reason + "'; "
+                    + (decline ? "left blocked deliberately" : "movement re-enabled"));
             }
 
-            // Every panel, not just the text ones. In VR a panel floats in front of you and there is
-            // no keyboard competing for the movement axes, so freezing the player only means they
-            // cannot walk to the wrist button that closes it. "unknown" is included deliberately:
-            // an unidentified gate is exactly the case that stranded the player before.
+            _frameDecline = decline;
+            if (decline) return;
+
+            // Every other panel. In VR a panel floats in front of you and there is no keyboard
+            // competing for the movement axes, so freezing the player only means they cannot walk to
+            // the wrist button that closes it. "unknown" is included deliberately: an unidentified
+            // gate is exactly the case that stranded the player before.
             __result = true;
             _allowed++;
         }
 
+        // Attached to something the game steers with the movement axes.
+        private static bool Attached()
+        {
+            if (_localPlayer == null || _isAttached == null) return false;
+            try
+            {
+                object p = _localPlayer.GetValue(null);
+                if (p == null) return false;
+                return Convert.ToBoolean(_isAttached.Invoke(p, null));
+            }
+            catch { return false; }
+        }
+
         private static string _lastReason;
+        private static int _reasonFrame = -1;
+        private static bool _frameDecline;
 
         private static bool ChatFocused()
         {

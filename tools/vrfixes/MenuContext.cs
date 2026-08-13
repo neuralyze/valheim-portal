@@ -83,6 +83,9 @@ namespace NeuralyzeVRFixes
                 case "build": return Report(predicate, _inPlaceMode != null, PlayerBool(_inPlaceMode));
                 case "alive": return Report(predicate, _isDead != null, !PlayerBool(_isDead));
                 case "admin": return Report(predicate, true, AdminCheck.IsAdmin());
+                // Seated at a ship's controls. Sail entries need to be reachable from there, since
+                // the rudder is directly beneath you and cannot be pointed at from the seat.
+                case "helm": return Report(predicate, true, DirectActions.AtHelm());
                 default:
                     Report(predicate, false, true);
                     return true;

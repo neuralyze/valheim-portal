@@ -26,6 +26,7 @@ namespace NeuralyzeVRFixes
         internal sealed class Entry
         {
             internal string Label;
+            internal string Group;   // "" = the top level ring
             internal string Kind;
             internal string Value;
             internal string When;    // MenuContext predicate; empty means always
@@ -38,14 +39,21 @@ namespace NeuralyzeVRFixes
                 {
                     if (Kind == "zinput") return ZInputPulse.Send(Value);
                     if (Kind == "key") return KeyPulse.Send(Value);
+                    // A held modifier, not a press. Several mods only act while a key is held
+                    // WHILE you do something else - OdinHorse says so outright: "the key needed
+                    // to be HELD while interacting with the horse". A momentary pulse can never
+                    // satisfy that, so these latch on, you interact, and you tap again to release.
+                    if (Kind == "hold") return KeyPulse.Latch(Value);
                     if (Kind == "console") return ConsoleOpener.Open() && DirectActions.OpenConsoleKeyboard();
                     if (Kind == "emote") return DirectActions.Emote(Value);
                     if (Kind == "zoom") return DirectActions.Zoom(Value);
                     if (Kind == "chat") return DirectActions.OpenChat();
                     if (Kind == "power") return DirectActions.GuardianPower();
                     if (Kind == "panel") return DirectActions.ClosePanels();
-                    if (Kind == "cmd") return DirectActions.RunCommand(Value);
+                    if (Kind == "cmd") return DirectActions.RunCommandSequence(Value);
                     if (Kind == "ui") return DirectActions.AdoptAndShow(Value);
+                    if (Kind == "mount") return DirectActions.ReleaseMount();
+                    if (Kind == "sail") return DirectActions.ShipSpeed(Value);
                     NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
                         + "misc action '" + Label + "' has unknown kind '" + Kind + "'");
                     return false;
@@ -60,6 +68,26 @@ namespace NeuralyzeVRFixes
         }
 
         private static readonly List<Entry> _entries = new List<Entry>();
+        private static string _group = "";
+        private static readonly List<string> _groupsBuf = new List<string>();
+        private static readonly List<Entry> _visibleBuf = new List<Entry>();
+
+        // A group is offered only when it has something in it right now, so a non-admin never sees
+        // an "Admin >" door with nothing behind it.
+        private static List<string> Groups()
+        {
+            bool admin = !NeuralyzeVRFixesPlugin.HideAdminEntries.Value || AdminCheck.IsAdmin();
+            List<string> groups = _groupsBuf;
+            groups.Clear();
+            foreach (Entry e in _entries)
+            {
+                if (e.Group.Length == 0 || groups.Contains(e.Group)) continue;
+                if (e.When == "admin" && !admin) continue;
+                if (e.When != "admin" && !MenuContext.Active(e.When)) continue;
+                groups.Add(e.Group);
+            }
+            return groups;
+        }
 
         // Kinds that only make sense for an admin. Gated on ZNet.LocalPlayerIsAdminOrHost(), the
         // vanilla check the game itself uses, so a non-admin never sees a button that would be
@@ -133,12 +161,14 @@ namespace NeuralyzeVRFixes
             // detection and the decision to act on it are separate concerns.
             bool detected = AdminCheck.IsAdmin();
             bool admin = !NeuralyzeVRFixesPlugin.HideAdminEntries.Value || detected;
-            var visible = new List<Entry>(_entries.Count);
+            List<Entry> visible = _visibleBuf;
+            visible.Clear();
             foreach (Entry e in _entries)
             {
                 // "admin" is the one predicate that stays overridable, because its detection was
                 // wrong for three releases and hiding the console from its own admin is worse than
                 // showing a button the server refuses.
+                if (e.Group != _group) continue;
                 if (e.When == "admin") { if (admin) visible.Add(e); continue; }
                 if (MenuContext.Active(e.When)) visible.Add(e);
             }
@@ -186,13 +216,23 @@ namespace NeuralyzeVRFixes
                     when = value.Substring(whenAt + 6).Trim().ToLowerInvariant();
                     value = value.Substring(0, whenAt).Trim();
                 }
+                // "Group/Label" nests the entry one ring deeper. Eleven flat admin commands buried
+                // the six everyday entries behind a "More >" page; grouping is what a menu is for.
+                string group = "";
+                int slash = label.IndexOf('/');
+                if (slash > 0)
+                {
+                    group = label.Substring(0, slash).Trim();
+                    label = label.Substring(slash + 1).Trim();
+                }
                 if (label.Length == 0 || value.Length == 0) continue;
-                if (kind != "zinput" && kind != "key" && kind != "console"
+                if (kind != "zinput" && kind != "key" && kind != "hold" && kind != "console"
                     && kind != "emote" && kind != "zoom" && kind != "chat" && kind != "power"
-                    && kind != "panel" && kind != "cmd" && kind != "ui") continue;
+                    && kind != "panel" && kind != "cmd" && kind != "ui"
+                    && kind != "mount" && kind != "sail") continue;
                 // console and cmd are admin surfaces by nature; an explicit when: still wins.
                 if (when.Length == 0 && (kind == "console" || kind == "cmd")) when = "admin";
-                _entries.Add(new Entry { Label = label, Kind = kind, Value = value, When = when });
+                _entries.Add(new Entry { Label = label, Group = group, Kind = kind, Value = value, When = when });
             }
             var contexts = new List<string>();
             foreach (Entry e in _entries)
@@ -203,6 +243,22 @@ namespace NeuralyzeVRFixes
             NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
                 + "misc menu loaded " + _entries.Count + " action(s); contexts used: "
                 + string.Join(", ", contexts.ToArray()));
+            // Draw every label now, at load, instead of on first open.
+            //
+            // Measured: the first frame the ring appeared cost 21.35ms - one and a half frames at
+            // 72Hz, a visible hitch - because each label's text is rendered into a texture on first
+            // use. Doing it here moves that cost to the loading screen where nobody feels it.
+            int warmed = 0;
+            foreach (Entry e in _entries) { MiscLabels.For(e.Label); warmed++; }
+            foreach (string g in Groups()) { MiscLabels.For(g + " >"); warmed++; }
+            foreach (string extra in new string[] { "More >", "< Back", "Misc (" + _entries.Count + ")" })
+            {
+                MiscLabels.For(extra);
+                warmed++;
+            }
+            NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                + "misc menu: " + warmed + " label sprites pre-drawn at load");
+
         }
 
         internal static void Install(Harmony harmony)
@@ -239,6 +295,123 @@ namespace NeuralyzeVRFixes
             }
         }
 
+        // Right, Left or Both. Anything unrecognised is treated as Right rather than
+        // silently showing on both wrists, which is the behaviour being fixed.
+        private static bool WantedHand(object instance)
+        {
+            string want = NeuralyzeVRFixesPlugin.MiscMenuHand == null
+                ? "Right" : (NeuralyzeVRFixesPlugin.MiscMenuHand.Value ?? "Right");
+            if (want.Equals("Both", StringComparison.OrdinalIgnoreCase)) return true;
+
+            string hand = PhysicalHand(instance);
+            if (hand.Length == 0)
+            {
+                // Last resort only. The class name is a role, not a controller: with MenuHand=Right
+                // and RightHandQuickMenu.handTransform returning VRPlayer.rightHand, the ring still
+                // appeared on the player's LEFT wrist - so this mapping is not trustworthy and is
+                // kept only so the entry exists at all when SteamVR cannot be asked.
+                string type = instance == null ? "" : instance.GetType().Name;
+                bool isLeft = type.IndexOf("Left", StringComparison.OrdinalIgnoreCase) >= 0;
+                return want.Equals("Left", StringComparison.OrdinalIgnoreCase) ? isLeft : !isLeft;
+            }
+            return hand.Equals(want, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Which controller this menu is really parented to, asked of SteamVR rather than inferred.
+        // Hand.handType is the device the interaction system bound, so it survives whatever VHVR
+        // assigned to leftHand/rightHand.
+        private static readonly Dictionary<Type, string> _handByType = new Dictionary<Type, string>();
+
+        private static string PhysicalHand(object instance)
+        {
+            if (instance == null) return "";
+            // Resolved ONCE per menu class. The first version of this ran TypeByName - which walks
+            // every loaded assembly - on every rebuild, i.e. twice a frame with 115 plugins loaded.
+            // That was the frame rate the player reported, and it is the third time a name-based
+            // lookup has landed on a hot path in this file.
+            string cached;
+            if (_handByType.TryGetValue(instance.GetType(), out cached)) return cached;
+            string answer = ResolveHand(instance);
+            _handByType[instance.GetType()] = answer;
+            return answer;
+        }
+
+        private static string ResolveHand(object instance)
+        {
+            try
+            {
+                PropertyInfo prop = instance.GetType().GetProperty("handTransform",
+                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.FlattenHierarchy);
+                Type walk = instance.GetType();
+                while (prop == null && walk != null)
+                {
+                    prop = walk.GetProperty("handTransform",
+                        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                    walk = walk.BaseType;
+                }
+                object t = prop == null ? null : prop.GetValue(instance, null);
+                if (t == null) return "";
+
+                Type handClass = AccessTools.TypeByName("Valve.VR.InteractionSystem.Hand");
+                if (handClass == null) return "";
+                MethodInfo inParent = AccessTools.Method(typeof(Component), "GetComponentInParent", new Type[] { typeof(Type) });
+                object hand = inParent == null ? null : inParent.Invoke(t, new object[] { handClass });
+                if (hand == null) return "";
+
+                object src = null;
+                FieldInfo f = AccessTools.Field(handClass, "handType");
+                if (f != null) src = f.GetValue(hand);
+                if (src == null)
+                {
+                    PropertyInfo hp = handClass.GetProperty("handType");
+                    if (hp != null) src = hp.GetValue(hand, null);
+                }
+                string name = Convert.ToString(src);
+                string resolved = name.IndexOf("Left", StringComparison.OrdinalIgnoreCase) >= 0 ? "Left"
+                                : name.IndexOf("Right", StringComparison.OrdinalIgnoreCase) >= 0 ? "Right" : "";
+
+                string key = instance.GetType().Name;
+                if (resolved.Length > 0 && !_handLogged.Contains(key))
+                {
+                    _handLogged.Add(key);
+                    NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                        + "misc menu: " + key + " sits on the " + resolved + " controller (SteamVR handType="
+                        + name + ")");
+                }
+                return resolved;
+            }
+            catch { return ""; }
+        }
+
+        private static readonly HashSet<string> _handLogged = new HashSet<string>();
+        private static int _whereLogged;
+
+        // Where the strip actually renders, in metres from each hand.
+        //
+        // Every name in this chain agreed on "right" while the player watched the ring appear on
+        // their LEFT wrist, so names are no longer evidence: this measures the rendered position
+        // against the two hand bones and reports both distances.
+        private static string Where(object instance)
+        {
+            try
+            {
+                Component c = instance as Component;
+                Type vrp = AccessTools.TypeByName("ValheimVRMod.VRCore.VRPlayer");
+                if (c == null || vrp == null) return "";
+                PropertyInfo lp = vrp.GetProperty("leftHandBone", BindingFlags.Static | BindingFlags.Public);
+                PropertyInfo rp = vrp.GetProperty("rightHandBone", BindingFlags.Static | BindingFlags.Public);
+                Transform l = lp == null ? null : lp.GetValue(null, null) as Transform;
+                Transform r = rp == null ? null : rp.GetValue(null, null) as Transform;
+                if (l == null || r == null) return "";
+                float dl = Vector3.Distance(c.transform.position, l.position);
+                float dr = Vector3.Distance(c.transform.position, r.position);
+                return "; rendered " + dl.ToString("F2") + "m from the LEFT hand and "
+                     + dr.ToString("F2") + "m from the RIGHT hand -> physically "
+                     + (dl < dr ? "LEFT" : "RIGHT");
+            }
+            catch { return ""; }
+        }
+
         private static FieldInfo _extraField, _countField;
         private static MethodInfo _useAsQuickAction, _useAsNoOp;
         private static Type _callbackType;
@@ -265,8 +438,51 @@ namespace NeuralyzeVRFixes
         // page is open we own the whole ring, which is what gives the second level.
         private static void BeforeReorder(object __instance)
         {
+            long _t = HookProfiler.Start();
+            try { BeforeReorderBody(__instance); } finally { HookProfiler.Stop(HookProfiler.Misc, _t); }
+        }
+
+        private static long _tPhase;
+        private static double _msVisible, _msGroups, _msAssign, _msLabels;
+        private static float _lastBreakdown;
+
+        private static void PhaseStart() { _tPhase = System.Diagnostics.Stopwatch.GetTimestamp(); }
+        private static double PhaseEnd()
+        {
+            return (System.Diagnostics.Stopwatch.GetTimestamp() - _tPhase) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        }
+
+        private static void BeforeReorderBody(object __instance)
+        {
+            long callStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            _msVisible = _msGroups = _msAssign = _msLabels = 0;
+            try { BeforeReorderTimed(__instance); }
+            finally
+            {
+                double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - callStart) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                if (ms > 5.0 && Time.realtimeSinceStartup - _lastBreakdown > 5f)
+                {
+                    _lastBreakdown = Time.realtimeSinceStartup;
+                    NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                        + "misc ring rebuild took " + ms.ToString("F1") + "ms: visibleEntries="
+                        + _msVisible.ToString("F1") + " groups=" + _msGroups.ToString("F1")
+                        + " assign=" + _msAssign.ToString("F1") + " labels=" + _msLabels.ToString("F1")
+                        + " open=" + _open + " group='" + _group + "'");
+                }
+            }
+        }
+
+        private static void BeforeReorderTimed(object __instance)
+        {
             if (!NeuralyzeVRFixesPlugin.MiscMenuEnabled.Value) return;
             if (_entries.Count == 0) return;
+            // reorderElements is defined on QuickAbstract, so a single patch fires for both
+            // wrists and the entry appeared twice. VHVR's two subclasses are the only way to
+            // tell them apart at this point - RightHandQuickMenu and LeftHandQuickMenu - so
+            // the configured hand is matched by type name. Note this is the physical hand,
+            // not VHVR's QuickActionOnLeftHand swap: the entry should stay put when that
+            // setting changes which strip holds the quick bar.
+            if (!WantedHand(__instance)) return;
             try
             {
                 if (!Resolve(__instance)) return;
@@ -276,13 +492,22 @@ namespace NeuralyzeVRFixes
                 int vhvrCount = Convert.ToInt32(_countField.GetValue(__instance));
                 int max = extra.Length;
 
+                // Measured while OPEN, when the strip is parented and positioned. Logged at load it
+                // read "524m from both hands" - a number with no meaning, which is worse than none.
+                if (_open && _whereLogged < 2)
+                {
+                    _whereLogged++;
+                    NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                        + "misc ring " + __instance.GetType().Name + Where(__instance));
+                }
+
                 if (!_open)
                 {
                     // Append after VHVR's own entries and extend the count so reorderElements
                     // activates and positions it, and hoverItem can reach it.
                     if (vhvrCount >= max) return;
                     Assign(extra.GetValue(vhvrCount), "Misc (" + VisibleEntries().Count + ")",
-                        delegate { _open = true; _page = 0; return true; });
+                        delegate { _open = true; _page = 0; _group = ""; return true; });
                     _countField.SetValue(__instance, vhvrCount + 1);
                     if (!_placedOnce)
                     {
@@ -297,7 +522,9 @@ namespace NeuralyzeVRFixes
 
                 // Page open: own the whole strip. refreshItems repopulates it every call, so
                 // closing the page self-heals without us restoring anything.
+                PhaseStart();
                 List<Entry> entries = VisibleEntries();
+                _msVisible += PhaseEnd();
                 int used = 0;
                 int start = _page * PerPage;
                 if (start >= entries.Count) { start = 0; _page = 0; }
@@ -307,6 +534,21 @@ namespace NeuralyzeVRFixes
                     Assign(extra.GetValue(used), e.Label, e.Execute);
                     used++;
                 }
+                if (_group.Length == 0)
+                {
+                    PhaseStart();
+                    List<string> groupList = Groups();
+                    _msGroups += PhaseEnd();
+                    foreach (string g in groupList)
+                    {
+                        if (used >= PerPage || used >= max) break;
+                        string open = g;
+                        Assign(extra.GetValue(used), open + " >",
+                            delegate { _group = open; _page = 0; return true; });
+                        used++;
+                    }
+                }
+
                 if (start + PerPage < entries.Count && used < max)
                 {
                     Assign(extra.GetValue(used), "More >", delegate { _page++; return true; });
@@ -314,7 +556,8 @@ namespace NeuralyzeVRFixes
                 }
                 if (used < max)
                 {
-                    Assign(extra.GetValue(used), "< Back", delegate { _open = false; _page = 0; return true; });
+                    Assign(extra.GetValue(used), "< Back",
+                        delegate { if (_group.Length > 0) _group = ""; else _open = false; _page = 0; return true; });
                     used++;
                 }
                 _countField.SetValue(__instance, used);
@@ -332,10 +575,32 @@ namespace NeuralyzeVRFixes
             }
         }
 
+        private static readonly Dictionary<string, Delegate> _callbacks = new Dictionary<string, Delegate>();
+
+        private static PropertyInfo _itemName;
+        private static int _skipped, _rebuilt;
+
         private static void Assign(object element, string label, Func<bool> action)
         {
             if (element == null) return;
-            Delegate cb = Delegate.CreateDelegate(_callbackType, action.Target, action.Method);
+            // Untouched if it already says the right thing. useAsQuickAction rebuilds the slot's
+            // sprite and layout, and doing that to every slot on every frame both burned 4-5ms per
+            // frame and made the ring flicker in and out. VHVR guards its own entries the same way.
+            if (_itemName == null) _itemName = element.GetType().GetProperty("itemName");
+            if (_itemName != null)
+            {
+                object current = _itemName.GetValue(element, null);
+                if (current is string && (string)current == label) { _skipped++; return; }
+            }
+            _rebuilt++;
+            // Cached by label. Delegate.CreateDelegate allocated once per slot per frame - roughly
+            // twenty allocations a frame that the GC then had to collect during play.
+            Delegate cb;
+            if (!_callbacks.TryGetValue(label, out cb))
+            {
+                cb = Delegate.CreateDelegate(_callbackType, action.Target, action.Method);
+                _callbacks[label] = cb;
+            }
             // The word is baked INTO the sprite, deliberately.
             //
             // A Unity TextMesh child was tried in 2.1.82 and reverted: it inherits the item's
@@ -343,7 +608,13 @@ namespace NeuralyzeVRFixes
             // overlapped its neighbours, and stayed visible on the arm after the menu closed.
             // ResizeIcon() sizes the SpriteRenderer to the box for us, so anything drawn into the
             // texture is guaranteed to stay inside the button and to vanish with it.
-            _useAsQuickAction.Invoke(element, new object[] { label, MiscLabels.For(label), cb });
+            long tl = System.Diagnostics.Stopwatch.GetTimestamp();
+            Sprite icon = MiscLabels.For(label);
+            _msLabels += (System.Diagnostics.Stopwatch.GetTimestamp() - tl) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
+            long ta = System.Diagnostics.Stopwatch.GetTimestamp();
+            _useAsQuickAction.Invoke(element, new object[] { label, icon, cb });
+            _msAssign += (System.Diagnostics.Stopwatch.GetTimestamp() - ta) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         }
     }
 
@@ -547,11 +818,48 @@ namespace NeuralyzeVRFixes
 
         private static bool PrefixHeld(KeyCode key, ref bool __result)
         {
+            if (_latched.Contains((int)key)) { __result = true; return false; }
             // Some mods test IsDown() as "key held this frame"; answer once so a chord
             // built from KeyboardShortcut still resolves, then stop.
             if (!_holdFor.Remove((int)key)) return true;
             __result = true;
             return false;
+        }
+
+        private static readonly HashSet<int> _latched = new HashSet<int>();
+
+        // Toggles a key into the held set. PrefixHeld answers true for as long as it is
+        // latched, so a mod polling Input.GetKey sees the modifier down across frames while
+        // you point and click with the laser. Tapping the entry again releases it.
+        internal static bool Latch(string spec)
+        {
+            bool any = false;
+            foreach (string part in spec.Split('+'))
+            {
+                string k = part.Trim();
+                if (k.Length == 0) continue;
+                try
+                {
+                    int code = (int)(KeyCode)Enum.Parse(typeof(KeyCode), k, true);
+                    if (_latched.Remove(code))
+                    {
+                        NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + "hold released: " + k);
+                    }
+                    else
+                    {
+                        _latched.Add(code);
+                        _pending.Add(code);   // also deliver one press, for mods that want the edge
+                        NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                            + "hold engaged: " + k + " - interact now, tap again to release");
+                    }
+                    any = true;
+                }
+                catch
+                {
+                    NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "unknown KeyCode '" + k + "'");
+                }
+            }
+            return any;
         }
 
         internal static bool Send(string spec)

@@ -46,7 +46,27 @@ namespace NeuralyzeVRFixes
                           ?? AccessTools.Field(typeof(Player), "m_debugFly");
         }
 
+        private static int _flyFrame = -1;
+        private static bool _flyValue;
+
+        // Cached per frame. This is reached from a postfix on TryGetButtonState, which the
+        // game calls for every button it reads - dozens of times a frame - and a reflective
+        // Invoke on each of those is what made the frame rate collapse.
         internal static bool Flying()
+        {
+            long _t = HookProfiler.Start();
+            try { return FlyingCached(); } finally { HookProfiler.Stop(HookProfiler.Fly, _t); }
+        }
+
+        private static bool FlyingCached()
+        {
+            if (_flyFrame == Time.frameCount) return _flyValue;
+            _flyFrame = Time.frameCount;
+            _flyValue = FlyingUncached();
+            return _flyValue;
+        }
+
+        private static bool FlyingUncached()
         {
             Resolve();
             if (_isDebugFlying == null) return false;

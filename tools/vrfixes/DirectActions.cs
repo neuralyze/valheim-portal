@@ -18,6 +18,61 @@ namespace NeuralyzeVRFixes
     // burned a whole test session.
     internal static class DirectActions
     {
+        // Every reflective handle this class needs, resolved once.
+        //
+        // AccessTools.TypeByName walks every loaded assembly - 115 of them here - and this is the
+        // THIRD time that call has landed on a per-frame path and cost the player their frame rate.
+        // The first two were in the wrist ring and the input bridge. This one was worse because it
+        // hid: AtHelm() is called by the menu context predicate for every "when:helm" entry, on both
+        // wrists, every frame, so a single unguarded lookup became roughly a hundred milliseconds
+        // per rebuild - and it sat outside every phase timer, in the argument list of another call.
+        //
+        // The rule this encodes: a reflective lookup by NAME belongs in a static field, resolved on
+        // first use, never in a method body that anything might call each frame.
+        private static class Refs
+        {
+            internal static Type Player, Character, Ship, ShipControlls, ZNetScene;
+            internal static FieldInfo LocalPlayer, DoodadController;
+            internal static MethodInfo IsAttached, IsEncumbered, GetStandingOnShip, StopDoodadControl, AttachStop;
+            private static bool _done;
+
+            internal static void Ensure()
+            {
+                if (_done) return;
+                _done = true;
+                Player = AccessTools.TypeByName("Player");
+                Character = AccessTools.TypeByName("Character");
+                Ship = AccessTools.TypeByName("Ship");
+                ShipControlls = AccessTools.TypeByName("ShipControlls");
+                ZNetScene = AccessTools.TypeByName("ZNetScene");
+                if (Player != null)
+                {
+                    LocalPlayer = AccessTools.Field(Player, "m_localPlayer");
+                    DoodadController = AccessTools.Field(Player, "m_doodadController");
+                    StopDoodadControl = AccessTools.Method(Player, "StopDoodadControl");
+                    AttachStop = AccessTools.Method(Player, "AttachStop");
+                }
+                if (Character != null)
+                {
+                    IsAttached = AccessTools.Method(Character, "IsAttached");
+                    IsEncumbered = AccessTools.Method(Character, "IsEncumbered");
+                    GetStandingOnShip = AccessTools.Method(Character, "GetStandingOnShip");
+                }
+            }
+
+            internal static object Local()
+            {
+                Ensure();
+                return LocalPlayer == null ? null : LocalPlayer.GetValue(null);
+            }
+
+            internal static object Doodad()
+            {
+                object p = Local();
+                return p == null || DoodadController == null ? null : DoodadController.GetValue(p);
+            }
+        }
+
         private static void Log(string msg)
         {
             NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + "misc " + msg);
@@ -187,6 +242,282 @@ namespace NeuralyzeVRFixes
         //   1. every canvas we adopted that is currently active gets deactivated
         //   2. Menu.instance is hidden if it is showing
         //   3. an Escape key pulse, which is what most mod panels actually listen for
+        // Seated at a ship's controls.
+        // The thing the local player is riding or steering, or null.
+        internal static object MountedController()
+        {
+            try { return Refs.Doodad(); }
+            catch { return null; }
+        }
+
+        // The GameObject of what you are riding, so a menu can act on a horse you cannot point at.
+        internal static GameObject MountedObject()
+        {
+            Component c = MountedController() as Component;
+            return c == null ? null : c.gameObject;
+        }
+
+        internal static bool AtHelm()
+        {
+            try { return Refs.Doodad() != null; }
+            catch { return false; }
+        }
+
+        // Report which of the game's gates refused a helm, immediately after an attempt.
+        //
+        // ShipControlls.Interact returns false without a word, and its four conditions are the only
+        // explanation. Runs once per attempt, never per frame.
+        internal static void ExplainHelm(GameObject target)
+        {
+            try
+            {
+                Refs.Ensure();
+                object helm = Refs.ShipControlls == null || target == null
+                    ? null : target.GetComponentInParent(Refs.ShipControlls);
+                if (helm == null) return;
+
+                object local = Refs.Local();
+                if (local == null) return;
+                if (Refs.IsAttached != null && Convert.ToBoolean(Refs.IsAttached.Invoke(local, null))) return;  // it worked
+
+                MethodInfo dist = AccessTools.Method(Refs.ShipControlls, "InUseDistance");
+                object onShip = Refs.GetStandingOnShip == null ? null : Refs.GetStandingOnShip.Invoke(local, null);
+                bool onShipReal = onShip != null && !onShip.Equals(null);
+                FieldInfo nviewF = AccessTools.Field(Refs.ShipControlls, "m_nview");
+                object nview = nviewF == null ? null : nviewF.GetValue(helm);
+
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "helm refused: znetValid=" + Convert.ToString(nview == null ? null : SteamVRProbe.Call(nview, "IsValid"))
+                    + " inUseDistance=" + (dist == null ? "?" : Convert.ToString(dist.Invoke(helm, new object[] { local })))
+                    + " encumbered=" + (Refs.IsEncumbered == null ? "?" : Convert.ToString(Refs.IsEncumbered.Invoke(local, null)))
+                    + " standingOnShip=" + (onShipReal ? ((Component)onShip).name : "NULL")
+                    + " - all four must pass");
+            }
+            catch (Exception e)
+            {
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "helm explain failed: " + e.Message);
+            }
+        }
+
+        // Why the rudder is ignoring you.
+        //
+        // Reported as "couldn't click rudder and enter that mode". ShipControlls.Interact refuses
+        // unless you are standing ON the ship, inside the game's use range, and unencumbered - none
+        // of which the laser tells you, because the laser reaches 8m and the rudder does not care.
+        internal static string HelmBlocker()
+        {
+            try
+            {
+                Type player = AccessTools.TypeByName("Player");
+                object local = player == null ? null : AccessTools.Field(player, "m_localPlayer").GetValue(null);
+                if (local == null) return "";
+
+                Type character = AccessTools.TypeByName("Character");
+                MethodInfo standing = character == null ? null : AccessTools.Method(character, "GetStandingOnShip");
+                object ship = standing == null ? null : standing.Invoke(local, null);
+                bool onBoard = ship != null && !ship.Equals(null);
+
+                MethodInfo enc = character == null ? null : AccessTools.Method(character, "IsEncumbered");
+                bool loaded = enc != null && Convert.ToBoolean(enc.Invoke(local, null));
+
+                if (!onBoard) return "step onto the boat to steer";
+                if (loaded) return "too heavy to steer - drop something";
+                return "";
+            }
+            catch { return ""; }
+        }
+
+        // Leave a helm, saddle or chair.
+        //
+        // Player.StopDoodadControl is the game's own exit and it does TWO things: OnUseStop, which
+        // hands control back over the network, and m_doodadController = null. Calling only the first
+        // produced the exact failure the player reported - "the A button would just make me jump in
+        // place but stay locked": Player.SetControls and UpdateDoodadControls route the movement
+        // stick into whatever m_doodadController points at, so with it still set the player was out
+        // of the seat and steering the boat with their legs' input. Jumping worked because jumping
+        // does not go through that path.
+        internal static bool ReleaseMount()
+        {
+            try
+            {
+                Type player = AccessTools.TypeByName("Player");
+                object local = player == null ? null : AccessTools.Field(player, "m_localPlayer").GetValue(null);
+                if (local == null) return false;
+
+                FieldInfo doodadField = AccessTools.Field(player, "m_doodadController");
+                object doodad = doodadField == null ? null : doodadField.GetValue(local);
+
+                MethodInfo stopControl = AccessTools.Method(player, "StopDoodadControl");
+                if (doodad != null && stopControl != null)
+                {
+                    stopControl.Invoke(local, null);
+                }
+                else if (doodad != null)
+                {
+                    // Fallback only: releases control but leaves the field set, which is the bug
+                    // above. Named in the log so a future session can see it happened.
+                    MethodInfo stop = AccessTools.Method(doodad.GetType(), "OnUseStop", new Type[] { AccessTools.TypeByName("Humanoid") })
+                                   ?? AccessTools.Method(doodad.GetType(), "OnUseStop");
+                    if (stop != null)
+                    {
+                        stop.Invoke(doodad, stop.GetParameters().Length == 0 ? new object[0] : new object[] { local });
+                        NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                            + "StopDoodadControl missing; used OnUseStop only - movement may stay routed to the vehicle");
+                    }
+                }
+
+                Type character = AccessTools.TypeByName("Character");
+                MethodInfo attachedM = character == null ? null : AccessTools.Method(character, "IsAttached");
+                bool wasAttached = attachedM != null && Convert.ToBoolean(attachedM.Invoke(local, null));
+                MethodInfo detach = AccessTools.Method(player, "AttachStop");
+                if (wasAttached && detach != null) detach.Invoke(local, null);
+
+                object doodadAfter = doodadField == null ? null : doodadField.GetValue(local);
+                bool still = attachedM != null && Convert.ToBoolean(attachedM.Invoke(local, null));
+
+                // Where the release left you, and whether the vehicle still owns your movement.
+                string landed = "";
+                try
+                {
+                    MethodInfo swimming = character == null ? null : AccessTools.Method(character, "IsSwimming");
+                    MethodInfo grounded = character == null ? null : AccessTools.Method(character, "IsOnGround");
+                    Component c = local as Component;
+                    landed = " swimming=" + (swimming == null ? "?" : Convert.ToString(swimming.Invoke(local, null)))
+                           + " onGround=" + (grounded == null ? "?" : Convert.ToString(grounded.Invoke(local, null)))
+                           + (c == null ? "" : " at y=" + c.transform.position.y.ToString("F1"));
+                }
+                catch { }
+
+                NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                    + "release mount: doodad " + (doodad == null ? "none" : "cleared=" + (doodadAfter == null))
+                    + ", attached=" + still + landed
+                    + " - movement returns to your legs only when doodad is cleared");
+                return doodadAfter == null && !still;
+            }
+            catch (Exception e)
+            {
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "release mount failed: " + e.Message);
+                return false;
+            }
+        }
+
+        // Step a ship's sail up or down.
+        //
+        // VHVR removes the keyboard route entirely - "Forward" and "Backward" are in its
+        // ignoredZInputs - and replaces it with a two-handed sail-pull gesture that no player would
+        // guess and that cannot be performed while one hand steers. Ship.Forward()/Backward() are the
+        // game's own speed steps, which is what the gesture ends up calling.
+        // The ship under the pointer, else the one being steered.
+        private static object ResolveShip(GameObject target)
+        {
+            Type shipType = AccessTools.TypeByName("Ship");
+            if (target != null && shipType != null)
+            {
+                try
+                {
+                    object onTarget = target.GetComponentInParent(shipType);
+                    if (onTarget != null) return onTarget;
+                }
+                catch { }
+            }
+
+            Type player = AccessTools.TypeByName("Player");
+            object local = player == null ? null : AccessTools.Field(player, "m_localPlayer").GetValue(null);
+            if (local == null) return null;
+            FieldInfo doodadField = AccessTools.Field(player, "m_doodadController");
+            object doodad = doodadField == null ? null : doodadField.GetValue(local);
+            if (doodad == null) return null;
+            FieldInfo shipField = AccessTools.Field(doodad.GetType(), "m_ship");
+            return shipField == null ? null : shipField.GetValue(doodad);
+        }
+
+        // Name a spawn that did nothing.
+        //
+        // "spawn Horse" ran, the console printed nothing, and no horse appeared. The prefab table is
+        // right there, so resolve the name ourselves and, when it is missing, print what does exist.
+        internal static void DiagnoseSpawn(string command)
+        {
+            try
+            {
+                string[] parts = command.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2 || !parts[0].Equals("spawn", StringComparison.OrdinalIgnoreCase)) return;
+                string want = parts[1];
+
+                Type zn = AccessTools.TypeByName("ZNetScene");
+                if (zn == null) return;
+                object scene = null;
+                FieldInfo sf = AccessTools.Field(zn, "m_instance") ?? AccessTools.Field(zn, "s_instance");
+                if (sf != null) scene = sf.GetValue(null);
+                if (scene == null)
+                {
+                    PropertyInfo sp = zn.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
+                    if (sp != null) scene = sp.GetValue(null, null);
+                }
+                if (scene == null) return;
+
+                MethodInfo get = AccessTools.Method(zn, "GetPrefab", new Type[] { typeof(string) });
+                object prefab = get == null ? null : get.Invoke(scene, new object[] { want });
+                if (prefab != null)
+                {
+                    NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + "spawn '" + want + "': prefab exists");
+                    return;
+                }
+
+                FieldInfo pf = AccessTools.Field(zn, "m_prefabs");
+                var near = new System.Collections.Generic.List<string>();
+                string token = want.Length > 4 ? want.Substring(0, 4) : want;
+                if (pf != null)
+                {
+                    var all = pf.GetValue(scene) as System.Collections.IEnumerable;
+                    if (all != null)
+                    {
+                        foreach (object o in all)
+                        {
+                            var go = o as GameObject;
+                            if (go == null) continue;
+                            if (go.name.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) near.Add(go.name);
+                            if (near.Count >= 12) break;
+                        }
+                    }
+                }
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "spawn '" + want + "': NO SUCH PREFAB. Names containing '" + token + "': "
+                    + (near.Count == 0 ? "(none)" : string.Join(", ", near.ToArray())));
+            }
+            catch { }
+        }
+
+        internal static bool ShipSpeed(string step) { return ShipSpeed(step, null); }
+
+        internal static bool ShipSpeed(string step, GameObject target)
+        {
+            try
+            {
+                object ship = ResolveShip(target);
+                if (ship == null)
+                {
+                    NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                        + "sail: no ship at the pointer and not at a helm");
+                    return false;
+                }
+
+                bool up = step == "faster";
+                MethodInfo m = AccessTools.Method(ship.GetType(), up ? "Forward" : "Backward");
+                if (m == null) return false;
+                m.Invoke(ship, null);
+
+                FieldInfo speed = AccessTools.Field(ship.GetType(), "m_speed");
+                NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + "sail " + step
+                    + " -> " + (speed == null ? "?" : Convert.ToString(speed.GetValue(ship))));
+                return true;
+            }
+            catch (Exception e)
+            {
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "sail " + step + " failed: " + e.Message);
+                return false;
+            }
+        }
+
         internal static bool ClosePanels()
         {
             int closed = 0;
@@ -272,6 +603,44 @@ namespace NeuralyzeVRFixes
         //
         // Terminal.TryRunCommand(string, bool, bool) executes directly, so a menu entry is both
         // more reliable and faster than a keyboard.
+        // "spawn X; tame" - one button, two commands.
+        //
+        // Splitting these into separate wrist entries made the player press two buttons to get one
+        // usable horse, and a spawned creature is not tameable in the same frame it is created, so
+        // the follow-up runs a beat later from Update rather than immediately.
+        private static readonly System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<float, string>> _queued
+            = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<float, string>>();
+
+        internal static bool RunCommandSequence(string spec)
+        {
+            string[] parts = spec.Split(';');
+            bool ok = RunCommand(parts[0].Trim());
+            float at = UnityEngine.Time.realtimeSinceStartup;
+            for (int i = 1; i < parts.Length; i++)
+            {
+                string next = parts[i].Trim();
+                if (next.Length == 0) continue;
+                at += 0.4f;
+                _queued.Add(new System.Collections.Generic.KeyValuePair<float, string>(at, next));
+            }
+            return ok;
+        }
+
+        // Pumped once per frame by the plugin.
+        internal static void PumpQueuedCommands()
+        {
+            if (_queued.Count == 0) return;
+            float now = UnityEngine.Time.realtimeSinceStartup;
+            for (int i = _queued.Count - 1; i >= 0; i--)
+            {
+                if (_queued[i].Key > now) continue;
+                string cmd = _queued[i].Value;
+                _queued.RemoveAt(i);
+                NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + "queued command: " + cmd);
+                RunCommand(cmd);
+            }
+        }
+
         internal static bool RunCommand(string command)
         {
             if (string.IsNullOrEmpty(command)) return false;
@@ -314,7 +683,8 @@ namespace NeuralyzeVRFixes
                 // in the headset.
                 string tail = BufferTail(terminal, term, before);
                 Log("cmd '" + command + "' ran" + (tail.Length == 0 ? " (no output)" : " -> " + tail));
-                return true;
+                DiagnoseSpawn(command);
+            return true;
             }
             catch (Exception e) { Warn("cmd '" + command + "' failed: " + e.Message); return false; }
         }

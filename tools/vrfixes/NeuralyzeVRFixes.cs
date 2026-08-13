@@ -67,6 +67,13 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<bool> BuildMenuTapOpens;
         internal static ConfigEntry<bool> GripRemovesPiece;
         internal static ConfigEntry<bool> FlyControls;
+        internal static ConfigEntry<string> MiscMenuHand;
+        internal static ConfigEntry<bool> ProfileHooks;
+        internal static ConfigEntry<string> HoverModifier;
+        internal static ConfigEntry<string> HorseSteering;
+        internal static ConfigEntry<string> HorseStick;
+        internal static ConfigEntry<bool> HoverMenuEnabled;
+        internal static ConfigEntry<string> HoverActions;
         internal static ConfigEntry<bool> TriggerAttacks;
         internal static ConfigEntry<bool> DirectCrouch;
         internal static ConfigEntry<bool> Profile;
@@ -170,6 +177,64 @@ namespace NeuralyzeVRFixes
                 "swing momentum, and measured hand speed is 0.00 m/s on both hands in every sample - the physics " +
                 "estimator supplies nothing, so no real swing can pass hasMomentum and no attack is reachable at all. " +
                 "Pointing at something still interacts; only an untargeted pull attacks.");
+            HoverMenuEnabled = Config.Bind("11 - Hover actions", "Enabled", true,
+                "Contextual actions on whatever the laser is pointing at. 51 of the 160 mod key bindings on this " +
+                "install are target-dependent - \"hold a key while interacting with X\", or a global hotkey that " +
+                "guesses which container you meant - and neither idiom survives VR. Point at the thing, hold the " +
+                "OFF-HAND trigger, tap the off-hand grip to move through the offered actions, release to run one. " +
+                "The right hand keeps pointing and its trigger keeps its normal meaning, because nothing here " +
+                "suppresses it: a hold-to-open scheme on the right trigger would fire mount/open/attack first. " +
+                "Sticks were rejected as walk and turn; hand-motion gestures because the physics estimator reports " +
+                "0.00 m/s on this install.");
+            HoverActions = Config.Bind("11 - Hover actions", "Actions",
+                "horse: Wait Here=hold:Keypad6 | Saddlebags=hold:B | Remove Armour=hold:R"
+                + " ; container: Quick Stack=key:P | Restock=key:L | Sort=key:O | Store All=key:Period"
+                + " ; ward: Toggle Permission=key:F5"
+                + " ; fireplace: Infinite Fuel=hold:LeftAlt"
+                + " ; ship: Anchor=key:LeftShift+F"
+                + " ; piece: Repair Area=key:LeftShift+W | Add Wear=key:LeftAlt+W",
+                "One group per target kind, separated by ';'. Options within a group are separated by '|' and read " +
+                "Label=kind:value. 'key' pulses the key; 'hold' holds it and interacts with the pointed-at object " +
+                "in the same frame, which is what mods mean by \"held while interacting\". Target kinds are " +
+                "resolved by component: horse (Tameable named horse), container, ward (PrivateArea), fireplace, " +
+                "ship, piece (WearNTear). Adding a target is a config edit, not a code change.");
+            HorseStick = Config.Bind("12 - Mounts", "HorseStick", "VhvrRight",
+                new ConfigDescription(
+                    "Which of VHVR's two thumbstick readings drives a mount. Its names do not match the physical " +
+                    "controllers on every headset: here the rider's RIGHT thumbstick produced the values VHVR " +
+                    "reports as the LEFT stick, so VhvrRight is the setting that puts the mount on the physical " +
+                    "left stick. Swap it if the wrong stick drives. Both readings are printed in the horse log " +
+                    "line so the answer is visible rather than guessed.",
+                    new AcceptableValueList<string>(new string[] { "VhvrRight", "VhvrLeft" })));
+
+            HorseSteering = Config.Bind("12 - Mounts", "HorseSteering", "Stick",
+                new ConfigDescription(
+                    "Stick: the left stick drives the horse the way a gamepad would - push to go, left and right " +
+                    "to turn - and your head is free to look around. Look: the horse follows where you look, which " +
+                    "is what a desktop player gets from the mouse. Speed is the same stick either way.",
+                    new AcceptableValueList<string>(new string[] { "Stick", "Look" })));
+
+            HoverModifier = Config.Bind("11 - Hover actions", "Modifier", "LeftGrip",
+                new ConfigDescription(
+                    "Which off-hand control opens the contextual menu on whatever you point at: LeftGrip or " +
+                    "LeftTrigger. Grip is the default because the trigger is the game's own use button - pointing " +
+                    "at a horse and pulling it mounts you, which then makes the horse unpointable and its menu " +
+                    "unreachable.",
+                    new AcceptableValueList<string>(new string[] { "LeftGrip", "LeftTrigger" })));
+
+            ProfileHooks = Config.Bind("9 - Diagnostics", "ProfileOurHooks", true,
+                "Log what THIS plugin's hooks cost, in milliseconds per frame, every five seconds. Three frame " +
+                "rate regressions this session were diagnosed by reading code and guessing; this measures instead. " +
+                "A frame at 72Hz is 13.9ms, so any hook approaching 1ms/frame is ours to fix - and a total well " +
+                "under that while the game still stutters means the cause is elsewhere, which is equally useful.");
+
+            MiscMenuHand = Config.Bind("10 - Misc controls", "MenuHand", "Right",
+                new ConfigDescription(
+                    "Which wrist carries the Misc entry. VHVR defines reorderElements on the shared QuickAbstract base, " +
+                    "so one patch fires for both strips and the entry appeared on both wrists. This matches the " +
+                    "physical hand from SteamVR's own Hand.handType, because the subclass name proved wrong - so it stays put even if " +
+                    "QuickActionOnLeftHand swaps which strip holds the quick bar.",
+                    new AcceptableValueList<string>(new string[] { "Right", "Left", "Both" })));
             FlyControls = Config.Bind("8 - Input bridge", "FlyAscendDescend", true,
                 "Ascend and descend while debug-flying. Character.UpdateMotion reads ascent from " +
                 "ZInput.GetButton(\"Jump\")/(\"JoyJump\") and descent from ZInput.GetButtonPressedTimer(\"JoyCrouch\"). " +
@@ -365,6 +430,8 @@ namespace NeuralyzeVRFixes
 
         private void Update()
         {
+            HookProfiler.Frame();
+            global::NeuralyzeVRFixes.DirectActions.PumpQueuedCommands();
             if (Profile.Value) ProfilerHub.Tick();
         }
 
@@ -380,6 +447,7 @@ namespace NeuralyzeVRFixes
             SwingWatch.Tick();
             FullActionWatch.Tick();
             BuildMenuProbe.Tick();
+            HoverMenu.Tick();
             if (SuppressKeyHints.Value || LogHoverText.Value) HoverTextSweeper.Tick();
             if (HideMinimap.Value) MinimapHider.Tick();
             if (LogJumpInput.Value) JumpInputWatch.Tick();
@@ -724,6 +792,9 @@ namespace NeuralyzeVRFixes
 
         // Invokes by name and argument count, because the SteamVR plugin exposes both
         // no-arg and per-source overloads depending on version.
+        private static readonly System.Collections.Generic.Dictionary<string, MethodInfo> _methods
+            = new System.Collections.Generic.Dictionary<string, MethodInfo>();
+
         internal static object Call(object target, string name, params object[] args)
         {
             if (target == null) return null;
@@ -731,13 +802,24 @@ namespace NeuralyzeVRFixes
             // so args.Length threw and the caller's catch reported a fabricated zero.
             // That defect produced the "hand speed 0.00 m/s" finding twice.
             if (args == null) args = new object[] { null };
-            foreach (MethodInfo m in target.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public))
+            // Cached by (type, name, arity). GetMethods() allocates a fresh MethodInfo[] on every
+            // call and this runs on the input path several times per frame - it was measurable as
+            // lost frames, the same mistake as the name-based lookups fixed in 1.59.
+            Type owner = target.GetType();
+            string key = owner.FullName + "|" + name + "|" + args.Length;
+            MethodInfo found;
+            if (!_methods.TryGetValue(key, out found))
             {
-                if (m.Name != name) continue;
-                if (m.GetParameters().Length != args.Length) continue;
-                try { return m.Invoke(target, args); } catch { return null; }
+                foreach (MethodInfo m in owner.GetMethods(BindingFlags.Instance | BindingFlags.Public))
+                {
+                    if (m.Name != name || m.GetParameters().Length != args.Length) continue;
+                    found = m;
+                    break;
+                }
+                _methods[key] = found;
             }
-            return null;
+            if (found == null) return null;
+            try { return found.Invoke(target, args); } catch { return null; }
         }
 
         internal static string Origin(object action)
@@ -925,6 +1007,7 @@ namespace NeuralyzeVRFixes
                 // firing - so repairing the game's own path is pointless. Read the action
                 // and call Hud.TogglePieceSelection directly.
                 _buildMenu = Get(actions, "laserPointers_RightClick");
+                _useLeft   = Get(actions, "valheim_UseLeft");
                 _dodge  = Get(actions, "valheim_Dodge");
 
                 _mJump        = AccessTools.Method(typeof(Character), "Jump", new Type[0]) ?? AccessTools.Method(typeof(Character), "Jump");
@@ -1078,7 +1161,18 @@ namespace NeuralyzeVRFixes
                 {
                     bool ground = Flag(_mOnGround, p), attached = Flag(_mIsAttached, p), crouch = Flag(_mIsCrouching, p);
                     if (crouch && _mSetCrouch != null) _mSetCrouch.Invoke(p, new object[] { false });
-                    if (ground && !attached && _mJump != null)
+                    // Seated, A stands you up.
+                    //
+                    // Jumping is refused while attached anyway - the log recorded exactly that while
+                    // the player was stuck on a raft's rudder - so the button is free, and "press A
+                    // to get off" needs no explaining. The grip cannot be used for this: it IS the
+                    // rudder, VHVR steers on isSingleGrabbing.
+                    if (attached || DirectActions.AtHelm())
+                    {
+                        Say("A while seated -> release (attached=" + attached + " atHelm=" + DirectActions.AtHelm() + ")");
+                        DirectActions.ReleaseMount();
+                    }
+                    else if (ground && _mJump != null)
                     {
                         _mJump.Invoke(p, _mJump.GetParameters().Length == 0 ? null : new object[] { false });
                         Say("JUMP invoked");
@@ -1121,6 +1215,8 @@ namespace NeuralyzeVRFixes
                     {
                         _mInteract.Invoke(p, Args(_mInteract, target));
                         Say("INTERACT invoked on " + target.name);
+                        // Silent refusals are the expensive kind: say which gate closed.
+                        DirectActions.ExplainHelm(target);
                     }
                     else if (NeuralyzeVRFixesPlugin.TriggerAttacks.Value && _mStartAttack != null)
                     {
@@ -1214,6 +1310,24 @@ namespace NeuralyzeVRFixes
         // Exposed for the fly patches: flight reads the jump and crouch inputs as held
         // levels, not presses, and those patches must answer from the same actions this
         // class already owns.
+        // Resolved once in Prepare(). The first version of this called
+        // AccessTools.TypeByName every frame, which walks every loaded assembly - with 115
+        // plugins loaded that alone destroyed the frame rate.
+        private static object _useLeft;
+        internal static bool UseLeftHeld()
+        {
+            if (_useLeft == null) return false;
+            // Read the hand source AND Any. valheim_UseLeft is bound only to the left trigger, so
+            // Any cannot mean the other hand - and VHVR itself never reads this action per-hand, it
+            // uses .state (Any) everywhere. A per-hand read that silently returns false is the kind
+            // of failure that produced a whole test session with no menu and no log line.
+            object r = SteamVRProbe.Call(_useLeft, "GetState", SteamVRProbe.Left);
+            if (r is bool && (bool)r) return true;
+            object a = SteamVRProbe.Call(_useLeft, "GetState", SteamVRProbe.Any);
+            return a is bool && (bool)a;
+        }
+        internal static bool LeftGrabHeld() { object r = SteamVRProbe.Call(_grab, "GetState", SteamVRProbe.Left); return r is bool && (bool)r; }
+        internal static GameObject PointedAt(Player p) { return LaserTarget(p) ?? Hover(p) as GameObject; }
         internal static bool JumpHeld()   { return Held(_jump); }
         internal static bool CrouchHeld() { return Held(_crouch); }
 
@@ -1924,7 +2038,7 @@ namespace NeuralyzeVRFixes
         private static PropertyInfo _text;
         private static bool _resolved;
 
-        private static bool Prepare() { return NeuralyzeVRFixesPlugin.SuppressKeyHints.Value; }
+        private static bool Prepare() { return true; }
 
         private static void Postfix(Hud __instance)
         {
@@ -1944,6 +2058,16 @@ namespace NeuralyzeVRFixes
                     if (_text == null) return;
                 }
                 string current = _text.GetValue(label, null) as string;
+
+                // The contextual menu takes over this label while it is open.
+                string menu = HoverMenu.HoverText();
+                if (menu != null)
+                {
+                    _text.SetValue(label, menu, null);
+                    return;
+                }
+
+                if (!NeuralyzeVRFixesPlugin.SuppressKeyHints.Value) return;
                 if (string.IsNullOrEmpty(current) || current.IndexOf('[') < 0) return;
                 string cleaned = StripHintLines(current);
                 if (cleaned != current) _text.SetValue(label, cleaned, null);

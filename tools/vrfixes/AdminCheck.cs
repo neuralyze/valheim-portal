@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections;
 using System.Reflection;
 using System.Text;
@@ -72,9 +73,15 @@ namespace NeuralyzeVRFixes
         // ("admin check: False (local user id unreadable)") even though the IL calls it.
         // Caches the answer, and gives up after a few tries. The expensive path enumerates methods
         // on three types and invokes candidates; repeating that forever is what produced the stalls.
+        private static float _idSearchedAt;
+
         private static string CachedLocalUserId(object znet)
         {
             if (!string.IsNullOrEmpty(_cachedId)) return _cachedId;
+            // A failed search is expensive; retry it every thirty seconds, not every two.
+            float now = UnityEngine.Time.realtimeSinceStartup;
+            if (_idSearchedAt > 0f && now - _idSearchedAt < 30f) return "";
+            _idSearchedAt = now;
             if (_idAttempts >= MaxIdAttempts) return "";
             _idAttempts++;
             string found = Digits(LocalUserIdAnySource(znet));
@@ -93,6 +100,28 @@ namespace NeuralyzeVRFixes
             return _cachedId ?? "";
         }
 
+        // Resolved names, INCLUDING the ones that do not resolve.
+        //
+        // AccessTools.TypeByName returns null by exhausting every assembly, so a name that is not
+        // present costs far more than one that is - and this list is walked on every failed attempt
+        // to read the local Steam id. Remembering the null is the whole fix.
+        private static readonly Dictionary<string, Type> _typeCache = new Dictionary<string, Type>();
+
+        private static Type CachedType(string name)
+        {
+            Type t;
+            if (_typeCache.TryGetValue(name, out t)) return t;
+            t = AccessTools.TypeByName(name);
+            _typeCache[name] = t;
+            if (t == null)
+            {
+                NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                    + "type '" + name + "' is not present in this modpack; remembering that so the"
+                    + " assembly scan is not repeated");
+            }
+            return t;
+        }
+
         private static string LocalUserIdAnySource(object znet)
         {
             string viaZnet = LocalUserId(znet);
@@ -100,7 +129,7 @@ namespace NeuralyzeVRFixes
 
             foreach (string typeName in new[] { "PrivilegeManager", "ZSteamSocket", "Steamworks.SteamUser" })
             {
-                Type t = AccessTools.TypeByName(typeName);
+                Type t = CachedType(typeName);
                 if (t == null) continue;
                 foreach (MethodInfo m in t.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
                 {
