@@ -390,3 +390,37 @@ answer to that, and they are useful even if you never deploy this portal.
 the host agent runs privileged host scripts, so a bypass of the admin check, the agent
 socket, or the world allowlist is host privilege escalation, not a web bug.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+Windows client releases are built by GitHub Actions from a tagged commit in this repository
+([`.github/workflows/release-client.yml`](.github/workflows/release-client.yml)) and signed by
+SignPath from that build — the private key is held in SignPath's HSM and is never present on a
+developer machine or a build agent. Each release carries a `SHA256SUMS` file so any download can be
+checked against the artifact this repository published:
+
+```powershell
+Get-FileHash .\ValheimProfileSync.exe -Algorithm SHA256
+```
+
+Builds use `-trimpath -buildvcs=false`, so the same commit rebuilds to the same bytes and anyone can
+reproduce a release and compare digests. [docs/code-signing.md](docs/code-signing.md) covers the
+signing setup, how to verify a signature, and what to do if an unsigned build is flagged by a
+heuristic scanner.
+
+## Privacy policy
+
+Valheim Profile Sync contacts exactly two kinds of host, both required to do its job, and reports
+nothing to anyone else:
+
+| destination | why | what is sent |
+|---|---|---|
+| the portal you install from | list worlds and profiles, authorize you, fetch profile releases | your Steam ID, for the operator's allowlist and admin checks |
+| `gcdn.thunderstore.io` | download the mod packages a profile names | nothing but the package request |
+
+It contains no analytics, no telemetry, no crash reporting, and no third-party SDKs. Diagnostics
+bundles are produced only when you ask for one, are written to your own disk, and are uploaded only
+if you choose to send them. It writes to your Valheim installation, its own profile directory, and a
+Desktop shortcut — nothing else, and no other application's data.
+
