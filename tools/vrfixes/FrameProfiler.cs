@@ -529,7 +529,6 @@ namespace NeuralyzeVRFixes
             if (MenuContext.InventoryOnScreen()) _inventoryFrames.Sample(deltaMs);
             else _worldFrames.Sample(deltaMs);
             PluginProfiler.Tick();
-            InventoryProfiler.Tick();
 
             if (Time.realtimeSinceStartup < _nextReport) return;
             _nextReport = Time.realtimeSinceStartup + 15f;

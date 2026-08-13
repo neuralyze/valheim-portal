@@ -79,6 +79,7 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<bool> ProfilePlugins;
         internal static ConfigEntry<bool> ProfileInventory;
         internal static ConfigEntry<bool> HideFastLinkTitle;
+        internal static ConfigEntry<bool> ProfileGameMethods;
         internal static ConfigEntry<bool> SweepRenderScale;
         internal static ConfigEntry<bool> MeasureCombatLatency;
         internal static ConfigEntry<bool> RestorePhysicsRate;
@@ -337,6 +338,12 @@ namespace NeuralyzeVRFixes
                 "InventoryGui.Update alone. Off for players - it wraps methods that run every frame the panel is " +
                 "open - and on to find out which mod owns that time.");
 
+            ProfileGameMethods = Config.Bind("9 - Profiling", "ProfileGameMethods", false,
+                "Time the game's own hot methods - the player tick, world streaming, the HUD, the map - and name " +
+                "every mod patched onto each. Measured here: 12fps with 28-34ms of GPU and about 40ms per frame of " +
+                "processor time that mod update loops did not account for, which is where 111 mods' patches on game " +
+                "methods live. Off for players; on to find out what owns a frame.");
+
             HideFastLinkTitle = Config.Bind("5 - Hover text", "HideFastLinkTitle", true,
                 "Hide the FastLink panel's title. FastLink scales as one piece, so enlarging the server names to " +
                 "read them in VR enlarges a title that was already the largest thing on the panel, and it covers " +
@@ -363,6 +370,7 @@ namespace NeuralyzeVRFixes
             if (RestorePhysicsRate.Value) Guard("physicsRate", delegate { PhysicsRateRestorer.Install(harmony); });
             if (ProfilePlugins.Value) Guard("pluginProfiler", delegate { PluginProfiler.Install(harmony); });
             if (ProfileInventory.Value) Guard("inventoryProfiler", delegate { InventoryProfiler.Install(harmony); });
+            if (ProfileGameMethods.Value) Guard("gameMethodProfiler", delegate { GameMethodProfiler.Install(harmony); });
             if (MiscMenuEnabled.Value)
             {
                 Guard("miscMenuLoad", delegate { MiscMenu.Load(MiscMenuActions.Value); });
@@ -443,6 +451,11 @@ namespace NeuralyzeVRFixes
             // and never executed once.
             if (HideFastLinkTitle.Value) FastLinkTitle.Tick();
             if (Profile.Value) ProfilerHub.Tick();
+            // Ticked here, not inside ProfilerHub: that hub only runs when FrameAndVrReport is on,
+            // so an instrument nested in it produced nothing whenever the frame report was off - a
+            // measurement switch that silently measures nothing is worse than no switch.
+            if (ProfileInventory.Value) InventoryProfiler.Tick();
+            if (ProfileGameMethods.Value) GameMethodProfiler.Tick();
         }
 
         private void LateUpdate()
