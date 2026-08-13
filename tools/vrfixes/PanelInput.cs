@@ -191,4 +191,21 @@ namespace NeuralyzeVRFixes
             catch { return false; }
         }
     }
+
+    // Dodge is on the same stick the hover menu uses to move its highlight, so it is suppressed for
+    // as long as the list is up. Patching the player's own dodge step catches every route into it -
+    // stick, gesture or button - rather than guessing which binding VHVR used this build.
+    [HarmonyPatch]
+    internal static class Dodge_WhileMenuOpen
+    {
+        private static System.Reflection.MethodBase TargetMethod()
+        {
+            System.Type player = AccessTools.TypeByName("Player");
+            return player == null ? null : AccessTools.Method(player, "UpdateDodge");
+        }
+
+        private static bool Prepare() { return TargetMethod() != null; }
+
+        private static bool Prefix() { return !HoverMenu.MenuOpen; }
+    }
 }

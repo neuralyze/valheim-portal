@@ -1331,7 +1331,7 @@ namespace NeuralyzeVRFixes
         internal static bool JumpHeld()   { return Held(_jump); }
         internal static bool CrouchHeld() { return Held(_crouch); }
 
-        private static bool RightGrabHeld()
+        internal static bool RightGrabHeld()
         {
             object r = SteamVRProbe.Call(_grab, "GetState", SteamVRProbe.Right);
             return r is bool && (bool)r;

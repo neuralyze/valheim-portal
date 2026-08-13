@@ -21,9 +21,9 @@ namespace NeuralyzeVRFixes
     // first. Sticks were rejected too, being walk and turn; hand-motion gestures were
     // rejected because the physics estimator reports 0.00 m/s on this install.
     //
-    //     hold LEFT trigger while pointing   -> the list appears, first option highlighted
-    //     tap LEFT grip                      -> next option
-    //     release LEFT trigger               -> run the highlighted one
+    //     point at it, hold the RIGHT GRIP   -> the list appears, first option highlighted
+    //     right stick up / down              -> move the highlight
+    //     release the GRIP                   -> run the highlighted one
     //
     // The list is written to the message area as it changes, so the target teaches its own
     // options rather than needing documentation.
@@ -43,9 +43,14 @@ namespace NeuralyzeVRFixes
         private static bool _parsed;
         private static bool _active;
         private static int _index;
+        private static bool _stickReady = true;
+
+        // The stick moves the highlight while the list is up, so its normal meaning has to be off
+        // for exactly that long - otherwise every downward push also rolls the player, which is
+        // what shipping this without unmapping the old binding did.
+        internal static bool MenuOpen { get { return _active; } }
         private static string _kind;
         private static GameObject _target;
-        private static bool _grabWasDown;
 
         private static MethodInfo _mInteract, _mMessage;
         private static FieldInfo _fHovering;
@@ -197,9 +202,12 @@ namespace NeuralyzeVRFixes
             Player p = Player.m_localPlayer;
             if (p == null) { _active = false; return; }
 
-            bool grip = NeuralyzeVRFixesPlugin.HoverModifier == null
-                     || NeuralyzeVRFixesPlugin.HoverModifier.Value != "LeftTrigger";
-            bool modifier = grip ? DirectActionInvoker.LeftGrabHeld() : DirectActionInvoker.UseLeftHeld();
+            // One hand, on the button with no job of its own. The right trigger already acts the
+            // instant it is pressed - mount, open, swing - so it can never also mean "hold to open
+            // a menu"; the previous gesture dodged that by moving the whole thing to the off hand,
+            // which meant pointing with one hand and operating with the other. The grip fires
+            // nothing on press, so the hand that points is the hand that chooses.
+            bool modifier = DirectActionInvoker.RightGrabHeld();
             if (modifier != _modWasDown)
             {
                 _modWasDown = modifier;
@@ -240,7 +248,7 @@ namespace NeuralyzeVRFixes
                 _index = 0;
                 _kind = kind;
                 _target = go;
-                _grabWasDown = DirectActionInvoker.LeftGrabHeld();
+                _stickReady = true;
                 NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
                     + "hover menu open on '" + kind + "' (" + go.name + ")");
                 Announce(p, _table[_kind]);
@@ -248,25 +256,27 @@ namespace NeuralyzeVRFixes
                 return;
             }
 
-            // Advance on the rising edge of the off-hand grip, so holding it does not spin
-            // through the list.
-            bool grab = grip ? DirectActionInvoker.UseLeftHeld() : DirectActionInvoker.LeftGrabHeld();
-            if (grab && !_grabWasDown)
+            // The right stick moves the highlight: push up or down, one step per push, and the
+            // stick must return near centre before it steps again so a held stick cannot run the
+            // list away. The stick is free here - nobody walks in the middle of choosing.
+            List<Option> options = _table[_kind];
+            float stick = MountControls.ApiRightY();
+            if (Mathf.Abs(stick) < 0.4f) _stickReady = true;
+            else if (_stickReady)
             {
-                List<Option> options = _table[_kind];
-                _index = (_index + 1) % options.Count;
-                _index = _index;
+                _stickReady = false;
+                _index = stick > 0f ? (_index - 1 + options.Count) % options.Count
+                                    : (_index + 1) % options.Count;
                 Announce(p, options);
                 _shown = Time.time;
             }
-            _grabWasDown = grab;
 
             // A centre message fades. Announcing once meant the list was gone before the player
             // looked up - the gesture worked all session and was reported as "left trigger does
             // nothing". Repeat it while the modifier is held so the list is simply present.
             if (Time.time - _shown > 2.0f)
             {
-                Announce(p, _table[_kind]);
+                Announce(p, options);
                 _shown = Time.time;
             }
         }

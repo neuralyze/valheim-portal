@@ -118,6 +118,24 @@ while read -r world source published client_type; do
                 -notes "$notes" -actor republish-profiles
                 -database "$database" -artifact-root "$artifact_root")
 
+  # Carry the client plugin forward. A republish rebuilds the mod list, not the plugin, so a
+  # release that omits it silently uninstalls the current one from every client on next sync -
+  # which is exactly what a routine "remove one mod" republish did on 2026-08-13.
+  plugin=$(python3 - "$database" "$published" <<'PY'
+import sqlite3, sys
+db, profile = sys.argv[1:3]
+c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+row = c.execute(
+    "select a.path from artifacts a join releases r on a.release_id=r.id "
+    "where r.profile=? and a.kind='diag_plugin' order by a.created_at desc limit 1",
+    (profile,)).fetchone()
+print(row[0] if row else "")
+PY
+)
+  if [[ -n $plugin && -f $plugin ]]; then
+    publish_args+=(-diag-plugin "$plugin")
+  fi
+
   case "$client_type" in
     vr)
       # Each world publishes its own runtime under its own filename; reuse the one attached to

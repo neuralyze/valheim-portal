@@ -146,9 +146,7 @@ namespace NeuralyzeVRFixes
         internal static float SteeringAxis()
         {
             Sample();
-            if (_driveChannel == 1) return _cachedApiLeftX;
-            if (_driveChannel == 2) return _cachedApiRightX;
-            return 0f;
+            return _cachedApiLeftX;
         }
 
         internal static float SteerAxis()
@@ -266,29 +264,45 @@ namespace NeuralyzeVRFixes
             return sadle == null ? null : AccessTools.Method(sadle, "ApplyControlls");
         }
 
-        private static bool Prepare() { return AccessTools.TypeByName("Sadle") != null; }
+        // Degrees per second the mount turns while the stick is held over. A rate, not an angle:
+        // the rider holds the stick until the horse points where they want, exactly like a gamepad.
+        // How far off its own nose the horse is aimed while the stick is held. Small enough that
+        // the animal reaches it and keeps turning; large enough to be a decisive turn, not a lean.
+        internal const float SteeringLeadDegrees = 40f;
+        private static float _heading;
 
-        private static void Prefix(object __instance, Vector3 moveDir, ref Vector3 lookDir, bool run)
+        private static bool Prepare() { return TargetMethod() != null; }
+
+        [HarmonyPriority(Priority.Last)]
+        private static void Prefix(object __instance, Vector3 moveDir, bool run)
         {
             if (!ReferenceEquals(DirectActions.MountedController(), __instance)) return;
             Component mount = __instance as Component;
             if (mount == null) return;
 
-            // Learn which channel drives, from the speed the game is applying.
-            if (MountControls.DriveChannel == 0 && Mathf.Abs(moveDir.z) > 0.4f)
-            {
-                MountControls.LearnDriveChannel(Mathf.Abs(moveDir.z));
-            }
-
-            // Steer with the OTHER one.
+            // Left stick X turns the mount; left stick Y stays the game's own speed control.
+            //
+            // Two things the ride logs settled. The saddle only reads lookDir while
+            // moveDir.z > 0.5 || run (its own bytecode), and VHVR's move vector carries one axis
+            // at a time - lean sideways and moveDir.z drops to zero. So a heading written during a
+            // lean is computed and discarded unless the forward component is held up. It is held
+            // only when the rider is not asking to stop, because forcing it through a pull-back is
+            // what made the horse unstoppable.
+            //
+            // The target is a fixed lead off the horse's own nose, recomputed every frame, never
+            // integrated. Integration was measured running away from the animal - gaps of 144, 153
+            // and 169 degrees while the horse fell further behind - because the number advanced at
+            // 150 deg/s and the animal turns far slower. It cannot chase a point that moves faster
+            // than it does. A lead it can reach produces a continuous turn for as long as the stick
+            // is held, which is how the right stick already turns it: the view leads by a little.
             float steer = MountControls.SteeringAxis();
-            bool capturing = moveDir.z > 0.5f || run;
+            bool wantsStop = moveDir.z < -0.2f;
+            bool steering = Mathf.Abs(steer) > 0.15f && !wantsStop;
 
-            if (capturing && Mathf.Abs(steer) > 0.2f)
-            {
-                lookDir = Quaternion.Euler(0f, mount.transform.eulerAngles.y + Mathf.Sign(steer) * TurnOffsetDegrees, 0f)
-                        * Vector3.forward;
-            }
+            // Nothing is written here any more. Forcing the forward component to keep the game's
+            // capture condition satisfied is what stopped pull-back from stopping the horse, and
+            // the heading itself is applied in Sadle_ControlDir, after VHVR, where it survives.
+            bool capturing = moveDir.z > 0.5f || run;
 
             if (Time.time - _lastLog >= 1.0f && (capturing || Mathf.Abs(steer) > 0.2f))
             {
@@ -298,7 +312,65 @@ namespace NeuralyzeVRFixes
                     + " capturing=" + capturing + " steer=" + steer.ToString("F2")
                     + " driveChannel=" + MountControls.DriveChannel
                     + " facing=" + mount.transform.eulerAngles.y.ToString("F0")
+                    + " heading=" + _heading.ToString("F0")
+                    + " gap=" + Mathf.DeltaAngle(mount.transform.eulerAngles.y, _heading).ToString("F0")
                     + " " + MountControls.StickReport());
+            }
+        }
+    }
+
+    // The horse is not driven by anything local. Sadle.ApplyControlls packs the rider's direction
+    // into an RPC - Controls(dir, speed) - and sends it to whoever OWNS the animal, which on a
+    // dedicated server is not this machine. The owner acts on the vector inside that message.
+    //
+    // Measured, not assumed: writing m_controlDir locally persisted (each write showed up as the
+    // next tick's starting value) and the horse ignored all of it, while the right stick kept
+    // working - because turning your head changes lookDir before the message is built.
+    //
+    // So the stick is applied to the outgoing message. It rotates the direction the game is already
+    // sending and never invents one: no message, no rotation, so stopping stays entirely the game's.
+    [HarmonyPatch]
+    internal static class Sadle_ControlsRPC
+    {
+        private static System.Reflection.MethodBase TargetMethod()
+        {
+            Type view = AccessTools.TypeByName("ZNetView");
+            return view == null ? null : AccessTools.Method(view, "InvokeRPC", new Type[] { typeof(string), typeof(object[]) });
+        }
+
+        private static bool Prepare() { return TargetMethod() != null; }
+
+        private static float _lastLog;
+
+        private static void Prefix(string method, object[] parameters)
+        {
+            // Every network message in the game passes through here. A throw would break the call
+            // it rode in on, so nothing in this method is allowed to escape.
+            try { Apply(method, parameters); } catch { }
+        }
+
+        private static void Apply(string method, object[] args)
+        {
+            if (method != "Controls" || args == null || args.Length == 0) return;
+            if (!(args[0] is Vector3)) return;
+            if (DirectActions.MountedController() == null) return;
+
+            float steer = MountControls.SteeringAxis();
+            if (Mathf.Abs(steer) <= 0.15f) return;
+
+            Vector3 dir = (Vector3)args[0];
+            if (dir.sqrMagnitude < 0.01f) return;
+
+            Vector3 turned = Quaternion.Euler(0f, Mathf.Sign(steer) * Sadle_Steer.SteeringLeadDegrees, 0f) * dir;
+            args[0] = turned;
+
+            if (Time.time - _lastLog >= 1.0f)
+            {
+                _lastLog = Time.time;
+                NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                    + "mount RPC steer: stick=" + steer.ToString("F2")
+                    + " sent=" + dir.x.ToString("F2") + "," + dir.z.ToString("F2")
+                    + " -> " + turned.x.ToString("F2") + "," + turned.z.ToString("F2"));
             }
         }
     }
