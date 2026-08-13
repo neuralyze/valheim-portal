@@ -55,9 +55,9 @@ type profileDefinition struct {
 }
 
 type profileState struct {
-	Schema                  int                 `json:"schema"`
-	World                   string              `json:"world"`
-	Profile                 string              `json:"profile"`
+	Schema  int    `json:"schema"`
+	World   string `json:"world"`
+	Profile string `json:"profile"`
 	// Portal is recorded so the installed profile can be described without a request in hand -
 	// recreating a Desktop shortcut needs the portal in its URL, and the only other place it
 	// appeared was inside the diagnostics endpoint, which is not a dependency worth having.
@@ -327,11 +327,11 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 		return false, fmt.Errorf("preserve local configuration: %w", err)
 	}
 	newState := profileState{
-		Schema:                  1,
-		World:                   definition.World,
-		Profile:                 definition.Profile,
-		Portal:                  syncer.PortalBase,
-		
+		Schema:  1,
+		World:   definition.World,
+		Profile: definition.Profile,
+		Portal:  syncer.PortalBase,
+
 		ClientType:              definition.ClientType,
 		ReleaseID:               manifest.ReleaseID,
 		ProfileSHA256:           manifest.ProfileSHA256,

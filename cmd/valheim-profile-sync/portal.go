@@ -44,6 +44,9 @@ type portalClient struct {
 	diagnosticsToken string
 }
 
+// errNoConfirmationCode is shared with the test that pins the sign-in decision table.
+var errNoConfirmationCode = errors.New("portal returned no confirmation code for this sign-in")
+
 type deviceRequest struct {
 	World      string `json:"world"`
 	Profile    string `json:"profile"`
@@ -55,9 +58,15 @@ type deviceResponse struct {
 	// UserCode is the short code the player has to type on the portal's
 	// confirmation page. The portal authorizes nothing without it, so it has to
 	// be on screen here before the browser opens.
-	UserCode     string `json:"user_code"`
-	AuthorizeURL string `json:"authorize_url"`
-	ExpiresIn    int    `json:"expires_in"`
+	UserCode string `json:"user_code"`
+	// ConfirmationRequired is the portal's own statement about its sign-in: a single-operator
+	// install authorizes on the Steam sign-in alone and asks for no code. A pointer because absent
+	// and false must differ - a portal too old to send the field still wants its code typed, and
+	// reading that silence as "no confirmation needed" would strand the player on a page whose
+	// field never gets filled.
+	ConfirmationRequired *bool  `json:"confirmation_required"`
+	AuthorizeURL         string `json:"authorize_url"`
+	ExpiresIn            int    `json:"expires_in"`
 }
 
 type tokenResponse struct {
@@ -215,29 +224,36 @@ func (client *portalClient) authorize(ctx context.Context, request profileReques
 	if !validOpaqueCode(device.DeviceCode) || device.ExpiresIn < 1 || device.ExpiresIn > 900 {
 		return "", errors.New("portal returned an invalid device authorization")
 	}
-	if !validUserCode(device.UserCode) {
-		return "", errors.New("portal returned no confirmation code for this sign-in")
+	// The portal says whether it will ask for a code; the code itself is not the signal. A portal
+	// that wants one and sends none would strand the player on a page they cannot complete, so that
+	// stays an error - the case this refusal was written for.
+	confirmationRequired := device.ConfirmationRequired == nil || *device.ConfirmationRequired
+	if confirmationRequired && !validUserCode(device.UserCode) {
+		return "", errNoConfirmationCode
+	}
+	if !confirmationRequired {
+		device.UserCode = ""
 	}
 	authorizeURL, err := url.Parse(device.AuthorizeURL)
 	if err != nil || !strings.EqualFold(authorizeURL.Scheme, "https") || authorizeURL.Host == "" || authorizeURL.User != nil || authorizeURL.Fragment != "" {
 		return "", errors.New("portal returned an invalid authorization URL")
 	}
-	// The code goes out before the browser opens, and again while polling: the
-	// portal will not authorize anything until the player types it there, so a
-	// player who never saw it just watches a page they cannot complete.
-	report(client.Progress, progressUpdate{
-		Stage:   "Confirmation code " + device.UserCode,
-		Detail:  "Your browser is opening the Valheim portal. Sign in with Steam if asked, then type " + device.UserCode + " there to approve this profile.",
-		Percent: 12,
-	})
+	// The code goes out before the browser opens, and again while polling: where one is required
+	// the portal authorizes nothing until the player types it, so a player who never saw it just
+	// watches a page they cannot complete.
+	openStage, openDetail := "Approving this sign-in", "Your browser is opening the Valheim portal. Sign in with Steam if asked, and this profile is approved."
+	waitStage, waitDetail := "Waiting for approval", "Approve the sign-in in your browser. This window continues automatically."
+	if device.UserCode != "" {
+		openStage = "Confirmation code " + device.UserCode
+		openDetail = "Your browser is opening the Valheim portal. Sign in with Steam if asked, then type " + device.UserCode + " there to approve this profile."
+		waitStage = "Waiting for confirmation code " + device.UserCode
+		waitDetail = "Type " + device.UserCode + " on the portal page in your browser and approve the sign-in. This window continues automatically."
+	}
+	report(client.Progress, progressUpdate{Stage: openStage, Detail: openDetail, Percent: 12})
 	if err := client.openBrowser(authorizeURL.String()); err != nil {
 		return "", fmt.Errorf("open Steam authorization page: %w", err)
 	}
-	report(client.Progress, progressUpdate{
-		Stage:   "Waiting for confirmation code " + device.UserCode,
-		Detail:  "Type " + device.UserCode + " on the portal page in your browser and approve the sign-in. This window continues automatically.",
-		Percent: 14,
-	})
+	report(client.Progress, progressUpdate{Stage: waitStage, Detail: waitDetail, Percent: 14})
 	deadline := client.now().Add(time.Duration(device.ExpiresIn) * time.Second)
 	for client.now().Before(deadline) {
 		token, pending, err := client.exchangeDeviceCode(ctx, device.DeviceCode)

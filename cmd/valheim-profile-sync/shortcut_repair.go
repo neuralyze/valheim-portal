@@ -16,32 +16,38 @@ import (
 // that watches the Desktop would keep duplicating one that had merely been moved. Neither behaviour
 // is decidable without knowing what the player wants, so the player asks.
 //
-// It writes one for every installed profile, because a player with several has no way to say which
-// one they lost, and picking "the most recent" answers a question they did not ask. Only the
-// Desktop is written and nothing anywhere is searched.
-func recreateDesktopShortcuts() ([]string, error) {
-	requests, err := installedProfileRequests()
+// It writes exactly one: the profile this session opened, or - when the app was started cold, with
+// no profile link - the one most recently used, which is the profile the player is playing. Writing
+// one per installed profile littered a Desktop with seven of them. Only the Desktop is written and
+// nothing anywhere is searched.
+func recreateDesktopShortcut(current *profileRequest) (string, error) {
+	request, err := shortcutSubject(current)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	desktop, err := desktopDirectory()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	icon := shortcutIconPath(executable)
-	written := make([]string, 0, len(requests))
-	for _, request := range requests {
-		path, writeErr := writeShortcut(desktop, request, icon)
-		if writeErr != nil {
-			return written, writeErr
-		}
-		written = append(written, filepath.Base(path))
+	return writeShortcut(desktop, request, shortcutIconPath(executable))
+}
+
+// shortcutSubject prefers the profile in hand. A player pressing the button mid-session means the
+// one they are using; a player who opened the app to fix a missing shortcut has no session, so the
+// most recently synced profile is the same answer by another route.
+func shortcutSubject(current *profileRequest) (profileRequest, error) {
+	if current != nil && current.validate() == nil {
+		return *current, nil
 	}
-	return written, nil
+	requests, err := installedProfileRequests()
+	if err != nil {
+		return profileRequest{}, err
+	}
+	return requests[0], nil
 }
 
 // installedProfileRequests reads every profile the player has installed, from the state file each
@@ -67,6 +73,7 @@ func installedProfileRequests() ([]profileRequest, error) {
 		return nil, err
 	}
 	var requests []profileRequest
+	used := map[string]int64{}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -83,12 +90,15 @@ func installedProfileRequests() ([]profileRequest, error) {
 		if request.validate() != nil {
 			continue
 		}
+		if info, statErr := os.Stat(filepath.Join(storage, "profiles", entry.Name(), stateFilename)); statErr == nil {
+			used[request.Profile] = info.ModTime().UnixNano()
+		}
 		requests = append(requests, request)
 	}
 	if len(requests) == 0 {
 		return nil, errors.New("no installed profile was found, so there is no shortcut to create")
 	}
-	sort.Slice(requests, func(i, j int) bool { return requests[i].Profile < requests[j].Profile })
+	sort.Slice(requests, func(i, j int) bool { return used[requests[i].Profile] > used[requests[j].Profile] })
 	return requests, nil
 }
 

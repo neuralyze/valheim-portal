@@ -309,3 +309,36 @@ func loadTestConfig(t *testing.T) Config {
 	}
 	return cfg
 }
+
+// A single-operator install authorizes on the Steam sign-in alone. Sending a code the portal will
+// never ask for made the client tell players to type it on a page that has no field for it.
+func TestDeviceStartOmitsTheCodeWhenItIsNotRequired(t *testing.T) {
+	release := Release{ID: "omit-release", World: "Ashlands", Profile: "raiders", ClientType: "flat", Version: "1.0.0", Notes: "test"}
+	for _, tc := range []struct {
+		name string
+		skip bool
+		want bool
+	}{
+		{"single operator", true, false},
+		{"confirmation required", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := deviceTestServer(t, release)
+			server.cfg.SkipDeviceCode = tc.skip
+			body := strings.NewReader(`{"world":"` + release.World + `","profile":"` + release.Profile + `","client_type":"` + release.ClientType + `"}`)
+			request := httptest.NewRequest(http.MethodPost, "/client/device", body)
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("device start = %d: %s", response.Code, response.Body.String())
+			}
+			if got := strings.Contains(response.Body.String(), `"user_code"`); got != tc.want {
+				t.Fatalf("user_code present=%v, want %v: %s", got, tc.want, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), `"authorize_url"`) {
+				t.Fatal("authorize_url must always be sent")
+			}
+		})
+	}
+}

@@ -213,12 +213,19 @@ func (s *Server) deviceStart(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"device_code":   code,
-		"user_code":     userCode,
-		"authorize_url": authorizeURL,
-		"expires_in":    int(deviceGrantLifetime.Seconds()),
-	})
+	// A single-operator install authorizes on the Steam sign-in alone, so no code is sent: the
+	// client used to display one anyway and instruct the player to type it on a page that never
+	// asks, which reads as a broken sign-in. The grant keeps its code for the confirmation path.
+	body := map[string]any{
+		"device_code":           code,
+		"authorize_url":         authorizeURL,
+		"expires_in":            int(deviceGrantLifetime.Seconds()),
+		"confirmation_required": !s.cfg.SkipDeviceCode,
+	}
+	if !s.cfg.SkipDeviceCode {
+		body["user_code"] = userCode
+	}
+	json.NewEncoder(w).Encode(body)
 }
 
 // deviceAuthorize renders the confirmation page. Opening this link authorizes

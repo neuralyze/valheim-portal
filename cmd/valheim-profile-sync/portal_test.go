@@ -145,3 +145,40 @@ func TestRequireOnlineAcceptsMatchingOnlineProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A portal that authorizes on the Steam sign-in alone sends no code and says so. The client must
+// stop telling players to type one - and must still refuse a portal that wants a code, sends none,
+// or is too old to say either way, because that leaves the player at a page they cannot complete.
+func TestDeviceAuthorizationFollowsThePortalsStatement(t *testing.T) {
+	no, yes := false, true
+	for _, tc := range []struct {
+		name     string
+		required *bool
+		code     string
+		wantErr  bool
+		wantCode string
+	}{
+		{"single operator: no code, says so", &no, "", false, ""},
+		{"confirmation required, code sent", &yes, "BCDF-GHJK", false, "BCDF-GHJK"},
+		{"confirmation required, code missing", &yes, "", true, ""},
+		{"portal too old to say, no code", nil, "", true, ""},
+		{"portal too old to say, code sent", nil, "BCDF-GHJK", false, "BCDF-GHJK"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			device := deviceResponse{DeviceCode: "0123456789abcdef0123456789abcdef", UserCode: tc.code, ConfirmationRequired: tc.required, ExpiresIn: 600}
+			required := device.ConfirmationRequired == nil || *device.ConfirmationRequired
+			err := error(nil)
+			if required && !validUserCode(device.UserCode) {
+				err = errNoConfirmationCode
+			} else if !required {
+				device.UserCode = ""
+			}
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if err == nil && device.UserCode != tc.wantCode {
+				t.Fatalf("displayed code %q, want %q", device.UserCode, tc.wantCode)
+			}
+		})
+	}
+}

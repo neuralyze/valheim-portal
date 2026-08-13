@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ type playerWindow struct {
 	choose           *walk.PushButton
 	folderCheckmark  *walk.Bitmap
 	pendingRequest   *profileRequest
+	lastRequest      *profileRequest
 	gameDirectory    string
 	profileDirectory string
 	doneNeedsGame    bool
@@ -68,7 +70,7 @@ func runWindowsApplication(args []string) {
 			Composite{Layout: HBox{MarginsZero: true, Spacing: 8}, Children: []Widget{
 				PushButton{AssignTo: &ui.choose, Text: "Choose Valheim folder…", OnClicked: ui.chooseSteamValheimDirectory},
 				PushButton{Text: "Choose profile storage…", OnClicked: ui.chooseProfileStorageDirectory},
-				PushButton{Text: "Create desktop shortcuts", OnClicked: ui.createDesktopShortcuts},
+				PushButton{Text: "Create desktop shortcut", OnClicked: ui.createDesktopShortcut},
 				PushButton{AssignTo: &ui.action, Text: "Install Valheim Profile Sync", OnClicked: ui.handleAction},
 			}},
 			Label{Text: "This app uses your existing Steam Valheim installation. It never copies the game."},
@@ -145,19 +147,19 @@ func (ui *playerWindow) ensureProfileStorageDirectory() error {
 	return nil
 }
 
-func (ui *playerWindow) createDesktopShortcuts() {
+func (ui *playerWindow) createDesktopShortcut() {
 	if ui.busy {
 		return
 	}
-	written, err := recreateDesktopShortcuts()
+	path, err := recreateDesktopShortcut(ui.lastRequest)
 	if err != nil {
 		walk.MsgBox(ui.window, applicationName,
-			"The Desktop shortcuts could not be created. "+err.Error(), walk.MsgBoxIconWarning)
+			"The Desktop shortcut could not be created. "+err.Error(), walk.MsgBoxIconWarning)
 		return
 	}
 	walk.MsgBox(ui.window, applicationName,
-		"Created on your Desktop:\n\n"+strings.Join(written, "\n")+
-			"\n\nThey can be moved anywhere you like; they keep working.",
+		"Shortcut created:\n\n"+filepath.Base(path)+
+			"\n\nIt can be moved anywhere you like; it keeps working.",
 		walk.MsgBoxIconInformation)
 }
 
@@ -251,6 +253,7 @@ func (ui *playerWindow) synchronize(request profileRequest) {
 		return
 	}
 	ui.pendingRequest = nil
+	ui.lastRequest = &request
 	ui.complete = false
 	ui.busy = true
 	ui.action.SetEnabled(false)

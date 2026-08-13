@@ -55,7 +55,21 @@ func TestInstalledProfileRequestsReadsEveryProfile(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("got %d profiles, want 3: %+v", len(got), got)
 	}
-	if got[0].Profile != "hrafnheim-flatvr" || got[2].Profile != "vangard-vr" {
-		t.Fatalf("not sorted by profile: %+v", got)
+}
+
+// The button belongs to the profile in front of the player. Pressing it mid-session must name that
+// profile, not whichever state file happens to be newest on disk.
+func TestShortcutSubjectPrefersTheOpenProfile(t *testing.T) {
+	portal, err := parsePortalURL("https://valheim.example/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := profileRequest{Portal: portal, World: "Hrafnheim", Profile: "hrafnheim-flatvr", ClientType: "flat"}
+	got, err := shortcutSubject(&open)
+	if err != nil {
+		t.Fatalf("shortcutSubject: %v", err)
+	}
+	if got.Profile != "hrafnheim-flatvr" {
+		t.Fatalf("got %q, want the open profile", got.Profile)
 	}
 }
