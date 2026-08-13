@@ -390,24 +390,28 @@ answer to that, and they are useful even if you never deploy this portal.
 the host agent runs privileged host scripts, so a bypass of the admin check, the agent
 socket, or the world allowlist is host privilege escalation, not a web bug.
 
-## Code signing policy
-
-Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+## Release integrity
 
 Windows client releases are built by GitHub Actions from a tagged commit in this repository
-([`.github/workflows/release-client.yml`](.github/workflows/release-client.yml)) and signed by
-SignPath from that build — the private key is held in SignPath's HSM and is never present on a
-developer machine or a build agent. Each release carries a `SHA256SUMS` file so any download can be
-checked against the artifact this repository published:
+([`.github/workflows/release-client.yml`](.github/workflows/release-client.yml)) and published as
+release assets with a `SHA256SUMS` file, so any download can be checked against the artifact this
+repository produced:
 
 ```powershell
 Get-FileHash .\ValheimProfileSync.exe -Algorithm SHA256
 ```
 
-Builds use `-trimpath -buildvcs=false`, so the same commit rebuilds to the same bytes and anyone can
-reproduce a release and compare digests. [docs/code-signing.md](docs/code-signing.md) covers the
-signing setup, how to verify a signature, and what to do if an unsigned build is flagged by a
-heuristic scanner.
+Builds use `-trimpath -buildvcs=false`, so the same commit rebuilds to the same bytes: anyone can
+rebuild a release themselves and compare digests rather than taking the published binary on trust.
+
+Releases are currently **unsigned**. A certificate from a public authority requires either a paid
+subscription or an HSM-backed key, and the free foundation programme for open-source projects
+expects a project with an established user base. An unsigned binary that downloads and launches
+other binaries is exactly the shape heuristic scanners object to, so
+[docs/code-signing.md](docs/code-signing.md) documents what the client does, what was changed to
+stop it resembling a dropper, and how to sign it if a certificate becomes available —
+`scripts/sign-windows-client.sh` is wired into the build and activates on the presence of
+credentials.
 
 ## Privacy policy
 

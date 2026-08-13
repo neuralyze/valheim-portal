@@ -31,13 +31,17 @@ installation. Costs nothing and helps every player at once.
 
 The hash is what gets cleared, so a rebuild starts over. Submit a build you intend to keep.
 
-### 2. SignPath Foundation — free certificates for open-source projects
+### 2. SignPath Foundation — free, but not for a project this small
 
-<https://signpath.org/apply> issues code-signing certificates to OSS projects at no cost, and signs
-from CI so no private key is ever handed out. Requirements are ordinary for a public project: a
-public repository, an OSI-approved licence, and a build that runs in CI from a tagged commit.
+<https://signpath.org/apply> issues code-signing certificates to open-source projects at no cost and
+signs from CI. A public repository and an OSI licence are necessary but not sufficient: the
+foundation vouches for the projects it signs, so it expects an established user base and visible
+community. A self-hosted portal serving one private server does not qualify, and applying wastes
+the reviewer's time as well as yours.
 
-SignPath also requires the artifact to be **downloadable from the repository's Releases** — a CI
+Worth revisiting only if this is ever used beyond one server.
+
+Publishing the artifact as a **downloadable release asset** is worth doing regardless — a CI
 artifact is not enough, because those expire and are not public. `release-client.yml` therefore
 publishes every tag as a GitHub Release carrying the executable and a `SHA256SUMS` file, using the
 signed build when one exists and the unsigned build until then. That release is the canonical
