@@ -148,9 +148,10 @@ func (ui *playerWindow) ensureProfileStorageDirectory() error {
 }
 
 func (ui *playerWindow) createDesktopShortcut() {
-	if ui.busy {
-		return
-	}
+	// Deliberately not gated on ui.busy. The sync starts the moment a profile link opens the app,
+	// so the button spent its whole life disabled at exactly the moment a player reaches for it -
+	// pressed during a sync it did nothing at all, silently. Writing one file beside the Desktop
+	// touches nothing the sync is using.
 	path, err := recreateDesktopShortcut(ui.lastRequest)
 	if err != nil {
 		walk.MsgBox(ui.window, applicationName,
