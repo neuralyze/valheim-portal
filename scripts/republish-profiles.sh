@@ -63,16 +63,33 @@ PY
 )
 [[ -n $plan ]] || { echo "no targets in $targets" >&2; exit 1; }
 
-# A running world cannot take a new plugin set, and finding that out halfway through leaves some
-# worlds updated and others not. Check them all before publishing anything.
+# Publishing does not touch a server; deploying its plugin folder does, and that needs the world
+# down. The two used to be welded together here, so a client-side config change - a logging flag -
+# cost every player a world restart and several minutes of mod loading. So the guard now asks the
+# question it actually cares about: would deploying this profile change the server's plugins? If the
+# set already on disk matches the one the profile would install, nothing needs to stop.
+server_plugin_change() {
+  local world=$1 profile=$2
+  local staged="$source_root/$world/mods/profiles/$profile/manager-cache/server/BepInEx/plugins"
+  local manual="$source_root/$world/mods/profiles/$profile/manual-mods"
+  local deployed="$source_root/$world/config_merged/bepinex/plugins"
+  [[ -d $staged && -d $deployed ]] || return 0
+  local want have
+  want=$( { ls -1 "$staged"; [[ -d $manual ]] && ls -1 "$manual"; } 2>/dev/null | sort -u)
+  have=$(ls -1 "$deployed" 2>/dev/null | sort -u)
+  [[ $want != "$have" ]]
+}
+
+# Checked for every world before publishing anything, so a refusal never leaves some worlds updated
+# and others not.
 running=()
-while read -r world _ _ _; do
-  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "valheim-server-$world"; then
+while read -r world profile _ _; do
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "valheim-server-$world" && server_plugin_change "$world" "$profile"; then
     running+=("$world")
   fi
 done <<<"$plan"
 if ((${#running[@]})); then
-  printf 'refusing to start: these worlds are running, stop them first: %s\n' "$(printf '%s ' "${running[@]}")" >&2
+  printf 'refusing to start: these worlds are running and their server plugins would change, stop them first: %s\n' "$(printf '%s ' "${running[@]}")" >&2
   exit 1
 fi
 
