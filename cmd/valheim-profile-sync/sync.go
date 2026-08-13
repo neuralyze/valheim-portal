@@ -58,6 +58,10 @@ type profileState struct {
 	Schema                  int                 `json:"schema"`
 	World                   string              `json:"world"`
 	Profile                 string              `json:"profile"`
+	// Portal is recorded so the installed profile can be described without a request in hand -
+	// recreating a Desktop shortcut needs the portal in its URL, and the only other place it
+	// appeared was inside the diagnostics endpoint, which is not a dependency worth having.
+	Portal                  string              `json:"portal,omitempty"`
 	ClientType              string              `json:"client_type"`
 	ReleaseID               string              `json:"release_id"`
 	ProfileSHA256           string              `json:"profile_sha256"`
@@ -93,6 +97,7 @@ type profileSyncer struct {
 	Progress            progressReporter
 	DiagnosticsToken    string
 	DiagnosticsEndpoint string
+	PortalBase          string
 }
 
 func newProfileSyncer(httpClient *http.Client) *profileSyncer {
@@ -114,6 +119,7 @@ func (syncer *profileSyncer) synchronize(ctx context.Context, request profileReq
 	}
 	syncer.DiagnosticsToken = portal.diagnosticsToken
 	syncer.DiagnosticsEndpoint = portal.endpoint("client", "diagnostics", request.World, request.Profile, request.ClientType)
+	syncer.PortalBase = request.Portal.String()
 	return syncer.syncAuthorized(ctx, request, token)
 }
 
@@ -324,6 +330,8 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 		Schema:                  1,
 		World:                   definition.World,
 		Profile:                 definition.Profile,
+		Portal:                  syncer.PortalBase,
+		
 		ClientType:              definition.ClientType,
 		ReleaseID:               manifest.ReleaseID,
 		ProfileSHA256:           manifest.ProfileSHA256,
