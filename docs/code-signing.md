@@ -102,5 +102,6 @@ osslsigncode verify -in ValheimProfileSync.exe    # once signing is in place
 
 1. Windows Security → Protection history → the item → Actions → **Restore**.
 2. Report it (step 1 above) so the next player does not hit it.
-3. An exclusion for the folder holding the executable is a last resort, and only worth doing once
-   the binary's origin has been verified by hash.
+3. An exclusion is a last resort, only worth doing once the binary's origin has been verified by
+   hash, and only for a dedicated folder such as `C:\Tools\ValheimProfileSync\` — never for
+   `Downloads`, which is where untrusted files arrive.

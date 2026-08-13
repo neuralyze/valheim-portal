@@ -75,9 +75,25 @@ That gives three rules worth keeping:
    rather than a build per fix.
 3. **Report the build you intend to keep.** Submitting a throwaway wastes the case.
 
-If the client ever does need frequent rebuilds, a per-machine exclusion for the folder holding the
-executable is a one-time action that survives every rebuild — appropriate for a private server with
-a handful of known players, and strictly better than repeated submissions.
+## Where to keep the executable
+
+Since it no longer copies itself anywhere, the client runs from wherever it was saved — and that is
+usually `Downloads`, which is the worst place for it. Clearing Downloads deletes it, and an
+antivirus exclusion there would cover every untrusted file that ever lands in the folder.
+
+Put it in a dedicated folder instead, once:
+
+```
+C:\Tools\ValheimProfileSync\ValheimProfileSync.exe
+```
+
+Run it once from there and the protocol registration and Desktop shortcut both point at the new
+location — moving the file and running it is all a "reinstall" amounts to now.
+
+That also makes an exclusion safe to reason about, if it ever comes to that: one dedicated folder
+holding one executable whose hash you can verify, rather than the whole download directory. For a
+private server with known players it is a one-time action that survives every rebuild, and strictly
+better than repeated submissions.
 
 The durable answer beyond that is a signature, which is deferred: see
 [code-signing.md](code-signing.md).
