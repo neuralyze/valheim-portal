@@ -72,6 +72,15 @@ namespace NeuralyzeVRFixes
         // Unknown predicates deliberately return TRUE. A typo in the config should surface the
         // button with a warning, not silently delete it - a missing button is the hardest failure
         // to diagnose from a headset.
+        // Whether the inventory is drawn right now. Exposed so frame timing can be split by it:
+        // "the game is slow" and "opening the inventory makes it slow" are different faults with
+        // different fixes, and a single average cannot tell them apart.
+        internal static bool InventoryOnScreen()
+        {
+            Resolve();
+            return _inventoryVisible != null && GuiBool(_inventoryVisible);
+        }
+
         internal static bool Active(string predicate)
         {
             if (string.IsNullOrEmpty(predicate) || predicate == Always) return true;

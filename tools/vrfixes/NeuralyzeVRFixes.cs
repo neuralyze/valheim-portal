@@ -77,6 +77,8 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<bool> DirectCrouch;
         internal static ConfigEntry<bool> Profile;
         internal static ConfigEntry<bool> ProfilePlugins;
+        internal static ConfigEntry<bool> ProfileInventory;
+        internal static ConfigEntry<bool> HideFastLinkTitle;
         internal static ConfigEntry<bool> SweepRenderScale;
         internal static ConfigEntry<bool> MeasureCombatLatency;
         internal static ConfigEntry<bool> RestorePhysicsRate;
@@ -329,6 +331,18 @@ namespace NeuralyzeVRFixes
                     "worth changing if the eye resolution reported at startup shows the client is pixel-bound.",
                     new AcceptableValueRange<float>(0.5f, 1.0f)));
 
+            ProfileInventory = Config.Bind("9 - Profiling", "ProfileInventoryPanel", false,
+                "Time the game's own inventory methods and name every mod patching each one. Measured on this " +
+                "install: the panel costs 18.6ms per open frame across sixteen methods, with ten mods on " +
+                "InventoryGui.Update alone. Off for players - it wraps methods that run every frame the panel is " +
+                "open - and on to find out which mod owns that time.");
+
+            HideFastLinkTitle = Config.Bind("5 - Hover text", "HideFastLinkTitle", true,
+                "Hide the FastLink panel's title. FastLink scales as one piece, so enlarging the server names to " +
+                "read them in VR enlarges a title that was already the largest thing on the panel, and it covers " +
+                "the character on the creation screen. The title is also the panel's drag handle, so with this on " +
+                "the panel is positioned by Position of the UI in Azumatt.FastLink.cfg and nowhere else.");
+
             // A code default only applies on FIRST run: BepInEx writes the file once and it
             // then persists, and our own sync now deliberately preserves unshipped configs.
             // So flipping a default cannot disable something already enabled on a client.
@@ -348,6 +362,7 @@ namespace NeuralyzeVRFixes
             if (MeasureCombatLatency.Value) Guard("combatLatency", delegate { CombatLatency.Install(harmony); });
             if (RestorePhysicsRate.Value) Guard("physicsRate", delegate { PhysicsRateRestorer.Install(harmony); });
             if (ProfilePlugins.Value) Guard("pluginProfiler", delegate { PluginProfiler.Install(harmony); });
+            if (ProfileInventory.Value) Guard("inventoryProfiler", delegate { InventoryProfiler.Install(harmony); });
             if (MiscMenuEnabled.Value)
             {
                 Guard("miscMenuLoad", delegate { MiscMenu.Load(MiscMenuActions.Value); });
@@ -423,6 +438,10 @@ namespace NeuralyzeVRFixes
         {
             HookProfiler.Frame();
             global::NeuralyzeVRFixes.DirectActions.PumpQueuedCommands();
+            // Not in LateUpdate: that returns early unless a world is loaded, and FastLink's panel
+            // only exists on the start screen. The first version of this shipped inside that guard
+            // and never executed once.
+            if (HideFastLinkTitle.Value) FastLinkTitle.Tick();
             if (Profile.Value) ProfilerHub.Tick();
         }
 

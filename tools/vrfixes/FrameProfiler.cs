@@ -494,6 +494,12 @@ namespace NeuralyzeVRFixes
     internal static class ProfilerHub
     {
         private static readonly FrameStats _frame = new FrameStats();
+        // Frames are split by whether the inventory is on screen. An overall mean answers "is the
+        // game slow", which is not the complaint: the complaint is that opening the inventory makes
+        // it worse. Two figures side by side either show that or refute it, and one aggregate can
+        // do neither.
+        private static readonly FrameStats _inventoryFrames = new FrameStats();
+        private static readonly FrameStats _worldFrames = new FrameStats();
         private static float _nextReport;
         private static bool _started;
 
@@ -504,6 +510,10 @@ namespace NeuralyzeVRFixes
             {
                 _started = true;
                 _frame.Reset();
+                _inventoryFrames.Reset();
+                _inventoryFrames.Label = "frame INVENTORY OPEN";
+                _worldFrames.Reset();
+                _worldFrames.Label = "frame inventory closed";
                 _nextReport = Time.realtimeSinceStartup + 15f;
                 NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + "VR resolution: " + VrSystemProbe.Resolution());
                 NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + "cameras: " + CameraCensus.Report());
@@ -516,15 +526,22 @@ namespace NeuralyzeVRFixes
             }
 
             _frame.Sample(deltaMs);
+            if (MenuContext.InventoryOnScreen()) _inventoryFrames.Sample(deltaMs);
+            else _worldFrames.Sample(deltaMs);
             PluginProfiler.Tick();
+            InventoryProfiler.Tick();
 
             if (Time.realtimeSinceStartup < _nextReport) return;
             _nextReport = Time.realtimeSinceStartup + 15f;
             NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + _frame.Report());
+            NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + _inventoryFrames.Report());
+            NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + _worldFrames.Report());
             string machine = _frame.Machine("frame");
             if (machine != null) NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + machine);
             NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + "compositor " + VrSystemProbe.FrameTiming());
             _frame.Reset();
+            _inventoryFrames.Reset();
+            _worldFrames.Reset();
         }
     }
 }

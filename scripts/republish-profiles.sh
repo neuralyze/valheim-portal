@@ -173,6 +173,9 @@ row = c.execute(
 print(row[0] if row else "")
 PY
 )
+      # An explicit build wins, so a runtime fix - removing a diagnostic mod bundled inside it -
+      # ships without hand-publishing first and republishing to pick it up.
+      [[ -n ${VALHEIM_VR_RUNTIME:-} ]] && runtime=$VALHEIM_VR_RUNTIME
       [[ -n $runtime && -f $runtime ]] || { echo "no VR runtime found for $published"; ((failures++)); continue; }
       publish_args+=(-vr-runtime "$runtime")
       ;;
