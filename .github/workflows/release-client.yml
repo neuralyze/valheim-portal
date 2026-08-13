@@ -83,9 +83,74 @@ jobs:
           name: signed-client
           path: signed/ValheimProfileSync.exe
 
-      # The digest changes when the signature is attached, so the published one must be taken from
-      # the signed file. Publishing the unsigned digest would send players checking against bytes
-      # nobody can download.
-      - name: Publish digest
+  # SignPath requires the artifact to be downloadable from the repository's Releases, not just as a
+  # CI artifact - those expire and are not public. This is also what players and the portal should
+  # download, so the release is the single canonical copy.
+  release:
+    needs: [build, sign]
+    # always(): publish even before signing is configured, so there is a public download from the
+    # first tag rather than only after the certificate exists.
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Prefer the signed build; fall back to the unsigned one while the SignPath project is still
+      # being approved.
+      - uses: actions/download-artifact@v4
+        with:
+          name: signed-client
+          path: signed
+        continue-on-error: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-client
+          path: unsigned
+
+      - name: Choose the artifact to publish
+        id: choose
         run: |
-          printf 'signed SHA-256: %s\n' "$(sha256sum signed/ValheimProfileSync.exe | cut -d' ' -f1)" >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p release
+          if [ -f signed/ValheimProfileSync.exe ]; then
+            cp signed/ValheimProfileSync.exe release/
+            printf 'state=signed\n' >> "$GITHUB_OUTPUT"
+          else
+            cp unsigned/ValheimProfileSync.exe release/
+            printf 'state=unsigned\n' >> "$GITHUB_OUTPUT"
+          fi
+          ( cd release && sha256sum ValheimProfileSync.exe > SHA256SUMS )
+          printf 'sha256=%s\n' "$(cut -d' ' -f1 release/SHA256SUMS)" >> "$GITHUB_OUTPUT"
+
+      # The digest of the file people actually download. Publishing the pre-signing digest would
+      # send them checking against bytes that are not the ones served.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(cat <<EOF
+          Windows client, built from \`${GITHUB_SHA}\` by GitHub Actions.
+
+          State: **${{ steps.choose.outputs.state }}**
+
+          Verify your download:
+
+              Get-FileHash .\\ValheimProfileSync.exe -Algorithm SHA256    # PowerShell
+              sha256sum ValheimProfileSync.exe                           # Linux/macOS
+
+              SHA-256: ${{ steps.choose.outputs.sha256 }}
+
+          If Windows Defender objects to an unsigned build, see docs/code-signing.md - the
+          detection is a machine-learning heuristic, and reporting it at
+          https://www.microsoft.com/en-us/wdsi/filesubmission clears the hash for every
+          Defender installation.
+          EOF
+          )
+          gh release create "${GITHUB_REF_NAME}" \
+            release/ValheimProfileSync.exe release/SHA256SUMS \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "$notes" \
+            || gh release upload "${GITHUB_REF_NAME}" \
+                 release/ValheimProfileSync.exe release/SHA256SUMS --clobber

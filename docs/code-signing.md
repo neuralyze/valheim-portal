@@ -37,6 +37,16 @@ The hash is what gets cleared, so a rebuild starts over. Submit a build you inte
 from CI so no private key is ever handed out. Requirements are ordinary for a public project: a
 public repository, an OSI-approved licence, and a build that runs in CI from a tagged commit.
 
+SignPath also requires the artifact to be **downloadable from the repository's Releases** — a CI
+artifact is not enough, because those expire and are not public. `release-client.yml` therefore
+publishes every tag as a GitHub Release carrying the executable and a `SHA256SUMS` file, using the
+signed build when one exists and the unsigned build until then. That release is the canonical
+download; the portal should serve the same bytes.
+
+```bash
+git tag v2.6.0 && git push origin v2.6.0     # builds, signs if configured, publishes the release
+```
+
 `.github/workflows/release-client.yml` already implements the build side. Once the project is
 approved, set these and the signing job starts running:
 
