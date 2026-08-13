@@ -9,50 +9,64 @@ import (
 	"path/filepath"
 )
 
-// Register where the application already is. Do not copy it anywhere.
+// Install once, then run from the shortcut.
 //
-// The previous version copied the running executable into %LOCALAPPDATA% and pointed the URL
-// protocol at that copy. Windows Defender classified the result as Trojan:Win32/Bearfoos.A!ml and
-// deleted it, which left the protocol registered against a path that no longer existed - the
-// Desktop shortcut then reported "Application Not Found" while looking perfectly intact.
+// The player downloads one file, runs it, and never thinks about it again: it copies itself to a
+// fixed per-user location, writes the Desktop shortcut, registers the protocol the portal's buttons
+// use, and launches. That single click is the product. A build that asks the player to choose a
+// folder, or to move the file somewhere permanent, has failed at the thing it exists to do.
 //
-// That detection is a machine-learning heuristic, and self-copying into AppData is the loudest
-// signal in the profile it matches: an unsigned binary that duplicates itself into a user data
-// directory, registers a handler aimed at the duplicate, downloads more executables and launches
-// them. Every part is legitimate here and the duplication is the only part that buys nothing. The
-// executable now stays wherever the player put it, and the protocol points there.
-//
-// Re-registering on every run makes this self-healing: if the file is moved, restored from
-// quarantine, or replaced by a newer download, running it once repairs the registration.
+// The destination is %LOCALAPPDATA%\Programs, which is where Windows expects a per-user
+// application to live - the same place VS Code, Discord and GitHub Desktop install - rather than
+// the AppData root, which is a data directory and a favourite of things that are not applications.
+// No elevation, so no UAC prompt.
+const installedExecutableName = "ValheimProfileSync.exe"
+
 func installCurrentApplication() (string, error) {
 	source, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	return installApplication(source, "", runCommand)
+	root, err := programsDirectory()
+	if err != nil {
+		return "", err
+	}
+	return installApplication(source, root, runCommand)
 }
 
-// installedApplicationPath reports the executable the shortcut and protocol should point at, which
-// is simply where this build is running from.
+// programsDirectory reports %LOCALAPPDATA%\Programs\ValheimProfileSync.
+func programsDirectory() (string, error) {
+	localAppData, err := localApplicationData()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(localAppData, "Programs", "ValheimProfileSync"), nil
+}
+
+// installedApplicationPath reports where the installed copy lives, without installing anything.
 func installedApplicationPath() (string, error) {
-	return os.Executable()
+	root, err := programsDirectory()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, installedExecutableName), nil
 }
 
-// shortcutIconPath uses the running executable's own icon.
+// shortcutIconPath prefers the installed copy, so the shortcut's icon survives the download being
+// cleaned up or replaced by a newer one.
 func shortcutIconPath(current string) string {
-	if current != "" {
+	installed, err := installedApplicationPath()
+	if err != nil {
 		return current
 	}
-	if executable, err := os.Executable(); err == nil {
-		return executable
+	if info, statErr := os.Stat(installed); statErr == nil && info.Mode().IsRegular() {
+		return installed
 	}
 	return current
 }
 
-// installApplication registers the URL protocol against an executable. The root argument is
-// retained for callers that still pass a storage directory; nothing is written into it.
 func installApplication(source, root string, run commandRunner) (string, error) {
-	if source == "" || run == nil {
+	if source == "" || root == "" || run == nil {
 		return "", errors.New("cannot install Valheim Profile Sync")
 	}
 	source, err := filepath.Abs(source)
@@ -63,10 +77,33 @@ func installApplication(source, root string, run commandRunner) (string, error) 
 	if err != nil || !info.Mode().IsRegular() {
 		return "", errors.New("the selected Valheim Profile Sync executable is unavailable")
 	}
-	if err := registerProtocol(source, run); err != nil {
+	root, err = filepath.Abs(root)
+	if err != nil {
 		return "", err
 	}
-	return source, nil
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", err
+	}
+
+	destination := filepath.Join(root, installedExecutableName)
+	if filepath.Clean(source) != filepath.Clean(destination) {
+		same, err := sameFileContents(source, destination)
+		if err != nil {
+			return "", err
+		}
+		if !same {
+			if err := copyFileAtomically(source, destination); err != nil {
+				return "", fmt.Errorf("install Valheim Profile Sync: %w", err)
+			}
+		}
+	}
+
+	// Registered every run, so a copy that is moved, replaced or restored repairs its own shortcut
+	// by being run once - the previous design could not recover from that at all.
+	if err := registerProtocol(destination, run); err != nil {
+		return "", err
+	}
+	return destination, nil
 }
 
 func fileDigest(path string) (string, error) {
