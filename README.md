@@ -411,7 +411,9 @@ other binaries is exactly the shape heuristic scanners object to, so
 [docs/code-signing.md](docs/code-signing.md) documents what the client does, what was changed to
 stop it resembling a dropper, and how to sign it if a certificate becomes available —
 `scripts/sign-windows-client.sh` is wired into the build and activates on the presence of
-credentials.
+credentials. If a scanner does object,
+[docs/defender-false-positive.md](docs/defender-false-positive.md) is the report that clears a build
+for every Defender installation, free, and why it should not need repeating often.
 
 ## Privacy policy
 
