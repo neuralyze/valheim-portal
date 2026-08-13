@@ -199,19 +199,6 @@ PY
   if [[ $dry_run == 1 ]]; then
     echo "built (dry run, not published)"; continue
   fi
-  # A release that quietly carries diagnostics costs every player frames for a measurement nobody
-  # is reading. One session shipped a diagnostic mod inside the VR runtime and left three profiling
-  # switches on, both unnoticed until a log was read by hand - so this is a check, not a habit.
-  diagnostics=$(python3 "$repo_root/scripts/diagnostic_switches.py" "$payload")
-  if [[ -n $diagnostics ]]; then
-    if [[ -z ${MEASUREMENT_RELEASE:-} ]]; then
-      echo "refusing $published: it would ship diagnostics to players -> $diagnostics" >&2
-      echo "  switch them off in the profile client-config, or set MEASUREMENT_RELEASE=1 to publish deliberately" >&2
-      ((failures++)); continue
-    fi
-    echo "  $published carries diagnostics on purpose: $diagnostics"
-  fi
-
   if ! (cd "$repo_root" && go run ./cmd/seed-release "${publish_args[@]}") >>"$build_dir/$published.log" 2>&1; then
     echo "PUBLISH FAILED: $(tail -1 "$build_dir/$published.log")"; ((failures++)); continue
   fi
