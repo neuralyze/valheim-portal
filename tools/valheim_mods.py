@@ -522,6 +522,130 @@ def cmd_check(root, m, _):
         if Version(remote)>Version(item['version']): updates.append((item['identifier'], item['version'], remote))
     for row in updates: print(f'{row[0]} {row[1]} -> {row[2]}')
     print(f'updates={len(updates)}'); return 1 if updates else 0
+# What changed, before deciding to take it.
+#
+# check-updates answers "is there a newer version" and nothing else, so every upgrade tonight was
+# taken blind - including a skills mod jumping three minor versions, which is exactly the kind of
+# change that rewrites character data. Thunderstore serves a per-version changelog when the package
+# ships CHANGELOG.md, and most authors keep the real detail in a GitHub release; neither is any use
+# unless something collects them for the versions actually being crossed.
+THUNDERSTORE_PACKAGE = 'https://thunderstore.io/api/experimental/package/{namespace}/{name}/'
+THUNDERSTORE_CHANGELOG = 'https://thunderstore.io/api/experimental/package/{namespace}/{name}/{version}/changelog/'
+GITHUB_RELEASES = 'https://api.github.com/repos/{owner}/{repo}/releases?per_page=100'
+
+
+def crossed_versions(package, installed, remote):
+    """Every published version above the installed one, up to and including the new one.
+
+    A jump from 0.9.5 to 0.12.0 crosses whatever was released between them, and the note that
+    matters is often in one of those, not in the newest.
+    """
+    versions = []
+    for entry in package['versions']:
+        number = entry['version_number']
+        if Version(installed) < Version(number) <= Version(remote):
+            versions.append(number)
+    return sorted(versions, key=Version)
+
+
+def thunderstore_changelog(namespace, name, version_number):
+    try:
+        response = requests.get(THUNDERSTORE_CHANGELOG.format(namespace=namespace, name=name, version=version_number), timeout=30)
+        if response.status_code != 200:
+            return None
+        return (response.json() or {}).get('markdown') or None
+    except Exception:
+        return None
+
+
+def github_repository(package):
+    """The owner/repo a package points at, or None. Only github.com, and only a plain repo path."""
+    for field in ('website_url', 'package_url'):
+        url = (package.get(field) or '').strip()
+        if 'github.com/' not in url:
+            continue
+        tail = url.split('github.com/', 1)[1].strip('/')
+        parts = [segment for segment in tail.split('/') if segment]
+        if len(parts) >= 2:
+            return parts[0], parts[1].removesuffix('.git')
+    return None
+
+
+def github_release_notes(owner, repo, wanted):
+    """Release bodies whose tag mentions one of the versions being crossed.
+
+    Tags are matched loosely - v1.2.3, 1.2.3, release-1.2.3 are all the same release to an author -
+    because a strict match returns nothing for most repositories.
+    """
+    try:
+        response = requests.get(GITHUB_RELEASES.format(owner=owner, repo=repo), timeout=30,
+                                headers={'Accept': 'application/vnd.github+json'})
+        if response.status_code != 200:
+            return {}
+        found = {}
+        for release in response.json() or []:
+            tag = (release.get('tag_name') or '').lstrip('vV')
+            for version_number in wanted:
+                if tag == version_number or tag.endswith(version_number):
+                    body = (release.get('body') or '').strip()
+                    if body:
+                        found[version_number] = body
+        return found
+    except Exception:
+        return {}
+
+
+def cmd_notes(root, m, args):
+    registry = index()
+    pending = []
+    for item in all_packages(m):
+        package = registry.get(item['identifier'])
+        if not package:
+            continue
+        remote = latest(package)['version_number']
+        if Version(remote) > Version(item['version']):
+            pending.append((item['identifier'], item['version'], remote, package))
+
+    if not pending:
+        print('updates=0')
+        return 0
+
+    for identifier, installed, remote, package in pending:
+        namespace, _, name = identifier.partition('-')
+        versions = crossed_versions(package, installed, remote)
+        print(f'=== {identifier} {installed} -> {remote} ({len(versions)} version(s) crossed)')
+        repo = github_repository(package)
+        releases = github_release_notes(repo[0], repo[1], versions) if repo else {}
+        if repo:
+            print(f'    github {repo[0]}/{repo[1]}')
+        printed = False
+        # CHANGELOG.md is cumulative, so the newest version's copy already contains every entry
+        # below it. Fetching one per crossed version printed 0.11.2's notes four times.
+        changelog = thunderstore_changelog(namespace, name, versions[-1]) if versions else None
+        if changelog:
+            printed = True
+            print(f'  -- changelog through {versions[-1]} [thunderstore]')
+            for line in changelog.strip().splitlines()[:args.lines]:
+                print('     ' + line.rstrip())
+        # GitHub releases are per tag, so each one is its own note and worth listing separately.
+        for version_number in reversed(versions):
+            body = releases.get(version_number)
+            if not body:
+                continue
+            printed = True
+            print(f'  -- {version_number} [github]')
+            for line in body.strip().splitlines()[:args.lines]:
+                print('     ' + line.rstrip())
+        if not printed:
+            # Said plainly: an author who publishes no notes and a lookup that failed are different
+            # situations, and a silent gap reads as "nothing changed", which it never means.
+            print('     no notes published on either source for the versions being crossed')
+        print()
+
+    print(f'updates={len(pending)}')
+    return 1
+
+
 def cmd_search(root, m, args):
     query = args.query.lower().strip()
     if len(query) < 2:
@@ -861,7 +985,7 @@ def resolve_manifest(args):
     return manifest
 
 COMMANDS={
-    'list':cmd_list, 'check-updates':cmd_check, 'search':cmd_search, 'add':cmd_add, 'sync':cmd_sync,
+    'list':cmd_list, 'check-updates':cmd_check, 'notes':cmd_notes, 'search':cmd_search, 'add':cmd_add, 'sync':cmd_sync,
     'remove':cmd_remove, 'purge':cmd_purge, 'exclude':cmd_exclude, 'disable':cmd_disable, 'enable':cmd_enable, 'custom-list':cmd_custom_list,
     'custom-add':cmd_custom_add, 'custom-remove':cmd_custom_remove, 'custom-disable':cmd_custom_disable,
     'custom-enable':cmd_custom_enable, 'update':cmd_update, 'export-code':cmd_export,
@@ -873,6 +997,9 @@ def build_parser():
     p=argparse.ArgumentParser(); p.add_argument('--world'); p.add_argument('--profile'); p.add_argument('--manifest',type=Path); sub=p.add_subparsers(dest='command',required=True)
     listing=sub.add_parser('list'); listing.add_argument('--json',action='store_true')
     sub.add_parser('check-updates')
+    notes = sub.add_parser('notes')
+    notes.add_argument('--lines', type=int, default=40,
+                       help='Cap on lines printed per release note; some authors paste an entire history.')
     s=sub.add_parser('search'); s.add_argument('query'); s.add_argument('--json',action='store_true')
     a=sub.add_parser('add'); a.add_argument('identifier'); a.add_argument('version',nargs='?'); a.add_argument('--client-only',action='store_true')
     sync=sub.add_parser('sync'); sync.add_argument('identifier')

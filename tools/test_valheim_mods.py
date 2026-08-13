@@ -398,3 +398,22 @@ class ExportCodeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_crossed_versions_spans_every_release_between():
+    """A 0.9.5 -> 0.12.0 jump crosses eight releases, and the note that matters is often not the
+    newest one. Reporting only the target version is how a save-data change goes unread."""
+    package = {'versions': [{'version_number': v} for v in
+                            ('0.9.5', '0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.11.3', '0.12.0', '0.8.0')]}
+    got = valheim_mods.crossed_versions(package, '0.9.5', '0.12.0')
+    assert got == ['0.10.0', '0.11.0', '0.11.1', '0.11.2', '0.11.3', '0.12.0']
+    assert '0.9.5' not in got and '0.8.0' not in got
+
+
+def test_github_repository_reads_the_owner_and_repo():
+    assert valheim_mods.github_repository({'website_url': 'https://github.com/Author/SomeMod'}) == ('Author', 'SomeMod')
+    assert valheim_mods.github_repository({'website_url': 'https://github.com/Author/SomeMod.git/'}) == ('Author', 'SomeMod')
+    # A Thunderstore page is not a source repository, and neither is a bare profile link.
+    assert valheim_mods.github_repository({'website_url': 'https://thunderstore.io/c/valheim/p/Author/SomeMod/'}) is None
+    assert valheim_mods.github_repository({'website_url': 'https://github.com/Author'}) is None
+    assert valheim_mods.github_repository({}) is None

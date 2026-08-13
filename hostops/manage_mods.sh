@@ -38,7 +38,7 @@ _manage_mods_complete() {
     elif [[ $previous == --profile && -n $world ]]; then
         mapfile -t COMPREPLY < <(compgen -W "$(_manage_mods_profiles "$world")" -- "$current")
     elif (( index == 2 )) && [[ -n $world ]]; then
-        mapfile -t COMPREPLY < <(compgen -W 'list check-updates search add remove update export-code deploy' -- "$current")
+        mapfile -t COMPREPLY < <(compgen -W 'list check-updates notes search add remove update export-code deploy' -- "$current")
     else
         mapfile -t COMPREPLY < <(compgen -W '--profile --manifest --client-only --reason --all --apply --interactive --help' -- "$current")
     fi
@@ -61,7 +61,7 @@ function __manage_mods_profiles
 end
 complete -c manage_mods.sh -f
 complete -c manage_mods.sh -n 'test (count (commandline -opc)) -eq 1' -a '(__manage_mods_worlds)' -d 'World'
-complete -c manage_mods.sh -n 'test (count (commandline -opc)) -eq 2' -a 'list check-updates search add remove update export-code deploy'
+complete -c manage_mods.sh -n 'test (count (commandline -opc)) -eq 2' -a 'list check-updates notes search add remove update export-code deploy'
 complete -c manage_mods.sh -l profile -r -a '(__manage_mods_profiles)' -d 'Profile'
 complete -c manage_mods.sh -l manifest -r -d 'Manifest path'
 complete -c manage_mods.sh -l client-only -d 'Install for clients only'
@@ -155,7 +155,7 @@ _manage_mods_interactive() {
         profile=$REPLY_VALUE
         break
     done
-    actions=("List installed mods" "Check for updates" "Add mod" "Remove mod" "Update mods" "Export profile code" "Deploy server plugins")
+    actions=("List installed mods" "Check for updates" "Read update notes" "Add mod" "Remove mod" "Update mods" "Export profile code" "Deploy server plugins")
 
     while true; do
         echo
@@ -168,6 +168,12 @@ _manage_mods_interactive() {
                 ;;
             "Check for updates")
                 python3 "$CONTROLLER" --world "$world" --profile "$profile" check-updates || true
+                ;;
+            "Read update notes")
+                # Offered next to the check, because a version number alone is not a reason to take
+                # an update: seven were taken blind in one session, one of them a skills mod three
+                # minor versions ahead.
+                python3 "$CONTROLLER" --world "$world" --profile "$profile" notes || true
                 ;;
             "Add mod")
                 read -r -p "Search Thunderstore package: " query
