@@ -68,6 +68,7 @@ func runWindowsApplication(args []string) {
 			Composite{Layout: HBox{MarginsZero: true, Spacing: 8}, Children: []Widget{
 				PushButton{AssignTo: &ui.choose, Text: "Choose Valheim folder…", OnClicked: ui.chooseSteamValheimDirectory},
 				PushButton{Text: "Choose profile storage…", OnClicked: ui.chooseProfileStorageDirectory},
+				PushButton{Text: "Create desktop shortcut", OnClicked: ui.createDesktopShortcut},
 				PushButton{AssignTo: &ui.action, Text: "Install Valheim Profile Sync", OnClicked: ui.handleAction},
 			}},
 			Label{Text: "This app uses your existing Steam Valheim installation. It never copies the game."},
@@ -142,6 +143,21 @@ func (ui *playerWindow) ensureProfileStorageDirectory() error {
 	}
 	ui.profileDirectory = directory
 	return nil
+}
+
+func (ui *playerWindow) createDesktopShortcut() {
+	if ui.busy {
+		return
+	}
+	path, err := recreateDesktopShortcut()
+	if err != nil {
+		walk.MsgBox(ui.window, applicationName,
+			"The Desktop shortcut could not be created. "+err.Error(), walk.MsgBoxIconWarning)
+		return
+	}
+	walk.MsgBox(ui.window, applicationName,
+		"Shortcut created:\n\n"+path+"\n\nIt can be moved anywhere you like; it will keep working.",
+		walk.MsgBoxIconInformation)
 }
 
 func (ui *playerWindow) chooseProfileStorageDirectory() {

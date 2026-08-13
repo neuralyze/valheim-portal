@@ -71,7 +71,6 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<bool> ProfileHooks;
         internal static ConfigEntry<string> HoverModifier;
         internal static ConfigEntry<string> HorseSteering;
-        internal static ConfigEntry<string> HorseStick;
         internal static ConfigEntry<bool> HoverMenuEnabled;
         internal static ConfigEntry<string> HoverActions;
         internal static ConfigEntry<bool> TriggerAttacks;
@@ -198,14 +197,6 @@ namespace NeuralyzeVRFixes
                 "in the same frame, which is what mods mean by \"held while interacting\". Target kinds are " +
                 "resolved by component: horse (Tameable named horse), container, ward (PrivateArea), fireplace, " +
                 "ship, piece (WearNTear). Adding a target is a config edit, not a code change.");
-            HorseStick = Config.Bind("12 - Mounts", "HorseStick", "VhvrRight",
-                new ConfigDescription(
-                    "Which of VHVR's two thumbstick readings drives a mount. Its names do not match the physical " +
-                    "controllers on every headset: here the rider's RIGHT thumbstick produced the values VHVR " +
-                    "reports as the LEFT stick, so VhvrRight is the setting that puts the mount on the physical " +
-                    "left stick. Swap it if the wrong stick drives. Both readings are printed in the horse log " +
-                    "line so the answer is visible rather than guessed.",
-                    new AcceptableValueList<string>(new string[] { "VhvrRight", "VhvrLeft" })));
 
             HorseSteering = Config.Bind("12 - Mounts", "HorseSteering", "Stick",
                 new ConfigDescription(
@@ -222,8 +213,8 @@ namespace NeuralyzeVRFixes
                     "unreachable.",
                     new AcceptableValueList<string>(new string[] { "LeftGrip", "LeftTrigger" })));
 
-            ProfileHooks = Config.Bind("9 - Diagnostics", "ProfileOurHooks", true,
-                "Log what THIS plugin's hooks cost, in milliseconds per frame, every five seconds. Three frame " +
+            ProfileHooks = Config.Bind("9 - Diagnostics", "ProfileOurHooks", false,
+                "Off by default for players: the timer wraps every hook, and the panel hook alone runs 400+ times a frame, so the measurement costs more than most of what it measures. Turn it on to diagnose a frame rate complaint. Logs what THIS plugin's hooks cost, in milliseconds per frame, every five seconds. Three frame " +
                 "rate regressions this session were diagnosed by reading code and guessing; this measures instead. " +
                 "A frame at 72Hz is 13.9ms, so any hook approaching 1ms/frame is ours to fix - and a total well " +
                 "under that while the game still stutters means the cause is elsewhere, which is equally useful.");

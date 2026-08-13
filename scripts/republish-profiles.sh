@@ -132,8 +132,13 @@ row = c.execute(
 print(row[0] if row else "")
 PY
 )
+  # An explicit build wins over the carried-forward one, so shipping a new plugin does not require
+  # publishing it by hand first and then republishing to pick it up.
+  [[ -n ${VALHEIM_CLIENT_PLUGIN:-} ]] && plugin=$VALHEIM_CLIENT_PLUGIN
   if [[ -n $plugin && -f $plugin ]]; then
     publish_args+=(-diag-plugin "$plugin")
+  elif [[ -n ${VALHEIM_CLIENT_PLUGIN:-} ]]; then
+    echo "VALHEIM_CLIENT_PLUGIN is not a file: $VALHEIM_CLIENT_PLUGIN"; ((failures++)); continue
   fi
 
   case "$client_type" in

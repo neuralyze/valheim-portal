@@ -373,6 +373,9 @@ func startGame(gameDir, active string) error {
 	if err := command.Start(); err != nil {
 		return err
 	}
-	startDiagnosticsCollector(gameDir, active, command.Process.Pid)
+	// No automatic diagnostics collection. Every launch used to start a second process that waited
+	// for the game to exit, packaged the session's logs and uploaded them to the portal - fine for
+	// a handful of known players, wrong to do silently to the public. The --collect-diagnostics
+	// entry point remains for an operator asking a player for a bundle deliberately.
 	return nil
 }
