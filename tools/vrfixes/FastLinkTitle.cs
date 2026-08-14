@@ -25,10 +25,30 @@ namespace NeuralyzeVRFixes
         private static bool _done;
         private static bool _dead;
         private static int _looks;
+        // Enough attempts to cover a slow start screen, then it stops. An unbounded search for
+        // something that may not exist is a permanent cost pretending to be a one-off.
+        private const int MaxLooks = 60;
 
         internal static void Tick()
         {
             if (_dead || _done) return;
+
+            // Only while no world is loaded. The panel belongs to the start screen, so once a world
+            // exists there is nothing to find and the sweep below - every UI label and every
+            // TextMeshPro object in memory, with a string allocation each - would run once a second
+            // for the whole session. That shipped, and it cost frames all day.
+            if (NeuralyzeVRFixesPlugin.InWorld())
+            {
+                _done = true;
+                return;
+            }
+            if (_looks >= MaxLooks)
+            {
+                _done = true;
+                NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                    + "FastLink title not found after " + _looks + " looks; giving up rather than sweeping forever");
+                return;
+            }
             if (Time.realtimeSinceStartup < _nextLook) return;
             // Once a second while the panel does not exist yet: it is built on the start screen and
             // rebuilt between scenes, and polling a name lookup every frame to catch that would cost
@@ -102,11 +122,22 @@ namespace NeuralyzeVRFixes
         // Spacing is ignored. The label on screen reads "Fast Link"; the assembly, the config and
         // every mention of the mod write it "FastLink", and an exact comparison against the name in
         // the code matched nothing while the title sat there in plain sight.
+        // Compared character by character, skipping spaces, so a sweep over thousands of labels does
+        // not allocate two strings for each one. The label reads "Fast Link"; the code writes
+        // "FastLink"; both must match.
         private static bool Matches(string value)
         {
-            if (value == null) return false;
-            return value.Replace(" ", "").Replace("\u00a0", "").Trim()
-                        .Equals(TitleText, StringComparison.OrdinalIgnoreCase);
+            if (value == null || value.Length < TitleText.Length || value.Length > TitleText.Length + 4) return false;
+            int j = 0;
+            for (int i = 0; i < value.Length; i++)
+            {
+                char c = value[i];
+                if (c == ' ' || c == '\u00a0') continue;
+                if (j >= TitleText.Length) return false;
+                if (char.ToLowerInvariant(c) != char.ToLowerInvariant(TitleText[j])) return false;
+                j++;
+            }
+            return j == TitleText.Length;
         }
     }
 }
