@@ -417,3 +417,34 @@ def test_github_repository_reads_the_owner_and_repo():
     assert valheim_mods.github_repository({'website_url': 'https://thunderstore.io/c/valheim/p/Author/SomeMod/'}) is None
     assert valheim_mods.github_repository({'website_url': 'https://github.com/Author'}) is None
     assert valheim_mods.github_repository({}) is None
+
+
+class RemovalRecordSurvivesFailureTest(RemoveTest):
+    """A failure after the manifest is rewritten must still leave a record saying so.
+
+    The three worlds whose OdinHorse removal aborted in the cutover step were left with a
+    backup directory holding no removal.json, so the next run answered 'Not present' and read
+    as though the removal had never started."""
+
+    def test_record_names_the_failure_and_the_error_names_the_backup(self):
+        original = valheim_mods.record_release_cutover
+        valheim_mods.record_release_cutover = lambda *_: (_ for _ in ()).throw(
+            RuntimeError("Invalid client release cutover record: /w/mods/.client-release-cutover.json"))
+        self.addCleanup(setattr, valheim_mods, "record_release_cutover", original)
+        with self.assertRaisesRegex(RuntimeError, "already rewritten"):
+            self.remove()
+        backups = list((self.world / "mods/removal-backups/test-profile").iterdir())
+        record = json.loads((backups[0] / "removal.json").read_text())
+        self.assertEqual(record["state"], "failed")
+        self.assertIn("Invalid client release cutover record", record["failure"])
+        self.assertEqual(record["identifier"], self.identifier)
+        # The manifest really was rewritten, which is what makes a silent record dangerous.
+        self.assertFalse(valheim_mods.matching_manifest_entries(
+            json.loads(self.manifest.read_text()), self.identifier))
+
+    def test_completed_removal_records_its_state(self):
+        self.remove()
+        backups = list((self.world / "mods/removal-backups/test-profile").iterdir())
+        record = json.loads((backups[0] / "removal.json").read_text())
+        self.assertEqual(record["state"], "completed")
+        self.assertIn("removed_at", record)

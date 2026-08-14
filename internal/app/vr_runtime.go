@@ -183,3 +183,72 @@ func copyVRRuntimeArchiveEntry(file *zip.File, destination string) error {
 	}
 	return closeErr
 }
+
+// CopyVRRuntimeExcluding writes input to dst without the named BepInEx plugin folders and
+// reports how many archive entries were dropped. Producing a runtime without a diagnostic
+// mod used to mean editing a ZIP by hand, so the only copy of the shipped runtime was a
+// scratch file no command could reproduce.
+//
+// An exclusion that matches nothing is an error: a typo would otherwise ship the very mod
+// the caller asked to leave out, silently.
+func CopyVRRuntimeExcluding(dst io.Writer, inputPath string, excludes []string) (int, error) {
+	archive, err := zip.OpenReader(inputPath)
+	if err != nil {
+		return 0, err
+	}
+	defer archive.Close()
+	wanted := make(map[string]bool, len(excludes))
+	for _, exclude := range excludes {
+		key := strings.ToLower(strings.Trim(strings.TrimSpace(exclude), "/"))
+		if key == "" || strings.Contains(key, "/") {
+			return 0, fmt.Errorf("exclusion %q must be a single BepInEx plugin folder name", exclude)
+		}
+		wanted[key] = false
+	}
+	writer := zip.NewWriter(dst)
+	dropped := 0
+	for _, file := range archive.File {
+		name, err := vrRuntimeArchivePath(file.Name)
+		if err != nil {
+			return 0, err
+		}
+		key := strings.ToLower(name)
+		excluded := ""
+		for folder := range wanted {
+			prefix := "bepinex/plugins/" + folder
+			if key == prefix || strings.HasPrefix(key, prefix+"/") {
+				excluded = folder
+				break
+			}
+		}
+		if excluded != "" {
+			if _, required := requiredVRRuntimeFiles[key]; required {
+				return 0, fmt.Errorf("exclusion %q would drop required file %q", excluded, name)
+			}
+			wanted[excluded] = true
+			dropped++
+			continue
+		}
+		source, err := file.OpenRaw()
+		if err != nil {
+			return 0, err
+		}
+		header := file.FileHeader
+		entry, err := writer.CreateRaw(&header)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := io.Copy(entry, source); err != nil {
+			return 0, err
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return 0, err
+	}
+	for folder, matched := range wanted {
+		if !matched {
+			return 0, fmt.Errorf("exclusion %q matched no entry under BepInEx/plugins", folder)
+		}
+	}
+	return dropped, nil
+}

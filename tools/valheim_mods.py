@@ -688,6 +688,21 @@ def cmd_sync(root, m, args):
     package=registry[item['identifier']]
     ensure_dependencies(root, registry, package, item['version'], item.get('scope', 'client-only'), selected_versions(m))
     print(f'synced={args.identifier}')
+def write_removal_record(path, identifier, reason, started_at, state, cutover=None, failure=None):
+    record = {
+        'identifier': identifier,
+        'reason': reason,
+        'started_at': started_at,
+        'state': state,
+        'recorded_at': datetime.now(timezone.utc).isoformat(),
+        'client_release_cutover': str(cutover) if cutover else None,
+    }
+    if state == 'completed':
+        record['removed_at'] = record['recorded_at']
+    if failure:
+        record['failure'] = failure
+    path.write_text(json.dumps(record, indent=2) + '\n')
+
 def cmd_remove(root, m, args):
     matches = matching_manifest_entries(m, args.identifier)
     if not matches:
@@ -696,25 +711,36 @@ def cmd_remove(root, m, args):
     paths = package_paths(root, args.identifier)
     configs = plugin_config_files(root.parents[2], args.identifier)
     backup = backup_removal_inputs(root, args.manifest, paths, configs)
+    # The record is written before anything is mutated and rewritten with the outcome. A failure
+    # after the manifest save used to leave the backup with no record at all, and because the
+    # manifest no longer selected the package, the next run answered 'Not present' - which reads
+    # as "nothing happened" when the manifest had in fact already been rewritten.
+    record = backup / 'removal.json'
+    started = datetime.now(timezone.utc).isoformat()
+    write_removal_record(record, args.identifier, args.reason, started, 'started')
     # Filter through the same shape-tolerant reader the lookup above uses: a package list
     # may hold objects and bare identifier strings side by side, and `.get` on a string
     # raises. Rebuilding these lists is what actually deselects the package, so a crash
     # here left the manifest untouched while the caller had already been told it matched.
-    for key in MANIFEST_PACKAGE_KEYS:
-        m[key] = [item for item in m.get(key, []) if package_identifier(item) != args.identifier]
-    m['custom_packages'] = [item for item in custom_packages(m)
-                            if (item.get('id') if isinstance(item, dict) else item) != args.identifier]
-    save(args.manifest, m)
-    remove_paths(paths)
-    remove_paths(configs)
-    assert_package_purged(root, load(args.manifest), args.identifier)
-    cutover = record_release_cutover(root, m, args.identifier)
-    (backup / 'removal.json').write_text(json.dumps({
-        'identifier': args.identifier,
-        'reason': args.reason,
-        'removed_at': datetime.now(timezone.utc).isoformat(),
-        'client_release_cutover': str(cutover) if cutover else None,
-    }, indent=2) + '\n')
+    try:
+        for key in MANIFEST_PACKAGE_KEYS:
+            m[key] = [item for item in m.get(key, []) if package_identifier(item) != args.identifier]
+        m['custom_packages'] = [item for item in custom_packages(m)
+                                if (item.get('id') if isinstance(item, dict) else item) != args.identifier]
+        save(args.manifest, m)
+        remove_paths(paths)
+        remove_paths(configs)
+        assert_package_purged(root, load(args.manifest), args.identifier)
+        cutover = record_release_cutover(root, m, args.identifier)
+    except Exception as failure:
+        write_removal_record(record, args.identifier, args.reason, started, 'failed',
+                             failure=f'{type(failure).__name__}: {failure}')
+        raise RuntimeError(
+            f'{failure}\n'
+            f'The manifest was already rewritten, so re-running answers "Not present" even though '
+            f'work was done. What was reached is recorded in {record} and the originals are in {backup}.'
+        ) from failure
+    write_removal_record(record, args.identifier, args.reason, started, 'completed', cutover=cutover)
     print(f'source_removed={args.identifier}\nbackup={backup}')
     if cutover:
         print(f'client_release_cutover_required={cutover}')
