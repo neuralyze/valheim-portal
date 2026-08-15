@@ -107,7 +107,7 @@ func verbArguments(call VerbCall) []agentArgument {
 		{"world", call.World}, {"profile", call.Profile}, {"identifier", call.Identifier},
 		{"version", call.Version}, {"query", call.Query}, {"client type", call.ClientType},
 		{"published profile", call.PublishedProfile}, {"release", call.ReleaseRef},
-		{"archive", call.Archive}, {"reason", call.Reason}, {"note", call.Notes},
+		{"archive", call.Archive}, {"scope", call.Scope}, {"reason", call.Reason}, {"note", call.Notes},
 	}
 	if call.Lines > 0 {
 		candidates = append(candidates, agentArgument{"lines", strconv.Itoa(call.Lines)})
@@ -434,29 +434,9 @@ func (s *Server) agentVerbs(w http.ResponseWriter, r *http.Request) {
 			"verb": verb.ID, "class": string(verb.Class),
 			"needs_approval": verb.NeedsApproval(), "available": verb.Class != ClassForbidden && verb.Unwired == "",
 		}
-		needs := []string{}
-		if verb.NeedsWorld {
-			needs = append(needs, "world")
-		}
-		if verb.NeedsIdentifier {
-			needs = append(needs, "identifier")
-		}
-		if verb.NeedsClientType {
-			needs = append(needs, "client_type")
-		}
-		if verb.NeedsNotes {
-			needs = append(needs, "notes")
-		}
-		if verb.NeedsRelease {
-			needs = append(needs, "published_profile", "release_id", "archive")
-		}
-		if strings.HasPrefix(verb.Operation, "mod_") || verb.Operation == "publish_profile" {
-			needs = append(needs, "profile")
-		}
-		entry["needs"] = needs
-		// Optional arguments are advertised too. A caller that cannot see an argument cannot use it,
-		// and will take whatever default the portal picks - which is how "the last 20 lines" became
-		// 200 lines and a failed pass.
+		// Advertised from the same declaration the portal checks, so what a caller is told and what
+		// it is held to cannot drift.
+		entry["needs"] = argumentNames(verb)
 		if len(verb.Accepts) > 0 {
 			entry["accepts"] = verb.Accepts
 		}
@@ -499,6 +479,7 @@ type verbRequest struct {
 	Archive          string `json:"archive"`
 	Notes            string `json:"notes"`
 	Lines            int    `json:"lines"`
+	Scope            string `json:"scope"`
 }
 
 // verbCreatesWorld marks the two operations whose world does not exist yet, so a name that matches
@@ -555,6 +536,7 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 		Archive:          strings.TrimSpace(request.Archive),
 		Notes:            strings.TrimSpace(request.Notes),
 		Lines:            request.Lines,
+		Scope:            strings.TrimSpace(request.Scope),
 		RequestedBy:      "agent",
 	}
 
@@ -574,6 +556,21 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 		}
 		call.World = canonical
 	}
+
+	// The host agent refuses any mod operation that arrives without the arguments it uses, or with
+	// arguments it does not - and the refusal it can give is "invalid mod search", which names
+	// nothing. The contract is declared on the verb, so it is checked and reported here instead.
+	if missing := missingArguments(verb, call); len(missing) > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"status": VerbFailed, "verb": verb.ID,
+			"error": fmt.Sprintf("%s needs %s", verb.ID, strings.Join(missing, ", ")),
+			"needs": argumentNames(verb),
+		})
+		return
+	}
+	// Arguments the verb does not declare are dropped rather than forwarded. A model that explains
+	// itself by adding a reason to a search should not have the search refused for it.
+	call = onlyDeclaredArguments(verb, call)
 
 	if verb.Class == ClassForbidden {
 		call.Status = VerbRefused

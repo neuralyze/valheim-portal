@@ -22,6 +22,11 @@
   var note = dock.querySelector("[data-dock-note]");
   var known = "";
   var timer = null;
+  var liveState = null;
+  var polledAt = Date.now();
+  // One second, always: the badge has to move while the dock is open, independently of how often the
+  // portal is polled.
+  window.setInterval(paintBadge, 1000);
 
   // Open state survives a reload, because the operator reopening it after every action would be
   // the same annoyance in a different place.
@@ -136,6 +141,14 @@
   }
 
   function render(state) {
+    // The live parts are updated on every poll, before the early return. They were inside it, which
+    // meant the badge froze at whatever it first said: the state token carries the message id, the
+    // pending count and whether a reply is owed - never the elapsed seconds - so while waiting the
+    // token does not change and nothing moved. A frozen "working 0s" beside a spinner that was not
+    // there is exactly the dead page this was meant to rule out.
+    liveState = state;
+    paintBadge();
+
     if (state.state === known) {
       return;
     }
@@ -159,22 +172,35 @@
       awaiting.appendChild(requestCard(call));
     });
 
-    var parts = [];
+  }
+
+  // Painted from the last poll plus the local clock, so the seconds advance every second rather than
+  // every poll, and the spinner keeps moving between them. Motion is the only thing that tells an
+  // operator the page is alive; a number that has not changed in twenty seconds says the opposite.
+  function paintBadge() {
+    var state = liveState;
+    if (!state) {
+      return;
+    }
+    var seconds = state.waiting ? state.waited_seconds + Math.round((Date.now() - polledAt) / 1000) : 0;
+    badge.textContent = "";
     if (state.waiting) {
-      parts.push("working " + state.waited_seconds + "s");
+      var spinner = document.createElement("span");
+      spinner.className = "spinner";
+      spinner.setAttribute("aria-hidden", "true");
+      badge.appendChild(spinner);
+      badge.appendChild(document.createTextNode("working " + seconds + "s"));
     }
     if (state.pending > 0) {
-      parts.push(state.pending + " awaiting you");
+      if (state.waiting) {
+        badge.appendChild(document.createTextNode(" · "));
+      }
+      badge.appendChild(document.createTextNode(state.pending + " awaiting you"));
     }
-    badge.textContent = parts.length > 0 ? parts.join(", ") : "";
-    badge.hidden = parts.length === 0;
-    if (state.waiting && state.waited_seconds > 90) {
-      note.textContent = "No reply in " + state.waited_seconds + "s - the runner may not be running.";
-    } else if (state.pending > 0) {
-      note.textContent = "";
-    } else {
-      note.textContent = "";
-    }
+    badge.hidden = !state.waiting && state.pending === 0;
+    note.textContent = state.waiting && seconds > 90
+      ? "No reply in " + seconds + "s - the runner may not be running."
+      : "";
   }
 
   function refresh() {
@@ -185,7 +211,10 @@
         }
         return response.json();
       })
-      .then(render)
+      .then(function (state) {
+        polledAt = Date.now();
+        render(state);
+      })
       .catch(function (error) {
         note.textContent = "Cannot reach the portal: " + error.message;
       });

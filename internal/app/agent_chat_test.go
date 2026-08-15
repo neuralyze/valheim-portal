@@ -246,7 +246,9 @@ func TestADecisionOnAnAlreadyDecidedCallIsRejected(t *testing.T) {
 
 func TestTheOperatorPageShowsPendingWorkAndTheConversation(t *testing.T) {
 	server := bridgeServer(t)
-	bridgePost(t, server, "/api/agent/verb", `{"verb":"mod_remove","world":"TestWorld","identifier":"OdinPlus-OdinHorse"}`)
+	// A removal carries a profile and a reason: the host agent refuses one without them, so a
+	// fixture lacking them was a pending call that could never have run.
+	bridgePost(t, server, "/api/agent/verb", `{"verb":"mod_remove","world":"TestWorld","profile":"redesign-alpha","identifier":"OdinPlus-OdinHorse","reason":"implements no riding in VR"}`)
 	bridgePost(t, server, "/api/agent/message", `{"body":"Proposing to remove OdinHorse; it implements no riding in VR."}`)
 
 	request := httptest.NewRequest(http.MethodGet, "/admin/agent", nil)

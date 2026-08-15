@@ -39,6 +39,15 @@ type Verb struct {
 	NeedsClientType bool
 	NeedsNotes      bool
 	NeedsRelease    bool
+	// NeedsQuery, NeedsVersion, NeedsScope and NeedsReason mirror rules the host agent already
+	// enforces and the vocabulary never stated. mod_search without a query, mod_add without a
+	// version and a scope, mod_remove without a reason: each was refused downstream as "invalid",
+	// which told the caller nothing about which argument was missing. Declared here, they are both
+	// advertised and checked before the request leaves.
+	NeedsQuery   bool
+	NeedsVersion bool
+	NeedsScope   bool
+	NeedsReason  bool
 	// Accepts lists the optional arguments a caller may set. Advertising only the required ones
 	// left the agent unable to ask for "the last 20 lines": it could not know that `lines` exists,
 	// so the portal's default answered instead - 200 lines, over the message limit, and the pass
@@ -64,7 +73,7 @@ var verbTable = map[string]Verb{
 	// container, which is the only way to read what happened before a crash.
 	"world_log_tail":    {ID: "world_log_tail", Class: ClassRead, Operation: "world_log", NeedsWorld: true, Accepts: []string{"lines", "query"}},
 	"mod_inventory":     {ID: "mod_inventory", Class: ClassRead, Operation: "mod_inventory", NeedsWorld: true},
-	"mod_search":        {ID: "mod_search", Class: ClassRead, Operation: "mod_search", NeedsWorld: true},
+	"mod_search":        {ID: "mod_search", Class: ClassRead, Operation: "mod_search", NeedsWorld: true, NeedsQuery: true},
 	"mod_check_updates": {ID: "mod_check_updates", Class: ClassRead, Operation: "mod_check_updates", NeedsWorld: true},
 	"mod_notes":         {ID: "mod_notes", Class: ClassRead, Operation: "mod_notes", NeedsWorld: true, Accepts: []string{"lines"}},
 	"release_status":    {ID: "release_status", Class: ClassRead, Operation: "mod_release_status", NeedsWorld: true},
@@ -75,8 +84,8 @@ var verbTable = map[string]Verb{
 	"plugin_build": {ID: "plugin_build", Class: ClassRepoWrite, Unwired: "tools/vrfixes/build.sh runs in the agent's own workspace, not through the portal"},
 
 	// world_state
-	"mod_add":       {ID: "mod_add", Class: ClassWorldState, Operation: "mod_add", NeedsWorld: true, NeedsIdentifier: true},
-	"mod_remove":    {ID: "mod_remove", Class: ClassWorldState, Operation: "mod_remove", NeedsWorld: true, NeedsIdentifier: true},
+	"mod_add":       {ID: "mod_add", Class: ClassWorldState, Operation: "mod_add", NeedsWorld: true, NeedsIdentifier: true, NeedsVersion: true, NeedsScope: true},
+	"mod_remove":    {ID: "mod_remove", Class: ClassWorldState, Operation: "mod_remove", NeedsWorld: true, NeedsIdentifier: true, NeedsReason: true},
 	"mod_update":    {ID: "mod_update", Class: ClassWorldState, Operation: "mod_update", NeedsWorld: true, NeedsIdentifier: true},
 	"deploy_apply":  {ID: "deploy_apply", Class: ClassWorldState, Operation: "mod_deploy", NeedsWorld: true},
 	"world_start":   {ID: "world_start", Class: ClassWorldState, Operation: "start", NeedsWorld: true},
@@ -163,6 +172,7 @@ func (s *Server) runVerb(ctx context.Context, call VerbCall) (AgentReply, error)
 		return s.agent.RunMod(ctx, call.ID, call.World, ModAgentRequest{
 			Operation:        verb.Operation,
 			Profile:          call.Profile,
+			Scope:            call.Scope,
 			Query:            call.Query,
 			Identifier:       call.Identifier,
 			Version:          call.Version,
@@ -209,4 +219,91 @@ func validProfileName(value string) bool {
 		}
 	}
 	return true
+}
+
+// argumentNames is the contract as the caller sees it: what this verb requires, in the same words
+// the vocabulary advertises. Kept beside the table so the two cannot drift.
+func argumentNames(verb Verb) []string {
+	names := []string{}
+	if verb.NeedsWorld {
+		names = append(names, "world")
+	}
+	if strings.HasPrefix(verb.Operation, "mod_") || verb.Operation == "publish_profile" {
+		names = append(names, "profile")
+	}
+	if verb.NeedsIdentifier {
+		names = append(names, "identifier")
+	}
+	if verb.NeedsVersion {
+		names = append(names, "version")
+	}
+	if verb.NeedsScope {
+		names = append(names, "scope (shared or client-only)")
+	}
+	if verb.NeedsQuery {
+		names = append(names, "query")
+	}
+	if verb.NeedsReason {
+		names = append(names, "reason")
+	}
+	if verb.NeedsClientType {
+		names = append(names, "client_type")
+	}
+	if verb.NeedsNotes {
+		names = append(names, "notes")
+	}
+	if verb.NeedsRelease {
+		names = append(names, "published_profile", "release_id", "archive")
+	}
+	return names
+}
+
+// missingArguments names what a call lacks. The host agent already refuses these; saying which one
+// is missing is the whole difference between a caller that can fix itself and one that cannot.
+func missingArguments(verb Verb, call VerbCall) []string {
+	missing := []string{}
+	if verb.NeedsQuery && len(strings.TrimSpace(call.Query)) < 2 {
+		missing = append(missing, "query (at least 2 characters)")
+	}
+	if verb.NeedsVersion && strings.TrimSpace(call.Version) == "" {
+		missing = append(missing, "version")
+	}
+	if verb.NeedsScope && call.Scope != "shared" && call.Scope != "client-only" {
+		missing = append(missing, "scope (shared or client-only)")
+	}
+	if verb.NeedsReason && len(strings.TrimSpace(call.Reason)) < 3 {
+		missing = append(missing, "reason (at least 3 characters)")
+	}
+	return missing
+}
+
+// onlyDeclaredArguments clears the fields this verb does not declare. The agent rejects a request
+// carrying an argument its operation has no use for, so forwarding a stray one turns a good request
+// into "unexpected mod arguments" - a refusal about something the caller volunteered, not asked for.
+func onlyDeclaredArguments(verb Verb, call VerbCall) VerbCall {
+	if !verb.NeedsQuery {
+		call.Query = ""
+	}
+	if !verb.NeedsVersion {
+		call.Version = ""
+	}
+	if !verb.NeedsScope {
+		call.Scope = ""
+	}
+	if !verb.NeedsReason {
+		call.Reason = ""
+	}
+	if !verb.NeedsIdentifier {
+		call.Identifier = ""
+	}
+	if !verb.NeedsClientType {
+		call.ClientType = ""
+	}
+	if !verb.NeedsNotes {
+		call.Notes = ""
+	}
+	if !verb.NeedsRelease {
+		call.PublishedProfile, call.ReleaseRef, call.Archive = "", "", ""
+	}
+	return call
 }

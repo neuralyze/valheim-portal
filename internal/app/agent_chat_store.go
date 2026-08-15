@@ -43,13 +43,16 @@ type VerbCall struct {
 	Archive          string
 	Notes            string
 	Lines            int
-	Status           string
-	RequestedBy      string
-	DecidedBy        string
-	Evidence         string
-	Detail           string
-	CreatedAt        time.Time
-	FinishedAt       *time.Time
+	// Scope is "shared" or "client-only": whether a package is installed on the server and every
+	// client, or on clients only. The agent refuses mod_add without exactly one of the two.
+	Scope       string
+	Status      string
+	RequestedBy string
+	DecidedBy   string
+	Evidence    string
+	Detail      string
+	CreatedAt   time.Time
+	FinishedAt  *time.Time
 }
 
 const (
@@ -147,12 +150,12 @@ func (s *Store) CreateVerbCall(ctx context.Context, call VerbCall) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO agent_verb_calls(id, conversation, verb, class, world, profile, identifier, version, query, reason,
-                             client_type, published_profile, release_ref, archive, notes, lines,
+                             client_type, published_profile, release_ref, archive, notes, lines, scope,
                              status, requested_by, decided_by, evidence, detail, created_at)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'','','',?)`,
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'','','',?)`,
 		call.ID, agentConversation, call.Verb, call.Class, call.World, call.Profile, call.Identifier,
 		call.Version, call.Query, call.Reason, call.ClientType, call.PublishedProfile, call.ReleaseRef,
-		call.Archive, call.Notes, call.Lines, call.Status, call.RequestedBy,
+		call.Archive, call.Notes, call.Lines, call.Scope, call.Status, call.RequestedBy,
 		time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
@@ -182,7 +185,7 @@ UPDATE agent_verb_calls SET status=?, decided_by=CASE WHEN ?='' THEN decided_by 
 func (s *Store) VerbCall(ctx context.Context, id string) (VerbCall, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT id, verb, class, world, profile, identifier, version, query, reason,
-       client_type, published_profile, release_ref, archive, notes, lines, status, requested_by,
+       client_type, published_profile, release_ref, archive, notes, lines, scope, status, requested_by,
        decided_by, evidence, detail, created_at, finished_at
 FROM agent_verb_calls WHERE id=?`, id)
 	return scanVerbCall(row)
@@ -198,7 +201,7 @@ func scanVerbCall(row rowScanner) (VerbCall, error) {
 	var finished sql.NullString
 	if err := row.Scan(&call.ID, &call.Verb, &call.Class, &call.World, &call.Profile, &call.Identifier,
 		&call.Version, &call.Query, &call.Reason, &call.ClientType, &call.PublishedProfile,
-		&call.ReleaseRef, &call.Archive, &call.Notes, &call.Lines, &call.Status, &call.RequestedBy,
+		&call.ReleaseRef, &call.Archive, &call.Notes, &call.Lines, &call.Scope, &call.Status, &call.RequestedBy,
 		&call.DecidedBy, &call.Evidence, &call.Detail, &created, &finished); err != nil {
 		return VerbCall{}, err
 	}
@@ -218,7 +221,7 @@ func (s *Store) VerbCalls(ctx context.Context, limit int) ([]VerbCall, error) {
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, verb, class, world, profile, identifier, version, query, reason,
-       client_type, published_profile, release_ref, archive, notes, lines, status, requested_by,
+       client_type, published_profile, release_ref, archive, notes, lines, scope, status, requested_by,
        decided_by, evidence, detail, created_at, finished_at
 FROM agent_verb_calls WHERE conversation=? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
 		agentConversation, limit)

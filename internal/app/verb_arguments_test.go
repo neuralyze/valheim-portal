@@ -82,3 +82,83 @@ func TestTheChatLogDefaultFitsAMessage(t *testing.T) {
 		t.Errorf("default line count = %d, want %d so the answer fits a conversation", got, chatDefault)
 	}
 }
+
+// An operator asked the agent to search Thunderstore and got "invalid mod search". The vocabulary
+// never said mod_search needs a query, so the agent could not know; and the host's refusal names no
+// argument, so it could not learn. Both halves are fixed here: the contract is advertised, and it is
+// checked before the request leaves with a message naming what is missing.
+func TestSearchWithoutAQueryIsRefusedByName(t *testing.T) {
+	verb, err := VerbByID("mod_search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !verb.NeedsQuery {
+		t.Fatal("mod_search does not declare that it needs a query")
+	}
+	advertised := strings.Join(argumentNames(verb), ", ")
+	if !strings.Contains(advertised, "query") {
+		t.Errorf("the vocabulary does not advertise the query: %s", advertised)
+	}
+	missing := missingArguments(verb, VerbCall{Verb: "mod_search", World: "Hrafnheim", Profile: "redesign-alpha"})
+	if len(missing) == 0 || !strings.Contains(strings.Join(missing, ", "), "query") {
+		t.Errorf("a search with no query is not reported as missing one: %v", missing)
+	}
+}
+
+// mod_add is refused by the agent without a scope of exactly "shared" or "client-only", and the
+// bridge had no field to carry one - so the verb could never succeed, which is the same defect
+// world_log_tail had. The declaration and the field now exist together.
+func TestAddDeclaresTheArgumentsTheAgentEnforces(t *testing.T) {
+	verb, err := VerbByID("mod_add")
+	if err != nil {
+		t.Fatal(err)
+	}
+	advertised := strings.Join(argumentNames(verb), ", ")
+	for _, want := range []string{"identifier", "version", "scope"} {
+		if !strings.Contains(advertised, want) {
+			t.Errorf("mod_add does not advertise %s: %s", want, advertised)
+		}
+	}
+	complete := VerbCall{
+		Verb: "mod_add", World: "Hrafnheim", Profile: "redesign-alpha",
+		Identifier: "Azumatt-AzuExtendedPlayerInventory", Version: "2.4.5", Scope: "shared",
+	}
+	if missing := missingArguments(verb, complete); len(missing) > 0 {
+		t.Errorf("a complete mod_add is reported as missing %v", missing)
+	}
+	for _, bad := range []string{"", "both", "server-only"} {
+		partial := complete
+		partial.Scope = bad
+		if missing := missingArguments(verb, partial); len(missing) == 0 {
+			t.Errorf("scope %q was accepted; the agent takes only shared or client-only", bad)
+		}
+	}
+}
+
+// The agent refuses a request carrying an argument its operation has no use for, so a model that
+// explains itself by adding a reason to a search must not have the search refused for it.
+func TestUndeclaredArgumentsAreDroppedNotForwarded(t *testing.T) {
+	verb, err := VerbByID("mod_search")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatty := VerbCall{
+		Verb: "mod_search", World: "Hrafnheim", Profile: "redesign-alpha", Query: "torch",
+		Reason: "the operator asked me to look", Version: "1.0.0", Scope: "shared",
+		Identifier: "Some-Mod", Notes: "a note nobody asked for",
+	}
+
+	filtered := onlyDeclaredArguments(verb, chatty)
+
+	if filtered.Query != "torch" {
+		t.Error("the argument the verb declares was dropped")
+	}
+	for name, value := range map[string]string{
+		"reason": filtered.Reason, "version": filtered.Version, "scope": filtered.Scope,
+		"identifier": filtered.Identifier, "notes": filtered.Notes,
+	} {
+		if value != "" {
+			t.Errorf("%s was forwarded to an operation that refuses it: %q", name, value)
+		}
+	}
+}

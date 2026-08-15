@@ -275,6 +275,21 @@ INSERT INTO schema_migrations(version, applied_at) VALUES (17, CURRENT_TIMESTAMP
 			return err
 		}
 	}
+
+	// mod_add and mod_custom_add are refused by the agent without a scope of exactly "shared" or
+	// "client-only", and the verb-call table had nowhere to put one - so those two verbs could not
+	// succeed through the bridge at all, and the refusal said only "invalid mod selection".
+	var agentScopeSchema int
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=18)`).Scan(&agentScopeSchema); err != nil {
+		return err
+	}
+	if agentScopeSchema == 0 {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE agent_verb_calls ADD COLUMN scope TEXT NOT NULL DEFAULT '';
+INSERT INTO schema_migrations(version, applied_at) VALUES (18, CURRENT_TIMESTAMP);`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
