@@ -1,6 +1,6 @@
 {
   "project_id": "9242930c-3c25-4ec5-a293-27b628595724",
   "prefix": "vhp",
-  "sync_remote": "",
+  "sync_remote": "git+https://github.com/neuralyze/valheim-portal.git",
   "note": "This repository owns this beads project. See tools/check_beads_workspace.py."
 }
