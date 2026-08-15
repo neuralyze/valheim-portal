@@ -55,6 +55,9 @@ var adminProfileAutofillJS []byte
 //go:embed assets/copy-value.js
 var copyValueJS []byte
 
+//go:embed assets/admin-agent.js
+var adminAgentJS []byte
+
 //go:embed assets/site.css
 var siteCSS []byte
 
@@ -217,6 +220,12 @@ func (s *Server) routes() {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Write(copyValueJS)
 	})
+	s.mux.HandleFunc("GET /assets/admin-agent.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Write(adminAgentJS)
+	})
 	s.mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/x-icon")
 		w.Header().Set("Cache-Control", "public, max-age=86400")
@@ -338,6 +347,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /admin/agent", s.admin(s.agentChat))
 	s.mux.HandleFunc("POST /admin/agent/message", s.admin(s.agentChatMessage))
 	s.mux.HandleFunc("POST /admin/agent/decide", s.admin(s.agentChatDecide))
+	s.mux.HandleFunc("GET /admin/agent/status.json", s.admin(s.agentChatStatus))
 	s.mux.HandleFunc("GET /api/agent/inbox", s.bridge(s.agentInbox))
 	s.mux.HandleFunc("GET /api/agent/verbs", s.bridge(s.agentVerbs))
 	s.mux.HandleFunc("POST /api/agent/message", s.bridge(s.agentSay))
@@ -917,6 +927,10 @@ func (s *Server) adminHome(w http.ResponseWriter, r *http.Request) {
 			pendingAccess++
 		}
 	}
+	pendingAgentRequests := 0
+	if _, pending, err := s.store.AgentActivity(r.Context()); err == nil {
+		pendingAgentRequests = pending
+	}
 	render(w, adminTemplate, map[string]any{
 		"Releases": releases, "DraftReleases": draftReleaseChoices(releases), "Jobs": jobs, "Audit": audit, "Worlds": adminWorlds, "Identities": identities, "Members": members,
 		"WorldCount": len(adminWorlds), "MemberCount": len(members), "ReleaseCount": len(releases), "JobCount": len(jobs),
@@ -927,6 +941,9 @@ func (s *Server) adminHome(w http.ResponseWriter, r *http.Request) {
 		"Access": accessByWorld, "AccessPlans": accessPlans, "PendingAccess": pendingAccess,
 		"ClientProblem": clientArtifactProblem(inspectClientExecutable(s.cfg.ClientExecutable)),
 		"Seeds":         s.worldgenSeedDefaults(adminWorlds),
+		// An approval nobody sees is an approval nobody gives: the count travels to the admin
+		// home so a waiting request is visible without knowing the agent page exists.
+		"PendingAgentRequests": pendingAgentRequests,
 	})
 }
 func (s *Server) agentWorldCatalog(ctx context.Context) ([]worldCatalogEntry, error) {
@@ -1812,6 +1829,7 @@ body{font:16px system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 
 <div class="server-toolbar-actions">
 <a class="button-link" href="/admin/servers/new">Create a new server</a>
 <a class="button-link secondary" href="/admin/backups">Backups and recovery</a>
+<a class="button-link secondary" href="/admin/agent">Agent{{if .PendingAgentRequests}} ({{.PendingAgentRequests}} awaiting you){{end}}</a>
 </div>
 </div>
 <details class="server-adopt">

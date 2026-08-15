@@ -251,3 +251,71 @@ func (s *Store) PendingVerbCalls(ctx context.Context) ([]VerbCall, error) {
 	}
 	return pending, nil
 }
+
+// WorldReleaseContext is what a publish approval needs beside it: what is live for that world now,
+// and how much has already been published today.
+//
+// policy.yaml removed publish budgets on the operator's decision, and named the confirmation as the
+// brake that replaces them. A confirmation can only be that brake if it shows what is already
+// there - forty publishes happened in one evening, and no screen ever said so.
+type WorldReleaseContext struct {
+	Profile string
+	Version string
+	When    time.Time
+}
+
+func (s *Store) WorldReleaseContext(ctx context.Context, world string) ([]WorldReleaseContext, int, error) {
+	if world == "" {
+		return nil, 0, nil
+	}
+	prefix := strings.ToLower(world) + "-%"
+	// One row per profile: the newest published release. Ordering by created_at alone is
+	// ambiguous when two releases land in the same second - which happens when a batch publishes
+	// several profiles - so rowid breaks the tie deterministically rather than leaving SQLite to
+	// pick a row.
+	rows, err := s.db.QueryContext(ctx, `
+SELECT r.profile, r.version, r.created_at FROM releases r
+WHERE r.status='published' AND lower(r.profile) LIKE ?
+  AND r.rowid = (
+    SELECT rowid FROM releases
+    WHERE profile = r.profile AND status='published'
+    ORDER BY created_at DESC, rowid DESC LIMIT 1
+  )
+ORDER BY r.profile`, prefix)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var live []WorldReleaseContext
+	for rows.Next() {
+		var entry WorldReleaseContext
+		var created string
+		if err := rows.Scan(&entry.Profile, &entry.Version, &created); err != nil {
+			return nil, 0, err
+		}
+		entry.When, _ = time.Parse(time.RFC3339Nano, created)
+		live = append(live, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	var today int
+	if err := s.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM releases
+WHERE lower(profile) LIKE ? AND created_at >= datetime('now','-1 day')`, prefix).Scan(&today); err != nil {
+		return live, 0, err
+	}
+	return live, today, nil
+}
+
+// AgentActivity is the small state the page polls: enough to know whether anything changed, and
+// whether to poll quickly.
+func (s *Store) AgentActivity(ctx context.Context) (latest int64, pending int, err error) {
+	if err = s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(id), 0) FROM agent_messages WHERE conversation=?`, agentConversation).Scan(&latest); err != nil {
+		return 0, 0, err
+	}
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM agent_verb_calls WHERE conversation=? AND status=?`, agentConversation, VerbPending).Scan(&pending)
+	return latest, pending, err
+}

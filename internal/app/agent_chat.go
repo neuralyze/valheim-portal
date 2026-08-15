@@ -83,6 +83,40 @@ type agentChatRow struct {
 	VerbCall
 	Approvable bool
 	Summary    string
+	// Arguments is every value the call carries, so an operator approves what they can see rather
+	// than a one-line summary of it.
+	Arguments []agentArgument
+	// LongEvidence collapses output that would otherwise bury the page. The threshold is lines,
+	// not bytes: one 4 KB line is readable, forty short ones are a wall.
+	LongEvidence bool
+	// Live and PublishedToday sit beside a publish approval: what that world already serves, and
+	// how much has gone out in the last day.
+	Live           []WorldReleaseContext
+	PublishedToday int
+}
+
+type agentArgument struct {
+	Name  string
+	Value string
+}
+
+func verbArguments(call VerbCall) []agentArgument {
+	candidates := []agentArgument{
+		{"world", call.World}, {"profile", call.Profile}, {"identifier", call.Identifier},
+		{"version", call.Version}, {"query", call.Query}, {"client type", call.ClientType},
+		{"published profile", call.PublishedProfile}, {"release", call.ReleaseRef},
+		{"archive", call.Archive}, {"reason", call.Reason}, {"note", call.Notes},
+	}
+	if call.Lines > 0 {
+		candidates = append(candidates, agentArgument{"lines", strconv.Itoa(call.Lines)})
+	}
+	arguments := make([]agentArgument, 0, len(candidates))
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate.Value) != "" {
+			arguments = append(arguments, candidate)
+		}
+	}
+	return arguments
 }
 
 func (s *Server) agentChat(w http.ResponseWriter, r *http.Request) {
@@ -97,13 +131,40 @@ func (s *Server) agentChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows := make([]agentChatRow, 0, len(calls))
+	pending := 0
 	for _, call := range calls {
-		rows = append(rows, agentChatRow{VerbCall: call, Approvable: call.Status == VerbPending, Summary: verbSummary(call)})
+		row := agentChatRow{
+			VerbCall:     call,
+			Approvable:   call.Status == VerbPending,
+			Summary:      verbSummary(call),
+			Arguments:    verbArguments(call),
+			LongEvidence: strings.Count(call.Evidence, "\n") > 12,
+		}
+		if row.Approvable {
+			pending++
+		}
+		// A publish is the one approval that changes what players download, so it is shown against
+		// what that world already serves.
+		if row.Approvable && call.Verb == "publish_profile" {
+			if live, today, err := s.store.WorldReleaseContext(r.Context(), call.World); err == nil {
+				row.Live, row.PublishedToday = live, today
+			}
+		}
+		rows = append(rows, row)
+	}
+	latest, _, err := s.store.AgentActivity(r.Context())
+	if err != nil {
+		http.Error(w, "conversation unavailable", http.StatusInternalServerError)
+		return
 	}
 	render(w, agentChatTemplate, map[string]any{
 		"Messages": messages, "Calls": rows, "CSRF": s.csrfCookie(w, r),
 		"IsAdmin": true, "SourceURL": s.cfg.SourceURL,
 		"BridgeEnabled": len(s.agentBridgeToken) > 0,
+		"Pending":       pending,
+		"State":         fmt.Sprintf("%d/%d", latest, pending),
+		"Busy":          pending > 0,
+		"Shown":         len(messages),
 	})
 }
 
@@ -205,6 +266,20 @@ func (s *Server) executeApproved(ctx context.Context, call VerbCall, actor strin
 		note += "\n" + evidence
 	}
 	_, _ = s.store.AppendAgentMessage(ctx, "system", note)
+}
+
+// agentChatStatus is the smallest thing that answers "has anything changed": the newest message id
+// and how many calls await a decision. The page reloads itself only when this differs from what it
+// was rendered with, and never while the operator is typing.
+func (s *Server) agentChatStatus(w http.ResponseWriter, r *http.Request) {
+	latest, pending, err := s.store.AgentActivity(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"state": fmt.Sprintf("%d/%d", latest, pending), "latest": latest, "pending": pending,
+	})
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -427,28 +502,47 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 }
 
 const agentChatTemplate = `<!doctype html><html><head><meta charset="utf-8"><title>Agent - Neuralyze Valheim</title></head>
-<body class="portal-body">
-<header class="portal-header"><a class="portal-nav-button" href="/admin">Administration</a>` + adminNavigation + `</header>
-<main class="portal-main">
+<body class="admin">
+<header class="admin-nav"><a class="button-link secondary" href="/admin">Administration</a>` + adminNavigation + `</header>
+<main class="admin-overview" data-agent-status="{{.State}}" data-agent-busy="{{if .Busy}}true{{else}}false{{end}}">
 <h1>Agent</h1>
-{{if not .BridgeEnabled}}<p class="portal-warning">The agent bridge is disabled. Set <code>PORTAL_AGENT_BRIDGE_TOKEN_FILE</code> to let an agent process connect.</p>{{end}}
+<p class="install-note"><span data-agent-indicator>{{if .Busy}}{{.Pending}} request(s) awaiting your decision{{else}}nothing pending{{end}}</span></p>
+{{if not .BridgeEnabled}}<p class="notes warning">The agent bridge is disabled. Set <code>PORTAL_AGENT_BRIDGE_TOKEN_FILE</code> to let an agent process connect.</p>{{end}}
 
 {{if .Calls}}<h2>Requests</h2>
-<table class="portal-table"><tr><th>Verb</th><th>Class</th><th>Status</th><th>Decided by</th><th>Evidence</th><th></th></tr>
-{{range .Calls}}<tr>
-<td>{{.Summary}}</td><td>{{.Class}}</td><td>{{.Status}}</td><td>{{.DecidedBy}}</td>
-<td>{{if .Detail}}<div class="portal-warning">{{.Detail}}</div>{{end}}{{if .Evidence}}<pre class="portal-pre">{{.Evidence}}</pre>{{end}}</td>
-<td>{{if .Approvable}}
-<form method="post" action="/admin/agent/decide" class="portal-inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="decision" value="approve"><button>Approve</button></form>
-<form method="post" action="/admin/agent/decide" class="portal-inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="decision" value="deny"><button class="danger">Deny</button></form>
-{{end}}</td></tr>{{end}}</table>{{end}}
+{{range .Calls}}<section class="admin-widget{{if .Approvable}} warning{{end}}">
+<h3>{{.Verb}} <small>{{.Class}} - {{.Status}}{{if .DecidedBy}}, decided by {{.DecidedBy}}{{end}}</small></h3>
+
+{{if .Arguments}}<table class="facts">
+{{range .Arguments}}<tr><th>{{.Name}}</th><td><code>{{.Value}}</code></td></tr>{{end}}
+</table>{{end}}
+
+{{if .Approvable}}{{if eq .Verb "publish_profile"}}
+<div class="notes warning">
+<p>This publishes what players download.{{if .PublishedToday}} <strong>{{.PublishedToday}} release(s) for this world in the last day.</strong>{{end}}</p>
+{{if .Live}}<p>Currently live:</p><ul>{{range .Live}}<li><code>{{.Profile}}</code> {{.Version}}</li>{{end}}</ul>{{end}}
+</div>
+{{end}}{{end}}
+
+{{if .Detail}}<p class="notes warning">{{.Detail}}</p>{{end}}
+{{if .Evidence}}{{if .LongEvidence}}<details><summary>Evidence read back by the portal</summary><pre class="notes">{{.Evidence}}</pre></details>
+{{else}}<pre class="notes">{{.Evidence}}</pre>{{end}}{{end}}
+
+{{if .Approvable}}<div class="server-card-controls">
+<form method="post" action="/admin/agent/decide" class="server-card-control"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="decision" value="approve"><button type="submit">Approve</button></form>
+<form method="post" action="/admin/agent/decide" class="server-card-control"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="decision" value="deny"><button type="submit" class="danger">Deny</button></form>
+</div>{{end}}
+</section>{{end}}{{end}}
 
 <h2>Conversation</h2>
-{{range .Messages}}<article class="portal-message portal-message-{{.Role}}"><h3>{{.Role}}</h3><pre class="portal-pre">{{.Body}}</pre></article>{{end}}
+{{if .Messages}}<p class="install-note">Showing the last {{.Shown}} turn(s), oldest first.</p>{{end}}
+{{range .Messages}}<article class="player-card agent-turn-{{.Role}}"><h3>{{.Role}}</h3><pre class="notes">{{.Body}}</pre></article>{{end}}
 
 <form method="post" action="/admin/agent/message">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <label>Message <textarea name="body" rows="4" required></textarea></label>
-<button>Send</button>
+<button type="submit">Send</button>
 </form>
-</main></body></html>`
+</main>
+<script src="/assets/admin-agent.js"></script>
+</body></html>`

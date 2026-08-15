@@ -1024,3 +1024,16 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
   .map-snapshot { display: none; }
   .world-map-page .map { height: 65vh; min-height: 24rem; }
 }
+
+/* The agent conversation. Roles are distinguished by a left border rather than a background, so a
+   long exchange stays readable and an operator can see at a glance which turns are theirs. */
+.agent-turn-operator { border-left: 4px solid #6ba3d6; }
+.agent-turn-agent { border-left: 4px solid #8a8f98; }
+.agent-turn-system { border-left: 4px solid #c9a227; }
+.agent-turn-operator h3, .agent-turn-agent h3, .agent-turn-system h3 {
+  margin: 0 0 0.25rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7;
+}
+/* Evidence can be long. Cap the height and let it scroll rather than pushing the approval buttons
+   off the screen - an operator should never have to scroll past output to reach Deny. */
+.admin-widget pre.notes { max-height: 22rem; overflow: auto; }
+.admin-widget details > summary { cursor: pointer; }

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testBridgeToken = "bridge-token-that-is-long-enough-000"
@@ -339,4 +340,148 @@ func TestTheGenericJobFormStillRefusesTheVerbOnlyOperations(t *testing.T) {
 			t.Fatalf("%s is reachable through POST /admin/jobs; it must only be reachable as a verb", operation)
 		}
 	}
+}
+
+func TestTheStatusEndpointReportsActivityAndIsAdminOnly(t *testing.T) {
+	server := bridgeServer(t)
+	bridgePost(t, server, "/api/agent/verb", `{"verb":"world_stop","world":"TestWorld"}`)
+
+	// Admin-only: the control surface must not report its state to an unauthenticated caller.
+	plain := httptest.NewRecorder()
+	server.Handler().ServeHTTP(plain, httptest.NewRequest(http.MethodGet, "/admin/agent/status.json", nil))
+	if plain.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want 401", plain.Code)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/admin/agent/status.json", nil)
+	request.RemoteAddr = "192.0.2.10:1234"
+	request.Header.Set("X-Forwarded-User", "operator")
+	request.Header.Set(adminTokenHeader, testAdminToken)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	body := decode(t, response)
+	if body["pending"].(float64) != 1 {
+		t.Fatalf("pending = %v, want 1", body["pending"])
+	}
+	if body["state"] == "" {
+		t.Fatal("no state token for the page to compare against")
+	}
+}
+
+func TestAPendingCallShowsEveryArgumentNotASummary(t *testing.T) {
+	server := bridgeServer(t)
+	bridgePost(t, server, "/api/agent/verb",
+		`{"verb":"publish_profile","world":"TestWorld","profile":"redesign-alpha","client_type":"vr","notes":"stop the label sweep"}`)
+	page := agentPage(t, server)
+	// An operator approving a publish must see the note and the client type, not "publish_profile".
+	for _, want := range []string{
+		">client type<", ">vr<", ">note<", "stop the label sweep", ">profile<", "redesign-alpha",
+		"This publishes what players download",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("page is missing %q", want)
+		}
+	}
+}
+
+func TestAPublishApprovalShowsWhatIsAlreadyLive(t *testing.T) {
+	server := bridgeServer(t)
+	ctx := t.Context()
+	// Two published releases for this world: the context the policy asks for beside a publish -
+	// what players have now, and how much has already gone out. Written straight to the table
+	// because the real publish path demands a verified profile definition, which is a different
+	// test's subject.
+	for index, version := range []string{"2.5.90", "2.5.91"} {
+		// Distinct timestamps, so "newest" is unambiguous and the assertion is about the page
+		// rather than about which row SQLite happened to pick.
+		when := time.Now().UTC().Add(time.Duration(index) * time.Minute).Format(time.RFC3339Nano)
+		if _, err := server.store.db.ExecContext(ctx, `
+INSERT INTO releases(id, world, profile, client_type, version, notes, status, created_at, published_at, published_by)
+VALUES(?,?,?,?,?,?,'published',?,?,'operator')`,
+			"testworld-vr-"+version, "TestWorld", "testworld-vr", "vr", version, "seeded", when, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bridgePost(t, server, "/api/agent/verb",
+		`{"verb":"publish_profile","world":"TestWorld","profile":"redesign-alpha","client_type":"vr","notes":"another attempt at the same thing"}`)
+	page := agentPage(t, server)
+	if !strings.Contains(page, "Currently live") || !strings.Contains(page, "2.5.91") {
+		t.Fatalf("the approval does not show what is live:\n%s", page)
+	}
+	if !strings.Contains(page, "release(s) for this world in the last day") {
+		t.Fatal("the approval does not show how much has already been published")
+	}
+}
+
+func TestLongEvidenceIsCollapsedSoTheButtonsStayReachable(t *testing.T) {
+	server := bridgeServer(t)
+	ctx := t.Context()
+	call := VerbCall{ID: "long1", Verb: "world_logs", Class: string(ClassRead), World: "TestWorld", Status: VerbPending}
+	if err := server.store.CreateVerbCall(ctx, call); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.store.FinishVerbCall(ctx, call.ID, VerbSucceeded, "", strings.Repeat("a log line\n", 40), ""); err != nil {
+		t.Fatal(err)
+	}
+	page := agentPage(t, server)
+	if !strings.Contains(page, "<details><summary>Evidence read back by the portal</summary>") {
+		t.Fatal("40 lines of evidence were not collapsed")
+	}
+
+	short := VerbCall{ID: "short1", Verb: "world_status", Class: string(ClassRead), World: "TestWorld", Status: VerbPending}
+	if err := server.store.CreateVerbCall(ctx, short); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.store.FinishVerbCall(ctx, short.ID, VerbSucceeded, "", "up 2 minutes", ""); err != nil {
+		t.Fatal(err)
+	}
+	page = agentPage(t, server)
+	if !strings.Contains(page, "up 2 minutes") {
+		t.Fatal("short evidence should be shown directly")
+	}
+}
+
+func TestThePageAsksForFastPollingOnlyWhileSomethingWaits(t *testing.T) {
+	server := bridgeServer(t)
+	if page := agentPage(t, server); !strings.Contains(page, `data-agent-busy="false"`) || !strings.Contains(page, "nothing pending") {
+		t.Fatal("an idle page should not ask to be polled every five seconds")
+	}
+	bridgePost(t, server, "/api/agent/verb", `{"verb":"world_stop","world":"TestWorld"}`)
+	page := agentPage(t, server)
+	if !strings.Contains(page, `data-agent-busy="true"`) || !strings.Contains(page, "awaiting your decision") {
+		t.Fatal("a pending approval should mark the page busy")
+	}
+	if !strings.Contains(page, `<script src="/assets/admin-agent.js"></script>`) {
+		t.Fatal("the refresh script is not loaded")
+	}
+}
+
+func TestTheAdminHomeLinksToTheAgentAndCountsWhatWaits(t *testing.T) {
+	server := bridgeServer(t)
+	bridgePost(t, server, "/api/agent/verb", `{"verb":"world_stop","world":"TestWorld"}`)
+	page := adminPage(t, server)
+	if !strings.Contains(page, `href="/admin/agent"`) {
+		t.Fatal("an operator cannot reach the agent page from the admin home")
+	}
+	if !strings.Contains(page, "1 awaiting you") {
+		t.Fatalf("the admin home does not say a request is waiting")
+	}
+}
+
+// agentPage renders /admin/agent the way an operator sees it.
+func agentPage(t *testing.T, server *Server) string {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodGet, "/admin/agent", nil)
+	request.RemoteAddr = "192.0.2.10:1234"
+	request.Header.Set("X-Forwarded-User", "operator")
+	request.Header.Set(adminTokenHeader, testAdminToken)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("/admin/agent = %d: %s", response.Code, response.Body.String())
+	}
+	return response.Body.String()
 }
