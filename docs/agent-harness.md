@@ -168,8 +168,8 @@ points the variable at it. Setting the variable by hand works but drifts from th
 install reads, which is how a deployment ends up refusing requests nobody changed.
 
 ```
-GET  /api/agent/verbs                  the vocabulary: class, required arguments, and why anything
-                                       unavailable is unavailable
+GET  /api/agent/verbs                  the vocabulary: class, required arguments, the optional ones
+                                       a caller may set, and why anything unavailable is unavailable
 GET  /api/agent/inbox?since=<cursor>   new turns, the next cursor, and calls awaiting approval
 POST /api/agent/message                {"body": "..."}  the agent's own turn in the conversation
 POST /api/agent/verb                   {"verb": "...", "world": "...", ...}
@@ -246,11 +246,20 @@ until a pass is triggered, so the agent acts when an operator decides it should.
    The portal holds no host access, so it cannot start a unit: the file is the whole signal and
    systemd owns the reaction. A deployment with no wake file configured behaves exactly as it did
    before - the operator triggers passes.
-3. The page shows the reply without a refresh. It polls `/admin/agent/status.json` - a two-field
-   token of the latest message id and the pending-approval count - every 5 seconds while something
-   is pending and every 30 seconds when idle, and reloads only when that token changes. While
-   there is text in the message box it does not reload at all; it says so instead, because a
-   half-written message disappearing reads as a broken page.
+3. The page shows the reply without a refresh. It polls `/admin/agent/status.json` - the latest
+   message id, the pending-approval count, and whether the agent owes a turn - and reloads only
+   when that token changes: every 2 seconds while a reply is owed, 5 while an approval waits, 30
+   when idle. While there is text in the message box it does not reload at all; it says so instead,
+   because a half-written message disappearing reads as a broken page.
+
+   While the agent owes a turn the page shows a spinner and an elapsed counter that ticks locally
+   once a second. The motion is the point: a static "working" label and a dead page look identical.
+   After 90 seconds it becomes a warning naming the units to check, because at that age the likely
+   answer is that nothing is running rather than that the model is slow.
+
+   "The agent owes a turn" is computed - the newest message's role is `operator` - not tracked. A
+   flag would need setting when a pass starts and clearing when it ends, and a runner killed
+   between the two would leave the page claiming work forever.
 4. A mutating verb stops at `pending_approval` and waits there for **Approve** or **Deny**. The
    runner reports what it is waiting for and stops rather than treating the wait as a failure.
    Deciding writes the wake file too, so an approval continues the work without a second step.

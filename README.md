@@ -492,10 +492,16 @@ systemctl status valheim-agent-runner-wake.path    # verify: active (waiting)
 The wake watcher is installed with the bridge and turned off in polling mode: two triggers for one
 job would let a single message be answered twice.
 
-**The page updates itself. Do not refresh.** It polls a two-field state token every 5 seconds
-while something is pending and every 30 seconds when idle, reloads only when that token changes,
-and never reloads while there is text in the message box — a half-written message vanishing reads
-as a broken page, so it says "new activity - reload when you are done typing" instead.
+**The page updates itself. Do not refresh.** While the agent owes a reply it shows a spinner and a
+counter that ticks — `The agent is working - 12s` — so waiting is visibly distinguishable from a
+dead page. It polls every 2 seconds while a reply is owed, 5 while an approval waits, and 30 when
+idle; it reloads only when something changed, and never while there is text in the message box,
+because a half-written message vanishing reads as a broken page.
+
+After 90 seconds with no reply it stops reassuring you and says what to check:
+`No reply after 96s. The runner may not be running: check systemctl status
+valheim-agent-runner-wake.path`. That state is derived from the conversation — the newest turn is
+yours — not from a flag a killed process would never clear.
 
 Polling mode removes the trigger step: send a message and the answer arrives on its own.
 

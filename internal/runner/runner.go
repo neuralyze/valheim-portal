@@ -381,6 +381,9 @@ func (r *Runner) Prompt(conversation []message) string {
 	b.WriteString("- Never claim something happened. The portal reports what it read back; that is the evidence.\n")
 	b.WriteString("- Say \"unmeasured\" rather than \"negligible\" when you have not measured.\n")
 	b.WriteString("- A verb needing approval will wait for the operator. That is normal, not a failure.\n")
+	b.WriteString("- Narrow a read with the arguments a verb accepts rather than trimming the answer yourself: " +
+		"asking for 5 lines is 5 lines of evidence, while asking for the default and quoting part of it " +
+		"is a claim about what you left out.\n")
 	b.WriteString("- If a question is outstanding, ask it and request no verb.\n\n")
 	b.WriteString("Verbs available to you:\n")
 	vocab := append([]Verb(nil), r.vocab...)
