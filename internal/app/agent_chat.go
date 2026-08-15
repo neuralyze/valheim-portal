@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The operator's chat surface, and the bridge a local agent process talks to.
@@ -204,7 +206,35 @@ func (s *Server) agentChatMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	s.wakeRunner("operator message")
 	http.Redirect(w, r, "/admin/agent", http.StatusSeeOther)
+}
+
+// wakeRunner writes the file a systemd path unit watches, which starts one runner pass.
+//
+// The portal cannot start a unit itself: it holds no Docker socket and no host access, which is
+// the whole point of the split. So the signal is a file in its own data directory, and systemd
+// owns the reaction - `PathModified` on the host side of that volume, triggering
+// valheim-agent-runner-once.service. Nothing here waits for the runner, and a deployment with no
+// wake file configured, or with the poller running instead, is unaffected: an absent path means
+// the operator triggers passes by hand, exactly as before.
+//
+// It writes rather than touching timestamps because `PathModified` is an inotify write watch: a
+// timestamp change alone is not reliably a trigger, and a wake that silently does nothing would
+// be indistinguishable from an agent that has nothing to say.
+//
+// Failures are deliberately quiet in the response and loud in the log. The message is already
+// stored; refusing the request because a convenience trigger failed would lose the operator's
+// text over something they can retry with one command.
+func (s *Server) wakeRunner(reason string) {
+	path := strings.TrimSpace(s.cfg.AgentWakeFile)
+	if path == "" {
+		return
+	}
+	payload := fmt.Sprintf("%s %s\n", time.Now().UTC().Format(time.RFC3339Nano), reason)
+	if err := os.WriteFile(path, []byte(payload), 0o640); err != nil {
+		log.Printf("WARN could not wake the agent runner (%s): %v", reason, err)
+	}
 }
 
 // agentChatDecide is the confirmation gate. Approval runs the verb immediately and records the
@@ -240,6 +270,9 @@ func (s *Server) agentChatDecide(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "decision must be approve or deny", http.StatusBadRequest)
 		return
 	}
+	// A decision is the other thing the agent is waiting on: approving a verb should let the work
+	// continue without the operator also triggering a pass by hand.
+	s.wakeRunner("operator decision")
 	http.Redirect(w, r, "/admin/agent", http.StatusSeeOther)
 }
 

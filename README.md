@@ -474,12 +474,23 @@ operator account that can reach neither the world tree nor the docker socket.
 
 ### Driving it
 
-Open `/admin/agent` and send a message. On demand, nothing answers until you trigger a pass —
-the message sits in the conversation until you do:
+Open `/admin/agent` and send a message. **Sending is the trigger** — a pass starts on its own,
+and so does one when you Approve or Deny, so approved work continues without a second step.
+
+That works without giving the portal any host access. The portal writes a file in its own data
+volume; a systemd path unit watches the host side of that file and starts
+`valheim-agent-runner-once.service`. The portal cannot start a unit — it has no Docker socket and
+no host reach, which is the point of the split — so systemd owns the reaction.
+
+To run a pass by hand, which is what you want when checking wiring or after editing configuration:
 
 ```sh
 sudo systemctl start valheim-agent-runner-once
+systemctl status valheim-agent-runner-wake.path    # verify: active (waiting)
 ```
+
+The wake watcher is installed with the bridge and turned off in polling mode: two triggers for one
+job would let a single message be answered twice.
 
 **The page updates itself. Do not refresh.** It polls a two-field state token every 5 seconds
 while something is pending and every 30 seconds when idle, reloads only when that token changes,
@@ -499,7 +510,7 @@ Failure text, and what each one means:
 | `not available through the portal: …` (501) | the verb is declared but has no host operation; the message names what is missing |
 | `forbidden by policy` (403) | not negotiable, and no argument changes it |
 | `Unit valheim-agent-runner-once.service not found` | the bridge is off, so no runner was installed |
-| nothing happens at all | on demand, and no pass has been triggered since you sent the message |
+| nothing happens at all | the wake watcher is not running — `systemctl status valheim-agent-runner-wake.path`. Reinstalling installs it; a pass by hand is the workaround |
 
 ### What the operator sees
 

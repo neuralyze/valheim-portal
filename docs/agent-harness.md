@@ -238,8 +238,14 @@ until a pass is triggered, so the agent acts when an operator decides it should.
 
 1. Send a message on `/admin/agent`. It is stored immediately; `agent_messages` gains a row with
    role `operator`.
-2. `sudo systemctl start valheim-agent-runner-once`. The runner reads from its persisted cursor,
-   so it answers what it has not answered before and nothing else.
+2. A pass starts by itself. The portal writes its wake file, a systemd path unit
+   (`valheim-agent-runner-wake.path`) sees the write and starts `valheim-agent-runner-once`, and the
+   runner reads from its persisted cursor - so it answers what it has not answered before and
+   nothing else. `sudo systemctl start valheim-agent-runner-once` does the same thing by hand.
+
+   The portal holds no host access, so it cannot start a unit: the file is the whole signal and
+   systemd owns the reaction. A deployment with no wake file configured behaves exactly as it did
+   before - the operator triggers passes.
 3. The page shows the reply without a refresh. It polls `/admin/agent/status.json` - a two-field
    token of the latest message id and the pending-approval count - every 5 seconds while something
    is pending and every 30 seconds when idle, and reloads only when that token changes. While
@@ -247,6 +253,7 @@ until a pass is triggered, so the agent acts when an operator decides it should.
    half-written message disappearing reads as a broken page.
 4. A mutating verb stops at `pending_approval` and waits there for **Approve** or **Deny**. The
    runner reports what it is waiting for and stops rather than treating the wait as a failure.
+   Deciding writes the wake file too, so an approval continues the work without a second step.
 
 In polling mode step 2 disappears and everything else is identical, which is why both units share
 one environment file: what you rehearse on demand is what the poller does.

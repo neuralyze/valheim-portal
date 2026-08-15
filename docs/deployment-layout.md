@@ -45,6 +45,8 @@ itself, but the scripts are the supported path.
 | `/etc/systemd/system/valheim-agent-runner.service` | the poller, enabled only when `AGENT_RUNNER_SERVICE=true` |
 | `/etc/systemd/system/valheim-agent-runner-once.service` | one pass on demand; installed but never enabled |
 | `/var/lib/valheim-agent-runner/cursor` | the runner's inbox position, so a restart does not re-answer a question |
+| `/etc/systemd/system/valheim-agent-runner-wake.path` | watches the portal's wake file and starts one pass; enabled with the bridge, off in polling mode |
+| `<portal data volume>/agent-wake` | written by the portal when the operator sends a message or decides a verb. The only writable path it has: every other mount is read-only |
 | `/srv/valheim-portal/.env` | generated from `deploy/install.conf` on every install. Hand-edits here are lost on the next one; the previous file is kept as `.env.replaced` |
 
 `deploy/install.conf` is untracked operator data and is the only file to edit. Everything in the

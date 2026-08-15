@@ -169,6 +169,29 @@ if [[ -d $off ]]; then
   done
 fi
 
+# --- the wake trigger, and why it is exclusive with the poller ----------------------------------
+# "Hit send and it answers" is a systemd path unit watching a file the portal writes. Two triggers
+# for one job would let a single message be answered twice, so the wake path is set only when the
+# poller is off.
+if [[ -f $on/compose.env ]]; then
+  expect_value "$on/compose.env" PORTAL_AGENT_WAKE_PATH /var/lib/valheim-portal/agent-wake
+fi
+if [[ -f $off/compose.env ]]; then
+  # No bridge, no runner, nothing to wake.
+  expect_value "$off/compose.env" PORTAL_AGENT_WAKE_PATH ""
+fi
+
+polling=$tmp/polling
+write_config "$tmp/polling.conf" "PORTAL_ENABLE_AGENT_BRIDGE=true" "AGENT_RUNNER_SERVICE=true"
+if stage "$polling" "$tmp/polling.conf"; then
+  expect_value "$polling/compose.env" PORTAL_AGENT_WAKE_PATH ""
+  # The poller must still be installed and enabled in this mode.
+  if [[ ! -f $polling/etc/systemd/system/valheim-agent-runner.service ]]; then
+    echo "FAIL: polling mode installed no polling unit" >&2
+    failures=$((failures + 1))
+  fi
+fi
+
 # --- omp must reach the unit as an absolute path -------------------------------------------------
 # A unit's PATH does not include a user's ~/.local/bin, so a bare name in the environment file is a
 # service that starts and immediately fails to exec. A relative path is refused; an explicit one is

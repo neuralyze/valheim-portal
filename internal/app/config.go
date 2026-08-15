@@ -10,15 +10,19 @@ import (
 )
 
 type Config struct {
-	ListenAddr       string
-	DatabasePath     string
-	ArtifactRoot     string
-	CSRFSecretFile   string
-	MapRoot          string
-	MapSourceRoot    string
-	AuthHeader       string
-	CookieSecure     bool
-	AgentSocket      string
+	ListenAddr     string
+	DatabasePath   string
+	ArtifactRoot   string
+	CSRFSecretFile string
+	MapRoot        string
+	MapSourceRoot  string
+	AuthHeader     string
+	CookieSecure   bool
+	AgentSocket    string
+	// Touched when the operator sends a message or decides a verb. A systemd path unit
+	// watches it and starts one runner pass, because the portal holds no host access of
+	// its own. Empty means passes are triggered by hand.
+	AgentWakeFile    string
 	AgentTokenFile   string
 	PublicBaseURL    string
 	ClientExecutable string
@@ -77,6 +81,7 @@ func LoadConfig() (Config, error) {
 		AuthHeader:       getenv("PORTAL_AUTH_HEADER", "X-Forwarded-User"),
 		CookieSecure:     getenv("PORTAL_COOKIE_SECURE", "true") != "false",
 		AgentSocket:      getenv("PORTAL_AGENT_SOCKET", "/run/valheim-agent/agent.sock"),
+		AgentWakeFile:    getenv("PORTAL_AGENT_WAKE_FILE", ""),
 		AgentTokenFile:   os.Getenv("PORTAL_AGENT_TOKEN_FILE"),
 		PublicBaseURL:    os.Getenv("PORTAL_PUBLIC_BASE_URL"),
 		ClientExecutable: getenv("PORTAL_CLIENT_EXECUTABLE", "/srv/client/ValheimProfileSync.exe"),

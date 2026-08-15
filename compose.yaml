@@ -17,6 +17,11 @@ services:
       # host file below is mounted either way, so an empty value here is a portal
       # that no agent process can drive.
       PORTAL_AGENT_BRIDGE_TOKEN_FILE: ${PORTAL_AGENT_BRIDGE_TOKEN_PATH:-}
+      # Touched when the operator sends a message or decides a verb. A systemd path
+      # unit on the host watches the same file through this volume and starts one
+      # runner pass, so "hit send" is the trigger without the portal holding any host
+      # access. Empty leaves passes to be triggered by hand.
+      PORTAL_AGENT_WAKE_FILE: ${PORTAL_AGENT_WAKE_PATH:-}
       PORTAL_AGENT_SOCKET: /run/agent/agent.sock
       PORTAL_TRUSTED_PROXY_CIDR: ${PORTAL_TRUSTED_PROXY_CIDR:?set the reverse proxy CIDR}
       PORTAL_AUTH_HEADER: ${PORTAL_AUTH_HEADER:-X-Forwarded-User}
