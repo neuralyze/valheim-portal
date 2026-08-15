@@ -105,3 +105,32 @@ def test_a_verb_the_code_never_implements_is_caught(tmp_path):
         '"world_backup":  {ID: "world_backup", Class: ClassWorldState, Operation: "backup", NeedsWorld: true},', ""))
     problems = check_agent_policy.check(root)
     assert any("world_backup" in p and "absent from internal/app/verbs.go" in p for p in problems), problems
+
+
+def _copy_with_readme(tmp_path: Path) -> Path:
+    root = _copy_with_go(tmp_path)
+    shutil.copy(REPO / "README.md", root / "README.md")
+    return root
+
+
+def test_the_readme_counts_match_the_code():
+    assert check_agent_policy.check(REPO) == []
+
+
+def test_a_stale_readme_count_is_caught(tmp_path):
+    # An installation guide claiming more verbs work than do is the kind of number someone acts
+    # on, so it is checked against the table that answers it rather than trusted.
+    root = _copy_with_readme(tmp_path)
+    readme = root / "README.md"
+    readme.write_text(readme.read_text().replace("17 execute through the portal today",
+                                                 "22 execute through the portal today"))
+    problems = check_agent_policy.check(root)
+    assert any("README.md says 22 executing" in p for p in problems), problems
+
+
+def test_a_stale_forbidden_count_is_caught(tmp_path):
+    root = _copy_with_readme(tmp_path)
+    readme = root / "README.md"
+    readme.write_text(readme.read_text().replace(" 4 forbidden", " 2 forbidden"))
+    problems = check_agent_policy.check(root)
+    assert any("forbidden" in p and "README.md says 2" in p for p in problems), problems

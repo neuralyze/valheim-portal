@@ -20,6 +20,9 @@ from pathlib import Path
 import yaml
 
 MUTATING_CLASSES = {"world_state", "player_facing"}
+README_COUNTS = re.compile(
+    r"(?P<total>\d+) verbs declared\s*\n\s*(?P<execute>\d+) execute[^\n]*\n\s*(?P<refused>\d+) refused by design[^\n]*\n\s*(?P<forbidden>\d+) forbidden"
+)
 GO_VERB = re.compile(r'"(?P<verb>[a-z_]+)":\s*\{ID:\s*"(?P<id>[a-z_]+)",\s*Class:\s*Class(?P<cls>\w+)')
 GO_CLASS_NAMES = {
     "Read": "read", "RepoWrite": "repo_write", "WorldState": "world_state",
@@ -103,8 +106,9 @@ def check(root: Path) -> list[str]:
     # code is unenforced; one that exists only in the code is undeclared. Both are drift.
     registry = root / "internal/app/verbs.go"
     if registry.is_file():
+        registry_text = registry.read_text()
         implemented: dict[str, str] = {}
-        for match in GO_VERB.finditer(registry.read_text()):
+        for match in GO_VERB.finditer(registry_text):
             if match.group("verb") != match.group("id"):
                 problems.append(
                     f"internal/app/verbs.go: map key {match.group('verb')!r} does not match "
@@ -122,7 +126,42 @@ def check(root: Path) -> list[str]:
         for verb_id in implemented:
             if verb_id not in declared:
                 problems.append(f"verb {verb_id!r} is implemented in internal/app/verbs.go but not declared in policy.yaml")
+
+        # The README states how many verbs execute today. A number in prose rots the moment a
+        # verb is wired, and a stale number in an installation guide is worse than none: it is
+        # the sort of claim someone acts on. So it is checked against the code that answers it.
+        readme = root / "README.md"
+        if readme.is_file():
+            text = readme.read_text()
+            match = README_COUNTS.search(text)
+            if match is None:
+                if "verb-counts:" in text:
+                    problems.append("README.md carries the verb-counts marker but the block no longer parses")
+            else:
+                executes = sum(1 for verb in verbs if verb.get("class") != "forbidden" and _wired(registry_text, verb["id"]))
+                forbidden = sum(1 for verb in verbs if verb.get("class") == "forbidden")
+                refused = len(verbs) - executes - forbidden
+                for name, stated, actual in (
+                    ("total", int(match.group("total")), len(verbs)),
+                    ("executing", int(match.group("execute")), executes),
+                    ("refused by design", int(match.group("refused")), refused),
+                    ("forbidden", int(match.group("forbidden")), forbidden),
+                ):
+                    if stated != actual:
+                        problems.append(
+                            f"README.md says {stated} {name} verb(s); policy.yaml and "
+                            f"internal/app/verbs.go say {actual}"
+                        )
     return problems
+
+
+def _wired(registry_text: str, verb_id: str) -> bool:
+    """Whether the Go table gives this verb an Operation, i.e. the portal can actually run it."""
+    match = re.search(
+        r'"' + re.escape(verb_id) + r'":\s*\{ID:\s*"' + re.escape(verb_id) + r'",[^\n]*',
+        registry_text,
+    )
+    return bool(match) and "Operation:" in match.group(0)
 
 
 def main(argv: list[str]) -> int:

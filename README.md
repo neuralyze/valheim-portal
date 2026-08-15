@@ -159,42 +159,133 @@ The shipped build scripts already pass it.
 
 ## Installation
 
+Written to be followed by a person or by an agent. Every step has a command to run and a
+command that proves it worked; where a step can fail quietly, the failure is named next to
+it. If a verification does not print what it says here, stop there rather than continuing.
+
+### Before you start
+
+Check each of these rather than assuming. The right-hand column is what a missing one costs.
+
 ```sh
-# 1. This repository, and the server checkout its scripts drive.
+go version          # need go1.26.5 or newer; the installer builds the agent from source
+docker compose version   # need Compose v2; the scripts call `docker compose`, not `docker-compose`
+python3 --version   # need 3.11+; the mod tooling is Python
+sqlite3 --version   # used by the release and profile tooling
+shellcheck --version     # only needed to run the checks, not to install
+id -u               # the installer needs root; run it with sudo
+```
+
+### 1. Clone this repository and the server checkout its scripts drive
+
+```sh
 git clone https://github.com/neuralyze/valheim-portal.git /srv/valheim-portal
 cd /srv/valheim-portal
 git clone https://github.com/lloesche/valheim-server-docker.git /srv/valheim-server-docker
 printf 'PUID=1000\nPGID=1000\n' > /srv/valheim-server-docker/default.env
+```
 
-# 2. The two operator data files. Edit both to your real worlds.
+Verify: `test -f /srv/valheim-server-docker/docker-compose.yaml && echo ok`
+
+The second checkout is a separate Apache-2.0 project and is deliberately not vendored.
+Without it, every lifecycle script exits 78 naming `VALHEIM_SERVER_DOCKER_DIR`.
+
+### 2. The two operator data files
+
+```sh
 cp hostops/worlds.txt.example hostops/worlds.txt
 cp release-targets.json.example release-targets.json
+# edit both to your real worlds before continuing
+```
 
-# 3. Deployment configuration: base URL, proxy CIDR, world root,
-#    server checkout, allowed worlds.
+Verify: `grep -c . hostops/worlds.txt` prints one line per world you intend to operate, and
+`python3 -c 'import json;print(len(json.load(open("release-targets.json"))["vr"]))'` prints
+the number of VR targets you declared.
+
+**This is the step that fails silently.** A world missing from `hostops/worlds.txt` is never
+backed up *and the run still reports success*. An absent or empty `release-targets.json`
+makes the client-release cutover guard find no targets, so a server can start without a
+package that every player's installed release still expects.
+
+### 3. Deployment configuration
+
+```sh
 cp deploy/install.conf.example deploy/install.conf
+# set: base URL, trusted proxy CIDR, world root, server checkout, allowed worlds
+```
 
-# 4. Preview, then install.
+Verify: `grep -E '^(PORTAL_PUBLIC_BASE_URL|VALHEIM_WORLD_ROOT|VALHEIM_SERVER_DOCKER_DIR)=' deploy/install.conf`
+prints all three with real values. None has a default: a script that needs one and does not
+find it exits 78 naming the variable, rather than guessing a path it would then stop or
+delete a server in.
+
+### 4. Preview, then install
+
+```sh
 sudo ./scripts/install-portal.sh install --config deploy/install.conf --dry-run
 sudo ./scripts/install-portal.sh install --config deploy/install.conf
 ```
 
-Then point your reverse proxy at `127.0.0.1:18080`, have it send
-`X-Portal-Admin-Token` on `/admin` and blank both identity headers everywhere else,
-and confirm the whole boundary:
+Verify: `curl -fsS http://127.0.0.1:18080/healthz` prints `ok`, and
+`docker ps --format '{{.Names}}' | grep valheim-portal` lists the container.
+
+### 5. Reverse proxy, then prove the boundary
+
+Point your proxy at `127.0.0.1:18080`. It must send `X-Portal-Admin-Token` on `/admin` and
+blank both identity headers everywhere else. Then:
 
 ```sh
 sudo ./scripts/install-portal.sh verify --config deploy/install.conf
 ```
 
-**Step 2 is the one that fails silently.** A world missing from `hostops/worlds.txt`
-is never backed up and the run still reports success; an absent `release-targets.json`
-makes the client-release cutover guard find no targets, so a server can start without
-a package every player's client release still expects.
+Verify: the command exits 0. A non-zero exit names the specific boundary that failed; do not
+continue past it, because the failure modes are "the admin surface is reachable without the
+token" and "player routes can assert an identity".
 
-The full walkthrough — prerequisites, the proxy configuration in detail, the security
-model, upgrades and troubleshooting — is in
-[docs/installation.md](docs/installation.md).
+### 6. Check the build the way CI does
+
+```sh
+scripts/check.sh          # thirteen gates, first failure wins, ~1 minute cold
+scripts/check.sh --list   # what they are
+```
+
+Verify: the last line reads `all gates passed`. A failure names the gate and the command to
+reproduce it — `scripts/check.sh --only <gate>`.
+
+The full walkthrough — prerequisites in detail, the proxy configuration, the security model,
+upgrades and troubleshooting — is in [docs/installation.md](docs/installation.md).
+
+## Working in this repository, as a person or as an agent
+
+Three checkouts of this project can exist on one host and they are not
+interchangeable. Before running anything, know which one you are in:
+
+```text
+the dev checkout      where code changes belong; this is what pushes to GitHub
+/srv/valheim-portal   the host copy the installer deploys and the agent's scripts run from
+the live deployment   whatever directory the running compose project was created in
+```
+
+`docker inspect <container> --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'`
+answers which directory is serving players. Confusing them has cost real time here: a fix was
+once read out of a stale checkout and reported as shipped.
+
+**Never write directly to:**
+
+```text
+/srv/valheim-portal                      the deployed copy; change the dev checkout and reinstall
+<world root>/<World>/config_merged       generated; change it through hostops/manage_mods.sh
+<world root>/<World>/worlds*             player saves
+any .env in a world directory            production secrets
+```
+
+And never run `git clean` in a world directory: untracked files there include live
+configuration.
+
+The repository's law for automated work is [CLAUDE.md](CLAUDE.md) — what may be written,
+which actions need an operator, and the evidence rules. `AGENTS.md` is **not** it here: this
+checkout excludes that file locally because the build system generates it, so anything
+written there would be overwritten and would never reach a clone.
 
 ## How it works
 
@@ -285,6 +376,115 @@ operations come first:
   metadata.
 * **Audit log** — every privileged action with actor, target and timestamp.
 
+## Agent operation
+
+The portal can be driven by an AI agent through a fixed, gated surface: an operator chats to
+it on `/admin/agent`, and it manages mods, profiles and worlds by requesting **verbs**. The
+portal — not the agent — decides what is allowed and records what happened.
+
+The lane is drawn mechanically, because prose did not hold. This project spent a working day
+with an agent that had standing instructions and violated them repeatedly: nine plugin
+releases chasing one behaviour, a client manifest overwritten unread, a setting shipped
+inverted, work published while the operator was still asking a question. What stopped it was
+not a rule; it was a hook that refused a write and a policy layer that refused a capability.
+
+### The verbs
+
+[`policy.yaml`](policy.yaml) is the authoritative definition: every verb, its approval class,
+its preconditions, its evidence requirement. As of 15 Aug 2026:
+
+<!-- verb-counts: checked by tools/check_agent_policy.py -->
+```text
+24 verbs declared
+17 execute through the portal today
+ 3 refused by design      repo_edit, plugin_build (the agent's own workspace), world_restore
+ 4 forbidden              upstream_push, delete_server, provision, secrets_read
+```
+
+Approval is decided by class, not by the agent's argument for it:
+
+| class | approval | covers |
+|---|---|---|
+| `read` | none | status, logs, manifests, changelogs, deploy plans |
+| `repo_write` | none | code and builds in the agent's own checkout |
+| `world_state` | **every invocation** | mods, deploys, starts, stops, backups |
+| `player_facing` | **every invocation** | publishing a profile players download |
+| `forbidden` | never | enforced by absence — no credential, no write access |
+
+A deploy whose plan shows no changes is refused rather than confirmed: it would stop a world
+to change nothing.
+
+### Turning it on
+
+```sh
+# 1. omp owns authentication. The portal stores no model keys and never sees one.
+omp setup
+omp auth-broker login <provider>
+omp auth-broker status            # verify: your account is listed
+
+# 2. Give the portal a bridge token. Absent, the bridge is off.
+openssl rand -hex 32 | sudo tee /etc/valheim-portal/bridge-token > /dev/null
+sudo chmod 600 /etc/valheim-portal/bridge-token
+# set PORTAL_AGENT_BRIDGE_TOKEN_FILE=/etc/valheim-portal/bridge-token, then restart the portal
+
+# 3. Run the process that reads the conversation and requests verbs.
+PORTAL_AGENT_BRIDGE_TOKEN_FILE=/etc/valheim-portal/bridge-token \
+  agent-runner -portal http://127.0.0.1:18080 -once      # a single pass, to check the wiring
+```
+
+Verify step 3 prints a line like `agent-runner: 24 verbs, 17 available, cursor 0`. Then open
+`/admin/agent` and send a message.
+
+Failure text, and what each one means:
+
+| You see | It means |
+|---|---|
+| `agent bridge disabled; set PORTAL_AGENT_BRIDGE_TOKEN_FILE` (503) | the portal has no bridge token — step 2 was skipped or the portal was not restarted |
+| `bridge token required` (401) | the token is configured but the runner presented a wrong or absent one |
+| `not available through the portal: …` (501) | the verb is declared but has no host operation; the message names what is missing |
+| `forbidden by policy` (403) | not negotiable, and no argument changes it |
+
+### What the operator sees
+
+`/admin/agent` lists every request with its class, status, full arguments, and the evidence the
+portal read back from the host — not the agent's summary of it. Mutating requests wait there
+with **Approve** and **Deny**. A publish approval is shown against what that world already
+serves and how many releases have gone out in the last day, which is the brake that replaces
+publish limits.
+
+The page keeps itself current, and will not reload while you are typing a message.
+
+### Tasks and durable facts
+
+Outstanding work lives in [beads](https://github.com/gastownhall/beads), not in a chat log:
+
+```sh
+bd list --status=open     # what is actually outstanding
+bd ready                  # what can be started
+```
+
+A fresh clone bootstraps its own tracker. Note the flag:
+
+```sh
+bd init --remote ''       # the empty remote matters
+```
+
+Without it, `bd init` inherits the nearest parent workspace's sync remote and clones that
+project's issues — 848 of them, twice, when this was set up. `tools/check_beads_workspace.py`
+fails the build if the local tracker is not this project's.
+
+### The checks that keep it honest
+
+```sh
+python3 tools/check_agent_policy.py     # policy.yaml, the docs and the Go verb table agree
+python3 tools/check_perframe_work.py    # no unbounded scene search on a per-frame path
+python3 tools/check_beads_workspace.py  # the tracker belongs to this project
+```
+
+The first is the one that matters most for this section: it fails when `policy.yaml`, the verb
+table in `internal/app/verbs.go`, and the documented tables disagree — including the counts
+above. The details are in [docs/agent-harness.md](docs/agent-harness.md).
+
 ## Profile releases
 
 A release is scoped by world, profile, client type (`flat` or `vr`), and version. Multiple profiles for the same world and client type may be current simultaneously.
@@ -361,6 +561,8 @@ Never pass host paths such as `/var/lib/docker/volumes/portal_portal-data/_data/
 | [docs/installation.md](docs/installation.md) | Installing. The security model the deployment depends on. |
 | [docs/operations.md](docs/operations.md) | Running it. Releases, world operations, player access, and how world status is measured. |
 | [docs/development.md](docs/development.md) | Changing it. What a clean clone can and cannot verify. |
+| [docs/agent-harness.md](docs/agent-harness.md) | Letting an agent operate it. The verb surface, the approval classes, the bridge API, the runner, and what it may never decide. |
+| [policy.yaml](policy.yaml) / [CLAUDE.md](CLAUDE.md) | The authoritative verb and approval definition, and the law automated work follows in this repository. |
 | [docs/command-reference.md](docs/command-reference.md) | Every command in `cmd/` and every script in `scripts/`. |
 | [docs/architecture.md](docs/architecture.md) / [docs/threat-model.md](docs/threat-model.md) | Reviewing the design or its boundaries. |
 | [docs/client-install.md](docs/client-install.md) | Helping a player install a profile. |
