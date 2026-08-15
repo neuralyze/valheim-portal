@@ -12,6 +12,11 @@ mod management, C# under `tools/vrfixes/` for the VR client plugin.
 
 ## Scope
 
+The machine-readable version of everything below is `policy.yaml`, and
+`docs/agent-harness.md` explains how a harness consumes it. When this file and
+`policy.yaml` disagree, `policy.yaml` wins and CI says so.
+
+
 Primary purpose: managing and developing the Valheim deployment — mods, profiles, worlds, the VR
 plugin. Changing the portal's own code is permitted but is not the point of the work.
 

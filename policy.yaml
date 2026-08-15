@@ -1,0 +1,259 @@
+# Machine-readable policy for automated work in this repository.
+#
+# This file is authoritative. CLAUDE.md explains it in prose for humans and agents, and
+# tools/check_agent_policy.py fails CI when the two disagree - prose drifts, checks do not.
+#
+# Every verb maps to a command that already exists and already validates its own inputs. An
+# agent gets this vocabulary and no shell: a closed verb list can only fail in ways the repo
+# already handles, while an improvising agent invents new ones.
+
+schema: 1
+project: valheim-portal
+
+# ---------------------------------------------------------------------------------------------
+# Approval classes
+# ---------------------------------------------------------------------------------------------
+classes:
+  read:
+    approval: none
+    description: Observation only. No file, world or release state changes.
+  repo_write:
+    approval: none
+    description: >
+      Edits inside this checkout - code, tests, branches, local commits. Includes authoring and
+      building the C# VR plugin, which is the primary purpose of the agent.
+  world_state:
+    approval: every_invocation
+    description: >
+      Touches a server, its mods or its data. Confirmation is required on every call, including
+      repeats against other worlds, because each one implies downtime for players.
+  player_facing:
+    approval: every_invocation
+    description: >
+      Produces or confirms something a player downloads. Requires evidence read back out of the
+      resulting artifact, not a claim about it.
+  forbidden:
+    approval: never
+    description: >
+      Not available to an agent. Where possible this is enforced by absence - no credential, no
+      write access - rather than by refusal.
+
+# ---------------------------------------------------------------------------------------------
+# Verbs
+# ---------------------------------------------------------------------------------------------
+verbs:
+  - id: world_status
+    class: read
+    maps_to: portal operation "status"
+    purpose: Container state, world version, player count.
+
+  - id: world_logs
+    class: read
+    maps_to: portal operation "logs"
+    purpose: Capture server output. Host copies live in /var/log/valheim-worlds/<World>.log.
+
+  - id: mod_inventory
+    class: read
+    maps_to: tools/valheim_mods.py list
+    purpose: What the manifest selects, per world and profile.
+
+  - id: mod_check_updates
+    class: read
+    maps_to: tools/valheim_mods.py check-updates
+    purpose: Compare pinned versions against Thunderstore.
+
+  - id: mod_notes
+    class: read
+    maps_to: tools/valheim_mods.py notes
+    purpose: >
+      Changelogs for every version being crossed, from Thunderstore and GitHub releases. Read
+      before proposing an upgrade; seven mods were once upgraded blind in one session.
+
+  - id: mod_search
+    class: read
+    maps_to: tools/valheim_mods.py search
+    purpose: Find a package on Thunderstore.
+
+  - id: release_status
+    class: read
+    maps_to: tools/valheim_mods.py release-status
+    purpose: >
+      Whether a client-release cutover is outstanding. start_valheim_server.sh refuses to start
+      a world while one is.
+
+  - id: deploy_plan
+    class: read
+    maps_to: hostops/manage_mods.sh <World> deploy
+    purpose: >
+      The file-level difference between the manifest cache and what is deployed. This output is
+      the confirmation prompt for deploy_apply, not a summary of it.
+
+  - id: repo_edit
+    class: repo_write
+    maps_to: edits within this checkout
+    purpose: >
+      Code, tests, configuration and C# plugin sources under tools/vrfixes and tools/worldseed.
+    requires:
+      - Tests for pure logic; a Unity-facing layer stays thin enough to inspect.
+      - tools/check_perframe_work.py passes with no new violations.
+      - Existing gates are not routed around.
+
+  - id: plugin_build
+    class: repo_write
+    maps_to: tools/vrfixes/build.sh
+    purpose: Compile the VR plugin. Produces a DLL; shipping it is a separate, player-facing verb.
+
+  - id: mod_add
+    class: world_state
+    maps_to: tools/valheim_mods.py add
+    purpose: Select a package in a world's manifest.
+    invariants: [client_server_parity, dependencies_complete]
+
+  - id: mod_remove
+    class: world_state
+    maps_to: tools/valheim_mods.py remove
+    purpose: Deselect a package, back up its files and record the removal.
+    preconditions: [server_stopped]
+    evidence: removal.json in the backup directory reads state=completed
+    rollback: the backup directory beside it holds the manifest and the removed files
+
+  - id: mod_update
+    class: world_state
+    maps_to: tools/valheim_mods.py update
+    purpose: Move pinned versions forward.
+    requires: [mod_notes read for every version crossed]
+    invariants: [client_server_parity, dependencies_complete]
+
+  - id: deploy_apply
+    class: world_state
+    maps_to: portal operation "mod_deploy" (backup -> stop -> mod_deploy -> start)
+    purpose: Make a world's running plugins match its manifest.
+    preconditions:
+      - deploy_plan shows at least one change; an empty plan must be refused, not confirmed,
+        because it takes a world down and restarts it for nothing.
+    evidence: the plan shown at confirmation, then deployed files matching the manifest cache
+    rollback: mods/deployment-backups/<profile>/legacy-plugins.previous
+
+  - id: world_start
+    class: world_state
+    maps_to: hostops/start_valheim_server.sh
+    purpose: >
+      docker compose up -d for one world. Creates the container if it does not exist; a removed
+      container is the normal state after a stop.
+    preconditions: [no_pending_release_cutover]
+
+  - id: world_stop
+    class: world_state
+    maps_to: portal operation "stop" (backup -> stop)
+    purpose: Back up and stop a world.
+
+  - id: world_backup
+    class: world_state
+    maps_to: portal operation "backup"
+    purpose: Take a world backup now.
+
+  - id: world_restore
+    class: world_state
+    maps_to: portal operation "restore" (backup -> stop -> restore)
+    purpose: Restore a world from a backup.
+
+  - id: publish_profile
+    class: player_facing
+    maps_to: scripts/republish-profiles.sh
+    purpose: Publish a profile version that players download.
+    requires:
+      - One behavioural change per publish. Six changes in a release leave nothing to verify.
+      - >
+        A citation for every changed setting: the config's own description, or the code that
+        binds it. LODBiasMax once shipped inverted because its direction was asserted from
+        memory instead of read.
+    evidence: >
+      Read the change back out of the published artifact - the setting's value, or a string
+      unique to the new code. On 13 Aug a fix committed at 00:11 was reported live in a release
+      built seventeen hours earlier, and the operator tested four times against a build that
+      could not contain it.
+
+  - id: release_confirm
+    class: player_facing
+    maps_to: tools/valheim_mods.py release-confirm
+    purpose: Record that a published client release covers a pending removal.
+    evidence: >
+      release_status afterwards reports nothing pending for that world, read from the cutover
+      record rather than from the confirmation's own exit code.
+
+  - id: upstream_push
+    class: forbidden
+    maps_to: git push to a parent repository
+    purpose: >
+      Disabled for now by operator decision. Enforced by absence: the agent's environment holds
+      no credential for a parent remote. Output stops at a branch plus a patch and its evidence,
+      which a human reviews and pushes.
+
+  - id: delete_server
+    class: forbidden
+    maps_to: portal operation "delete_server"
+    purpose: Destroys a world's server. Operator-only, never automated.
+
+  - id: provision
+    class: forbidden
+    maps_to: portal operation "provision"
+    purpose: Creates a new world and can start it. Operator-only.
+
+  - id: secrets_read
+    class: forbidden
+    maps_to: reading .env or credential files
+    purpose: >
+      World directories hold production secrets. Nothing an agent does requires them, and logs
+      must not carry them.
+
+# ---------------------------------------------------------------------------------------------
+# Filesystem boundaries
+# ---------------------------------------------------------------------------------------------
+paths:
+  writable:
+    - repos/valheim-portal-main
+  read_only:
+    - /media/big4/projects/game/valheim/<World>/mods/profiles
+  never_write:
+    - /srv/valheim-portal
+    - /media/big3/Projects/Game/valheim/server/ValheimConfig/portal
+    - /media/big4/projects/game/valheim/<World>/config_merged
+    - /media/big4/projects/game/valheim/<World>/worlds
+  never_run:
+    - git clean in any world directory; untracked files there include live configuration
+
+# ---------------------------------------------------------------------------------------------
+# Invariants checked after a change, not asserted
+# ---------------------------------------------------------------------------------------------
+invariants:
+  client_server_parity:
+    statement: Client and server package lists must match, or the join handshake refuses.
+    check: tools/valheim_mods.py list on both sides; 7 client-only packages are the exception.
+  dependencies_complete:
+    statement: Every selected package's dependencies are selected and resolvable.
+    check: tools/valheim_mods.py add/sync resolve dependencies; a missing one throws at load.
+  rollback_available:
+    statement: No mutation runs unless its reversal exists.
+    check: removal backups, deployment backups, archived releases in the portal database.
+  cutover_recorded:
+    statement: A removal that affects players records a client-release cutover.
+    check: release_status reports nothing pending before world_start.
+
+# ---------------------------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------------------------
+reporting:
+  budgets: >
+    None, by operator decision. The brake on publish volume is the human confirmation, so the
+    confirmation must show a release diff against what is currently live - settings changed,
+    plugin markers changed, mod versions changed - making "this is the sixth build chasing the
+    same behaviour" visible. Forty publishes happened in one evening without that.
+  unmeasured_is_not_negligible: >
+    State "unmeasured" rather than "negligible". A once-per-second scene sweep was dismissed as
+    too small to matter, unmeasured, and was the cause of a day-long frame-rate collapse.
+  failure_records_a_bead: >
+    A verb that fails after changing anything files or updates a bead before returning. Three
+    worlds once ended in a half-finished removal with no record anywhere.
+  questions_block: >
+    An unanswered question blocks the action. It is never resolved by the agent's best guess.
+  task_source_of_truth: bd (beads); outstanding work comes from bd list, never from narrative.

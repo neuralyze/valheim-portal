@@ -11,3 +11,5 @@ packaging
 # tools/ needs it, and the CI job installs it for that one step. Adding it here
 # would make every contributor running the tool tests pull a .NET metadata
 # parser they will never execute.
+# policy.yaml is parsed by tools/check_agent_policy.py in CI.
+PyYAML

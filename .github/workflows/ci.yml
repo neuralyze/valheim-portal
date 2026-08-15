@@ -187,6 +187,14 @@ jobs:
           # It cost a day of the frame rate and was visible in the source throughout.
           python3 tools/check_perframe_work.py
 
+      - name: agent policy matches its documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          # policy.yaml is what a harness reads and docs/agent-harness.md is what a human reads.
+          # When they drift, one of them is a lie, and prose is usually the one that rots.
+          python3 tools/check_agent_policy.py
+
       - name: VR scanner import check
         shell: bash
         run: |
