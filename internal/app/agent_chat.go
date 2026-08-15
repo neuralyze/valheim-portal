@@ -503,8 +503,8 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 
 const agentChatTemplate = `<!doctype html><html><head><meta charset="utf-8"><title>Agent - Neuralyze Valheim</title></head>
 <body class="admin">
-<header class="admin-nav"><a class="button-link secondary" href="/admin">Administration</a>` + adminNavigation + `</header>
-<main class="admin-overview" data-agent-status="{{.State}}" data-agent-busy="{{if .Busy}}true{{else}}false{{end}}">
+<header class="admin-nav">` + adminNavigation + `</header>
+<main class="shell" data-agent-status="{{.State}}" data-agent-busy="{{if .Busy}}true{{else}}false{{end}}">
 <h1>Agent</h1>
 <p class="install-note"><span data-agent-indicator>{{if .Busy}}{{.Pending}} request(s) awaiting your decision{{else}}nothing pending{{end}}</span></p>
 {{if not .BridgeEnabled}}<p class="notes warning">The agent bridge is disabled. Set <code>PORTAL_AGENT_BRIDGE_TOKEN_FILE</code> to let an agent process connect.</p>{{end}}
@@ -536,11 +536,13 @@ const agentChatTemplate = `<!doctype html><html><head><meta charset="utf-8"><tit
 
 <h2>Conversation</h2>
 {{if .Messages}}<p class="install-note">Showing the last {{.Shown}} turn(s), oldest first.</p>{{end}}
-{{range .Messages}}<article class="player-card agent-turn-{{.Role}}"><h3>{{.Role}}</h3><pre class="notes">{{.Body}}</pre></article>{{end}}
+{{range .Messages}}<article class="agent-turn agent-turn-{{.Role}}"><h3>{{.Role}}</h3><pre class="notes">{{.Body}}</pre></article>{{end}}
 
 <form method="post" action="/admin/agent/message">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
-<label>Message <textarea name="body" rows="4" required></textarea></label>
+<label class="agent-compose">Message
+<textarea name="body" rows="4" required placeholder="Ask for something, or answer a question the agent asked."></textarea>
+</label>
 <button type="submit">Send</button>
 </form>
 </main>

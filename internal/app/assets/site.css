@@ -1025,12 +1025,27 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
   .world-map-page .map { height: 65vh; min-height: 24rem; }
 }
 
+/* The agent page. A single reading column: the dashboard's four-column grid turned this page into
+   headings beside cards and a conversation scattered across columns, which is only visible by
+   looking at it. Requests stack, and each one keeps its arguments, evidence and buttons together. */
+.shell > h2 { margin: 1.4rem 0 .6rem; }
+.shell > .admin-widget { display: block; margin: 0 0 .8rem; padding: .9rem 1rem; }
+.shell > .admin-widget h3 { margin: 0 0 .5rem; }
+.shell > .admin-widget .facts { width: 100%; margin: 0 0 .6rem; }
+.shell > .admin-widget .facts th { width: 11rem; text-align: left; opacity: .7; font-weight: 500; }
+.shell > .admin-widget .server-card-controls { display: flex; gap: .5rem; margin-top: .7rem; }
+/* Conversation text and evidence wrap. Without this a single long line runs off the right edge and
+   the operator reads half a sentence - visible only by looking at the page. */
+.shell pre.notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-compose { display: block; margin: 0 0 .6rem; }
+.agent-compose textarea { display: block; width: 100%; margin-top: .3rem; }
+.agent-turn { display: block; margin: 0 0 .6rem; padding: .6rem .8rem; border-radius: 4px; background: #ffffff08; }
 /* The agent conversation. Roles are distinguished by a left border rather than a background, so a
    long exchange stays readable and an operator can see at a glance which turns are theirs. */
 .agent-turn-operator { border-left: 4px solid #6ba3d6; }
 .agent-turn-agent { border-left: 4px solid #8a8f98; }
 .agent-turn-system { border-left: 4px solid #c9a227; }
-.agent-turn-operator h3, .agent-turn-agent h3, .agent-turn-system h3 {
+.agent-turn h3 {
   margin: 0 0 0.25rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7;
 }
 /* Evidence can be long. Cap the height and let it scroll rather than pushing the approval buttons

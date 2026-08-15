@@ -485,3 +485,20 @@ func agentPage(t *testing.T, server *Server) string {
 	}
 	return response.Body.String()
 }
+
+// Both of these were found by looking at the page in a browser, not by any assertion: the agent
+// page used the dashboard's four-column grid, which scattered headings beside cards and broke the
+// conversation into columns, and the header rendered "Administration" twice.
+func TestTheAgentPageUsesTheSingleColumnLayoutAndOneNavLink(t *testing.T) {
+	server := bridgeServer(t)
+	page := agentPage(t, server)
+	if !strings.Contains(page, `<main class="shell"`) {
+		t.Error(`the agent page must use class="shell"; admin-overview is a four-column grid meant for dashboard tiles`)
+	}
+	if strings.Contains(page, "admin-overview") {
+		t.Error("the agent page still references the dashboard grid layout")
+	}
+	if count := strings.Count(page, ">Administration</a>"); count != 1 {
+		t.Errorf("the header renders %d Administration links, want 1", count)
+	}
+}
