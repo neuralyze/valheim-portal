@@ -319,11 +319,11 @@ func (r *Runner) report(ctx context.Context, verb string, outcome VerbOutcome) e
 	case outcome.HTTP == http.StatusBadRequest:
 		return r.Say(ctx, "I called "+verb+" wrongly: "+outcome.Error)
 	case outcome.Status == "succeeded":
-		body := verb + " ran. What the portal read back:\n" + strings.TrimSpace(outcome.Evidence)
-		if strings.TrimSpace(outcome.Evidence) == "" {
-			body = verb + " ran and returned no output."
+		evidence := strings.TrimSpace(outcome.Evidence)
+		if evidence == "" {
+			return r.Say(ctx, verb+" ran and returned no output.")
 		}
-		return r.Say(ctx, body)
+		return r.Say(ctx, verb+" ran. What the portal read back:\n"+fitForConversation(evidence))
 	default:
 		detail := outcome.Detail
 		if detail == "" {
@@ -331,6 +331,29 @@ func (r *Runner) report(ctx context.Context, verb string, outcome VerbOutcome) e
 		}
 		return r.Say(ctx, verb+" failed: "+detail)
 	}
+}
+
+// conversationBudget is what one turn may carry. The portal caps a message at 20000 bytes and caps
+// the evidence it records at the same number, so quoting evidence verbatim with any prefix at all
+// could exceed the limit - and did: a 200-line log tail came back at 20012 bytes, the report was
+// refused with 400, and the whole pass failed on its own answer. A conversation is also simply the
+// wrong place for 20 KB: the log page exists for that.
+const conversationBudget = 4000
+
+// fitForConversation keeps the end of long evidence, because for a log tail, a status dump, or a
+// mod list, the end is the part that answers the question. It says what it dropped rather than
+// trimming silently, so the operator knows to look at the page for the rest.
+func fitForConversation(evidence string) string {
+	if len(evidence) <= conversationBudget {
+		return evidence
+	}
+	tail := evidence[len(evidence)-conversationBudget:]
+	// Start at a line boundary so the first line is not half a line.
+	if cut := strings.IndexByte(tail, '\n'); cut >= 0 && cut < len(tail)-1 {
+		tail = tail[cut+1:]
+	}
+	return fmt.Sprintf("[showing the last %d of %d bytes; the rest is on the world's log page]\n%s",
+		len(tail), len(evidence), tail)
 }
 
 func (r *Runner) known(id string) (Verb, bool) {

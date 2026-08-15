@@ -39,6 +39,11 @@ type Verb struct {
 	NeedsClientType bool
 	NeedsNotes      bool
 	NeedsRelease    bool
+	// Accepts lists the optional arguments a caller may set. Advertising only the required ones
+	// left the agent unable to ask for "the last 20 lines": it could not know that `lines` exists,
+	// so the portal's default answered instead - 200 lines, over the message limit, and the pass
+	// died reporting its own answer. An argument the caller cannot see is an argument it cannot use.
+	Accepts []string
 	// Unwired explains what is missing, for verbs the policy declares but the portal cannot
 	// yet run. Saying so is the point: a plausible substitute is worse than a refusal.
 	Unwired string
@@ -57,11 +62,11 @@ var verbTable = map[string]Verb{
 	"world_logs":   {ID: "world_logs", Class: ClassRead, Operation: "logs", NeedsWorld: true},
 	// The collected host log rather than the live container: it survives a restart and a removed
 	// container, which is the only way to read what happened before a crash.
-	"world_log_tail":    {ID: "world_log_tail", Class: ClassRead, Operation: "world_log", NeedsWorld: true},
+	"world_log_tail":    {ID: "world_log_tail", Class: ClassRead, Operation: "world_log", NeedsWorld: true, Accepts: []string{"lines", "query"}},
 	"mod_inventory":     {ID: "mod_inventory", Class: ClassRead, Operation: "mod_inventory", NeedsWorld: true},
 	"mod_search":        {ID: "mod_search", Class: ClassRead, Operation: "mod_search", NeedsWorld: true},
 	"mod_check_updates": {ID: "mod_check_updates", Class: ClassRead, Operation: "mod_check_updates", NeedsWorld: true},
-	"mod_notes":         {ID: "mod_notes", Class: ClassRead, Operation: "mod_notes", NeedsWorld: true},
+	"mod_notes":         {ID: "mod_notes", Class: ClassRead, Operation: "mod_notes", NeedsWorld: true, Accepts: []string{"lines"}},
 	"release_status":    {ID: "release_status", Class: ClassRead, Operation: "mod_release_status", NeedsWorld: true},
 	"deploy_plan":       {ID: "deploy_plan", Class: ClassRead, Operation: "mod_deploy_plan", NeedsWorld: true},
 
@@ -174,13 +179,20 @@ func (s *Server) runVerb(ctx context.Context, call VerbCall) (AgentReply, error)
 	// and the generic call below sends none. 200 is the host script's own default - the end of the
 	// log, which is what "show me the log" means.
 	if verb.Operation == "world_log" {
-		lines := call.Lines
-		if lines < 1 || lines > 5000 {
-			lines = 200
-		}
-		return s.agent.RunLog(ctx, call.ID, call.World, lines, call.Query)
+		return s.agent.RunLog(ctx, call.ID, call.World, logLinesFor(call), call.Query)
 	}
 	return s.agent.Run(ctx, call.ID, call.World, verb.Operation)
+}
+
+// logLinesFor bounds what a log request asks for. The answer goes into a conversation whose own
+// limit is 20000 bytes, so the default is a readable tail rather than the host script's 200 lines:
+// 200 came back at 20012 bytes and the message carrying it was refused, failing the pass on its own
+// answer. A caller that wants more can say so - `lines` is advertised in the vocabulary.
+func logLinesFor(call VerbCall) int {
+	if call.Lines < 1 || call.Lines > 5000 {
+		return 40
+	}
+	return call.Lines
 }
 
 // validProfileName matches what the host scripts accept for a profile directory name.

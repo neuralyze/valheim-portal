@@ -350,3 +350,38 @@ func TestASinglePassDoesNotReanswerAnAlreadyAnsweredTurn(t *testing.T) {
 		t.Fatalf("verb calls after the second pass = %d; the question was answered twice", len(portal.verbs))
 	}
 }
+
+// The pass that failed on its own answer: a 200-line log tail came back at 20012 bytes, the portal
+// refuses a message over 20000, and the runner reported the refusal by exiting 1. Evidence is now
+// trimmed to fit a conversation, and the trim says what it dropped.
+func TestALongAnswerIsTrimmedRatherThanRefused(t *testing.T) {
+	evidence := strings.Repeat("2026-08-15T07:19:06Z supervisord: valheim-server Connections 0 ZDOS:58174\n", 300)
+	if len(evidence) < 20000 {
+		t.Fatalf("fixture is only %d bytes; it must exceed the portal's message limit", len(evidence))
+	}
+
+	fitted := fitForConversation(evidence)
+
+	if len(fitted) > conversationBudget+200 {
+		t.Errorf("trimmed answer is %d bytes, which still risks the portal's limit", len(fitted))
+	}
+	if !strings.Contains(fitted, "showing the last") || !strings.Contains(fitted, "log page") {
+		t.Errorf("the trim does not say what it dropped: %q", fitted[:120])
+	}
+	// The end is the part that answers "show me the last lines".
+	if !strings.HasSuffix(strings.TrimSpace(fitted), strings.TrimSpace(evidence[len(evidence)-80:])) {
+		t.Error("the trim kept the wrong end of the evidence")
+	}
+	// A line must not start mid-line.
+	body := strings.SplitN(fitted, "\n", 2)[1]
+	if !strings.HasPrefix(body, "2026-") {
+		t.Errorf("the first quoted line is truncated: %q", body[:40])
+	}
+}
+
+// Short evidence must pass through untouched: quoting the portal verbatim is the point.
+func TestAShortAnswerIsNotTouched(t *testing.T) {
+	if got := fitForConversation("updates=0"); got != "updates=0" {
+		t.Errorf("short evidence was altered: %q", got)
+	}
+}

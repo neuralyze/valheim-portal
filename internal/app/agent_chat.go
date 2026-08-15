@@ -392,6 +392,12 @@ func (s *Server) agentVerbs(w http.ResponseWriter, r *http.Request) {
 			needs = append(needs, "profile")
 		}
 		entry["needs"] = needs
+		// Optional arguments are advertised too. A caller that cannot see an argument cannot use it,
+		// and will take whatever default the portal picks - which is how "the last 20 lines" became
+		// 200 lines and a failed pass.
+		if len(verb.Accepts) > 0 {
+			entry["accepts"] = verb.Accepts
+		}
 		if verb.Unwired != "" {
 			entry["unavailable_because"] = verb.Unwired
 		}

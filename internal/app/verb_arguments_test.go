@@ -44,3 +44,41 @@ func TestAnOutOfRangeLineCountIsReplacedRatherThanForwarded(t *testing.T) {
 		}
 	}
 }
+
+// An argument the caller cannot see is an argument it cannot use: the agent asked for "the last 20
+// lines" and had no way to say 20, so the portal's default answered instead.
+func TestTheVocabularyAdvertisesOptionalArguments(t *testing.T) {
+	verb, err := VerbByID("world_log_tail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(verb.Accepts) == 0 {
+		t.Fatal("world_log_tail advertises no optional arguments, so a caller cannot choose a line count")
+	}
+	found := false
+	for _, argument := range verb.Accepts {
+		if argument == "lines" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("accepts = %v, want it to include lines", verb.Accepts)
+	}
+}
+
+// The chat verb's default has to fit a conversation. 200 lines produced a 20 KB message that the
+// portal's own limit refused, which failed the pass rather than the message.
+func TestTheChatLogDefaultFitsAMessage(t *testing.T) {
+	server := testServer(t)
+	// Sending no line count must not produce a request for hundreds of lines. The agent is absent,
+	// so the call fails at the socket; what matters is the argument the portal built.
+	_, err := server.runVerb(t.Context(), VerbCall{ID: "log3", Verb: "world_log_tail", World: "Hrafnheim"})
+	if err != nil && strings.Contains(err.Error(), "line count") {
+		t.Fatalf("the portal still sends no line count: %v", err)
+	}
+	// 40 lines of Valheim log is roughly 5 KB, comfortably inside the 20000-byte message limit.
+	const chatDefault = 40
+	if got := logLinesFor(VerbCall{Verb: "world_log_tail"}); got != chatDefault {
+		t.Errorf("default line count = %d, want %d so the answer fits a conversation", got, chatDefault)
+	}
+}
