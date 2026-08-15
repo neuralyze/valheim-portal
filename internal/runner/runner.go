@@ -384,6 +384,9 @@ func (r *Runner) Prompt(conversation []message) string {
 	b.WriteString("- Narrow a read with the arguments a verb accepts rather than trimming the answer yourself: " +
 		"asking for 5 lines is 5 lines of evidence, while asking for the default and quoting part of it " +
 		"is a claim about what you left out.\n")
+	b.WriteString("- Look a fact up before asking for it. world_catalog lists the worlds this portal controls " +
+		"and profile_catalog lists a world's profiles, both reads that need no approval. Ask the operator " +
+		"for decisions and preferences, not for things the portal can tell you.\n")
 	b.WriteString("- If a question is outstanding, ask it and request no verb.\n\n")
 	b.WriteString("Verbs available to you:\n")
 	vocab := append([]Verb(nil), r.vocab...)
