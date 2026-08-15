@@ -42,3 +42,18 @@ __pycache__/
 # by the portal at /client/ValheimProfileSync.exe; a committed copy cannot satisfy
 # its own release gate after a squashed history.
 dist/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+# Beads task tracker: the JSONL export is the shared interchange and is committed.
+# The Dolt database, its backups and local bookkeeping are per-machine.
+.beads/embeddeddolt/
+.beads/proxieddb/
+.beads/backup/
+.beads/last-touched
+.beads/interactions.jsonl
+.beads/metadata.json
+.beads.*/
