@@ -45,7 +45,11 @@ type Verb struct {
 	NeedsApproval bool     `json:"needs_approval"`
 	Available     bool     `json:"available"`
 	Needs         []string `json:"needs"`
-	Because       string   `json:"unavailable_because"`
+	// Accepts are the optional arguments. Decoding them is not enough - they have to reach the
+	// prompt, or the model states with confidence that a verb "takes no line-count parameter"
+	// while the portal is advertising exactly that.
+	Accepts []string `json:"accepts"`
+	Because string   `json:"unavailable_because"`
 }
 
 type message struct {
@@ -388,6 +392,9 @@ func (r *Runner) Prompt(conversation []message) string {
 		line := "  " + verb.ID + " (" + verb.Class + ")"
 		if len(verb.Needs) > 0 {
 			line += " needs: " + strings.Join(verb.Needs, ", ")
+		}
+		if len(verb.Accepts) > 0 {
+			line += " accepts: " + strings.Join(verb.Accepts, ", ")
 		}
 		if verb.NeedsApproval {
 			line += " [operator must approve]"

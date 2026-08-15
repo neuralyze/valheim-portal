@@ -385,3 +385,22 @@ func TestAShortAnswerIsNotTouched(t *testing.T) {
 		t.Errorf("short evidence was altered: %q", got)
 	}
 }
+
+// The portal advertised an optional argument and the runner dropped it, so the model told the
+// operator the verb "takes no line-count parameter" while the portal was offering one. Decoding a
+// field is not the same as using it.
+func TestThePromptOffersOptionalArguments(t *testing.T) {
+	runner := &Runner{vocab: []Verb{{
+		ID: "world_log_tail", Class: "read", Available: true,
+		Needs: []string{"world"}, Accepts: []string{"lines", "query"},
+	}}}
+
+	prompt := runner.Prompt(nil)
+
+	if !strings.Contains(prompt, "accepts: lines, query") {
+		t.Errorf("the prompt does not offer the optional arguments:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "needs: world") {
+		t.Error("the prompt lost the required arguments")
+	}
+}
