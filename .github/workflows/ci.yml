@@ -178,6 +178,15 @@ jobs:
           # fixing it. The local database is not committed, so this is what notices.
           python3 tools/check_beads_workspace.py
 
+      - name: no new unbounded work on a frame path
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A label sweep shipped inside Update() on 13 Aug: every Text and TextMeshPro object
+          # in memory, once a second, for whole play sessions, with no reachable stop condition.
+          # It cost a day of the frame rate and was visible in the source throughout.
+          python3 tools/check_perframe_work.py
+
       - name: VR scanner import check
         shell: bash
         run: |
