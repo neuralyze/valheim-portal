@@ -28,6 +28,11 @@ RestartSec=5
 # systemd creates the socket directory with a group the portal container joins.
 RuntimeDirectory=valheim-portal-agent
 RuntimeDirectoryMode=0750
+# The portal container bind-mounts this directory, so it must outlive an agent
+# restart: without this systemd recreates it with a new inode and the container's
+# mount still points at the deleted one - socket present on the host, /run/agent
+# empty in the container, every verb failing with "no such file or directory".
+RuntimeDirectoryPreserve=yes
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

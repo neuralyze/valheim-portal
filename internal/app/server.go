@@ -413,13 +413,41 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	io.WriteString(w, `{"status":"ok"}`)
 }
+
+// ready is what the installer and an operator use to decide a deployment is usable,
+// so it checks the agent socket rather than only the database. It used to ping SQLite
+// alone while the installer reported "the portal reached the agent socket" - and that
+// sentence was printed on a deployment where /run/agent was empty inside the
+// container, because systemd had recreated the agent's RuntimeDirectory under a
+// running bind mount. Every operator action failed; the readiness check said ready.
+//
+// A missing socket is 503: a portal that cannot reach the agent cannot start a
+// server, publish a release, or read a log, which is what this deployment is for.
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.db.PingContext(r.Context()); err != nil {
-		http.Error(w, "not ready", 503)
+		http.Error(w, "not ready: database", 503)
+		return
+	}
+	if problem := s.agentSocketProblem(); problem != "" {
+		http.Error(w, "not ready: "+problem, 503)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	io.WriteString(w, `{"status":"ready"}`)
+	io.WriteString(w, `{"status":"ready","database":"ok","agent":"ok"}`)
+}
+
+// agentSocketProblem names why the agent is unreachable, or is empty when it is
+// reachable. Stat rather than dial: a dial would enqueue work on every health check,
+// and the failure this exists to catch is a socket that is not there at all.
+func (s *Server) agentSocketProblem() string {
+	info, err := os.Stat(s.cfg.AgentSocket)
+	if err != nil {
+		return "agent socket " + s.cfg.AgentSocket + " is absent"
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return "agent socket " + s.cfg.AgentSocket + " is not a socket"
+	}
+	return ""
 }
 
 // clientDownloadProblem is the operator-facing reason the published Windows

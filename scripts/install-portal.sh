@@ -1012,6 +1012,12 @@ Restart=on-failure
 RestartSec=5
 RuntimeDirectory=${PORTAL_AGENT_SOCKET_DIR#/run/}
 RuntimeDirectoryMode=0750
+# The portal container bind-mounts this directory. Without preservation systemd
+# deletes and recreates it on every agent restart, and the running container keeps
+# its mount on the deleted inode: the socket exists on the host, /run/agent is empty
+# inside the container, and every verb fails with "no such file or directory" until
+# the container is recreated. Measured, not theorised - it broke a live portal.
+RuntimeDirectoryPreserve=yes
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
@@ -1114,6 +1120,17 @@ start_portal() {
     run mkdir -p -- "$portal_dir/dist"
   fi
   run env -C "$portal_dir" docker compose up -d --build
+  $dry_run && return 0
+  # A container that predates the agent's last restart holds its bind mount on a
+  # RuntimeDirectory systemd has since deleted: the socket is on the host and
+  # /run/agent is empty inside. `up -d` will not recreate it, because nothing about
+  # the image or the config changed. Repair it here rather than leaving an operator
+  # to discover it as "no such file or directory" from a chat message.
+  local socket=$PORTAL_AGENT_SOCKET_DIR/agent.sock
+  if [[ -S $socket ]] && ! docker compose -f "$portal_dir/compose.yaml" exec -T portal test -S /run/agent/agent.sock 2>/dev/null; then
+    warn "the running container cannot see $socket; recreating it"
+    run env -C "$portal_dir" docker compose up -d --force-recreate portal
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -1196,9 +1213,9 @@ verify() {
     failures=$((failures + 1))
   fi
   if curl -fsS --max-time 5 "$base/readyz" >/dev/null; then
-    note "readyz responded; the portal reached the agent socket"
+    note "readyz responded: the database answered and the agent socket is present inside the container"
   else
-    warn "readyz failed; the portal cannot reach the agent socket"
+    warn "readyz failed: $(curl -sS --max-time 5 "$base/readyz" 2>/dev/null | head -1)"
     failures=$((failures + 1))
   fi
 
