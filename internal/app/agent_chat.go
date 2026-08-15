@@ -288,7 +288,7 @@ func (s *Server) agentChatDecide(w http.ResponseWriter, r *http.Request) {
 // rather than assuming its request succeeded.
 func (s *Server) executeApproved(ctx context.Context, call VerbCall, actor string) {
 	reply, err := s.runVerb(ctx, call)
-	status, evidence, detail := VerbSucceeded, reply.Output, ""
+	status, evidence, detail := VerbSucceeded, replyEvidence(reply), ""
 	if err != nil {
 		status, evidence, detail = VerbFailed, "", err.Error()
 	} else if reply.Status != "succeeded" {
@@ -511,6 +511,23 @@ func (s *Server) canonicalWorld(ctx context.Context, name string) (string, []str
 	return name, known, false
 }
 
+// replyEvidence is what the host actually read back, whichever field it arrived in.
+//
+// Operations that return structured data - mod_search, mod_inventory, mod_custom_list,
+// profile_catalog, world_metadata, world_catalog, world_analysis - answer in Data as raw JSON, and
+// the portal read only Output. Every one of them therefore "succeeded" with empty evidence: a search
+// that found packages reported nothing, and the agent could only say it ran. The data was present at
+// every step and nobody carried it to the caller.
+func replyEvidence(reply AgentReply) string {
+	if strings.TrimSpace(reply.Output) != "" {
+		return reply.Output
+	}
+	if len(reply.Data) > 0 {
+		return string(reply.Data)
+	}
+	return ""
+}
+
 // agentVerb is the whole security surface in one handler: an agent names a verb, and what
 // happens next is decided by the verb's class, not by the agent's argument for it.
 func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
@@ -649,10 +666,10 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 	if reply.Status != "succeeded" {
 		status, detail = VerbFailed, "agent reported status "+reply.Status
 	}
-	_ = s.store.FinishVerbCall(r.Context(), call.ID, status, "", reply.Output, detail)
+	_ = s.store.FinishVerbCall(r.Context(), call.ID, status, "", replyEvidence(reply), detail)
 	_ = s.store.Audit(r.Context(), "agent", "agent.verb."+status, verb.ID, verbSummary(call))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status": status, "id": call.ID, "verb": verb.ID, "evidence": reply.Output, "detail": detail,
+		"status": status, "id": call.ID, "verb": verb.ID, "evidence": replyEvidence(reply), "detail": detail,
 	})
 }
 

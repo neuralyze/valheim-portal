@@ -162,3 +162,28 @@ func TestUndeclaredArgumentsAreDroppedNotForwarded(t *testing.T) {
 		}
 	}
 }
+
+// A read that answers in JSON must still produce evidence. mod_search, mod_inventory,
+// mod_custom_list, profile_catalog and world_metadata all reply in Data rather than Output, and the
+// portal read only Output - so each one succeeded while reporting nothing, and the agent could only
+// say that it ran. The evidence is what the operator judges the answer by; an empty one is a lie of
+// omission.
+func TestStructuredRepliesBecomeEvidence(t *testing.T) {
+	packages := `[{"name":"Torchlight","version":"1.2.0"}]`
+
+	if got := replyEvidence(AgentReply{Status: "succeeded", Data: []byte(packages)}); got != packages {
+		t.Errorf("structured reply produced evidence %q, want the JSON it returned", got)
+	}
+	// Plain output still wins: it is what a script printed, in the order it printed it.
+	if got := replyEvidence(AgentReply{Status: "succeeded", Output: "Backing up world"}); got != "Backing up world" {
+		t.Errorf("plain output was replaced: %q", got)
+	}
+	// Both present: the human-readable one is the answer, the JSON is the machine's copy of it.
+	both := AgentReply{Status: "succeeded", Output: "2 packages", Data: []byte(packages)}
+	if got := replyEvidence(both); got != "2 packages" {
+		t.Errorf("output and data together produced %q, want the output", got)
+	}
+	if got := replyEvidence(AgentReply{Status: "succeeded"}); got != "" {
+		t.Errorf("an empty reply invented evidence: %q", got)
+	}
+}
