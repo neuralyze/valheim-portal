@@ -169,6 +169,27 @@ if [[ -d $off ]]; then
   done
 fi
 
+# --- omp must reach the unit as an absolute path -------------------------------------------------
+# A unit's PATH does not include a user's ~/.local/bin, so a bare name in the environment file is a
+# service that starts and immediately fails to exec. A relative path is refused; an explicit one is
+# carried through verbatim.
+explicit=$tmp/explicit
+write_config "$tmp/explicit.conf" "PORTAL_ENABLE_AGENT_BRIDGE=true" "AGENT_RUNNER_OMP=/opt/omp/bin/omp"
+if stage "$explicit" "$tmp/explicit.conf"; then
+  expect_value "$explicit/etc/valheim-portal/agent-runner.env" AGENT_RUNNER_OMP /opt/omp/bin/omp
+fi
+
+relative=$tmp/relative
+write_config "$tmp/relative.conf" "PORTAL_ENABLE_AGENT_BRIDGE=true" "AGENT_RUNNER_OMP=omp"
+mkdir -p -- "$relative"
+if PORTAL_INSTALL_ROOT="$relative" bash "$INSTALLER" install --config "$tmp/relative.conf" >"$tmp/relative.log" 2>&1; then
+  echo "FAIL: a bare omp name was accepted for a systemd unit" >&2
+  failures=$((failures + 1))
+elif ! grep -qF "must be an absolute path" "$tmp/relative.log"; then
+  echo "FAIL: the refusal did not name the problem: $(tail -3 "$tmp/relative.log")" >&2
+  failures=$((failures + 1))
+fi
+
 # --- a poller without a bridge is refused rather than left to poll a 503 ------------------------
 orphan=$tmp/orphan
 write_config "$tmp/orphan.conf" "AGENT_RUNNER_SERVICE=true"

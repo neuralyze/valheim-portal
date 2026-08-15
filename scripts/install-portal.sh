@@ -499,10 +499,19 @@ check_agent_runner() {
     return 0
   fi
   if [[ -z $AGENT_RUNNER_OMP ]]; then
-    # Resolved as the runner user, because omp normally lives in their ~/.local/bin
-    # and root's PATH does not include it.
-    AGENT_RUNNER_OMP=$(sudo -n -u "$AGENT_RUNNER_USER" sh -lc 'command -v omp' 2>/dev/null ||
-      command -v omp 2>/dev/null || true)
+    # Probed directly rather than through the runner user's shell: omp normally lives
+    # in their ~/.local/bin, which root's PATH does not include, and a login shell is
+    # not a reliable way to ask - this host's profile is bash-specific and fails under
+    # sh, which silently produced "omp not found" on a host where omp was installed.
+    local runner_home candidate
+    runner_home=$(getent passwd "$AGENT_RUNNER_USER" 2>/dev/null | cut -d: -f6)
+    [[ -n $runner_home ]] || runner_home=/home/$AGENT_RUNNER_USER
+    for candidate in "$runner_home/.local/bin/omp" "$runner_home/bin/omp" /usr/local/bin/omp /usr/bin/omp; do
+      [[ -x $candidate ]] || continue
+      AGENT_RUNNER_OMP=$candidate
+      break
+    done
+    [[ -n $AGENT_RUNNER_OMP ]] || AGENT_RUNNER_OMP=$(command -v omp 2>/dev/null || true)
   fi
   if [[ -z $AGENT_RUNNER_OMP ]]; then
     note "agent runner: omp not found; set AGENT_RUNNER_OMP to its absolute path before running the runner"
