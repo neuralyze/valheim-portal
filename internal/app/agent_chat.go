@@ -239,6 +239,51 @@ func (s *Server) agentInbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "cursor": cursor, "awaiting_approval": waiting})
 }
 
+// agentVerbs is how a runner learns its own vocabulary instead of carrying a copy that can drift
+// from the portal's. Read-only, and it reports the refusals too: a runner that cannot see why a
+// verb is unavailable will keep asking for it.
+func (s *Server) agentVerbs(w http.ResponseWriter, r *http.Request) {
+	out := make([]map[string]any, 0, len(VerbIDs()))
+	for _, id := range VerbIDs() {
+		verb, err := VerbByID(id)
+		if err != nil {
+			continue
+		}
+		entry := map[string]any{
+			"verb": verb.ID, "class": string(verb.Class),
+			"needs_approval": verb.NeedsApproval(), "available": verb.Class != ClassForbidden && verb.Unwired == "",
+		}
+		needs := []string{}
+		if verb.NeedsWorld {
+			needs = append(needs, "world")
+		}
+		if verb.NeedsIdentifier {
+			needs = append(needs, "identifier")
+		}
+		if verb.NeedsClientType {
+			needs = append(needs, "client_type")
+		}
+		if verb.NeedsNotes {
+			needs = append(needs, "notes")
+		}
+		if verb.NeedsRelease {
+			needs = append(needs, "published_profile", "release_id", "archive")
+		}
+		if strings.HasPrefix(verb.Operation, "mod_") || verb.Operation == "publish_profile" {
+			needs = append(needs, "profile")
+		}
+		entry["needs"] = needs
+		if verb.Unwired != "" {
+			entry["unavailable_because"] = verb.Unwired
+		}
+		if verb.Class == ClassForbidden {
+			entry["unavailable_because"] = "forbidden by policy"
+		}
+		out = append(out, entry)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"verbs": out})
+}
+
 func (s *Server) agentSay(w http.ResponseWriter, r *http.Request) {
 	var request struct{ Body string }
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {

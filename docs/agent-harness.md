@@ -164,10 +164,16 @@ characters. Absent, the endpoints answer `503` and say which variable to set - a
 opt in before an agent can drive anything.
 
 ```
+GET  /api/agent/verbs                  the vocabulary: class, required arguments, and why anything
+                                       unavailable is unavailable
 GET  /api/agent/inbox?since=<cursor>   new turns, the next cursor, and calls awaiting approval
 POST /api/agent/message                {"body": "..."}  the agent's own turn in the conversation
 POST /api/agent/verb                   {"verb": "...", "world": "...", ...}
 ```
+
+A runner reads its vocabulary from `/api/agent/verbs` rather than carrying a copy, so it cannot
+believe it holds a verb the portal has withdrawn - and it is told *why* something is unavailable,
+because a runner that cannot see the reason will keep asking.
 
 All three require `Authorization: Bearer <token>`. The verb endpoint answers:
 
@@ -184,6 +190,34 @@ A `202` is the normal answer for anything mutating: the call waits on `/admin/ag
 operator approves or denies it. Approval runs the verb and writes the result back into the
 conversation as a system turn, so the agent reads what happened from the record instead of
 assuming its request succeeded.
+
+## The runner
+
+`cmd/agent-runner` is the process that drives all this. It reads the conversation, asks omp what to
+do, and requests verbs; the portal decides what is allowed and records what happened.
+
+```bash
+PORTAL_AGENT_BRIDGE_TOKEN_FILE=/etc/valheim-portal/bridge-token \
+  agent-runner -portal http://127.0.0.1:8080 -state /var/lib/valheim-agent-runner/cursor
+agent-runner ... -once     # a single pass, for checking a deployment
+```
+
+It holds no model credential - omp owns authentication - and it is meant to run as its own user
+with no `sudo`, no read access to any world's `.env`, and no git credential, because those limits
+are enforced by absence rather than by rules.
+
+What it will not do, each covered by a test:
+
+- ask for a verb outside the vocabulary the portal reports, or one reported unavailable
+- retry a forbidden verb, or look for another route to the same effect
+- treat "awaiting approval" as a failure; it says what it is waiting for and stops
+- start new work while an approval is outstanding
+- answer a system turn as though it were a request from the operator
+- re-answer a question after a restart: the cursor is persisted, and a single pass respects it
+
+The model is asked for one JSON object - `{"say": ..., "verb": ..., "args": {...}}` - and anything
+else is reported to the operator as an unusable answer rather than guessed at. One verb per reply:
+if more is needed, it says so and waits.
 
 ## Tasks and memory
 

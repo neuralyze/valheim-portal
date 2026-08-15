@@ -339,6 +339,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /admin/agent/message", s.admin(s.agentChatMessage))
 	s.mux.HandleFunc("POST /admin/agent/decide", s.admin(s.agentChatDecide))
 	s.mux.HandleFunc("GET /api/agent/inbox", s.bridge(s.agentInbox))
+	s.mux.HandleFunc("GET /api/agent/verbs", s.bridge(s.agentVerbs))
 	s.mux.HandleFunc("POST /api/agent/message", s.bridge(s.agentSay))
 	s.mux.HandleFunc("POST /api/agent/verb", s.bridge(s.agentVerb))
 }
