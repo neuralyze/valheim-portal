@@ -1,5 +1,6 @@
 """The policy/docs consistency check: it exists because prose drifts and checks do not."""
 
+import re
 import shutil
 from pathlib import Path
 
@@ -71,3 +72,36 @@ def test_the_approval_class_table_is_not_read_as_verbs(tmp_path):
     # The document has two tables of the same shape; only the verb table describes verbs.
     root = _copy(tmp_path)
     assert check_agent_policy.check(root) == []
+
+
+def _copy_with_go(tmp_path: Path) -> Path:
+    root = _copy(tmp_path)
+    (root / "internal/app").mkdir(parents=True)
+    shutil.copy(REPO / "internal/app/verbs.go", root / "internal/app/verbs.go")
+    return root
+
+
+def test_the_go_registry_must_agree_with_the_policy(tmp_path):
+    root = _copy_with_go(tmp_path)
+    assert check_agent_policy.check(root) == []
+
+
+def test_quietly_downgrading_a_mutating_verb_in_code_is_caught(tmp_path):
+    # The failure this guards against: a verb that still reads world_state in the policy while
+    # the code treats it as a read, so it would run without an operator ever confirming it.
+    root = _copy_with_go(tmp_path)
+    registry = root / "internal/app/verbs.go"
+    registry.write_text(re.sub(
+        r'("deploy_apply":\s*\{ID: "deploy_apply", Class: )ClassWorldState', r"\1ClassRead",
+        registry.read_text()))
+    problems = check_agent_policy.check(root)
+    assert any("deploy_apply" in p and "verbs.go" in p for p in problems), problems
+
+
+def test_a_verb_the_code_never_implements_is_caught(tmp_path):
+    root = _copy_with_go(tmp_path)
+    registry = root / "internal/app/verbs.go"
+    registry.write_text(registry.read_text().replace(
+        '"world_backup":  {ID: "world_backup", Class: ClassWorldState, Operation: "backup", NeedsWorld: true},', ""))
+    problems = check_agent_policy.check(root)
+    assert any("world_backup" in p and "absent from internal/app/verbs.go" in p for p in problems), problems

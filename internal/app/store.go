@@ -228,6 +228,34 @@ INSERT INTO schema_migrations(version, applied_at) VALUES (15, CURRENT_TIMESTAMP
 			return err
 		}
 	}
+	var agentChatSchema int
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=16)`).Scan(&agentChatSchema); err != nil {
+		return err
+	}
+	if agentChatSchema == 0 {
+		// The operator/agent conversation, and one row per verb an agent asked to run. The
+		// call row is written before execution and updated after, so a request that fails
+		// halfway still leaves a record of what was asked and how far it got.
+		if _, err := s.db.ExecContext(ctx, `
+CREATE TABLE agent_messages (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, conversation TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('operator','agent','system')),
+ body TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX agent_messages_conversation ON agent_messages(conversation, id);
+CREATE TABLE agent_verb_calls (
+ id TEXT PRIMARY KEY, conversation TEXT NOT NULL, verb TEXT NOT NULL, class TEXT NOT NULL,
+ world TEXT NOT NULL DEFAULT '', profile TEXT NOT NULL DEFAULT '', identifier TEXT NOT NULL DEFAULT '',
+ version TEXT NOT NULL DEFAULT '', query TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL CHECK(status IN ('pending_approval','denied','refused','succeeded','failed')),
+ requested_by TEXT NOT NULL DEFAULT '', decided_by TEXT NOT NULL DEFAULT '',
+ evidence TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL, finished_at TEXT
+);
+CREATE INDEX agent_verb_calls_status ON agent_verb_calls(conversation, status);
+INSERT INTO schema_migrations(version, applied_at) VALUES (16, CURRENT_TIMESTAMP);`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

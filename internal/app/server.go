@@ -66,9 +66,13 @@ type Server struct {
 	personas     personaResolver
 	csrf         []byte
 	adminToken   []byte
-	trustedProxy netip.Prefix
-	mux          *http.ServeMux
-	limiter      *rateLimiter
+	// agentBridgeToken authenticates the local agent process on /api/agent/*. Empty means the
+	// bridge is off, which is the default: a deployment must opt in before an agent can drive
+	// anything, and the portal holds no model credentials either way.
+	agentBridgeToken []byte
+	trustedProxy     netip.Prefix
+	mux              *http.ServeMux
+	limiter          *rateLimiter
 	// deviceLimiter is separate because the Windows client polls the device
 	// token route every two seconds while a sign-in is pending; sharing the
 	// general bucket meant one normal sign-in spent most of it.
@@ -178,7 +182,11 @@ func NewServer(cfg Config, store *Store, agent *AgentClient) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, store: store, agent: agent, csrf: []byte(strings.TrimSpace(string(secret))), adminToken: adminToken, trustedProxy: trustedProxy, mux: http.NewServeMux(), limiter: newRateLimiter(40, time.Minute), deviceLimiter: newRateLimiter(deviceTokenPollBudget, time.Minute), formBodyLimit: defaultFormBodyBytes, uploadBodyLimit: maxArtifactBodyBytes, restores: map[string]restoreRequest{}, worldgens: map[string]worldgenRequest{}, provisions: map[string]provisionRequest{}, steamStates: map[string]steamState{}, deviceCodes: map[string]deviceGrant{}}
+	agentBridgeToken, err := readAgentBridgeToken()
+	if err != nil {
+		return nil, fmt.Errorf("invalid PORTAL_AGENT_BRIDGE_TOKEN_FILE: %w", err)
+	}
+	s := &Server{cfg: cfg, store: store, agent: agent, csrf: []byte(strings.TrimSpace(string(secret))), adminToken: adminToken, agentBridgeToken: agentBridgeToken, trustedProxy: trustedProxy, mux: http.NewServeMux(), limiter: newRateLimiter(40, time.Minute), deviceLimiter: newRateLimiter(deviceTokenPollBudget, time.Minute), formBodyLimit: defaultFormBodyBytes, uploadBodyLimit: maxArtifactBodyBytes, restores: map[string]restoreRequest{}, worldgens: map[string]worldgenRequest{}, provisions: map[string]provisionRequest{}, steamStates: map[string]steamState{}, deviceCodes: map[string]deviceGrant{}}
 	s.mapPublisher = s.publishWorldAnalysis
 	s.personas = s.fetchSteamPersonas
 	s.routes()
@@ -324,6 +332,15 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /admin/worldgen", s.admin(s.prepareWorldgen))
 	s.mux.HandleFunc("GET /admin/worldgen/{id}", s.admin(s.worldgenConfirmation))
 	s.mux.HandleFunc("POST /admin/worldgen/{id}", s.admin(s.confirmWorldgen))
+	// The operator's agent surface, and the bridge its process talks to. The chat is admin-only
+	// like every other control; the bridge authenticates with its own token and is disabled
+	// unless a deployment configures one.
+	s.mux.HandleFunc("GET /admin/agent", s.admin(s.agentChat))
+	s.mux.HandleFunc("POST /admin/agent/message", s.admin(s.agentChatMessage))
+	s.mux.HandleFunc("POST /admin/agent/decide", s.admin(s.agentChatDecide))
+	s.mux.HandleFunc("GET /api/agent/inbox", s.bridge(s.agentInbox))
+	s.mux.HandleFunc("POST /api/agent/message", s.bridge(s.agentSay))
+	s.mux.HandleFunc("POST /api/agent/verb", s.bridge(s.agentVerb))
 }
 func (s *Server) Handler() http.Handler { return s.secure(s.mux) }
 func (s *Server) secure(next http.Handler) http.Handler {

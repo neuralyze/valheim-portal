@@ -120,6 +120,56 @@ Checked after a change rather than assumed:
 - **Cutover recorded** - a removal affecting players records a client-release cutover, and
   `world_start` refuses while one is outstanding.
 
+## What is wired today
+
+Ten verbs execute through the portal. The other fourteen are declared, refused with a reason,
+and recorded as refused - an approximation would be worse than a refusal, and this project has
+already paid for the difference.
+
+```
+executes now    world_status world_logs mod_inventory mod_search
+                mod_add mod_remove deploy_apply world_start world_stop world_backup
+refused: no host operation exists
+                mod_check_updates mod_notes release_status deploy_plan
+                mod_update publish_profile release_confirm
+refused: not the portal's job
+                repo_edit plugin_build   the agent process edits and builds in its own workspace
+refused: deliberately operator-only
+                world_restore   keeps its typed two-step confirmation
+forbidden       upstream_push delete_server provision secrets_read
+```
+
+Wiring the first group needs new host-agent operations, since the portal reaches the host only
+through the agent socket. That is tracked, not forgotten.
+
+## The bridge API
+
+Enabled only when `PORTAL_AGENT_BRIDGE_TOKEN_FILE` points at a file holding at least 32
+characters. Absent, the endpoints answer `503` and say which variable to set - a deployment must
+opt in before an agent can drive anything.
+
+```
+GET  /api/agent/inbox?since=<cursor>   new turns, the next cursor, and calls awaiting approval
+POST /api/agent/message                {"body": "..."}  the agent's own turn in the conversation
+POST /api/agent/verb                   {"verb": "...", "world": "...", ...}
+```
+
+All three require `Authorization: Bearer <token>`. The verb endpoint answers:
+
+```
+200  executed          {"status":"succeeded","evidence":"...","id":"..."}
+202  awaiting operator {"status":"pending_approval","id":"..."}
+400  unknown verb      {"error":"unknown verb ...","known_verbs":[...]}
+403  forbidden         {"status":"refused"}
+501  declared, unwired {"status":"refused","error":"not available through the portal: ..."}
+502  ran and failed    {"status":"failed","error":"..."}
+```
+
+A `202` is the normal answer for anything mutating: the call waits on `/admin/agent`, where an
+operator approves or denies it. Approval runs the verb and writes the result back into the
+conversation as a system turn, so the agent reads what happened from the record instead of
+assuming its request succeeded.
+
 ## Tasks and memory
 
 `bd` (beads) is the source of truth for outstanding work. The agent files what it discovers,

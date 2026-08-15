@@ -20,6 +20,11 @@ from pathlib import Path
 import yaml
 
 MUTATING_CLASSES = {"world_state", "player_facing"}
+GO_VERB = re.compile(r'"(?P<verb>[a-z_]+)":\s*\{ID:\s*"(?P<id>[a-z_]+)",\s*Class:\s*Class(?P<cls>\w+)')
+GO_CLASS_NAMES = {
+    "Read": "read", "RepoWrite": "repo_write", "WorldState": "world_state",
+    "PlayerFacing": "player_facing", "Forbidden": "forbidden",
+}
 REQUIRED_VERB_FIELDS = ("id", "class", "maps_to", "purpose")
 TABLE_ROW = re.compile(r"^\|\s*`(?P<verb>[a-z_]+)`\s*\|\s*(?P<cls>[a-z_]+)\s*\|", re.MULTILINE)
 
@@ -93,6 +98,30 @@ def check(root: Path) -> list[str]:
     for verb_id in documented:
         if verb_id not in declared:
             problems.append(f"verb {verb_id!r} is documented but absent from policy.yaml")
+
+    # The Go table is what the portal enforces. A verb that exists in the policy but not in the
+    # code is unenforced; one that exists only in the code is undeclared. Both are drift.
+    registry = root / "internal/app/verbs.go"
+    if registry.is_file():
+        implemented: dict[str, str] = {}
+        for match in GO_VERB.finditer(registry.read_text()):
+            if match.group("verb") != match.group("id"):
+                problems.append(
+                    f"internal/app/verbs.go: map key {match.group('verb')!r} does not match "
+                    f"its ID field {match.group('id')!r}"
+                )
+            implemented[match.group("id")] = GO_CLASS_NAMES.get(match.group("cls"), match.group("cls"))
+        for verb_id, verb_class in declared.items():
+            if verb_id not in implemented:
+                problems.append(f"verb {verb_id!r} is declared in policy.yaml but absent from internal/app/verbs.go")
+            elif implemented[verb_id] != verb_class:
+                problems.append(
+                    f"verb {verb_id!r} is {verb_class!r} in policy.yaml and "
+                    f"{implemented[verb_id]!r} in internal/app/verbs.go"
+                )
+        for verb_id in implemented:
+            if verb_id not in declared:
+                problems.append(f"verb {verb_id!r} is implemented in internal/app/verbs.go but not declared in policy.yaml")
     return problems
 
 
