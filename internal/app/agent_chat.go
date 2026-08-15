@@ -501,6 +501,35 @@ type verbRequest struct {
 	Lines            int    `json:"lines"`
 }
 
+// verbCreatesWorld marks the two operations whose world does not exist yet, so a name that matches
+// nothing is correct rather than a mistake.
+func verbCreatesWorld(verb Verb) bool {
+	return verb.Operation == "provision" || verb.Operation == "world_create"
+}
+
+// canonicalWorld returns the registered spelling of a world, the names this portal serves, and
+// whether the given name matched one of them case-insensitively.
+func (s *Server) canonicalWorld(ctx context.Context, name string) (string, []string, bool) {
+	worlds, err := s.store.PublicWorlds(ctx)
+	if err != nil {
+		// Unknowable rather than unmatched: forward what was asked for and let the agent answer.
+		return name, nil, true
+	}
+	known := make([]string, 0, len(worlds))
+	for _, world := range worlds {
+		known = append(known, world.Name)
+		if strings.EqualFold(world.Name, name) {
+			return world.Name, known, true
+		}
+	}
+	if len(known) == 0 {
+		// Nothing registered yet: the agent's own allowlist is the only authority, so do not invent
+		// a refusal the deployment has not asked for.
+		return name, nil, true
+	}
+	return name, known, false
+}
+
 // agentVerb is the whole security surface in one handler: an agent names a verb, and what
 // happens next is decided by the verb's class, not by the agent's argument for it.
 func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
@@ -527,6 +556,23 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 		Notes:            strings.TrimSpace(request.Notes),
 		Lines:            request.Lines,
 		RequestedBy:      "agent",
+	}
+
+	// The agent's allowed-worlds check is an exact string match, so "hrafnheim" is refused as
+	// "forbidden" while "Hrafnheim" runs - and "forbidden" tells the caller nothing it can act on.
+	// The portal knows which worlds are registered, so it fixes the spelling here rather than
+	// forwarding a name that can only fail. When nothing matches it says which worlds exist, which
+	// is the difference between a caller that can correct itself and one that retries forever.
+	if call.World != "" && !verbCreatesWorld(verb) {
+		canonical, known, found := s.canonicalWorld(r.Context(), call.World)
+		if !found {
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"status": VerbFailed, "verb": verb.ID,
+				"error": fmt.Sprintf("no world named %q; this portal serves %s", call.World, strings.Join(known, ", ")),
+			})
+			return
+		}
+		call.World = canonical
 	}
 
 	if verb.Class == ClassForbidden {

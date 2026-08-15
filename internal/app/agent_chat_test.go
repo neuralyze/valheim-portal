@@ -686,3 +686,50 @@ func TestTheDockEndpointIsAdminOnly(t *testing.T) {
 		t.Errorf("unauthenticated tail.json = %d, want 401", response.Code)
 	}
 }
+
+// The bug an operator hit on the first real approval: the agent asked for world "hrafnheim", the
+// portal accepted it because the name is well-formed, and the agent refused it as "forbidden"
+// because its allowed-worlds check is an exact string match. The approval had already been given;
+// only the case was wrong, and the refusal said nothing an agent could act on.
+func TestAWorldNameIsCanonicalisedBeforeItReachesTheAgent(t *testing.T) {
+	server := bridgeServer(t)
+	if err := server.store.UpsertPublicWorld(t.Context(), PublicWorld{
+		Name: "Hrafnheim", JoinAddress: "valheim.example.test:2456", Status: "online",
+	}, "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	bridgePost(t, server, "/api/agent/verb", `{"verb":"world_backup","world":"hrafnheim","reason":"case test"}`)
+
+	calls, err := server.store.PendingVerbCalls(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) == 0 {
+		t.Fatal("no call was recorded")
+	}
+	if calls[0].World != "Hrafnheim" {
+		t.Errorf("stored world = %q, want the registered spelling %q", calls[0].World, "Hrafnheim")
+	}
+}
+
+// A world that matches nothing must be refused by the portal, naming what does exist. The agent's
+// own "forbidden" is correct but unactionable: it cannot tell a typo from a fence.
+func TestAnUnknownWorldIsRefusedWithTheOnesThatExist(t *testing.T) {
+	server := bridgeServer(t)
+	if err := server.store.UpsertPublicWorld(t.Context(), PublicWorld{
+		Name: "Hrafnheim", JoinAddress: "valheim.example.test:2456", Status: "online",
+	}, "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	response := bridgePost(t, server, "/api/agent/verb", `{"verb":"world_backup","world":"Atlantis","reason":"typo"}`)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("unknown world = %d, want 400: %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, "Atlantis") || !strings.Contains(body, "Hrafnheim") {
+		t.Errorf("the refusal names neither the mistake nor the alternatives: %s", body)
+	}
+}
