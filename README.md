@@ -474,14 +474,16 @@ operator account that can reach neither the world tree nor the docker socket.
 
 ### Driving it
 
-There are two places to talk to it. The **dock** in the corner of `/admin` is for asking while you
-work: it opens and closes, remembers which, shows the last few turns, takes a message, and badges
-itself when a reply is owed or a decision waits. It deliberately has no Approve button — a decision
-made from a summary in the corner of the screen, without the arguments in front of you, is the habit
-the full page exists to prevent.
+There are two places to talk to it. The **dock** in the corner of `/admin` is for working without
+leaving the surface you are operating: it opens and closes, remembers which, shows the last few
+turns, takes a message, and badges itself `working 12s` or `1 awaiting you`. Waiting requests appear
+there with **Approve** and **Deny**, and with every argument the call carries — verb, class, world,
+profile, identifier, version, reason — because the rule is not "decide elsewhere", it is **never
+approve something you cannot see**. A publish also shows what that world already serves and how many
+releases went out today.
 
-`/admin/agent` is the full surface: every turn, every request with its arguments and release
-context, and the Approve and Deny buttons.
+`/admin/agent` is the full surface: the whole conversation, every request, and the evidence the
+portal read back from the host.
 
 In both, **Ctrl+Enter sends** — these messages are multi-line by nature, so Enter alone cannot.
 

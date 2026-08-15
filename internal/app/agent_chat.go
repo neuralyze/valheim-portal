@@ -346,11 +346,45 @@ func (s *Server) agentChatTail(w http.ResponseWriter, r *http.Request) {
 	for _, message := range messages {
 		turns = append(turns, map[string]any{"role": message.Role, "body": message.Body})
 	}
+	// Every argument of every waiting call, not a summary of it. The dock may approve, so the dock
+	// must show what approval means - the same values the full page lists, from the same builder.
+	calls, err := s.store.PendingVerbCalls(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "requests unavailable"})
+		return
+	}
+	awaiting := make([]map[string]any, 0, len(calls))
+	for _, call := range calls {
+		if call.Status != VerbPending {
+			continue
+		}
+		arguments := make([]map[string]string, 0, 8)
+		for _, argument := range verbArguments(call) {
+			arguments = append(arguments, map[string]string{"name": argument.Name, "value": argument.Value})
+		}
+		entry := map[string]any{
+			"id": call.ID, "verb": call.Verb, "class": call.Class, "arguments": arguments,
+		}
+		// A publish approval is judged against what that world already serves and how much has gone
+		// out today; without those two numbers the decision is uninformed wherever it is made.
+		if call.Verb == "publish_profile" {
+			if live, today, contextErr := s.store.WorldReleaseContext(r.Context(), call.World); contextErr == nil {
+				serving := make([]string, 0, len(live))
+				for _, release := range live {
+					serving = append(serving, release.Profile+" "+release.Version)
+				}
+				entry["live"] = serving
+				entry["published_today"] = today
+			}
+		}
+		awaiting = append(awaiting, entry)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"state": fmt.Sprintf("%d/%d/%t", latest, pending, waiting), "latest": latest, "pending": pending,
 		"waiting": waiting, "waited_seconds": int(since.Seconds()),
 		"bridge_enabled": len(s.agentBridgeToken) > 0,
 		"turns":          turns,
+		"awaiting":       awaiting,
 	})
 }
 

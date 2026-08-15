@@ -239,10 +239,16 @@ until a pass is triggered, so the agent acts when an operator decides it should.
 1. Send a message, from `/admin/agent` or from the dock in the corner of `/admin`. Ctrl+Enter sends
    in both. It is stored immediately; `agent_messages` gains a row with role `operator`.
 
-   The dock reads `/admin/agent/tail.json` - the last eight turns plus the same waiting state -
-   because the bridge endpoints require the bridge token and a browser must never hold that. It
-   posts to the same `/admin/agent/message` handler the full page uses, so both paths wake the
-   runner identically. It offers no approval: that needs the full page, where the arguments are.
+   The dock reads `/admin/agent/tail.json` - the last eight turns, the same waiting state, and every
+   waiting request with all of its arguments - because the bridge endpoints require the bridge token
+   and a browser must never hold that. It posts to the same `/admin/agent/message` and
+   `/admin/agent/decide` handlers the full page uses, so both paths wake the runner and record the
+   same audit event.
+
+   It can approve, on one condition, which is the condition the whole approval gate rests on: the
+   arguments travel with the request and are rendered before the buttons. A one-line summary beside
+   an Approve button is what this must never become, and a test holds `tail.json` to carrying every
+   argument for exactly that reason.
 2. A pass starts by itself. The portal writes its wake file, a systemd path unit
    (`valheim-agent-runner-wake.path`) sees the write and starts `valheim-agent-runner-once`, and the
    runner reads from its persisted cursor - so it answers what it has not answered before and
@@ -265,7 +271,8 @@ until a pass is triggered, so the agent acts when an operator decides it should.
    "The agent owes a turn" is computed - the newest message's role is `operator` - not tracked. A
    flag would need setting when a pass starts and clearing when it ends, and a runner killed
    between the two would leave the page claiming work forever.
-4. A mutating verb stops at `pending_approval` and waits there for **Approve** or **Deny**. The
+4. A mutating verb stops at `pending_approval` and waits there for **Approve** or **Deny**, in the
+   dock or on the full page. The
    runner reports what it is waiting for and stops rather than treating the wait as a failure.
    Deciding writes the wake file too, so an approval continues the work without a second step.
 

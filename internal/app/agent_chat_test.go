@@ -580,11 +580,63 @@ func TestTheAdminHomeCarriesTheAgentDock(t *testing.T) {
 			t.Errorf("the admin home is missing %q", want)
 		}
 	}
-	// The dock must not carry Approve buttons: a decision made from a corner summary, without the
-	// arguments in front of you, is the habit the full page exists to prevent.
-	dock := page[strings.Index(page, "data-agent-dock"):]
-	if strings.Contains(dock, `value="approve"`) {
-		t.Error("the dock offers approval without showing what is being approved")
+	// The dock decides requests, so it must have somewhere to render them. The rule it has to keep
+	// is not "decide elsewhere" but "never approve what you cannot see": the arguments are rendered
+	// from tail.json, which the next test holds to that.
+	if !strings.Contains(page, "data-dock-awaiting") {
+		t.Error("the dock has nowhere to render a waiting request, so a decision would be a bare button")
+	}
+}
+
+// The dock may approve, and this is the condition attached: every argument of the call travels with
+// it. A one-line summary plus an Approve button is the thing this must never become.
+func TestTheDockCarriesEveryArgumentOfAWaitingRequest(t *testing.T) {
+	server := bridgeServer(t)
+	if err := server.store.CreateVerbCall(t.Context(), VerbCall{
+		ID: "dock-1", Verb: "mod_add", Class: string(ClassWorldState), World: "TestWorld",
+		Profile: "redesign-alpha", Identifier: "Azumatt-AzuExtendedPlayerInventory", Version: "2.4.5",
+		Reason: "the operator asked for it", Status: VerbPending, RequestedBy: "agent",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/admin/agent/tail.json", nil)
+	request.RemoteAddr = "192.0.2.10:1234"
+	request.Header.Set("X-Forwarded-User", "operator")
+	request.Header.Set(adminTokenHeader, testAdminToken)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	var payload struct {
+		Awaiting []struct {
+			ID        string `json:"id"`
+			Verb      string `json:"verb"`
+			Arguments []struct {
+				Name  string `json:"name"`
+				Value string `json:"value"`
+			} `json:"arguments"`
+		} `json:"awaiting"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("not JSON: %q", response.Body.String())
+	}
+	if len(payload.Awaiting) != 1 {
+		t.Fatalf("awaiting = %d requests, want 1", len(payload.Awaiting))
+	}
+	seen := map[string]string{}
+	for _, argument := range payload.Awaiting[0].Arguments {
+		seen[argument.Name] = argument.Value
+	}
+	for name, want := range map[string]string{
+		"world":      "TestWorld",
+		"profile":    "redesign-alpha",
+		"identifier": "Azumatt-AzuExtendedPlayerInventory",
+		"version":    "2.4.5",
+		"reason":     "the operator asked for it",
+	} {
+		if seen[name] != want {
+			t.Errorf("argument %s = %q, want %q: approving from the dock would hide it", name, seen[name], want)
+		}
 	}
 }
 
