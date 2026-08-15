@@ -286,8 +286,12 @@ sudo ./scripts/install-portal.sh verify --config deploy/install.conf
 ```
 
 * `GET /healthz` — the portal is serving.
-* `GET /readyz` — the portal reached the agent socket, proving the socket group
-  and token pairing are correct.
+* `GET /readyz` — the database answers **and** the agent socket is present at the path the
+  portal reads inside its container. It returns
+  `{"status":"ready","database":"ok","agent":"ok"}`, or 503 naming which of the two failed.
+  Until this checked the socket it reported ready on a deployment whose `/run/agent` was empty,
+  so every operator action failed while verification passed. It does not dial the agent: that
+  would enqueue work on every health check, and the failure worth catching is an absent socket.
 * **Identity spoofing probe** — requests `PORTAL_PUBLIC_BASE_URL/admin` while
   supplying its own `X-Forwarded-User` and `X-Portal-Admin-Token`. A 401, 403,
   or 404 is the expected result. A 2xx or 3xx is reported as CRITICAL: the proxy
@@ -526,12 +530,14 @@ checkout as well. Prefer it to a hand edit unless the unit is already current.
 
 | Symptom | Cause |
 |---|---|
-| `readyz` fails | The container cannot reach the socket. Check `PORTAL_AGENT_GID` matches the agent group and that the agent is running. |
+| `readyz` fails naming the database | SQLite is unreachable: check the data volume is mounted and writable. |
+| `readyz` fails naming the agent socket | The container cannot see the socket. If the host has it and the container does not, the mount is stale from an agent restart — reinstall, which detects and recreates the container. See [operations.md](operations.md#when-the-portal-cannot-reach-the-agent). Otherwise check `PORTAL_AGENT_GID` matches the agent group and that the agent is running. |
+| Every verb fails with `dial unix /run/agent/agent.sock` | Same cause as the row above, seen from the agent page instead of the installer. |
 | `agent token must contain at least 32 bytes` | The token file is truncated. Stop both halves, remove it, re-run the installer, restart both. |
 | Agent socket never appears | `journalctl -u valheim-portal-agent`. Usually a missing operation script or an unreadable `AGENT_SCRIPT_DIR`. |
 | `/admin` returns 401 for a real operator | With `PORTAL_ADMIN_STEAM_IDS` set: they are not signed in with Steam, or their SteamID64 is not in the list. Otherwise: the proxy is not sending `X-Portal-Admin-Token`, or not setting `X-Forwarded-User`. Re-check step 6. |
 | A password prompt appears before `/admin` | `auth_basic` is still in the administrative location. Remove it when using the Steam allowlist; step 6 has the diff. |
-| Admin routes return 401 from the proxy | The proxy's source address is outside `PORTAL_TRUSTED_PROXY_CIDR`. |
+| Admin routes return 401 from the proxy | The proxy's source address is outside `PORTAL_TRUSTED_PROXY_CIDR`. A docker network recreate changes the gateway, so a value that worked can stop working without anyone editing it. |
 | Spoofing probe reports CRITICAL | A proxied location forwards without setting the header. Fix before serving traffic. |
 | `conflicting server name` from nginx | A backup copy of the site is still in `sites-enabled/`; nginx includes every file there. |
 | `VALHEIM_SERVER_DOCKER_DIR holds no default.env` | Step 2 was skipped. Provisioning reads the container PGID from that file. |

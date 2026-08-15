@@ -231,6 +231,26 @@ boundary is what that account cannot reach: no world tree, no docker socket, no 
 access to any world's `.env`, and no git credential. Those limits are enforced by absence rather
 than by rules.
 
+## The loop, from the operator's side
+
+On demand nothing is automatic, and that is the whole point: a message waits in the conversation
+until a pass is triggered, so the agent acts when an operator decides it should.
+
+1. Send a message on `/admin/agent`. It is stored immediately; `agent_messages` gains a row with
+   role `operator`.
+2. `sudo systemctl start valheim-agent-runner-once`. The runner reads from its persisted cursor,
+   so it answers what it has not answered before and nothing else.
+3. The page shows the reply without a refresh. It polls `/admin/agent/status.json` - a two-field
+   token of the latest message id and the pending-approval count - every 5 seconds while something
+   is pending and every 30 seconds when idle, and reloads only when that token changes. While
+   there is text in the message box it does not reload at all; it says so instead, because a
+   half-written message disappearing reads as a broken page.
+4. A mutating verb stops at `pending_approval` and waits there for **Approve** or **Deny**. The
+   runner reports what it is waiting for and stops rather than treating the wait as a failure.
+
+In polling mode step 2 disappears and everything else is identical, which is why both units share
+one environment file: what you rehearse on demand is what the poller does.
+
 What it will not do, each covered by a test:
 
 - ask for a verb outside the vocabulary the portal reports, or one reported unavailable

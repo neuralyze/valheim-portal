@@ -109,6 +109,39 @@ Archive, never delete, a bad release. Publishing a replacement archives only the
 
 Each profile sync is locked and staged separately. A failed update preserves the active generation. Correct or archive the bad release, then run the profile card or Desktop shortcut again. If Steam contains a loader owned by another manager, Valheim Profile Sync refuses to replace it; resolve that ownership conflict before launching.
 
+## When the portal cannot reach the agent
+
+Symptom: every operator action fails with
+`Post "http://agent/v1/jobs": dial unix /run/agent/agent.sock: no such file or directory`,
+while the socket plainly exists on the host.
+
+```bash
+curl -fsS localhost:18080/readyz          # {"status":"ready",...} or 503 naming the socket
+ls -l /run/valheim-portal-agent/          # the host side: agent.sock should be here
+docker exec valheim-portal-portal-1 ls -l /run/agent/   # the container's view: empty when broken
+```
+
+Cause: the agent's socket directory is a systemd `RuntimeDirectory`, which systemd deletes and
+recreates on every restart. The portal container bind-mounts that directory, so a restart leaves
+the running container holding a mount on the deleted inode — the host has a socket, the container
+sees an empty directory, and `docker compose up -d` will not fix it because neither the image nor
+the configuration changed.
+
+The generated unit now carries `RuntimeDirectoryPreserve=yes`, so the directory survives a
+restart and this cannot recur on a current deployment. To repair a container already in that
+state:
+
+```bash
+sudo ./scripts/install-portal.sh install --config deploy/install.conf   # detects and recreates it
+# or, directly:
+sudo docker compose -f /srv/valheim-portal/compose.yaml up -d --force-recreate portal
+```
+
+Verify: `curl -fsS localhost:18080/readyz` prints `{"status":"ready","database":"ok","agent":"ok"}`.
+That check tests the socket, not just the database — it used to ping SQLite alone while the
+installer reported "the portal reached the agent socket", which is how a broken deployment passed
+verification and was found instead by an operator typing into the chat page.
+
 ## Server logs
 
 Two sources, and they answer different questions.

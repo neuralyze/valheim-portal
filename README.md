@@ -472,7 +472,21 @@ what the poller does rather than a different configuration. Neither runs as the 
 the runner shells out to omp, which keeps its login in a home directory, so it runs as an
 operator account that can reach neither the world tree nor the docker socket.
 
-Then open `/admin/agent` and send a message.
+### Driving it
+
+Open `/admin/agent` and send a message. On demand, nothing answers until you trigger a pass —
+the message sits in the conversation until you do:
+
+```sh
+sudo systemctl start valheim-agent-runner-once
+```
+
+**The page updates itself. Do not refresh.** It polls a two-field state token every 5 seconds
+while something is pending and every 30 seconds when idle, reloads only when that token changes,
+and never reloads while there is text in the message box — a half-written message vanishing reads
+as a broken page, so it says "new activity - reload when you are done typing" instead.
+
+Polling mode removes the trigger step: send a message and the answer arrives on its own.
 
 Failure text, and what each one means:
 
@@ -481,9 +495,11 @@ Failure text, and what each one means:
 | `The agent bridge is disabled. Set PORTAL_AGENT_BRIDGE_TOKEN_FILE…` | the deployment never opted in — `PORTAL_ENABLE_AGENT_BRIDGE=true` and reinstall |
 | `agent bridge disabled; set PORTAL_AGENT_BRIDGE_TOKEN_FILE` (503) | same cause, seen by the runner instead of the page |
 | `bridge token required` (401) | the token is configured but the runner presented a wrong or absent one |
+| `dial unix /run/agent/agent.sock: no such file or directory` | the container's mount on the agent's runtime directory is stale — see [operations.md](docs/operations.md#when-the-portal-cannot-reach-the-agent). `curl -fsS localhost:18080/readyz` confirms it; reinstalling repairs it |
 | `not available through the portal: …` (501) | the verb is declared but has no host operation; the message names what is missing |
 | `forbidden by policy` (403) | not negotiable, and no argument changes it |
 | `Unit valheim-agent-runner-once.service not found` | the bridge is off, so no runner was installed |
+| nothing happens at all | on demand, and no pass has been triggered since you sent the message |
 
 ### What the operator sees
 
