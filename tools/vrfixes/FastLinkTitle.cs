@@ -42,6 +42,7 @@ namespace NeuralyzeVRFixes
                 _done = true;
                 return;
             }
+            // lint:per-frame bounded by the InWorld guard above and MaxLooks below
             if (_looks >= MaxLooks)
             {
                 _done = true;

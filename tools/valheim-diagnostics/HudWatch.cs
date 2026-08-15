@@ -77,6 +77,7 @@ namespace ValheimDiagnostics
         private void Resolve()
         {
             _resolved = true;
+            // lint:per-frame bounded - _resolved is set before the scan, so this runs once per session
             Type vrGui = null;
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -281,6 +282,7 @@ namespace ValheimDiagnostics
         {
             if (_dumped2 || Hud.instance == null) return;
             _dumped2 = true;
+            // lint:per-frame bounded - _dumped2 is set before the walk, so the tree is dumped once
             try
             {
                 Transform root = Hud.instance.transform;

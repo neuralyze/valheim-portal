@@ -40,7 +40,7 @@ namespace NeuralyzeVRFixes
             if (_resolved) return;
             _resolved = true;
 
-            Type gui = AccessTools.TypeByName("InventoryGui");
+            Type gui = TypeCache.Get("InventoryGui");
             if (gui != null)
             {
                 _inventoryGuiInstance = gui.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
@@ -51,7 +51,7 @@ namespace NeuralyzeVRFixes
                 _inventoryVisible = AccessTools.Method(gui, "IsVisible");
             }
 
-            _player = AccessTools.TypeByName("Player");
+            _player = TypeCache.Get("Player");
             if (_player != null)
             {
                 _localPlayer = AccessTools.Field(_player, "m_localPlayer");

@@ -43,11 +43,11 @@ namespace NeuralyzeVRFixes
             _resolved = true;
             try
             {
-                Type vrPlayer = AccessTools.TypeByName("ValheimVRMod.VRCore.VRPlayer");
+                Type vrPlayer = TypeCache.Get("ValheimVRMod.VRCore.VRPlayer");
                 if (vrPlayer != null)
                     _activePointer = vrPlayer.GetProperty("activePointer", BindingFlags.Static | BindingFlags.Public);
 
-                Type vrControls = AccessTools.TypeByName("ValheimVRMod.VRCore.UI.VRControls");
+                Type vrControls = TypeCache.Get("ValheimVRMod.VRCore.UI.VRControls");
                 if (vrControls != null)
                     _laserControls = vrControls.GetProperty("laserControlsActive", BindingFlags.Static | BindingFlags.Public);
 
@@ -121,7 +121,7 @@ namespace NeuralyzeVRFixes
             _guardsResolved = true;
             _inRadial = AccessTools.Method("Hud:InRadial");
             _quickSelect = AccessTools.Method("Hud:IsQuickPieceSelectEnabled");
-            Type controller = AccessTools.TypeByName("PlayerController");
+            Type controller = TypeCache.Get("PlayerController");
             if (controller != null)
                 _inputDelay = controller.GetProperty("HasInputDelay", BindingFlags.Static | BindingFlags.Public);
         }

@@ -110,7 +110,7 @@ namespace NeuralyzeVRFixes
             _resolved = true;
             try
             {
-                Type steamVr = AccessTools.TypeByName("Valve.VR.SteamVR");
+                Type steamVr = TypeCache.Get("Valve.VR.SteamVR");
                 if (steamVr != null)
                 {
                     PropertyInfo inst = steamVr.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
@@ -121,10 +121,10 @@ namespace NeuralyzeVRFixes
                         _sceneHeight = steamVr.GetProperty("sceneHeight", BindingFlags.Instance | BindingFlags.Public);
                     }
                 }
-                Type openVr = AccessTools.TypeByName("Valve.VR.OpenVR");
+                Type openVr = TypeCache.Get("Valve.VR.OpenVR");
                 PropertyInfo comp = openVr == null ? null : openVr.GetProperty("Compositor", BindingFlags.Static | BindingFlags.Public);
                 _compositor = comp == null ? null : comp.GetValue(null, null);
-                _timingType = AccessTools.TypeByName("Valve.VR.Compositor_FrameTiming");
+                _timingType = TypeCache.Get("Valve.VR.Compositor_FrameTiming");
                 if (_compositor != null && _timingType != null)
                 {
                     foreach (MethodInfo m in _compositor.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public))
@@ -435,7 +435,7 @@ namespace NeuralyzeVRFixes
             {
                 if (_scale == null)
                 {
-                    Type xr = AccessTools.TypeByName("UnityEngine.XR.XRSettings");
+                    Type xr = TypeCache.Get("UnityEngine.XR.XRSettings");
                     _scale = xr == null ? null : xr.GetProperty("renderViewportScale", BindingFlags.Static | BindingFlags.Public);
                     if (_scale == null)
                     {

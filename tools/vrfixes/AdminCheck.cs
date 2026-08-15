@@ -43,7 +43,7 @@ namespace NeuralyzeVRFixes
         {
             if (_resolved) return;
             _resolved = true;
-            Type znet = AccessTools.TypeByName("ZNet");
+            Type znet = TypeCache.Get("ZNet");
             if (znet == null) return;
             _znetInstance = znet.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
             _isServer = AccessTools.Method(znet, "IsServer");
@@ -111,7 +111,7 @@ namespace NeuralyzeVRFixes
         {
             Type t;
             if (_typeCache.TryGetValue(name, out t)) return t;
-            t = AccessTools.TypeByName(name);
+            t = TypeCache.Get(name);
             _typeCache[name] = t;
             if (t == null)
             {
@@ -247,7 +247,7 @@ namespace NeuralyzeVRFixes
 
             try
             {
-                Type cam = AccessTools.TypeByName("Valve.VR.SteamVR_Camera");
+                Type cam = TypeCache.Get("Valve.VR.SteamVR_Camera");
                 if (cam == null)
                 {
                     NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag

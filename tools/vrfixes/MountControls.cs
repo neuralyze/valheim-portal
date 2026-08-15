@@ -48,7 +48,7 @@ namespace NeuralyzeVRFixes
             _resolved = true;
             try
             {
-                Type vr = AccessTools.TypeByName("ValheimVRMod.VRCore.UI.VRControls");
+                Type vr = TypeCache.Get("ValheimVRMod.VRCore.UI.VRControls");
                 if (vr != null)
                 {
                     _vrControls = vr.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
@@ -57,8 +57,8 @@ namespace NeuralyzeVRFixes
                     _leftStickX = AccessTools.Method(vr, "GetJoyLeftStickX");
                     _leftStickY = AccessTools.Method(vr, "GetJoyLeftStickY");
                 }
-                Type character = AccessTools.TypeByName("Character");
-                Type player = AccessTools.TypeByName("Player");
+                Type character = TypeCache.Get("Character");
+                Type player = TypeCache.Get("Player");
                 _isAttached = character == null ? null : AccessTools.Method(character, "IsAttached");
                 _localPlayer = player == null ? null : AccessTools.Field(player, "m_localPlayer");
                 _doodadField = player == null ? null : AccessTools.Field(player, "m_doodadController");
@@ -163,7 +163,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type player = AccessTools.TypeByName("Player");
+                Type player = TypeCache.Get("Player");
                 object local = player == null ? null : AccessTools.Field(player, "m_localPlayer").GetValue(null);
                 if (local == null) return "?";
                 FieldInfo doodadField = AccessTools.Field(player, "m_doodadController");

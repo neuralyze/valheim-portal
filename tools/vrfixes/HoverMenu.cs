@@ -126,7 +126,7 @@ namespace NeuralyzeVRFixes
             Type t;
             if (!_types.TryGetValue(component, out t))
             {
-                t = AccessTools.TypeByName(component);
+                t = TypeCache.Get(component);
                 _types[component] = t;
             }
             if (t == null) return false;

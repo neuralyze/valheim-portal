@@ -114,12 +114,12 @@ namespace NeuralyzeVRFixes
             if (!_adminResolved)
             {
                 _adminResolved = true;
-                Type znet = AccessTools.TypeByName("ZNet");
+                Type znet = TypeCache.Get("ZNet");
                 _isAdmin = znet == null ? null : AccessTools.Method(znet, "LocalPlayerIsAdminOrHost");
 
                 // ServerSync is bundled by most server-aware mods and syncs admin state to clients,
                 // so it is often correct when the vanilla check is not yet populated.
-                Type sync = AccessTools.TypeByName("ServerSync.SynchronizationManager");
+                Type sync = TypeCache.Get("ServerSync.SynchronizationManager");
                 if (sync != null)
                 {
                     _serverSyncInstance = sync.GetProperty("Instance", BindingFlags.Static | BindingFlags.Public);
@@ -265,7 +265,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type qa = AccessTools.TypeByName("ValheimVRMod.Scripts.QuickAbstract");
+                Type qa = TypeCache.Get("ValheimVRMod.Scripts.QuickAbstract");
                 if (qa == null)
                 {
                     NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "QuickAbstract not found; misc menu unavailable");
@@ -352,7 +352,7 @@ namespace NeuralyzeVRFixes
                 object t = prop == null ? null : prop.GetValue(instance, null);
                 if (t == null) return "";
 
-                Type handClass = AccessTools.TypeByName("Valve.VR.InteractionSystem.Hand");
+                Type handClass = TypeCache.Get("Valve.VR.InteractionSystem.Hand");
                 if (handClass == null) return "";
                 MethodInfo inParent = AccessTools.Method(typeof(Component), "GetComponentInParent", new Type[] { typeof(Type) });
                 object hand = inParent == null ? null : inParent.Invoke(t, new object[] { handClass });
@@ -396,7 +396,7 @@ namespace NeuralyzeVRFixes
             try
             {
                 Component c = instance as Component;
-                Type vrp = AccessTools.TypeByName("ValheimVRMod.VRCore.VRPlayer");
+                Type vrp = TypeCache.Get("ValheimVRMod.VRCore.VRPlayer");
                 if (c == null || vrp == null) return "";
                 PropertyInfo lp = vrp.GetProperty("leftHandBone", BindingFlags.Static | BindingFlags.Public);
                 PropertyInfo rp = vrp.GetProperty("rightHandBone", BindingFlags.Static | BindingFlags.Public);
@@ -419,7 +419,7 @@ namespace NeuralyzeVRFixes
         private static bool Resolve(object menu)
         {
             if (_useAsQuickAction != null) return true;
-            Type qa = AccessTools.TypeByName("ValheimVRMod.Scripts.QuickAbstract");
+            Type qa = TypeCache.Get("ValheimVRMod.Scripts.QuickAbstract");
             if (qa == null) return false;
             _extraField = AccessTools.Field(qa, "extraElements");
             // reorderElements() deactivates every slot at or beyond extraElementCount, and
@@ -633,7 +633,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type console = AccessTools.TypeByName("Console");
+                Type console = TypeCache.Get("Console");
                 if (console == null) { Log("Console type not found"); return false; }
 
                 // Enable for this session if it is off, else the window refuses to accept input.
@@ -660,7 +660,7 @@ namespace NeuralyzeVRFixes
                 if (inst == null) { Log("Console.instance null - console may be disabled by the server"); return false; }
 
                 // m_chatWindow lives on Terminal, the base class.
-                Type terminal = AccessTools.TypeByName("Terminal") ?? console;
+                Type terminal = TypeCache.Get("Terminal") ?? console;
                 FieldInfo winField = AccessTools.Field(terminal, "m_chatWindow");
                 object win = winField == null ? null : winField.GetValue(inst);
                 GameObject windowObject = null;
@@ -691,8 +691,8 @@ namespace NeuralyzeVRFixes
             if (input == null) return false;
             try
             {
-                Type im = AccessTools.TypeByName("ValheimVRMod.Patches.InputManager")
-                       ?? AccessTools.TypeByName("InputManager");
+                Type im = TypeCache.Get("ValheimVRMod.Patches.InputManager")
+                       ?? TypeCache.Get("InputManager");
                 if (im == null) return false;
                 foreach (MethodInfo m in im.GetMethods(BindingFlags.Static | BindingFlags.Public))
                 {
@@ -733,7 +733,7 @@ namespace NeuralyzeVRFixes
             if (_dead) return false;
             if (_emulate == null)
             {
-                Type patch = AccessTools.TypeByName("ValheimVRMod.Patches.ZInput_GetButtonDown_Patch");
+                Type patch = TypeCache.Get("ValheimVRMod.Patches.ZInput_GetButtonDown_Patch");
                 _emulate = patch == null ? null : patch.GetMethod("EmulateButtonDown",
                     BindingFlags.Static | BindingFlags.Public, null, new[] { typeof(string) }, null);
                 if (_emulate == null)
@@ -784,7 +784,7 @@ namespace NeuralyzeVRFixes
                 // UnityEngine.Input is type-forwarded to UnityEngine.InputLegacyModule,
                 // which is not among the available reference assemblies, so it is resolved
                 // at runtime rather than compiled against.
-                Type input = AccessTools.TypeByName("UnityEngine.Input");
+                Type input = TypeCache.Get("UnityEngine.Input");
                 if (input == null)
                 {
                     NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
@@ -875,7 +875,7 @@ namespace NeuralyzeVRFixes
                     _pending.Add((int)code);
                     if (_vhvrEmulate == null)
                     {
-                        Type patch = AccessTools.TypeByName("ValheimVRMod.Patches.ZInput_GetKeyDown_Patch");
+                        Type patch = TypeCache.Get("ValheimVRMod.Patches.ZInput_GetKeyDown_Patch");
                         _vhvrEmulate = patch == null ? null : patch.GetMethod("EmulateKeyDown",
                             BindingFlags.Static | BindingFlags.Public, null, new[] { typeof(KeyCode) }, null);
                     }

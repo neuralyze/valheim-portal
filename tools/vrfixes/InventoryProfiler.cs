@@ -71,7 +71,7 @@ namespace NeuralyzeVRFixes
                 var skipped = new List<string>();
                 foreach (var target in Targets)
                 {
-                    Type owner = AccessTools.TypeByName(target[0]);
+                    Type owner = TypeCache.Get(target[0]);
                     MethodInfo method = owner == null ? null : AccessTools.Method(owner, target[1]);
                     if (method == null) { skipped.Add(target[0] + "." + target[1]); continue; }
                     harmony.Patch(method, prefix, postfix);

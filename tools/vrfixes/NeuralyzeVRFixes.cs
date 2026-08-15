@@ -409,7 +409,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type xr = AccessTools.TypeByName("UnityEngine.XR.XRSettings");
+                Type xr = TypeCache.Get("UnityEngine.XR.XRSettings");
                 if (xr == null) { Log.LogWarning(Tag + "XRSettings not found; no render scale report"); return; }
                 PropertyInfo width = xr.GetProperty("eyeTextureWidth", BindingFlags.Static | BindingFlags.Public);
                 PropertyInfo height = xr.GetProperty("eyeTextureHeight", BindingFlags.Static | BindingFlags.Public);
@@ -480,6 +480,9 @@ namespace NeuralyzeVRFixes
         // active objects, so once a bar is deactivated it is not found again.
         private static void DeactivateHotbars()
         {
+            // lint:per-frame bounded - once from LateUpdate behind _hotbarsDone, and otherwise from
+            // the AdoptPollSeconds coroutine at 2 Hz; the search shrinks to nothing as bars are
+            // deactivated, because FindObjectsOfType returns only active objects.
             try
             {
                 foreach (HotkeyBar bar in UnityEngine.Object.FindObjectsOfType<HotkeyBar>())
@@ -554,7 +557,7 @@ namespace NeuralyzeVRFixes
                 // Left-hand interaction shows this one, and nothing above touches it.
                 if (_crosshairInstance == null)
                 {
-                    Type cm = AccessTools.TypeByName("ValheimVRMod.VRCore.UI.CrosshairManager");
+                    Type cm = TypeCache.Get("ValheimVRMod.VRCore.UI.CrosshairManager");
                     if (cm == null) return;
                     _crosshairInstance = cm.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
                     if (_crosshairInstance == null) _crosshairInstance = cm.GetProperty("instance", BindingFlags.Static | BindingFlags.NonPublic);
@@ -620,7 +623,7 @@ namespace NeuralyzeVRFixes
             {
                 if (_instanceProp == null)
                 {
-                    Type vrHud = AccessTools.TypeByName("ValheimVRMod.VRCore.UI.VRHud");
+                    Type vrHud = TypeCache.Get("ValheimVRMod.VRCore.UI.VRHud");
                     if (vrHud == null) { _broken = true; return; }
                     _instanceProp = vrHud.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
                     _elementsField = AccessTools.Field(vrHud, "VRHudElements");
@@ -728,7 +731,7 @@ namespace NeuralyzeVRFixes
             _done = true;
             try
             {
-                Type vc = AccessTools.TypeByName("ValheimVRMod.VRCore.UI.VRControls");
+                Type vc = TypeCache.Get("ValheimVRMod.VRCore.UI.VRControls");
                 if (vc == null) { NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "VRControls not found"); return; }
                 PropertyInfo instProp = vc.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
                 object inst = instProp == null ? null : instProp.GetValue(null, null);
@@ -740,7 +743,7 @@ namespace NeuralyzeVRFixes
                 NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag + "=== SteamVR binding audit (" + map.Count + " mapped actions) ===");
                 // These are not in VHVR's ZInput dictionary, so the loop below never
                 // reaches them - yet ToggleCrouch is exactly the one reported missing.
-                Type sva = AccessTools.TypeByName("Valve.VR.SteamVR_Actions");
+                Type sva = TypeCache.Get("Valve.VR.SteamVR_Actions");
                 foreach (string extra in new[] { "valheim_ToggleCrouch", "valheim_ToggleRun", "valheim_Grab", "valheim_UseLeft" })
                 {
                     PropertyInfo ep = sva == null ? null : sva.GetProperty(extra, BindingFlags.Static | BindingFlags.Public);
@@ -801,7 +804,7 @@ namespace NeuralyzeVRFixes
         internal static bool Init()
         {
             if (_srcType != null) return true;
-            _srcType = AccessTools.TypeByName("Valve.VR.SteamVR_Input_Sources");
+            _srcType = TypeCache.Get("Valve.VR.SteamVR_Input_Sources");
             if (_srcType == null) return false;
             try
             {
@@ -924,8 +927,8 @@ namespace NeuralyzeVRFixes
             try
             {
                 if (!SteamVRProbe.Init()) { _failed = true; return false; }
-                Type actions = AccessTools.TypeByName("Valve.VR.SteamVR_Actions");
-                Type patch = AccessTools.TypeByName("ValheimVRMod.Patches.ZInput_GetButtonDown_Patch");
+                Type actions = TypeCache.Get("Valve.VR.SteamVR_Actions");
+                Type patch = TypeCache.Get("ValheimVRMod.Patches.ZInput_GetButtonDown_Patch");
                 if (actions == null || patch == null)
                 {
                     NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
@@ -1013,7 +1016,7 @@ namespace NeuralyzeVRFixes
             try
             {
                 if (!SteamVRProbe.Init()) { _failed = true; return false; }
-                Type actions = AccessTools.TypeByName("Valve.VR.SteamVR_Actions");
+                Type actions = TypeCache.Get("Valve.VR.SteamVR_Actions");
                 if (actions == null) { _failed = true; return false; }
                 _jump   = Get(actions, "valheim_Jump");
                 _grab   = Get(actions, "valheim_Grab");
@@ -1399,7 +1402,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type statics = AccessTools.TypeByName("ValheimVRMod.Utilities.StaticObjects");
+                Type statics = TypeCache.Get("ValheimVRMod.Utilities.StaticObjects");
                 if (statics == null) return "<StaticObjects missing>";
                 FieldInfo fCol = AccessTools.Field(statics, "lastHitCollider");
                 FieldInfo fPos = AccessTools.Field(statics, "lastHitPoint");
@@ -1443,7 +1446,7 @@ namespace NeuralyzeVRFixes
             origin = Vector3.zero; direction = Vector3.forward;
             try
             {
-                Type vrp = AccessTools.TypeByName("ValheimVRMod.VRCore.VRPlayer");
+                Type vrp = TypeCache.Get("ValheimVRMod.VRCore.VRPlayer");
                 PropertyInfo rp = vrp == null ? null : vrp.GetProperty("rightPointer", BindingFlags.Static | BindingFlags.Public);
                 object pointer = rp == null ? null : rp.GetValue(null, null);
                 if (pointer != null)
@@ -1528,7 +1531,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type vrp = AccessTools.TypeByName("ValheimVRMod.VRCore.VRPlayer");
+                Type vrp = TypeCache.Get("ValheimVRMod.VRCore.VRPlayer");
                 PropertyInfo rp = vrp == null ? null : vrp.GetProperty("rightPointer", BindingFlags.Static | BindingFlags.Public);
                 object pointer = rp == null ? null : rp.GetValue(null, null);
                 if (pointer == null) return null;
@@ -1575,7 +1578,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type menu = AccessTools.TypeByName("Menu");
+                Type menu = TypeCache.Get("Menu");
                 if (menu == null) { Say("Menu type not found"); return; }
                 PropertyInfo inst = menu.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
                 object m = inst == null ? null : inst.GetValue(null, null);
@@ -1651,12 +1654,12 @@ namespace NeuralyzeVRFixes
             {
                 if (_rightEst == null)
                 {
-                    Type vrp = AccessTools.TypeByName("ValheimVRMod.VRCore.VRPlayer");
+                    Type vrp = TypeCache.Get("ValheimVRMod.VRCore.VRPlayer");
                     if (vrp == null) { _failed = true; return; }
                     _rightEst = vrp.GetProperty("rightHandPhysicsEstimator", BindingFlags.Static | BindingFlags.Public);
                     _leftEst = vrp.GetProperty("leftHandPhysicsEstimator", BindingFlags.Static | BindingFlags.Public);
                     if (_rightEst == null) { _failed = true; return; }
-                    Type cfg = AccessTools.TypeByName("ValheimVRMod.Utilities.VHVRConfig");
+                    Type cfg = TypeCache.Get("ValheimVRMod.Utilities.VHVRConfig");
                     MethodInfo m = cfg == null ? null : cfg.GetMethod("SwingSpeedRequirement", BindingFlags.Static | BindingFlags.Public);
                     if (m != null) _threshold = Convert.ToSingle(m.Invoke(null, null));
                 }
@@ -1719,7 +1722,7 @@ namespace NeuralyzeVRFixes
             _built = true;
             try
             {
-                Type actions = AccessTools.TypeByName("Valve.VR.SteamVR_Actions");
+                Type actions = TypeCache.Get("Valve.VR.SteamVR_Actions");
                 if (actions == null) { _failed = true; return; }
                 foreach (PropertyInfo prop in actions.GetProperties(BindingFlags.Static | BindingFlags.Public))
                 {
@@ -1804,7 +1807,9 @@ namespace NeuralyzeVRFixes
         private static bool Resolve()
         {
             if (_resolved) return _vrGuiType != null && _instance != null;
-            _vrGuiType = AccessTools.TypeByName("ValheimVRMod.VRCore.UI.VRGUI");
+            // lint:per-frame bounded - _resolved short-circuits every later call, so the scan for
+            // the VRGUI instance happens once per session
+            _vrGuiType = TypeCache.Get("ValheimVRMod.VRCore.UI.VRGUI");
             if (_vrGuiType == null)
             {
                 NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "VRGUI type not found; VR fixes inert");

@@ -40,11 +40,11 @@ namespace NeuralyzeVRFixes
             {
                 if (_done) return;
                 _done = true;
-                Player = AccessTools.TypeByName("Player");
-                Character = AccessTools.TypeByName("Character");
-                Ship = AccessTools.TypeByName("Ship");
-                ShipControlls = AccessTools.TypeByName("ShipControlls");
-                ZNetScene = AccessTools.TypeByName("ZNetScene");
+                Player = TypeCache.Get("Player");
+                Character = TypeCache.Get("Character");
+                Ship = TypeCache.Get("Ship");
+                ShipControlls = TypeCache.Get("ShipControlls");
+                ZNetScene = TypeCache.Get("ZNetScene");
                 if (Player != null)
                 {
                     LocalPlayer = AccessTools.Field(Player, "m_localPlayer");
@@ -85,7 +85,7 @@ namespace NeuralyzeVRFixes
 
         private static object Instance(string typeName)
         {
-            Type t = AccessTools.TypeByName(typeName);
+            Type t = TypeCache.Get(typeName);
             if (t == null) return null;
             PropertyInfo p = t.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
             if (p != null) return p.GetValue(null, null);
@@ -102,7 +102,7 @@ namespace NeuralyzeVRFixes
             {
                 object chat = Instance("Chat");
                 if (chat == null) { Warn("emote '" + name + "': Chat.instance null"); return false; }
-                Type talker = AccessTools.TypeByName("Talker");
+                Type talker = TypeCache.Get("Talker");
                 Type kind = talker == null ? null : AccessTools.Inner(talker, "Type");
                 MethodInfo send = AccessTools.Method(chat.GetType(), "SendText");
                 if (kind == null || send == null)
@@ -192,7 +192,7 @@ namespace NeuralyzeVRFixes
                 object chat = Instance("Chat");
                 if (chat == null) { Warn(what + ": Chat.instance null"); return false; }
 
-                Type quick = AccessTools.TypeByName("ValheimVRMod.Scripts.QuickAbstract");
+                Type quick = TypeCache.Get("ValheimVRMod.Scripts.QuickAbstract");
                 FieldInfo flag = quick == null ? null : AccessTools.Field(quick, "shouldStartChat");
                 if (flag == null)
                 {
@@ -201,7 +201,7 @@ namespace NeuralyzeVRFixes
                 }
 
                 FieldInfo inputField = AccessTools.Field(chat.GetType(), "m_input")
-                                       ?? AccessTools.Field(AccessTools.TypeByName("Terminal"), "m_input");
+                                       ?? AccessTools.Field(TypeCache.Get("Terminal"), "m_input");
                 object input = inputField == null ? null : inputField.GetValue(chat);
                 if (input == null) { Warn(what + ": chat input field not found"); return false; }
 
@@ -222,7 +222,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type player = AccessTools.TypeByName("Player");
+                Type player = TypeCache.Get("Player");
                 object local = player == null ? null : AccessTools.Field(player, "m_localPlayer").GetValue(null);
                 if (local == null) { Warn("power: no local player"); return false; }
                 MethodInfo start = AccessTools.Method(player, "StartGuardianPower");
@@ -308,11 +308,11 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type player = AccessTools.TypeByName("Player");
+                Type player = TypeCache.Get("Player");
                 object local = player == null ? null : AccessTools.Field(player, "m_localPlayer").GetValue(null);
                 if (local == null) return "";
 
-                Type character = AccessTools.TypeByName("Character");
+                Type character = TypeCache.Get("Character");
                 MethodInfo standing = character == null ? null : AccessTools.Method(character, "GetStandingOnShip");
                 object ship = standing == null ? null : standing.Invoke(local, null);
                 bool onBoard = ship != null && !ship.Equals(null);
@@ -340,7 +340,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type player = AccessTools.TypeByName("Player");
+                Type player = TypeCache.Get("Player");
                 object local = player == null ? null : AccessTools.Field(player, "m_localPlayer").GetValue(null);
                 if (local == null) return false;
 
@@ -356,7 +356,7 @@ namespace NeuralyzeVRFixes
                 {
                     // Fallback only: releases control but leaves the field set, which is the bug
                     // above. Named in the log so a future session can see it happened.
-                    MethodInfo stop = AccessTools.Method(doodad.GetType(), "OnUseStop", new Type[] { AccessTools.TypeByName("Humanoid") })
+                    MethodInfo stop = AccessTools.Method(doodad.GetType(), "OnUseStop", new Type[] { TypeCache.Get("Humanoid") })
                                    ?? AccessTools.Method(doodad.GetType(), "OnUseStop");
                     if (stop != null)
                     {
@@ -366,7 +366,7 @@ namespace NeuralyzeVRFixes
                     }
                 }
 
-                Type character = AccessTools.TypeByName("Character");
+                Type character = TypeCache.Get("Character");
                 MethodInfo attachedM = character == null ? null : AccessTools.Method(character, "IsAttached");
                 bool wasAttached = attachedM != null && Convert.ToBoolean(attachedM.Invoke(local, null));
                 MethodInfo detach = AccessTools.Method(player, "AttachStop");
@@ -410,7 +410,7 @@ namespace NeuralyzeVRFixes
         // The ship under the pointer, else the one being steered.
         private static object ResolveShip(GameObject target)
         {
-            Type shipType = AccessTools.TypeByName("Ship");
+            Type shipType = TypeCache.Get("Ship");
             if (target != null && shipType != null)
             {
                 try
@@ -421,7 +421,7 @@ namespace NeuralyzeVRFixes
                 catch { }
             }
 
-            Type player = AccessTools.TypeByName("Player");
+            Type player = TypeCache.Get("Player");
             object local = player == null ? null : AccessTools.Field(player, "m_localPlayer").GetValue(null);
             if (local == null) return null;
             FieldInfo doodadField = AccessTools.Field(player, "m_doodadController");
@@ -443,7 +443,7 @@ namespace NeuralyzeVRFixes
                 if (parts.Length < 2 || !parts[0].Equals("spawn", StringComparison.OrdinalIgnoreCase)) return;
                 string want = parts[1];
 
-                Type zn = AccessTools.TypeByName("ZNetScene");
+                Type zn = TypeCache.Get("ZNetScene");
                 if (zn == null) return;
                 object scene = null;
                 FieldInfo sf = AccessTools.Field(zn, "m_instance") ?? AccessTools.Field(zn, "s_instance");
@@ -536,7 +536,7 @@ namespace NeuralyzeVRFixes
 
             try
             {
-                Type menu = AccessTools.TypeByName("Menu");
+                Type menu = TypeCache.Get("Menu");
                 object inst = menu == null ? null : Instance("Menu");
                 MethodInfo visible = menu == null ? null : AccessTools.Method(menu, "IsVisible");
                 MethodInfo hide = menu == null ? null : AccessTools.Method(menu, "Hide");
@@ -554,7 +554,7 @@ namespace NeuralyzeVRFixes
                 {
                     object inst = Instance(owner);
                     if (inst == null) continue;
-                    Type t = AccessTools.TypeByName("Terminal") ?? inst.GetType();
+                    Type t = TypeCache.Get("Terminal") ?? inst.GetType();
                     FieldInfo win = AccessTools.Field(t, "m_chatWindow") ?? AccessTools.Field(inst.GetType(), "m_chatWindow");
                     object value = win == null ? null : win.GetValue(inst);
                     GameObject go = value as GameObject;
@@ -647,7 +647,7 @@ namespace NeuralyzeVRFixes
             MarkPlayerIssued();
             try
             {
-                Type console = AccessTools.TypeByName("Console");
+                Type console = TypeCache.Get("Console");
                 object term = Instance("Console");
                 if (console == null || term == null)
                 {
@@ -666,7 +666,7 @@ namespace NeuralyzeVRFixes
                     catch { }
                 }
 
-                Type terminal = AccessTools.TypeByName("Terminal") ?? console;
+                Type terminal = TypeCache.Get("Terminal") ?? console;
                 MethodInfo run = AccessTools.Method(terminal, "TryRunCommand",
                     new[] { typeof(string), typeof(bool), typeof(bool) });
                 if (run == null)
@@ -725,7 +725,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type terminal = AccessTools.TypeByName("Terminal");
+                Type terminal = TypeCache.Get("Terminal");
                 MethodInfo run = terminal == null ? null : AccessTools.Method(terminal, "TryRunCommand",
                     new[] { typeof(string), typeof(bool), typeof(bool) });
                 if (run == null)
@@ -766,12 +766,12 @@ namespace NeuralyzeVRFixes
 
         private static void BeforeCommand(object __instance)
         {
-            _bufferBefore = BufferLength(AccessTools.TypeByName("Terminal"), __instance);
+            _bufferBefore = BufferLength(TypeCache.Get("Terminal"), __instance);
         }
 
         private static void AfterCommand(object __instance, string text)
         {
-            Type terminal = AccessTools.TypeByName("Terminal");
+            Type terminal = TypeCache.Get("Terminal");
             string tail = BufferTail(terminal, __instance, _bufferBefore);
             NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
                 + "CONSOLE '" + text + "' -> " + (tail.Length == 0 ? "(no output)" : tail));
@@ -798,7 +798,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type player = AccessTools.TypeByName("Player");
+                Type player = TypeCache.Get("Player");
                 object local = player == null ? null : AccessTools.Field(player, "m_localPlayer").GetValue(null);
                 if (local == null) return "";
                 var parts = new System.Collections.Generic.List<string>();
@@ -830,7 +830,7 @@ namespace NeuralyzeVRFixes
             try
             {
                 object chat = Instance("Chat");
-                Type terminal = AccessTools.TypeByName("Terminal");
+                Type terminal = TypeCache.Get("Terminal");
                 MethodInfo add = terminal == null ? null : AccessTools.Method(terminal, "AddString", new[] { typeof(string) });
                 if (chat == null || add == null) return;
                 foreach (string line in lines)
@@ -847,7 +847,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type hudType = AccessTools.TypeByName("MessageHud");
+                Type hudType = TypeCache.Get("MessageHud");
                 object hud = hudType == null ? null : Instance("MessageHud");
                 if (hud == null) return;
                 MethodInfo show = AccessTools.Method(hudType, "ShowMessage");

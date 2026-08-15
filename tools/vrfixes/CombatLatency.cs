@@ -60,7 +60,7 @@ namespace NeuralyzeVRFixes
             {
                 // VHVR's prefix on Attack.Start IS the melee damage path, so timing its entry
                 // measures when the game commits to the hit.
-                Type attack = AccessTools.TypeByName("Attack");
+                Type attack = TypeCache.Get("Attack");
                 MethodInfo start = attack == null ? null : AccessTools.Method(attack, "Start");
                 MethodInfo trigger = attack == null ? null : AccessTools.Method(attack, "OnAttackTrigger");
                 MethodInfo onStart = typeof(CombatLatency).GetMethod("OnAttackStart", BindingFlags.Static | BindingFlags.NonPublic);
@@ -80,7 +80,7 @@ namespace NeuralyzeVRFixes
                 foreach (string typeName in new[] { "Character", "TreeBase", "TreeLog", "Destructible",
                                                     "WearNTear", "MineRock", "MineRock5" })
                 {
-                    Type t = AccessTools.TypeByName(typeName);
+                    Type t = TypeCache.Get(typeName);
                     MethodInfo dmg = t == null ? null : AccessTools.Method(t, "Damage");
                     if (dmg == null) continue;
                     try
@@ -97,13 +97,13 @@ namespace NeuralyzeVRFixes
                 if (trigger != null) { harmony.Patch(trigger, postfix: new HarmonyMethod(onTrigger)); recv++; }
                 n += recv > 0 ? 1 : 0;
 
-                Type vrp = AccessTools.TypeByName("ValheimVRMod.VRCore.VRPlayer");
+                Type vrp = TypeCache.Get("ValheimVRMod.VRCore.VRPlayer");
                 if (vrp != null)
                 {
                     _rightEst = vrp.GetProperty("rightHandPhysicsEstimator", BindingFlags.Static | BindingFlags.Public);
                     _leftEst = vrp.GetProperty("leftHandPhysicsEstimator", BindingFlags.Static | BindingFlags.Public);
                 }
-                Type cfg = AccessTools.TypeByName("ValheimVRMod.Utilities.VHVRConfig");
+                Type cfg = TypeCache.Get("ValheimVRMod.Utilities.VHVRConfig");
                 _swingReq = cfg == null ? null : cfg.GetMethod("SwingSpeedRequirement", BindingFlags.Static | BindingFlags.Public);
 
                 ProbeHealth.Announce("CombatLatency", n > 0 && _rightEst != null,
@@ -213,7 +213,7 @@ namespace NeuralyzeVRFixes
             if (_hmdHz > 0f) return _hmdHz;
             try
             {
-                Type steamVr = AccessTools.TypeByName("Valve.VR.SteamVR");
+                Type steamVr = TypeCache.Get("Valve.VR.SteamVR");
                 PropertyInfo inst = steamVr == null ? null : steamVr.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
                 object sv = inst == null ? null : inst.GetValue(null, null);
                 FieldInfo f = sv == null ? null : AccessTools.Field(sv.GetType(), "hmd_DisplayFrequency");
@@ -305,7 +305,7 @@ namespace NeuralyzeVRFixes
         {
             try
             {
-                Type render = AccessTools.TypeByName("Valve.VR.SteamVR_Render");
+                Type render = TypeCache.Get("Valve.VR.SteamVR_Render");
                 MethodInfo update = render == null ? null : AccessTools.Method(render, "Update");
                 if (update == null)
                 {

@@ -47,7 +47,7 @@ namespace NeuralyzeVRFixes
         private static bool Resolve()
         {
             if (_resolved) return _vrHudType != null;
-            _vrHudType = AccessTools.TypeByName("ValheimVRMod.VRCore.UI.VRHud");
+            _vrHudType = TypeCache.Get("ValheimVRMod.VRCore.UI.VRHud");
             if (_vrHudType != null)
                 _instanceProp = AccessTools.Property(_vrHudType, "instance");
             _resolved = true;
@@ -73,6 +73,8 @@ namespace NeuralyzeVRFixes
             if (!Enabled) return;
             // On a Flat client VRHud does not exist, and the panel is already where the mod wants it.
             // Bailing here keeps the 2 Hz GameObject.Find off non-VR installs entirely.
+            // lint:per-frame bounded - called from the AdoptPollSeconds coroutine (0.5s default,
+            // 2 Hz), not from a frame callback, and Resolve() above skips it entirely with no VRHud
             if (!Resolve()) return;
             try
             {

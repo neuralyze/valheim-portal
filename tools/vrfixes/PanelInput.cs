@@ -30,7 +30,7 @@ namespace NeuralyzeVRFixes
 
         internal static void Install(Harmony harmony)
         {
-            Type player = AccessTools.TypeByName("Player");
+            Type player = TypeCache.Get("Player");
             MethodInfo take = player == null ? null : AccessTools.Method(player, "TakeInput");
             if (take == null)
             {
@@ -46,7 +46,7 @@ namespace NeuralyzeVRFixes
             // a separate private method with its own copy of the same gates. Patching only the
             // first unfroze actions while the stick stayed dead with the inventory or build menu
             // open - the log showed this postfix firing and the player still unable to walk.
-            Type controller = AccessTools.TypeByName("PlayerController");
+            Type controller = TypeCache.Get("PlayerController");
             MethodInfo controllerTake = controller == null
                 ? null
                 : AccessTools.Method(controller, "TakeInput", new[] { typeof(bool) });
@@ -69,12 +69,12 @@ namespace NeuralyzeVRFixes
             _storeVisible     = Method("StoreGui", "IsVisible");
             _textInputVisible = Method("TextInput", "IsVisible");
             _pieceSelection   = Method("Hud", "IsPieceSelectionVisible");
-            Type character = AccessTools.TypeByName("Character");
-            Type playerType = AccessTools.TypeByName("Player");
+            Type character = TypeCache.Get("Character");
+            Type playerType = TypeCache.Get("Player");
             _isAttached  = character  == null ? null : AccessTools.Method(character, "IsAttached");
             _localPlayer = playerType == null ? null : AccessTools.Field(playerType, "m_localPlayer");
             _minimapOpen      = Method("Minimap", "IsOpen");
-            Type chat = AccessTools.TypeByName("Chat");
+            Type chat = TypeCache.Get("Chat");
             if (chat != null)
             {
                 PropertyInfo instance = chat.GetProperty("instance", BindingFlags.Static | BindingFlags.Public);
@@ -85,7 +85,7 @@ namespace NeuralyzeVRFixes
 
         private static MethodInfo Method(string typeName, string name)
         {
-            Type t = AccessTools.TypeByName(typeName);
+            Type t = TypeCache.Get(typeName);
             return t == null ? null : AccessTools.Method(t, name);
         }
 
@@ -200,7 +200,7 @@ namespace NeuralyzeVRFixes
     {
         private static System.Reflection.MethodBase TargetMethod()
         {
-            System.Type player = AccessTools.TypeByName("Player");
+            System.Type player = TypeCache.Get("Player");
             return player == null ? null : AccessTools.Method(player, "UpdateDodge");
         }
 
