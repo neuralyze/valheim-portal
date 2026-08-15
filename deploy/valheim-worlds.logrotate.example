@@ -1,0 +1,26 @@
+# Rotation for the collected world logs. Install as /etc/logrotate.d/valheim-worlds.
+#
+# Without this the collector appends forever: the busiest world here passed 12 MB in eight days,
+# and a log that fills the host disk stops every world on it, not just the one that grew.
+#
+#   sudo cp deploy/valheim-worlds.logrotate.example /etc/logrotate.d/valheim-worlds
+#   sudo logrotate --debug /etc/logrotate.d/valheim-worlds    # dry run: prints what it would do
+#   sudo logrotate --force /etc/logrotate.d/valheim-worlds    # rotate now, to prove it works
+#
+# copytruncate is required, not a preference. The collector holds each file open and follows the
+# container's output into it; renaming the file out from under an open descriptor would leave the
+# writer appending to an unlinked inode, and the visible log would stop growing while the disk kept
+# filling. copytruncate copies then truncates in place, so the descriptor stays valid.
+
+/var/log/valheim-worlds/*.log {
+    daily
+    rotate 14
+    maxsize 64M
+    copytruncate
+    compress
+    delaycompress
+    missingok
+    notifempty
+    su root root
+    create 0640 root root
+}

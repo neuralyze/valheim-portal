@@ -71,6 +71,7 @@ Each verb maps to a command that already exists and already validates its own in
 |---|---|---|
 | `world_status` | read | portal operation "status" |
 | `world_logs` | read | portal operation "logs" |
+| `world_log_tail` | read | `hostops/portal_world_log.sh` |
 | `mod_inventory` | read | `tools/valheim_mods.py list` |
 | `mod_check_updates` | read | `tools/valheim_mods.py check-updates` |
 | `mod_notes` | read | `tools/valheim_mods.py notes` |
@@ -122,11 +123,11 @@ Checked after a change rather than assumed:
 
 ## What is wired today
 
-Seventeen verbs execute through the portal. The rest are declared, refused with a reason, and
+Eighteen verbs execute through the portal. The rest are declared, refused with a reason, and
 recorded as refused - an approximation would be worse than a refusal.
 
 ```
-executes now    world_status world_logs mod_inventory mod_search mod_check_updates
+executes now    world_status world_logs world_log_tail mod_inventory mod_search mod_check_updates
                 mod_notes release_status deploy_plan
                 mod_add mod_remove mod_update deploy_apply
                 world_start world_stop world_backup

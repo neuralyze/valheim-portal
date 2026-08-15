@@ -149,6 +149,30 @@ func (a *AgentClient) RunPublish(ctx context.Context, id, world, profile, client
 		ClientType: clientType, Notes: notes, Timestamp: time.Now().Unix(),
 	})
 }
+
+// RunLog reads the tail of a world's collected host log. Lines and filter are bounded here as well
+// as in the script: the agent refuses an out-of-range request, and refusing early keeps a mistyped
+// URL from becoming an error three layers down.
+func (a *AgentClient) RunLog(ctx context.Context, id, world string, lines int, filter string) (AgentReply, error) {
+	if lines < 1 {
+		lines = 1
+	}
+	if lines > 5000 {
+		lines = 5000
+	}
+	return a.do(ctx, agentRequest{
+		ID: id, World: world, Operation: "world_log", Lines: lines, Query: filter,
+		Timestamp: time.Now().Unix(),
+	})
+}
+
+// RunLogInfo asks only whether a log exists and how large it is, reading none of it.
+func (a *AgentClient) RunLogInfo(ctx context.Context, id, world string) (AgentReply, error) {
+	return a.do(ctx, agentRequest{
+		ID: id, World: world, Operation: "world_log_info", Timestamp: time.Now().Unix(),
+	})
+}
+
 func (a *AgentClient) RunProvision(ctx context.Context, id, world string, request ProvisionAgentRequest) (AgentReply, error) {
 	return a.do(ctx, agentRequest{
 		ID: id, World: world, Operation: "provision", Port: request.Port, Profile: request.Profile,

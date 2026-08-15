@@ -109,6 +109,40 @@ Archive, never delete, a bad release. Publishing a replacement archives only the
 
 Each profile sync is locked and staged separately. A failed update preserves the active generation. Correct or archive the bad release, then run the profile card or Desktop shortcut again. If Steam contains a loader owned by another manager, Valheim Profile Sync refuses to replace it; resolve that ownership conflict before launching.
 
+## Server logs
+
+Two sources, and they answer different questions.
+
+`hostops/collect_valheim_server_logs.sh` follows each running world container and appends its
+output to `/var/log/valheim-worlds/<World>.log` **outside** the container. That file survives a
+restart, a `compose down`, and the container being removed, which makes it the only source that can
+say what happened before a crash. The admin site reads its tail:
+
+```text
+/admin/worlds/<World>/log            the last N lines, with an optional fixed-string filter
+/admin/worlds/<World>/log.txt        the same view as a download, behind the same admin guard
+```
+
+The whole file is never rendered - the busiest world here passed 12 MB in eight days - and the
+download carries the admin guard because a server log names players, their Steam IDs and their join
+addresses.
+
+**Install rotation, or the log eventually stops every world on the host:**
+
+```sh
+sudo cp deploy/valheim-worlds.logrotate.example /etc/logrotate.d/valheim-worlds
+sudo chown root:root /etc/logrotate.d/valheim-worlds && sudo chmod 644 /etc/logrotate.d/valheim-worlds
+sudo logrotate --debug /etc/logrotate.d/valheim-worlds   # dry run; refuses a group-writable file
+```
+
+`copytruncate` is required rather than preferred: the collector holds each file open, so renaming it
+would leave the writer appending to an unlinked inode - the visible log would stop growing while the
+disk kept filling.
+
+A world that has not run since the collector started has no log at all, and the page says so instead
+of showing an empty box. Note also that Valheim's startup markers (`Load world`, `DungeonDB Start`)
+are Info-level, and Info is trimmed from these servers: their absence is not a fault.
+
 ## World status
 
 A world's status on the public page is **measured, not declared**. There is no

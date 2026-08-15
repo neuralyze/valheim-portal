@@ -374,6 +374,9 @@ operations come first:
   releases. External backups and immutable artifacts are retained.
 * **World map and analysis** — rendered maps, biome and location analysis, seed
   metadata.
+* **Server logs** — the tail of each world's collected host log, with a filter and a download,
+  read from the file that survives a restart and a removed container rather than from the live
+  container. See [docs/operations.md](docs/operations.md) for rotation, which is not optional.
 * **Audit log** — every privileged action with actor, target and timestamp.
 
 ## Agent operation
@@ -395,8 +398,8 @@ its preconditions, its evidence requirement. As of 15 Aug 2026:
 
 <!-- verb-counts: checked by tools/check_agent_policy.py -->
 ```text
-24 verbs declared
-17 execute through the portal today
+25 verbs declared
+18 execute through the portal today
  3 refused by design      repo_edit, plugin_build (the agent's own workspace), world_restore
  4 forbidden              upstream_push, delete_server, provision, secrets_read
 ```

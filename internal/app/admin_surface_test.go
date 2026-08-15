@@ -232,6 +232,11 @@ func TestAdminRoutesTakingAWorldRejectAMalformedOne(t *testing.T) {
 
 // The admin pages themselves must render for an authenticated operator. A 500 here is a template
 // that only breaks in production, which is precisely what nobody notices until an operator looks.
+// downloadRoutes stream a file rather than render a page. When the host agent is unreachable they
+// answer 503 on purpose: a 200 carrying an error message would save to disk as a "log" whose
+// contents are an apology, which is worse than a failed download.
+var downloadRoutes = map[string]bool{"/admin/worlds/{world}/log.txt": true}
+
 func TestEveryAdminPageRendersForAnOperator(t *testing.T) {
 	server := testServer(t)
 	for index, route := range adminRoutes(t) {
@@ -249,6 +254,8 @@ func TestEveryAdminPageRendersForAnOperator(t *testing.T) {
 		switch {
 		case response.Code == http.StatusInternalServerError:
 			t.Errorf("GET %s answered 500: %s", target, strings.TrimSpace(response.Body.String()))
+		case response.Code == http.StatusServiceUnavailable && downloadRoutes[route.path]:
+			// Documented above: a download with no upstream must fail, not succeed emptily.
 		case response.Code >= 500:
 			t.Errorf("GET %s answered %d", target, response.Code)
 		}

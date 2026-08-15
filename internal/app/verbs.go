@@ -53,8 +53,11 @@ func (v Verb) NeedsApproval() bool {
 
 var verbTable = map[string]Verb{
 	// read
-	"world_status":      {ID: "world_status", Class: ClassRead, Operation: "status", NeedsWorld: true},
-	"world_logs":        {ID: "world_logs", Class: ClassRead, Operation: "logs", NeedsWorld: true},
+	"world_status": {ID: "world_status", Class: ClassRead, Operation: "status", NeedsWorld: true},
+	"world_logs":   {ID: "world_logs", Class: ClassRead, Operation: "logs", NeedsWorld: true},
+	// The collected host log rather than the live container: it survives a restart and a removed
+	// container, which is the only way to read what happened before a crash.
+	"world_log_tail":    {ID: "world_log_tail", Class: ClassRead, Operation: "world_log", NeedsWorld: true},
 	"mod_inventory":     {ID: "mod_inventory", Class: ClassRead, Operation: "mod_inventory", NeedsWorld: true},
 	"mod_search":        {ID: "mod_search", Class: ClassRead, Operation: "mod_search", NeedsWorld: true},
 	"mod_check_updates": {ID: "mod_check_updates", Class: ClassRead, Operation: "mod_check_updates", NeedsWorld: true},

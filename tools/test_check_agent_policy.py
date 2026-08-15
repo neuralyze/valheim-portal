@@ -120,12 +120,19 @@ def test_the_readme_counts_match_the_code():
 def test_a_stale_readme_count_is_caught(tmp_path):
     # An installation guide claiming more verbs work than do is the kind of number someone acts
     # on, so it is checked against the table that answers it rather than trusted.
+    #
+    # The current count is read out of the README rather than written here: hardcoding it made
+    # this test silently stop testing anything the first time a verb was added, because the
+    # corruption it applies became a no-op replace that left a correct README behind.
     root = _copy_with_readme(tmp_path)
     readme = root / "README.md"
-    readme.write_text(readme.read_text().replace("17 execute through the portal today",
-                                                 "22 execute through the portal today"))
+    text = readme.read_text()
+    match = re.search(r"(\d+) execute through the portal today", text)
+    assert match, "the README no longer states an executing count in the form the checker reads"
+    stale = int(match.group(1)) + 5
+    readme.write_text(text.replace(match.group(0), f"{stale} execute through the portal today"))
     problems = check_agent_policy.check(root)
-    assert any("README.md says 22 executing" in p for p in problems), problems
+    assert any(f"README.md says {stale} executing" in p for p in problems), problems
 
 
 def test_a_stale_forbidden_count_is_caught(tmp_path):

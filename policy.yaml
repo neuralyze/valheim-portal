@@ -52,6 +52,15 @@ verbs:
     maps_to: portal operation "logs"
     purpose: Capture server output. Host copies live in /var/log/valheim-worlds/<World>.log.
 
+  - id: world_log_tail
+    class: read
+    maps_to: hostops/portal_world_log.sh
+    purpose: >
+      The tail of a world's collected host log, with an optional fixed-string filter. Unlike
+      world_logs, which snapshots the live container, this file survives a restart and a removed
+      container - so it is the only source that can say what happened before a crash. Bounded to
+      5000 lines: the file passes 12 MB and only grows.
+
   - id: mod_inventory
     class: read
     maps_to: tools/valheim_mods.py list

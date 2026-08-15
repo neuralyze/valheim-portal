@@ -344,6 +344,8 @@ func (s *Server) routes() {
 	// The operator's agent surface, and the bridge its process talks to. The chat is admin-only
 	// like every other control; the bridge authenticates with its own token and is disabled
 	// unless a deployment configures one.
+	s.mux.HandleFunc("GET /admin/worlds/{world}/log", s.admin(s.worldLog))
+	s.mux.HandleFunc("GET /admin/worlds/{world}/log.txt", s.admin(s.worldLogDownload))
 	s.mux.HandleFunc("GET /admin/agent", s.admin(s.agentChat))
 	s.mux.HandleFunc("POST /admin/agent/message", s.admin(s.agentChatMessage))
 	s.mux.HandleFunc("POST /admin/agent/decide", s.admin(s.agentChatDecide))

@@ -118,11 +118,15 @@ var operations = map[string]string{
 	// caller; the newest plugin and runtime are carried forward from the profile's own
 	// previous release.
 	"publish_profile": "portal_publish_profile.sh",
-	"world_catalog":   "@internal",
-	"world_analysis":  "@internal",
-	"world_map":       "export_valheim_map_sources.sh",
-	"provision":       "provision_valheim_server.sh",
-	"health":          "wait_valheim_server_ready.sh",
+	// The collected host log, which outlives the container the snapshot operation reads.
+	"world_log": "portal_world_log.sh",
+	// Whether a log exists and how large it is, reading none of it.
+	"world_log_info": "portal_world_log.sh",
+	"world_catalog":  "@internal",
+	"world_analysis": "@internal",
+	"world_map":      "export_valheim_map_sources.sh",
+	"provision":      "provision_valheim_server.sh",
+	"health":         "wait_valheim_server_ready.sh",
 	// world_create regenerates a world on a chosen seed. It carries a seed but is
 	// not provisioning: the world directory already exists and only its save pair
 	// is replaced.
@@ -313,6 +317,15 @@ func validateAgentSurfaceArguments(r Request) error {
 		if !validProfileArchive(r.Archive) {
 			return errors.New("release confirm needs a profile archive path")
 		}
+	case "world_log":
+		if r.Lines < 1 || r.Lines > 5000 {
+			return errors.New("world log needs a line count between 1 and 5000")
+		}
+		// The filter reaches grep as a fixed string. Bounded and single-line, so it cannot
+		// smuggle another argument or spend the agent's time on a pathological pattern.
+		if !singleLine(r.Query, 120) {
+			return errors.New("world log filter must be a single line of at most 120 characters")
+		}
 	case "publish_profile":
 		if r.ClientType != "vr" && r.ClientType != "flat" {
 			return errors.New("publish needs client type vr or flat")
@@ -323,7 +336,7 @@ func validateAgentSurfaceArguments(r Request) error {
 			return errors.New("publish needs a single-line note of 8-500 characters")
 		}
 	}
-	if r.Operation != "mod_notes" && r.Lines != 0 {
+	if r.Operation != "mod_notes" && r.Operation != "world_log" && r.Lines != 0 {
 		return errors.New("unexpected lines argument")
 	}
 	if r.Operation != "mod_release_confirm" && (r.PublishedProfile != "" || r.ReleaseID != "" || r.Archive != "") {
@@ -343,6 +356,19 @@ func validateModRequest(r Request) error {
 	if !isMod {
 		// publish_profile is profile-scoped without being a mod action: it names the world's
 		// source profile so the host can resolve the one catalog target to publish.
+		if r.Operation == "world_log_info" {
+			if r.Profile != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" || r.Query != "" || r.Lines != 0 {
+				return errors.New("world log info takes no arguments")
+			}
+			return nil
+		}
+		if r.Operation == "world_log" {
+			// World-scoped, not profile-scoped: a server's log belongs to the world.
+			if r.Profile != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" {
+				return errors.New("unexpected mod arguments")
+			}
+			return nil
+		}
 		if r.Operation == "publish_profile" {
 			if !worldName.MatchString(r.Profile) {
 				return errors.New("invalid publish profile")
@@ -668,6 +694,10 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 				fmt.Sprint(r.PlayerLimit), r.Preset, r.BackupInterval, fmt.Sprint(r.BackupAge),
 				fmt.Sprint(r.BackupCount), r.Profile, r.Seed, r.SourceWorld, r.TemplateWorld, r.TemplateProfile,
 			)
+		case operation == "world_log":
+			args = append(args, fmt.Sprint(r.Lines), r.Query)
+		case operation == "world_log_info":
+			args = append(args, "info")
 		case operation == "publish_profile":
 			// The world is already args[0]; the script resolves the single catalog target and
 			// carries the previous release's artifacts forward, so no paths come from here.
