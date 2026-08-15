@@ -68,6 +68,19 @@ PY
 # cost every player a world restart and several minutes of mod loading. So the guard now asks the
 # question it actually cares about: would deploying this profile change the server's plugins? If the
 # set already on disk matches the one the profile would install, nothing needs to stop.
+# A checksum of the NUL-separated, sorted entry names directly inside a directory, or of nothing
+# when it does not exist. `ls -1` read more naturally and tripped SC2012, but simply swapping in
+# `find -printf '%f\n'` would have silenced the linter while keeping the flaw: plugin folders are
+# named by mod authors, and with newline-separated output one directory called "A<newline>B"
+# renders exactly like two called "A" and "B", so a real difference compares equal and a pending
+# deploy is missed. Measured both ways - newline-separated misses it, NUL-separated catches it.
+# Bash cannot hold a NUL in a variable, so the comparison is over checksums rather than lists.
+# Dotfiles stay excluded, as `ls` excluded them, so a stray editor swap file is not a mod change.
+plugin_entries() {
+  [[ -d $1 ]] || return 0
+  find "$1" -mindepth 1 -maxdepth 1 ! -name '.*' -printf '%f\0'
+}
+
 server_plugin_change() {
   local world=$1 profile=$2
   local staged="$source_root/$world/mods/profiles/$profile/manager-cache/server/BepInEx/plugins"
@@ -75,8 +88,8 @@ server_plugin_change() {
   local deployed="$source_root/$world/config_merged/bepinex/plugins"
   [[ -d $staged && -d $deployed ]] || return 0
   local want have
-  want=$( { ls -1 "$staged"; [[ -d $manual ]] && ls -1 "$manual"; } 2>/dev/null | sort -u)
-  have=$(ls -1 "$deployed" 2>/dev/null | sort -u)
+  want=$( { plugin_entries "$staged"; plugin_entries "$manual"; } | sort -zu | md5sum)
+  have=$(plugin_entries "$deployed" | sort -zu | md5sum)
   [[ $want != "$have" ]]
 }
 
