@@ -58,6 +58,26 @@ PORTAL_SOURCE_URL=${PORTAL_SOURCE_URL:-}
 # not opted in cannot be driven by an agent at all, which is the safe default for
 # a portal that can stop servers and delete worlds.
 PORTAL_ENABLE_AGENT_BRIDGE=${PORTAL_ENABLE_AGENT_BRIDGE:-false}
+# The runner is the process that reads the operator conversation and asks a model
+# what to do. It only exists when the bridge does. Two ways to run it, and the
+# installer sets up both: on demand
+#
+#   sudo systemctl start valheim-agent-runner-once
+#
+# and as a poller, which is what this switch enables. On demand is the default
+# because a poller holds a model session open against a portal nobody is watching.
+AGENT_RUNNER_SERVICE=${AGENT_RUNNER_SERVICE:-false}
+# The account whose omp credentials the runner uses. It cannot be the agent
+# account: omp keeps its login in a home directory, and the agent runs with
+# ProtectHome and no model credentials of its own. Defaults to whoever installs.
+AGENT_RUNNER_USER=${AGENT_RUNNER_USER:-}
+# Absolute path is required for a unit, whose PATH does not include a user's
+# ~/.local/bin. Resolved from the installing user's PATH when left empty.
+AGENT_RUNNER_OMP=${AGENT_RUNNER_OMP:-}
+# Model for omp to use; omp's own default when empty.
+AGENT_RUNNER_MODEL=${AGENT_RUNNER_MODEL:-}
+# How often the poller reads the inbox. Ignored on demand.
+AGENT_RUNNER_POLL=${AGENT_RUNNER_POLL:-3s}
 AGENT_USER=${AGENT_USER:-valheim-agent}
 AGENT_GROUP=${AGENT_GROUP:-valheim-agent}
 AGENT_EXTRA_GROUPS=${AGENT_EXTRA_GROUPS:-docker}
@@ -224,6 +244,7 @@ admin_token_file() { printf '%s/admin-token' "$(resolved_etc)"; }
 agent_token_file() { printf '%s/agent-token' "$(resolved_etc)"; }
 agent_bridge_token_file() { printf '%s/agent-bridge-token' "$(resolved_etc)"; }
 agent_env_file() { printf '%s/agent.env' "$(resolved_etc)"; }
+runner_env_file() { printf '%s/agent-runner.env' "$(resolved_etc)"; }
 
 # Compose reads its variables from .env beside compose.yaml. A staging prefix
 # redirects it so tests never touch a live deployment's file. Both the writer
@@ -241,6 +262,7 @@ host_csrf_secret_file() { printf '%s/csrf-secret' "$etc_dir"; }
 host_admin_token_file() { printf '%s/admin-token' "$etc_dir"; }
 host_agent_token_file() { printf '%s/agent-token' "$etc_dir"; }
 host_agent_bridge_token_file() { printf '%s/agent-bridge-token' "$etc_dir"; }
+host_runner_env_file() { printf '%s/agent-runner.env' "$etc_dir"; }
 
 # The container path the portal reads, or empty to leave the bridge off. Compose
 # mounts the host file either way, so the switch is this single value rather than
@@ -455,6 +477,46 @@ check_agent_bridge_switch() {
   return 0
 }
 
+# The runner's two failure modes are both silent, so they are resolved here rather
+# than discovered from a unit that starts and does nothing: an omp that a unit's
+# PATH cannot find, and an account with no model credentials.
+check_agent_runner() {
+  case ${AGENT_RUNNER_SERVICE,,} in
+  true | false) ;;
+  *)
+    problem "AGENT_RUNNER_SERVICE must be true or false, got '$AGENT_RUNNER_SERVICE'"
+    return 0
+    ;;
+  esac
+  if [[ ${PORTAL_ENABLE_AGENT_BRIDGE,,} != true ]]; then
+    [[ ${AGENT_RUNNER_SERVICE,,} == true ]] &&
+      problem "AGENT_RUNNER_SERVICE is true but PORTAL_ENABLE_AGENT_BRIDGE is not: the runner would poll a portal that answers 503"
+    return 0
+  fi
+  [[ -n $AGENT_RUNNER_USER ]] || AGENT_RUNNER_USER=$(logname 2>/dev/null || printf '%s' "${SUDO_USER:-$(id -un)}")
+  if [[ -z $install_root ]] && ! id -u "$AGENT_RUNNER_USER" >/dev/null 2>&1; then
+    problem "AGENT_RUNNER_USER does not exist: $AGENT_RUNNER_USER"
+    return 0
+  fi
+  if [[ -z $AGENT_RUNNER_OMP ]]; then
+    # Resolved as the runner user, because omp normally lives in their ~/.local/bin
+    # and root's PATH does not include it.
+    AGENT_RUNNER_OMP=$(sudo -n -u "$AGENT_RUNNER_USER" sh -lc 'command -v omp' 2>/dev/null ||
+      command -v omp 2>/dev/null || true)
+  fi
+  if [[ -z $AGENT_RUNNER_OMP ]]; then
+    note "agent runner: omp not found; set AGENT_RUNNER_OMP to its absolute path before running the runner"
+  elif [[ $AGENT_RUNNER_OMP != /* ]]; then
+    problem "AGENT_RUNNER_OMP must be an absolute path for a systemd unit: $AGENT_RUNNER_OMP"
+  fi
+  if [[ ${AGENT_RUNNER_SERVICE,,} == true ]]; then
+    note "agent runner: polling service enabled for $AGENT_RUNNER_USER every $AGENT_RUNNER_POLL"
+  else
+    note "agent runner: on demand only; run it with systemctl start valheim-agent-runner-once"
+  fi
+  return 0
+}
+
 check_world_root() {
   [[ -n $VALHEIM_WORLD_ROOT ]] || {
     problem "VALHEIM_WORLD_ROOT is required"
@@ -593,6 +655,7 @@ preflight() {
   check_bind
   check_auth_header
   check_agent_bridge_switch
+  check_agent_runner
   check_world_root
   check_server_docker_dir
   check_script_dir
@@ -719,6 +782,138 @@ build_agent_binary() {
   run mkdir -p -- "$(resolved_bin)"
   run install -m 0755 "$staged" "$dest"
   note "installed $dest"
+}
+
+# Built whenever the bridge is on, because both ways of running the runner need
+# the same executable: the poller and the on-demand oneshot are two units over one
+# binary, not two programs.
+build_runner_binary() {
+  [[ ${PORTAL_ENABLE_AGENT_BRIDGE,,} == true ]] || return 0
+  step "Agent runner binary"
+  local dest
+  dest=$(resolved_bin)/valheim-agent-runner
+  if $skip_build; then
+    [[ -x $dest ]] || die "--skip-build was given but $dest is not an executable"
+    note "reusing $dest"
+    return 0
+  fi
+  local staged=$portal_dir/dist/valheim-agent-runner
+  run mkdir -p -- "$portal_dir/dist"
+  run env CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+    -ldflags="-s -w -X github.com/neuralyze/valheim-portal/internal/version.Version=$(resolve_version)" \
+    -o "$staged" "$portal_dir/cmd/agent-runner"
+  run mkdir -p -- "$(resolved_bin)"
+  run install -m 0755 "$staged" "$dest"
+  note "installed $dest"
+}
+
+# One environment file for both units, so an on-demand run and the poller cannot
+# disagree about which portal they drive or which token they present.
+write_runner_env() {
+  [[ ${PORTAL_ENABLE_AGENT_BRIDGE,,} == true ]] || return 0
+  step "Agent runner environment"
+  local group=$AGENT_GROUP
+  [[ -n $install_root ]] || group=$(id -gn "$AGENT_RUNNER_USER" 2>/dev/null || printf '%s' "$AGENT_GROUP")
+  install_file "$(runner_env_file)" 0640 "root:$group" <<ENV
+# Generated by scripts/install-portal.sh. Read by both valheim-agent-runner.service
+# (polling) and valheim-agent-runner-once.service (on demand).
+PORTAL_BASE_URL=http://$PORTAL_BIND_ADDR:$PORTAL_BIND_PORT
+PORTAL_AGENT_BRIDGE_TOKEN_FILE=$(host_agent_bridge_token_file)
+AGENT_RUNNER_STATE=/var/lib/valheim-agent-runner/cursor
+AGENT_RUNNER_OMP=${AGENT_RUNNER_OMP:-omp}
+AGENT_RUNNER_MODEL=$AGENT_RUNNER_MODEL
+ENV
+  note "wrote $(runner_env_file)"
+}
+
+write_runner_units() {
+  [[ ${PORTAL_ENABLE_AGENT_BRIDGE,,} == true ]] || return 0
+  step "Agent runner services"
+  local home
+  home=$(getent passwd "$AGENT_RUNNER_USER" 2>/dev/null | cut -d: -f6)
+  [[ -n $home ]] || home=/home/$AGENT_RUNNER_USER
+  # ProtectHome cannot be on: omp keeps the model login in this user's home, and
+  # the runner holds no credentials of its own by design. The account is the
+  # boundary instead - it is not the agent account, and it cannot reach the world
+  # tree or the docker socket.
+  local common group
+  group=$(id -gn "$AGENT_RUNNER_USER" 2>/dev/null || printf '%s' "$AGENT_RUNNER_USER")
+  common="User=$AGENT_RUNNER_USER
+Group=$group
+# Needed to read the bridge token, which is mode 0640 root:$AGENT_GROUP.
+SupplementaryGroups=$AGENT_GROUP
+Environment=HOME=$home
+EnvironmentFile=$(host_runner_env_file)
+StateDirectory=valheim-agent-runner
+StateDirectoryMode=0750
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/var/lib/valheim-agent-runner"
+
+  install_file "$(resolved_unit)/valheim-agent-runner.service" 0644 root:root <<UNIT
+# Generated by scripts/install-portal.sh. Do not edit; re-run the installer.
+#
+# The polling half: reads the operator conversation every $AGENT_RUNNER_POLL and asks
+# a model what to do. Enabled only when AGENT_RUNNER_SERVICE=true. For a portal
+# nobody is watching, prefer valheim-agent-runner-once.service.
+[Unit]
+Description=Valheim Portal agent runner (polling)
+After=network.target docker.service
+Wants=valheim-portal-agent.service
+
+[Service]
+Type=simple
+$common
+ExecStart=$bin_dir/valheim-agent-runner -poll $AGENT_RUNNER_POLL
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  install_file "$(resolved_unit)/valheim-agent-runner-once.service" 0644 root:root <<UNIT
+# Generated by scripts/install-portal.sh. Do not edit; re-run the installer.
+#
+# The on-demand half. Never enabled; start it when you want one pass:
+#
+#   sudo systemctl start valheim-agent-runner-once
+#   journalctl -u valheim-agent-runner-once -n 20 --no-pager
+#
+# It shares its configuration with the polling unit, so what you test on demand is
+# what the poller would do.
+[Unit]
+Description=Valheim Portal agent runner (one pass)
+After=network.target
+
+[Service]
+Type=oneshot
+$common
+ExecStart=$bin_dir/valheim-agent-runner -once
+UNIT
+  note "installed both runner units; polling is $([[ ${AGENT_RUNNER_SERVICE,,} == true ]] && printf enabled || printf 'available but not enabled')"
+}
+
+start_runner() {
+  [[ ${PORTAL_ENABLE_AGENT_BRIDGE,,} == true ]] || return 0
+  step "Agent runner"
+  if [[ -n $install_root ]]; then
+    note "staging prefix set; not touching systemd"
+    return 0
+  fi
+  run systemctl daemon-reload
+  if [[ ${AGENT_RUNNER_SERVICE,,} == true ]]; then
+    run systemctl enable valheim-agent-runner
+    run systemctl restart valheim-agent-runner
+    note "polling runner started; journalctl -u valheim-agent-runner -f"
+  else
+    # Disabled rather than left as found, so turning the switch off actually stops
+    # a poller a previous install started.
+    run systemctl disable --now valheim-agent-runner
+    note "on demand only; sudo systemctl start valheim-agent-runner-once"
+  fi
 }
 
 write_agent_env() {
@@ -1075,17 +1270,22 @@ uninstall() {
       fi
     fi
     run systemctl disable --now valheim-portal-agent || true
+    # A poller left running would keep driving a portal that no longer exists.
+    run systemctl disable --now valheim-agent-runner || true
   fi
-  run rm -f -- "$(resolved_unit)/valheim-portal-agent.service"
+  run rm -f -- "$(resolved_unit)/valheim-portal-agent.service" \
+    "$(resolved_unit)/valheim-agent-runner.service" \
+    "$(resolved_unit)/valheim-agent-runner-once.service"
   if [[ -z $install_root ]]; then
     run systemctl daemon-reload
   fi
-  run rm -f -- "$(resolved_bin)/valheim-portal"
+  run rm -f -- "$(resolved_bin)/valheim-portal" "$(resolved_bin)/valheim-agent-runner"
   if $purge; then
     warn "purging installer-managed secrets and configuration in $(resolved_etc)"
     # Remove only what this installer creates. Operators keep unrelated
     # material here (proxy passwords, for example) that must survive.
-    run rm -f -- "$(csrf_secret_file)" "$(admin_token_file)" "$(agent_token_file)" "$(agent_env_file)"
+    run rm -f -- "$(csrf_secret_file)" "$(admin_token_file)" "$(agent_token_file)" \
+      "$(agent_bridge_token_file)" "$(agent_env_file)" "$(runner_env_file)"
     if $dry_run; then
       printf '    [dry-run] rmdir %s if empty\n' "$(resolved_etc)"
     elif rmdir -- "$(resolved_etc)" 2>/dev/null; then
@@ -1154,10 +1354,14 @@ main() {
       build_agent_binary
       write_agent_env
       write_agent_unit
+      build_runner_binary
+      write_runner_env
+      write_runner_units
       ensure_world_acls
       write_compose_env
       start_agent
       start_portal
+      start_runner
       verify
       $dry_run || summary
       ;;

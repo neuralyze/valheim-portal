@@ -219,6 +219,11 @@ prints all three with real values. None has a default: a script that needs one a
 find it exits 78 naming the variable, rather than guessing a path it would then stop or
 delete a server in.
 
+Two optional decisions live in that file and are cheapest to make now, though either can be
+turned on later with one line and a reinstall: `PORTAL_ENABLE_AGENT_BRIDGE` to let an agent drive
+the portal, and `AGENT_RUNNER_SERVICE` to run that agent as a poller rather than on demand. See
+[Agent operation](#agent-operation).
+
 ### 4. Preview, then install
 
 ```sh
@@ -419,33 +424,66 @@ to change nothing.
 
 ### Turning it on
 
+The bridge is off until a deployment opts in, and the installer owns both halves: the token the
+portal reads, and the runner that drives it. Nothing here is hand-made.
+
 ```sh
 # 1. omp owns authentication. The portal stores no model keys and never sees one.
 omp setup
 omp auth-broker login <provider>
 omp auth-broker status            # verify: your account is listed
 
-# 2. Give the portal a bridge token. Absent, the bridge is off.
-openssl rand -hex 32 | sudo tee /etc/valheim-portal/bridge-token > /dev/null
-sudo chmod 600 /etc/valheim-portal/bridge-token
-# set PORTAL_AGENT_BRIDGE_TOKEN_FILE=/etc/valheim-portal/bridge-token, then restart the portal
-
-# 3. Run the process that reads the conversation and requests verbs.
-PORTAL_AGENT_BRIDGE_TOKEN_FILE=/etc/valheim-portal/bridge-token \
-  agent-runner -portal http://127.0.0.1:18080 -once      # a single pass, to check the wiring
+# 2. Opt in, then reinstall. The installer generates the bridge token, mounts it into
+#    the container, installs the runner, and sets up both ways of running it.
+echo 'PORTAL_ENABLE_AGENT_BRIDGE=true' >> deploy/install.conf
+sudo ./scripts/install-portal.sh install --config deploy/install.conf
 ```
 
-Verify step 3 prints a line like `agent-runner: 24 verbs, 17 available, cursor 0`. Then open
-`/admin/agent` and send a message.
+Verify: the install prints `agent bridge: enabled` and `installed /usr/local/bin/valheim-agent-runner`.
+If it prints `agent bridge: disabled`, the line above landed in the wrong file.
+
+**Two ways to run the runner. An install sets up both, and you can switch without reinstalling.**
+
+On demand — the default, and the right choice for a portal nobody is watching. One pass, then it
+exits:
+
+```sh
+sudo systemctl start valheim-agent-runner-once
+journalctl -u valheim-agent-runner-once -n 20 --no-pager
+```
+
+Verify: the log reads like `agent-runner: 25 verbs, 18 available, cursor 0`, then
+`one pass done`. The verb count comes from the portal, so a wrong number means the runner is
+talking to a portal you did not expect.
+
+Polling — for a portal you want driven continuously:
+
+```sh
+echo 'AGENT_RUNNER_SERVICE=true' >> deploy/install.conf
+sudo ./scripts/install-portal.sh install --config deploy/install.conf
+journalctl -u valheim-agent-runner -f
+```
+
+Verify: `systemctl is-enabled valheim-agent-runner` prints `enabled`. Setting it back to `false`
+and reinstalling stops and disables it — the switch is authoritative, not advisory.
+
+Both units read `/etc/valheim-portal/agent-runner.env`, so an on-demand pass is a rehearsal of
+what the poller does rather than a different configuration. Neither runs as the agent account:
+the runner shells out to omp, which keeps its login in a home directory, so it runs as an
+operator account that can reach neither the world tree nor the docker socket.
+
+Then open `/admin/agent` and send a message.
 
 Failure text, and what each one means:
 
 | You see | It means |
 |---|---|
-| `agent bridge disabled; set PORTAL_AGENT_BRIDGE_TOKEN_FILE` (503) | the portal has no bridge token — step 2 was skipped or the portal was not restarted |
+| `The agent bridge is disabled. Set PORTAL_AGENT_BRIDGE_TOKEN_FILE…` | the deployment never opted in — `PORTAL_ENABLE_AGENT_BRIDGE=true` and reinstall |
+| `agent bridge disabled; set PORTAL_AGENT_BRIDGE_TOKEN_FILE` (503) | same cause, seen by the runner instead of the page |
 | `bridge token required` (401) | the token is configured but the runner presented a wrong or absent one |
 | `not available through the portal: …` (501) | the verb is declared but has no host operation; the message names what is missing |
 | `forbidden by policy` (403) | not negotiable, and no argument changes it |
+| `Unit valheim-agent-runner-once.service not found` | the bridge is off, so no runner was installed |
 
 ### What the operator sees
 

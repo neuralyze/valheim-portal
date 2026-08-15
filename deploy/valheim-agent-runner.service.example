@@ -1,0 +1,51 @@
+# Reference only. scripts/install-portal.sh generates both runner units with paths
+# resolved from your deployment configuration and installs them as
+# /etc/systemd/system/valheim-agent-runner.service and
+# /etc/systemd/system/valheim-agent-runner-once.service.
+#
+# Every ALL_CAPS placeholder below is substituted by the installer. Installing this
+# file as-is produces a service that cannot start.
+#
+# There are two ways to run the runner and an install sets up both:
+#
+#   on demand    sudo systemctl start valheim-agent-runner-once
+#                journalctl -u valheim-agent-runner-once -n 20 --no-pager
+#
+#   polling      AGENT_RUNNER_SERVICE=true in deploy/install.conf, then reinstall
+#                journalctl -u valheim-agent-runner -f
+#
+# They share /etc/valheim-portal/agent-runner.env, so a pass you run by hand is a
+# rehearsal of what the poller does rather than a different configuration.
+#
+# Why this does not run as the agent account: the runner holds no credentials of its
+# own - it shells out to omp, which keeps the model login in a home directory. The
+# agent account has no such login and runs with ProtectHome. So the runner runs as an
+# operator account, and the boundary is what that account cannot reach: not the world
+# tree, not the docker socket, and no portal verb without the operator approving it.
+[Unit]
+Description=Valheim Portal agent runner (polling)
+After=network.target docker.service
+Wants=valheim-portal-agent.service
+
+[Service]
+Type=simple
+User=AGENT_RUNNER_USER
+Group=AGENT_RUNNER_GROUP
+# Needed to read the bridge token, which is mode 0640 root:AGENT_GROUP.
+SupplementaryGroups=AGENT_GROUP
+Environment=HOME=AGENT_RUNNER_HOME
+EnvironmentFile=/etc/valheim-portal/agent-runner.env
+StateDirectory=valheim-agent-runner
+StateDirectoryMode=0750
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+# Cannot be true: omp reads its login from the home directory above.
+ProtectHome=false
+ReadWritePaths=/var/lib/valheim-agent-runner
+ExecStart=/usr/local/bin/valheim-agent-runner -poll AGENT_RUNNER_POLL
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

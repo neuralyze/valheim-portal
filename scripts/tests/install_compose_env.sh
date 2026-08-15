@@ -107,6 +107,80 @@ if [[ -f $on/compose.env ]]; then
   expect_value "$on/compose.env" VALHEIM_WORLD_ROOT "$tmp/worlds"
 fi
 
+# --- the runner: one binary, two units, and the poller off unless asked --------------------------
+# Both ways of running it must be set up by an install, because an operator who has to hand-write a
+# unit will hand-write a different one than the poller uses, and then on-demand testing proves
+# nothing about what the poller does.
+if [[ -d $on ]]; then
+  for artefact in \
+    usr/local/bin/valheim-agent-runner \
+    etc/valheim-portal/agent-runner.env \
+    etc/systemd/system/valheim-agent-runner.service \
+    etc/systemd/system/valheim-agent-runner-once.service; do
+    if [[ ! -f $on/$artefact ]]; then
+      echo "FAIL: enabling the bridge did not install $artefact" >&2
+      failures=$((failures + 1))
+    fi
+  done
+
+  # The two units must agree on configuration, or on demand is not a rehearsal.
+  for unit in valheim-agent-runner valheim-agent-runner-once; do
+    unit_file=$on/etc/systemd/system/$unit.service
+    [[ -f $unit_file ]] || continue
+    if ! grep -qF "EnvironmentFile=/etc/valheim-portal/agent-runner.env" "$unit_file"; then
+      echo "FAIL: $unit does not read the shared runner environment" >&2
+      failures=$((failures + 1))
+    fi
+    # omp keeps the model login in a home directory, so the runner cannot run as the
+    # agent account and must not have ProtectHome on.
+    if grep -qE "^User=(root|valheim-agent)$" "$unit_file"; then
+      echo "FAIL: $unit runs as an account with no model credentials" >&2
+      failures=$((failures + 1))
+    fi
+    if grep -qF "ProtectHome=true" "$unit_file"; then
+      echo "FAIL: $unit hides the home directory omp reads its login from" >&2
+      failures=$((failures + 1))
+    fi
+  done
+
+  # The oneshot exists so an operator can run one pass; a Type=simple oneshot would
+  # report success the moment it started.
+  if ! grep -qF "Type=oneshot" "$on/etc/systemd/system/valheim-agent-runner-once.service"; then
+    echo "FAIL: the on-demand unit is not a oneshot" >&2
+    failures=$((failures + 1))
+  fi
+  if ! grep -qE "ExecStart=.*valheim-agent-runner -once" "$on/etc/systemd/system/valheim-agent-runner-once.service"; then
+    echo "FAIL: the on-demand unit does not run a single pass" >&2
+    failures=$((failures + 1))
+  fi
+  if ! grep -qE "ExecStart=.*valheim-agent-runner -poll" "$on/etc/systemd/system/valheim-agent-runner.service"; then
+    echo "FAIL: the polling unit does not poll" >&2
+    failures=$((failures + 1))
+  fi
+fi
+
+# A bridge that is off installs no runner at all: there is nothing for it to talk to.
+if [[ -d $off ]]; then
+  for artefact in usr/local/bin/valheim-agent-runner etc/systemd/system/valheim-agent-runner.service; do
+    if [[ -e $off/$artefact ]]; then
+      echo "FAIL: the disabled bridge still installed $artefact" >&2
+      failures=$((failures + 1))
+    fi
+  done
+fi
+
+# --- a poller without a bridge is refused rather than left to poll a 503 ------------------------
+orphan=$tmp/orphan
+write_config "$tmp/orphan.conf" "AGENT_RUNNER_SERVICE=true"
+mkdir -p -- "$orphan"
+if PORTAL_INSTALL_ROOT="$orphan" bash "$INSTALLER" install --config "$tmp/orphan.conf" >"$tmp/orphan.log" 2>&1; then
+  echo "FAIL: a polling runner was accepted with the bridge disabled" >&2
+  failures=$((failures + 1))
+elif ! grep -qF "answers 503" "$tmp/orphan.log"; then
+  echo "FAIL: the refusal did not explain why: $(tail -3 "$tmp/orphan.log")" >&2
+  failures=$((failures + 1))
+fi
+
 # --- a mistyped switch is refused, not read as off ----------------------------------------------
 bad=$tmp/bad
 write_config "$tmp/bad.conf" "PORTAL_ENABLE_AGENT_BRIDGE=yes"

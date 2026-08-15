@@ -15,11 +15,21 @@ The portal is deliberately two processes with different privilege:
 |---|---|---|
 | Portal container | `portal` inside the image, loopback-only | No Docker socket, read-only root filesystem, world data mounted read-only |
 | Host agent | `valheim-agent` via systemd | Writes world data, manages server containers through the `docker` group |
+| Agent runner (optional) | an operator account via systemd, on demand or polling | Talks to the portal over loopback with a bridge token; no world tree, no Docker socket, no `sudo` |
 
 They communicate over a mode 0660 Unix socket and authenticate every operation
 with an HMAC token from a shared file. The portal cannot ask the agent to do
 anything outside the agent's fixed operation table, and the agent refuses any
 world outside `AGENT_ALLOWED_WORLDS`.
+
+The runner exists only when `PORTAL_ENABLE_AGENT_BRIDGE=true`. It is a third
+privilege level on purpose: it can ask the portal for things and must wait for an
+operator to approve every mutating one. It runs as an operator account rather than
+`valheim-agent` because it shells out to omp, which keeps the model login in a home
+directory - so the account that has credentials is deliberately the account that has
+no reach into the worlds. `AGENT_RUNNER_SERVICE` decides whether it polls
+continuously or runs one pass at a time via
+`systemctl start valheim-agent-runner-once`; both are installed either way.
 
 ## Before you begin
 

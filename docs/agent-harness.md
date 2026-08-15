@@ -162,7 +162,10 @@ was a real incident here.
 
 Enabled only when `PORTAL_AGENT_BRIDGE_TOKEN_FILE` points at a file holding at least 32
 characters. Absent, the endpoints answer `503` and say which variable to set - a deployment must
-opt in before an agent can drive anything.
+opt in before an agent can drive anything. That opt-in is `PORTAL_ENABLE_AGENT_BRIDGE=true` in
+`deploy/install.conf`: the installer then generates the token, mounts it into the container, and
+points the variable at it. Setting the variable by hand works but drifts from the config the next
+install reads, which is how a deployment ends up refusing requests nobody changed.
 
 ```
 GET  /api/agent/verbs                  the vocabulary: class, required arguments, and why anything
@@ -197,15 +200,36 @@ assuming its request succeeded.
 `cmd/agent-runner` is the process that drives all this. It reads the conversation, asks omp what to
 do, and requests verbs; the portal decides what is allowed and records what happened.
 
+Installing with `PORTAL_ENABLE_AGENT_BRIDGE=true` builds it to `/usr/local/bin/valheim-agent-runner`
+and sets up both ways to run it. They share `/etc/valheim-portal/agent-runner.env`, so a pass run
+by hand is a rehearsal of what the poller does rather than a different configuration:
+
 ```bash
-PORTAL_AGENT_BRIDGE_TOKEN_FILE=/etc/valheim-portal/bridge-token \
-  agent-runner -portal http://127.0.0.1:8080 -state /var/lib/valheim-agent-runner/cursor
-agent-runner ... -once     # a single pass, for checking a deployment
+# on demand - the default. One pass, then it exits.
+sudo systemctl start valheim-agent-runner-once
+journalctl -u valheim-agent-runner-once -n 20 --no-pager
+
+# polling - AGENT_RUNNER_SERVICE=true in deploy/install.conf, then reinstall.
+journalctl -u valheim-agent-runner -f
 ```
 
-It holds no model credential - omp owns authentication - and it is meant to run as its own user
-with no `sudo`, no read access to any world's `.env`, and no git credential, because those limits
-are enforced by absence rather than by rules.
+Setting `AGENT_RUNNER_SERVICE` back to `false` and reinstalling stops and disables the poller, so
+the switch describes the machine rather than the intention. Enabling it while the bridge is off is
+refused at preflight: the runner would poll a portal answering 503.
+
+Running it directly is still the fastest way to check wiring against a portal on another port:
+
+```bash
+sudo -n env PORTAL_BASE_URL=http://127.0.0.1:18080 \
+  PORTAL_AGENT_BRIDGE_TOKEN_FILE=/etc/valheim-portal/agent-bridge-token \
+  valheim-agent-runner -once
+```
+
+It holds no model credential - omp owns authentication - so it cannot run as the agent account,
+which has no login and runs with `ProtectHome`. It runs as an operator account instead, and the
+boundary is what that account cannot reach: no world tree, no docker socket, no `sudo`, no read
+access to any world's `.env`, and no git credential. Those limits are enforced by absence rather
+than by rules.
 
 What it will not do, each covered by a test:
 

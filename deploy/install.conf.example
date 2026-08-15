@@ -135,6 +135,38 @@ AGENT_ALLOWED_WORLDS=WorldOne,WorldTwo
 # disabled is indistinguishable from an agent that cannot connect.
 #PORTAL_ENABLE_AGENT_BRIDGE=false
 
+# The runner is the process that reads the operator conversation and asks a model
+# what to do. Enabling the bridge installs it two ways, and you can use either
+# without reinstalling:
+#
+#   on demand (default)  sudo systemctl start valheim-agent-runner-once
+#                        journalctl -u valheim-agent-runner-once -n 20 --no-pager
+#
+#   polling              AGENT_RUNNER_SERVICE=true below, then reinstall
+#                        journalctl -u valheim-agent-runner -f
+#
+# Both read /etc/valheim-portal/agent-runner.env, so a hand-run pass is a rehearsal
+# of what the poller does. On demand is the default because a poller holds a model
+# session open against a portal nobody is watching. Setting this true with the
+# bridge off is refused rather than installed: it would poll a 503.
+#AGENT_RUNNER_SERVICE=false
+
+# The account whose omp login the runner uses. It cannot be the agent account: omp
+# keeps its credentials in a home directory and the agent has none. Defaults to
+# whoever runs the installer, which is normally right.
+#AGENT_RUNNER_USER=operator
+
+# Absolute path to omp. A unit's PATH does not include a user's ~/.local/bin, so
+# this is resolved as AGENT_RUNNER_USER at install time and recorded; set it only
+# when omp lives somewhere that lookup will not find.
+#AGENT_RUNNER_OMP=/home/operator/.local/bin/omp
+
+# Model for omp to use. Empty means omp's own default.
+#AGENT_RUNNER_MODEL=
+
+# How often the poller reads the inbox. Ignored on demand.
+#AGENT_RUNNER_POLL=3s
+
 # Source-code link shown on the player-facing pages. This is the program's
 # AGPL-3.0 section 13 offer: run modified code as a network service and you owe
 # its users the corresponding source. The default names the upstream project,

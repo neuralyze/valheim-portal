@@ -31,6 +31,26 @@ Remove that symlink and the publish scripts stop finding the database from the h
 through the portal's HTTP API works either way, because then the server writes the artifacts
 itself, but the scripts are the supported path.
 
+## What an install places outside the checkout
+
+| path | role |
+| --- | --- |
+| `/etc/valheim-portal/{csrf-secret,admin-token,agent-token}` | the three secrets the portal and agent share, mode 0640 `root:valheim-agent`, preserved across installs |
+| `/etc/valheim-portal/agent-bridge-token` | the bridge token, generated whether or not the bridge is on so enabling it later is one config line |
+| `/etc/valheim-portal/agent.env` | the agent's fixed operating parameters |
+| `/etc/valheim-portal/agent-runner.env` | shared by both runner units, so an on-demand pass and the poller cannot disagree |
+| `/usr/local/bin/valheim-portal` | the agent binary; the portal itself runs from the container image |
+| `/usr/local/bin/valheim-agent-runner` | the runner, installed only when the bridge is enabled |
+| `/etc/systemd/system/valheim-portal-agent.service` | the agent, always enabled |
+| `/etc/systemd/system/valheim-agent-runner.service` | the poller, enabled only when `AGENT_RUNNER_SERVICE=true` |
+| `/etc/systemd/system/valheim-agent-runner-once.service` | one pass on demand; installed but never enabled |
+| `/var/lib/valheim-agent-runner/cursor` | the runner's inbox position, so a restart does not re-answer a question |
+| `/srv/valheim-portal/.env` | generated from `deploy/install.conf` on every install. Hand-edits here are lost on the next one; the previous file is kept as `.env.replaced` |
+
+`deploy/install.conf` is untracked operator data and is the only file to edit. Everything in the
+table above is derived from it, which is why a value that is right in `.env` but missing from
+`install.conf` reappears wrong after a reinstall.
+
 ## release-targets.json
 
 Gitignored, because the set of published profiles is per-deployment. It therefore drifts between
