@@ -159,14 +159,21 @@ func (s *Server) agentChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "conversation unavailable", http.StatusInternalServerError)
 		return
 	}
+	waiting, since, _ := s.store.AgentAwaitedTurn(r.Context())
 	render(w, agentChatTemplate, map[string]any{
 		"Messages": messages, "Calls": rows, "CSRF": s.csrfCookie(w, r),
 		"IsAdmin": true, "SourceURL": s.cfg.SourceURL,
 		"BridgeEnabled": len(s.agentBridgeToken) > 0,
 		"Pending":       pending,
-		"State":         fmt.Sprintf("%d/%d", latest, pending),
-		"Busy":          pending > 0,
-		"Shown":         len(messages),
+		"State":         fmt.Sprintf("%d/%d/%t", latest, pending, waiting),
+		// Busy drives the fast poll: either the operator owes a decision, or the agent owes a turn.
+		"Busy":         pending > 0 || waiting,
+		"Waiting":      waiting,
+		"WaitedSecond": int(since.Seconds()),
+		// Long enough that an ordinary model turn never trips it, short enough that a runner which
+		// is not running is named while the operator is still looking at the page.
+		"WaitStalled": waiting && since > 90*time.Second,
+		"Shown":       len(messages),
 	})
 }
 
@@ -310,8 +317,12 @@ func (s *Server) agentChatStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "unavailable"})
 		return
 	}
+	waiting, since, _ := s.store.AgentAwaitedTurn(r.Context())
+	// waiting joins the state token so the page notices the flip in both directions: it starts
+	// showing that the agent is working, and stops when the answer lands.
 	writeJSON(w, http.StatusOK, map[string]any{
-		"state": fmt.Sprintf("%d/%d", latest, pending), "latest": latest, "pending": pending,
+		"state": fmt.Sprintf("%d/%d/%t", latest, pending, waiting), "latest": latest, "pending": pending,
+		"waiting": waiting, "waited_seconds": int(since.Seconds()),
 	})
 }
 
@@ -537,10 +548,14 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 const agentChatTemplate = `<!doctype html><html><head><meta charset="utf-8"><title>Agent - Neuralyze Valheim</title></head>
 <body class="admin">
 <header class="admin-nav">` + adminNavigation + `</header>
-<main class="shell" data-agent-status="{{.State}}" data-agent-busy="{{if .Busy}}true{{else}}false{{end}}">
+<main class="shell" data-agent-status="{{.State}}" data-agent-busy="{{if .Busy}}true{{else}}false{{end}}" data-agent-waiting="{{if .Waiting}}true{{else}}false{{end}}">
 <h1>Agent</h1>
-<p class="install-note"><span data-agent-indicator>{{if .Busy}}{{.Pending}} request(s) awaiting your decision{{else}}nothing pending{{end}}</span></p>
-{{if not .BridgeEnabled}}<p class="notes warning">The agent bridge is disabled. Set <code>PORTAL_AGENT_BRIDGE_TOKEN_FILE</code> to let an agent process connect.</p>{{end}}
+<p class="install-note"><span data-agent-indicator>{{if .Pending}}{{.Pending}} request(s) awaiting your decision{{else}}nothing pending{{end}}</span></p>
+{{if .Waiting}}<p class="notes{{if .WaitStalled}} warning{{end}}" data-agent-working="{{.WaitedSecond}}">
+{{if .WaitStalled}}No reply after <span data-agent-elapsed>{{.WaitedSecond}}</span>s. The runner may not be running: check <code>systemctl status valheim-agent-runner-wake.path</code>, or run one pass with <code>sudo systemctl start valheim-agent-runner-once</code>.
+{{else}}<span class="spinner" aria-hidden="true"></span> The agent is working - <span data-agent-elapsed>{{.WaitedSecond}}</span>s. This page updates itself; there is nothing to reload.{{end}}
+</p>{{end}}
+{{if not .BridgeEnabled}}<p class="notes warning">The agent bridge is disabled. Set <code>PORTAL_ENABLE_AGENT_BRIDGE=true</code> in <code>deploy/install.conf</code> and reinstall; the installer generates the token and mounts it.</p>{{end}}
 
 {{if .Calls}}<h2>Requests</h2>
 {{range .Calls}}<section class="admin-widget{{if .Approvable}} warning{{end}}">

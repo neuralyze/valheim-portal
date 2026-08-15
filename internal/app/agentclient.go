@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -231,12 +233,30 @@ func (a *AgentClient) do(ctx context.Context, r agentRequest) (AgentReply, error
 		return AgentReply{}, err
 	}
 	defer resp.Body.Close()
+	// Read first, decode second. Decoding straight from the body turned every non-JSON refusal
+	// into "invalid character 'o' in literal false", because the agent's plain-text "forbidden"
+	// was parsed as the literal false. The operator then saw a JSON complaint about a request the
+	// agent had correctly rejected, with nothing naming the actual reason.
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if readErr != nil {
+		return AgentReply{}, fmt.Errorf("agent reply unreadable: %w", readErr)
+	}
 	var result AgentReply
-	if err = json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return AgentReply{}, err
+	if decodeErr := json.Unmarshal(raw, &result); decodeErr != nil {
+		text := strings.TrimSpace(string(raw))
+		if len(text) > 200 {
+			text = text[:200] + "…"
+		}
+		if text == "" {
+			text = "empty body"
+		}
+		return AgentReply{}, fmt.Errorf("agent answered %d with a non-JSON body: %s", resp.StatusCode, text)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return result, errors.New("agent rejected request")
+		if result.Error != "" {
+			return result, fmt.Errorf("agent refused the request: %s", result.Error)
+		}
+		return result, fmt.Errorf("agent refused the request with status %d", resp.StatusCode)
 	}
 	return result, nil
 }

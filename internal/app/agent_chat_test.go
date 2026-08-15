@@ -502,3 +502,63 @@ func TestTheAgentPageUsesTheSingleColumnLayoutAndOneNavLink(t *testing.T) {
 		t.Errorf("the header renders %d Administration links, want 1", count)
 	}
 }
+
+// The operator's real question while nothing is on screen is "is this still alive". The page answers
+// it from the conversation - the newest turn is theirs, so the agent owes a reply - rather than from
+// a flag some process sets and a killed process never clears.
+func TestThePageSaysTheAgentIsWorkingWhileItOwesAReply(t *testing.T) {
+	server := bridgeServer(t)
+
+	if page := agentPage(t, server); strings.Contains(page, "The agent is working") {
+		t.Fatal("an empty conversation should not claim the agent is working")
+	}
+
+	if _, err := server.store.AppendAgentMessage(t.Context(), "operator", "any mod updates?"); err != nil {
+		t.Fatal(err)
+	}
+	page := agentPage(t, server)
+	if !strings.Contains(page, `data-agent-waiting="true"`) || !strings.Contains(page, "The agent is working") {
+		t.Fatal("an unanswered operator turn should show the working indicator")
+	}
+	if !strings.Contains(page, `class="spinner"`) || !strings.Contains(page, "data-agent-elapsed") {
+		t.Error("the indicator has neither motion nor an elapsed counter, so it cannot show the page is live")
+	}
+
+	// The agent answering is what clears it, not a timer and not a reload.
+	if _, err := server.store.AppendAgentMessage(t.Context(), "agent", "updates=0"); err != nil {
+		t.Fatal(err)
+	}
+	if page := agentPage(t, server); strings.Contains(page, "The agent is working") || !strings.Contains(page, `data-agent-waiting="false"`) {
+		t.Error("the indicator survived the reply it was waiting for")
+	}
+}
+
+// status.json carries the same fact, because the page polls it rather than re-rendering to find out.
+func TestTheStatusEndpointReportsWhetherTheAgentOwesATurn(t *testing.T) {
+	server := bridgeServer(t)
+	if _, err := server.store.AppendAgentMessage(t.Context(), "operator", "hello"); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/admin/agent/status.json", nil)
+	request.RemoteAddr = "192.0.2.10:1234"
+	request.Header.Set("X-Forwarded-User", "operator")
+	request.Header.Set(adminTokenHeader, testAdminToken)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	var state struct {
+		State   string `json:"state"`
+		Waiting bool   `json:"waiting"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
+		t.Fatalf("status is not JSON: %q", response.Body.String())
+	}
+	if !state.Waiting {
+		t.Error("status.json does not report that the agent owes a turn")
+	}
+	// The flag must be inside the state token, or the page never notices it changing.
+	if !strings.HasSuffix(state.State, "/true") {
+		t.Errorf("state token %q does not carry the waiting flag, so a flip goes unnoticed", state.State)
+	}
+}

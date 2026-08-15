@@ -319,3 +319,31 @@ func (s *Store) AgentActivity(ctx context.Context) (latest int64, pending int, e
 		`SELECT COUNT(*) FROM agent_verb_calls WHERE conversation=? AND status=?`, agentConversation, VerbPending).Scan(&pending)
 	return latest, pending, err
 }
+
+// AgentAwaitedTurn answers "is the agent expected to say something": the newest turn is the
+// operator's, so nothing has answered it yet. It returns how long that has been true.
+//
+// Derived from the conversation rather than tracked as a flag. A flag would need setting when a
+// pass starts and clearing when it ends, and a runner killed between the two would leave the page
+// claiming work forever - which is exactly the class of bug that has cost this project the most
+// time: state asserted somewhere instead of computed from what happened.
+func (s *Store) AgentAwaitedTurn(ctx context.Context) (waiting bool, since time.Duration, err error) {
+	var role, created string
+	row := s.db.QueryRowContext(ctx, `
+SELECT role, created_at FROM agent_messages WHERE conversation=? ORDER BY id DESC LIMIT 1`, agentConversation)
+	if err = row.Scan(&role, &created); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, 0, nil
+		}
+		return false, 0, err
+	}
+	if role != "operator" {
+		return false, 0, nil
+	}
+	at, parseErr := time.Parse(time.RFC3339Nano, created)
+	if parseErr != nil {
+		// The turn is still unanswered; only its age is unknown.
+		return true, 0, nil
+	}
+	return true, time.Since(at), nil
+}

@@ -59,8 +59,26 @@
       });
   }
 
-  // Five seconds while something is pending or running, thirty when the page is idle. A verb that
-  // takes minutes should not cost an operator a reload every five seconds for an hour.
-  var interval = status.getAttribute("data-agent-busy") === "true" ? 5000 : 30000;
+  // The elapsed counter ticks locally, once a second, while the agent owes a turn. It is what makes
+  // "still working" believable: a static spinner and a static number look identical to a dead page,
+  // and the operator's real question is whether anything is still happening.
+  var elapsed = document.querySelector("[data-agent-elapsed]");
+  var working = document.querySelector("[data-agent-working]");
+  if (elapsed && working) {
+    var started = Date.now() - Number(working.getAttribute("data-agent-working") || 0) * 1000;
+    window.setInterval(function () {
+      elapsed.textContent = String(Math.round((Date.now() - started) / 1000));
+    }, 1000);
+  }
+
+  // Two seconds while the agent owes a turn, five while an approval waits, thirty when idle. A verb
+  // that takes minutes should not cost an operator a reload every five seconds for an hour, but a
+  // reply they are watching for should not sit unseen for thirty either.
+  var interval = 30000;
+  if (status.getAttribute("data-agent-waiting") === "true") {
+    interval = 2000;
+  } else if (status.getAttribute("data-agent-busy") === "true") {
+    interval = 5000;
+  }
   window.setInterval(poll, interval);
 })();

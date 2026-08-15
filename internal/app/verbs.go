@@ -169,6 +169,17 @@ func (s *Server) runVerb(ctx context.Context, call VerbCall) (AgentReply, error)
 			Archive:          call.Archive,
 		})
 	}
+	// The log verb is world-scoped rather than profile-scoped, so it does not take the mod path
+	// above, but it still carries arguments: without a line count the agent refuses the request,
+	// and the generic call below sends none. 200 is the host script's own default - the end of the
+	// log, which is what "show me the log" means.
+	if verb.Operation == "world_log" {
+		lines := call.Lines
+		if lines < 1 || lines > 5000 {
+			lines = 200
+		}
+		return s.agent.RunLog(ctx, call.ID, call.World, lines, call.Query)
+	}
 	return s.agent.Run(ctx, call.ID, call.World, verb.Operation)
 }
 

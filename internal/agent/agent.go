@@ -202,22 +202,31 @@ func Verify(token []byte, allowed map[string]struct{}, r Request) error {
 	}
 	if !catalog {
 		if _, ok := allowed[r.World]; !ok && r.Operation != "provision" {
-			return errors.New("world is not allowed")
+			return fmt.Errorf("%w: world is not allowed", ErrCapability)
 		}
 	}
 	if d := time.Since(time.Unix(r.Timestamp, 0)); d > time.Minute || d < -time.Minute {
-		return errors.New("stale agent request")
+		return fmt.Errorf("%w: stale agent request", ErrCapability)
 	}
 	actual, err := hex.DecodeString(r.Signature)
 	if err != nil {
-		return errors.New("invalid signature")
+		return fmt.Errorf("%w: invalid signature", ErrCapability)
 	}
 	expected, _ := hex.DecodeString(Sign(token, r))
 	if !hmac.Equal(actual, expected) {
-		return errors.New("invalid signature")
+		return fmt.Errorf("%w: invalid signature", ErrCapability)
 	}
 	return nil
 }
+
+// ErrCapability marks the refusals that must not explain themselves: a wrong signature, a replayed
+// timestamp, a world this agent does not control. Every other refusal is about the shape of the
+// request, and those the caller is told, because the vocabulary and its argument rules are already
+// public at /api/agent/verbs - and a caller that cannot see why it was refused retries the same
+// request or, worse, reports a JSON parse error to an operator.
+var ErrCapability = errors.New("forbidden")
+
+func argumentProblem(err error) bool { return !errors.Is(err, ErrCapability) }
 
 func provisionFieldsEmpty(r Request) bool {
 	return r.ServerName == "" && r.Password == "" && !r.Public && !r.Crossplay && r.PlayerLimit == 0 &&
@@ -556,13 +565,30 @@ func NewHandler(c Config) (http.Handler, error) {
 			return
 		}
 		var r Request
+		// Refusals answer in the same shape as success. A plain-text body here was decoded as
+		// JSON by the caller and surfaced to an operator as
+		// "invalid character 'o' in literal false (expecting 'a')" - the word "forbidden" being
+		// read as the literal false. The refusal was correct; only its wrapper was unreadable.
+		refuse := func(status int, reason string) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			json.NewEncoder(w).Encode(Response{Status: "failed", Error: reason})
+		}
 		if json.NewDecoder(http.MaxBytesReader(w, req.Body, 4096)).Decode(&r) != nil {
-			http.Error(w, "invalid request", 400)
+			refuse(400, "invalid request")
 			return
 		}
 		currentAllowed := snapshotAllowed()
 		if err := Verify(token, currentAllowed, r); err != nil {
-			http.Error(w, "forbidden", 403)
+			// The vocabulary and its argument rules are public - the portal serves them at
+			// /api/agent/verbs - so an argument complaint is not a disclosure and is the
+			// difference between a caller that can fix itself and one that cannot. Anything
+			// touching the capability itself stays a bare "forbidden".
+			reason := "forbidden"
+			if argumentProblem(err) {
+				reason = err.Error()
+			}
+			refuse(403, reason)
 			return
 		}
 		unlock := func() {}

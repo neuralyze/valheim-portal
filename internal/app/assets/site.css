@@ -1052,3 +1052,27 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
    off the screen - an operator should never have to scroll past output to reach Deny. */
 .admin-widget pre.notes { max-height: 22rem; overflow: auto; }
 .admin-widget details > summary { cursor: pointer; }
+
+/* The agent page's "still working" indicator. Motion is the whole point: it is the only thing on a
+   server-rendered page that distinguishes waiting from dead, and it costs no request to keep. */
+.spinner {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.35rem;
+  vertical-align: -1px;
+  border: 2px solid #74c99166;
+  border-top-color: #74c991;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Respect a stated preference for less motion: the text and its ticking counter still say the page
+   is live, so the animation is decoration rather than information. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; opacity: 0.6; }
+}
