@@ -12,6 +12,20 @@ See [prerequisites.md](prerequisites.md) for versions and
 Everything below runs against a fresh clone with no configuration, no world root, no
 agent, and no Docker.
 
+One command runs every gate CI runs, cheapest first, stopping at the first failure and naming
+it. Prefer it to the list below: the list is what it does, and a list is what people skip.
+
+```sh
+scripts/check.sh                 # all thirteen gates; about ten seconds warm, a minute cold
+scripts/check.sh --list          # what they are
+scripts/check.sh --only gofmt    # reproduce one failure
+scripts/check.sh --skip gotest   # everything but the race suite
+```
+
+It reports the failing gate and the command to reproduce it, because the reason this script
+exists is that `shellcheck` sat red on `scripts/republish-profiles.sh` for weeks while everyone
+"ran the tests".
+
 ```sh
 cd "$(git rev-parse --show-toplevel)"
 gofmt -l .                                      # must print nothing
