@@ -236,8 +236,13 @@ than by rules.
 On demand nothing is automatic, and that is the whole point: a message waits in the conversation
 until a pass is triggered, so the agent acts when an operator decides it should.
 
-1. Send a message on `/admin/agent`. It is stored immediately; `agent_messages` gains a row with
-   role `operator`.
+1. Send a message, from `/admin/agent` or from the dock in the corner of `/admin`. Ctrl+Enter sends
+   in both. It is stored immediately; `agent_messages` gains a row with role `operator`.
+
+   The dock reads `/admin/agent/tail.json` - the last eight turns plus the same waiting state -
+   because the bridge endpoints require the bridge token and a browser must never hold that. It
+   posts to the same `/admin/agent/message` handler the full page uses, so both paths wake the
+   runner identically. It offers no approval: that needs the full page, where the arguments are.
 2. A pass starts by itself. The portal writes its wake file, a systemd path unit
    (`valheim-agent-runner-wake.path`) sees the write and starts `valheim-agent-runner-once`, and the
    runner reads from its persisted cursor - so it answers what it has not answered before and

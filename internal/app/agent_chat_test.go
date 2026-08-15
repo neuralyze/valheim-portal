@@ -562,3 +562,75 @@ func TestTheStatusEndpointReportsWhetherTheAgentOwesATurn(t *testing.T) {
 		t.Errorf("state token %q does not carry the waiting flag, so a flip goes unnoticed", state.State)
 	}
 }
+
+// The dock is the agent where the operator already is. It reads its own endpoint because the bridge
+// endpoints need the bridge token, and a browser must never hold that.
+func TestTheAdminHomeCarriesTheAgentDock(t *testing.T) {
+	server := bridgeServer(t)
+	page := adminPage(t, server)
+
+	for _, want := range []string{
+		"data-agent-dock",             // the element the script binds to
+		`src="/assets/admin-dock.js"`, // and the script itself
+		`href="/admin/agent"`,         // approvals happen on the full page
+		"Ctrl+Enter sends",            // the shortcut is discoverable
+		`name="csrf"`,                 // posting from the dock is CSRF-protected
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the admin home is missing %q", want)
+		}
+	}
+	// The dock must not carry Approve buttons: a decision made from a corner summary, without the
+	// arguments in front of you, is the habit the full page exists to prevent.
+	dock := page[strings.Index(page, "data-agent-dock"):]
+	if strings.Contains(dock, `value="approve"`) {
+		t.Error("the dock offers approval without showing what is being approved")
+	}
+}
+
+func TestTheDockEndpointServesTheConversationTail(t *testing.T) {
+	server := bridgeServer(t)
+	if _, err := server.store.AppendAgentMessage(t.Context(), "operator", "back up Hrafnheim"); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/admin/agent/tail.json", nil)
+	request.RemoteAddr = "192.0.2.10:1234"
+	request.Header.Set("X-Forwarded-User", "operator")
+	request.Header.Set(adminTokenHeader, testAdminToken)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("tail.json = %d: %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Waiting bool `json:"waiting"`
+		Bridge  bool `json:"bridge_enabled"`
+		Turns   []struct {
+			Role string `json:"role"`
+			Body string `json:"body"`
+		} `json:"turns"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("not JSON: %q", response.Body.String())
+	}
+	if len(payload.Turns) == 0 || payload.Turns[len(payload.Turns)-1].Body != "back up Hrafnheim" {
+		t.Errorf("tail does not end with the newest turn: %+v", payload.Turns)
+	}
+	if !payload.Waiting {
+		t.Error("tail.json does not report that the agent owes a turn")
+	}
+	if !payload.Bridge {
+		t.Error("tail.json does not report the bridge state, so the dock cannot explain silence")
+	}
+}
+
+func TestTheDockEndpointIsAdminOnly(t *testing.T) {
+	server := bridgeServer(t)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin/agent/tail.json", nil))
+	if response.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated tail.json = %d, want 401", response.Code)
+	}
+}

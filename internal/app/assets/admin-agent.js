@@ -59,6 +59,36 @@
       });
   }
 
+
+  // Ctrl+Enter (or Cmd+Enter) sends. A message long enough to need a textarea is long enough that
+  // reaching for the mouse breaks the thought, and Enter alone cannot send: these messages are
+  // multi-line by nature.
+  var box = document.querySelector("textarea[name=body]");
+  if (box && box.form) {
+    box.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+      event.preventDefault();
+      if (box.value.trim() === "") {
+        return;
+      }
+      if (box.form.requestSubmit) {
+        box.form.requestSubmit();
+      } else {
+        box.form.submit();
+      }
+    });
+  }
+
+  // The newest turn and the working indicator sit together at the end of the conversation, so put
+  // the end of the conversation on screen. Without this the operator lands at the top and has to
+  // scroll to find both the message they just sent and the answer to it.
+  var turns = document.querySelectorAll(".agent-turn");
+  if (turns.length > 0 && !window.location.hash) {
+    turns[turns.length - 1].scrollIntoView({ block: "end" });
+  }
+
   // The elapsed counter ticks locally, once a second, while the agent owes a turn. It is what makes
   // "still working" believable: a static spinner and a static number look identical to a dead page,
   // and the operator's real question is whether anything is still happening.

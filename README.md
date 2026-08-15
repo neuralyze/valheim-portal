@@ -474,7 +474,18 @@ operator account that can reach neither the world tree nor the docker socket.
 
 ### Driving it
 
-Open `/admin/agent` and send a message. **Sending is the trigger** — a pass starts on its own,
+There are two places to talk to it. The **dock** in the corner of `/admin` is for asking while you
+work: it opens and closes, remembers which, shows the last few turns, takes a message, and badges
+itself when a reply is owed or a decision waits. It deliberately has no Approve button — a decision
+made from a summary in the corner of the screen, without the arguments in front of you, is the habit
+the full page exists to prevent.
+
+`/admin/agent` is the full surface: every turn, every request with its arguments and release
+context, and the Approve and Deny buttons.
+
+In both, **Ctrl+Enter sends** — these messages are multi-line by nature, so Enter alone cannot.
+
+Open either and send a message. **Sending is the trigger** — a pass starts on its own,
 and so does one when you Approve or Deny, so approved work continues without a second step.
 
 That works without giving the portal any host access. The portal writes a file in its own data
@@ -494,7 +505,8 @@ job would let a single message be answered twice.
 
 **The page updates itself. Do not refresh.** While the agent owes a reply it shows a spinner and a
 counter that ticks — `The agent is working - 12s` — so waiting is visibly distinguishable from a
-dead page. It polls every 2 seconds while a reply is owed, 5 while an approval waits, and 30 when
+dead page. That indicator sits at the *end* of the conversation, beside the turn you just sent,
+rather than at the top where you would have to scroll between the two. It polls every 2 seconds while a reply is owed, 5 while an approval waits, and 30 when
 idle; it reloads only when something changed, and never while there is text in the message box,
 because a half-written message vanishing reads as a broken page.
 

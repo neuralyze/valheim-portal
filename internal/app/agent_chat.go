@@ -326,6 +326,34 @@ func (s *Server) agentChatStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// agentChatTail is what the dock on the admin home reads: the last few turns plus the same waiting
+// state the full page shows. It exists because the bridge endpoints need the bridge token, which a
+// browser must never hold - the dock is an operator surface and authenticates as one.
+func (s *Server) agentChatTail(w http.ResponseWriter, r *http.Request) {
+	const dockTurns = 8
+	messages, err := s.store.AgentMessages(r.Context(), dockTurns)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "conversation unavailable"})
+		return
+	}
+	latest, pending, err := s.store.AgentActivity(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "unavailable"})
+		return
+	}
+	waiting, since, _ := s.store.AgentAwaitedTurn(r.Context())
+	turns := make([]map[string]any, 0, len(messages))
+	for _, message := range messages {
+		turns = append(turns, map[string]any{"role": message.Role, "body": message.Body})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"state": fmt.Sprintf("%d/%d/%t", latest, pending, waiting), "latest": latest, "pending": pending,
+		"waiting": waiting, "waited_seconds": int(since.Seconds()),
+		"bridge_enabled": len(s.agentBridgeToken) > 0,
+		"turns":          turns,
+	})
+}
+
 // ---------------------------------------------------------------------------------------------
 // Bridge surface
 // ---------------------------------------------------------------------------------------------
@@ -557,10 +585,6 @@ const agentChatTemplate = `<!doctype html><html><head><meta charset="utf-8"><tit
 <main class="shell" data-agent-status="{{.State}}" data-agent-busy="{{if .Busy}}true{{else}}false{{end}}" data-agent-waiting="{{if .Waiting}}true{{else}}false{{end}}">
 <h1>Agent</h1>
 <p class="install-note"><span data-agent-indicator>{{if .Pending}}{{.Pending}} request(s) awaiting your decision{{else}}nothing pending{{end}}</span></p>
-{{if .Waiting}}<p class="notes{{if .WaitStalled}} warning{{end}}" data-agent-working="{{.WaitedSecond}}">
-{{if .WaitStalled}}No reply after <span data-agent-elapsed>{{.WaitedSecond}}</span>s. The runner may not be running: check <code>systemctl status valheim-agent-runner-wake.path</code>, or run one pass with <code>sudo systemctl start valheim-agent-runner-once</code>.
-{{else}}<span class="spinner" aria-hidden="true"></span> The agent is working - <span data-agent-elapsed>{{.WaitedSecond}}</span>s. This page updates itself; there is nothing to reload.{{end}}
-</p>{{end}}
 {{if not .BridgeEnabled}}<p class="notes warning">The agent bridge is disabled. Set <code>PORTAL_ENABLE_AGENT_BRIDGE=true</code> in <code>deploy/install.conf</code> and reinstall; the installer generates the token and mounts it.</p>{{end}}
 
 {{if .Calls}}<h2>Requests</h2>
@@ -591,6 +615,10 @@ const agentChatTemplate = `<!doctype html><html><head><meta charset="utf-8"><tit
 <h2>Conversation</h2>
 {{if .Messages}}<p class="install-note">Showing the last {{.Shown}} turn(s), oldest first.</p>{{end}}
 {{range .Messages}}<article class="agent-turn agent-turn-{{.Role}}"><h3>{{.Role}}</h3><pre class="notes">{{.Body}}</pre></article>{{end}}
+{{if .Waiting}}<p class="notes{{if .WaitStalled}} warning{{end}}" data-agent-working="{{.WaitedSecond}}">
+{{if .WaitStalled}}No reply after <span data-agent-elapsed>{{.WaitedSecond}}</span>s. The runner may not be running: check <code>systemctl status valheim-agent-runner-wake.path</code>, or run one pass with <code>sudo systemctl start valheim-agent-runner-once</code>.
+{{else}}<span class="spinner" aria-hidden="true"></span> The agent is working - <span data-agent-elapsed>{{.WaitedSecond}}</span>s. This page updates itself; there is nothing to reload.{{end}}
+</p>{{end}}
 
 <form method="post" action="/admin/agent/message">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -598,6 +626,7 @@ const agentChatTemplate = `<!doctype html><html><head><meta charset="utf-8"><tit
 <textarea name="body" rows="4" required placeholder="Ask for something, or answer a question the agent asked."></textarea>
 </label>
 <button type="submit">Send</button>
+<span class="install-note">Ctrl+Enter sends.</span>
 </form>
 </main>
 <script src="/assets/admin-agent.js"></script>
