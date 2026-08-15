@@ -28,8 +28,30 @@ PORTAL_PUBLIC_BASE_URL=https://valheim.example.com
 # (or /128) prefix. The installer refuses ranges that cover the public internet
 # or more than a small subnet.
 #
-# For a proxy in a Docker network, this is the gateway address the container
-# connects from, not the portal's own address.
+# Two shapes work, and they are not equivalent:
+#
+# 1. Proxy inside the portal's compose network - set this to the proxy
+#    container's own address. The network check is then real: only that
+#    container can present an identity.
+#
+# 2. Proxy on the host, reaching a published port - Docker NATs every such
+#    request to the bridge gateway, so the only value that matches is the
+#    gateway itself, and then the check cannot fail and cannot tell the proxy
+#    from any other process on the host. Preflight REFUSES this by default.
+#    Installing that way is a deliberate choice, and the installer makes you
+#    say so:
+#
+#      sudo ./scripts/install-portal.sh install --config deploy/install.conf \
+#           --allow-bridge-gateway-proxy-cidr
+#
+#    The admin token is then the only barrier in front of administration, so
+#    the proxy must set X-Portal-Admin-Token on the admin routes and blank it
+#    everywhere else.
+#
+# The value below is a bridge gateway, and therefore needs the flag above.
+# Recheck it after any docker network recreate: a stale range makes the portal
+# ignore the identity header and refuse every admin request, which reads as a
+# broken sign-in rather than a configuration fault.
 PORTAL_TRUSTED_PROXY_CIDR=172.17.0.1/32
 
 # Directory holding Valheim world data. The agent gets write access to exactly
