@@ -13,6 +13,10 @@ services:
       PORTAL_CSRF_SECRET_FILE: /run/secrets/csrf-secret
       PORTAL_ADMIN_TOKEN_FILE: /run/secrets/admin-token
       PORTAL_AGENT_TOKEN_FILE: /run/secrets/agent-token
+      # The switch for the agent bridge, and the one place it is expressed: the
+      # host file below is mounted either way, so an empty value here is a portal
+      # that no agent process can drive.
+      PORTAL_AGENT_BRIDGE_TOKEN_FILE: ${PORTAL_AGENT_BRIDGE_TOKEN_PATH:-}
       PORTAL_AGENT_SOCKET: /run/agent/agent.sock
       PORTAL_TRUSTED_PROXY_CIDR: ${PORTAL_TRUSTED_PROXY_CIDR:?set the reverse proxy CIDR}
       PORTAL_AUTH_HEADER: ${PORTAL_AUTH_HEADER:-X-Forwarded-User}
@@ -51,6 +55,7 @@ services:
       - ${PORTAL_CSRF_SECRET_FILE:?set CSRF secret file}:/run/secrets/csrf-secret:ro
       - ${PORTAL_ADMIN_TOKEN_FILE:?set admin token file}:/run/secrets/admin-token:ro
       - ${PORTAL_AGENT_TOKEN_FILE:?set token file}:/run/secrets/agent-token:ro
+      - ${PORTAL_AGENT_BRIDGE_TOKEN_FILE:?set bridge token file}:/run/secrets/agent-bridge-token:ro
       - ./dist:/srv/client:ro
     ports:
       # Loopback by default. Binding this publicly removes the only network

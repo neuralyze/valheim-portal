@@ -120,6 +120,21 @@ AGENT_ALLOWED_WORLDS=WorldOne,WorldTwo
 # on the only user. Any value other than exactly "false" keeps it on.
 #PORTAL_REQUIRE_DEVICE_CODE=true
 
+# Let a local agent process drive the portal. With this off, /api/agent/* answers
+# 503 and the operator's agent page says the bridge is disabled -- which is the
+# right default for a portal that can stop servers and delete worlds.
+#
+# Turning it on installs a token at /etc/valheim-portal/agent-bridge-token (mode
+# 0640, group valheim-agent) and mounts it into the container. The agent process
+# presents it as 'Authorization: Bearer <token>'; nothing else can reach those
+# routes, and the operator still approves every mutating verb by hand.
+#
+# The token is generated whether or not this is true, so enabling it later is this
+# one line plus a reinstall. Must be exactly true or false: the installer refuses
+# anything else rather than reading it as off, because a bridge that is quietly
+# disabled is indistinguishable from an agent that cannot connect.
+#PORTAL_ENABLE_AGENT_BRIDGE=false
+
 # Source-code link shown on the player-facing pages. This is the program's
 # AGPL-3.0 section 13 offer: run modified code as a network service and you owe
 # its users the corresponding source. The default names the upstream project,

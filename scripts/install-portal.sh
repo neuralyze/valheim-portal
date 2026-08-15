@@ -53,6 +53,11 @@ PORTAL_STEAM_API_KEY=${PORTAL_STEAM_API_KEY:-}
 PORTAL_ADMIN_STEAM_IDS=${PORTAL_ADMIN_STEAM_IDS:-}
 PORTAL_REQUIRE_DEVICE_CODE=${PORTAL_REQUIRE_DEVICE_CODE:-true}
 PORTAL_SOURCE_URL=${PORTAL_SOURCE_URL:-}
+# The agent bridge lets a local agent process read the operator conversation and
+# request verbs through /api/agent/*. Off unless asked for: a deployment that has
+# not opted in cannot be driven by an agent at all, which is the safe default for
+# a portal that can stop servers and delete worlds.
+PORTAL_ENABLE_AGENT_BRIDGE=${PORTAL_ENABLE_AGENT_BRIDGE:-false}
 AGENT_USER=${AGENT_USER:-valheim-agent}
 AGENT_GROUP=${AGENT_GROUP:-valheim-agent}
 AGENT_EXTRA_GROUPS=${AGENT_EXTRA_GROUPS:-docker}
@@ -217,6 +222,7 @@ resolved_unit() { staged "$unit_dir"; }
 csrf_secret_file() { printf '%s/csrf-secret' "$(resolved_etc)"; }
 admin_token_file() { printf '%s/admin-token' "$(resolved_etc)"; }
 agent_token_file() { printf '%s/agent-token' "$(resolved_etc)"; }
+agent_bridge_token_file() { printf '%s/agent-bridge-token' "$(resolved_etc)"; }
 agent_env_file() { printf '%s/agent.env' "$(resolved_etc)"; }
 
 # Compose reads its variables from .env beside compose.yaml. A staging prefix
@@ -234,6 +240,14 @@ compose_env_file() {
 host_csrf_secret_file() { printf '%s/csrf-secret' "$etc_dir"; }
 host_admin_token_file() { printf '%s/admin-token' "$etc_dir"; }
 host_agent_token_file() { printf '%s/agent-token' "$etc_dir"; }
+host_agent_bridge_token_file() { printf '%s/agent-bridge-token' "$etc_dir"; }
+
+# The container path the portal reads, or empty to leave the bridge off. Compose
+# mounts the host file either way, so the switch is this single value rather than
+# a conditional mount that would make compose.yaml unusable in one of the states.
+container_agent_bridge_token_path() {
+  [[ ${PORTAL_ENABLE_AGENT_BRIDGE,,} == true ]] && printf '/run/secrets/agent-bridge-token'
+}
 
 # Release identity stamped into both binaries. Go's own VCS stamping is
 # unusable when the checkout sits inside an unrelated repository, so derive it
@@ -429,6 +443,18 @@ check_auth_header() {
   return 0
 }
 
+# A bridge that quietly stays off because the switch says "yes" instead of "true"
+# looks exactly like a portal the agent cannot reach, and the page can only report
+# the symptom. Refuse the value instead of interpreting it.
+check_agent_bridge_switch() {
+  case ${PORTAL_ENABLE_AGENT_BRIDGE,,} in
+  true) note "agent bridge: enabled; /api/agent/* accepts the bridge token" ;;
+  false) note "agent bridge: disabled; the agent page will say so" ;;
+  *) problem "PORTAL_ENABLE_AGENT_BRIDGE must be true or false, got '$PORTAL_ENABLE_AGENT_BRIDGE'" ;;
+  esac
+  return 0
+}
+
 check_world_root() {
   [[ -n $VALHEIM_WORLD_ROOT ]] || {
     problem "VALHEIM_WORLD_ROOT is required"
@@ -566,6 +592,7 @@ preflight() {
   check_proxy_not_bridge_gateway
   check_bind
   check_auth_header
+  check_agent_bridge_switch
   check_world_root
   check_server_docker_dir
   check_script_dir
@@ -666,6 +693,11 @@ ensure_secrets() {
   # read-only bind mount, and rotating it only logs every operator out.
   ensure_secret "$(admin_token_file)" "admin token"
   ensure_secret "$(agent_token_file)" "agent token"
+  # Generated even when the bridge is off, so compose has a file to mount in both
+  # states and enabling it later is one config line and a restart rather than a
+  # secret ceremony. An unread 0640 token costs nothing; a conditional mount would
+  # cost a compose file that is only valid in one configuration.
+  ensure_secret "$(agent_bridge_token_file)" "agent bridge token"
 }
 
 build_agent_binary() {
@@ -834,6 +866,10 @@ PORTAL_STEAM_API_KEY=$PORTAL_STEAM_API_KEY
 PORTAL_CSRF_SECRET_FILE=$(host_csrf_secret_file)
 PORTAL_ADMIN_TOKEN_FILE=$(host_admin_token_file)
 PORTAL_AGENT_TOKEN_FILE=$(host_agent_token_file)
+PORTAL_AGENT_BRIDGE_TOKEN_FILE=$(host_agent_bridge_token_file)
+# Empty leaves the bridge disabled: the portal reads this path, and compose mounts
+# the host file regardless.
+PORTAL_AGENT_BRIDGE_TOKEN_PATH=$(container_agent_bridge_token_path)
 VALHEIM_WORLD_ROOT=$VALHEIM_WORLD_ROOT
 PORTAL_DEFAULT_JOIN_HOST=$PORTAL_DEFAULT_JOIN_HOST
 PORTAL_DEFAULT_GAME_PORT=$PORTAL_DEFAULT_GAME_PORT

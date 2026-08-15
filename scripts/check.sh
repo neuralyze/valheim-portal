@@ -21,13 +21,14 @@ gates=(
   "tidy|go.mod and go.sum match the imports|go mod tidy && git diff --exit-code go.mod go.sum"
   "build|the module builds|go build ./..."
   "windows|the profile-sync client builds for Windows|GOOS=windows go build ./..."
-  "shellcheck-scripts|scripts/*.sh are clean|shellcheck scripts/*.sh"
+  "shellcheck-scripts|scripts/*.sh are clean|shellcheck scripts/*.sh scripts/tests/*.sh"
   "shellcheck-hostops|host operation scripts are clean at style level|shellcheck -S style hostops/lib/common.sh hostops/*.sh hostops/tests/*.sh"
   "policy|policy.yaml, the docs and the Go verb table agree|python3 tools/check_agent_policy.py"
   "perframe|no unbounded scene searches on a frame path|python3 tools/check_perframe_work.py"
   "beads|the task tracker belongs to this project|python3 tools/check_beads_workspace.py"
   "pytest|the Python tool tests pass|cd tools && python3 -m pytest -q"
   "hostops|the host script regression tests pass|for t in hostops/tests/*.sh; do bash \"\$t\" >/dev/null || exit 1; done"
+  "installer|install.conf reaches the compose environment unchanged|for t in scripts/tests/*.sh; do bash \"\$t\" >/dev/null || exit 1; done"
   "gotest|the Go tests pass under the race detector|go test -race ./..."
 )
 
