@@ -87,12 +87,69 @@ func TestAForbiddenVerbIsRefusedAndRecorded(t *testing.T) {
 
 func TestAnUnwiredVerbSaysSoRatherThanApproximating(t *testing.T) {
 	server := bridgeServer(t)
-	response := bridgePost(t, server, "/api/agent/verb", `{"verb":"publish_profile","world":"TestWorld"}`)
+	response := bridgePost(t, server, "/api/agent/verb", `{"verb":"world_restore","world":"TestWorld"}`)
 	if response.Code != http.StatusNotImplemented {
 		t.Fatalf("status = %d, want 501", response.Code)
 	}
-	if got := decode(t, response)["error"]; !strings.Contains(got.(string), "republish-profiles.sh") {
-		t.Fatalf("error does not name what is missing: %v", got)
+	if got := decode(t, response)["error"]; !strings.Contains(got.(string), "two-step") {
+		t.Fatalf("error does not say why it is unavailable: %v", got)
+	}
+}
+
+// A publish is the one verb whose arguments decide what players download, so the missing ones
+// are reported before a row exists rather than discovered by the host script.
+func TestPublishRefusesWithoutAClientTypeAndANote(t *testing.T) {
+	server := bridgeServer(t)
+	response := bridgePost(t, server, "/api/agent/verb", `{"verb":"publish_profile","world":"TestWorld","profile":"redesign-alpha"}`)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (%s)", response.Code, response.Body.String())
+	}
+	if got := decode(t, response)["error"].(string); !strings.Contains(got, "client_type") {
+		t.Fatalf("error does not name the missing argument: %v", got)
+	}
+
+	response = bridgePost(t, server, "/api/agent/verb",
+		`{"verb":"publish_profile","world":"TestWorld","profile":"redesign-alpha","client_type":"vr"}`)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status without notes = %d, want 400", response.Code)
+	}
+	if got := decode(t, response)["error"].(string); !strings.Contains(got, "release note") {
+		t.Fatalf("error does not explain the note: %v", got)
+	}
+
+	// With both, it becomes a pending request an operator must confirm.
+	response = bridgePost(t, server, "/api/agent/verb",
+		`{"verb":"publish_profile","world":"TestWorld","profile":"redesign-alpha","client_type":"vr","notes":"stop the label sweep"}`)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status with arguments = %d, want 202 (%s)", response.Code, response.Body.String())
+	}
+	pending, err := server.store.PendingVerbCalls(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].Notes != "stop the label sweep" || pending[0].ClientType != "vr" {
+		t.Fatalf("arguments were not recorded: %+v", pending)
+	}
+}
+
+func TestReleaseConfirmNeedsItsFourArguments(t *testing.T) {
+	server := bridgeServer(t)
+	response := bridgePost(t, server, "/api/agent/verb",
+		`{"verb":"release_confirm","world":"TestWorld","profile":"redesign-alpha","client_type":"vr"}`)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", response.Code)
+	}
+	if got := decode(t, response)["error"].(string); !strings.Contains(got, "published_profile") {
+		t.Fatalf("error does not name the missing arguments: %v", got)
+	}
+}
+
+// A mod verb without a profile fails on the host, so the requirement is enforced before dispatch.
+func TestAModVerbWithoutAProfileIsRejectedBeforeItReachesTheHost(t *testing.T) {
+	server := bridgeServer(t)
+	_, err := server.runVerb(t.Context(), VerbCall{ID: "x", Verb: "mod_inventory", World: "TestWorld"})
+	if err == nil || !strings.Contains(err.Error(), "needs a profile") {
+		t.Fatalf("error = %v, want a profile requirement", err)
 	}
 }
 
@@ -273,3 +330,13 @@ func TestEveryPolicyClassIsRepresentedAndMutatingOnesNeedApproval(t *testing.T) 
 }
 
 func itoa(v int64) string { return fmtInt(v) }
+
+// The verb surface must not widen the one-click job form. Those operations need arguments and a
+// class check; a button that posts an operation name is neither.
+func TestTheGenericJobFormStillRefusesTheVerbOnlyOperations(t *testing.T) {
+	for _, operation := range []string{"publish_profile", "mod_release_confirm", "mod_update", "mod_notes"} {
+		if allowedOperation(operation) {
+			t.Fatalf("%s is reachable through POST /admin/jobs; it must only be reachable as a verb", operation)
+		}
+	}
+}

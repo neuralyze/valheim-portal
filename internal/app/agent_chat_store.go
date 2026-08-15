@@ -26,22 +26,30 @@ type AgentMessage struct {
 
 // VerbCall records one request from the agent, its approval, and its outcome.
 type VerbCall struct {
-	ID          string
-	Verb        string
-	Class       string
-	World       string
-	Profile     string
-	Identifier  string
-	Version     string
-	Query       string
-	Reason      string
-	Status      string
-	RequestedBy string
-	DecidedBy   string
-	Evidence    string
-	Detail      string
-	CreatedAt   time.Time
-	FinishedAt  *time.Time
+	ID         string
+	Verb       string
+	Class      string
+	World      string
+	Profile    string
+	Identifier string
+	Version    string
+	Query      string
+	Reason     string
+	ClientType string
+	// PublishedProfile, ReleaseRef and Archive are the release-confirm arguments; Notes is the
+	// publish note, which is mandatory; Lines bounds a changelog read.
+	PublishedProfile string
+	ReleaseRef       string
+	Archive          string
+	Notes            string
+	Lines            int
+	Status           string
+	RequestedBy      string
+	DecidedBy        string
+	Evidence         string
+	Detail           string
+	CreatedAt        time.Time
+	FinishedAt       *time.Time
 }
 
 const (
@@ -139,10 +147,12 @@ func (s *Store) CreateVerbCall(ctx context.Context, call VerbCall) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO agent_verb_calls(id, conversation, verb, class, world, profile, identifier, version, query, reason,
+                             client_type, published_profile, release_ref, archive, notes, lines,
                              status, requested_by, decided_by, evidence, detail, created_at)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'','','',?)`,
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'','','',?)`,
 		call.ID, agentConversation, call.Verb, call.Class, call.World, call.Profile, call.Identifier,
-		call.Version, call.Query, call.Reason, call.Status, call.RequestedBy,
+		call.Version, call.Query, call.Reason, call.ClientType, call.PublishedProfile, call.ReleaseRef,
+		call.Archive, call.Notes, call.Lines, call.Status, call.RequestedBy,
 		time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
@@ -171,7 +181,8 @@ UPDATE agent_verb_calls SET status=?, decided_by=CASE WHEN ?='' THEN decided_by 
 
 func (s *Store) VerbCall(ctx context.Context, id string) (VerbCall, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT id, verb, class, world, profile, identifier, version, query, reason, status, requested_by,
+SELECT id, verb, class, world, profile, identifier, version, query, reason,
+       client_type, published_profile, release_ref, archive, notes, lines, status, requested_by,
        decided_by, evidence, detail, created_at, finished_at
 FROM agent_verb_calls WHERE id=?`, id)
 	return scanVerbCall(row)
@@ -186,8 +197,9 @@ func scanVerbCall(row rowScanner) (VerbCall, error) {
 	var created string
 	var finished sql.NullString
 	if err := row.Scan(&call.ID, &call.Verb, &call.Class, &call.World, &call.Profile, &call.Identifier,
-		&call.Version, &call.Query, &call.Reason, &call.Status, &call.RequestedBy, &call.DecidedBy,
-		&call.Evidence, &call.Detail, &created, &finished); err != nil {
+		&call.Version, &call.Query, &call.Reason, &call.ClientType, &call.PublishedProfile,
+		&call.ReleaseRef, &call.Archive, &call.Notes, &call.Lines, &call.Status, &call.RequestedBy,
+		&call.DecidedBy, &call.Evidence, &call.Detail, &created, &finished); err != nil {
 		return VerbCall{}, err
 	}
 	call.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
@@ -205,7 +217,8 @@ func (s *Store) VerbCalls(ctx context.Context, limit int) ([]VerbCall, error) {
 		limit = 25
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, verb, class, world, profile, identifier, version, query, reason, status, requested_by,
+SELECT id, verb, class, world, profile, identifier, version, query, reason,
+       client_type, published_profile, release_ref, archive, notes, lines, status, requested_by,
        decided_by, evidence, detail, created_at, finished_at
 FROM agent_verb_calls WHERE conversation=? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
 		agentConversation, limit)

@@ -118,6 +118,18 @@ func verbSummary(call VerbCall) string {
 	if call.Version != "" {
 		parts = append(parts, call.Version)
 	}
+	if call.ClientType != "" {
+		parts = append(parts, call.ClientType)
+	}
+	if call.PublishedProfile != "" {
+		parts = append(parts, call.PublishedProfile)
+	}
+	if call.ReleaseRef != "" {
+		parts = append(parts, call.ReleaseRef)
+	}
+	if call.Notes != "" {
+		parts = append(parts, "note="+call.Notes)
+	}
 	return strings.Join(parts, " ")
 }
 
@@ -242,13 +254,19 @@ func (s *Server) agentSay(w http.ResponseWriter, r *http.Request) {
 }
 
 type verbRequest struct {
-	Verb       string `json:"verb"`
-	World      string `json:"world"`
-	Profile    string `json:"profile"`
-	Identifier string `json:"identifier"`
-	Version    string `json:"version"`
-	Query      string `json:"query"`
-	Reason     string `json:"reason"`
+	Verb             string `json:"verb"`
+	World            string `json:"world"`
+	Profile          string `json:"profile"`
+	Identifier       string `json:"identifier"`
+	Version          string `json:"version"`
+	Query            string `json:"query"`
+	Reason           string `json:"reason"`
+	ClientType       string `json:"client_type"`
+	PublishedProfile string `json:"published_profile"`
+	ReleaseRef       string `json:"release_id"`
+	Archive          string `json:"archive"`
+	Notes            string `json:"notes"`
+	Lines            int    `json:"lines"`
 }
 
 // agentVerb is the whole security surface in one handler: an agent names a verb, and what
@@ -270,7 +288,13 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 		ID: randomID(), Verb: verb.ID, Class: string(verb.Class), World: strings.TrimSpace(request.World),
 		Profile: strings.TrimSpace(request.Profile), Identifier: strings.TrimSpace(request.Identifier),
 		Version: strings.TrimSpace(request.Version), Query: strings.TrimSpace(request.Query),
-		Reason: strings.TrimSpace(request.Reason), RequestedBy: "agent",
+		Reason: strings.TrimSpace(request.Reason), ClientType: strings.TrimSpace(request.ClientType),
+		PublishedProfile: strings.TrimSpace(request.PublishedProfile),
+		ReleaseRef:       strings.TrimSpace(request.ReleaseRef),
+		Archive:          strings.TrimSpace(request.Archive),
+		Notes:            strings.TrimSpace(request.Notes),
+		Lines:            request.Lines,
+		RequestedBy:      "agent",
 	}
 
 	if verb.Class == ClassForbidden {
@@ -301,6 +325,22 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 	}
 	if verb.NeedsIdentifier && call.Identifier == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "verb " + verb.ID + " needs an identifier"})
+		return
+	}
+	if verb.NeedsClientType && call.ClientType != "vr" && call.ClientType != "flat" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "verb " + verb.ID + " needs client_type vr or flat"})
+		return
+	}
+	if verb.NeedsNotes && len(call.Notes) < 8 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "verb " + verb.ID + " needs notes of at least 8 characters; the note becomes the release note",
+		})
+		return
+	}
+	if verb.NeedsRelease && (call.PublishedProfile == "" || call.ReleaseRef == "" || call.Archive == "") {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "verb " + verb.ID + " needs published_profile, release_id and archive",
+		})
 		return
 	}
 

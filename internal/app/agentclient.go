@@ -3,9 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net"
@@ -14,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/neuralyze/valheim-portal/internal/agent"
 )
 
 type AgentClient struct {
@@ -49,7 +48,15 @@ type agentRequest struct {
 	Admins          string `json:"admins,omitempty"`
 	Permitted       string `json:"permitted,omitempty"`
 	Timestamp       int64  `json:"timestamp"`
-	Signature       string `json:"signature"`
+	// Arguments the agent surface added. They are part of the signed payload on the agent
+	// side, so anything added here must also be added to agent.Canonical.
+	Lines            int    `json:"lines,omitempty"`
+	ClientType       string `json:"client_type,omitempty"`
+	PublishedProfile string `json:"published_profile,omitempty"`
+	ReleaseID        string `json:"release_id,omitempty"`
+	Archive          string `json:"archive,omitempty"`
+	Notes            string `json:"notes,omitempty"`
+	Signature        string `json:"signature"`
 }
 type AgentReply struct {
 	Status      string          `json:"status"`
@@ -67,6 +74,12 @@ type ModAgentRequest struct {
 	Version    string
 	Scope      string
 	Reason     string
+	// Lines bounds mod_notes; the rest are the release-confirm arguments.
+	Lines            int
+	ClientType       string
+	PublishedProfile string
+	ReleaseID        string
+	Archive          string
 }
 type ProvisionAgentRequest struct {
 	ServerName      string
@@ -121,7 +134,19 @@ func (a *AgentClient) RunMod(ctx context.Context, id, world string, request ModA
 	return a.do(ctx, agentRequest{
 		ID: id, World: world, Operation: request.Operation, Profile: request.Profile,
 		Query: request.Query, Identifier: request.Identifier, Version: request.Version,
-		Scope: request.Scope, Reason: request.Reason, Timestamp: time.Now().Unix(),
+		Scope: request.Scope, Reason: request.Reason, Lines: request.Lines,
+		ClientType: request.ClientType, PublishedProfile: request.PublishedProfile,
+		ReleaseID: request.ReleaseID, Archive: request.Archive, Timestamp: time.Now().Unix(),
+	})
+}
+
+// RunPublish publishes one profile for one world. Artifact inputs are deliberately absent: the
+// host script carries the newest plugin and VR runtime forward from that profile's own previous
+// release, so a caller cannot aim a release at an arbitrary file.
+func (a *AgentClient) RunPublish(ctx context.Context, id, world, profile, clientType, notes string) (AgentReply, error) {
+	return a.do(ctx, agentRequest{
+		ID: id, World: world, Operation: "publish_profile", Profile: profile,
+		ClientType: clientType, Notes: notes, Timestamp: time.Now().Unix(),
 	})
 }
 func (a *AgentClient) RunProvision(ctx context.Context, id, world string, request ProvisionAgentRequest) (AgentReply, error) {
@@ -151,15 +176,20 @@ func (a *AgentClient) RunAccessState(ctx context.Context, id, world string) (Age
 }
 
 func (a *AgentClient) do(ctx context.Context, r agentRequest) (AgentReply, error) {
-	m := hmac.New(sha256.New, a.token)
-	m.Write([]byte(strings.Join([]string{
-		r.ID, r.World, r.Operation, r.Backup, strconv.Itoa(r.Port), r.Profile,
-		r.Query, r.Identifier, r.Version, r.Scope, r.Reason, r.ServerName, r.Password,
-		strconv.FormatBool(r.Public), strconv.FormatBool(r.Crossplay), strconv.Itoa(r.PlayerLimit), r.Preset,
-		r.BackupInterval, strconv.Itoa(r.BackupAge), strconv.Itoa(r.BackupCount), r.Seed,
-		r.SourceWorld, r.TemplateWorld, r.TemplateProfile, strconv.FormatBool(r.Start), r.Admins, r.Permitted, fmtInt(r.Timestamp),
-	}, "\n")))
-	r.Signature = hex.EncodeToString(m.Sum(nil))
+	// Signed with the agent's own canonical form rather than a copy of it. This used to be a
+	// duplicated field list, which meant every new argument had to be added in two places and
+	// a missed one shipped as a signature failure at runtime.
+	r.Signature = agent.Sign(a.token, agent.Request{
+		ID: r.ID, World: r.World, Operation: r.Operation, Backup: r.Backup, Port: r.Port,
+		Profile: r.Profile, Query: r.Query, Identifier: r.Identifier, Version: r.Version,
+		Scope: r.Scope, Reason: r.Reason, ServerName: r.ServerName, Password: r.Password,
+		Public: r.Public, Crossplay: r.Crossplay, PlayerLimit: r.PlayerLimit, Preset: r.Preset,
+		BackupInterval: r.BackupInterval, BackupAge: r.BackupAge, BackupCount: r.BackupCount,
+		Seed: r.Seed, SourceWorld: r.SourceWorld, TemplateWorld: r.TemplateWorld,
+		TemplateProfile: r.TemplateProfile, Start: r.Start, Admins: r.Admins, Permitted: r.Permitted,
+		Timestamp: r.Timestamp, Lines: r.Lines, ClientType: r.ClientType,
+		PublishedProfile: r.PublishedProfile, ReleaseID: r.ReleaseID, Archive: r.Archive, Notes: r.Notes,
+	})
 	body, err := json.Marshal(r)
 	if err != nil {
 		return AgentReply{}, err

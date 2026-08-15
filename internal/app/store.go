@@ -256,6 +256,25 @@ INSERT INTO schema_migrations(version, applied_at) VALUES (16, CURRENT_TIMESTAMP
 			return err
 		}
 	}
+	var agentVerbArgsSchema int
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=17)`).Scan(&agentVerbArgsSchema); err != nil {
+		return err
+	}
+	if agentVerbArgsSchema == 0 {
+		// Publishing and release confirmation carry arguments the first cut of the verb-call
+		// table had no place for. Recording them matters as much as the verb name: a release
+		// nobody can trace back to its note and its client type is the thing that went wrong.
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE agent_verb_calls ADD COLUMN client_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE agent_verb_calls ADD COLUMN published_profile TEXT NOT NULL DEFAULT '';
+ALTER TABLE agent_verb_calls ADD COLUMN release_ref TEXT NOT NULL DEFAULT '';
+ALTER TABLE agent_verb_calls ADD COLUMN archive TEXT NOT NULL DEFAULT '';
+ALTER TABLE agent_verb_calls ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE agent_verb_calls ADD COLUMN lines INTEGER NOT NULL DEFAULT 0;
+INSERT INTO schema_migrations(version, applied_at) VALUES (17, CURRENT_TIMESTAMP);`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

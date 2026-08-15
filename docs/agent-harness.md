@@ -122,25 +122,40 @@ Checked after a change rather than assumed:
 
 ## What is wired today
 
-Ten verbs execute through the portal. The other fourteen are declared, refused with a reason,
-and recorded as refused - an approximation would be worse than a refusal, and this project has
-already paid for the difference.
+Seventeen verbs execute through the portal. The rest are declared, refused with a reason, and
+recorded as refused - an approximation would be worse than a refusal.
 
 ```
-executes now    world_status world_logs mod_inventory mod_search
-                mod_add mod_remove deploy_apply world_start world_stop world_backup
-refused: no host operation exists
-                mod_check_updates mod_notes release_status deploy_plan
-                mod_update publish_profile release_confirm
+executes now    world_status world_logs mod_inventory mod_search mod_check_updates
+                mod_notes release_status deploy_plan
+                mod_add mod_remove mod_update deploy_apply
+                world_start world_stop world_backup
+                publish_profile release_confirm
 refused: not the portal's job
-                repo_edit plugin_build   the agent process edits and builds in its own workspace
+                repo_edit plugin_build   the agent edits and builds in its own workspace
 refused: deliberately operator-only
                 world_restore   keeps its typed two-step confirmation
 forbidden       upstream_push delete_server provision secrets_read
 ```
 
-Wiring the first group needs new host-agent operations, since the portal reaches the host only
-through the agent socket. That is tracked, not forgotten.
+Every mod verb is profile-scoped: the host refuses one without a valid profile name, so the
+portal requires it before dispatch rather than discovering it downstream.
+
+Two verbs carry arguments that decide what players receive, and both are checked before a request
+is even recorded:
+
+```
+publish_profile   world + source profile + client_type (vr|flat) + notes (8-500 chars, one line)
+release_confirm   published_profile + client_type + release_id + archive (a plain .zip name)
+mod_notes         lines, bounded to 1-200, because every crossed version's changelog is fetched
+```
+
+A publish takes **no artifact paths**. `hostops/portal_publish_profile.sh` resolves the single
+matching target out of `release-targets.json` and lets the publish script carry the newest plugin
+and VR runtime forward from that profile's own previous release, so a request can neither aim a
+release at an arbitrary file on the host nor publish something an operator never declared. It
+also never stops a server: publishing is a client-side change, and taking a world down for one
+was a real incident here.
 
 ## The bridge API
 

@@ -33,6 +33,12 @@ type Verb struct {
 	NeedsWorld bool
 	// NeedsIdentifier marks the verbs that act on one package.
 	NeedsIdentifier bool
+	// NeedsClientType, NeedsNotes and NeedsRelease mark the arguments a publish or a release
+	// confirmation cannot be performed without. A publish with no note is the thing nobody
+	// could review afterwards, so the note is required rather than optional.
+	NeedsClientType bool
+	NeedsNotes      bool
+	NeedsRelease    bool
 	// Unwired explains what is missing, for verbs the policy declares but the portal cannot
 	// yet run. Saying so is the point: a plausible substitute is worse than a refusal.
 	Unwired string
@@ -51,10 +57,10 @@ var verbTable = map[string]Verb{
 	"world_logs":        {ID: "world_logs", Class: ClassRead, Operation: "logs", NeedsWorld: true},
 	"mod_inventory":     {ID: "mod_inventory", Class: ClassRead, Operation: "mod_inventory", NeedsWorld: true},
 	"mod_search":        {ID: "mod_search", Class: ClassRead, Operation: "mod_search", NeedsWorld: true},
-	"mod_check_updates": {ID: "mod_check_updates", Class: ClassRead, NeedsWorld: true, Unwired: "the host agent exposes no check-updates operation; tools/valheim_mods.py check-updates runs on the host only"},
-	"mod_notes":         {ID: "mod_notes", Class: ClassRead, NeedsWorld: true, Unwired: "the host agent exposes no notes operation; tools/valheim_mods.py notes runs on the host only"},
-	"release_status":    {ID: "release_status", Class: ClassRead, NeedsWorld: true, Unwired: "the host agent exposes no release-status operation"},
-	"deploy_plan":       {ID: "deploy_plan", Class: ClassRead, NeedsWorld: true, Unwired: "mod_deploy applies; the host agent has no plan-only operation to read a diff from"},
+	"mod_check_updates": {ID: "mod_check_updates", Class: ClassRead, Operation: "mod_check_updates", NeedsWorld: true},
+	"mod_notes":         {ID: "mod_notes", Class: ClassRead, Operation: "mod_notes", NeedsWorld: true},
+	"release_status":    {ID: "release_status", Class: ClassRead, Operation: "mod_release_status", NeedsWorld: true},
+	"deploy_plan":       {ID: "deploy_plan", Class: ClassRead, Operation: "mod_deploy_plan", NeedsWorld: true},
 
 	// repo_write - work inside the checkout, which the portal deliberately cannot perform.
 	"repo_edit":    {ID: "repo_edit", Class: ClassRepoWrite, Unwired: "the portal never writes to a source checkout; the agent process edits files itself"},
@@ -63,7 +69,7 @@ var verbTable = map[string]Verb{
 	// world_state
 	"mod_add":       {ID: "mod_add", Class: ClassWorldState, Operation: "mod_add", NeedsWorld: true, NeedsIdentifier: true},
 	"mod_remove":    {ID: "mod_remove", Class: ClassWorldState, Operation: "mod_remove", NeedsWorld: true, NeedsIdentifier: true},
-	"mod_update":    {ID: "mod_update", Class: ClassWorldState, NeedsWorld: true, NeedsIdentifier: true, Unwired: "the host agent exposes no update operation"},
+	"mod_update":    {ID: "mod_update", Class: ClassWorldState, Operation: "mod_update", NeedsWorld: true, NeedsIdentifier: true},
 	"deploy_apply":  {ID: "deploy_apply", Class: ClassWorldState, Operation: "mod_deploy", NeedsWorld: true},
 	"world_start":   {ID: "world_start", Class: ClassWorldState, Operation: "start", NeedsWorld: true},
 	"world_stop":    {ID: "world_stop", Class: ClassWorldState, Operation: "stop", NeedsWorld: true},
@@ -71,8 +77,8 @@ var verbTable = map[string]Verb{
 	"world_restore": {ID: "world_restore", Class: ClassWorldState, NeedsWorld: true, Unwired: "restore keeps its typed two-step operator confirmation and is not reachable by verb"},
 
 	// player_facing
-	"publish_profile": {ID: "publish_profile", Class: ClassPlayerFacing, NeedsWorld: true, Unwired: "scripts/republish-profiles.sh runs on the host with artifact inputs; no agent operation exists"},
-	"release_confirm": {ID: "release_confirm", Class: ClassPlayerFacing, NeedsWorld: true, Unwired: "the host agent exposes no release-confirm operation"},
+	"publish_profile": {ID: "publish_profile", Class: ClassPlayerFacing, Operation: "publish_profile", NeedsWorld: true, NeedsClientType: true, NeedsNotes: true},
+	"release_confirm": {ID: "release_confirm", Class: ClassPlayerFacing, Operation: "mod_release_confirm", NeedsWorld: true, NeedsClientType: true, NeedsRelease: true},
 
 	// forbidden - refused by name, and unreachable anyway because no wiring exists.
 	"upstream_push": {ID: "upstream_push", Class: ClassForbidden},
@@ -118,19 +124,63 @@ func (s *Server) runVerb(ctx context.Context, call VerbCall) (AgentReply, error)
 	case verb.NeedsWorld && !validWorld(call.World):
 		return AgentReply{}, fmt.Errorf("verb %s needs a valid world", verb.ID)
 	}
-	if strings.HasPrefix(verb.Operation, "mod_") && verb.Operation != "mod_deploy" {
-		request := ModAgentRequest{
-			Operation:  verb.Operation,
-			Profile:    call.Profile,
-			Query:      call.Query,
-			Identifier: call.Identifier,
-			Version:    call.Version,
-			Reason:     call.Reason,
+	if verb.NeedsIdentifier && strings.TrimSpace(call.Identifier) == "" {
+		return AgentReply{}, fmt.Errorf("verb %s needs an identifier", verb.ID)
+	}
+	if verb.NeedsClientType && call.ClientType != "vr" && call.ClientType != "flat" {
+		return AgentReply{}, fmt.Errorf("verb %s needs client type vr or flat", verb.ID)
+	}
+	if verb.NeedsNotes && len(strings.TrimSpace(call.Notes)) < 8 {
+		return AgentReply{}, fmt.Errorf("verb %s needs a note of at least 8 characters saying why", verb.ID)
+	}
+	if verb.NeedsRelease && (call.PublishedProfile == "" || call.ReleaseRef == "" || call.Archive == "") {
+		return AgentReply{}, fmt.Errorf("verb %s needs a published profile, a release id and an archive", verb.ID)
+	}
+	if verb.Operation == "publish_profile" {
+		if !validProfileName(call.Profile) {
+			return AgentReply{}, fmt.Errorf("verb %s needs the world's source profile", verb.ID)
 		}
-		if verb.NeedsIdentifier && strings.TrimSpace(call.Identifier) == "" {
-			return AgentReply{}, fmt.Errorf("verb %s needs an identifier", verb.ID)
+		return s.agent.RunPublish(ctx, call.ID, call.World, call.Profile, call.ClientType, call.Notes)
+	}
+	// Every mod_* operation is profile-scoped on the host: the agent refuses one without a
+	// valid profile name, so the requirement belongs here rather than in a failure downstream.
+	if strings.HasPrefix(verb.Operation, "mod_") {
+		if !validProfileName(call.Profile) {
+			return AgentReply{}, fmt.Errorf("verb %s needs a profile", verb.ID)
 		}
-		return s.agent.RunMod(ctx, call.ID, call.World, request)
+		lines := call.Lines
+		if verb.Operation == "mod_notes" && lines == 0 {
+			lines = 20
+		}
+		return s.agent.RunMod(ctx, call.ID, call.World, ModAgentRequest{
+			Operation:        verb.Operation,
+			Profile:          call.Profile,
+			Query:            call.Query,
+			Identifier:       call.Identifier,
+			Version:          call.Version,
+			Reason:           call.Reason,
+			Lines:            lines,
+			ClientType:       call.ClientType,
+			PublishedProfile: call.PublishedProfile,
+			ReleaseID:        call.ReleaseRef,
+			Archive:          call.Archive,
+		})
 	}
 	return s.agent.Run(ctx, call.ID, call.World, verb.Operation)
+}
+
+// validProfileName matches what the host scripts accept for a profile directory name.
+func validProfileName(value string) bool {
+	if len(value) == 0 || len(value) > 80 {
+		return false
+	}
+	for i, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case (r == '.' || r == '_' || r == '-') && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
 }

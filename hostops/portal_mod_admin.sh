@@ -68,6 +68,38 @@ case "$ACTION" in
     require_argc 0 $#
     exec "${base[@]}" deploy --apply
     ;;
+  check-updates)
+    require_argc 0 $#
+    exec "${base[@]}" check-updates
+    ;;
+  notes)
+    # Bounded because the changelog of every crossed version is fetched and printed, and an
+    # unbounded line count is how one request turns into a several-megabyte reply.
+    require_argc 1 $#
+    if [[ ! $1 =~ ^[0-9]{1,3}$ ]] || ((10#$1 < 1 || 10#$1 > 200)); then
+      reject "mod action 'notes' expects a line count between 1 and 200, got '$1'"
+    fi
+    exec "${base[@]}" notes --lines "$1"
+    ;;
+  release-status)
+    require_argc 0 $#
+    exec "${base[@]}" release-status
+    ;;
+  deploy-plan)
+    # deploy without --apply: the diff an operator has to see before confirming a deploy that
+    # stops the world. Read-only by construction, which is why it is a separate action.
+    require_argc 0 $#
+    exec "${base[@]}" deploy
+    ;;
+  update)
+    require_argc 1 $#
+    exec "${base[@]}" update "$1" --apply
+    ;;
+  release-confirm)
+    require_argc 4 $#
+    [[ $2 == flat || $2 == vr ]] || reject "mod action 'release-confirm' expects client type 'flat' or 'vr', got '$2'"
+    exec "${base[@]}" release-confirm "$1" "$2" "$3" "$4"
+    ;;
   *)
     echo "unsupported mod action" >&2
     exit 2

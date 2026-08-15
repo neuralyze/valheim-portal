@@ -42,6 +42,19 @@ expect_reject "mod action 'custom-enable' expects 1 argument(s), got 3" "$W" "$P
 expect_reject "mod action 'custom-disable' expects 1 argument(s), got 0" "$W" "$P" custom-disable
 expect_reject "mod action 'deploy' expects 0 argument(s), got 1" "$W" "$P" deploy now
 
+# Actions added for the agent verb surface. Their arguments decide what a release ships and how
+# much changelog is fetched, so a wrong one has to be named rather than silently accepted.
+expect_reject "mod action 'check-updates' expects 0 argument(s), got 1" "$W" "$P" check-updates now
+expect_reject "mod action 'release-status' expects 0 argument(s), got 1" "$W" "$P" release-status all
+expect_reject "mod action 'deploy-plan' expects 0 argument(s), got 1" "$W" "$P" deploy-plan apply
+expect_reject "mod action 'notes' expects 1 argument(s), got 0" "$W" "$P" notes
+expect_reject "mod action 'notes' expects a line count between 1 and 200, got '0'" "$W" "$P" notes 0
+expect_reject "mod action 'notes' expects a line count between 1 and 200, got '500'" "$W" "$P" notes 500
+expect_reject "mod action 'notes' expects a line count between 1 and 200, got 'twenty'" "$W" "$P" notes twenty
+expect_reject "mod action 'update' expects 1 argument(s), got 0" "$W" "$P" update
+expect_reject "mod action 'release-confirm' expects 4 argument(s), got 3" "$W" "$P" release-confirm prof vr rel
+expect_reject "mod action 'release-confirm' expects client type 'flat' or 'vr', got 'console'" "$W" "$P" release-confirm prof console rel archive.zip
+
 # Pre-existing guards must keep their own wording.
 expect_reject "invalid world" "bad world" "$P" inventory
 expect_reject "invalid profile" "$W" "bad profile" inventory

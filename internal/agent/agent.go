@@ -68,7 +68,17 @@ type Request struct {
 	Start           bool   `json:"start,omitempty"`
 	Admins          string `json:"admins,omitempty"`
 	Permitted       string `json:"permitted,omitempty"`
-	Signature       string `json:"signature"`
+	// Lines bounds the changelog output of mod_notes. ClientType, ReleaseID and Archive are
+	// the release-confirm arguments; Notes is the mandatory release note for publish_profile.
+	Lines      int    `json:"lines,omitempty"`
+	ClientType string `json:"client_type,omitempty"`
+	ReleaseID  string `json:"release_id,omitempty"`
+	Archive    string `json:"archive,omitempty"`
+	// PublishedProfile is the release-confirm target, which is the published profile name
+	// rather than the source profile the request already carries.
+	PublishedProfile string `json:"published_profile,omitempty"`
+	Notes            string `json:"notes,omitempty"`
+	Signature        string `json:"signature"`
 }
 type Response struct {
 	Status      string          `json:"status"`
@@ -96,11 +106,23 @@ var operations = map[string]string{
 	"mod_disable": "portal_mod_admin.sh", "mod_custom_add": "portal_mod_admin.sh",
 	"mod_custom_remove": "portal_mod_admin.sh", "mod_custom_enable": "portal_mod_admin.sh",
 	"mod_custom_disable": "portal_mod_admin.sh", "mod_deploy": "portal_mod_admin.sh",
-	"world_catalog":  "@internal",
-	"world_analysis": "@internal",
-	"world_map":      "export_valheim_map_sources.sh",
-	"provision":      "provision_valheim_server.sh",
-	"health":         "wait_valheim_server_ready.sh",
+	// Read-only mod operations, plus the two mutating ones the agent surface needs. Every one
+	// runs through the same portal_mod_admin.sh action dispatch as the rest.
+	"mod_check_updates":   "portal_mod_admin.sh",
+	"mod_notes":           "portal_mod_admin.sh",
+	"mod_release_status":  "portal_mod_admin.sh",
+	"mod_deploy_plan":     "portal_mod_admin.sh",
+	"mod_update":          "portal_mod_admin.sh",
+	"mod_release_confirm": "portal_mod_admin.sh",
+	// Publishing narrows the catalog to one target and takes no artifact paths from its
+	// caller; the newest plugin and runtime are carried forward from the profile's own
+	// previous release.
+	"publish_profile": "portal_publish_profile.sh",
+	"world_catalog":   "@internal",
+	"world_analysis":  "@internal",
+	"world_map":       "export_valheim_map_sources.sh",
+	"provision":       "provision_valheim_server.sh",
+	"health":          "wait_valheim_server_ready.sh",
 	// world_create regenerates a world on a chosen seed. It carries a seed but is
 	// not provisioning: the world directory already exists and only its save pair
 	// is replaced.
@@ -111,6 +133,9 @@ var operations = map[string]string{
 	"access_state": "@internal",
 }
 
+// Canonical is the signed payload. A field absent from this list travels unauthenticated, so
+// every new argument has to be added here as well as to the struct - the fields below are
+// appended rather than inserted so the ordering of the existing ones never shifts.
 func Canonical(r Request) string {
 	return strings.Join([]string{
 		r.ID, r.World, r.Operation, r.Backup, fmt.Sprint(r.Port), r.Profile,
@@ -118,6 +143,7 @@ func Canonical(r Request) string {
 		fmt.Sprint(r.Public), fmt.Sprint(r.Crossplay), fmt.Sprint(r.PlayerLimit), r.Preset,
 		r.BackupInterval, fmt.Sprint(r.BackupAge), fmt.Sprint(r.BackupCount), r.Seed,
 		r.SourceWorld, r.TemplateWorld, r.TemplateProfile, fmt.Sprint(r.Start), r.Admins, r.Permitted, fmt.Sprint(r.Timestamp),
+		fmt.Sprint(r.Lines), r.ClientType, r.PublishedProfile, r.ReleaseID, r.Archive, r.Notes,
 	}, "\n")
 }
 func Sign(token []byte, r Request) string {
@@ -150,6 +176,9 @@ func Verify(token []byte, allowed map[string]struct{}, r Request) error {
 		}
 	} else if r.Admins != "" || r.Permitted != "" {
 		return errors.New("unexpected access list argument")
+	}
+	if err := validateAgentSurfaceArguments(r); err != nil {
+		return err
 	}
 	if r.Operation == "provision" {
 		if err := validateProvisionRequest(r); err != nil {
@@ -241,9 +270,88 @@ func validateWorldCreateRequest(r Request) error {
 	return nil
 }
 
+// validateAgentSurfaceArguments guards the fields the agent surface added. Each one is accepted
+// only by the operation that uses it and refused everywhere else, so a signed request cannot
+// carry an argument the script it reaches would not expect.
+// releaseID matches the portal's own release identifiers, e.g. hrafnheim-vr-2.5.90.
+var releaseID = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{2,119}$`)
+
+// validProfileArchive accepts a plain profile ZIP name under the artifact root: no absolute
+// paths, no traversal, no directories. The confirmation records which archive a release shipped,
+// so the value reaches a script and must not be able to name anything else on the host.
+func validProfileArchive(value string) bool {
+	if value == "" || len(value) > 240 || strings.ContainsAny(value, "\r\n\x00\\") || strings.HasPrefix(value, "/") {
+		return false
+	}
+	for _, part := range strings.Split(value, "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return strings.HasSuffix(strings.ToLower(value), ".zip")
+}
+
+func validateAgentSurfaceArguments(r Request) error {
+	singleLine := func(value string, limit int) bool {
+		return len(value) <= limit && !strings.ContainsAny(value, "\r\n\x00")
+	}
+	switch r.Operation {
+	case "mod_notes":
+		if r.Lines < 1 || r.Lines > 200 {
+			return errors.New("notes needs a line count between 1 and 200")
+		}
+	case "mod_release_confirm":
+		if !worldName.MatchString(r.PublishedProfile) {
+			return errors.New("release confirm needs a published profile")
+		}
+		if r.ClientType != "vr" && r.ClientType != "flat" {
+			return errors.New("release confirm needs client type vr or flat")
+		}
+		if !releaseID.MatchString(r.ReleaseID) {
+			return errors.New("release confirm needs a release id")
+		}
+		if !validProfileArchive(r.Archive) {
+			return errors.New("release confirm needs a profile archive path")
+		}
+	case "publish_profile":
+		if r.ClientType != "vr" && r.ClientType != "flat" {
+			return errors.New("publish needs client type vr or flat")
+		}
+		// The note becomes the release note, and a release nobody can review afterwards is
+		// exactly what an unexplained publish produces.
+		if trimmed := strings.TrimSpace(r.Notes); len(trimmed) < 8 || !singleLine(trimmed, 500) {
+			return errors.New("publish needs a single-line note of 8-500 characters")
+		}
+	}
+	if r.Operation != "mod_notes" && r.Lines != 0 {
+		return errors.New("unexpected lines argument")
+	}
+	if r.Operation != "mod_release_confirm" && (r.PublishedProfile != "" || r.ReleaseID != "" || r.Archive != "") {
+		return errors.New("unexpected release confirmation arguments")
+	}
+	if r.Operation != "mod_release_confirm" && r.Operation != "publish_profile" && r.ClientType != "" {
+		return errors.New("unexpected client type argument")
+	}
+	if r.Operation != "publish_profile" && r.Notes != "" {
+		return errors.New("unexpected notes argument")
+	}
+	return nil
+}
+
 func validateModRequest(r Request) error {
 	isMod := strings.HasPrefix(r.Operation, "mod_")
 	if !isMod {
+		// publish_profile is profile-scoped without being a mod action: it names the world's
+		// source profile so the host can resolve the one catalog target to publish.
+		if r.Operation == "publish_profile" {
+			if !worldName.MatchString(r.Profile) {
+				return errors.New("invalid publish profile")
+			}
+			if r.Query != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" {
+				return errors.New("unexpected mod arguments")
+			}
+			return nil
+		}
 		if r.Profile != "" || r.Query != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" {
 			return errors.New("unexpected mod arguments")
 		}
@@ -267,6 +375,22 @@ func validateModRequest(r Request) error {
 		return true
 	}
 	switch r.Operation {
+	case "mod_check_updates", "mod_release_status", "mod_deploy_plan":
+		if r.Query != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" {
+			return errors.New("unexpected mod arguments")
+		}
+	case "mod_notes":
+		if r.Query != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" {
+			return errors.New("unexpected mod arguments")
+		}
+	case "mod_update":
+		if !modIdentifier.MatchString(r.Identifier) || r.Query != "" || r.Version != "" || r.Scope != "" || r.Reason != "" {
+			return errors.New("invalid mod update")
+		}
+	case "mod_release_confirm":
+		if r.Query != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" {
+			return errors.New("unexpected mod arguments")
+		}
 	case "mod_inventory", "mod_custom_list", "mod_deploy":
 		if r.Query != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" {
 			return errors.New("unexpected mod arguments")
@@ -544,6 +668,10 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 				fmt.Sprint(r.PlayerLimit), r.Preset, r.BackupInterval, fmt.Sprint(r.BackupAge),
 				fmt.Sprint(r.BackupCount), r.Profile, r.Seed, r.SourceWorld, r.TemplateWorld, r.TemplateProfile,
 			)
+		case operation == "publish_profile":
+			// The world is already args[0]; the script resolves the single catalog target and
+			// carries the previous release's artifacts forward, so no paths come from here.
+			args = append(args, r.Profile, r.ClientType, r.Notes)
 		case strings.HasPrefix(operation, "mod_"):
 			action := strings.ReplaceAll(strings.TrimPrefix(operation, "mod_"), "_", "-")
 			args = append(args, r.Profile, action)
@@ -558,6 +686,12 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 				args = append(args, r.Identifier)
 			case "mod_custom_add":
 				args = append(args, r.Identifier, r.Scope)
+			case "mod_notes":
+				args = append(args, fmt.Sprint(r.Lines))
+			case "mod_update":
+				args = append(args, r.Identifier)
+			case "mod_release_confirm":
+				args = append(args, r.PublishedProfile, r.ClientType, r.ReleaseID, r.Archive)
 			}
 		}
 		cmd := exec.Command(resolved, args...)
