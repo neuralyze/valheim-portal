@@ -14,6 +14,11 @@
 #   polling      AGENT_RUNNER_SERVICE=true in deploy/install.conf, then reinstall
 #                journalctl -u valheim-agent-runner -f
 #
+# On demand does not mean manual: the installer also writes
+# valheim-agent-runner-wake.path, which watches a file the portal writes when the
+# operator sends a message or decides a verb, and starts the oneshot above. Enabling
+# the poller disables that watcher, so only one of them ever triggers a pass.
+#
 # They share /etc/valheim-portal/agent-runner.env, so a pass you run by hand is a
 # rehearsal of what the poller does rather than a different configuration.
 #

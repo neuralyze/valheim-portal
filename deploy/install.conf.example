@@ -139,15 +139,21 @@ AGENT_ALLOWED_WORLDS=WorldOne,WorldTwo
 # what to do. Enabling the bridge installs it two ways, and you can use either
 # without reinstalling:
 #
-#   on demand (default)  sudo systemctl start valheim-agent-runner-once
-#                        journalctl -u valheim-agent-runner-once -n 20 --no-pager
+#   on demand (default)  sending a message starts one pass by itself, and so does
+#                        approving or denying a verb. A systemd path unit watches a file
+#                        the portal writes; nothing needs triggering by hand. To run one
+#                        deliberately, e.g. after changing configuration:
+#                          sudo systemctl start valheim-agent-runner-once
+#                          journalctl -u valheim-agent-runner-once -n 20 --no-pager
 #
 #   polling              AGENT_RUNNER_SERVICE=true below, then reinstall
 #                        journalctl -u valheim-agent-runner -f
 #
 # Both read /etc/valheim-portal/agent-runner.env, so a hand-run pass is a rehearsal
 # of what the poller does. On demand is the default because a poller holds a model
-# session open against a portal nobody is watching. Setting this true with the
+# session open against a portal nobody is watching, and it is not less responsive:
+# the wake watcher makes sending the trigger. Turning the poller on disables that
+# watcher, because two triggers for one job could answer one message twice. Setting this true with the
 # bridge off is refused rather than installed: it would poll a 503.
 #AGENT_RUNNER_SERVICE=false
 

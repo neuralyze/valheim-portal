@@ -627,11 +627,12 @@ Never pass host paths such as `/var/lib/docker/volumes/portal_portal-data/_data/
 | [docs/repository-layout.md](docs/repository-layout.md) | Before cloning. The required layout and the `-buildvcs=false` gotcha. |
 | [docs/prerequisites.md](docs/prerequisites.md) | Before installing. Versions, ports, DNS/TLS, and what an absent Steam API key costs you. |
 | [docs/installation.md](docs/installation.md) | Installing. The security model the deployment depends on. |
-| [docs/operations.md](docs/operations.md) | Running it. Releases, world operations, player access, and how world status is measured. |
+| [docs/operations.md](docs/operations.md) | Running it. Releases, world operations, player access, how world status is measured, driving the agent, and reading a server log. |
 | [docs/development.md](docs/development.md) | Changing it. What a clean clone can and cannot verify. |
 | [docs/agent-harness.md](docs/agent-harness.md) | Letting an agent operate it. The verb surface, the approval classes, the bridge API, the runner, and what it may never decide. |
 | [policy.yaml](policy.yaml) / [CLAUDE.md](CLAUDE.md) | The authoritative verb and approval definition, and the law automated work follows in this repository. |
 | [docs/command-reference.md](docs/command-reference.md) | Every command in `cmd/` and every script in `scripts/`. |
+| [docs/deployment-layout.md](docs/deployment-layout.md) | Working out which checkout serves players, and everything an install places outside it. |
 | [docs/architecture.md](docs/architecture.md) / [docs/threat-model.md](docs/threat-model.md) | Reviewing the design or its boundaries. |
 | [docs/client-install.md](docs/client-install.md) | Helping a player install a profile. |
 | [docs/release-format.md](docs/release-format.md) / [docs/valheimvr-packaging.md](docs/valheimvr-packaging.md) | Building or publishing artifacts. |

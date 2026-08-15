@@ -15,7 +15,7 @@ The portal is deliberately two processes with different privilege:
 |---|---|---|
 | Portal container | `portal` inside the image, loopback-only | No Docker socket, read-only root filesystem, world data mounted read-only |
 | Host agent | `valheim-agent` via systemd | Writes world data, manages server containers through the `docker` group |
-| Agent runner (optional) | an operator account via systemd, on demand or polling | Talks to the portal over loopback with a bridge token; no world tree, no Docker socket, no `sudo` |
+| Agent runner (optional) | an operator account via systemd, woken by the operator or polling | Talks to the portal over loopback with a bridge token; no world tree, no Docker socket, no `sudo` |
 
 They communicate over a mode 0660 Unix socket and authenticate every operation
 with an HMAC token from a shared file. The portal cannot ask the agent to do
@@ -28,8 +28,12 @@ operator to approve every mutating one. It runs as an operator account rather th
 `valheim-agent` because it shells out to omp, which keeps the model login in a home
 directory - so the account that has credentials is deliberately the account that has
 no reach into the worlds. `AGENT_RUNNER_SERVICE` decides whether it polls
-continuously or runs one pass at a time via
-`systemctl start valheim-agent-runner-once`; both are installed either way.
+continuously or runs one pass at a time; both are installed either way.
+On demand, the operator does not have to trigger anything by hand: the portal writes a
+file in its data volume, and `valheim-agent-runner-wake.path` starts one pass when it
+changes. That is the only thing the portal can cause to happen on the host, it passes
+nothing to the unit, and enabling the poller disables the watcher so a message cannot be
+answered twice.
 
 ## Before you begin
 

@@ -8,6 +8,22 @@ It is not, however, isolated from world data. `compose.yaml` mounts the entire w
 
 Administrative mutations require three independent facts: a source address inside `PORTAL_TRUSTED_PROXY_CIDR`, a non-empty `PORTAL_AUTH_HEADER` identity, and an `X-Portal-Admin-Token` matching `PORTAL_ADMIN_TOKEN_FILE`. All three come from the reverse proxy, and a signed same-site CSRF token is required on top. The agent is isolated behind a Unix socket, HMAC capability, configured roots, and fixed allowlisted operations. The portal never receives a Docker socket.
 
+The agent bridge adds a third process, and one deliberate exception to "the portal cannot cause
+anything to happen on the host". The runner is an operator-account process that reads the operator
+conversation over `/api/agent/*` with a bearer token and requests verbs; the portal decides what is
+allowed and records what actually happened, so the runner holds no authority of its own and cannot
+widen its vocabulary — it reads that vocabulary from the portal.
+
+The exception is the wake signal. So that sending a message starts a pass, the portal writes one
+file in its own data volume and a systemd path unit on the host starts
+`valheim-agent-runner-once.service` when that file changes. What the portal can therefore cause is
+exactly one thing: a fixed unit runs. It passes no arguments, names no command, chooses no user, and
+learns nothing back — the runner's configuration comes from `/etc/valheim-portal/agent-runner.env`,
+which the portal cannot read or write. The upper bound on abuse is repeated passes: `Type=oneshot`
+means systemd will not run two at once, and the persisted cursor means a pass with nothing new to
+answer does nothing. That bound is model spend, not host access, and it is stated in the threat
+model rather than left implicit.
+
 ## Profile delivery
 
 A published profile release is selected by world, profile, and client type. Steam world membership gates browser pages, device authorization, manifests, and profile definitions.

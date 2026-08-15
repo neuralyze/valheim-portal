@@ -109,6 +109,26 @@ Archive, never delete, a bad release. Publishing a replacement archives only the
 
 Each profile sync is locked and staged separately. A failed update preserves the active generation. Correct or archive the bad release, then run the profile card or Desktop shortcut again. If Steam contains a loader owned by another manager, Valheim Profile Sync refuses to replace it; resolve that ownership conflict before launching.
 
+## Driving the agent
+
+Send a message on `/admin/agent`. That is the whole trigger: the portal writes its wake file, a
+systemd path unit starts one runner pass, and the page shows the reply without a refresh. Approving
+or denying a verb wakes it the same way, so approved work continues by itself.
+
+```bash
+systemctl status valheim-agent-runner-wake.path   # active (waiting) when sending is the trigger
+journalctl -u valheim-agent-runner-once -n 20 --no-pager   # what the last pass did
+sudo systemctl start valheim-agent-runner-once    # one pass deliberately
+```
+
+A read verb executes immediately and the reply quotes what the host printed. A mutating one stops
+at **Approve** / **Deny** with its full arguments shown; nothing runs until someone clicks. A
+forbidden verb is refused by class, and the agent is expected to say so and stop rather than look
+for another route.
+
+If a message sits with no reply: check the path unit above is active, then run a pass by hand. If
+that pass fails naming the agent socket, the next section is the one you want.
+
 ## When the portal cannot reach the agent
 
 Symptom: every operator action fails with
