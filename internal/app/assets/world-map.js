@@ -664,7 +664,12 @@
   // revealing it, which is the whole trick.
   function drawFog(zones) {
     const rect = canvas.getBoundingClientRect();
-    const bounds = visibleBounds(ZONE_SIZE);
+    const size = Math.max(1, ZONE_SIZE * state.scale);
+    // The margin is in PIXELS, and a zone is 64 metres, so it has to be a zone's on-screen size. It
+    // was 64 - fine at world zoom, meaningless close in - so zones anchored just off-screen were
+    // skipped while still covering visible ground, and once one zone was wider than the viewport
+    // nothing was cut at all and the whole map went blank a few wheel clicks in.
+    const bounds = visibleBounds(size + 2);
     if (!fogCanvas) fogCanvas = document.createElement('canvas');
     const width = Math.max(1, Math.ceil(rect.width));
     const height = Math.max(1, Math.ceil(rect.height));
@@ -678,16 +683,16 @@
     fog.fillStyle = colors.canvas;
     fog.fillRect(0, 0, width, height);
     fog.globalCompositeOperation = 'destination-out';
-    const size = Math.max(1, ZONE_SIZE * state.scale);
     for (const zone of zones) {
       if (Math.abs(zone.x) > MAX_ZONE_INDEX || Math.abs(zone.y) > MAX_ZONE_INDEX) continue;
       const worldX = zone.x * ZONE_SIZE;
       const worldZ = zone.y * ZONE_SIZE;
       if (worldX < bounds.minX || worldX > bounds.maxX || worldZ < bounds.minZ || worldZ > bounds.maxZ) continue;
       const [pixelX, pixelY] = screen(worldX, worldZ);
-      // A zone is indexed by its corner, and the map draws z upward, so the cleared square hangs
-      // below and right of the point in screen terms.
-      fog.fillRect(pixelX, pixelY - size, size, size);
+      // A zone index is its centre - the game rounds when it maps a position to a zone - so the
+      // cleared square is centred too. Anchoring it at the corner offset every hole by 32 metres,
+      // which left fog over ground players had walked and cut holes over ground they had not.
+      fog.fillRect(pixelX - size / 2, pixelY - size / 2, size, size);
     }
     // Opaque, deliberately. At 0.97 the terrain bled through the fog: a faint but real picture of
     // coastlines nobody has sailed, which is the one thing this map is supposed to withhold.
