@@ -111,6 +111,7 @@ namespace Neuralyze.ValheimExplorationReporter
                     return;
                 }
                 Write(world, player.GetPlayerID(), player.GetPlayerName(), textureSize, pixelSize, explored);
+                WritePins(world, player.GetPlayerID(), minimap);
                 lastWriteTime = Time.realtimeSinceStartup;
             }
             catch (Exception error)
@@ -178,7 +179,123 @@ namespace Neuralyze.ValheimExplorationReporter
             log.LogInfo("reported " + uncovered + " uncovered cells for " + safeWorld);
         }
 
-        // File names and header fields both end up in paths and logs on two operating systems, so the
+        // The pins the player placed: the part of their map they made themselves. Only saved pins are
+    // reported - the game also keeps transient ones for pings, shouts and event areas, which are UI
+    // effects rather than anything a player would expect to see on a shared map.
+    //
+    // A pin's type is a number in the game; the readable name goes out beside it so the portal does not
+    // have to carry its own copy of an enum that could drift with a game update.
+    private static readonly string[] PinTypeNames =
+    {
+        "icon0", "icon1", "icon2", "icon3", "death", "bed", "icon4", "shout",
+        "none", "boss", "player", "random-event", "ping", "event-area",
+        "hildir1", "hildir2", "hildir3",
+    };
+
+    private static void WritePins(string world, long playerID, Minimap minimap)
+    {
+        FieldInfo field = typeof(Minimap).GetField("m_pins", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (field == null)
+        {
+            log.LogWarning("this build of Valheim has no Minimap.m_pins; pins cannot be read");
+            return;
+        }
+        System.Collections.Generic.List<Minimap.PinData> pins = field.GetValue(minimap) as System.Collections.Generic.List<Minimap.PinData>;
+        if (pins == null)
+        {
+            return;
+        }
+        System.Text.StringBuilder json = new System.Text.StringBuilder();
+        json.Append("{\"schema\":");
+        json.Append(Schema);
+        json.Append(",\"world\":\"");
+        json.Append(Sanitize(world));
+        json.Append("\",\"player_id\":");
+        json.Append(playerID.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        json.Append(",\"written\":\"");
+        json.Append(DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture));
+        json.Append("\",\"pins\":[");
+        int written = 0;
+        foreach (Minimap.PinData pin in pins)
+        {
+            if (pin == null || !pin.m_save)
+            {
+                continue;
+            }
+            if (written > 0)
+            {
+                json.Append(',');
+            }
+            written++;
+            int type = (int)pin.m_type;
+            json.Append("{\"name\":\"");
+            json.Append(EscapeJson(pin.m_name));
+            json.Append("\",\"type\":");
+            json.Append(type.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            json.Append(",\"type_name\":\"");
+            json.Append(type >= 0 && type < PinTypeNames.Length ? PinTypeNames[type] : "unknown");
+            json.Append("\",\"x\":");
+            json.Append(pin.m_pos.x.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+            json.Append(",\"z\":");
+            json.Append(pin.m_pos.z.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+            json.Append(",\"crossed_off\":");
+            json.Append(pin.m_checked ? "true" : "false");
+            json.Append(",\"owner_id\":");
+            json.Append(pin.m_ownerID.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            json.Append('}');
+        }
+        json.Append("]}\n");
+        string path = Path.Combine(outputDirectory, Sanitize(world) + "-" + playerID.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".pins.json");
+        string temporary = path + ".tmp";
+        File.WriteAllText(temporary, json.ToString());
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+        File.Move(temporary, path);
+        log.LogInfo("reported " + written + " saved pins for " + Sanitize(world));
+    }
+
+    // Pin names are player-typed, so they are escaped rather than stripped: a name is the whole point of
+    // a pin, and "Bob_s_house" is not what somebody wrote.
+    private static string EscapeJson(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+        System.Text.StringBuilder escaped = new System.Text.StringBuilder(value.Length);
+        foreach (char c in value)
+        {
+            switch (c)
+            {
+                case '"':
+                    escaped.Append("\\\"");
+                    break;
+                case '\\':
+                    escaped.Append("\\\\");
+                    break;
+                case '\n':
+                case '\r':
+                case '\t':
+                    escaped.Append(' ');
+                    break;
+                default:
+                    if (c < ' ')
+                    {
+                        escaped.Append(' ');
+                    }
+                    else
+                    {
+                        escaped.Append(c);
+                    }
+                    break;
+            }
+        }
+        return escaped.ToString();
+    }
+
+    // File names and header fields both end up in paths and logs on two operating systems, so the
         // plugin refuses anything that is not plainly safe rather than trying to escape it.
         private static string Sanitize(string value)
         {
