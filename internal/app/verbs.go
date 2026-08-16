@@ -65,6 +65,24 @@ func (v Verb) NeedsApproval() bool {
 	return v.Class == ClassWorldState || v.Class == ClassPlayerFacing
 }
 
+// neverAutoApprove names verbs a deployment may not pre-approve however it asks. Both are
+// already unreachable by other means - one is forbidden by class, the other keeps a typed
+// two-step confirmation - and they are repeated here so that removing either of those
+// protections cannot quietly make destruction automatic.
+var neverAutoApprove = map[string]bool{"delete_server": true, "world_restore": true}
+
+// AutoApprovable reports whether a deployment is ALLOWED to pre-approve this verb through
+// PORTAL_AGENT_AUTO_APPROVE. Eligibility is not permission: Server.autoApproves decides
+// whether a given deployment actually did.
+//
+// Only world_state qualifies. A world_state verb costs players downtime, which an operator
+// running their own box may reasonably accept unattended. A player_facing verb costs players
+// a download of something that cannot be recalled, and its approval page is where the
+// portal shows what is already live - that is a human decision by design.
+func (v Verb) AutoApprovable() bool {
+	return v.Class == ClassWorldState && !neverAutoApprove[v.ID]
+}
+
 var verbTable = map[string]Verb{
 	// read
 	"world_status": {ID: "world_status", Class: ClassRead, Operation: "status", NeedsWorld: true},

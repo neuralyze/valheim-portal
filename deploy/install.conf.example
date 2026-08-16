@@ -127,13 +127,35 @@ AGENT_ALLOWED_WORLDS=WorldOne,WorldTwo
 # Turning it on installs a token at /etc/valheim-portal/agent-bridge-token (mode
 # 0640, group valheim-agent) and mounts it into the container. The agent process
 # presents it as 'Authorization: Bearer <token>'; nothing else can reach those
-# routes, and the operator still approves every mutating verb by hand.
+# routes, and the operator still approves every mutating verb by hand unless
+# PORTAL_AGENT_AUTO_APPROVE below says otherwise.
 #
 # The token is generated whether or not this is true, so enabling it later is this
 # one line plus a reinstall. Must be exactly true or false: the installer refuses
 # anything else rather than reading it as off, because a bridge that is quietly
 # disabled is indistinguishable from an agent that cannot connect.
 #PORTAL_ENABLE_AGENT_BRIDGE=false
+
+# Which gated verbs this deployment decides in advance, instead of one click at a
+# time. Comma or space separated verb ids, or the single token 'world_state' for all
+# the eligible ones. Empty - the default - means every mutating verb waits, which is
+# what you want on anything but a box you alone operate.
+#
+# Worth being clear about what this trades. A batch of thirteen mod additions is
+# thirteen clicks for one decision an operator already made, and that is the case this
+# exists for. What it costs is the last human check before a server stops: with
+# 'world_state' set, an agent that asks to stop a world stops it. Nothing becomes
+# invisible - every call is still recorded, and the agent page and the audit trail
+# both name the decider as 'auto-approve (policy)' rather than a person.
+#
+# Publishing something players download is never covered, however it is named here:
+# publish_profile and release_confirm always wait, and so do delete_server and
+# world_restore. The portal refuses to start on a name it cannot enforce, so a typo
+# stops the install rather than quietly leaving a gate you think you lifted.
+#
+#PORTAL_AGENT_AUTO_APPROVE=
+#PORTAL_AGENT_AUTO_APPROVE=mod_add,deploy_apply
+#PORTAL_AGENT_AUTO_APPROVE=world_state
 
 # The runner is the process that reads the operator conversation and asks a model
 # what to do. Enabling the bridge installs it two ways, and you can use either

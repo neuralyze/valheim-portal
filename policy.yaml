@@ -39,6 +39,36 @@ classes:
       write access - rather than by refusal.
 
 # ---------------------------------------------------------------------------------------------
+# Auto-approval (opt-in, per deployment)
+# ---------------------------------------------------------------------------------------------
+# The classes above state what approval a call requires, and that does not change: world_state
+# is every_invocation. What a DEPLOYMENT may do is decide in advance for named verbs, which is
+# the difference between a policy and a click. Thirteen mod additions in one batch is thirteen
+# clicks for a decision the operator already made once.
+#
+# PORTAL_AGENT_AUTO_APPROVE holds verb ids, or the token "world_state" for all eligible ones.
+# Empty - the default - gates everything. An entry the portal cannot enforce stops the portal at
+# startup rather than being ignored, because a typo that silently keeps the gate looks identical
+# to one that silently lifts it. internal/app/verbs.go enforces the eligibility below and
+# tools/check_agent_policy.py fails when the two disagree.
+auto_approval:
+  setting: PORTAL_AGENT_AUTO_APPROVE
+  default: none
+  eligible_classes: [world_state]
+  never:
+    - publish_profile
+    - release_confirm
+    - delete_server
+    - world_restore
+  recorded_as: auto-approve (policy)
+  description: >
+    A pre-approved call is recorded exactly as an approved one is - a verb call row, an audit
+    entry, and a system turn in the operator conversation - except that the decider reads
+    "auto-approve (policy)" instead of a person, so no record implies somebody looked. Anything
+    a player downloads is excluded whatever the setting says: the publish approval page is where
+    the portal shows what is already live, and that is a human decision by design.
+
+# ---------------------------------------------------------------------------------------------
 # Verbs
 # ---------------------------------------------------------------------------------------------
 verbs:

@@ -22,6 +22,9 @@ services:
       # runner pass, so "hit send" is the trigger without the portal holding any host
       # access. Empty leaves passes to be triggered by hand.
       PORTAL_AGENT_WAKE_FILE: ${PORTAL_AGENT_WAKE_PATH:-}
+      # Which gated verbs this deployment pre-approved. Empty gates every mutating verb,
+      # which is what a deployment that never sets it gets.
+      PORTAL_AGENT_AUTO_APPROVE: ${PORTAL_AGENT_AUTO_APPROVE:-}
       PORTAL_AGENT_SOCKET: /run/agent/agent.sock
       PORTAL_TRUSTED_PROXY_CIDR: ${PORTAL_TRUSTED_PROXY_CIDR:?set the reverse proxy CIDR}
       PORTAL_AUTH_HEADER: ${PORTAL_AUTH_HEADER:-X-Forwarded-User}

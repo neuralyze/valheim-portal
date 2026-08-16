@@ -63,6 +63,34 @@ start - so a single confirmation covers a reversible unit that begins with a bac
 whose plan shows no changes is refused rather than confirmed: it would take a world down and
 restart it to change nothing.
 
+### Deciding in advance: `PORTAL_AGENT_AUTO_APPROVE`
+
+"Every invocation" is the default and the class rule, and it is the right rule for a shared
+server. It is also thirteen clicks when an operator adds three mods to four worlds, for one
+decision they made once. A deployment may therefore pre-approve named verbs:
+
+```sh
+PORTAL_AGENT_AUTO_APPROVE=              # default: everything waits for a click
+PORTAL_AGENT_AUTO_APPROVE=mod_add,deploy_apply
+PORTAL_AGENT_AUTO_APPROVE=world_state   # the token covers every eligible verb
+```
+
+What it does **not** relax:
+
+- **Only `world_state` is eligible.** A `player_facing` verb ships something players download and
+  cannot recall, and its approval page is where the portal shows what is already live. Naming
+  `publish_profile` or `release_confirm` here stops the portal at startup.
+- **`delete_server` and `world_restore` are never eligible**, belt to the class check's braces.
+- **Nothing becomes invisible.** A pre-approved call still creates a verb-call row, an audit
+  entry and a system turn in the conversation. Its decider reads `auto-approve (policy)`, never a
+  person, so no record implies somebody looked. The agent page names what runs unattended.
+- **An unenforceable name is fatal, not ignored.** `deploy-apply` with a hyphen refuses to start
+  the portal, because a typo that silently keeps the gate is indistinguishable from one that
+  silently lifts it.
+
+`policy.yaml` carries the same facts under `auto_approval`, and `tools/check_agent_policy.py`
+fails when the two disagree.
+
 ## Verbs
 
 Each verb maps to a command that already exists and already validates its own inputs.

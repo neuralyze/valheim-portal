@@ -58,6 +58,12 @@ PORTAL_SOURCE_URL=${PORTAL_SOURCE_URL:-}
 # not opted in cannot be driven by an agent at all, which is the safe default for
 # a portal that can stop servers and delete worlds.
 PORTAL_ENABLE_AGENT_BRIDGE=${PORTAL_ENABLE_AGENT_BRIDGE:-false}
+# Which gated verbs this deployment decides in advance, comma or space separated verb
+# ids, or "world_state" for all the eligible ones. Empty gates everything, which is
+# what every deployment did before this existed. Only world_state verbs are eligible:
+# publishing something players download always waits for a person. The portal refuses
+# to start on a name it cannot enforce, so a typo here is loud rather than silent.
+PORTAL_AGENT_AUTO_APPROVE=${PORTAL_AGENT_AUTO_APPROVE:-}
 # The runner is the process that reads the operator conversation and asks a model
 # what to do. It only exists when the bridge does. Two ways to run it, and the
 # installer sets up both: on demand
@@ -486,6 +492,31 @@ check_agent_bridge_switch() {
   return 0
 }
 
+# The portal validates these names against its own verb table and refuses to start on one it
+# cannot enforce. The installer's job is narrower: say out loud what an install just decided,
+# because "nothing pending" on the agent page otherwise looks like an idle agent rather than a
+# gate somebody lifted.
+check_agent_auto_approve() {
+  local names=${PORTAL_AGENT_AUTO_APPROVE//,/ }
+  if [[ -z ${names// /} ]]; then
+    note "auto-approval: off; every mutating verb waits for a click"
+    return 0
+  fi
+  if [[ ${PORTAL_ENABLE_AGENT_BRIDGE,,} != true ]]; then
+    problem "PORTAL_AGENT_AUTO_APPROVE is set but PORTAL_ENABLE_AGENT_BRIDGE is not: nothing can ask for a verb, so nothing would be approved"
+    return 0
+  fi
+  for name in $names; do
+    case $name in
+    publish_profile | release_confirm | delete_server | world_restore)
+      problem "PORTAL_AGENT_AUTO_APPROVE cannot cover '$name': it is never auto-approvable and the portal will refuse to start"
+      ;;
+    esac
+  done
+  note "auto-approval: $names runs without a click; publishing to players still waits"
+  return 0
+}
+
 # The runner's two failure modes are both silent, so they are resolved here rather
 # than discovered from a unit that starts and does nothing: an omp that a unit's
 # PATH cannot find, and an account with no model credentials.
@@ -673,6 +704,7 @@ preflight() {
   check_bind
   check_auth_header
   check_agent_bridge_switch
+  check_agent_auto_approve
   check_agent_runner
   check_world_root
   check_server_docker_dir
@@ -1135,6 +1167,9 @@ PORTAL_AGENT_BRIDGE_TOKEN_PATH=$(container_agent_bridge_token_path)
 # The container's own path for the wake file. A systemd path unit watches the same
 # file through the data volume; empty when there is no runner to wake.
 PORTAL_AGENT_WAKE_PATH=$(container_agent_wake_path)
+# Which gated verbs this deployment pre-approved. Empty - the default - means every
+# mutating verb still stops for an operator's click.
+PORTAL_AGENT_AUTO_APPROVE=$PORTAL_AGENT_AUTO_APPROVE
 VALHEIM_WORLD_ROOT=$VALHEIM_WORLD_ROOT
 PORTAL_DEFAULT_JOIN_HOST=$PORTAL_DEFAULT_JOIN_HOST
 PORTAL_DEFAULT_GAME_PORT=$PORTAL_DEFAULT_GAME_PORT

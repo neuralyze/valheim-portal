@@ -141,3 +141,54 @@ def test_a_stale_forbidden_count_is_caught(tmp_path):
     readme.write_text(readme.read_text().replace(" 4 forbidden", " 2 forbidden"))
     problems = check_agent_policy.check(root)
     assert any("forbidden" in p and "README.md says 2" in p for p in problems), problems
+
+
+def _copy_with_registry(tmp_path: Path) -> Path:
+    """A copy that includes the Go table, which is what the auto-approval checks compare against."""
+    root = _copy(tmp_path)
+    (root / "internal/app").mkdir(parents=True)
+    shutil.copy(REPO / "internal/app/verbs.go", root / "internal/app/verbs.go")
+    return root
+
+
+def test_dropping_the_auto_approval_section_fails(tmp_path):
+    root = _copy_with_registry(tmp_path)
+    policy = root / "policy.yaml"
+    document = yaml.safe_load(policy.read_text())
+    del document["auto_approval"]
+    policy.write_text(yaml.safe_dump(document, sort_keys=False))
+    problems = check_agent_policy.check(root)
+    assert any("auto_approval" in p for p in problems), problems
+
+
+def test_claiming_a_player_facing_verb_may_be_auto_approved_fails(tmp_path):
+    # The code allows world_state alone; a policy that promises more would refuse to start.
+    root = _copy_with_registry(tmp_path)
+    policy = root / "policy.yaml"
+    document = yaml.safe_load(policy.read_text())
+    document["auto_approval"]["eligible_classes"] = ["world_state", "player_facing"]
+    policy.write_text(yaml.safe_dump(document, sort_keys=False))
+    problems = check_agent_policy.check(root)
+    assert any("eligible_classes" in p for p in problems), problems
+
+
+def test_forgetting_a_verb_the_code_never_auto_approves_fails(tmp_path):
+    root = _copy_with_registry(tmp_path)
+    policy = root / "policy.yaml"
+    document = yaml.safe_load(policy.read_text())
+    document["auto_approval"]["never"] = [
+        v for v in document["auto_approval"]["never"] if v != "world_restore"
+    ]
+    policy.write_text(yaml.safe_dump(document, sort_keys=False))
+    problems = check_agent_policy.check(root)
+    assert any("world_restore" in p for p in problems), problems
+
+
+def test_renaming_the_setting_in_prose_only_fails(tmp_path):
+    root = _copy_with_registry(tmp_path)
+    policy = root / "policy.yaml"
+    document = yaml.safe_load(policy.read_text())
+    document["auto_approval"]["setting"] = "PORTAL_AUTO_APPROVE"
+    policy.write_text(yaml.safe_dump(document, sort_keys=False))
+    problems = check_agent_policy.check(root)
+    assert any("PORTAL_AGENT_AUTO_APPROVE" in p for p in problems), problems

@@ -95,6 +95,40 @@ if stage "$on" "$tmp/on.conf"; then
   expect_value "$on/compose.env" PORTAL_AGENT_BRIDGE_TOKEN_PATH /run/secrets/agent-bridge-token
 fi
 
+# --- auto-approval: absent by default, and carried through verbatim when set -------------------
+# A gate the operator believes they lifted, that never reached the container, is the failure this
+# guards: the agent would keep parking calls and nothing would say why.
+if [[ -f $off/compose.env ]]; then
+  expect_value "$off/compose.env" PORTAL_AGENT_AUTO_APPROVE ""
+fi
+auto=$tmp/auto
+write_config "$tmp/auto.conf" "PORTAL_ENABLE_AGENT_BRIDGE=true" "PORTAL_AGENT_AUTO_APPROVE=mod_add,deploy_apply"
+if stage "$auto" "$tmp/auto.conf"; then
+  expect_value "$auto/compose.env" PORTAL_AGENT_AUTO_APPROVE mod_add,deploy_apply
+fi
+
+# A verb that must never be automatic has to be refused at install time, not discovered when the
+# portal will not start.
+never=$tmp/never
+write_config "$tmp/never.conf" "PORTAL_ENABLE_AGENT_BRIDGE=true" "PORTAL_AGENT_AUTO_APPROVE=publish_profile"
+mkdir -p -- "$never"
+if PORTAL_INSTALL_ROOT="$never" bash "$INSTALLER" install --config "$tmp/never.conf" >"$tmp/never.log" 2>&1; then
+  echo "FAIL: publish_profile was accepted as auto-approvable" >&2
+  failures=$((failures + 1))
+elif ! grep -q "never auto-approvable" "$tmp/never.log"; then
+  echo "FAIL: the refusal does not say why publish_profile cannot be auto-approved" >&2
+  failures=$((failures + 1))
+fi
+
+# Pre-approving verbs nothing can request is a contradiction worth naming at install time.
+orphan=$tmp/orphan
+write_config "$tmp/orphan.conf" "PORTAL_AGENT_AUTO_APPROVE=world_state"
+mkdir -p -- "$orphan"
+if PORTAL_INSTALL_ROOT="$orphan" bash "$INSTALLER" install --config "$tmp/orphan.conf" >"$tmp/orphan.log" 2>&1; then
+  echo "FAIL: auto-approval was accepted with the bridge disabled" >&2
+  failures=$((failures + 1))
+fi
+
 # --- every configured value survives the trip into .env unchanged -------------------------------
 # The incident above was one of these lines silently disagreeing with its source.
 if [[ -f $on/compose.env ]]; then

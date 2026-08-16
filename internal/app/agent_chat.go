@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -174,6 +175,9 @@ func (s *Server) agentChat(w http.ResponseWriter, r *http.Request) {
 		// is not running is named while the operator is still looking at the page.
 		"WaitStalled": waiting && since > 90*time.Second,
 		"Shown":       len(messages),
+		// An operator who finds a deploy already done deserves to read why on the page that
+		// would otherwise have asked them.
+		"AutoApprove": s.autoApproveSummary(),
 	})
 }
 
@@ -244,6 +248,42 @@ func (s *Server) wakeRunner(reason string) {
 	}
 }
 
+// autoApproveActor is what the record shows when no person decided. It is deliberately not a
+// SteamID or a name: an audit row that reads like an operator when none was present is worse
+// than no row at all.
+const autoApproveActor = "auto-approve (policy)"
+
+// autoApproves reports whether this deployment pre-approved this verb. Two things must both
+// hold: the verb is eligible at all, and the deployment named it - either directly or with the
+// "world_state" token that covers the class.
+func (s *Server) autoApproves(verb Verb) bool {
+	if len(s.cfg.AgentAutoApprove) == 0 || !verb.AutoApprovable() {
+		return false
+	}
+	if _, named := s.cfg.AgentAutoApprove[verb.ID]; named {
+		return true
+	}
+	_, wholeClass := s.cfg.AgentAutoApprove[string(ClassWorldState)]
+	return wholeClass
+}
+
+// autoApproveSummary describes the pre-approval in the operator's terms, or "" when every
+// mutating verb still stops for a click.
+func (s *Server) autoApproveSummary() string {
+	if len(s.cfg.AgentAutoApprove) == 0 {
+		return ""
+	}
+	if _, wholeClass := s.cfg.AgentAutoApprove[string(ClassWorldState)]; wholeClass {
+		return "every world_state verb"
+	}
+	named := make([]string, 0, len(s.cfg.AgentAutoApprove))
+	for id := range s.cfg.AgentAutoApprove {
+		named = append(named, id)
+	}
+	sort.Strings(named)
+	return strings.Join(named, ", ")
+}
+
 // agentChatDecide is the confirmation gate. Approval runs the verb immediately and records the
 // evidence beside the approver; denial records that nothing ran.
 func (s *Server) agentChatDecide(w http.ResponseWriter, r *http.Request) {
@@ -283,12 +323,14 @@ func (s *Server) agentChatDecide(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/agent", http.StatusSeeOther)
 }
 
-// executeApproved runs a verb an operator just confirmed and records what came back. The
-// conversation gets the outcome as a system turn, so the agent reads the result from the record
-// rather than assuming its request succeeded.
-func (s *Server) executeApproved(ctx context.Context, call VerbCall, actor string) {
+// executeApproved runs a verb that has been confirmed - by an operator, or by a deployment that
+// pre-approved it - and records what came back. The conversation gets the outcome as a system
+// turn, so the agent reads the result from the record rather than assuming its request
+// succeeded. The outcome is returned as well, because a bridge caller that skipped the queue is
+// still owed an answer in its own response.
+func (s *Server) executeApproved(ctx context.Context, call VerbCall, actor string) (status, evidence, detail string) {
 	reply, err := s.runVerb(ctx, call)
-	status, evidence, detail := VerbSucceeded, replyEvidence(reply), ""
+	status, evidence, detail = VerbSucceeded, replyEvidence(reply), ""
 	if err != nil {
 		status, evidence, detail = VerbFailed, "", err.Error()
 	} else if reply.Status != "succeeded" {
@@ -306,6 +348,7 @@ func (s *Server) executeApproved(ctx context.Context, call VerbCall, actor strin
 		note += "\n" + evidence
 	}
 	_, _ = s.store.AppendAgentMessage(ctx, "system", note)
+	return status, evidence, detail
 }
 
 // agentChatStatus is the smallest thing that answers "has anything changed": the newest message id
@@ -637,15 +680,36 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if verb.NeedsApproval() {
+		if !s.autoApproves(verb) {
+			call.Status = VerbPending
+			if err := s.store.CreateVerbCall(r.Context(), call); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+				return
+			}
+			_, _ = s.store.AppendAgentMessage(r.Context(), "system", "Awaiting approval: "+verbSummary(call))
+			writeJSON(w, http.StatusAccepted, map[string]any{
+				"status": VerbPending, "id": call.ID, "verb": verb.ID,
+				"note": "an operator must confirm this on every invocation",
+			})
+			return
+		}
+		// The deployment decided in advance. The row, the audit entry and the system turn are
+		// the same ones an operator's click produces; only the decider differs, and it says so
+		// rather than borrowing a person's name.
 		call.Status = VerbPending
 		if err := s.store.CreateVerbCall(r.Context(), call); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
-		_, _ = s.store.AppendAgentMessage(r.Context(), "system", "Awaiting approval: "+verbSummary(call))
-		writeJSON(w, http.StatusAccepted, map[string]any{
-			"status": VerbPending, "id": call.ID, "verb": verb.ID,
-			"note": "an operator must confirm this on every invocation",
+		_, _ = s.store.AppendAgentMessage(r.Context(), "system", "Auto-approved by policy: "+verbSummary(call))
+		status, evidence, detail := s.executeApproved(r.Context(), call, autoApproveActor)
+		code := http.StatusOK
+		if status != VerbSucceeded {
+			code = http.StatusBadGateway
+		}
+		writeJSON(w, code, map[string]any{
+			"status": status, "id": call.ID, "verb": verb.ID, "evidence": evidence, "detail": detail,
+			"note": "auto-approved by policy; no operator saw this call",
 		})
 		return
 	}
@@ -680,6 +744,7 @@ const agentChatTemplate = `<!doctype html><html><head><meta charset="utf-8"><tit
 <h1>Agent</h1>
 <p class="install-note"><span data-agent-indicator>{{if .Pending}}{{.Pending}} request(s) awaiting your decision{{else}}nothing pending{{end}}</span></p>
 {{if not .BridgeEnabled}}<p class="notes warning">The agent bridge is disabled. Set <code>PORTAL_ENABLE_AGENT_BRIDGE=true</code> in <code>deploy/install.conf</code> and reinstall; the installer generates the token and mounts it.</p>{{end}}
+{{if .AutoApprove}}<p class="notes warning">Auto-approval is on for <strong>{{.AutoApprove}}</strong>: those calls run as soon as the agent asks and appear below already decided, marked <code>auto-approve (policy)</code>. Publishing to players is never covered. Change <code>PORTAL_AGENT_AUTO_APPROVE</code> in <code>deploy/install.conf</code> and reinstall.</p>{{end}}
 
 {{if .Calls}}<h2>Requests</h2>
 {{range .Calls}}<section class="admin-widget{{if .Approvable}} warning{{end}}">

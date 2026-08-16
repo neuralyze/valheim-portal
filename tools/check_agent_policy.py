@@ -127,6 +127,8 @@ def check(root: Path) -> list[str]:
             if verb_id not in declared:
                 problems.append(f"verb {verb_id!r} is implemented in internal/app/verbs.go but not declared in policy.yaml")
 
+        problems.extend(_check_auto_approval(policy, declared, registry_text))
+
         # The README states how many verbs execute today. A number in prose rots the moment a
         # verb is wired, and a stale number in an installation guide is worse than none: it is
         # the sort of claim someone acts on. So it is checked against the code that answers it.
@@ -152,6 +154,58 @@ def check(root: Path) -> list[str]:
                             f"README.md says {stated} {name} verb(s); policy.yaml and "
                             f"internal/app/verbs.go say {actual}"
                         )
+    return problems
+
+
+def _check_auto_approval(policy: dict, declared: dict[str, str], registry_text: str) -> list[str]:
+    """Hold the opt-in that removes a human from the loop to what the code actually enforces.
+
+    Two lies are possible and both are dangerous in the same direction. policy.yaml could name a
+    class as eligible that Verb.AutoApprovable rejects, so an operator sets the variable and the
+    portal refuses to start. Or the never-list could name a verb the code would happily
+    pre-approve, which reads as a protection and is not one.
+    """
+    problems: list[str] = []
+    section = policy.get("auto_approval")
+    if not section:
+        return ["policy.yaml declares no auto_approval section; the setting exists in the code"]
+    for field in ("setting", "default", "eligible_classes", "never", "recorded_as"):
+        if not section.get(field):
+            problems.append(f"auto_approval declares no {field}")
+
+    eligible = set(section.get("eligible_classes") or [])
+    if eligible != {"world_state"}:
+        problems.append(
+            f"auto_approval eligible_classes is {sorted(eligible)}; internal/app/verbs.go allows "
+            "world_state alone, and a class named here that the code rejects refuses to start"
+        )
+    # Every mutating verb outside the eligible classes has to be on the never list, or the
+    # document promises less protection than the code gives and nobody notices the gap.
+    for verb_id, verb_class in declared.items():
+        if verb_class in MUTATING_CLASSES and verb_class not in eligible:
+            if verb_id not in (section.get("never") or []):
+                problems.append(
+                    f"auto_approval does not list {verb_id!r} as never auto-approvable, and its "
+                    f"class {verb_class!r} is not eligible"
+                )
+
+    # The Go never-list is the belt to the class check's braces; it must appear in the policy too.
+    match = re.search(r"neverAutoApprove\s*=\s*map\[string\]bool\{([^}]*)\}", registry_text)
+    if match is None:
+        problems.append("internal/app/verbs.go declares no neverAutoApprove map")
+    else:
+        in_code = set(re.findall(r'"([a-z_]+)"', match.group(1)))
+        missing = in_code - set(section.get("never") or [])
+        if missing:
+            problems.append(
+                f"internal/app/verbs.go never auto-approves {sorted(missing)}, which policy.yaml "
+                "does not record"
+            )
+    if section.get("setting") != "PORTAL_AGENT_AUTO_APPROVE":
+        problems.append(
+            f"auto_approval names the setting {section.get('setting')!r}; the code reads "
+            "PORTAL_AGENT_AUTO_APPROVE"
+        )
     return problems
 
 

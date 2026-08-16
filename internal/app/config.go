@@ -48,6 +48,19 @@ type Config struct {
 	// confers nothing here. Empty means no Steam operator may administer, which
 	// leaves the reverse-proxy path as the only way in.
 	AdminSteamIDs map[string]struct{}
+	// AgentAutoApprove names the world_state verbs this deployment has decided may run
+	// without a click, from PORTAL_AGENT_AUTO_APPROVE. Empty - the default, and the
+	// behaviour every deployment had before this existed - gates every mutating verb.
+	// The token "world_state" stands for all of the eligible ones, which is what an
+	// operator who does not want to approve thirteen mod additions one at a time is
+	// actually asking for.
+	//
+	// Player-facing verbs are never eligible however they are named here: publishing is
+	// what players download, and the approval page showing how many releases went out
+	// today is the brake that replaces a rate limit. Nothing here is silent - an
+	// auto-approved call is still recorded, and its decider reads "auto-approve
+	// (policy)" rather than a person, so the record never implies somebody looked.
+	AgentAutoApprove map[string]struct{}
 	// SourceURL is where the player-facing pages offer this program's source.
 	//
 	// AGPL-3.0 section 13 obliges anyone running a modified version as a network
@@ -89,11 +102,12 @@ func LoadConfig() (Config, error) {
 		// Opt OUT explicitly, like PORTAL_COOKIE_SECURE: only the exact string "false"
 		// disables the step, so a typo cannot silently switch off a public deployment's
 		// protection.
-		SkipDeviceCode: getenv("PORTAL_REQUIRE_DEVICE_CODE", "true") == "false",
-		SteamAPIKey:    strings.TrimSpace(os.Getenv("PORTAL_STEAM_API_KEY")),
-		AdminSteamIDs:  map[string]struct{}{},
-		SourceURL:      getenv("PORTAL_SOURCE_URL", "https://github.com/neuralyze/valheim-portal"),
-		Provisioning:   provisioning,
+		SkipDeviceCode:   getenv("PORTAL_REQUIRE_DEVICE_CODE", "true") == "false",
+		SteamAPIKey:      strings.TrimSpace(os.Getenv("PORTAL_STEAM_API_KEY")),
+		AdminSteamIDs:    map[string]struct{}{},
+		SourceURL:        getenv("PORTAL_SOURCE_URL", "https://github.com/neuralyze/valheim-portal"),
+		Provisioning:     provisioning,
+		AgentAutoApprove: map[string]struct{}{},
 	}
 	// PORTAL_PUBLIC_BASE_URL has no safe default: guessing one silently emits
 	// links and redirects pointing at someone else's host.
@@ -119,6 +133,31 @@ func LoadConfig() (Config, error) {
 			return Config{}, errors.New("PORTAL_ADMIN_STEAM_IDS holds a value that is not a 17-digit SteamID64: " + id)
 		}
 		c.AdminSteamIDs[id] = struct{}{}
+	}
+	// A name nobody enforces is the dangerous failure here: an operator who typed
+	// "deploy-apply" would believe the gate was lifted and never learn otherwise, so an
+	// unrecognised or ineligible entry stops the portal instead of being ignored.
+	for _, name := range strings.FieldsFunc(os.Getenv("PORTAL_AGENT_AUTO_APPROVE"), func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n'
+	}) {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name == "" {
+			continue
+		}
+		if name == string(ClassWorldState) {
+			c.AgentAutoApprove[name] = struct{}{}
+			continue
+		}
+		verb, known := verbTable[name]
+		if !known {
+			return Config{}, errors.New("PORTAL_AGENT_AUTO_APPROVE names no such verb: " + name)
+		}
+		if !verb.AutoApprovable() {
+			return Config{}, errors.New("PORTAL_AGENT_AUTO_APPROVE cannot cover " + name +
+				": only world_state verbs are eligible, and " + string(verb.Class) +
+				" keeps its confirmation")
+		}
+		c.AgentAutoApprove[name] = struct{}{}
 	}
 	for _, p := range []string{c.DatabasePath, c.ArtifactRoot, c.MapRoot, c.MapSourceRoot, c.CSRFSecretFile, c.AgentTokenFile, c.ClientExecutable} {
 		if !filepath.IsAbs(p) {
