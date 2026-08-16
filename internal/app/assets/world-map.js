@@ -689,8 +689,9 @@
       // below and right of the point in screen terms.
       fog.fillRect(pixelX, pixelY - size, size, size);
     }
+    // Opaque, deliberately. At 0.97 the terrain bled through the fog: a faint but real picture of
+    // coastlines nobody has sailed, which is the one thing this map is supposed to withhold.
     context.save();
-    context.globalAlpha = 0.97;
     context.drawImage(fogCanvas, 0, 0, rect.width, rect.height);
     context.restore();
   }
