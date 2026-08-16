@@ -157,4 +157,11 @@ func TestTheExplorationReporterMayBePublished(t *testing.T) {
 	if err := validatePortalOwnedPluginRoots(refused); err == nil {
 		t.Error("an unrelated plugin directory was accepted")
 	}
+	// The install-time validator is the one compiled into clients that are already out there, and it
+	// deliberately does not care WHICH directory - so a client built before this plugin existed still
+	// accepts a bundle carrying it. If this ever fails, shipping the reporter silently breaks every
+	// installed client's next sync.
+	if err := ValidateDiagnosticPluginArtifact(allowed); err != nil {
+		t.Errorf("an already-installed client would reject this bundle: %v", err)
+	}
 }
