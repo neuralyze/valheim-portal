@@ -935,20 +935,21 @@
   function drawClusters(clusters, haveCoverage) {
     const bounds = visibleBounds(20);
     const coverageVisible = haveCoverage && state.scale >= COVERAGE_VISIBLE_SCALE;
-    let drawn = 0;
-    // One frame's worth of label boxes, so names near each other cannot overprint. Biggest site
-    // first: when several builders share a valley the labels compete, and the one with the most
-    // pieces is the one an operator is looking for - it must not lose its name to a shed next door.
-    const labelBoxes = [];
-    const ordered = [...clusters].sort((a, b) => (b.pieces || 0) - (a.pieces || 0));
-    for (const cluster of ordered) {
-      if (drawn >= MAX_CLUSTER_GLYPHS) break;
-      if (cluster.center.x < bounds.minX || cluster.center.x > bounds.maxX || cluster.center.z < bounds.minZ || cluster.center.z > bounds.maxZ) continue;
+    const visible = clusters.filter((cluster) => cluster.center.x >= bounds.minX && cluster.center.x <= bounds.maxX
+      && cluster.center.z >= bounds.minZ && cluster.center.z <= bounds.maxZ).slice(0, MAX_CLUSTER_GLYPHS);
+    const bySize = [...visible].sort((a, b) => (b.pieces || 0) - (a.pieces || 0));
+
+    // Smallest first, so the shape an operator came to see ends up on top. Four builders sharing one
+    // valley are metres apart: whoever drew last owned those pixels, and that was the 4-piece shed
+    // painting over the 58-piece base.
+    for (const cluster of [...bySize].reverse()) {
       const [pixelX, pixelY] = screen(cluster.center.x, cluster.center.z);
-      const radius = Math.max(cluster.radius, 35) * state.scale;
+      // The 35 m floor keeps a cluster findable on a whole-world view, but close in it inflates
+      // neighbours into one blob. Zoomed in, a site is drawn the size it actually is.
+      const metres = state.scale >= COVERAGE_FULL_SCALE ? Math.max(cluster.radius, 4) : Math.max(cluster.radius, 35);
       context.save();
       context.beginPath();
-      context.arc(pixelX, pixelY, Math.max(3, radius), 0, Math.PI * 2);
+      context.arc(pixelX, pixelY, Math.max(3, metres * state.scale), 0, Math.PI * 2);
       const builder = builderColour(cluster.creator);
       context.fillStyle = builder;
       context.globalAlpha = coverageVisible ? 0.06 : 0.16;
@@ -959,11 +960,16 @@
       context.stroke();
       context.restore();
       drawGlyph('cluster', pixelX, pixelY, markerSize(), builder);
-      // Close in, the shape says whose it is without a trip to the legend.
-      if (state.scale >= COVERAGE_FULL_SCALE) {
-        drawBuilderLabel(builderName(cluster.creator), pixelX, pixelY - markerSize() - 3, builder, labelBoxes);
+    }
+
+    // Names in a second pass, biggest first: a label is a claim on scarce space, and the site with
+    // the most pieces is the one worth naming when they cannot all fit.
+    if (state.scale >= COVERAGE_FULL_SCALE) {
+      const labelBoxes = [];
+      for (const cluster of bySize) {
+        const [pixelX, pixelY] = screen(cluster.center.x, cluster.center.z);
+        drawBuilderLabel(builderName(cluster.creator), pixelX, pixelY - markerSize() - 3, builderColour(cluster.creator), labelBoxes);
       }
-      drawn += 1;
     }
   }
 
