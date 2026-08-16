@@ -558,7 +558,8 @@ const worldAnalysisTemplate = `<!doctype html>
 <ul id="recommendations"></ul>
 </aside>
 </main>
-{{if .HaveAnalysis}}<script src="/assets/world-map.js?v=map-pyramid-v1" defer></script>{{end}}
+{{if .HaveAnalysis}}<script src="/assets/builder-labels.js" data-labels="{{.LabelsJSON}}"></script>
+<script src="/assets/world-map.js?v=map-pyramid-v1" defer></script>{{end}}
 </body>
 </html>`
 
