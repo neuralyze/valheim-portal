@@ -70,7 +70,7 @@ func TestReportsAreCollectedFromBothLocations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	uploadExplorationReports(context.Background(), client, request, "test-token-123456", active)
+	uploadExplorationReports(context.Background(), client, request, "test-token-123456", active, nil)
 
 	got := strings.Join(received, " ")
 	for _, want := range []string{"explored:Hrafnheim-111.explored", "explored:Hrafnheim--322254472.explored", "pins:Hrafnheim--322254472.pins.json"} {
@@ -86,7 +86,7 @@ func TestReportsAreCollectedFromBothLocations(t *testing.T) {
 		t.Errorf("no marker written for an accepted report: %v", err)
 	}
 	before := len(received)
-	uploadExplorationReports(context.Background(), client, request, "test-token-123456", active)
+	uploadExplorationReports(context.Background(), client, request, "test-token-123456", active, nil)
 	if len(received) != before {
 		t.Errorf("unchanged reports were re-sent: %d then %d", before, len(received))
 	}

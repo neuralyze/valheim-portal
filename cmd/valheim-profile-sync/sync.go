@@ -129,7 +129,7 @@ func (syncer *profileSyncer) synchronize(ctx context.Context, request profileReq
 	// not be able to stop somebody playing - so it reports and returns.
 	if localAppData, appErr := localApplicationData(); appErr == nil {
 		if root, rootErr := profileRoot(localAppData, request); rootErr == nil {
-			uploadExplorationReports(ctx, portal, request, token, filepath.Join(root, "active"))
+			uploadExplorationReports(ctx, portal, request, token, filepath.Join(root, "active"), syncer.Progress)
 		}
 	}
 	return changed, nil
