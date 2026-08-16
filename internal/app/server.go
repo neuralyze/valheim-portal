@@ -1271,6 +1271,21 @@ func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor := r.Header.Get("X-Portal-Actor")
+	// world_analysis is not a script the agent runs and forgets: it returns a parsed snapshot that
+	// has to be saved and rendered into map tiles. Sent through the generic path below it reported
+	// "succeeded" with an empty detail and published nothing, because that path records reply.Output
+	// and the snapshot arrives in reply.Data - so the operator's refresh did nothing at all and said
+	// it worked. The map then showed structures from whenever a server last started.
+	if op == "world_analysis" {
+		// The job form asks for the same thing the map page's button does: fresh data, reusing
+		// terrain when it is already correct.
+		if failure := s.runWorldAnalysisJob(r.Context(), world, actor, true, false); failure != nil {
+			http.Error(w, failure.client, failure.status)
+			return
+		}
+		http.Redirect(w, r, "/admin/worlds/"+world+"/map", 303)
+		return
+	}
 	id := randomID()
 	if err := s.store.CreateJob(r.Context(), Job{ID: id, World: world, Operation: op, Status: "queued", RequestedBy: actor}, actor); err != nil {
 		http.Error(w, "unable to queue job", 500)

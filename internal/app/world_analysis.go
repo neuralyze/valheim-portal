@@ -65,7 +65,11 @@ func (s *Server) runWorldAnalysis(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if failure := s.runWorldAnalysisJob(r.Context(), world, r.Header.Get("X-Portal-Actor"), false); failure != nil {
+	// A fresh backup first, because the point of pressing this is to see what was just built and
+	// the newest archive on disk can be weeks old - which is exactly how a map came to show
+	// structures from eighteen days earlier while reporting success.
+	forceFull := r.FormValue("rebuild") == "terrain"
+	if failure := s.runWorldAnalysisJob(r.Context(), world, r.Header.Get("X-Portal-Actor"), true, forceFull); failure != nil {
 		http.Error(w, failure.client, failure.status)
 		return
 	}
@@ -80,10 +84,10 @@ func (s *Server) ensureInitialWorldMap(ctx context.Context, world, actor string)
 	if len(snapshots) != 0 {
 		return nil
 	}
-	return s.runWorldAnalysisJob(ctx, world, actor, true)
+	return s.runWorldAnalysisJob(ctx, world, actor, true, true)
 }
 
-func (s *Server) runWorldAnalysisJob(ctx context.Context, world, actor string, backupFirst bool) *worldAnalysisFailure {
+func (s *Server) runWorldAnalysisJob(ctx context.Context, world, actor string, backupFirst, forceFull bool) *worldAnalysisFailure {
 	jobID := randomID()
 	if err := s.store.CreateJob(ctx, Job{ID: jobID, World: world, Operation: "world_analysis", Status: "queued", RequestedBy: actor}, actor); err != nil {
 		return &worldAnalysisFailure{status: http.StatusInternalServerError, client: "unable to queue analysis", detail: "analysis queue failed"}
@@ -99,10 +103,10 @@ func (s *Server) runWorldAnalysisJob(ctx context.Context, world, actor string, b
 			return &worldAnalysisFailure{status: status, client: "unable to create the first complete world backup", detail: "initial backup failed"}
 		}
 	}
-	return s.executeWorldAnalysisJob(ctx, world, actor, jobID)
+	return s.executeWorldAnalysisJob(ctx, world, actor, jobID, forceFull)
 }
 
-func (s *Server) executeWorldAnalysisJob(ctx context.Context, world, actor, jobID string) *worldAnalysisFailure {
+func (s *Server) executeWorldAnalysisJob(ctx context.Context, world, actor, jobID string, forceFull bool) *worldAnalysisFailure {
 	reply, err := s.agent.Run(ctx, jobID, world, "world_analysis")
 	if err != nil || reply.Status != "succeeded" {
 		_ = s.store.FinishJob(ctx, jobID, "failed", "analysis agent failed", actor)
@@ -113,6 +117,19 @@ func (s *Server) executeWorldAnalysisJob(ctx context.Context, world, actor, jobI
 		_ = s.store.FinishJob(ctx, jobID, "failed", "invalid analysis result", actor)
 		return &worldAnalysisFailure{status: http.StatusBadGateway, client: "invalid analysis result", detail: "invalid analysis result"}
 	}
+	// Terrain is a function of the seed and the worldgen version, so building a house cannot change
+	// it. When the tiles on disk already describe this world at this seed and version, the two
+	// expensive steps - rendering biome.png and height.png at 12288px, then cutting the terrain
+	// pyramid - are recomputing an identical answer. Skipping them is what makes "show me what we
+	// just built" seconds instead of minutes; only the object overlay is rebuilt.
+	if terrain, reusable := s.reusableTerrain(world, snapshot); reusable && !forceFull {
+		if failure := s.publishObjectsOnly(ctx, terrain, snapshot, actor); failure != nil {
+			_ = s.store.FinishJob(ctx, jobID, "failed", failure.detail, actor)
+			return failure
+		}
+		_ = s.store.FinishJob(ctx, jobID, "succeeded", "constructions updated from "+snapshot.Source.Backup+"; terrain unchanged", actor)
+		return nil
+	}
 	mapReply, mapErr := s.agent.Run(ctx, jobID+"-map", world, "world_map")
 	if mapErr != nil || mapReply.Status != "succeeded" {
 		_ = s.store.FinishJob(ctx, jobID, "failed", "map source generation failed", actor)
@@ -122,7 +139,39 @@ func (s *Server) executeWorldAnalysisJob(ctx context.Context, world, actor, jobI
 		_ = s.store.FinishJob(ctx, jobID, "failed", failure.detail, actor)
 		return failure
 	}
-	_ = s.store.FinishJob(ctx, jobID, "succeeded", snapshot.Source.Backup, actor)
+	_ = s.store.FinishJob(ctx, jobID, "succeeded", "full rebuild from "+snapshot.Source.Backup, actor)
+	return nil
+}
+
+// reusableTerrain reports the tile set already on disk when it describes this exact world, so the
+// terrain half of a refresh can be skipped. A different seed, a different worldgen version, or a
+// renderer change all fall through to the full rebuild, because then the tiles really are wrong.
+func (s *Server) reusableTerrain(world string, snapshot worldintel.Snapshot) (maptiles.Manifest, bool) {
+	path, err := maptiles.CurrentManifestPath(s.cfg.MapRoot, world)
+	if err != nil {
+		return maptiles.Manifest{}, false
+	}
+	manifest, err := maptiles.LoadManifest(path)
+	if err != nil {
+		return maptiles.Manifest{}, false
+	}
+	if manifest.World != world || manifest.Seed != snapshot.Seed || manifest.WorldGenVersion != int(snapshot.WorldVersion) {
+		return maptiles.Manifest{}, false
+	}
+	return manifest, true
+}
+
+// publishObjectsOnly saves the snapshot and rebuilds the overlay against terrain that is already
+// correct. The order matters: the overlay is what an operator is waiting to see, but the snapshot is
+// the record, so it is written first and a failed overlay is reported rather than swallowed.
+func (s *Server) publishObjectsOnly(ctx context.Context, manifest maptiles.Manifest, snapshot worldintel.Snapshot, actor string) *worldAnalysisFailure {
+	if err := s.store.SaveWorldAnalysis(ctx, snapshot, actor); err != nil {
+		slog.Error("world analysis persistence failed", "world", snapshot.World, "backup", snapshot.Source.Backup, "error", err)
+		return &worldAnalysisFailure{status: http.StatusInternalServerError, client: "unable to persist analysis", detail: "analysis persistence failed"}
+	}
+	if _, err := maptiles.BuildOverlayPyramid(ctx, s.cfg.MapRoot, manifest, snapshot); err != nil {
+		return &worldAnalysisFailure{status: http.StatusInternalServerError, client: "analysis persisted but overlay tile generation failed", detail: "overlay tile generation failed"}
+	}
 	return nil
 }
 
@@ -340,7 +389,8 @@ const worldAnalysisTemplate = `<!doctype html>
 </div>
 <form class="map-analysis-form" method="post" action="/admin/worlds/{{.World.Name}}/analysis">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
-<button type="submit">Analyze latest backup</button>
+<button type="submit">Update constructions</button>
+<button type="submit" name="rebuild" value="terrain" class="secondary">Rebuild terrain too</button>
 </form>
 </header>
 <main class="map-layout">
