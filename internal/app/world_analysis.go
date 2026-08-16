@@ -47,6 +47,14 @@ type worldAnalysisPage struct {
 	// Admin gates the controls that act on the world - refreshing, rebuilding, naming a builder.
 	// The players' map is the same view without the levers.
 	Admin bool
+	// Reporters are the characters that have reported a map, so the page can offer a choice of whose
+	// view to show. Two characters on one Steam account are two entries: reports are keyed by account
+	// AND character, which is what makes separating them possible at all.
+	Reporters []explorationReporter
+	// SelectedPlayer is the character whose view is being shown, or 0 for the shared map. An admin
+	// character uncovers far more of the world than anyone else, so being able to look through one
+	// character's eyes is the difference between a useful shared map and a spoiler.
+	SelectedPlayer int64
 }
 
 type pageBuilder struct {
@@ -548,7 +556,7 @@ const worldAnalysisTemplate = `<!doctype html>
 <title>{{.World.Name}} {{if .Admin}}world map and analysis{{else}}map{{end}}</title>
 <link rel="stylesheet" href="/assets/site.css">
 </head>
-<body class="world-map-page" data-world="{{.World.Name}}" data-map-base="{{.DataBase}}"{{if .Fog}} data-map-fog="1"{{end}}>
+<body class="world-map-page" data-world="{{.World.Name}}" data-map-base="{{.DataBase}}"{{if .Fog}} data-map-fog="1"{{end}}{{if .SelectedPlayer}} data-map-player="{{.SelectedPlayer}}"{{end}}>
 <header class="map-header">
 <a class="map-back" href="{{if .Admin}}/admin{{else}}/worlds/{{.World.Name}}{{end}}">{{if .Admin}}Administration{{else}}{{.World.Name}}{{end}}</a>
 <div class="map-heading">
@@ -563,6 +571,12 @@ const worldAnalysisTemplate = `<!doctype html>
 </header>
 <main class="map-layout">
 <aside class="map-sidebar map-controls" aria-label="Map controls">
+{{if and (not .Admin) .Reporters}}<fieldset class="map-viewers">
+<legend>Whose map</legend>
+<p class="map-hint">Each character reports what it has uncovered. Choose one to see the world as that character knows it - an admin character's discoveries stay out of it.</p>
+<a class="map-viewer{{if not .SelectedPlayer}} map-viewer-current{{end}}" href="/worlds/{{.World.Name}}/map">Everyone together</a>
+{{range .Reporters}}<a class="map-viewer{{if .Selected}} map-viewer-current{{end}}" href="/worlds/{{$.World.Name}}/map?player={{.PlayerID}}">{{.Name}}<span class="map-viewer-area">{{printf "%.2f" .SquareKm}} km²</span></a>{{end}}
+</fieldset>{{end}}
 {{if .Builders}}<fieldset class="map-builders">
 <legend>Builders</legend>
 {{if .Admin}}<p class="map-hint">Valheim stamps a player id on every piece, and nothing resolves that to a person - character names live on each player's own machine. Name one here and the map remembers it.</p>{{end}}

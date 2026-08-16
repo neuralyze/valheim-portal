@@ -176,7 +176,7 @@ func TestMarkersAreClippedToTheSameAreaAsTheFog(t *testing.T) {
 		},
 	}
 
-	clipped := clipToDiscovered(snapshot, server.discoveredFor(world, snapshot))
+	clipped := clipToDiscovered(snapshot, server.discoveredFor(world, snapshot, 0))
 
 	if len(clipped.Locations) != 1 || clipped.Locations[0].Name != "StartTemple" {
 		t.Errorf("locations = %+v, want only the one the player has seen", clipped.Locations)
@@ -186,7 +186,7 @@ func TestMarkersAreClippedToTheSameAreaAsTheFog(t *testing.T) {
 	}
 	// With no reports at all, generated zones remain the fallback, so both are shown again.
 	empty := testServer(t)
-	fallback := clipToDiscovered(snapshot, empty.discoveredFor(world, snapshot))
+	fallback := clipToDiscovered(snapshot, empty.discoveredFor(world, snapshot, 0))
 	if len(fallback.Locations) != 2 || len(fallback.Clusters) != 2 {
 		t.Errorf("without reports the zone fallback dropped markers: %d locations, %d clusters",
 			len(fallback.Locations), len(fallback.Clusters))

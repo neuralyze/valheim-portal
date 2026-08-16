@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -72,12 +73,35 @@ func (d discoveredArea) has(x, z float32) bool {
 }
 
 // discoveredFor prefers what the players reported and falls back to generated zones, which is what a
-// world sees until somebody runs the reporter.
-func (s *Server) discoveredFor(world string, snapshot worldintel.Snapshot) discoveredArea {
+// world sees until somebody runs the reporter. A chosen character narrows it to that character's own
+// map: an admin who has uncovered half the world must not reveal it through a non-admin's view.
+func (s *Server) discoveredFor(world string, snapshot worldintel.Snapshot, playerID int64) discoveredArea {
+	if playerID != 0 {
+		if bits, size, found := s.explorationBitsFor(world, playerID); found {
+			return discoveredArea{bits: bits, size: size}
+		}
+		// A character with no report of its own has discovered nothing, and saying so is the honest
+		// answer. Falling back to the union here would hand over everybody else's map.
+		return discoveredArea{bits: make([]byte, 1), size: 1}
+	}
 	if bits, size, players := s.explorationUnionBits(world); players > 0 {
 		return discoveredArea{bits: bits, size: size}
 	}
 	return discoveredArea{zones: newDiscoveredZones(snapshot.GeneratedZones)}
+}
+
+// selectedPlayer reads the chosen character from the request. Anything unparseable is no selection,
+// which shows the shared map rather than failing a page load over a bad query string.
+func selectedPlayer(r *http.Request) int64 {
+	raw := strings.TrimSpace(r.URL.Query().Get("player"))
+	if raw == "" {
+		return 0
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
 }
 
 // clipToDiscovered keeps everything the operator's map would show, minus whatever sits on ground
@@ -139,15 +163,21 @@ func (s *Server) playerWorldMap(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "world map unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	player := selectedPlayer(r)
 	page := worldAnalysisPage{
-		World:        info,
-		HaveAnalysis: len(snapshots) > 0,
-		LabelsJSON:   "{}",
-		DataBase:     "/worlds/" + world,
-		Fog:          true,
+		World:          info,
+		HaveAnalysis:   len(snapshots) > 0,
+		LabelsJSON:     "{}",
+		DataBase:       "/worlds/" + world,
+		Fog:            true,
+		Reporters:      s.explorationReporters(world),
+		SelectedPlayer: player,
+	}
+	for index := range page.Reporters {
+		page.Reporters[index].Selected = page.Reporters[index].PlayerID == player
 	}
 	if len(snapshots) > 0 {
-		clipped := clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0]))
+		clipped := clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0], player))
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
 		page.Explored = formatExplored(snapshots[0].Summary)
 		page.Builders, page.LabelsJSON = s.builderLegend(r.Context(), world, clipped)
@@ -169,7 +199,29 @@ func (s *Server) playerAnalysisJSON(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	snapshot := clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0]))
+	player := selectedPlayer(r)
+	snapshot := clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0], player))
+	mask := s.explorationUnion(world)
+	pins := s.reportedPins(world)
+	if player != 0 {
+		// One character's view: their own mask, their own pins. Everybody else's stays out of it.
+		if bits, size, found := s.explorationBitsFor(world, player); found {
+			mask = &explorationMask{
+				CellSize: explorationCellSize, Size: size,
+				OriginX: -explorationRadius, OriginZ: -explorationRadius,
+				Bits: base64.StdEncoding.EncodeToString(bits), Players: 1,
+			}
+		} else {
+			mask = nil
+		}
+		kept := make([]explorationPins, 0, len(pins))
+		for _, pin := range pins {
+			if pin.PlayerID == player {
+				kept = append(kept, pin)
+			}
+		}
+		pins = kept
+	}
 	if r.URL.Query().Get("summary") == "1" {
 		// The renderer asks for the light version once it holds the terrain manifest. The zone list
 		// stays whatever happens: it is what the fog is drawn from.
@@ -183,7 +235,7 @@ func (s *Server) playerAnalysisJSON(w http.ResponseWriter, r *http.Request) {
 		Recommendations []string            `json:"recommendations"`
 		ExploredMask    *explorationMask    `json:"explored_mask,omitempty"`
 		Pins            []explorationPins   `json:"pins,omitempty"`
-	}{snapshot, nil, s.explorationUnion(world), s.reportedPins(world)}
+	}{snapshot, nil, mask, pins}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(response)
@@ -244,7 +296,7 @@ func (s *Server) playerOverlayTile(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	tile, ok := maptiles.SelectOverlay(clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0])), manifest.Levels[zoom], x, y)
+	tile, ok := maptiles.SelectOverlay(clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0], selectedPlayer(r))), manifest.Levels[zoom], x, y)
 	if !ok {
 		http.NotFound(w, r)
 		return

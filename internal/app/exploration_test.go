@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/neuralyze/valheim-portal/internal/worldintel"
 )
 
 // buildReport writes what the plugin writes: a readable header line, then the player's grid as a
@@ -235,5 +237,58 @@ func TestReportsAreStoredWhereThePortalCanWrite(t *testing.T) {
 	}
 	if server.cfg.MapSourceRoot != "" && strings.HasPrefix(root, server.cfg.MapSourceRoot) {
 		t.Errorf("reports go to %q, inside the read-only world root", root)
+	}
+}
+
+// Two characters on one Steam account are two maps. The storage key is the account AND the character, so
+// they never overwrote each other - but the map unioned them, which is exactly what an operator does not
+// want when one of those characters is an admin who has uncovered half the world.
+func TestOneCharacterSeesOnlyItsOwnMap(t *testing.T) {
+	server := testServer(t)
+	world := "Midgard"
+	if err := os.MkdirAll(server.explorationRoot(world), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const textureSize, pixelSize = 64, 10.0
+	half := textureSize / 2
+	// Same Steam account, two characters: an admin who has been far afield, and a newcomer at spawn.
+	admin := buildReport(t, world, 111, textureSize, pixelSize, [][2]int{{half, half}, {half + 20, half + 20}})
+	newcomer := buildReport(t, world, 222, textureSize, pixelSize, [][2]int{{half, half}})
+	if err := os.WriteFile(filepath.Join(server.explorationRoot(world), "765611-111.explored"), admin, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(server.explorationRoot(world), "765611-222.explored"), newcomer, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both characters are offered, and both are listed separately despite sharing an account.
+	reporters := server.explorationReporters(world)
+	if len(reporters) != 2 {
+		t.Fatalf("reporters = %+v, want both characters", reporters)
+	}
+
+	snapshot := worldintel.Snapshot{
+		GeneratedZones: []worldintel.Vec2{{X: 0, Y: 0}, {X: 10, Y: 10}},
+		Locations: []worldintel.Location{
+			{Name: "StartTemple", Position: worldintel.Vec3{X: 4, Z: 4}},
+			{Name: "Eikthyrnir", Position: worldintel.Vec3{X: 200, Z: 200}},
+		},
+	}
+
+	// The newcomer's view must not include the ground only the admin character has walked.
+	asNewcomer := clipToDiscovered(snapshot, server.discoveredFor(world, snapshot, 222))
+	if len(asNewcomer.Locations) != 1 || asNewcomer.Locations[0].Name != "StartTemple" {
+		t.Errorf("as the newcomer: %+v, want only what that character found", asNewcomer.Locations)
+	}
+	// The admin character sees both, because that character really has been there.
+	asAdmin := clipToDiscovered(snapshot, server.discoveredFor(world, snapshot, 111))
+	if len(asAdmin.Locations) != 2 {
+		t.Errorf("as the admin character: %+v, want both", asAdmin.Locations)
+	}
+	// A character that has never reported has discovered nothing - falling back to the union here would
+	// hand over everybody else's map, which is the leak this whole selector exists to prevent.
+	asStranger := clipToDiscovered(snapshot, server.discoveredFor(world, snapshot, 999))
+	if len(asStranger.Locations) != 0 {
+		t.Errorf("as a character with no report: %+v, want nothing", asStranger.Locations)
 	}
 }

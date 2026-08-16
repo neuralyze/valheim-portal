@@ -127,6 +127,10 @@
   // the data comes from, and whether ground nobody has visited is covered over.
   const dataBase = document.body.dataset.mapBase || `/admin/worlds/${encodeURIComponent(world)}`;
   const fogOfWar = document.body.dataset.mapFog === '1';
+  // Whose map is being shown. Carried on every data request, because the server decides what a chosen
+  // character may see; a tile fetched without it would arrive clipped to somebody else's map.
+  const mapPlayer = document.body.dataset.mapPlayer || '';
+  const withPlayer = (url) => (mapPlayer ? url + (url.includes('?') ? '&' : '?') + 'player=' + encodeURIComponent(mapPlayer) : url);
   let fogCanvas = null;
   // The players' own revealed map, unpacked from base64 once when the analysis arrives.
   let maskBits = null;
@@ -222,7 +226,7 @@
 
   async function loadTerrainManifest() {
     try {
-      const response = await fetch(`${dataBase}/map/manifest.json`, { cache: 'no-cache' });
+      const response = await fetch(withPlayer(`${dataBase}/map/manifest.json`), { cache: 'no-cache' });
       if (response.status === 404) return;
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const manifest = await response.json();
@@ -310,7 +314,7 @@
     const key = `${source}/${level.zoom}/${x}/${y}`;
     let pending = state.overlayCache.get(key);
     if (pending) return pending;
-    pending = fetch(`${dataBase}/map/overlays/${source}/${level.zoom}/${x}/${y}.json`, {
+    pending = fetch(withPlayer(`${dataBase}/map/overlays/${source}/${level.zoom}/${x}/${y}.json`), {
       cache: 'no-cache',
       credentials: 'same-origin',
     }).then((response) => {
@@ -1781,7 +1785,7 @@
   });
 
   terrainManifestReady.then(() => fetch(
-    `${dataBase}/analysis.json${terrainManifest ? '?summary=1' : ''}`,
+    withPlayer(`${dataBase}/analysis.json${terrainManifest ? '?summary=1' : ''}`),
     { credentials: 'same-origin' },
   ))
     .then((response) => {

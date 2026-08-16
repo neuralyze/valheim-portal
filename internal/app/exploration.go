@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -42,6 +43,7 @@ type explorationUpload struct {
 	TextureSize int
 	PixelSize   float64
 	Cells       int
+	Written     string
 	Explored    []byte
 }
 
@@ -182,6 +184,87 @@ func writeUploadedFile(path string, source io.Reader) error {
 // explorationUnion reads every report for a world and returns one mask. Nothing is stored derived: a
 // world with no reports returns nil and the map falls back to the zone fog, which is what every world
 // gets until a player runs the reporter.
+// explorationReporter is one character that has reported a map, for the map page's selector.
+type explorationReporter struct {
+	PlayerID int64   `json:"player_id"`
+	Name     string  `json:"name"`
+	SquareKm float64 `json:"square_km"`
+	Written  string  `json:"written"`
+	Selected bool    `json:"selected,omitempty"`
+}
+
+// explorationReporters lists the characters that have reported, newest report first. The name comes out
+// of the report the game wrote, so the selector shows "westar" rather than a signed integer.
+func (s *Server) explorationReporters(world string) []explorationReporter {
+	if !validWorld(world) {
+		return nil
+	}
+	directory := s.explorationRoot(world)
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil
+	}
+	var reporters []explorationReporter
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".explored") {
+			continue
+		}
+		report, err := readExplorationReport(filepath.Join(directory, entry.Name()))
+		if err != nil || report.PlayerID == 0 {
+			continue
+		}
+		name := report.PlayerName
+		if name == "" {
+			name = "character " + strconv.FormatInt(report.PlayerID, 10)
+		}
+		reporters = append(reporters, explorationReporter{
+			PlayerID: report.PlayerID,
+			Name:     name,
+			SquareKm: float64(report.Cells) * report.PixelSize * report.PixelSize / 1_000_000,
+			Written:  report.Written,
+		})
+	}
+	sort.Slice(reporters, func(i, j int) bool {
+		if reporters[i].SquareKm != reporters[j].SquareKm {
+			return reporters[i].SquareKm > reporters[j].SquareKm
+		}
+		return reporters[i].PlayerID < reporters[j].PlayerID
+	})
+	return reporters
+}
+
+// explorationBitsFor is one character's own map rather than everybody's. Selecting a character is how an
+// operator sees the world as that character knows it, which is the whole point: an admin character's
+// discoveries must not leak into what a non-admin character has found.
+func (s *Server) explorationBitsFor(world string, playerID int64) (bits []byte, size int, found bool) {
+	if !validWorld(world) || playerID == 0 {
+		return nil, 0, false
+	}
+	directory := s.explorationRoot(world)
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return nil, 0, false
+	}
+	size = explorationRadius * 2 / explorationCellSize
+	bits = make([]byte, (size*size+7)/8)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".explored") {
+			continue
+		}
+		report, err := readExplorationReport(filepath.Join(directory, entry.Name()))
+		if err != nil || report.PlayerID != playerID {
+			continue
+		}
+		if addReportToMask(report, bits, size) {
+			found = true
+		}
+	}
+	if !found {
+		return nil, 0, false
+	}
+	return bits, size, true
+}
+
 // explorationUnionBits is the union as raw bits, for deciding what a player may see. The JSON form
 // below wraps the same result: if these two ever came from different code, the map would hide ground
 // while still drawing the markers standing on it - which is exactly the bug that made it necessary.
@@ -298,6 +381,8 @@ func readExplorationReport(path string) (*explorationUpload, error) {
 			report.PixelSize, _ = strconv.ParseFloat(value, 64)
 		case "cells_uncovered":
 			report.Cells, _ = strconv.Atoi(value)
+		case "written":
+			report.Written = value
 		}
 	}
 	if report.TextureSize <= 0 || report.TextureSize > 8192 || report.PixelSize <= 0 || report.PixelSize > 1000 {

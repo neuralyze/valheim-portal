@@ -1146,3 +1146,24 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
 .map-builder form input[type=text] { font-size: .78rem; }
 .map-builder form button { flex: 0 0 auto; padding: .2rem .5rem; font-size: .72rem; }
 
+
+/* Whose map to show. One row per character that has reported, plus the shared view. Plain links, so the
+   choice is bookmarkable and survives a reload without the renderer holding any state. */
+.map-viewers { display: block; }
+.map-viewer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .4rem;
+  padding: .3rem .35rem;
+  border-radius: .25rem;
+  color: inherit;
+  font-size: .78rem;
+  text-decoration: none;
+}
+.map-viewer:hover { background: color-mix(in srgb, var(--site-line) 60%, transparent); }
+.map-viewer-current {
+  background: color-mix(in srgb, var(--map-build) 22%, transparent);
+  font-weight: 600;
+}
+.map-viewer-area { color: var(--site-muted); font-size: .7rem; font-variant-numeric: tabular-nums; }
