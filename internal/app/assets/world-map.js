@@ -17,6 +17,8 @@
   const MIN_SCALE = 0.012;
   const MAX_SCALE = 128;
   const ZOOM_STEP = 1.6;
+  // How far in a page opens, counted in presses of the zoom-in control from Fit world.
+  const OPENING_ZOOM_STEPS = 7;
   const WHEEL_RATE = 0.001;
   const DRAG_THRESHOLD = 3;
   const KEYBOARD_PAN_PIXELS = 80;
@@ -663,6 +665,17 @@
     state.x += before[0] - after[0];
     state.z += before[1] - after[1];
     requestDraw();
+  }
+
+  // The view a page opens at: Fit world, then seven presses of zoom in. Fitting the whole world puts
+  // everything worth looking at inside a few dozen pixels, and this is the level the operator asked
+  // for - written as the same steps a person would take rather than a scale nobody could check.
+  // Fit world itself is untouched, so the whole world is always one press away.
+  function openingView() {
+    fit();
+    for (let step = 0; step < OPENING_ZOOM_STEPS; step += 1) {
+      zoomAt(state.scale * ZOOM_STEP);
+    }
   }
 
   // Fog is one pass on an offscreen canvas: fill it, cut out every discovered zone, then lay it over
@@ -1705,7 +1718,7 @@
       recommendations.appendChild(item);
     }
     if (!terrainFailed) status.hidden = true;
-    fit();
+    openingView();
   }
 
   function signed(number) {
