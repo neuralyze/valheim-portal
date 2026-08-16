@@ -146,8 +146,12 @@
     // pending count and whether a reply is owed - never the elapsed seconds - so while waiting the
     // token does not change and nothing moved. A frozen "working 0s" beside a spinner that was not
     // there is exactly the dead page this was meant to rule out.
+    var wasBusy = liveState && (liveState.waiting || liveState.pending > 0);
     liveState = state;
     paintBadge();
+    if (dock.open && wasBusy !== (state.waiting || state.pending > 0)) {
+      schedule();
+    }
 
     if (state.state === known) {
       return;
@@ -230,7 +234,11 @@
     if (!dock.open) {
       return;
     }
-    timer = window.setInterval(refresh, 2000);
+    // Two seconds only while something is actually happening. An idle dock polling every two
+    // seconds spent thirty requests a minute for nothing, which is how an operator met a rate limit
+    // while reading a page.
+    var busy = liveState && (liveState.waiting || liveState.pending > 0);
+    timer = window.setInterval(refresh, busy ? 2000 : 10000);
   }
 
   function send() {

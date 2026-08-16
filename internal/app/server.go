@@ -375,7 +375,7 @@ func (s *Server) secure(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https://gcdn.thunderstore.io; style-src 'self' 'unsafe-inline'")
-		if !isMapResourceRequest(r) && !s.bucketFor(r).Allow(s.rateKey(r)) {
+		if !s.rateLimitExempt(r) && !s.bucketFor(r).Allow(s.rateKey(r)) {
 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
@@ -411,6 +411,31 @@ func (s *Server) rateKey(r *http.Request) string {
 		})
 	}
 	return clientIP(r)
+}
+
+// rateLimitExempt keeps the limiter off the surfaces where it only ever hurts the operator.
+//
+// The limiter exists for anonymous traffic: a stranger guessing device codes, hammering profile
+// downloads, or spending someone else's budget. It was applied to every route from the first commit,
+// including /admin - and an administration page is not one request. It is the page, five assets, a
+// status poll, and a dock that polls every two seconds, all from one address. 40 requests a minute
+// cannot hold that, so the operator met "rate limit exceeded" while doing their job. Map tiles were
+// carved out for exactly this reason once already; carving out one path at a time was the mistake.
+//
+// Administration is already gated by three independent facts - the trusted proxy, the identity
+// header, and the admin token - plus CSRF on writes. A limiter behind all of that protects nothing
+// and blocks the only person who is supposed to be there.
+func (s *Server) rateLimitExempt(r *http.Request) bool {
+	if strings.HasPrefix(r.URL.Path, "/admin") {
+		return true
+	}
+	// The pages the operator's own browser loads to render administration.
+	switch r.URL.Path {
+	case "/assets/site.css", "/assets/admin-agent.js", "/assets/admin-dock.js",
+		"/assets/admin-profile-autofill.js", "/assets/copy-value.js", "/favicon.ico":
+		return true
+	}
+	return isMapResourceRequest(r)
 }
 
 func isMapResourceRequest(r *http.Request) bool {

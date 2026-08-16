@@ -1054,3 +1054,49 @@ func TestWorldPageIsServedBeforeAnyReleaseIsPublished(t *testing.T) {
 		t.Fatalf("an unregistered world must not render a page; got %d", missingResponse.Code)
 	}
 }
+
+// The operator met "rate limit exceeded" while reading an administration page. The limiter has
+// applied to every route since the first commit, and an admin page is not one request: it is the
+// page, its assets, a status poll, and a dock that polls while open - all from one address, against
+// a bucket of 40 a minute. Administration is already gated by the trusted proxy, the identity
+// header, the admin token and CSRF; a limiter behind all four protects nothing and blocks the only
+// person entitled to be there.
+func TestAdministrationIsNotRateLimited(t *testing.T) {
+	server := testServer(t)
+
+	for index := range 200 {
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, adminTestRequest(http.MethodGet, "/admin", nil))
+		if response.Code == http.StatusTooManyRequests {
+			t.Fatalf("admin request %d was rate limited", index+1)
+		}
+	}
+	for _, asset := range []string{"/assets/site.css", "/assets/admin-agent.js", "/assets/admin-dock.js"} {
+		for range 60 {
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, asset, nil))
+			if response.Code == http.StatusTooManyRequests {
+				t.Fatalf("%s was rate limited; the operator's own page cannot load", asset)
+			}
+		}
+	}
+}
+
+// And the limiter must still hold where it was meant to: anonymous traffic on a player route.
+func TestAnonymousTrafficIsStillLimited(t *testing.T) {
+	server := testServer(t)
+	limited := false
+	for range 200 {
+		request := httptest.NewRequest(http.MethodGet, "/", nil)
+		request.RemoteAddr = "203.0.113.9:5555"
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code == http.StatusTooManyRequests {
+			limited = true
+			break
+		}
+	}
+	if !limited {
+		t.Error("anonymous requests are unbounded; the limiter now protects nothing")
+	}
+}
