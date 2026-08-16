@@ -320,3 +320,62 @@ func TestTheSelectorPrefersTheNameTheServerRecorded(t *testing.T) {
 		t.Errorf("reporters = %+v, want the server's spelling", reporters)
 	}
 }
+
+// The reporter uploads at logout with a scope of its own, because that token lives inside a game process
+// shared with a hundred other mods. It may send a map and do nothing else: the profile scope can fetch
+// profile payloads, and the diagnostics scope belongs to an operator-initiated flow.
+func TestTheNarrowExplorationScopeMayOnlyUploadMaps(t *testing.T) {
+	server := testServer(t)
+	release := Release{ID: "scope-release", World: "Ashlands", Profile: "raiders", ClientType: "flat", Version: "1.0.0", Notes: "scope"}
+	publishProfile(t, server, release)
+	if err := server.store.GrantWorldAccess(context.Background(), release.World, testSteamID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	base := deviceTokenClaims{SteamID: testSteamID, World: release.World, Profile: release.Profile, ClientType: release.ClientType, ReleaseID: release.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	mint := func(scope string) string {
+		claims := base
+		claims.Scope = scope
+		return server.mintDeviceToken(claims)
+	}
+
+	post := func(token string) int {
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		part, err := form.CreateFormFile("explored", release.World+"-111.explored")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(buildReport(t, release.World, 111, 64, 10, [][2]int{{32, 32}})); err != nil {
+			t.Fatal(err)
+		}
+		if err := form.Close(); err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, "/client/exploration/"+release.World+"/"+release.Profile+"/"+release.ClientType, &body)
+		request.Header.Set("Content-Type", form.FormDataContentType())
+		request.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		return response.Code
+	}
+
+	if code := post(mint(deviceTokenScopeExploration)); code != http.StatusCreated {
+		t.Errorf("the exploration scope = %d, want 201", code)
+	}
+	if code := post(mint(deviceTokenScopeDiagnostics)); code != http.StatusUnauthorized {
+		t.Errorf("the diagnostics scope = %d, want 401", code)
+	}
+	// And the narrow token cannot do the things the profile token can.
+	for _, target := range []string{
+		"/client/manifest/" + release.World + "/" + release.Profile + "/" + release.ClientType,
+		"/client/payload/" + release.World + "/" + release.Profile + "/" + release.ClientType,
+	} {
+		request := httptest.NewRequest(http.MethodGet, target, nil)
+		request.Header.Set("Authorization", "Bearer "+mint(deviceTokenScopeExploration))
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		if response.Code == http.StatusOK {
+			t.Errorf("%s answered 200 to a token that may only upload maps", target)
+		}
+	}
+}

@@ -77,6 +77,11 @@ type profileState struct {
 	DiagnosticsPluginSize   int64               `json:"diagnostics_plugin_size,omitempty"`
 	DiagnosticsToken        string              `json:"diagnostics_token,omitempty"`
 	DiagnosticsEndpoint     string              `json:"diagnostics_endpoint,omitempty"`
+	// Where the exploration reporter sends a session's map when the player logs out, and the narrow
+	// token that lets it. Kept in profile state because the launcher builds the game's environment from
+	// the profile on disk, not from whatever a sync happened to hold in memory.
+	ExplorationToken    string `json:"exploration_token,omitempty"`
+	ExplorationEndpoint string `json:"exploration_endpoint,omitempty"`
 }
 
 type packageChanges struct {
@@ -97,6 +102,10 @@ type profileSyncer struct {
 	Progress            progressReporter
 	DiagnosticsToken    string
 	DiagnosticsEndpoint string
+	// Handed to the game so the exploration reporter can send a session's map at logout rather than at
+	// the next launch. Narrow scope: it can upload a map and nothing else.
+	ExplorationToken    string
+	ExplorationEndpoint string
 	PortalBase          string
 }
 
@@ -119,6 +128,8 @@ func (syncer *profileSyncer) synchronize(ctx context.Context, request profileReq
 	}
 	syncer.DiagnosticsToken = portal.diagnosticsToken
 	syncer.DiagnosticsEndpoint = portal.endpoint("client", "diagnostics", request.World, request.Profile, request.ClientType)
+	syncer.ExplorationToken = portal.explorationToken
+	syncer.ExplorationEndpoint = portal.endpoint("client", "exploration", request.World, request.Profile, request.ClientType)
 	syncer.PortalBase = request.Portal.String()
 	changed, err := syncer.syncAuthorized(ctx, request, token)
 	if err != nil {
@@ -182,9 +193,12 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 		return false, err
 	}
 	if present && validProfileState(current, request) && stateMatchesManifest(current, manifest) && activeGenerationMatches(root, current, request) && activeProfileRuntimeReady(root, current) && activeProfileConfigMatches(root, current) {
-		if current.DiagnosticsToken != syncer.DiagnosticsToken || current.DiagnosticsEndpoint != syncer.DiagnosticsEndpoint {
+		if current.DiagnosticsToken != syncer.DiagnosticsToken || current.DiagnosticsEndpoint != syncer.DiagnosticsEndpoint ||
+			current.ExplorationToken != syncer.ExplorationToken || current.ExplorationEndpoint != syncer.ExplorationEndpoint {
 			current.DiagnosticsToken = syncer.DiagnosticsToken
 			current.DiagnosticsEndpoint = syncer.DiagnosticsEndpoint
+			current.ExplorationToken = syncer.ExplorationToken
+			current.ExplorationEndpoint = syncer.ExplorationEndpoint
 			if err := writeProfileState(root, current); err != nil {
 				return false, err
 			}
@@ -358,6 +372,8 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 		DiagnosticsPluginSize:   manifest.DiagnosticsPluginSize,
 		DiagnosticsToken:        syncer.DiagnosticsToken,
 		DiagnosticsEndpoint:     syncer.DiagnosticsEndpoint,
+		ExplorationToken:        syncer.ExplorationToken,
+		ExplorationEndpoint:     syncer.ExplorationEndpoint,
 		Packages:                definition.Packages,
 	}
 	if err := writeJSONAtomically(filepath.Join(next, generationStateFile), newState); err != nil {

@@ -23,6 +23,11 @@ const (
 	diagnosticsTokenLifetime    = 30 * 24 * time.Hour
 	deviceTokenScopeProfile     = "profile"
 	deviceTokenScopeDiagnostics = "diagnostics"
+	// Given to the game process so the exploration reporter can send a session's map the moment the
+	// player logs out, instead of it waiting for the next launch. It is deliberately the narrowest of
+	// the three: everything in a Valheim process is shared with every other mod loaded beside it, so
+	// what leaks from there must be able to do nothing except upload a map.
+	deviceTokenScopeExploration = "exploration"
 	// The user code is read off the desktop app and typed into a browser, so the
 	// alphabet is the RFC 8628 section 6.1 recommendation: no vowels, so a code
 	// can never spell a word, and no character pairs that look alike in a
@@ -500,11 +505,22 @@ func (s *Server) deviceToken(w http.ResponseWriter, r *http.Request) {
 	diagnosticsClaims := claims
 	diagnosticsClaims.Scope = deviceTokenScopeDiagnostics
 	diagnosticsClaims.ExpiresAt = time.Now().Add(diagnosticsTokenLifetime)
+	explorationClaims := claims
+	explorationClaims.Scope = deviceTokenScopeExploration
+	explorationClaims.ExpiresAt = time.Now().Add(diagnosticsTokenLifetime)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": s.mintDeviceToken(claims), "diagnostics_token": s.mintDeviceToken(diagnosticsClaims)})
+	json.NewEncoder(w).Encode(map[string]string{
+		"token":             s.mintDeviceToken(claims),
+		"diagnostics_token": s.mintDeviceToken(diagnosticsClaims),
+		"exploration_token": s.mintDeviceToken(explorationClaims),
+	})
 }
 
+// clientManifest and the payload, runtime, companion and plugin endpoints below all serve the profile
+// itself, so they require the profile scope by name. Before the exploration scope existed this was
+// invisible: every token in circulation could do everything, so nothing distinguished "a valid token"
+// from "a token allowed to do this".
 func (s *Server) clientManifest(w http.ResponseWriter, r *http.Request) {
 	world, profile, clientType := r.PathValue("world"), r.PathValue("profile"), r.PathValue("clientType")
 	claims, ok, err := s.validDeviceToken(r.Context(), r, world, profile, clientType)
@@ -512,7 +528,7 @@ func (s *Server) clientManifest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if !ok {
+	if !ok || claims.Scope != deviceTokenScopeProfile {
 		http.Error(w, "client authorization required", http.StatusUnauthorized)
 		return
 	}
@@ -588,7 +604,7 @@ func (s *Server) clientPayload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if !ok {
+	if !ok || claims.Scope != deviceTokenScopeProfile {
 		http.Error(w, "client authorization required", http.StatusUnauthorized)
 		return
 	}
@@ -640,7 +656,7 @@ func (s *Server) clientRuntime(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if !ok || claims.ClientType != "vr" {
+	if !ok || claims.Scope != deviceTokenScopeProfile || claims.ClientType != "vr" {
 		http.Error(w, "client authorization required", http.StatusUnauthorized)
 		return
 	}
@@ -663,7 +679,7 @@ func (s *Server) clientCompanion(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if !ok || claims.ClientType != "flat" {
+	if !ok || claims.Scope != deviceTokenScopeProfile || claims.ClientType != "flat" {
 		http.Error(w, "client authorization required", http.StatusUnauthorized)
 		return
 	}
@@ -689,7 +705,7 @@ func (s *Server) clientDiagnosticsPlugin(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if !ok {
+	if !ok || claims.Scope != deviceTokenScopeProfile {
 		http.Error(w, "client authorization required", http.StatusUnauthorized)
 		return
 	}
@@ -722,7 +738,7 @@ func (s *Server) validDeviceToken(ctx context.Context, r *http.Request, world, p
 		return deviceTokenClaims{}, false, nil
 	}
 	fields := strings.Split(string(raw), "|")
-	if len(fields) != 8 || !validSteamID(fields[0]) || !validWorld(fields[1]) || !validProfile(fields[2]) || (fields[3] != "flat" && fields[3] != "vr") || !validIdentifier(fields[4]) || (fields[5] != deviceTokenScopeProfile && fields[5] != deviceTokenScopeDiagnostics) || fields[1] != world || fields[2] != profile || fields[3] != clientType {
+	if len(fields) != 8 || !validSteamID(fields[0]) || !validWorld(fields[1]) || !validProfile(fields[2]) || (fields[3] != "flat" && fields[3] != "vr") || !validIdentifier(fields[4]) || (fields[5] != deviceTokenScopeProfile && fields[5] != deviceTokenScopeDiagnostics && fields[5] != deviceTokenScopeExploration) || fields[1] != world || fields[2] != profile || fields[3] != clientType {
 		return deviceTokenClaims{}, false, nil
 	}
 	expires, err := strconv.ParseInt(fields[6], 10, 64)

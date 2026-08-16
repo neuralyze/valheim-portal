@@ -42,6 +42,7 @@ type portalClient struct {
 	wait             func(time.Duration)
 	Progress         progressReporter
 	diagnosticsToken string
+	explorationToken string
 }
 
 // errNoConfirmationCode is shared with the test that pins the sign-in decision table.
@@ -72,6 +73,7 @@ type deviceResponse struct {
 type tokenResponse struct {
 	Token            string `json:"token"`
 	DiagnosticsToken string `json:"diagnostics_token"`
+	ExplorationToken string `json:"exploration_token"`
 }
 
 type remoteManifest struct {
@@ -296,6 +298,12 @@ func (client *portalClient) exchangeDeviceCode(ctx context.Context, deviceCode s
 			return "", false, errors.New("portal returned an invalid diagnostics token")
 		}
 		client.diagnosticsToken = result.DiagnosticsToken
+	}
+	if result.ExplorationToken != "" {
+		if len(result.ExplorationToken) < 16 || len(result.ExplorationToken) > 8192 || strings.ContainsAny(result.ExplorationToken, "\r\n") {
+			return "", false, errors.New("portal returned an invalid exploration token")
+		}
+		client.explorationToken = result.ExplorationToken
 	}
 	return result.Token, false, nil
 }

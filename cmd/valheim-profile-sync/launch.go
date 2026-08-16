@@ -71,6 +71,16 @@ func profileEnvironment(inherited []string, active string) []string {
 		// every sync, and a player's own map is not something a sync should be able to delete.
 		"VALHEIM_EXPLORATION_DIR=" + explorationDirectory(active),
 	}
+	// Where to send a session's map, and the narrow token that permits it, so the reporter can upload
+	// at logout instead of the map waiting for the next launch. Read from the profile on disk: the
+	// launcher builds this environment from what is installed, not from a sync's memory.
+	if state, present, err := loadProfileState(filepath.Dir(filepath.Clean(active))); err == nil && present {
+		if state.ExplorationEndpoint != "" && state.ExplorationToken != "" {
+			overrides = append(overrides,
+				"VALHEIM_EXPLORATION_UPLOAD_URL="+state.ExplorationEndpoint,
+				"VALHEIM_EXPLORATION_TOKEN="+state.ExplorationToken)
+		}
+	}
 	result := make([]string, 0, len(inherited)+len(overrides))
 	for _, value := range inherited {
 		name, _, found := strings.Cut(value, "=")
@@ -91,7 +101,9 @@ func profileEnvironmentName(name string) bool {
 	return strings.EqualFold(name, "BEPINEX_CONFIG_PATH") ||
 		strings.EqualFold(name, "BEPINEX_PLUGIN_PATH") ||
 		strings.EqualFold(name, "VALHEIM_PROFILE_SYNC_ROOT") ||
-		strings.EqualFold(name, "VALHEIM_EXPLORATION_DIR")
+		strings.EqualFold(name, "VALHEIM_EXPLORATION_DIR") ||
+		strings.EqualFold(name, "VALHEIM_EXPLORATION_UPLOAD_URL") ||
+		strings.EqualFold(name, "VALHEIM_EXPLORATION_TOKEN")
 }
 
 var startVRRuntime = prepareVRRuntime

@@ -72,9 +72,10 @@ func (s *Server) clientExploration(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	// The profile scope is what the launcher holds on an ordinary run, so reporting a map costs the
-	// player nothing extra. Diagnostics deliberately require their own scope; this does not.
-	if !ok || claims.Scope != deviceTokenScopeProfile {
+	// Two scopes may report a map: the profile scope the launcher already holds, and the narrow
+	// exploration scope handed to the game so the reporter can send a session the moment it ends.
+	// Diagnostics tokens cannot - that flow is operator-initiated and has its own scope.
+	if !ok || (claims.Scope != deviceTokenScopeProfile && claims.Scope != deviceTokenScopeExploration) {
 		http.Error(w, "client authorization required", http.StatusUnauthorized)
 		return
 	}

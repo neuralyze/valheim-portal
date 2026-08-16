@@ -31,9 +31,17 @@ namespace Neuralyze.ValheimExplorationReporter
         private static float lastWriteTime = -9999f;
         private Harmony harmony;
 
+        private static string uploadURL;
+        private static string uploadToken;
+
         private void Awake()
         {
             log = Logger;
+            // Given by the launcher. Absent for a hand-installed profile, in which case the files still
+            // get written and the launcher collects them next time - the upload is an improvement on
+            // that path, never a replacement for it.
+            uploadURL = Environment.GetEnvironmentVariable("VALHEIM_EXPLORATION_UPLOAD_URL");
+            uploadToken = Environment.GetEnvironmentVariable("VALHEIM_EXPLORATION_TOKEN");
             // The launcher passes the directory it will upload from. Without it, the plugin still works
             // and writes beside its own config, so a hand-installed profile is not silently useless.
             outputDirectory = Environment.GetEnvironmentVariable("VALHEIM_EXPLORATION_DIR");
@@ -110,9 +118,17 @@ namespace Neuralyze.ValheimExplorationReporter
                 {
                     return;
                 }
-                Write(world, player.GetPlayerID(), player.GetPlayerName(), textureSize, pixelSize, explored);
-                WritePins(world, player.GetPlayerID(), minimap);
+                string explored_path = Write(world, player.GetPlayerID(), player.GetPlayerName(), textureSize, pixelSize, explored);
+                string pins_path = WritePins(world, player.GetPlayerID(), minimap);
                 lastWriteTime = Time.realtimeSinceStartup;
+                // Only on the way out. Uploading on every autosave would put a request on the wire every
+                // few minutes for a map that has usually not changed, and the launcher's sweep already
+                // covers anything this misses.
+                if (force)
+                {
+                    Upload(explored_path);
+                    Upload(pins_path);
+                }
             }
             catch (Exception error)
             {
@@ -135,7 +151,7 @@ namespace Neuralyze.ValheimExplorationReporter
 
         // The file is a short text header - readable, so a person can see what it is - then a gzipped
         // bitset of the grid, one bit per cell, row-major exactly as the game indexes it.
-        private static void Write(string world, long playerID, string playerName, int textureSize, float pixelSize, bool[] explored)
+        private static string Write(string world, long playerID, string playerName, int textureSize, float pixelSize, bool[] explored)
         {
             Directory.CreateDirectory(outputDirectory);
             int cells = textureSize * textureSize;
@@ -177,6 +193,7 @@ namespace Neuralyze.ValheimExplorationReporter
             }
             File.Move(temporary, path);
             log.LogInfo("reported " + uncovered + " uncovered cells for " + safeWorld);
+            return path;
         }
 
         // The pins the player placed: the part of their map they made themselves. Only saved pins are
@@ -192,18 +209,18 @@ namespace Neuralyze.ValheimExplorationReporter
         "hildir1", "hildir2", "hildir3",
     };
 
-    private static void WritePins(string world, long playerID, Minimap minimap)
+    private static string WritePins(string world, long playerID, Minimap minimap)
     {
         FieldInfo field = typeof(Minimap).GetField("m_pins", BindingFlags.Instance | BindingFlags.NonPublic);
         if (field == null)
         {
             log.LogWarning("this build of Valheim has no Minimap.m_pins; pins cannot be read");
-            return;
+            return null;
         }
         System.Collections.Generic.List<Minimap.PinData> pins = field.GetValue(minimap) as System.Collections.Generic.List<Minimap.PinData>;
         if (pins == null)
         {
-            return;
+            return null;
         }
         System.Text.StringBuilder json = new System.Text.StringBuilder();
         json.Append("{\"schema\":");
@@ -254,6 +271,81 @@ namespace Neuralyze.ValheimExplorationReporter
         }
         File.Move(temporary, path);
         log.LogInfo("reported " + written + " saved pins for " + Sanitize(world));
+        return path;
+    }
+
+    // Sends one report to the portal, then writes the same .sent marker the launcher writes, so the two
+    // upload paths never send the same bytes twice. Best effort throughout: a player logging out must
+    // not wait on a network call, and anything missed here is collected by the launcher next time.
+    private static void Upload(string path)
+    {
+        if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(uploadURL) || string.IsNullOrEmpty(uploadToken))
+        {
+            return;
+        }
+        try
+        {
+            byte[] payload = File.ReadAllBytes(path);
+            string digest = Sha256Hex(payload);
+            string marker = path + ".sent";
+            if (File.Exists(marker) && File.ReadAllText(marker).Trim() == digest)
+            {
+                return;
+            }
+            string field = path.EndsWith(".pins.json", StringComparison.Ordinal) ? "pins" : "explored";
+            // Written by hand rather than with a helper: this runs inside the game's own runtime, where
+            // pulling in an HTTP client library is how a mod breaks somebody's session.
+            string boundary = "----neuralyze" + DateTime.UtcNow.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            byte[] head = System.Text.Encoding.UTF8.GetBytes(
+                "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"" + field + "\"; filename=\"" + Path.GetFileName(path) + "\"\r\n"
+                + "Content-Type: application/octet-stream\r\n\r\n");
+            byte[] tail = System.Text.Encoding.UTF8.GetBytes("\r\n--" + boundary + "--\r\n");
+
+            System.Net.HttpWebRequest request = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(uploadURL);
+            request.Method = "POST";
+            request.ContentType = "multipart/form-data; boundary=" + boundary;
+            request.Headers.Add("Authorization", "Bearer " + uploadToken);
+            request.Timeout = 15000;
+            request.ReadWriteTimeout = 15000;
+            request.ContentLength = head.Length + payload.Length + tail.Length;
+            using (System.IO.Stream body = request.GetRequestStream())
+            {
+                body.Write(head, 0, head.Length);
+                body.Write(payload, 0, payload.Length);
+                body.Write(tail, 0, tail.Length);
+            }
+            using (System.Net.HttpWebResponse response = (System.Net.HttpWebResponse)request.GetResponse())
+            {
+                if (response.StatusCode != System.Net.HttpStatusCode.Created)
+                {
+                    log.LogWarning("portal refused the report: " + (int)response.StatusCode);
+                    return;
+                }
+            }
+            File.WriteAllText(marker, digest);
+            log.LogInfo("sent " + Path.GetFileName(path) + " to the portal");
+        }
+        catch (Exception error)
+        {
+            // No marker written, so the launcher will send it on the next run. This is the reason the
+            // sweep stays: a logout with no network still reaches the portal eventually.
+            log.LogWarning("could not send " + Path.GetFileName(path) + " now, leaving it for the launcher: " + error.Message);
+        }
+    }
+
+    private static string Sha256Hex(byte[] payload)
+    {
+        using (System.Security.Cryptography.SHA256 hash = System.Security.Cryptography.SHA256.Create())
+        {
+            byte[] sum = hash.ComputeHash(payload);
+            System.Text.StringBuilder hex = new System.Text.StringBuilder(sum.Length * 2);
+            foreach (byte b in sum)
+            {
+                hex.Append(b.ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            return hex.ToString();
+        }
     }
 
     // Pin names are player-typed, so they are escaped rather than stripped: a name is the whole point of
