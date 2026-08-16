@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -290,5 +291,44 @@ func TestOneBuilderInTwoPlacesIsTwoClusters(t *testing.T) {
 
 	if len(clusters) != 2 {
 		t.Fatalf("one builder in two valleys produced %d clusters, want 2", len(clusters))
+	}
+}
+
+// "How much of the map have we discovered" has a server-side answer, but only if the game's far-away
+// bookkeeping zones are kept out of it. Valheim parks global objects in a zone at 1,000,000 metres:
+// real entries in the save, nowhere anybody walked. Hrafnheim had 81 of them among 474.
+func TestExploredAreaExcludesSentinelZones(t *testing.T) {
+	snapshot := Snapshot{GeneratedZones: []Vec2{
+		{0, 0}, {1, 0}, {0, 1}, {-3, 5}, // visited
+		{sentinelZoneIndex, sentinelZoneIndex}, // the game's far-away zone
+		{sentinelZoneIndex, 4},
+		{9000, 9000}, // anything outside the playable grid is not a place either
+	}}
+
+	finalize(&snapshot)
+
+	if snapshot.Summary.ExploredZones != 4 {
+		t.Errorf("explored zones = %d, want 4", snapshot.Summary.ExploredZones)
+	}
+	if snapshot.Summary.SentinelZones != 3 {
+		t.Errorf("sentinel zones = %d, want 3", snapshot.Summary.SentinelZones)
+	}
+	// Four zones is 4 x 64 x 64 = 16384 m2, against a playable circle of radius 10000.
+	wantKm := 16384.0 / 1_000_000
+	if diff := snapshot.Summary.ExploredSquareKm - wantKm; diff > 1e-9 || diff < -1e-9 {
+		t.Errorf("explored area = %.6f km2, want %.6f", snapshot.Summary.ExploredSquareKm, wantKm)
+	}
+	if snapshot.Summary.ExploredPercent <= 0 || snapshot.Summary.ExploredPercent > 1 {
+		t.Errorf("explored percent = %f, which is not a plausible fraction of the map", snapshot.Summary.ExploredPercent)
+	}
+	// The operator is told what was set aside rather than left to wonder why the number is small.
+	found := false
+	for _, finding := range snapshot.Health.Findings {
+		if strings.Contains(finding, "sentinel") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the sentinel zones were excluded silently")
 	}
 }

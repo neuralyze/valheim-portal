@@ -23,6 +23,11 @@ type worldAnalysisPage struct {
 	Backup       string
 	AnalyzedAt   string
 	CSRF         string
+	// Explored is how much of the playable map players have actually visited, phrased for a legend.
+	// Valheim generates a zone only when somebody has been near it, and a player's own revealed map
+	// lives in their character file on their machine - so generated zones are the only server-side
+	// answer to "how much have we discovered".
+	Explored string
 	// Builders is every creator id the snapshot found, with the name an operator gave it, how many
 	// pieces it placed, and the colour the map draws it in. Valheim stamps a player id on each
 	// piece and nothing resolves that to a person - names live in client character files - so the
@@ -84,6 +89,10 @@ func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
 	if len(snapshots) > 0 {
 		page.Backup = snapshots[0].Source.Backup
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
+		summary := snapshots[0].Summary
+		if summary.ExploredZones > 0 {
+			page.Explored = fmt.Sprintf("%.1f%% (%.1f km²)", summary.ExploredPercent, summary.ExploredSquareKm)
+		}
 		labels, labelErr := s.store.BuilderLabels(r.Context(), world)
 		if labelErr != nil {
 			labels = map[int64]string{}
@@ -480,7 +489,7 @@ const worldAnalysisTemplate = `<!doctype html>
 <fieldset>
 <legend>Map layers</legend>
 <label class="map-layer"><input type="checkbox" data-layer="terrain" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Terrain and biomes</span></label>
-<label class="map-layer"><input type="checkbox" data-layer="zones" {{if not .HaveAnalysis}}disabled{{end}}><span>Generated zones</span></label>
+<label class="map-layer"><input type="checkbox" data-layer="zones" {{if not .HaveAnalysis}}disabled{{end}}><span>Explored area{{if .Explored}} · {{.Explored}}{{end}}</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="locations" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Locations</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="clusters" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player construction</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="portal" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Portals</span></label>

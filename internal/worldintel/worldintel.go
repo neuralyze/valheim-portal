@@ -87,6 +87,21 @@ type Location struct {
 	Position  Vec3   `json:"position"`
 	Generated bool   `json:"generated"`
 }
+
+// Valheim generates a zone only when somebody has been near it, so the generated-zone list is the
+// server's own record of where players have gone - the closest thing to map discovery that exists
+// server-side, since a player's revealed map lives in their own character file.
+//
+// zoneSize is ZoneSystem.m_zoneSize; playableRadius is where the world ends for play. Sentinel zones
+// sit at 1,000,000 metres, which is where the game parks global objects: real entries, but nowhere
+// anybody has walked, so they are counted separately rather than smuggled into an explored area.
+const (
+	zoneSize          = 64.0
+	playableRadius    = 10000.0
+	maxZoneIndex      = 164
+	sentinelZoneIndex = 15625
+)
+
 type Cluster struct {
 	ID     int     `json:"id"`
 	Center Vec3    `json:"center"`
@@ -122,9 +137,16 @@ type Health struct {
 	InvalidCoordinates int      `json:"invalid_coordinates"`
 }
 type Summary struct {
-	Objects            int            `json:"objects"`
-	Persistent         int            `json:"persistent"`
-	GeneratedZones     int            `json:"generated_zones"`
+	Objects        int `json:"objects"`
+	Persistent     int `json:"persistent"`
+	GeneratedZones int `json:"generated_zones"`
+	// ExploredZones counts only zones inside the playable grid; SentinelZones counts the far-away
+	// bookkeeping zones. ExploredSquareKm and ExploredPercent are what an operator actually asked
+	// for: how much of the map has been visited.
+	ExploredZones      int            `json:"explored_zones"`
+	SentinelZones      int            `json:"sentinel_zones"`
+	ExploredSquareKm   float64        `json:"explored_square_km"`
+	ExploredPercent    float64        `json:"explored_percent"`
 	Locations          int            `json:"locations"`
 	InventoryObjects   int            `json:"inventory_objects"`
 	InventoryStacks    int            `json:"inventory_stacks"`
@@ -976,6 +998,27 @@ func LocationCategory(name string) string {
 
 func finalize(s *Snapshot) {
 	s.Summary.GeneratedZones = len(s.GeneratedZones)
+	explored, sentinel := 0, 0
+	for _, zone := range s.GeneratedZones {
+		switch {
+		case zone.X == sentinelZoneIndex || zone.Y == sentinelZoneIndex:
+			sentinel++
+		case zone.X >= -maxZoneIndex && zone.X <= maxZoneIndex && zone.Y >= -maxZoneIndex && zone.Y <= maxZoneIndex:
+			explored++
+		default:
+			sentinel++
+		}
+	}
+	s.Summary.ExploredZones = explored
+	s.Summary.SentinelZones = sentinel
+	area := float64(explored) * zoneSize * zoneSize
+	s.Summary.ExploredSquareKm = area / 1_000_000
+	// Against the playable circle, not the square the tiles cover: a player cannot walk the corners.
+	s.Summary.ExploredPercent = area / (math.Pi * playableRadius * playableRadius) * 100
+	if sentinel > 0 {
+		s.Health.Findings = append(s.Health.Findings,
+			fmt.Sprintf("%d generated zones sit at the game's far-away sentinel position and are not counted as explored", sentinel))
+	}
 	s.Summary.Locations = len(s.Locations)
 	s.Summary.LocationCategories = make(map[string]int)
 	for index := range s.Locations {
