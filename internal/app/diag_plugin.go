@@ -23,6 +23,12 @@ const (
 	// and kept its Harmony patches installed even when silenced.
 	vrFixesPluginAssembly = "bepinex/plugins/neuralyzevrfixes/neuralyzevrfixes.dll"
 	vrFixPluginRoot       = "bepinex/plugins/neuralyzevrfixes/"
+	// The exploration reporter records what each player has uncovered on their own map and the pins
+	// they placed, so the shared map can show where people have actually been rather than where the
+	// server happened to load ground. It ships in the same artifact because it is a portal plugin like
+	// the other two, and it gets its own directory: a map reporter filed under "NeuralyzeVRFixes"
+	// would mislead whoever next reads a profile's plugin list.
+	explorationReporterRoot = "bepinex/plugins/neuralyzeexplorationreporter/"
 )
 
 // portalPluginRoots are the plugin directories the portal is permitted to publish
@@ -35,7 +41,7 @@ const (
 // client: the portal published a valid artifact and the old client rejected it as
 // containing an "unsupported directory". Publish-time policy may evolve freely;
 // install-time validation must only enforce properties that never change.
-var portalPluginRoots = []string{diagnosticPluginRoot, vrFixPluginRoot}
+var portalPluginRoots = []string{diagnosticPluginRoot, vrFixPluginRoot, explorationReporterRoot}
 
 // ValidateDiagnosticPluginArtifact enforces the structural guarantees of a
 // portal-hosted client plugin archive. It runs on the portal at publish time and on

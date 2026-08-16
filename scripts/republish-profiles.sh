@@ -213,7 +213,9 @@ PY
     echo "built (dry run, not published)"; continue
   fi
   if ! (cd "$repo_root" && go run ./cmd/seed-release "${publish_args[@]}") >>"$build_dir/$published.log" 2>&1; then
-    echo "PUBLISH FAILED: $(tail -1 "$build_dir/$published.log")"; ((failures++)); continue
+    kept="${TMPDIR:-/tmp}/republish-$published-$(date -u +%Y%m%dT%H%M%SZ).log"
+    cp "$build_dir/$published.log" "$kept" 2>/dev/null || true
+    echo "PUBLISH FAILED: $(tail -1 "$build_dir/$published.log") (full log: $kept)"; ((failures++)); continue
   fi
   echo "published and verified"
 done <<<"$plan"

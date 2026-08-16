@@ -137,3 +137,24 @@ func TestDiagnosticPluginArtifactAcceptsVRFixPlugin(t *testing.T) {
 		t.Fatal("publish-time policy accepted an artifact shadowing another mod")
 	}
 }
+
+// The exploration reporter ships in the same artifact as the other portal plugins, in its own
+// directory. Publish-time policy is the only place that decides which directories are the portal's, so
+// this is what allows it - and it must not accidentally allow somebody else's.
+func TestTheExplorationReporterMayBePublished(t *testing.T) {
+	allowed := writeDiagZip(t, map[string]string{
+		"BepInEx/plugins/NeuralyzeVRFixes/NeuralyzeVRFixes.dll":                "vr fixes",
+		"BepInEx/plugins/NeuralyzeExplorationReporter/ExplorationReporter.dll": "reporter",
+		"BepInEx/plugins/NeuralyzeExplorationReporter/ExplorationReporter.cfg": "config",
+	})
+	if err := validatePortalOwnedPluginRoots(allowed); err != nil {
+		t.Errorf("the reporter was refused: %v", err)
+	}
+	// Somebody else's plugin is still not the portal's to publish.
+	refused := writeDiagZip(t, map[string]string{
+		"BepInEx/plugins/SomeoneElsesMod/SomeoneElsesMod.dll": "not ours",
+	})
+	if err := validatePortalOwnedPluginRoots(refused); err == nil {
+		t.Error("an unrelated plugin directory was accepted")
+	}
+}
