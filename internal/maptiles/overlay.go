@@ -8,7 +8,7 @@ import (
 	"github.com/neuralyze/valheim-portal/internal/worldintel"
 )
 
-const OverlaySchemaVersion = 2
+const OverlaySchemaVersion = 3
 
 const MaxOverlayFeatures = 4096
 

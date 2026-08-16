@@ -332,3 +332,64 @@ func TestExploredAreaExcludesSentinelZones(t *testing.T) {
 		t.Error("the sentinel zones were excluded silently")
 	}
 }
+
+// The coverage layer is what an operator sees as "the constructions": one filled cell per patch of
+// building. It used to carry no builder at all, so every cell drew in one colour and colouring the
+// cluster glyphs changed nothing anybody could see.
+func TestCoverageCellsCarryTheirDominantBuilder(t *testing.T) {
+	// Two cells far enough apart to stay separate: one all Kato's, one mostly Jarn's.
+	points := []constructionPoint{
+		{Position: Vec3{X: 10, Z: 10}, Creator: 111},
+		{Position: Vec3{X: 12, Z: 11}, Creator: 111},
+		{Position: Vec3{X: 4000, Z: 4000}, Creator: 222},
+		{Position: Vec3{X: 4002, Z: 4001}, Creator: 222},
+		{Position: Vec3{X: 4004, Z: 4002}, Creator: 111},
+	}
+
+	coverage := aggregateConstructionCoverage(points)
+
+	if coverage == nil || len(coverage.Cells) != 2 {
+		t.Fatalf("cells = %v, want 2", coverage)
+	}
+	byCreator := map[int64]CoverageCell{}
+	for _, cell := range coverage.Cells {
+		byCreator[cell.Creator] = cell
+	}
+	if cell, ok := byCreator[111]; !ok || cell.Builders != 1 || cell.Pieces != 2 {
+		t.Errorf("the single-builder cell = %+v, want 2 pieces from 1 builder", cell)
+	}
+	// The mixed cell belongs to the majority, and says it was not the only one there.
+	if cell, ok := byCreator[222]; !ok || cell.Builders != 2 || cell.Pieces != 3 {
+		t.Errorf("the mixed cell = %+v, want 3 pieces from 2 builders", cell)
+	}
+}
+
+// Coarsening merges cells when there are too many. A builder's pieces have to survive that merge, or
+// a zoomed-out map would take its colour from whichever child cell happened to win.
+func TestCoarseningKeepsTheMajorityBuilder(t *testing.T) {
+	points := []constructionPoint{}
+	// One builder with a lot of pieces, spread over enough cells to force several coarsening rounds.
+	for i := 0; i < maxConstructionCoverageCells+50; i++ {
+		x := float32((i % 200) * constructionCoverageBaseCell)
+		z := float32((i / 200) * constructionCoverageBaseCell)
+		points = append(points, constructionPoint{Position: Vec3{X: x, Z: z}, Creator: 999})
+	}
+	// One interloper, outnumbered wherever it lands.
+	points = append(points, constructionPoint{Position: Vec3{X: 0, Z: 0}, Creator: 1})
+
+	coverage := aggregateConstructionCoverage(points)
+
+	if coverage == nil || len(coverage.Cells) > maxConstructionCoverageCells {
+		t.Fatalf("cells = %d, want at most %d", len(coverage.Cells), maxConstructionCoverageCells)
+	}
+	total := 0
+	for _, cell := range coverage.Cells {
+		total += cell.Pieces
+		if cell.Creator != 999 {
+			t.Errorf("cell %+v is credited to the interloper", cell)
+		}
+	}
+	if total != len(points) {
+		t.Errorf("coarsening lost pieces: %d of %d", total, len(points))
+	}
+}

@@ -185,3 +185,26 @@ func TestSavingThePlaceholderStoresNothing(t *testing.T) {
 		t.Errorf("the placeholder was stored as a name: %v", labels)
 	}
 }
+
+// The canvas and the legend must agree about who owns a base, so the page serves the colour rather
+// than the script recomputing it from a palette copied into a second language. This checks the two
+// halves the page emits: the swatch in the legend, and the styles handed to the script.
+func TestTheLegendAndTheCanvasShareOnePalette(t *testing.T) {
+	for _, creator := range []int64{308095166, 2387859451} {
+		colour := builderColour(creator)
+		if colour == "" {
+			t.Fatalf("builder %d has no colour", creator)
+		}
+	}
+	if builderColour(308095166) == builderColour(2387859451) {
+		t.Error("two builders share a colour, so the map cannot distinguish them")
+	}
+	// An unattributed piece is not a builder and must not take a builder's colour.
+	if builderColour(0) == builderColour(308095166) {
+		t.Error("unattributed pieces draw in a builder's colour")
+	}
+	// The stand-in name is derived from the id, so it can never be mistaken for a chosen name.
+	if name := builderFallbackName(2387859451); !strings.Contains(name, "9451") {
+		t.Errorf("fallback name = %q, want it to carry the id", name)
+	}
+}

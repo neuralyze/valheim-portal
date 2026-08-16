@@ -116,6 +116,11 @@ type CoverageCell struct {
 	X      int `json:"x"`
 	Z      int `json:"z"`
 	Pieces int `json:"pieces"`
+	// Creator is whoever placed the most pieces in this cell, and Builders is how many people placed
+	// anything in it. A cell drawn in one builder's colour is the majority, not a claim of sole
+	// ownership - Builders is what stops that reading as a lie.
+	Creator  int64 `json:"creator,omitempty"`
+	Builders int   `json:"builders,omitempty"`
 }
 type ConstructionCoverage struct {
 	CellSize    int            `json:"cell_size"`
@@ -1050,11 +1055,7 @@ func finalize(s *Snapshot) {
 		}
 	}
 	s.Objects = kept
-	positions := make([]Vec3, 0, len(construction))
-	for _, point := range construction {
-		positions = append(positions, point.Position)
-	}
-	s.ConstructionCoverage = aggregateConstructionCoverage(positions)
+	s.ConstructionCoverage = aggregateConstructionCoverage(construction)
 	s.Clusters = aggregateConstructionClusters(construction)
 	s.Summary.Bounds = b
 	if s.Health.InvalidCoordinates > 0 {
@@ -1066,21 +1067,35 @@ func finalize(s *Snapshot) {
 	sort.Strings(s.GlobalKeys)
 }
 
-func aggregateConstructionCoverage(points []Vec3) *ConstructionCoverage {
+func aggregateConstructionCoverage(points []constructionPoint) *ConstructionCoverage {
 	if len(points) == 0 {
 		return nil
 	}
 	cellSize := constructionCoverageBaseCell
-	cells := make(map[[2]int]int, min(len(points), maxConstructionCoverageCells+1))
+	// Per cell, a tally per builder: the coarsening below merges cells, and a builder's pieces have to
+	// survive that merge or the colour of a zoomed-out cell would be decided by whichever child won.
+	cells := make(map[[2]int]map[int64]int, min(len(points), maxConstructionCoverageCells+1))
 	for _, point := range points {
-		key := constructionCell(point, cellSize)
-		cells[key]++
+		key := constructionCell(point.Position, cellSize)
+		tally := cells[key]
+		if tally == nil {
+			tally = map[int64]int{}
+			cells[key] = tally
+		}
+		tally[point.Creator]++
 	}
 	for len(cells) > maxConstructionCoverageCells {
-		coarser := make(map[[2]int]int, min(len(cells), maxConstructionCoverageCells+1))
-		for key, pieces := range cells {
+		coarser := make(map[[2]int]map[int64]int, min(len(cells), maxConstructionCoverageCells+1))
+		for key, tally := range cells {
 			parent := [2]int{floorHalf(key[0]), floorHalf(key[1])}
-			coarser[parent] += pieces
+			merged := coarser[parent]
+			if merged == nil {
+				merged = map[int64]int{}
+				coarser[parent] = merged
+			}
+			for creator, pieces := range tally {
+				merged[creator] += pieces
+			}
 		}
 		cells = coarser
 		cellSize *= 2
@@ -1092,9 +1107,20 @@ func aggregateConstructionCoverage(points []Vec3) *ConstructionCoverage {
 		Cells:       make([]CoverageCell, 0, len(keys)),
 	}
 	for _, key := range keys {
-		pieces := cells[key]
+		tally := cells[key]
+		pieces, dominant, dominantPieces := 0, int64(0), 0
+		for creator, count := range tally {
+			pieces += count
+			// Ties resolve on the id so the same world always draws the same colours; a cell that
+			// flickered between two builders between refreshes would be worse than one flat green.
+			if count > dominantPieces || (count == dominantPieces && creator > dominant) {
+				dominant, dominantPieces = creator, count
+			}
+		}
 		coverage.MaxPieces = max(coverage.MaxPieces, pieces)
-		coverage.Cells = append(coverage.Cells, CoverageCell{X: key[0], Z: key[1], Pieces: pieces})
+		coverage.Cells = append(coverage.Cells, CoverageCell{
+			X: key[0], Z: key[1], Pieces: pieces, Creator: dominant, Builders: len(tally),
+		})
 	}
 	return coverage
 }

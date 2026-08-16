@@ -33,12 +33,17 @@ type worldAnalysisPage struct {
 	// piece and nothing resolves that to a person - names live in client character files - so the
 	// operator names each one once and the portal remembers.
 	Builders []pageBuilder
-	// LabelsJSON is the same names as a JSON object, so the canvas can label a cluster without a
+	// LabelsJSON carries each builder's name and colour as JSON, so the canvas can label and colour a
+	// cluster without a
 	// second request.
 	LabelsJSON string
 }
 
 type pageBuilder struct {
+	// Named separates a name an operator chose from the id-derived stand-in. Valheim stamps only a
+	// number on a piece, nothing on the server maps it to a person, so a stand-in must never be
+	// presented, stored or exported as if somebody had confirmed it.
+	Named    bool
 	Creator  int64
 	Label    string
 	Pieces   int
@@ -46,8 +51,9 @@ type pageBuilder struct {
 	Colour   string
 }
 
-// builderColours mirrors BUILDER_COLOURS in world-map.js. The map draws from the script and the
-// legend from here, so a mismatch would tell an operator the wrong person owns a base.
+// builderColours is the only palette. The page serves each builder's colour to the canvas alongside
+// its name, so the legend and the map cannot disagree about who owns a base; the script keeps a fold
+// of its own only for an id the page never listed.
 var builderColours = []string{"#6f9ad6", "#71c492", "#d9a514", "#c46f9a", "#7ad6cf", "#d6a06f", "#a58fd6", "#8fd66f"}
 
 func builderColour(creator int64) string {
@@ -102,15 +108,23 @@ func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
 			pieces[cluster.Creator] += cluster.Pieces
 			clusters[cluster.Creator]++
 		}
-		named := map[string]string{}
+		// Both halves of what the canvas needs: what to call a builder and what colour to draw it.
+		styles := map[string]map[string]string{}
 		for creator, count := range pieces {
 			entry := pageBuilder{Creator: creator, Pieces: count, Clusters: clusters[creator], Colour: builderColour(creator)}
 			if label, ok := labels[creator]; ok {
 				entry.Label = label
-				named[strconv.FormatInt(creator, 10)] = label
+				entry.Named = true
 			} else {
 				entry.Label = builderFallbackName(creator)
 			}
+			// The fallback goes to the canvas too, but flagged, so the map can draw "builder 9451"
+			// without the script pretending that is a name somebody chose.
+			style := map[string]string{"colour": entry.Colour, "name": entry.Label}
+			if _, ok := labels[creator]; !ok {
+				style["unnamed"] = "1"
+			}
+			styles[strconv.FormatInt(creator, 10)] = style
 			page.Builders = append(page.Builders, entry)
 		}
 		sort.Slice(page.Builders, func(i, j int) bool {
@@ -119,7 +133,7 @@ func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
 			}
 			return page.Builders[i].Creator < page.Builders[j].Creator
 		})
-		if encoded, encodeErr := json.Marshal(named); encodeErr == nil {
+		if encoded, encodeErr := json.Marshal(styles); encodeErr == nil {
 			page.LabelsJSON = string(encoded)
 		}
 	}
@@ -477,14 +491,21 @@ const worldAnalysisTemplate = `<!doctype html>
 {{if .Builders}}<fieldset class="map-builders">
 <legend>Builders</legend>
 <p class="map-hint">Valheim stamps a player id on every piece, and nothing resolves that to a person - character names live on each player's own machine. Name one here and the map remembers it.</p>
-{{range .Builders}}<form class="map-builder" method="post" action="/admin/worlds/{{$.World.Name}}/builders">
+{{range .Builders}}<details class="map-builder">
+<summary>
+<span class="map-builder-swatch" style="background:{{.Colour}}"></span>
+<span class="map-builder-name{{if not .Named}} map-builder-unnamed{{end}}">{{.Label}}</span>
+<span class="map-builder-count">{{.Pieces}} pieces · {{.Clusters}} site(s)</span>
+</summary>
+<form method="post" action="/admin/worlds/{{$.World.Name}}/builders">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <input type="hidden" name="creator" value="{{.Creator}}">
-<span class="map-builder-swatch" style="background:{{.Colour}}"></span>
-<input type="text" name="label" value="{{.Label}}" maxlength="40" aria-label="name for builder {{.Creator}}">
-<span class="map-builder-count">{{.Pieces}} pieces · {{.Clusters}} site(s)</span>
+<label>Name for player id {{.Creator}}
+<input type="text" name="label" value="{{if .Named}}{{.Label}}{{end}}" maxlength="40" placeholder="nobody has named this builder">
+</label>
 <button type="submit">Save</button>
-</form>{{end}}
+</form>
+</details>{{end}}
 </fieldset>{{end}}
 <fieldset>
 <legend>Map layers</legend>

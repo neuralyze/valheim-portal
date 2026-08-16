@@ -56,8 +56,14 @@
     '#6f9ad6', '#71c492', '#d9a514', '#c46f9a', '#7ad6cf', '#d6a06f', '#a58fd6', '#8fd66f'
   ];
 
+  function builderStyle(creator) {
+    return (window.__builderStyles || {})[String(creator)] || null;
+  }
+
   function builderColour(creator) {
     if (!creator) return colors.build;
+    const style = builderStyle(creator);
+    if (style && style.colour) return style.colour;
     // A small stable hash: the id is a 64-bit number arriving as a JS double, so fold it.
     const n = Math.abs(Number(creator) % 100000);
     return BUILDER_COLOURS[n % BUILDER_COLOURS.length];
@@ -65,8 +71,9 @@
 
   function builderName(creator) {
     if (!creator) return 'unattributed';
-    const labels = window.__builderLabels || {};
-    return labels[String(creator)] || ('builder ' + String(Math.abs(Number(creator) % 10000)).padStart(4, '0'));
+    const style = builderStyle(creator);
+    if (style && style.name) return style.name;
+    return 'builder ' + String(Math.abs(Number(creator) % 10000)).padStart(4, '0');
   }
   const colors = {
     canvas: token('--map-canvas'),

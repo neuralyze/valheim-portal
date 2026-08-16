@@ -9,8 +9,8 @@
     return;
   }
   try {
-    window.__builderLabels = JSON.parse(tag.getAttribute("data-labels") || "{}");
+    window.__builderStyles = JSON.parse(tag.getAttribute("data-labels") || "{}");
   } catch (error) {
-    window.__builderLabels = {};
+    window.__builderStyles = {};
   }
 })();
