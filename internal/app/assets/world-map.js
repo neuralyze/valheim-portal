@@ -936,9 +936,12 @@
     const bounds = visibleBounds(20);
     const coverageVisible = haveCoverage && state.scale >= COVERAGE_VISIBLE_SCALE;
     let drawn = 0;
-    // One frame's worth of label boxes, so names near each other cannot overprint.
+    // One frame's worth of label boxes, so names near each other cannot overprint. Biggest site
+    // first: when several builders share a valley the labels compete, and the one with the most
+    // pieces is the one an operator is looking for - it must not lose its name to a shed next door.
     const labelBoxes = [];
-    for (const cluster of clusters) {
+    const ordered = [...clusters].sort((a, b) => (b.pieces || 0) - (a.pieces || 0));
+    for (const cluster of ordered) {
       if (drawn >= MAX_CLUSTER_GLYPHS) break;
       if (cluster.center.x < bounds.minX || cluster.center.x > bounds.maxX || cluster.center.z < bounds.minZ || cluster.center.z > bounds.maxZ) continue;
       const [pixelX, pixelY] = screen(cluster.center.x, cluster.center.z);
