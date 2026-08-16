@@ -862,8 +862,8 @@ func TestNewServerRefusesToStartWithoutAnAdminToken(t *testing.T) {
 	}
 }
 
-// One NATed source address for every visitor meant one shared bucket: sixty
-// anonymous /healthz requests locked out every operator and every player.
+// One NATed source address for every visitor meant one shared bucket: a burst of anonymous /healthz
+// requests locked out every operator and every player.
 func TestRateLimitBucketsAreKeyedPerForwardedClient(t *testing.T) {
 	server := testServer(t)
 	spend := func(remote, forwarded string) int {
@@ -877,9 +877,10 @@ func TestRateLimitBucketsAreKeyedPerForwardedClient(t *testing.T) {
 		return response.Code
 	}
 
-	// One client behind the proxy exhausts its own budget.
+	// One client behind the proxy exhausts its own budget. The loop is sized from the limit itself:
+	// written as a bare number it would quietly stop testing anything the next time the limit moved.
 	var exhausted bool
-	for range 60 {
+	for range generalRequestsPerMinute + 1 {
 		if spend("192.0.2.10:1234", "198.51.100.7") == http.StatusTooManyRequests {
 			exhausted = true
 			break
@@ -904,7 +905,7 @@ func TestRateLimitBucketsAreKeyedPerForwardedClient(t *testing.T) {
 		return response.Code
 	}
 	limited := false
-	for range 60 {
+	for range generalRequestsPerMinute + 1 {
 		if spendDirect() == http.StatusTooManyRequests {
 			limited = true
 			break
@@ -1055,13 +1056,13 @@ func TestWorldPageIsServedBeforeAnyReleaseIsPublished(t *testing.T) {
 	}
 }
 
-// The operator met "rate limit exceeded" while reading an administration page. The limiter has
-// applied to every route since the first commit, and an admin page is not one request: it is the
-// page, its assets, a status poll, and a dock that polls while open - all from one address, against
-// a bucket of 40 a minute. Administration is already gated by the trusted proxy, the identity
-// header, the admin token and CSRF; a limiter behind all four protects nothing and blocks the only
-// person entitled to be there.
-func TestAdministrationIsNotRateLimited(t *testing.T) {
+// The operator met "rate limit exceeded" while working, twice. Not because administration needs
+// excusing from the limiter, but because the limit was 40 a minute - about thirty times tighter than
+// an ordinary web ceiling - and real use is never one request: a page, its assets, a status poll, a
+// dock that polls while open, and around twenty tiles for a single map view. This holds the fixed
+// limit to the standard it was raised to meet: sustained ordinary use must not trip it, on any route,
+// with no carve-outs to remember.
+func TestOrdinaryUseDoesNotTripTheRateLimit(t *testing.T) {
 	server := testServer(t)
 
 	for index := range 200 {
@@ -1069,6 +1070,16 @@ func TestAdministrationIsNotRateLimited(t *testing.T) {
 		server.Handler().ServeHTTP(response, adminTestRequest(http.MethodGet, "/admin", nil))
 		if response.Code == http.StatusTooManyRequests {
 			t.Fatalf("admin request %d was rate limited", index+1)
+		}
+	}
+	// The players' map is the route that met the wall today, so it is in here now.
+	for range 200 {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/worlds/Midgard/map/tiles/deadbeef/0/0/0.png", nil)
+		request.RemoteAddr = "203.0.113.44:5555"
+		server.Handler().ServeHTTP(response, request)
+		if response.Code == http.StatusTooManyRequests {
+			t.Fatal("a map view spends more than the limit allows")
 		}
 	}
 	for _, asset := range []string{"/assets/site.css", "/assets/admin-agent.js", "/assets/admin-dock.js"} {
@@ -1086,7 +1097,7 @@ func TestAdministrationIsNotRateLimited(t *testing.T) {
 func TestAnonymousTrafficIsStillLimited(t *testing.T) {
 	server := testServer(t)
 	limited := false
-	for range 200 {
+	for range generalRequestsPerMinute + 1 {
 		request := httptest.NewRequest(http.MethodGet, "/", nil)
 		request.RemoteAddr = "203.0.113.9:5555"
 		response := httptest.NewRecorder()
