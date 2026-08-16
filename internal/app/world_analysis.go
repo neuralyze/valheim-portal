@@ -49,6 +49,11 @@ type pageBuilder struct {
 	Pieces   int
 	Clusters int
 	Colour   string
+	// FocusX and FocusZ are the centre of this builder's largest site. A colour on a 20 km map is
+	// not findable by eye, so the legend can take the operator there instead.
+	FocusX  float32
+	FocusZ  float32
+	Locable bool
 }
 
 // builderColours is the only palette. The page serves each builder's colour to the canvas alongside
@@ -109,14 +114,23 @@ func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
 			labels = map[int64]string{}
 		}
 		pieces, clusters := map[int64]int{}, map[int64]int{}
+		// The largest site is where a builder is most worth looking at, and it is the one place a
+		// legend row can send the view that is certain to have something on it.
+		largest := map[int64]worldintel.Cluster{}
 		for _, cluster := range snapshots[0].Clusters {
 			pieces[cluster.Creator] += cluster.Pieces
 			clusters[cluster.Creator]++
+			if best, seen := largest[cluster.Creator]; !seen || cluster.Pieces > best.Pieces {
+				largest[cluster.Creator] = cluster
+			}
 		}
 		// Both halves of what the canvas needs: what to call a builder and what colour to draw it.
 		styles := map[string]map[string]string{}
 		for creator, count := range pieces {
 			entry := pageBuilder{Creator: creator, Pieces: count, Clusters: clusters[creator], Colour: builderColour(creator)}
+			if site, ok := largest[creator]; ok {
+				entry.FocusX, entry.FocusZ, entry.Locable = site.Center.X, site.Center.Z, true
+			}
 			if label, ok := labels[creator]; ok {
 				entry.Label = label
 				entry.Named = true
@@ -501,6 +515,7 @@ const worldAnalysisTemplate = `<!doctype html>
 <span class="map-builder-swatch" style="background:{{.Colour}}"></span>
 <span class="map-builder-name{{if not .Named}} map-builder-unnamed{{end}}">{{.Label}}</span>
 <span class="map-builder-count">{{.Pieces}} pieces · {{.Clusters}} site(s)</span>
+{{if .Locable}}<button type="button" class="map-builder-locate" data-locate="{{.Creator}}" data-locate-x="{{.FocusX}}" data-locate-z="{{.FocusZ}}" title="Take the map to this builder's largest site">Show</button>{{end}}
 </summary>
 <form method="post" action="/admin/worlds/{{$.World.Name}}/builders">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">

@@ -1102,6 +1102,12 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
 .map-builder-name { flex: 1 1 auto; font-weight: 600; }
 .map-builder-unnamed { font-weight: 400; font-style: italic; color: var(--site-muted); }
 .map-builder-count { flex: 0 0 auto; color: var(--site-muted); font-variant-numeric: tabular-nums; }
+.map-builder-locate {
+  flex: 0 0 auto;
+  padding: .1rem .35rem;
+  font-size: .68rem;
+  line-height: 1.4;
+}
 .map-builder form {
   display: flex;
   flex-wrap: wrap;

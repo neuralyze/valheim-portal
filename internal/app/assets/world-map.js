@@ -25,6 +25,9 @@
   const TERRAIN_TEXTURE_RESOLUTION = 1_536;
   const TERRAIN_PATTERN_TILE = 36;
   const ZONE_SIZE = 64;
+  // The playable grid: 10,000 m of world divided into 64 m zones. Anything past this is the game's
+  // far-away bookkeeping, not a place.
+  const MAX_ZONE_INDEX = 164;
   const ZONE_DETAIL_SCALE = 0.18;
   const COVERAGE_VISIBLE_SCALE = 0.35;
   const COVERAGE_FULL_SCALE = 0.8;
@@ -827,6 +830,9 @@
     context.fillStyle = colors.zone;
     for (let index = 0; index < zones.length && drawn < MAX_ZONE_MARKS; index += overviewStride) {
       const zone = zones[index];
+      // The game parks global objects in a zone at 1,000,000 metres. Real bookkeeping, nowhere
+      // anybody walked, so it is neither shaded nor counted as explored.
+      if (Math.abs(zone.x) > MAX_ZONE_INDEX || Math.abs(zone.y) > MAX_ZONE_INDEX) continue;
       const worldX = zone.x * ZONE_SIZE;
       const worldZ = zone.y * ZONE_SIZE;
       if (worldX < bounds.minX || worldX > bounds.maxX || worldZ < bounds.minZ || worldZ > bounds.maxZ) continue;
@@ -838,8 +844,11 @@
         context.globalAlpha = 0.24;
         context.strokeRect(pixelX - size / 2, pixelY - size / 2, size, size);
       } else {
-        context.globalAlpha = 0.3;
-        context.fillRect(pixelX - 1, pixelY - 1, 2, 2);
+        // Zoomed out a zone is under a pixel, but the question is "how much of the map have we
+        // seen", so it stays filled at a floor of one pixel rather than becoming a dot.
+        const size = Math.max(1, ZONE_SIZE * state.scale);
+        context.globalAlpha = 0.16;
+        context.fillRect(pixelX - size / 2, pixelY - size / 2, size, size);
       }
       drawn += 1;
     }
@@ -852,9 +861,12 @@
     const bounds = visibleBounds(2);
     const denominator = Math.log1p(Math.max(1, coverage.max_pieces));
     context.save();
-    context.fillStyle = colors.build;
-    context.strokeStyle = colors.build;
     for (const cell of coverage.cells || []) {
+      // The cell draws in whoever built most of it. This is the layer an operator sees as "the
+      // constructions", so colouring only the cluster glyphs changed nothing anybody could see.
+      const cellColour = builderColour(cell.creator);
+      context.fillStyle = cellColour;
+      context.strokeStyle = cellColour;
       const minX = cell.x * coverage.cell_size;
       const minZ = cell.z * coverage.cell_size;
       const maxX = minX + coverage.cell_size;
@@ -886,15 +898,26 @@
       context.save();
       context.beginPath();
       context.arc(pixelX, pixelY, Math.max(3, radius), 0, Math.PI * 2);
-      context.fillStyle = colors.build;
+      const builder = builderColour(cluster.creator);
+      context.fillStyle = builder;
       context.globalAlpha = coverageVisible ? 0.06 : 0.16;
       context.fill();
-      context.strokeStyle = colors.build;
+      context.strokeStyle = builder;
       context.globalAlpha = coverageVisible ? 0.24 : 0.42;
       context.lineWidth = 1;
       context.stroke();
       context.restore();
-      drawGlyph('cluster', pixelX, pixelY, markerSize(), colors.build);
+      drawGlyph('cluster', pixelX, pixelY, markerSize(), builder);
+      // Close in, the shape says whose it is without a trip to the legend.
+      if (state.scale >= COVERAGE_FULL_SCALE) {
+        context.save();
+        context.fillStyle = builder;
+        context.globalAlpha = 0.85;
+        context.font = '600 11px system-ui, sans-serif';
+        context.textAlign = 'center';
+        context.fillText(builderName(cluster.creator), pixelX, pixelY - markerSize() - 3);
+        context.restore();
+      }
       drawn += 1;
     }
   }
@@ -1337,6 +1360,14 @@
     } else if (data.aggregate) {
       lines.push(`aggregated pieces: ${data.pieces}`, `coverage cell: ${data.cell_size} m × ${data.cell_size} m`);
     }
+    if (data.creator !== undefined || data.aggregate) {
+      // Naming the builder is the point of the colour: over terrain, at map scale, a hue alone does
+      // not answer "whose is this".
+      lines.push(`builder: ${builderName(data.creator || 0)}`);
+      if (data.builders > 1) {
+        lines.push(`shared with ${data.builders - 1} other builder(s) - the colour shows the majority`);
+      }
+    }
     if (data.name) lines.push(`name: ${data.name}`);
     if (data.generated !== undefined) lines.push(`generated: ${data.generated ? 'yes' : 'not yet'}`);
     if (data.id !== undefined) lines.push(`id: ${data.id}`);
@@ -1517,6 +1548,25 @@
   canvas.addEventListener('pointercancel', () => {
     state.drag = null;
   });
+  for (const button of document.querySelectorAll('[data-locate]')) {
+    button.addEventListener('click', (event) => {
+      // The button sits inside a <summary>, which would otherwise toggle the row open on a click
+      // that only asked to look at the map.
+      event.preventDefault();
+      event.stopPropagation();
+      const x = Number(button.getAttribute('data-locate-x'));
+      const z = Number(button.getAttribute('data-locate-z'));
+      if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+      state.x = x;
+      state.z = z;
+      // Close enough that the coverage layer paints, which is what makes a builder visible at all.
+      state.scale = Math.max(state.scale, COVERAGE_FULL_SCALE);
+      const layer = document.querySelector('[data-layer=clusters]');
+      if (layer && !layer.checked) layer.click();
+      canvas.focus();
+      requestDraw();
+    });
+  }
   canvas.addEventListener('wheel', (event) => {
     event.preventDefault();
     const rect = canvas.getBoundingClientRect();
