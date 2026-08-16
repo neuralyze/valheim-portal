@@ -292,3 +292,31 @@ func TestOneCharacterSeesOnlyItsOwnMap(t *testing.T) {
 		t.Errorf("as a character with no report: %+v, want nothing", asStranger.Locations)
 	}
 }
+
+// The reporter writes a filename-safe name, so "Ai Test" arrives as "Ai_Test". The server plugin
+// recorded the real one when that character connected, and the selector should show that instead.
+func TestTheSelectorPrefersTheNameTheServerRecorded(t *testing.T) {
+	server := testServer(t)
+	world := "Midgard"
+	if err := os.MkdirAll(server.explorationRoot(world), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(server.explorationRoot(world), "765611-484206363.explored"),
+		buildReport(t, world, 484206363, 64, 10, [][2]int{{32, 32}}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	identities := filepath.Join(server.cfg.MapSourceRoot, world, "config_merged")
+	if err := os.MkdirAll(identities, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(identities, "player_identities.json"),
+		[]byte(`{"schema":1,"players":[{"player_id":484206363,"name":"Ai Test"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	reporters := server.explorationReporters(world)
+
+	if len(reporters) != 1 || reporters[0].Name != "Ai Test" {
+		t.Errorf("reporters = %+v, want the server's spelling", reporters)
+	}
+}

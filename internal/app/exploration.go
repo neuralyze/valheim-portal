@@ -204,6 +204,7 @@ func (s *Server) explorationReporters(world string) []explorationReporter {
 	if err != nil {
 		return nil
 	}
+	reported := s.reportedPlayerNames(world)
 	var reporters []explorationReporter
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".explored") {
@@ -213,7 +214,13 @@ func (s *Server) explorationReporters(world string) []explorationReporter {
 		if err != nil || report.PlayerID == 0 {
 			continue
 		}
-		name := report.PlayerName
+		// The reporter sanitises the name into a filename-safe form, so "Ai Test" arrives as "Ai_Test".
+		// The server plugin recorded the real one when that character connected, so prefer it and keep
+		// the report's version as the fallback for a character the server has not seen.
+		name := reported[report.PlayerID]
+		if name == "" {
+			name = report.PlayerName
+		}
 		if name == "" {
 			name = "character " + strconv.FormatInt(report.PlayerID, 10)
 		}
