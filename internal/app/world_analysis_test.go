@@ -258,3 +258,49 @@ func TestNamingTheUnattributedPileIsRefused(t *testing.T) {
 		t.Errorf("stored %q against pieces with no builder id", name)
 	}
 }
+
+// The naming form belongs beside the summary, not inside it. A misplaced </summary> put the whole form
+// into the summary's first grid column, which squeezed every builder name to a one-letter column and
+// made the rows 130 px tall - and the row with the longest name 229 px.
+func TestTheBuilderRowKeepsItsFormOutsideTheSummary(t *testing.T) {
+	server := testServer(t)
+	world := "Midgard"
+	if err := server.store.UpsertPublicWorld(t.Context(), PublicWorld{
+		Name: world, JoinAddress: "valheim.example.test:2456", Status: "online",
+	}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	page := renderBuilderLegend(t, server, world)
+
+	summaryStart := strings.Index(page, "<summary>")
+	summaryEnd := strings.Index(page, "</summary>")
+	formStart := strings.Index(page, "<form method=\"post\" action=\"/admin/worlds/"+world+"/builders\"")
+	if summaryStart < 0 || summaryEnd < 0 || formStart < 0 {
+		t.Fatalf("legend markup missing: summary %d..%d, form %d", summaryStart, summaryEnd, formStart)
+	}
+	if formStart < summaryEnd {
+		t.Error("the naming form is inside the summary, which breaks the row layout")
+	}
+}
+
+// renderBuilderLegend renders the operator's map page with one builder present.
+func renderBuilderLegend(t *testing.T, server *Server, world string) string {
+	t.Helper()
+	page := worldAnalysisPage{
+		World:        PublicWorld{Name: world},
+		HaveAnalysis: true,
+		Admin:        true,
+		DataBase:     "/admin/worlds/" + world,
+		LabelsJSON:   "{}",
+		Builders: []pageBuilder{{
+			Creator: 111, Label: "builder 0111", Pieces: 5, Clusters: 1,
+			Colour: "#6f9ad6", Nameable: true, Locable: true,
+		}},
+	}
+	recorder := httptest.NewRecorder()
+	render(recorder, worldAnalysisTemplate, page)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("render = %d", recorder.Code)
+	}
+	return recorder.Body.String()
+}

@@ -1107,7 +1107,6 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
   grid-row: 1;
   min-width: 0;
   font-weight: 600;
-  overflow-wrap: anywhere;
 }
 .map-builder-source {
   font-weight: 400;

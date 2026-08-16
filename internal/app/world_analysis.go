@@ -572,6 +572,7 @@ const worldAnalysisTemplate = `<!doctype html>
 <span class="map-builder-name{{if not .Named}} map-builder-unnamed{{end}}"{{if .Reported}} title="the character name the game reported for this player id"{{end}}>{{.Label}}{{if .Reported}} <span class="map-builder-source">from the server</span>{{end}}</span>
 <span class="map-builder-count">{{.Pieces}} pieces · {{.Clusters}} site(s)</span>
 {{if .Locable}}<button type="button" class="map-builder-locate" data-locate="{{.Creator}}" data-locate-x="{{.FocusX}}" data-locate-z="{{.FocusZ}}" title="Take the map to this builder's largest site">Show</button>{{end}}
+</summary>
 {{if and .Nameable $.Admin}}<form method="post" action="/admin/worlds/{{$.World.Name}}/builders">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <input type="hidden" name="creator" value="{{.Creator}}">
