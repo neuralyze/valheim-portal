@@ -3,11 +3,16 @@ package app
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"fmt"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // buildReport writes what the plugin writes: a readable header line, then the player's grid as a
@@ -156,5 +161,64 @@ func TestPlayerIDComesFromTheReportName(t *testing.T) {
 		if _, err := playerIDFromReportName(bad); err == nil {
 			t.Errorf("%q was accepted", bad)
 		}
+	}
+}
+
+// The upload is authorised by the profile-scoped token an ordinary sync already holds, and the account
+// comes from that token rather than the payload: a client may say which character it is, never whose
+// account. The character id comes from the file name, so two characters on one account keep two maps.
+func TestExplorationUploadStoresPerAccountAndCharacter(t *testing.T) {
+	server := testServer(t)
+	release := Release{ID: "exploration-release", World: "Ashlands", Profile: "raiders", ClientType: "flat", Version: "1.0.0", Notes: "exploration"}
+	publishProfile(t, server, release)
+	if err := server.store.GrantWorldAccess(context.Background(), release.World, testSteamID, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	base := deviceTokenClaims{SteamID: testSteamID, World: release.World, Profile: release.Profile, ClientType: release.ClientType, ReleaseID: release.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	profileToken := server.mintDeviceToken(deviceTokenClaims{SteamID: base.SteamID, World: base.World, Profile: base.Profile, ClientType: base.ClientType, ReleaseID: base.ReleaseID, Scope: deviceTokenScopeProfile, ExpiresAt: base.ExpiresAt})
+	diagnosticsToken := server.mintDeviceToken(deviceTokenClaims{SteamID: base.SteamID, World: base.World, Profile: base.Profile, ClientType: base.ClientType, ReleaseID: base.ReleaseID, Scope: deviceTokenScopeDiagnostics, ExpiresAt: base.ExpiresAt})
+	target := "/client/exploration/" + release.World + "/" + release.Profile + "/" + release.ClientType
+
+	post := func(token, field, filename string, payload []byte) int {
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		part, err := form.CreateFormFile(field, filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(payload); err != nil {
+			t.Fatal(err)
+		}
+		if err := form.Close(); err != nil {
+			t.Fatal(err)
+		}
+		request := httptest.NewRequest(http.MethodPost, target, &body)
+		request.Header.Set("Content-Type", form.FormDataContentType())
+		request.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		return response.Code
+	}
+
+	report := buildReport(t, release.World, 111, 64, 10, [][2]int{{32, 32}})
+	if code := post(profileToken, "explored", release.World+"-111.explored", report); code != http.StatusCreated {
+		t.Fatalf("upload with the profile token = %d, want 201", code)
+	}
+	// The diagnostics scope is for a different, operator-initiated flow and must not carry a map.
+	if code := post(diagnosticsToken, "explored", release.World+"-111.explored", report); code != http.StatusUnauthorized {
+		t.Errorf("upload with the diagnostics token = %d, want 401", code)
+	}
+	// A name that carries no character is refused rather than filed under a guess.
+	if code := post(profileToken, "explored", "nonsense.explored", report); code != http.StatusBadRequest {
+		t.Errorf("upload with no player id in the name = %d, want 400", code)
+	}
+
+	stored := filepath.Join(server.cfg.MapSourceRoot, release.World, "exploration", testSteamID+"-111.explored")
+	if _, err := os.Stat(stored); err != nil {
+		t.Fatalf("report not stored under the account and character: %v", err)
+	}
+	// And it is readable as what it claims to be, which is what the map will do with it.
+	if mask := server.explorationUnion(release.World); mask == nil || mask.Players != 1 {
+		t.Errorf("mask = %+v, want one player's map", mask)
 	}
 }
