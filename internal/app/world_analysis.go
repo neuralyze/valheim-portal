@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -21,6 +23,45 @@ type worldAnalysisPage struct {
 	Backup       string
 	AnalyzedAt   string
 	CSRF         string
+	// Builders is every creator id the snapshot found, with the name an operator gave it, how many
+	// pieces it placed, and the colour the map draws it in. Valheim stamps a player id on each
+	// piece and nothing resolves that to a person - names live in client character files - so the
+	// operator names each one once and the portal remembers.
+	Builders []pageBuilder
+	// LabelsJSON is the same names as a JSON object, so the canvas can label a cluster without a
+	// second request.
+	LabelsJSON string
+}
+
+type pageBuilder struct {
+	Creator  int64
+	Label    string
+	Pieces   int
+	Clusters int
+	Colour   string
+}
+
+// builderColours mirrors BUILDER_COLOURS in world-map.js. The map draws from the script and the
+// legend from here, so a mismatch would tell an operator the wrong person owns a base.
+var builderColours = []string{"#6f9ad6", "#71c492", "#d9a514", "#c46f9a", "#7ad6cf", "#d6a06f", "#a58fd6", "#8fd66f"}
+
+func builderColour(creator int64) string {
+	if creator == 0 {
+		return "#9aa8a0"
+	}
+	n := creator % 100000
+	if n < 0 {
+		n = -n
+	}
+	return builderColours[n%int64(len(builderColours))]
+}
+
+func builderFallbackName(creator int64) string {
+	n := creator % 10000
+	if n < 0 {
+		n = -n
+	}
+	return fmt.Sprintf("builder %04d", n)
 }
 
 func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
@@ -39,10 +80,39 @@ func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "world analysis unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	page := worldAnalysisPage{World: info, HaveAnalysis: len(snapshots) > 0, CSRF: s.csrfCookie(w, r)}
+	page := worldAnalysisPage{World: info, HaveAnalysis: len(snapshots) > 0, CSRF: s.csrfCookie(w, r), LabelsJSON: "{}"}
 	if len(snapshots) > 0 {
 		page.Backup = snapshots[0].Source.Backup
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
+		labels, labelErr := s.store.BuilderLabels(r.Context(), world)
+		if labelErr != nil {
+			labels = map[int64]string{}
+		}
+		pieces, clusters := map[int64]int{}, map[int64]int{}
+		for _, cluster := range snapshots[0].Clusters {
+			pieces[cluster.Creator] += cluster.Pieces
+			clusters[cluster.Creator]++
+		}
+		named := map[string]string{}
+		for creator, count := range pieces {
+			entry := pageBuilder{Creator: creator, Pieces: count, Clusters: clusters[creator], Colour: builderColour(creator)}
+			if label, ok := labels[creator]; ok {
+				entry.Label = label
+				named[strconv.FormatInt(creator, 10)] = label
+			} else {
+				entry.Label = builderFallbackName(creator)
+			}
+			page.Builders = append(page.Builders, entry)
+		}
+		sort.Slice(page.Builders, func(i, j int) bool {
+			if page.Builders[i].Pieces != page.Builders[j].Pieces {
+				return page.Builders[i].Pieces > page.Builders[j].Pieces
+			}
+			return page.Builders[i].Creator < page.Builders[j].Creator
+		})
+		if encoded, encodeErr := json.Marshal(named); encodeErr == nil {
+			page.LabelsJSON = string(encoded)
+		}
 	}
 	render(w, worldAnalysisTemplate, page)
 }
@@ -395,6 +465,18 @@ const worldAnalysisTemplate = `<!doctype html>
 </header>
 <main class="map-layout">
 <aside class="map-sidebar map-controls" aria-label="Map controls">
+{{if .Builders}}<fieldset class="map-builders">
+<legend>Builders</legend>
+<p class="map-hint">Valheim stamps a player id on every piece, and nothing resolves that to a person - character names live on each player's own machine. Name one here and the map remembers it.</p>
+{{range .Builders}}<form class="map-builder" method="post" action="/admin/worlds/{{$.World.Name}}/builders">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<input type="hidden" name="creator" value="{{.Creator}}">
+<span class="map-builder-swatch" style="background:{{.Colour}}"></span>
+<input type="text" name="label" value="{{.Label}}" maxlength="40" aria-label="name for builder {{.Creator}}">
+<span class="map-builder-count">{{.Pieces}} pieces · {{.Clusters}} site(s)</span>
+<button type="submit">Save</button>
+</form>{{end}}
+</fieldset>{{end}}
 <fieldset>
 <legend>Map layers</legend>
 <label class="map-layer"><input type="checkbox" data-layer="terrain" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Terrain and biomes</span></label>
@@ -479,3 +561,40 @@ const worldAnalysisTemplate = `<!doctype html>
 {{if .HaveAnalysis}}<script src="/assets/world-map.js?v=map-pyramid-v1" defer></script>{{end}}
 </body>
 </html>`
+
+// nameBuilder records what the operator calls one builder, or clears the name when the field is
+// emptied. The id itself is never editable: it is what Valheim stamped on the pieces, and the label is
+// only the portal's note about who that is.
+func (s *Server) nameBuilder(w http.ResponseWriter, r *http.Request) {
+	world := r.PathValue("world")
+	if !validWorld(world) {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := s.store.PublicWorld(r.Context(), world); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	creator, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("creator")), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid builder id", http.StatusBadRequest)
+		return
+	}
+	actor := r.Header.Get("X-Portal-Actor")
+	label := r.FormValue("label")
+	// A label the operator did not change is the fallback the page rendered, and storing that would
+	// turn a placeholder into an assertion about who built something.
+	if strings.TrimSpace(label) == builderFallbackName(creator) {
+		label = ""
+	}
+	if err := s.store.SetBuilderLabel(r.Context(), world, creator, label, actor); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_ = s.store.Audit(r.Context(), actor, "world.builder.named", world, fmt.Sprintf("%d = %q", creator, strings.TrimSpace(label)))
+	http.Redirect(w, r, "/admin/worlds/"+world+"/map", http.StatusSeeOther)
+}

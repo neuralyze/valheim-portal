@@ -54,7 +54,18 @@ func installedApplicationPath() (string, error) {
 
 // shortcutIconPath prefers the installed copy, so the shortcut's icon survives the download being
 // cleaned up or replaced by a newer one.
+// shortcutIconPath returns the path a shortcut should draw its icon from: the stable .ico beside the
+// profile store when it can be written, and the running executable only as a fallback. The executable
+// carries a perfectly good icon; what it does not carry is a path that survives the player replacing
+// their download, which is what left shortcuts blank.
 func shortcutIconPath(current string) string {
+	if icon, err := stableIconPath(); err == nil {
+		return icon
+	}
+	return shortcutIconPathFallback(current)
+}
+
+func shortcutIconPathFallback(current string) string {
 	installed, err := installedApplicationPath()
 	if err != nil {
 		return current

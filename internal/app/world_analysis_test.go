@@ -112,3 +112,76 @@ func TestTerrainIsReusedWhenTheSeedAndVersionMatch(t *testing.T) {
 		t.Error("terrain from an older worldgen version was reused")
 	}
 }
+
+// Valheim stamps a player id on every piece and nothing resolves it to a person, so the operator
+// names a builder once and the portal remembers. The id is never editable: it is evidence, and the
+// label is only the portal's note about who that is.
+func TestNamingABuilderIsRememberedAndAudited(t *testing.T) {
+	server := testServer(t)
+	if err := server.store.UpsertPublicWorld(t.Context(), PublicWorld{
+		Name: "Midgard", JoinAddress: "valheim.example.test:2456", Status: "online",
+	}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	const nonce = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	post := func(label string) *httptest.ResponseRecorder {
+		form := url.Values{"creator": {"308095166"}, "label": {label}}
+		form.Set("csrf", server.csrfToken(nonce))
+		request := adminTestRequest(http.MethodPost, "/admin/worlds/Midgard/builders", strings.NewReader(form.Encode()))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request.Header.Set("X-Portal-Actor", "operator")
+		request.AddCookie(&http.Cookie{Name: "portal_csrf", Value: nonce, Path: "/admin"})
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, request)
+		return response
+	}
+
+	if code := post("Jarn").Code; code != http.StatusSeeOther {
+		t.Fatalf("naming a builder = %d, want 303", code)
+	}
+	labels, err := server.store.BuilderLabels(t.Context(), "Midgard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if labels[308095166] != "Jarn" {
+		t.Errorf("stored labels = %v, want the name that was given", labels)
+	}
+
+	// Clearing the field forgets the name rather than storing an empty one.
+	if code := post("").Code; code != http.StatusSeeOther {
+		t.Fatalf("clearing a name = %d, want 303", code)
+	}
+	labels, err = server.store.BuilderLabels(t.Context(), "Midgard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, still := labels[308095166]; still {
+		t.Error("the name survived being cleared")
+	}
+}
+
+// The placeholder the page renders must never be stored as if the operator had chosen it: that would
+// turn "we do not know" into an assertion about who built something.
+func TestSavingThePlaceholderStoresNothing(t *testing.T) {
+	server := testServer(t)
+	if err := server.store.UpsertPublicWorld(t.Context(), PublicWorld{
+		Name: "Midgard", JoinAddress: "valheim.example.test:2456", Status: "online",
+	}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	const nonce = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	form := url.Values{"creator": {"308095166"}, "label": {builderFallbackName(308095166)}}
+	form.Set("csrf", server.csrfToken(nonce))
+	request := adminTestRequest(http.MethodPost, "/admin/worlds/Midgard/builders", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: "portal_csrf", Value: nonce, Path: "/admin"})
+	server.Handler().ServeHTTP(httptest.NewRecorder(), request)
+
+	labels, err := server.store.BuilderLabels(t.Context(), "Midgard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(labels) != 0 {
+		t.Errorf("the placeholder was stored as a name: %v", labels)
+	}
+}

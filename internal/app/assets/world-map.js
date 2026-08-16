@@ -47,6 +47,27 @@
     return value;
   }
 
+
+  // One colour per builder, chosen from the creator id so it is stable across reloads and worlds.
+  // Every cluster used to be drawn in one colour, so a map could show that somebody had built
+  // something and never that it was two different people - which is how an operator ends up
+  // wondering whether a stranger has been on the server.
+  const BUILDER_COLOURS = [
+    '#6f9ad6', '#71c492', '#d9a514', '#c46f9a', '#7ad6cf', '#d6a06f', '#a58fd6', '#8fd66f'
+  ];
+
+  function builderColour(creator) {
+    if (!creator) return colors.build;
+    // A small stable hash: the id is a 64-bit number arriving as a JS double, so fold it.
+    const n = Math.abs(Number(creator) % 100000);
+    return BUILDER_COLOURS[n % BUILDER_COLOURS.length];
+  }
+
+  function builderName(creator) {
+    if (!creator) return 'unattributed';
+    const labels = window.__builderLabels || {};
+    return labels[String(creator)] || ('builder ' + String(Math.abs(Number(creator) % 10000)).padStart(4, '0'));
+  }
   const colors = {
     canvas: token('--map-canvas'),
     grid: token('--map-grid'),

@@ -252,3 +252,43 @@ func TestConstructionCoverageExtendsSnapshotJSONCompatibly(t *testing.T) {
 		t.Fatalf("coverage JSON round trip = %#v", roundTrip.ConstructionCoverage)
 	}
 }
+
+// Two people building in one valley must be two clusters, or colouring them by builder means nothing
+// and the map cannot answer "who built that".
+func TestClustersSeparatePerBuilder(t *testing.T) {
+	points := []constructionPoint{}
+	for i := range 6 {
+		points = append(points, constructionPoint{Position: Vec3{X: float32(10 + i), Z: 10}, Creator: 111})
+		points = append(points, constructionPoint{Position: Vec3{X: float32(10 + i), Z: 12}, Creator: 222})
+	}
+
+	clusters := aggregateConstructionClusters(points)
+
+	creators := map[int64]int{}
+	for _, cluster := range clusters {
+		creators[cluster.Creator] += cluster.Pieces
+	}
+	if len(creators) != 2 {
+		t.Fatalf("clusters carry %d creators, want 2: %+v", len(creators), clusters)
+	}
+	for creator, pieces := range creators {
+		if pieces != 6 {
+			t.Errorf("creator %d has %d pieces, want 6", creator, pieces)
+		}
+	}
+}
+
+// One builder in two distant places is still two sites, which is what makes a legend count useful.
+func TestOneBuilderInTwoPlacesIsTwoClusters(t *testing.T) {
+	points := []constructionPoint{}
+	for i := range 4 {
+		points = append(points, constructionPoint{Position: Vec3{X: float32(i), Z: 0}, Creator: 777})
+		points = append(points, constructionPoint{Position: Vec3{X: float32(2000 + i), Z: 2000}, Creator: 777})
+	}
+
+	clusters := aggregateConstructionClusters(points)
+
+	if len(clusters) != 2 {
+		t.Fatalf("one builder in two valleys produced %d clusters, want 2", len(clusters))
+	}
+}

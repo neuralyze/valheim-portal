@@ -276,6 +276,29 @@ INSERT INTO schema_migrations(version, applied_at) VALUES (17, CURRENT_TIMESTAMP
 		}
 	}
 
+	// Valheim stamps a player id on every piece somebody builds, and nothing anywhere resolves that
+	// number to a person: player names live in client character files, and the server log records
+	// per-session ZDO ids rather than the stable id. So the operator names a builder once and the
+	// portal remembers it - computed where it can be, asked once where it cannot.
+	var builderLabelSchema int
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=19)`).Scan(&builderLabelSchema); err != nil {
+		return err
+	}
+	if builderLabelSchema == 0 {
+		if _, err := s.db.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS builder_labels (
+  world TEXT NOT NULL,
+  creator INTEGER NOT NULL,
+  label TEXT NOT NULL,
+  actor TEXT NOT NULL DEFAULT '',
+  set_at TEXT NOT NULL,
+  PRIMARY KEY (world, creator)
+);
+INSERT INTO schema_migrations(version, applied_at) VALUES (19, CURRENT_TIMESTAMP);`); err != nil {
+			return err
+		}
+	}
+
 	// mod_add and mod_custom_add are refused by the agent without a scope of exactly "shared" or
 	// "client-only", and the verb-call table had nowhere to put one - so those two verbs could not
 	// succeed through the bridge at all, and the refusal said only "invalid mod selection".
@@ -1683,4 +1706,44 @@ func (s *Store) LatestWorldAnalyses(ctx context.Context, world string, limit int
 		snapshots = append(snapshots, snapshot)
 	}
 	return snapshots, rows.Err()
+}
+
+// BuilderLabels maps the creator ids of one world to the names an operator gave them.
+func (s *Store) BuilderLabels(ctx context.Context, world string) (map[int64]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT creator, label FROM builder_labels WHERE world=?`, world)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	labels := map[int64]string{}
+	for rows.Next() {
+		var creator int64
+		var label string
+		if err := rows.Scan(&creator, &label); err != nil {
+			return nil, err
+		}
+		labels[creator] = label
+	}
+	return labels, rows.Err()
+}
+
+// SetBuilderLabel names one builder, or clears the name when the label is empty. Names are bounded
+// and single-line because they are rendered into a map legend and an audit entry.
+func (s *Store) SetBuilderLabel(ctx context.Context, world string, creator int64, label, actor string) error {
+	if !validWorld(world) {
+		return errors.New("invalid world")
+	}
+	label = strings.TrimSpace(label)
+	if len(label) > 40 || strings.ContainsAny(label, "\r\n\x00") {
+		return errors.New("a builder name must be one line of at most 40 characters")
+	}
+	if label == "" {
+		_, err := s.db.ExecContext(ctx, `DELETE FROM builder_labels WHERE world=? AND creator=?`, world, creator)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO builder_labels(world, creator, label, actor, set_at) VALUES(?,?,?,?,?)
+ON CONFLICT(world, creator) DO UPDATE SET label=excluded.label, actor=excluded.actor, set_at=excluded.set_at`,
+		world, creator, label, actor, time.Now().UTC().Format(time.RFC3339Nano))
+	return err
 }

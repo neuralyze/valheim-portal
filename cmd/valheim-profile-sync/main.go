@@ -131,7 +131,19 @@ func registerCurrentProtocol() error {
 	if err != nil {
 		return err
 	}
-	return registerProtocol(executable, runCommand)
+	if err := registerProtocol(executable, runCommand); err != nil {
+		return err
+	}
+	// Repair the shortcuts already on the Desktop, because the whole point of the icon living at a
+	// stable path is that a blank one heals by running the application - the property the removed
+	// self-copy used to provide. Failures here are not the player's problem: the protocol is
+	// registered and the app works, so a shortcut that could not be rewritten is a cosmetic loss.
+	if icon, iconErr := stableIconPath(); iconErr == nil {
+		if desktop, desktopErr := desktopDirectory(); desktopErr == nil {
+			_, _ = repairShortcutIcons(desktop, icon)
+		}
+	}
+	return nil
 }
 
 // runCommand runs reg.exe for URL-protocol registration. Hidden because a
@@ -156,6 +168,12 @@ func registerProtocol(executable string, run commandRunner) error {
 		{"ADD", key, "/ve", "/t", "REG_SZ", "/d", "URL: Valheim Profile Sync Protocol", "/f"},
 		{"ADD", key, "/v", "URL Protocol", "/t", "REG_SZ", "/d", "", "/f"},
 		{"ADD", key + `\shell\open\command`, "/ve", "/t", "REG_SZ", "/d", protocolCommand(absolute), "/f"},
+	}
+	// Windows draws a .url from the protocol handler's DefaultIcon on some builds and from the file's
+	// own IconFile on others. Setting both is one registry write and removes the difference; setting
+	// neither is how a shortcut ends up blank no matter what the file says.
+	if icon, iconErr := stableIconPath(); iconErr == nil && !containsQuote(icon) {
+		commands = append(commands, []string{"ADD", key + `\DefaultIcon`, "/ve", "/t", "REG_SZ", "/d", icon + ",0", "/f"})
 	}
 	for _, arguments := range commands {
 		if err := run("reg.exe", arguments...); err != nil {

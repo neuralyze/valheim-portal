@@ -61,6 +61,9 @@ var adminAgentJS []byte
 //go:embed assets/admin-dock.js
 var adminDockJS []byte
 
+//go:embed assets/builder-labels.js
+var builderLabelsJS []byte
+
 //go:embed assets/site.css
 var siteCSS []byte
 
@@ -229,6 +232,12 @@ func (s *Server) routes() {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Write(adminAgentJS)
 	})
+	s.mux.HandleFunc("GET /assets/builder-labels.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Write(builderLabelsJS)
+	})
 	s.mux.HandleFunc("GET /assets/admin-dock.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -310,6 +319,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /admin/worlds/{world}/map", s.admin(s.worldAnalysisMap))
 	s.mux.HandleFunc("GET /admin/worlds/{world}/analysis.json", s.admin(s.worldAnalysisJSON))
 	s.mux.HandleFunc("POST /admin/worlds/{world}/analysis", s.admin(s.runWorldAnalysis))
+	s.mux.HandleFunc("POST /admin/worlds/{world}/builders", s.admin(s.nameBuilder))
 	s.mux.HandleFunc("GET /admin/worlds/{world}/map/manifest.json", s.admin(s.worldTerrainManifest))
 	s.mux.HandleFunc("GET /admin/worlds/{world}/map/tiles/{key}/{zoom}/{x}/{y}", s.admin(s.worldTerrainTile))
 	s.mux.HandleFunc("GET /admin/worlds/{world}/map/overlays/{source}/{zoom}/{x}/{y}", s.admin(s.worldOverlayTile))

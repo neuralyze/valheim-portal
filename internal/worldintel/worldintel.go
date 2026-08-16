@@ -62,15 +62,20 @@ type Inventory struct {
 	Items   []InventoryItem `json:"items"`
 }
 type Object struct {
-	ID               uint32     `json:"id"`
-	PrefabHash       int32      `json:"prefab_hash"`
-	Prefab           string     `json:"prefab,omitempty"`
-	Category         string     `json:"category"`
-	Position         Vec3       `json:"position"`
-	Persistent       bool       `json:"persistent"`
-	Distant          bool       `json:"distant"`
-	Type             uint8      `json:"type"`
-	ConnectionType   uint8      `json:"connection_type,omitempty"`
+	ID             uint32 `json:"id"`
+	PrefabHash     int32  `json:"prefab_hash"`
+	Prefab         string `json:"prefab,omitempty"`
+	Category       string `json:"category"`
+	Position       Vec3   `json:"position"`
+	Persistent     bool   `json:"persistent"`
+	Distant        bool   `json:"distant"`
+	Type           uint8  `json:"type"`
+	ConnectionType uint8  `json:"connection_type,omitempty"`
+	// Creator is the player id Valheim stamps on a piece somebody built. Generated locations -
+	// Meadows ruins, crypts, villages - carry the same field with the value 0, so presence alone
+	// classified every ruin on the map as player construction and put "our builds" in places
+	// nobody had visited. The value is what separates them, so the value is kept.
+	Creator          int64      `json:"creator,omitempty"`
 	ConnectionHash   int32      `json:"connection_hash,omitempty"`
 	Inventory        *Inventory `json:"inventory,omitempty"`
 	InventoryWarning string     `json:"inventory_warning,omitempty"`
@@ -87,6 +92,10 @@ type Cluster struct {
 	Center Vec3    `json:"center"`
 	Radius float32 `json:"radius"`
 	Pieces int     `json:"pieces"`
+	// Creator is the player id Valheim stamped on the pieces. Clustering used to discard it, so a
+	// map could show that somebody had built something and never which somebody - which is how an
+	// operator ends up asking whether a stranger has been on the server.
+	Creator int64 `json:"creator,omitempty"`
 }
 type CoverageCell struct {
 	X      int `json:"x"`
@@ -764,8 +773,13 @@ func semanticCategory(o *Object, v valueMaps) {
 		o.Category = "creature"
 		return
 	}
-	if has(v.l, "creator") {
-		o.Category = "construction"
+	if creator, ok := v.l[StableHash("creator")]; ok {
+		o.Creator = creator
+		// A zero creator is the game's own handiwork: the field exists on every piece a generated
+		// location placed. Only a real player id means somebody built this.
+		if creator != 0 {
+			o.Category = "construction"
+		}
 		return
 	}
 }
@@ -972,7 +986,7 @@ func finalize(s *Snapshot) {
 	}
 	b := [4]float32{0, 0, 0, 0}
 	first := true
-	construction := make([]Vec3, 0, s.Summary.Categories["construction"])
+	construction := make([]constructionPoint, 0, s.Summary.Categories["construction"])
 	kept := s.Objects[:0]
 	for _, o := range s.Objects {
 		if validPos(o.Position) {
@@ -987,13 +1001,17 @@ func finalize(s *Snapshot) {
 			}
 		}
 		if o.Category == "construction" && validPos(o.Position) {
-			construction = append(construction, o.Position)
+			construction = append(construction, constructionPoint{Position: o.Position, Creator: o.Creator})
 		} else {
 			kept = append(kept, o)
 		}
 	}
 	s.Objects = kept
-	s.ConstructionCoverage = aggregateConstructionCoverage(construction)
+	positions := make([]Vec3, 0, len(construction))
+	for _, point := range construction {
+		positions = append(positions, point.Position)
+	}
+	s.ConstructionCoverage = aggregateConstructionCoverage(positions)
 	s.Clusters = aggregateConstructionClusters(construction)
 	s.Summary.Bounds = b
 	if s.Health.InvalidCoordinates > 0 {
@@ -1047,10 +1065,22 @@ type constructionClusterAccumulator struct {
 	radius float32
 }
 
-func aggregateConstructionClusters(points []Vec3) []Cluster {
-	accumulators := make(map[[2]int]*constructionClusterAccumulator)
-	for _, point := range points {
-		key := constructionCell(point, constructionClusterCell)
+// constructionPoint is a piece and whoever placed it, so clusters can be grouped per builder: two
+// people building in the same valley are two clusters, which is the whole point of colouring them.
+type constructionPoint struct {
+	Position Vec3
+	Creator  int64
+}
+
+func aggregateConstructionClusters(points []constructionPoint) []Cluster {
+	type clusterKey struct {
+		cell    [2]int
+		creator int64
+	}
+	accumulators := make(map[clusterKey]*constructionClusterAccumulator)
+	for _, item := range points {
+		point := item.Position
+		key := clusterKey{cell: constructionCell(point, constructionClusterCell), creator: item.Creator}
 		accumulator := accumulators[key]
 		if accumulator == nil {
 			accumulator = &constructionClusterAccumulator{}
@@ -1061,7 +1091,7 @@ func aggregateConstructionClusters(points []Vec3) []Cluster {
 		accumulator.z += float64(point.Z)
 		accumulator.pieces++
 	}
-	keys := make([][2]int, 0, len(accumulators))
+	keys := make([]clusterKey, 0, len(accumulators))
 	for key, accumulator := range accumulators {
 		if accumulator.pieces >= 3 {
 			keys = append(keys, key)
@@ -1072,15 +1102,18 @@ func aggregateConstructionClusters(points []Vec3) []Cluster {
 		if left.pieces != right.pieces {
 			return left.pieces > right.pieces
 		}
-		if keys[i][0] != keys[j][0] {
-			return keys[i][0] < keys[j][0]
+		if keys[i].cell[0] != keys[j].cell[0] {
+			return keys[i].cell[0] < keys[j].cell[0]
 		}
-		return keys[i][1] < keys[j][1]
+		if keys[i].cell[1] != keys[j].cell[1] {
+			return keys[i].cell[1] < keys[j].cell[1]
+		}
+		return keys[i].creator < keys[j].creator
 	})
 	if len(keys) > maxConstructionClusters {
 		keys = keys[:maxConstructionClusters]
 	}
-	selected := make(map[[2]int]*constructionClusterAccumulator, len(keys))
+	selected := make(map[clusterKey]*constructionClusterAccumulator, len(keys))
 	for _, key := range keys {
 		accumulator := accumulators[key]
 		divisor := float64(accumulator.pieces)
@@ -1091,8 +1124,9 @@ func aggregateConstructionClusters(points []Vec3) []Cluster {
 		}
 		selected[key] = accumulator
 	}
-	for _, point := range points {
-		accumulator := selected[constructionCell(point, constructionClusterCell)]
+	for _, item := range points {
+		point := item.Position
+		accumulator := selected[clusterKey{cell: constructionCell(point, constructionClusterCell), creator: item.Creator}]
 		if accumulator == nil {
 			continue
 		}
@@ -1100,19 +1134,23 @@ func aggregateConstructionClusters(points []Vec3) []Cluster {
 		accumulator.radius = max(accumulator.radius, distance)
 	}
 	sort.Slice(keys, func(i, j int) bool {
-		if keys[i][0] != keys[j][0] {
-			return keys[i][0] < keys[j][0]
+		if keys[i].cell[0] != keys[j].cell[0] {
+			return keys[i].cell[0] < keys[j].cell[0]
 		}
-		return keys[i][1] < keys[j][1]
+		if keys[i].cell[1] != keys[j].cell[1] {
+			return keys[i].cell[1] < keys[j].cell[1]
+		}
+		return keys[i].creator < keys[j].creator
 	})
 	clusters := make([]Cluster, 0, len(keys))
 	for _, key := range keys {
 		accumulator := selected[key]
 		clusters = append(clusters, Cluster{
-			ID:     len(clusters) + 1,
-			Center: accumulator.center,
-			Radius: accumulator.radius,
-			Pieces: accumulator.pieces,
+			ID:      len(clusters) + 1,
+			Center:  accumulator.center,
+			Radius:  accumulator.radius,
+			Pieces:  accumulator.pieces,
+			Creator: key.creator,
 		})
 	}
 	return clusters
