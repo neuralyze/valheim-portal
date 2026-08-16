@@ -208,3 +208,20 @@ func TestTheLegendAndTheCanvasShareOnePalette(t *testing.T) {
 		t.Errorf("fallback name = %q, want it to carry the id", name)
 	}
 }
+
+// Valheim leaves the builder stamp empty on generated structures, so a snapshot carries a pile of
+// pieces nobody is recorded as having placed. The legend used to call that pile "builder 0000", which
+// reads as a player and sends an operator looking for somebody who does not exist.
+func TestUnattributedPiecesAreNotPresentedAsABuilder(t *testing.T) {
+	name := builderFallbackName(0)
+	if strings.HasPrefix(name, "builder ") || strings.ContainsAny(name, "0123456789") {
+		t.Errorf("unattributed pieces are labelled %q, which reads as a numbered player", name)
+	}
+	if !strings.Contains(name, "no builder") {
+		t.Errorf("unattributed pieces are labelled %q, which does not say the record is empty", name)
+	}
+	// And the pile keeps its own colour, so it is never confused with somebody's base.
+	if builderColour(0) == builderColour(308095166) {
+		t.Error("the unattributed pile draws in a builder's colour")
+	}
+}

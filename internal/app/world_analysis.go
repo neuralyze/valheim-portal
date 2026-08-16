@@ -68,6 +68,11 @@ func builderColour(creator int64) string {
 }
 
 func builderFallbackName(creator int64) string {
+	if creator == 0 {
+		// Valheim leaves the stamp empty on generated structures and on pieces whose builder was
+		// never recorded. There is no id to name, so the row says so rather than inventing one.
+		return "no builder recorded"
+	}
 	n := creator % 10000
 	if n < 0 {
 		n = -n

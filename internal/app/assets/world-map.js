@@ -61,9 +61,11 @@
   }
 
   function builderColour(creator) {
-    if (!creator) return colors.build;
-    const style = builderStyle(creator);
+    // The page decides, including for the unattributed pile: a legend swatch and the cell it
+    // describes have to be the same colour or the legend is lying about the map.
+    const style = builderStyle(creator || 0);
     if (style && style.colour) return style.colour;
+    if (!creator) return colors.build;
     // A small stable hash: the id is a 64-bit number arriving as a JS double, so fold it.
     const n = Math.abs(Number(creator) % 100000);
     return BUILDER_COLOURS[n % BUILDER_COLOURS.length];
