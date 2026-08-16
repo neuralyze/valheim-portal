@@ -1485,6 +1485,14 @@
         consider('settlement cluster', cluster.center.x, cluster.center.z, cluster);
       }
     }
+    // Pins are the labels players put on the world themselves, so they are the thing most worth being
+    // able to click. They are considered before the object layers, and with the same hit radius, so a
+    // pin sitting on top of a chest still wins on the pixel nearest the pointer.
+    if (state.layers.pins) {
+      for (const pin of (state.data.pins || [])) {
+        consider('player pin', pin.x, pin.z, pin);
+      }
+    }
     const worldRadius = HIT_RADIUS_PIXELS / state.scale;
     const [groundX, groundZ] = ground(pixelX, pixelY);
     for (const layer of objectLayers) {
@@ -1536,6 +1544,13 @@
       lines.push(`clustered markers: ${data.aggregate_count}`);
     } else if (data.aggregate) {
       lines.push(`aggregated pieces: ${data.pieces}`, `coverage cell: ${data.cell_size} m × ${data.cell_size} m`);
+    }
+    // A pin came from a player's own map, so the readout says whose it is and whether they had struck
+    // it off. type_name arrives from the game's own enum rather than being guessed here.
+    if (selection.kind === 'player pin') {
+      lines.push(`kind: ${data.type_name || 'unknown'}`);
+      lines.push(`crossed off: ${data.crossed_off ? 'yes' : 'no'}`);
+      lines.push(`placed by: ${builderName(data.player_id || 0)}`);
     }
     if (data.creator !== undefined || data.aggregate) {
       // Naming the builder is the point of the colour: over terrain, at map scale, a hue alone does
