@@ -54,6 +54,9 @@ type pageBuilder struct {
 	FocusX  float32
 	FocusZ  float32
 	Locable bool
+	// Nameable is false for creator 0. That row is the absence of a record, not a person, so the
+	// legend shows what it is instead of a text field.
+	Nameable bool
 }
 
 // builderColours is the only palette. The page serves each builder's colour to the canvas alongside
@@ -127,7 +130,13 @@ func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
 		// Both halves of what the canvas needs: what to call a builder and what colour to draw it.
 		styles := map[string]map[string]string{}
 		for creator, count := range pieces {
-			entry := pageBuilder{Creator: creator, Pieces: count, Clusters: clusters[creator], Colour: builderColour(creator)}
+			entry := pageBuilder{
+				Creator:  creator,
+				Pieces:   count,
+				Clusters: clusters[creator],
+				Colour:   builderColour(creator),
+				Nameable: creator != 0,
+			}
 			if site, ok := largest[creator]; ok {
 				entry.FocusX, entry.FocusZ, entry.Locable = site.Center.X, site.Center.Z, true
 			}
@@ -510,21 +519,21 @@ const worldAnalysisTemplate = `<!doctype html>
 {{if .Builders}}<fieldset class="map-builders">
 <legend>Builders</legend>
 <p class="map-hint">Valheim stamps a player id on every piece, and nothing resolves that to a person - character names live on each player's own machine. Name one here and the map remembers it.</p>
-{{range .Builders}}<details class="map-builder">
+{{range .Builders}}<details class="map-builder"{{if not .Nameable}} data-unnameable="1"{{end}}>
 <summary>
 <span class="map-builder-swatch" style="background:{{.Colour}}"></span>
 <span class="map-builder-name{{if not .Named}} map-builder-unnamed{{end}}">{{.Label}}</span>
 <span class="map-builder-count">{{.Pieces}} pieces · {{.Clusters}} site(s)</span>
 {{if .Locable}}<button type="button" class="map-builder-locate" data-locate="{{.Creator}}" data-locate-x="{{.FocusX}}" data-locate-z="{{.FocusZ}}" title="Take the map to this builder's largest site">Show</button>{{end}}
 </summary>
-<form method="post" action="/admin/worlds/{{$.World.Name}}/builders">
+{{if .Nameable}}<form method="post" action="/admin/worlds/{{$.World.Name}}/builders">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <input type="hidden" name="creator" value="{{.Creator}}">
 <label>Name for player id {{.Creator}}
 <input type="text" name="label" value="{{if .Named}}{{.Label}}{{end}}" maxlength="40" placeholder="nobody has named this builder">
 </label>
 <button type="submit">Save</button>
-</form>
+</form>{{else}}<p class="map-hint">These pieces carry no player id at all - Valheim leaves the stamp empty on generated structures and on anything whose builder was never recorded. There is nobody here to name.</p>{{end}}
 </details>{{end}}
 </fieldset>{{end}}
 <fieldset>
@@ -633,6 +642,12 @@ func (s *Server) nameBuilder(w http.ResponseWriter, r *http.Request) {
 	creator, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("creator")), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid builder id", http.StatusBadRequest)
+		return
+	}
+	// Creator 0 is the absence of a stamp, not a player. Hiding the field on the page is presentation;
+	// this is the fence, because a stored name here would put a person's name on generated structures.
+	if creator == 0 {
+		http.Error(w, "those pieces carry no player id, so there is nobody to name", http.StatusBadRequest)
 		return
 	}
 	actor := r.Header.Get("X-Portal-Actor")

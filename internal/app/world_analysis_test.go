@@ -225,3 +225,36 @@ func TestUnattributedPiecesAreNotPresentedAsABuilder(t *testing.T) {
 		t.Error("the unattributed pile draws in a builder's colour")
 	}
 }
+
+// Valheim leaves the builder stamp empty on generated structures, and the page hides the naming field
+// for that pile. Hiding a field is presentation, so the refusal has to live in the handler: a name
+// stored against creator 0 would put a person's name on ruins nobody built.
+func TestNamingTheUnattributedPileIsRefused(t *testing.T) {
+	server := testServer(t)
+	if err := server.store.UpsertPublicWorld(t.Context(), PublicWorld{
+		Name: "Midgard", JoinAddress: "valheim.example.test:2456", Status: "online",
+	}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	const nonce = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	form := url.Values{"creator": {"0"}, "label": {"Kato"}}
+	form.Set("csrf", server.csrfToken(nonce))
+	request := adminTestRequest(http.MethodPost, "/admin/worlds/Midgard/builders", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("X-Portal-Actor", "operator")
+	request.AddCookie(&http.Cookie{Name: "portal_csrf", Value: nonce, Path: "/admin"})
+	response := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Errorf("naming the unattributed pile = %d, want 400", response.Code)
+	}
+	labels, err := server.store.BuilderLabels(t.Context(), "Midgard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name, ok := labels[0]; ok {
+		t.Errorf("stored %q against pieces with no builder id", name)
+	}
+}
