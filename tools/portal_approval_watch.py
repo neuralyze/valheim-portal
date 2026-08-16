@@ -9,20 +9,29 @@ back that they clicked.
 
 One line per event, so a log watcher can block on a pattern:
 
-    WATCH:START    cursor=<n> interval=<seconds>
+    WATCH:START    floor=<highest message id already seen>
     WATCH:PENDING  verb=<verb> id=<id>
+    WATCH:SETTLED  verb=<verb> id=<id>          (left the awaiting list)
     WATCH:SETTLED  <the portal's own words: succeeded / denied / failed>
     WATCH:ERROR    <transport failure, retried on the next tick>
 
-The bridge is read through `GET /api/agent/inbox`, which answers with
-`messages`, `awaiting_approval` and a `cursor`. Passing the cursor back is what
-makes this a stream rather than a repeated dump.
+`GET /api/agent/inbox` answers with `messages`, `awaiting_approval` and a
+`cursor`. The messages window is NOT narrowed by the cursor the way its name
+suggests: a poll can hand back the whole recent history. Announcing on text
+alone therefore replays old decisions and a waiter matches the wrong one - a
+false green. So this gates on two facts that cannot replay:
+
+  * a message is new only when its own `id` is above the floor recorded at
+    startup, and
+  * a call is settled when its id *leaves* `awaiting_approval`, which is the
+    portal's own record of what is still waiting.
 
 Usage:
     portal_approval_watch.py [--from-cursor N] [--interval SECONDS] [--once]
 
-`--from-cursor` replays settled history, which is how this is exercised against
-a real portal without asking an operator to clear a gate nobody wanted.
+`--from-cursor` lowers the floor to replay settled history, which is how this
+is exercised against a real portal without asking an operator to clear a gate
+nobody wanted.
 
 Configuration, both optional:
     PORTAL_BASE_URL                 default http://127.0.0.1:18080
@@ -84,26 +93,57 @@ def summarize(message: dict) -> str:
     return " ".join(json.dumps(message, sort_keys=True).split())
 
 
-def watch_lines(payload: dict, announced: set[str]) -> list[str]:
+def message_id(message: dict) -> int | None:
+    value = message.get("id")
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def new_state(floor: int = 0) -> dict:
+    """Everything the watcher must remember between polls."""
+    return {"floor": floor, "pending": {}, "announced": set()}
+
+
+def watch_lines(payload: dict, state: dict) -> list[str]:
     """Turn one inbox payload into the lines this has not announced yet.
 
-    `announced` is updated in place, which is what keeps a replayed cursor or a
-    still-pending call from being reported on every tick.
+    `state` is updated in place. A message counts as news only when its id is
+    above the floor, and a call counts as settled the moment the portal stops
+    listing it as awaiting approval.
     """
     lines: list[str] = []
+    highest = state["floor"]
+
     for message in payload.get("messages") or []:
+        identifier = message_id(message)
+        if identifier is not None:
+            highest = max(highest, identifier)
+            if identifier <= state["floor"]:
+                continue
         text = summarize(message)
-        key = f"settled:{text}"
-        if SETTLED.search(text) and key not in announced:
-            announced.add(key)
+        key = f"settled:{identifier}:{text}"
+        if SETTLED.search(text) and key not in state["announced"]:
+            state["announced"].add(key)
             lines.append(f"WATCH:SETTLED {text[:400]}")
-    for call in payload.get("awaiting_approval") or []:
-        identifier = str(call.get("id") or "")
-        verb = call.get("verb") or call.get("summary") or "?"
-        key = f"pending:{identifier}"
-        if key not in announced:
-            announced.add(key)
-            lines.append(f"WATCH:PENDING verb={verb} id={identifier}")
+
+    awaiting = payload.get("awaiting_approval")
+    if awaiting is not None:
+        current = {str(call.get("id") or ""): (call.get("verb") or call.get("summary") or "?")
+                   for call in awaiting}
+        for identifier, verb in current.items():
+            if identifier not in state["pending"]:
+                state["pending"][identifier] = verb
+                lines.append(f"WATCH:PENDING verb={verb} id={identifier}")
+        for identifier in [i for i in state["pending"] if i not in current]:
+            verb = state["pending"].pop(identifier)
+            lines.append(f"WATCH:SETTLED verb={verb} id={identifier} left the approval queue")
+
+    state["floor"] = highest
     return lines
 
 
@@ -119,7 +159,7 @@ def fetch_inbox(token: str, cursor: int | None) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--from-cursor", type=int, default=None,
-                        help="replay from this cursor instead of only new activity")
+                        help="replay decisions above this message id")
     parser.add_argument("--interval", type=float, default=3.0,
                         help="seconds between polls (default 3)")
     parser.add_argument("--once", action="store_true",
@@ -127,13 +167,21 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     token = read_token()
-    cursor = args.from_cursor
-    if cursor is None:
-        # Start at the live edge so a fresh watcher does not replay old decisions.
-        cursor = fetch_inbox(token, None).get("cursor")
-    print(f"WATCH:START cursor={cursor} interval={args.interval}", flush=True)
+    opening = fetch_inbox(token, None)
+    if args.from_cursor is not None:
+        floor = args.from_cursor
+    else:
+        # Start above everything already in the window, so a fresh watcher never
+        # reports a decision that was made before it existed.
+        floor = max([message_id(m) or 0 for m in opening.get("messages") or []] or [0])
+    state = new_state(floor)
+    # Adopt whatever is already waiting without calling it news.
+    state["pending"] = {str(call.get("id") or ""): (call.get("verb") or "?")
+                        for call in opening.get("awaiting_approval") or []}
+    print(f"WATCH:START floor={floor} pending={len(state['pending'])} interval={args.interval}",
+          flush=True)
 
-    announced: set[str] = set()
+    cursor = opening.get("cursor")
     while True:
         try:
             payload = fetch_inbox(token, cursor)
@@ -144,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(args.interval)
             continue
 
-        for line in watch_lines(payload, announced):
+        for line in watch_lines(payload, state):
             print(line, flush=True)
         cursor = payload.get("cursor", cursor)
 
