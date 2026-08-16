@@ -123,6 +123,11 @@
   const biomeTextureColors = biomes.map((biome) => token(`--map-biome-${biome.id}-texture`));
   const objectLayers = ['terrain-risk', 'container', 'production', 'creature', 'other', 'portal'];
   const world = document.body.dataset.world;
+  // The same renderer serves the operator's map and the players' map. Only two things differ: where
+  // the data comes from, and whether ground nobody has visited is covered over.
+  const dataBase = document.body.dataset.mapBase || `/admin/worlds/${encodeURIComponent(world)}`;
+  const fogOfWar = document.body.dataset.mapFog === '1';
+  let fogCanvas = null;
   const details = document.getElementById('details');
   const coords = document.getElementById('coords');
   const health = document.getElementById('health');
@@ -215,7 +220,7 @@
 
   async function loadTerrainManifest() {
     try {
-      const response = await fetch(`/admin/worlds/${encodeURIComponent(world)}/map/manifest.json`, { cache: 'no-cache' });
+      const response = await fetch(`${dataBase}/map/manifest.json`, { cache: 'no-cache' });
       if (response.status === 404) return;
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const manifest = await response.json();
@@ -247,7 +252,7 @@
       entry.failed = true;
       requestDraw();
     }, { once: true });
-    image.src = `/admin/worlds/${encodeURIComponent(world)}/map/tiles/${terrainManifest.key}/${level.zoom}/${x}/${y}.png`;
+    image.src = `${dataBase}/map/tiles/${terrainManifest.key}/${level.zoom}/${x}/${y}.png`;
     return entry;
   }
 
@@ -303,7 +308,7 @@
     const key = `${source}/${level.zoom}/${x}/${y}`;
     let pending = state.overlayCache.get(key);
     if (pending) return pending;
-    pending = fetch(`/admin/worlds/${encodeURIComponent(world)}/map/overlays/${source}/${level.zoom}/${x}/${y}.json`, {
+    pending = fetch(`${dataBase}/map/overlays/${source}/${level.zoom}/${x}/${y}.json`, {
       cache: 'no-cache',
       credentials: 'same-origin',
     }).then((response) => {
@@ -654,6 +659,42 @@
     requestDraw();
   }
 
+  // Fog is one pass on an offscreen canvas: fill it, cut out every discovered zone, then lay it over
+  // the map. Punching holes on the main canvas would erase the terrain underneath instead of
+  // revealing it, which is the whole trick.
+  function drawFog(zones) {
+    const rect = canvas.getBoundingClientRect();
+    const bounds = visibleBounds(ZONE_SIZE);
+    if (!fogCanvas) fogCanvas = document.createElement('canvas');
+    const width = Math.max(1, Math.ceil(rect.width));
+    const height = Math.max(1, Math.ceil(rect.height));
+    if (fogCanvas.width !== width || fogCanvas.height !== height) {
+      fogCanvas.width = width;
+      fogCanvas.height = height;
+    }
+    const fog = fogCanvas.getContext('2d');
+    fog.setTransform(1, 0, 0, 1, 0, 0);
+    fog.globalCompositeOperation = 'source-over';
+    fog.fillStyle = colors.canvas;
+    fog.fillRect(0, 0, width, height);
+    fog.globalCompositeOperation = 'destination-out';
+    const size = Math.max(1, ZONE_SIZE * state.scale);
+    for (const zone of zones) {
+      if (Math.abs(zone.x) > MAX_ZONE_INDEX || Math.abs(zone.y) > MAX_ZONE_INDEX) continue;
+      const worldX = zone.x * ZONE_SIZE;
+      const worldZ = zone.y * ZONE_SIZE;
+      if (worldX < bounds.minX || worldX > bounds.maxX || worldZ < bounds.minZ || worldZ > bounds.maxZ) continue;
+      const [pixelX, pixelY] = screen(worldX, worldZ);
+      // A zone is indexed by its corner, and the map draws z upward, so the cleared square hangs
+      // below and right of the point in screen terms.
+      fog.fillRect(pixelX, pixelY - size, size, size);
+    }
+    context.save();
+    context.globalAlpha = 0.97;
+    context.drawImage(fogCanvas, 0, 0, rect.width, rect.height);
+    context.restore();
+  }
+
   function draw() {
     const rect = canvas.getBoundingClientRect();
     context.fillStyle = colors.canvas;
@@ -665,6 +706,10 @@
     refreshOverlayView();
     const snapshot = currentSnapshot();
     if (state.layers.terrain) drawTerrain();
+    // Fog goes straight over the terrain, before anything else is drawn: the players' map shows the
+    // ground they have actually walked and nothing else. Valheim only builds a zone when somebody
+    // has been near it, so the zone list is the record of where they have been.
+    if (fogOfWar) drawFog(snapshot.generated_zones || []);
     if (state.layers.zones) drawZones(snapshot.generated_zones || []);
     if (state.layers.clusters) {
       drawConstructionCoverage(snapshot.construction_coverage);
@@ -1639,7 +1684,7 @@
   });
 
   terrainManifestReady.then(() => fetch(
-    `/admin/worlds/${encodeURIComponent(world)}/analysis.json${terrainManifest ? '?summary=1' : ''}`,
+    `${dataBase}/analysis.json${terrainManifest ? '?summary=1' : ''}`,
     { credentials: 'same-origin' },
   ))
     .then((response) => {

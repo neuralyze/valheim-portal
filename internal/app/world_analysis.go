@@ -37,6 +37,16 @@ type worldAnalysisPage struct {
 	// cluster without a
 	// second request.
 	LabelsJSON string
+	// DataBase is where the renderer fetches tiles, overlays and the analysis from: the admin route
+	// for the operator's map, the world route for the players'. One renderer, two hosts - a second
+	// copy of it would drift from this one the first time either changed.
+	DataBase string
+	// Fog covers ground nobody has visited. The operator's map shows the whole world; the players'
+	// map shows what the server knows they have seen.
+	Fog bool
+	// Admin gates the controls that act on the world - refreshing, rebuilding, naming a builder.
+	// The players' map is the same view without the levers.
+	Admin bool
 }
 
 type pageBuilder struct {
@@ -104,68 +114,91 @@ func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "world analysis unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	page := worldAnalysisPage{World: info, HaveAnalysis: len(snapshots) > 0, CSRF: s.csrfCookie(w, r), LabelsJSON: "{}"}
+	page := worldAnalysisPage{
+		World:        info,
+		HaveAnalysis: len(snapshots) > 0,
+		CSRF:         s.csrfCookie(w, r),
+		LabelsJSON:   "{}",
+		DataBase:     "/admin/worlds/" + world,
+		Admin:        true,
+	}
 	if len(snapshots) > 0 {
 		page.Backup = snapshots[0].Source.Backup
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
-		summary := snapshots[0].Summary
-		if summary.ExploredZones > 0 {
-			page.Explored = fmt.Sprintf("%.1f%% (%.1f km²)", summary.ExploredPercent, summary.ExploredSquareKm)
-		}
-		labels, labelErr := s.store.BuilderLabels(r.Context(), world)
-		if labelErr != nil {
-			labels = map[int64]string{}
-		}
-		pieces, clusters := map[int64]int{}, map[int64]int{}
-		// The largest site is where a builder is most worth looking at, and it is the one place a
-		// legend row can send the view that is certain to have something on it.
-		largest := map[int64]worldintel.Cluster{}
-		for _, cluster := range snapshots[0].Clusters {
-			pieces[cluster.Creator] += cluster.Pieces
-			clusters[cluster.Creator]++
-			if best, seen := largest[cluster.Creator]; !seen || cluster.Pieces > best.Pieces {
-				largest[cluster.Creator] = cluster
-			}
-		}
-		// Both halves of what the canvas needs: what to call a builder and what colour to draw it.
-		styles := map[string]map[string]string{}
-		for creator, count := range pieces {
-			entry := pageBuilder{
-				Creator:  creator,
-				Pieces:   count,
-				Clusters: clusters[creator],
-				Colour:   builderColour(creator),
-				Nameable: creator != 0,
-			}
-			if site, ok := largest[creator]; ok {
-				entry.FocusX, entry.FocusZ, entry.Locable = site.Center.X, site.Center.Z, true
-			}
-			if label, ok := labels[creator]; ok {
-				entry.Label = label
-				entry.Named = true
-			} else {
-				entry.Label = builderFallbackName(creator)
-			}
-			// The fallback goes to the canvas too, but flagged, so the map can draw "builder 9451"
-			// without the script pretending that is a name somebody chose.
-			style := map[string]string{"colour": entry.Colour, "name": entry.Label}
-			if _, ok := labels[creator]; !ok {
-				style["unnamed"] = "1"
-			}
-			styles[strconv.FormatInt(creator, 10)] = style
-			page.Builders = append(page.Builders, entry)
-		}
-		sort.Slice(page.Builders, func(i, j int) bool {
-			if page.Builders[i].Pieces != page.Builders[j].Pieces {
-				return page.Builders[i].Pieces > page.Builders[j].Pieces
-			}
-			return page.Builders[i].Creator < page.Builders[j].Creator
-		})
-		if encoded, encodeErr := json.Marshal(styles); encodeErr == nil {
-			page.LabelsJSON = string(encoded)
-		}
+		page.Explored = formatExplored(snapshots[0].Summary)
+		page.Builders, page.LabelsJSON = s.builderLegend(r.Context(), world, snapshots[0])
 	}
 	render(w, worldAnalysisTemplate, page)
+}
+
+// formatExplored phrases the explored measure for a legend. Empty when nothing has been analysed, so
+// the page says nothing rather than claiming 0%.
+func formatExplored(summary worldintel.Summary) string {
+	if summary.ExploredZones == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%.1f%% (%.1f km²)", summary.ExploredPercent, summary.ExploredSquareKm)
+}
+
+// builderLegend turns the clusters in a snapshot into legend rows and the styles the canvas draws
+// with. Both maps call it, so the players' map cannot end up with a different palette or a different
+// set of builders from the operator's: it is the same function over a differently clipped snapshot.
+func (s *Server) builderLegend(ctx context.Context, world string, snapshot worldintel.Snapshot) ([]pageBuilder, string) {
+	labels, labelErr := s.store.BuilderLabels(ctx, world)
+	if labelErr != nil {
+		labels = map[int64]string{}
+	}
+	pieces, clusters := map[int64]int{}, map[int64]int{}
+	// The largest site is where a builder is most worth looking at, and it is the one place a legend
+	// row can send the view that is certain to have something on it.
+	largest := map[int64]worldintel.Cluster{}
+	for _, cluster := range snapshot.Clusters {
+		pieces[cluster.Creator] += cluster.Pieces
+		clusters[cluster.Creator]++
+		if best, seen := largest[cluster.Creator]; !seen || cluster.Pieces > best.Pieces {
+			largest[cluster.Creator] = cluster
+		}
+	}
+	// Both halves of what the canvas needs: what to call a builder and what colour to draw it.
+	styles := map[string]map[string]string{}
+	rows := make([]pageBuilder, 0, len(pieces))
+	for creator, count := range pieces {
+		entry := pageBuilder{
+			Creator:  creator,
+			Pieces:   count,
+			Clusters: clusters[creator],
+			Colour:   builderColour(creator),
+			Nameable: creator != 0,
+		}
+		if site, ok := largest[creator]; ok {
+			entry.FocusX, entry.FocusZ, entry.Locable = site.Center.X, site.Center.Z, true
+		}
+		if label, ok := labels[creator]; ok {
+			entry.Label = label
+			entry.Named = true
+		} else {
+			entry.Label = builderFallbackName(creator)
+		}
+		// The fallback goes to the canvas too, but flagged, so the map can draw "builder 9451"
+		// without the script pretending that is a name somebody chose.
+		style := map[string]string{"colour": entry.Colour, "name": entry.Label}
+		if _, ok := labels[creator]; !ok {
+			style["unnamed"] = "1"
+		}
+		styles[strconv.FormatInt(creator, 10)] = style
+		rows = append(rows, entry)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Pieces != rows[j].Pieces {
+			return rows[i].Pieces > rows[j].Pieces
+		}
+		return rows[i].Creator < rows[j].Creator
+	})
+	encoded, err := json.Marshal(styles)
+	if err != nil {
+		return rows, "{}"
+	}
+	return rows, string(encoded)
 }
 
 type worldAnalysisFailure struct {
@@ -498,27 +531,27 @@ const worldAnalysisTemplate = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{.World.Name}} world map and analysis</title>
+<title>{{.World.Name}} {{if .Admin}}world map and analysis{{else}}map{{end}}</title>
 <link rel="stylesheet" href="/assets/site.css">
 </head>
-<body class="world-map-page" data-world="{{.World.Name}}">
+<body class="world-map-page" data-world="{{.World.Name}}" data-map-base="{{.DataBase}}"{{if .Fog}} data-map-fog="1"{{end}}>
 <header class="map-header">
-<a class="map-back" href="/admin">Administration</a>
+<a class="map-back" href="{{if .Admin}}/admin{{else}}/worlds/{{.World.Name}}{{end}}">{{if .Admin}}Administration{{else}}{{.World.Name}}{{end}}</a>
 <div class="map-heading">
-<h1>{{.World.Name}} world map and analysis</h1>
-{{if .HaveAnalysis}}<div class="map-snapshot"><span class="pill">{{.Backup}}</span><span class="muted">{{.AnalyzedAt}}</span></div>{{end}}
+<h1>{{.World.Name}} {{if .Admin}}world map and analysis{{else}}map{{end}}</h1>
+{{if .HaveAnalysis}}<div class="map-snapshot">{{if .Admin}}<span class="pill">{{.Backup}}</span>{{end}}<span class="muted">{{.AnalyzedAt}}</span>{{if not .Admin}}<span class="muted">· {{.Explored}} of the world visited</span>{{end}}</div>{{end}}
 </div>
-<form class="map-analysis-form" method="post" action="/admin/worlds/{{.World.Name}}/analysis">
+{{if .Admin}}<form class="map-analysis-form" method="post" action="/admin/worlds/{{.World.Name}}/analysis">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <button type="submit">Update constructions</button>
 <button type="submit" name="rebuild" value="terrain" class="secondary">Rebuild terrain too</button>
-</form>
+</form>{{end}}
 </header>
 <main class="map-layout">
 <aside class="map-sidebar map-controls" aria-label="Map controls">
 {{if .Builders}}<fieldset class="map-builders">
 <legend>Builders</legend>
-<p class="map-hint">Valheim stamps a player id on every piece, and nothing resolves that to a person - character names live on each player's own machine. Name one here and the map remembers it.</p>
+{{if .Admin}}<p class="map-hint">Valheim stamps a player id on every piece, and nothing resolves that to a person - character names live on each player's own machine. Name one here and the map remembers it.</p>{{end}}
 {{range .Builders}}<details class="map-builder"{{if not .Nameable}} data-unnameable="1"{{end}}>
 <summary>
 <span class="map-builder-swatch" style="background:{{.Colour}}"></span>
@@ -526,14 +559,14 @@ const worldAnalysisTemplate = `<!doctype html>
 <span class="map-builder-count">{{.Pieces}} pieces · {{.Clusters}} site(s)</span>
 {{if .Locable}}<button type="button" class="map-builder-locate" data-locate="{{.Creator}}" data-locate-x="{{.FocusX}}" data-locate-z="{{.FocusZ}}" title="Take the map to this builder's largest site">Show</button>{{end}}
 </summary>
-{{if .Nameable}}<form method="post" action="/admin/worlds/{{$.World.Name}}/builders">
+{{if and .Nameable $.Admin}}<form method="post" action="/admin/worlds/{{$.World.Name}}/builders">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <input type="hidden" name="creator" value="{{.Creator}}">
 <label>Name for player id {{.Creator}}
 <input type="text" name="label" value="{{if .Named}}{{.Label}}{{end}}" maxlength="40" placeholder="nobody has named this builder">
 </label>
 <button type="submit">Save</button>
-</form>{{else}}<p class="map-hint">These pieces carry no player id at all - Valheim leaves the stamp empty on generated structures and on anything whose builder was never recorded. There is nobody here to name.</p>{{end}}
+</form>{{else if not .Nameable}}<p class="map-hint">These pieces carry no player id at all - Valheim leaves the stamp empty on generated structures and on anything whose builder was never recorded.{{if $.Admin}} There is nobody here to name.{{end}}</p>{{end}}
 </details>{{end}}
 </fieldset>{{end}}
 <fieldset>
