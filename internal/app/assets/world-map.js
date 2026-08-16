@@ -886,10 +886,58 @@
     context.restore();
   }
 
+  // A name drawn straight onto terrain competes with whatever is under it. Glyphs already solve this
+  // with a halo disc, so a label gets the same treatment: a backdrop chip, the builder's colour for
+  // the text, and a hairline in that colour so the chip itself says whose name it is. Labels that
+  // would land on top of each other step down instead, and give up rather than stack illegibly -
+  // three people sharing one base is the normal case, not the exception.
+  function drawBuilderLabel(text, centerX, bottomY, colour, taken) {
+    context.save();
+    context.font = '600 11px system-ui, sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    const width = context.measureText(text).width;
+    const boxWidth = width + 10;
+    const boxHeight = 15;
+    const left = centerX - boxWidth / 2;
+    let top = bottomY - boxHeight;
+    let placed = false;
+    for (let attempt = 0; attempt < 5 && !placed; attempt += 1) {
+      const box = { left, top, right: left + boxWidth, bottom: top + boxHeight };
+      const clash = taken.some((other) => box.left < other.right && box.right > other.left
+        && box.top < other.bottom && box.bottom > other.top);
+      if (clash) {
+        top += boxHeight + 2;
+        continue;
+      }
+      taken.push(box);
+      placed = true;
+      context.beginPath();
+      if (typeof context.roundRect === 'function') {
+        context.roundRect(box.left, box.top, boxWidth, boxHeight, 3);
+      } else {
+        context.rect(box.left, box.top, boxWidth, boxHeight);
+      }
+      context.fillStyle = colors.halo;
+      context.globalAlpha = 0.86;
+      context.fill();
+      context.strokeStyle = colour;
+      context.globalAlpha = 0.7;
+      context.lineWidth = 1;
+      context.stroke();
+      context.globalAlpha = 1;
+      context.fillStyle = colour;
+      context.fillText(text, centerX, box.top + boxHeight / 2 + 0.5);
+    }
+    context.restore();
+  }
+
   function drawClusters(clusters, haveCoverage) {
     const bounds = visibleBounds(20);
     const coverageVisible = haveCoverage && state.scale >= COVERAGE_VISIBLE_SCALE;
     let drawn = 0;
+    // One frame's worth of label boxes, so names near each other cannot overprint.
+    const labelBoxes = [];
     for (const cluster of clusters) {
       if (drawn >= MAX_CLUSTER_GLYPHS) break;
       if (cluster.center.x < bounds.minX || cluster.center.x > bounds.maxX || cluster.center.z < bounds.minZ || cluster.center.z > bounds.maxZ) continue;
@@ -910,13 +958,7 @@
       drawGlyph('cluster', pixelX, pixelY, markerSize(), builder);
       // Close in, the shape says whose it is without a trip to the legend.
       if (state.scale >= COVERAGE_FULL_SCALE) {
-        context.save();
-        context.fillStyle = builder;
-        context.globalAlpha = 0.85;
-        context.font = '600 11px system-ui, sans-serif';
-        context.textAlign = 'center';
-        context.fillText(builderName(cluster.creator), pixelX, pixelY - markerSize() - 3);
-        context.restore();
+        drawBuilderLabel(builderName(cluster.creator), pixelX, pixelY - markerSize() - 3, builder, labelBoxes);
       }
       drawn += 1;
     }
