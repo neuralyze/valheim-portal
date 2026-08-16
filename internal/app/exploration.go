@@ -56,6 +56,13 @@ type explorationMask struct {
 	Players  int    `json:"players"`
 }
 
+// explorationRoot is where reports live: the portal's own artifact root, not the world root. The world
+// root is mounted read-only because it belongs to the game containers, so writing there returned 500 to
+// the first real upload a player's client attempted.
+func (s *Server) explorationRoot(world string) string {
+	return filepath.Join(s.cfg.ArtifactRoot, "exploration", world)
+}
+
 func (s *Server) clientExploration(w http.ResponseWriter, r *http.Request) {
 	world, profile, clientType := r.PathValue("world"), r.PathValue("profile"), r.PathValue("clientType")
 	claims, ok, err := s.validDeviceToken(r.Context(), r, world, profile, clientType)
@@ -75,7 +82,7 @@ func (s *Server) clientExploration(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid exploration upload", http.StatusBadRequest)
 		return
 	}
-	directory := filepath.Join(s.cfg.MapSourceRoot, world, "exploration")
+	directory := s.explorationRoot(world)
 	if err := os.MkdirAll(directory, 0o750); err != nil {
 		http.Error(w, "storage failure", http.StatusInternalServerError)
 		return
@@ -179,11 +186,11 @@ func (s *Server) explorationUnion(world string) *explorationMask {
 	if !validWorld(world) {
 		return nil
 	}
-	directory := filepath.Join(s.cfg.MapSourceRoot, world, "exploration")
-	entries, err := os.ReadDir(directory)
+	entries, err := os.ReadDir(s.explorationRoot(world))
 	if err != nil {
 		return nil
 	}
+	directory := s.explorationRoot(world)
 	size := explorationRadius * 2 / explorationCellSize
 	bits := make([]byte, (size*size+7)/8)
 	players := 0
@@ -319,7 +326,7 @@ func (s *Server) reportedPins(world string) []explorationPins {
 	if !validWorld(world) {
 		return nil
 	}
-	directory := filepath.Join(s.cfg.MapSourceRoot, world, "exploration")
+	directory := s.explorationRoot(world)
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil

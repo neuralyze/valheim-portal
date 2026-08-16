@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,7 +44,7 @@ func buildReport(t *testing.T, world string, playerID int64, textureSize int, pi
 func TestAReportedGridIsPlacedWhereTheGameSaysItIs(t *testing.T) {
 	server := testServer(t)
 	world := "Midgard"
-	directory := filepath.Join(server.cfg.MapSourceRoot, world, "exploration")
+	directory := server.explorationRoot(world)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +91,7 @@ func TestAReportedGridIsPlacedWhereTheGameSaysItIs(t *testing.T) {
 func TestReportsFromTwoPlayersAreUnioned(t *testing.T) {
 	server := testServer(t)
 	world := "Midgard"
-	directory := filepath.Join(server.cfg.MapSourceRoot, world, "exploration")
+	directory := server.explorationRoot(world)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +128,7 @@ func TestReportsFromTwoPlayersAreUnioned(t *testing.T) {
 func TestAnUnreadableReportIsRefused(t *testing.T) {
 	server := testServer(t)
 	world := "Midgard"
-	directory := filepath.Join(server.cfg.MapSourceRoot, world, "exploration")
+	directory := server.explorationRoot(world)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -213,12 +214,26 @@ func TestExplorationUploadStoresPerAccountAndCharacter(t *testing.T) {
 		t.Errorf("upload with no player id in the name = %d, want 400", code)
 	}
 
-	stored := filepath.Join(server.cfg.MapSourceRoot, release.World, "exploration", testSteamID+"-111.explored")
+	stored := filepath.Join(server.explorationRoot(release.World), testSteamID+"-111.explored")
 	if _, err := os.Stat(stored); err != nil {
 		t.Fatalf("report not stored under the account and character: %v", err)
 	}
 	// And it is readable as what it claims to be, which is what the map will do with it.
 	if mask := server.explorationUnion(release.World); mask == nil || mask.Players != 1 {
 		t.Errorf("mask = %+v, want one player's map", mask)
+	}
+}
+
+// The world root is mounted read-only in the portal container - it is the game's data, owned by the
+// server containers - so a report written there fails with a 500 the moment a real client uploads one.
+// Reports are the portal's own state and belong in its writable artifact root.
+func TestReportsAreStoredWhereThePortalCanWrite(t *testing.T) {
+	server := testServer(t)
+	root := server.explorationRoot("Midgard")
+	if !strings.HasPrefix(root, server.cfg.ArtifactRoot) {
+		t.Errorf("reports go to %q, which is outside the writable artifact root %q", root, server.cfg.ArtifactRoot)
+	}
+	if server.cfg.MapSourceRoot != "" && strings.HasPrefix(root, server.cfg.MapSourceRoot) {
+		t.Errorf("reports go to %q, inside the read-only world root", root)
 	}
 }
