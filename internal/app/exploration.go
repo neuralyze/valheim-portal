@@ -182,18 +182,20 @@ func writeUploadedFile(path string, source io.Reader) error {
 // explorationUnion reads every report for a world and returns one mask. Nothing is stored derived: a
 // world with no reports returns nil and the map falls back to the zone fog, which is what every world
 // gets until a player runs the reporter.
-func (s *Server) explorationUnion(world string) *explorationMask {
+// explorationUnionBits is the union as raw bits, for deciding what a player may see. The JSON form
+// below wraps the same result: if these two ever came from different code, the map would hide ground
+// while still drawing the markers standing on it - which is exactly the bug that made it necessary.
+func (s *Server) explorationUnionBits(world string) (bits []byte, size, players int) {
 	if !validWorld(world) {
-		return nil
+		return nil, 0, 0
 	}
 	entries, err := os.ReadDir(s.explorationRoot(world))
 	if err != nil {
-		return nil
+		return nil, 0, 0
 	}
 	directory := s.explorationRoot(world)
-	size := explorationRadius * 2 / explorationCellSize
-	bits := make([]byte, (size*size+7)/8)
-	players := 0
+	size = explorationRadius * 2 / explorationCellSize
+	bits = make([]byte, (size*size+7)/8)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".explored") {
 			continue
@@ -206,6 +208,14 @@ func (s *Server) explorationUnion(world string) *explorationMask {
 			players++
 		}
 	}
+	if players == 0 {
+		return nil, 0, 0
+	}
+	return bits, size, players
+}
+
+func (s *Server) explorationUnion(world string) *explorationMask {
+	bits, size, players := s.explorationUnionBits(world)
 	if players == 0 {
 		return nil
 	}

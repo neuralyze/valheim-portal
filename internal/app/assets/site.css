@@ -1086,29 +1086,45 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
   font-size: .78rem;
 }
 .map-builder summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: .4rem;
+  gap: .15rem .4rem;
   padding: .3rem 0;
   cursor: pointer;
 }
+.map-builder summary::-webkit-details-marker { display: none; }
 .map-builder-swatch {
-  flex: 0 0 auto;
+  grid-column: 1;
+  grid-row: 1;
   width: .7rem;
   height: .7rem;
   border-radius: .15rem;
   border: 1px solid rgba(0, 0, 0, .35);
 }
-.map-builder-name { flex: 1 1 auto; font-weight: 600; }
+.map-builder-name {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
 .map-builder-source {
   font-weight: 400;
   font-size: .66rem;
   color: var(--site-muted);
 }
 .map-builder-unnamed { font-weight: 400; font-style: italic; color: var(--site-muted); }
-.map-builder-count { flex: 0 0 auto; color: var(--site-muted); font-variant-numeric: tabular-nums; }
+.map-builder-count {
+  grid-column: 2 / -1;
+  grid-row: 2;
+  color: var(--site-muted);
+  font-size: .72rem;
+  font-variant-numeric: tabular-nums;
+}
 .map-builder-locate {
-  flex: 0 0 auto;
+  grid-column: 3;
+  grid-row: 1;
   padding: .1rem .35rem;
   font-size: .68rem;
   line-height: 1.4;

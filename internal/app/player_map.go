@@ -46,10 +46,43 @@ func zoneIndex(v float32) int {
 	return int((float64(v) + zoneSize/2) / zoneSize)
 }
 
+// discoveredArea answers one question - may a player see this coordinate - and it must be the same
+// answer the fog is drawn from. The fog moved to the players' own reported maps while the markers were
+// still clipped to generated zones, so settlement clusters and a boss site were drawn standing on
+// ground the map had fogged over. One source, both decisions.
+type discoveredArea struct {
+	// Preferred: the union of what players reported from their own minimaps, at explorationCellSize.
+	bits []byte
+	size int
+	// Fallback for a world where nobody has reported yet: the zones the server generated.
+	zones discoveredZones
+}
+
+func (d discoveredArea) has(x, z float32) bool {
+	if d.bits != nil {
+		cellX := int((float64(x) + float64(explorationRadius)) / float64(explorationCellSize))
+		cellZ := int((float64(z) + float64(explorationRadius)) / float64(explorationCellSize))
+		if cellX < 0 || cellX >= d.size || cellZ < 0 || cellZ >= d.size {
+			return false
+		}
+		index := cellZ*d.size + cellX
+		return d.bits[index>>3]&(1<<(index&7)) != 0
+	}
+	return d.zones.has(x, z)
+}
+
+// discoveredFor prefers what the players reported and falls back to generated zones, which is what a
+// world sees until somebody runs the reporter.
+func (s *Server) discoveredFor(world string, snapshot worldintel.Snapshot) discoveredArea {
+	if bits, size, players := s.explorationUnionBits(world); players > 0 {
+		return discoveredArea{bits: bits, size: size}
+	}
+	return discoveredArea{zones: newDiscoveredZones(snapshot.GeneratedZones)}
+}
+
 // clipToDiscovered keeps everything the operator's map would show, minus whatever sits on ground
 // nobody has visited. Fields are untouched: this decides where, never what.
-func clipToDiscovered(snapshot worldintel.Snapshot) worldintel.Snapshot {
-	seen := newDiscoveredZones(snapshot.GeneratedZones)
+func clipToDiscovered(snapshot worldintel.Snapshot, seen discoveredArea) worldintel.Snapshot {
 
 	locations := make([]worldintel.Location, 0, len(snapshot.Locations))
 	for _, location := range snapshot.Locations {
@@ -114,7 +147,7 @@ func (s *Server) playerWorldMap(w http.ResponseWriter, r *http.Request) {
 		Fog:          true,
 	}
 	if len(snapshots) > 0 {
-		clipped := clipToDiscovered(snapshots[0])
+		clipped := clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0]))
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
 		page.Explored = formatExplored(snapshots[0].Summary)
 		page.Builders, page.LabelsJSON = s.builderLegend(r.Context(), world, clipped)
@@ -136,7 +169,7 @@ func (s *Server) playerAnalysisJSON(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	snapshot := clipToDiscovered(snapshots[0])
+	snapshot := clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0]))
 	if r.URL.Query().Get("summary") == "1" {
 		// The renderer asks for the light version once it holds the terrain manifest. The zone list
 		// stays whatever happens: it is what the fog is drawn from.
@@ -211,7 +244,7 @@ func (s *Server) playerOverlayTile(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	tile, ok := maptiles.SelectOverlay(clipToDiscovered(snapshots[0]), manifest.Levels[zoom], x, y)
+	tile, ok := maptiles.SelectOverlay(clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0])), manifest.Levels[zoom], x, y)
 	if !ok {
 		http.NotFound(w, r)
 		return
