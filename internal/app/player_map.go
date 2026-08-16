@@ -148,7 +148,9 @@ func (s *Server) playerAnalysisJSON(w http.ResponseWriter, r *http.Request) {
 	response := struct {
 		Snapshot        worldintel.Snapshot `json:"snapshot"`
 		Recommendations []string            `json:"recommendations"`
-	}{snapshot, nil}
+		ExploredMask    *explorationMask    `json:"explored_mask,omitempty"`
+		Pins            []explorationPins   `json:"pins,omitempty"`
+	}{snapshot, nil, s.explorationUnion(world), s.reportedPins(world)}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(response)

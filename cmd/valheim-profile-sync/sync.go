@@ -120,7 +120,19 @@ func (syncer *profileSyncer) synchronize(ctx context.Context, request profileReq
 	syncer.DiagnosticsToken = portal.diagnosticsToken
 	syncer.DiagnosticsEndpoint = portal.endpoint("client", "diagnostics", request.World, request.Profile, request.ClientType)
 	syncer.PortalBase = request.Portal.String()
-	return syncer.syncAuthorized(ctx, request, token)
+	changed, err := syncer.syncAuthorized(ctx, request, token)
+	if err != nil {
+		return changed, err
+	}
+	// After the profile is settled, hand over whatever the last session recorded of this player's own
+	// map. Here rather than at launch: the token exists, the game is not running, and a failure must
+	// not be able to stop somebody playing - so it reports and returns.
+	if localAppData, appErr := localApplicationData(); appErr == nil {
+		if root, rootErr := profileRoot(localAppData, request); rootErr == nil {
+			uploadExplorationReports(ctx, portal, request, token, filepath.Join(root, "active"))
+		}
+	}
+	return changed, nil
 }
 
 func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profileRequest, token string) (bool, error) {

@@ -128,6 +128,8 @@
   const dataBase = document.body.dataset.mapBase || `/admin/worlds/${encodeURIComponent(world)}`;
   const fogOfWar = document.body.dataset.mapFog === '1';
   let fogCanvas = null;
+  // The players' own revealed map, unpacked from base64 once when the analysis arrives.
+  let maskBits = null;
   const details = document.getElementById('details');
   const coords = document.getElementById('coords');
   const health = document.getElementById('health');
@@ -662,6 +664,23 @@
   // Fog is one pass on an offscreen canvas: fill it, cut out every discovered zone, then lay it over
   // the map. Punching holes on the main canvas would erase the terrain underneath instead of
   // revealing it, which is the whole trick.
+  function decodeMask(mask) {
+    if (!mask || !mask.bits || !mask.size) return null;
+    try {
+      const binary = atob(mask.bits);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      const needed = Math.ceil((mask.size * mask.size) / 8);
+      if (bytes.length < needed) throw new Error(`mask is ${bytes.length} bytes, needs ${needed}`);
+      return bytes;
+    } catch (error) {
+      // A mask that cannot be trusted must not be drawn: falling back to the zone fog shows less than
+      // the players have seen, where a misread mask would show ground nobody has.
+      console.error('reported exploration mask unusable', error);
+      return null;
+    }
+  }
+
   function drawFog(zones) {
     const rect = canvas.getBoundingClientRect();
     const size = Math.max(1, ZONE_SIZE * state.scale);
@@ -683,16 +702,37 @@
     fog.fillStyle = colors.canvas;
     fog.fillRect(0, 0, width, height);
     fog.globalCompositeOperation = 'destination-out';
-    for (const zone of zones) {
-      if (Math.abs(zone.x) > MAX_ZONE_INDEX || Math.abs(zone.y) > MAX_ZONE_INDEX) continue;
-      const worldX = zone.x * ZONE_SIZE;
-      const worldZ = zone.y * ZONE_SIZE;
-      if (worldX < bounds.minX || worldX > bounds.maxX || worldZ < bounds.minZ || worldZ > bounds.maxZ) continue;
-      const [pixelX, pixelY] = screen(worldX, worldZ);
-      // A zone index is its centre - the game rounds when it maps a position to a zone - so the
-      // cleared square is centred too. Anchoring it at the corner offset every hole by 32 metres,
-      // which left fog over ground players had walked and cut holes over ground they had not.
-      fog.fillRect(pixelX - size / 2, pixelY - size / 2, size, size);
+    // A mask reported by the players themselves beats the zone approximation: it is their own revealed
+    // map, four times finer, and it does not credit anyone for ground the server merely loaded.
+    const mask = state.data && state.data.explored_mask;
+    if (mask && maskBits) {
+      const cell = Math.max(1, mask.cell_size * state.scale);
+      const minCellX = Math.max(0, Math.floor((bounds.minX - mask.origin_x) / mask.cell_size));
+      const maxCellX = Math.min(mask.size - 1, Math.ceil((bounds.maxX - mask.origin_x) / mask.cell_size));
+      const minCellZ = Math.max(0, Math.floor((bounds.minZ - mask.origin_z) / mask.cell_size));
+      const maxCellZ = Math.min(mask.size - 1, Math.ceil((bounds.maxZ - mask.origin_z) / mask.cell_size));
+      for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
+        for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+          const index = cellZ * mask.size + cellX;
+          if ((maskBits[index >> 3] & (1 << (index & 7))) === 0) continue;
+          const worldX = mask.origin_x + cellX * mask.cell_size;
+          const worldZ = mask.origin_z + cellZ * mask.cell_size;
+          const [left, top] = screen(worldX, worldZ + mask.cell_size);
+          fog.fillRect(left, top, cell, cell);
+        }
+      }
+    } else {
+      for (const zone of zones) {
+        if (Math.abs(zone.x) > MAX_ZONE_INDEX || Math.abs(zone.y) > MAX_ZONE_INDEX) continue;
+        const worldX = zone.x * ZONE_SIZE;
+        const worldZ = zone.y * ZONE_SIZE;
+        if (worldX < bounds.minX || worldX > bounds.maxX || worldZ < bounds.minZ || worldZ > bounds.maxZ) continue;
+        const [pixelX, pixelY] = screen(worldX, worldZ);
+        // A zone index is its centre - the game rounds when it maps a position to a zone - so the
+        // cleared square is centred too. Anchoring it at the corner offset every hole by 32 metres,
+        // which left fog over ground players had walked and cut holes over ground they had not.
+        fog.fillRect(pixelX - size / 2, pixelY - size / 2, size, size);
+      }
     }
     // Opaque, deliberately. At 0.97 the terrain bled through the fog: a faint but real picture of
     // coastlines nobody has sailed, which is the one thing this map is supposed to withhold.
@@ -725,6 +765,7 @@
     for (const layer of objectLayers) {
       if (state.layers[layer]) drawObjectLayer(layer);
     }
+    if (state.layers.pins) drawReportedPins(state.data.pins || []);
     drawOrigin();
     updateScaleDisplay();
   }
@@ -1303,6 +1344,40 @@
     context.restore();
   }
 
+  // The pins players placed on their own maps. Drawn last so a name is never buried under terrain
+  // detail, and skipped when zoomed far out, where a hundred labels are a smear rather than a map.
+  function drawReportedPins(pins) {
+    if (!pins.length) return;
+    const bounds = visibleBounds(40);
+    const labelBoxes = [];
+    const showNames = state.scale >= 0.12;
+    for (const pin of pins) {
+      if (pin.x < bounds.minX || pin.x > bounds.maxX || pin.z < bounds.minZ || pin.z > bounds.maxZ) continue;
+      const [pixelX, pixelY] = screen(pin.x, pin.z);
+      const colour = pin.crossed_off ? colors.locationOther : colors.locationLandmark;
+      context.save();
+      context.globalAlpha = pin.crossed_off ? 0.5 : 0.95;
+      context.strokeStyle = colour;
+      context.fillStyle = colour;
+      context.lineWidth = 1.5;
+      const radius = Math.max(3, markerSize() * 0.5);
+      context.beginPath();
+      context.arc(pixelX, pixelY, radius, 0, Math.PI * 2);
+      context.stroke();
+      // A crossed-off pin is struck through, the way the player left it.
+      if (pin.crossed_off) {
+        context.beginPath();
+        context.moveTo(pixelX - radius, pixelY - radius);
+        context.lineTo(pixelX + radius, pixelY + radius);
+        context.stroke();
+      }
+      context.restore();
+      if (showNames && pin.name) {
+        drawBuilderLabel(pin.name, pixelX, pixelY - radius - 2, colour, labelBoxes);
+      }
+    }
+  }
+
   function drawOrigin() {
     const [centerX, centerY] = screen(0, 0);
     context.save();
@@ -1582,6 +1657,7 @@
 
   function renderAnalysis(data) {
     state.data = data;
+    maskBits = decodeMask(data.explored_mask);
     buildIndexes(data.snapshot);
     renderCategorySummary(data.snapshot);
     const snapshotHealth = data.snapshot.health;

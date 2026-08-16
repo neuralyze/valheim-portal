@@ -587,6 +587,7 @@ const worldAnalysisTemplate = `<!doctype html>
 <label class="map-layer"><input type="checkbox" data-layer="terrain" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Terrain and biomes</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="zones" {{if not .HaveAnalysis}}disabled{{end}}><span>Explored area{{if .Explored}} · {{.Explored}}{{end}}</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="locations" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Locations</span></label>
+{{if not .Admin}}<label class="map-layer"><input type="checkbox" data-layer="pins" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player pins</span></label>{{end}}
 <label class="map-layer"><input type="checkbox" data-layer="clusters" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player construction</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="portal" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Portals</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="container" {{if not .HaveAnalysis}}disabled{{end}}><span>Containers</span></label>

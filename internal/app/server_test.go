@@ -53,7 +53,10 @@ func testServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	server, err := NewServer(Config{
-		DatabasePath: filepath.Join(dir, "db.sqlite"), ArtifactRoot: dir, MapRoot: filepath.Join(dir, "maps"), CSRFSecretFile: secret,
+		DatabasePath: filepath.Join(dir, "db.sqlite"), ArtifactRoot: dir, MapRoot: filepath.Join(dir, "maps"),
+		// Unset, this is joined with a world name to make a RELATIVE path, so tests wrote world data
+		// into the source tree and read each other's files.
+		MapSourceRoot: filepath.Join(dir, "worlds"), CSRFSecretFile: secret,
 		AgentTokenFile: token, AgentSocket: filepath.Join(dir, "agent.sock"), AuthHeader: "X-Forwarded-User",
 		CookieSecure: false, TrustedProxyCIDR: "192.0.2.0/24", PublicBaseURL: "https://portal.example.test",
 		Provisioning: ProvisioningDefaults{JoinHost: "valheim.example.test", GamePort: 2456, PlayerLimit: 10, BackupInterval: "1h", BackupAge: 7, BackupCount: 168},
@@ -851,7 +854,10 @@ func TestNewServerRefusesToStartWithoutAnAdminToken(t *testing.T) {
 				t.Fatal(err)
 			}
 			server, err := NewServer(Config{
-				DatabasePath: filepath.Join(dir, "db.sqlite"), ArtifactRoot: dir, MapRoot: filepath.Join(dir, "maps"), CSRFSecretFile: secret,
+				DatabasePath: filepath.Join(dir, "db.sqlite"), ArtifactRoot: dir, MapRoot: filepath.Join(dir, "maps"),
+				// Unset, this is joined with a world name to make a RELATIVE path, so tests wrote world data
+				// into the source tree and read each other's files.
+				MapSourceRoot: filepath.Join(dir, "worlds"), CSRFSecretFile: secret,
 				AgentTokenFile: token, AgentSocket: filepath.Join(dir, "agent.sock"), AuthHeader: "X-Forwarded-User",
 				CookieSecure: false, TrustedProxyCIDR: "192.0.2.0/24", PublicBaseURL: "https://portal.example.test",
 			}, store, agent)

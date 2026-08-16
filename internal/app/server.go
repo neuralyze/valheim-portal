@@ -304,6 +304,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /client/diagnostics-plugin/{world}/{profile}/{clientType}", s.clientDiagnosticsPlugin)
 	s.mux.HandleFunc("GET /client/ValheimProfileSync.exe", s.clientInstaller)
 	s.mux.HandleFunc("POST /client/diagnostics/{world}/{profile}/{clientType}", s.clientDiagnostics)
+	// Where a player's own revealed map and pins arrive from the launcher. Authorised by the same
+	// profile-scoped device token an ordinary sync uses, so reporting costs the player nothing extra.
+	s.mux.HandleFunc("POST /client/exploration/{world}/{profile}/{clientType}", s.clientExploration)
 	s.mux.HandleFunc("GET /", s.home)
 	s.mux.HandleFunc("GET /worlds/{world}", s.world)
 	s.mux.HandleFunc("GET /worlds/{world}/history", s.worldHistory)

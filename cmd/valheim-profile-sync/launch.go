@@ -66,6 +66,10 @@ func profileEnvironment(inherited []string, active string) []string {
 	overrides := []string{
 		"BEPINEX_PLUGIN_PATH=" + filepath.Join(active, "BepInEx", "plugins"),
 		"VALHEIM_PROFILE_SYNC_ROOT=" + active,
+		// Where the exploration reporter writes what this player has uncovered and the pins they
+		// placed. It sits beside the profile rather than inside it: `active` is replaced wholesale on
+		// every sync, and a player's own map is not something a sync should be able to delete.
+		"VALHEIM_EXPLORATION_DIR=" + explorationDirectory(active),
 	}
 	result := make([]string, 0, len(inherited)+len(overrides))
 	for _, value := range inherited {
@@ -77,8 +81,17 @@ func profileEnvironment(inherited []string, active string) []string {
 	return append(result, overrides...)
 }
 
+// explorationDirectory is a sibling of the profile's active tree, so a sync that replaces `active`
+// leaves the player's reported map alone.
+func explorationDirectory(active string) string {
+	return filepath.Join(filepath.Dir(filepath.Clean(active)), "exploration")
+}
+
 func profileEnvironmentName(name string) bool {
-	return strings.EqualFold(name, "BEPINEX_CONFIG_PATH") || strings.EqualFold(name, "BEPINEX_PLUGIN_PATH") || strings.EqualFold(name, "VALHEIM_PROFILE_SYNC_ROOT")
+	return strings.EqualFold(name, "BEPINEX_CONFIG_PATH") ||
+		strings.EqualFold(name, "BEPINEX_PLUGIN_PATH") ||
+		strings.EqualFold(name, "VALHEIM_PROFILE_SYNC_ROOT") ||
+		strings.EqualFold(name, "VALHEIM_EXPLORATION_DIR")
 }
 
 var startVRRuntime = prepareVRRuntime
