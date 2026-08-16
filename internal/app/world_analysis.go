@@ -67,6 +67,9 @@ type pageBuilder struct {
 	// Nameable is false for creator 0. That row is the absence of a record, not a person, so the
 	// legend shows what it is instead of a text field.
 	Nameable bool
+	// Reported marks a name the game itself supplied through the identity plugin, rather than one an
+	// operator typed. Worth showing: it is the difference between evidence and somebody's note.
+	Reported bool
 }
 
 // builderColours is the only palette. The page serves each builder's colour to the canvas alongside
@@ -148,6 +151,10 @@ func (s *Server) builderLegend(ctx context.Context, world string, snapshot world
 	if labelErr != nil {
 		labels = map[int64]string{}
 	}
+	// What the game itself reported, if the identity plugin is running on that server. An operator's
+	// own label still wins: they may want a different name than the character currently uses, and a
+	// character can be renamed while the id on its pieces stays the same.
+	reported := s.reportedPlayerNames(world)
 	pieces, clusters := map[int64]int{}, map[int64]int{}
 	// The largest site is where a builder is most worth looking at, and it is the one place a legend
 	// row can send the view that is certain to have something on it.
@@ -173,16 +180,23 @@ func (s *Server) builderLegend(ctx context.Context, world string, snapshot world
 		if site, ok := largest[creator]; ok {
 			entry.FocusX, entry.FocusZ, entry.Locable = site.Center.X, site.Center.Z, true
 		}
-		if label, ok := labels[creator]; ok {
+		switch label, chosen := labels[creator]; {
+		case chosen:
 			entry.Label = label
 			entry.Named = true
-		} else {
-			entry.Label = builderFallbackName(creator)
+		default:
+			if name, ok := reported[creator]; ok {
+				entry.Label = name
+				entry.Named = true
+				entry.Reported = true
+			} else {
+				entry.Label = builderFallbackName(creator)
+			}
 		}
 		// The fallback goes to the canvas too, but flagged, so the map can draw "builder 9451"
 		// without the script pretending that is a name somebody chose.
 		style := map[string]string{"colour": entry.Colour, "name": entry.Label}
-		if _, ok := labels[creator]; !ok {
+		if !entry.Named {
 			style["unnamed"] = "1"
 		}
 		styles[strconv.FormatInt(creator, 10)] = style
@@ -555,14 +569,14 @@ const worldAnalysisTemplate = `<!doctype html>
 {{range .Builders}}<details class="map-builder"{{if not .Nameable}} data-unnameable="1"{{end}}>
 <summary>
 <span class="map-builder-swatch" style="background:{{.Colour}}"></span>
-<span class="map-builder-name{{if not .Named}} map-builder-unnamed{{end}}">{{.Label}}</span>
+<span class="map-builder-name{{if not .Named}} map-builder-unnamed{{end}}"{{if .Reported}} title="Reported by the server: this is the character name the game supplied for this player id"{{end}}">{{.Label}}{{if .Reported}} <span class="map-builder-source">from the server</span>{{end}}</span>
 <span class="map-builder-count">{{.Pieces}} pieces · {{.Clusters}} site(s)</span>
 {{if .Locable}}<button type="button" class="map-builder-locate" data-locate="{{.Creator}}" data-locate-x="{{.FocusX}}" data-locate-z="{{.FocusZ}}" title="Take the map to this builder's largest site">Show</button>{{end}}
 </summary>
 {{if and .Nameable $.Admin}}<form method="post" action="/admin/worlds/{{$.World.Name}}/builders">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <input type="hidden" name="creator" value="{{.Creator}}">
-<label>Name for player id {{.Creator}}
+<label>{{if .Reported}}Call this player something else{{else}}Name for player id {{.Creator}}{{end}}
 <input type="text" name="label" value="{{if .Named}}{{.Label}}{{end}}" maxlength="40" placeholder="nobody has named this builder">
 </label>
 <button type="submit">Save</button>

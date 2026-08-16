@@ -1100,6 +1100,11 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
   border: 1px solid rgba(0, 0, 0, .35);
 }
 .map-builder-name { flex: 1 1 auto; font-weight: 600; }
+.map-builder-source {
+  font-weight: 400;
+  font-size: .66rem;
+  color: var(--site-muted);
+}
 .map-builder-unnamed { font-weight: 400; font-style: italic; color: var(--site-muted); }
 .map-builder-count { flex: 0 0 auto; color: var(--site-muted); font-variant-numeric: tabular-nums; }
 .map-builder-locate {
