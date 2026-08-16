@@ -30,7 +30,19 @@ const maxExplorationReportBytes = 8 << 20
 // The marker beside each file records the hash that was accepted, so an unchanged map is not re-sent on
 // every launch - the file is rewritten by the plugin on every save whether or not anything moved.
 func uploadExplorationReports(ctx context.Context, client *portalClient, request profileRequest, token, active string) {
-	directory := explorationDirectory(active)
+	// Two locations, on purpose. The launcher passes VALHEIM_EXPLORATION_DIR, but a client installed
+	// before that existed does not, and the plugin then falls back to its own config directory - which
+	// is inside active/ and therefore destroyed by the next sync. Sweeping both means a session
+	// recorded by an older launcher is still collected, once, before it is lost.
+	for _, directory := range []string{
+		explorationDirectory(active),
+		filepath.Join(active, "BepInEx", "config", "exploration"),
+	} {
+		uploadReportsFrom(ctx, client, request, token, directory)
+	}
+}
+
+func uploadReportsFrom(ctx context.Context, client *portalClient, request profileRequest, token, directory string) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return
