@@ -285,23 +285,31 @@ body.guide .shell {
     minmax(0, 1fr);
 }
 .guide-body > * { grid-column: 2; }
-.guide-body > table { grid-column: 1 / -1; }
+/* Tables may use the whole shell, but they are sized to their content and centred
+   rather than stretched edge to edge: a two-column table pinned to both gutters
+   puts a metre of empty space between its columns and reads as broken alignment. */
+.guide-body > table {
+  grid-column: 1 / -1;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
 /* The header lines share the prose measure so the left edge stays honest. */
 body.guide .back, body.guide .guide-switch, body.guide .guide-footer {
   display: block;
   width: min(78ch, 100%);
   margin-inline: auto;
 }
-/* Centre the measure inside the shell as well: a 72ch column pinned left inside a
-   72rem shell reads as a mistake on a wide monitor. */
 
 .guide-body h1, .guide-body h2, .guide-body h3 { margin: var(--site-space-5) 0 var(--site-space-2); }
 .guide-body table {
-  display: block;
-  width: 100%;
-  overflow-x: auto;
   border-collapse: collapse;
   margin: var(--site-space-3) 0;
+}
+/* Narrow screens keep horizontal scroll instead: a key table has no useful way to
+   fit a phone, and squeezing it makes every row unreadable rather than one clipped. */
+@media (max-width: 60rem) {
+  .guide-body > table { display: block; width: 100%; overflow-x: auto; }
 }
 .guide-body th, .guide-body td {
   padding: .35rem .6rem;
