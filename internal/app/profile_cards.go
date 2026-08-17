@@ -56,10 +56,26 @@ func (k profileKind) Summary() string {
 type profileReleaseCard struct {
 	Release
 	SyncURL     template.URL
+	GuideURL    template.URL
+	GuideName   string
 	Kind        profileKind
 	Title       string
 	Summary     string
 	Recommended bool
+}
+
+// guideAudienceFor decides which of the two guides a card points at. It keys off
+// profileKind rather than client_type, for the same reason the card copy does:
+// client_type cannot tell a desktop profile from a VR-compatible desktop profile,
+// and both of those players read the desktop guide. Only the headset profile gets
+// the VR one. An unverified release also gets the desktop guide, which is the
+// harmless default -- keyboard instructions a headset player cannot follow are a
+// worse first impression than nothing, but a broken link is worse still.
+func guideAudienceFor(kind profileKind) string {
+	if kind == profileHeadset {
+		return guideVR
+	}
+	return guideFlat
 }
 
 // profileReleaseCards turns a world's published releases into the cards a player
@@ -73,9 +89,12 @@ func (s *Server) profileReleaseCards(ctx context.Context, releases []Release) ([
 			return nil, err
 		}
 		kind := s.profileKindOf(ctx, release)
+		audience := guideAudienceFor(kind)
 		cards = append(cards, profileReleaseCard{
 			Release: release, SyncURL: template.URL(link),
-			Kind: kind, Title: kind.Title(), Summary: kind.Summary(),
+			GuideURL:  template.URL("/worlds/" + template.URLQueryEscaper(release.World) + "/guide/" + audience),
+			GuideName: guideAudienceTitle(audience) + " guide",
+			Kind:      kind, Title: kind.Title(), Summary: kind.Summary(),
 		})
 	}
 	slices.SortStableFunc(cards, func(a, b profileReleaseCard) int {

@@ -242,6 +242,37 @@ section.choose {
   color: var(--site-ink);
 }
 .sync.sync-secondary:hover { background: #ffffff12; }
+/* The guide link sits under the install button on every profile card. It is
+   deliberately quieter than .sync: installing is the action a player came for,
+   reading is the thing they do once. */
+.guide-link {
+  display: inline-block;
+  margin-top: var(--site-space-2);
+  color: var(--site-muted);
+  font-size: .88rem;
+  text-decoration: underline;
+}
+.guide-link:hover { color: var(--site-ink); }
+/* Long-form prose, so the body is measured in characters rather than pixels and
+   the key tables are allowed to scroll rather than squeeze the page. */
+.guide-body { max-width: 72ch; }
+.guide-body h1, .guide-body h2, .guide-body h3 { margin: var(--site-space-5) 0 var(--site-space-2); }
+.guide-body table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: var(--site-space-3) 0;
+}
+.guide-body th, .guide-body td {
+  padding: .35rem .6rem;
+  border-bottom: 1px solid var(--site-line);
+  text-align: left;
+  vertical-align: top;
+}
+.guide-body code { font-family: var(--site-mono); font-size: .88em; }
+.guide-switch { color: var(--site-muted); font-size: .92rem; }
+.guide-footer { margin: var(--site-space-5) 0 var(--site-space-4); color: var(--site-muted); font-size: .85rem; }
 /* Block-level so the address never shares a line with the sentence that
    follows it; the value is the thing being pointed at. */
 .copy-row {
