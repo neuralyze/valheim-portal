@@ -106,7 +106,7 @@ func TestTheShippedGuideIsWellFormedAndSplitsBothWays(t *testing.T) {
 }
 
 func TestTablesSurviveRendering(t *testing.T) {
-	html, err := renderGuide("| key | action |\n|---|---|\n| F5 | console |\n")
+	html, _, err := renderGuide("| key | action |\n|---|---|\n| F5 | console |\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,6 +177,47 @@ func TestHeadsetProfilesLinkTheVRGuideAndDesktopProfilesDoNot(t *testing.T) {
 	for kind, want := range cases {
 		if got := guideAudienceFor(kind); got != want {
 			t.Errorf("%s profile points at the %s guide, want %s", kind.Title(), got, want)
+		}
+	}
+}
+
+// A contents list whose links do not match the page's own anchors is worse than
+// none: every entry looks clickable and silently does nothing. So the anchors come
+// from the same render that produces the headings, and this proves they agree.
+func TestTheContentsLinkToAnchorsThatExistOnThePage(t *testing.T) {
+	html, sections, err := renderGuide("# Title\n\n## First section\n\ntext\n\n### Sub\n\nmore\n\n## Second section\n\ntext\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sections) != 2 {
+		t.Fatalf("sections = %+v, want the two level-2 headings only", sections)
+	}
+	if sections[0].Title != "First section" || sections[1].Title != "Second section" {
+		t.Errorf("section titles are wrong: %+v", sections)
+	}
+	for _, section := range sections {
+		if section.Anchor == "" {
+			t.Fatalf("section %q has no anchor", section.Title)
+		}
+		if !strings.Contains(string(html), `id="`+section.Anchor+`"`) {
+			t.Errorf("contents links #%s but the page has no such anchor", section.Anchor)
+		}
+	}
+}
+
+func TestTheShippedGuideHasContentsForBothAudiences(t *testing.T) {
+	for _, audience := range []string{guideFlat, guideVR} {
+		html, sections, err := renderGuide(filterGuide(playerGuideSource, audience))
+		if err != nil {
+			t.Fatalf("%s: %v", audience, err)
+		}
+		if len(sections) < 5 {
+			t.Fatalf("%s guide lists only %d sections; the contents would be useless", audience, len(sections))
+		}
+		for _, section := range sections {
+			if !strings.Contains(string(html), `id="`+section.Anchor+`"`) {
+				t.Errorf("%s guide: contents entry %q points at a missing anchor", audience, section.Title)
+			}
 		}
 	}
 }

@@ -259,17 +259,42 @@ section.choose {
    the key tables are allowed to scroll rather than squeeze the page. */
 /* The guide has no inline page CSS of its own, so .shell gets its width here.
    Without this the prose sits flush against the left viewport edge. */
+body.guide {
+  /* Type scales with the viewport so a 27-inch monitor reads at a comfortable size
+     instead of showing the same 16px column it shows on a laptop. Because the
+     reading measure below is in ch, growing the type also widens the column: the
+     page fills more of the screen without the line length becoming unreadable. */
+  font-size: clamp(1rem, 0.62rem + 0.52vw, 1.32rem) !important;
+}
 body.guide .shell {
-  /* One measure for the whole page. Sizing the shell to the reading width, rather
-     than centring a narrow article inside a wide shell, keeps the back link, the
-     audience switch, the prose and the footer on the same left edge. */
-  width: min(76ch, calc(100% - 3rem));
+  /* The shell is the outer bound, wide enough for a key table to stretch into.
+     Prose does not use all of it - the grid below keeps text on a measure - so
+     this is deliberately much wider than a reading column. */
+  width: min(110rem, calc(100% - 3rem));
   margin-inline: auto;
   padding-block: var(--site-space-4) var(--site-space-6);
 }
+/* Three tracks: prose sits in the centre one at a readable measure, and anything
+   that benefits from width breaks out across all three. The 128-row key reference
+   is the reason this exists. */
+.guide-body {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, min(78ch, 100%))
+    minmax(0, 1fr);
+}
+.guide-body > * { grid-column: 2; }
+.guide-body > table { grid-column: 1 / -1; }
+/* The header lines share the prose measure so the left edge stays honest. */
+body.guide .back, body.guide .guide-switch, body.guide .guide-footer {
+  display: block;
+  width: min(78ch, 100%);
+  margin-inline: auto;
+}
 /* Centre the measure inside the shell as well: a 72ch column pinned left inside a
    72rem shell reads as a mistake on a wide monitor. */
-.guide-body { max-width: 100%; }
+
 .guide-body h1, .guide-body h2, .guide-body h3 { margin: var(--site-space-5) 0 var(--site-space-2); }
 .guide-body table {
   display: block;
@@ -286,6 +311,32 @@ body.guide .shell {
 }
 .guide-body code { font-family: var(--site-mono); font-size: .88em; }
 .guide-switch { color: var(--site-muted); font-size: .92rem; }
+/* Contents. It sits on the prose measure like the rest of the header, and columns
+   up on a wide screen so a dozen sections do not become a dozen lines of scrolling
+   before the guide starts. */
+.guide-toc {
+  width: min(78ch, 100%);
+  margin: var(--site-space-4) auto;
+  padding: var(--site-space-3) var(--site-space-4);
+  border: 1px solid var(--site-line);
+  border-radius: var(--site-panel-radius);
+  background: #ffffff08;
+}
+.guide-toc h2 {
+  margin: 0 0 var(--site-space-2);
+  font-size: .82rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--site-muted);
+}
+.guide-toc ol {
+  margin: 0;
+  padding-left: 1.35rem;
+  columns: 2;
+  column-gap: var(--site-space-5);
+}
+.guide-toc li { break-inside: avoid; margin: 0 0 .2rem; }
+@media (max-width: 48rem) { .guide-toc ol { columns: 1; } }
 .guide-footer { margin: var(--site-space-5) 0 var(--site-space-4); color: var(--site-muted); font-size: .85rem; }
 /* Block-level so the address never shares a line with the sentence that
    follows it; the value is the thing being pointed at. */

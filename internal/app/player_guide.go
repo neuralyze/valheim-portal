@@ -10,7 +10,10 @@ import (
 	"strings"
 
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/text"
 )
 
 // The player guide is one document serving two audiences. A desktop player and a
@@ -119,16 +122,59 @@ func validateGuideRegions(source string) error {
 	return nil
 }
 
-// renderGuide turns the filtered markdown into HTML. Tables are the one extension
-// that matters: the guide's key reference is a table and would otherwise render as
-// a wall of pipes.
-func renderGuide(markdown string) (template.HTML, error) {
-	var buffer bytes.Buffer
-	converter := goldmark.New(goldmark.WithExtensions(extension.Table))
-	if err := converter.Convert([]byte(markdown), &buffer); err != nil {
-		return "", err
+// guideSection is one entry in the table of contents. The anchor is whatever
+// goldmark generated for that heading, never a second guess at slugifying it:
+// a table of contents whose links do not match the page's own anchors is worse
+// than no table of contents, because every entry looks clickable and does nothing.
+type guideSection struct {
+	Anchor string
+	Title  string
+}
+
+// renderGuide turns the filtered markdown into HTML and lists its top-level
+// sections. Tables are the one extension that matters -- the key reference would
+// otherwise render as a wall of pipes -- and auto heading IDs are what make the
+// contents links resolve.
+func renderGuide(markdown string) (template.HTML, []guideSection, error) {
+	source := []byte(markdown)
+	converter := goldmark.New(
+		goldmark.WithExtensions(extension.Table),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+	)
+	document := converter.Parser().Parse(text.NewReader(source))
+
+	var sections []guideSection
+	err := ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		heading, ok := node.(*ast.Heading)
+		// Level 2 only: those are the numbered sections a reader navigates by. The
+		// guide has around 60 headings in total and listing them all would be a
+		// second document rather than a way into this one.
+		if !entering || !ok || heading.Level != 2 {
+			return ast.WalkContinue, nil
+		}
+		id, found := heading.AttributeString("id")
+		if !found {
+			return ast.WalkContinue, nil
+		}
+		anchor, ok := id.([]byte)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		sections = append(sections, guideSection{
+			Anchor: string(anchor),
+			Title:  string(heading.Text(source)),
+		})
+		return ast.WalkContinue, nil
+	})
+	if err != nil {
+		return "", nil, err
 	}
-	return template.HTML(buffer.String()), nil
+
+	var buffer bytes.Buffer
+	if err := converter.Renderer().Render(&buffer, source, document); err != nil {
+		return "", nil, err
+	}
+	return template.HTML(buffer.String()), sections, nil
 }
 
 // playerGuide serves one audience's guide for a world the player may see. It is
@@ -144,7 +190,7 @@ func (s *Server) playerGuide(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "guide must be flat or vr", http.StatusNotFound)
 		return
 	}
-	body, err := renderGuide(filterGuide(playerGuideSource, audience))
+	body, sections, err := renderGuide(filterGuide(playerGuideSource, audience))
 	if err != nil {
 		http.Error(w, "guide unavailable", http.StatusInternalServerError)
 		return
@@ -154,6 +200,7 @@ func (s *Server) playerGuide(w http.ResponseWriter, r *http.Request) {
 		"Audience":  audience,
 		"Title":     guideAudienceTitle(audience),
 		"Body":      body,
+		"Sections":  sections,
 		"OtherName": guideAudienceTitle(otherGuideAudience(audience)),
 		"OtherLink": "/worlds/" + template.URLQueryEscaper(world) + "/guide/" + otherGuideAudience(audience),
 		"SourceURL": s.cfg.SourceURL,
@@ -175,6 +222,10 @@ const playerGuideTemplate = `<!doctype html><html lang="en"><head><meta charset=
 <a class="back" href="/worlds/{{.World}}">&larr; {{.World}}</a>
 <p class="guide-switch">You are reading the <strong>{{.Title}}</strong> guide.
 Playing the other way? <a href="{{.OtherLink}}">{{.OtherName}} guide</a>.</p>
+{{if .Sections}}<nav class="guide-toc" aria-label="Contents">
+<h2>Contents</h2>
+<ol>{{range .Sections}}<li><a href="#{{.Anchor}}">{{.Title}}</a></li>{{end}}</ol>
+</nav>{{end}}
 <article class="guide-body">
 {{.Body}}
 </article>
