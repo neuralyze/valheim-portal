@@ -41,7 +41,9 @@ func TestBuildLaunchSpecUsesOriginalSteamValheim(t *testing.T) {
 	if specification.Executable != filepath.Join(steam, "valheim.exe") || specification.Directory != steam {
 		t.Fatalf("launch spec = %#v", specification)
 	}
-	if want := []string{"--doorstop-enable", "true", "--doorstop-target-assembly", filepath.Join(active, "BepInEx", "core", "BepInEx.Preloader.dll")}; strings.Join(specification.Arguments, "\x00") != strings.Join(want, "\x00") {
+	// -console is part of the contract, not incidental: this launcher bypasses Steam, so it is
+	// the only place the game's console gate can be set for a player.
+	if want := []string{"--doorstop-enable", "true", "--doorstop-target-assembly", filepath.Join(active, "BepInEx", "core", "BepInEx.Preloader.dll"), "-console"}; strings.Join(specification.Arguments, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("launch arguments = %#v", specification.Arguments)
 	}
 	if _, err := os.Stat(filepath.Join(active, "valheim.exe")); !os.IsNotExist(err) {

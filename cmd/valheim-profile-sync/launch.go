@@ -46,6 +46,12 @@ func launchCommand(gameDir, active string) (string, []string, error) {
 	return executable, []string{
 		"--doorstop-enable", "true",
 		"--doorstop-target-assembly", filepath.Join(active, "BepInEx", "core", "BepInEx.Preloader.dll"),
+		// The game's own gate on the F5 console. It matters because this launcher starts
+		// valheim.exe directly, so Steam's launch options never apply: a player who put
+		// -console there has never had it. A mod happens to force the console on today,
+		// which means the console silently belongs to that mod's patch surviving the next
+		// game update. Passing the flag makes it the game's feature again.
+		"-console",
 	}, nil
 }
 
