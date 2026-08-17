@@ -260,13 +260,16 @@ section.choose {
 /* The guide has no inline page CSS of its own, so .shell gets its width here.
    Without this the prose sits flush against the left viewport edge. */
 body.guide .shell {
-  width: min(72rem, calc(100% - 3rem));
+  /* One measure for the whole page. Sizing the shell to the reading width, rather
+     than centring a narrow article inside a wide shell, keeps the back link, the
+     audience switch, the prose and the footer on the same left edge. */
+  width: min(76ch, calc(100% - 3rem));
   margin-inline: auto;
   padding-block: var(--site-space-4) var(--site-space-6);
 }
 /* Centre the measure inside the shell as well: a 72ch column pinned left inside a
    72rem shell reads as a mistake on a wide monitor. */
-.guide-body { max-width: 72ch; margin-inline: auto; }
+.guide-body { max-width: 100%; }
 .guide-body h1, .guide-body h2, .guide-body h3 { margin: var(--site-space-5) 0 var(--site-space-2); }
 .guide-body table {
   display: block;
