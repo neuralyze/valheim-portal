@@ -287,12 +287,15 @@ body.guide .shell {
 .guide-body > * { grid-column: 2; }
 /* Tables may use the whole shell, but they are sized to their content and centred
    rather than stretched edge to edge: a two-column table pinned to both gutters
-   puts a metre of empty space between its columns and reads as broken alignment. */
+   puts a metre of empty space between its columns and reads as broken alignment.
+   Centring is justify-self, not margin-inline:auto -- the base .guide-body table
+   rule below sets `margin: … 0`, has equal specificity and comes later, so it
+   would silently reset an auto inline margin. */
 .guide-body > table {
   grid-column: 1 / -1;
+  justify-self: center;
   width: fit-content;
   max-width: 100%;
-  margin-inline: auto;
 }
 /* The header lines share the prose measure so the left edge stays honest. */
 body.guide .back, body.guide .guide-switch, body.guide .guide-footer {
