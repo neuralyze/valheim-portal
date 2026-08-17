@@ -247,7 +247,9 @@ section.choose {
    reading is the thing they do once. */
 .guide-link {
   display: inline-block;
-  margin-top: var(--site-space-2);
+  /* It sits between the summary and the version row now, so it needs air on both
+     sides rather than only above. */
+  margin: var(--site-space-2) 0;
   color: var(--site-muted);
   font-size: .88rem;
   text-decoration: underline;
@@ -255,7 +257,16 @@ section.choose {
 .guide-link:hover { color: var(--site-ink); }
 /* Long-form prose, so the body is measured in characters rather than pixels and
    the key tables are allowed to scroll rather than squeeze the page. */
-.guide-body { max-width: 72ch; }
+/* The guide has no inline page CSS of its own, so .shell gets its width here.
+   Without this the prose sits flush against the left viewport edge. */
+body.guide .shell {
+  width: min(72rem, calc(100% - 3rem));
+  margin-inline: auto;
+  padding-block: var(--site-space-4) var(--site-space-6);
+}
+/* Centre the measure inside the shell as well: a 72ch column pinned left inside a
+   72rem shell reads as a mistake on a wide monitor. */
+.guide-body { max-width: 72ch; margin-inline: auto; }
 .guide-body h1, .guide-body h2, .guide-body h3 { margin: var(--site-space-5) 0 var(--site-space-2); }
 .guide-body table {
   display: block;
