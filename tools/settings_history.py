@@ -54,7 +54,14 @@ SETTINGS_SUFFIXES = (".cfg", ".yml", ".yaml", ".json", ".txt")
 
 # A config the publish scripts snapshotted (`Azumatt.WardIsLove.cfg.before-2026...`)
 # or an editor left behind. Versioning these would record the same content twice.
-BACKUP_MARKERS = (".before-", ".bak", "~")
+# Kept in step with isConfigBackup in cmd/profile-definition-builder: the store and the
+# player download must agree about what counts as a setting rather than a saved copy.
+# `_changed.` is a stray a mod leaves behind - three worlds carry
+# CookieMilk.LitLiterature_changed.cfg beside the real file.
+BACKUP_MARKERS = (".before-", ".bak", "_changed.", "~")
+
+# Directories under a world's config tree that hold something other than settings.
+RUNTIME_DIRS = ("plugins", "SullysAutoPinnerFiles")
 
 STORE_ENVIRONMENT = "VALHEIM_SETTINGS_HISTORY"
 
@@ -171,6 +178,22 @@ def tracked_files(fleet_root: Path) -> dict[str, Path]:
                 relative = path.relative_to(overrides).as_posix()
                 found[f"{world_dir.name}/overrides/{relative}"] = path
 
+        # Which profile this server runs, and who may administer or join it. All four are
+        # edited by hand and none was versioned: the link file is the migration's key new
+        # state, and adminlist.txt was edited the night the fleet moved with no way to see
+        # what it said before.
+        #
+        # valheim.env is deliberately NOT here. It holds the server password and other
+        # production secrets, and this store is an ordinary git repository that gets pushed:
+        # versioning it would put those secrets in history permanently.
+        link = world_dir / "mods" / profile_store.LINK_FILE
+        if link.is_file():
+            found[f"{world_dir.name}/{profile_store.LINK_FILE}"] = link
+        for name in ("adminlist.txt", "permittedlist.txt", "bannedlist.txt"):
+            access = world_dir / "config_merged" / name
+            if access.is_file() and not access.is_symlink():
+                found[f"{world_dir.name}/access/{name}"] = access
+
         # The merged result the server actually reads, written by the plugins before a
         # profile claimed ownership and by the deploy afterwards.
         server_config = world_dir / "config_merged" / "bepinex"
@@ -180,8 +203,11 @@ def tracked_files(fleet_root: Path) -> dict[str, Path]:
             if not path.is_file() or path.is_symlink() or not is_settings_file(path):
                 continue
             relative = path.relative_to(server_config)
-            if relative.parts and relative.parts[0] == "plugins":
-                continue  # a mod's own files, not the operator's settings
+            if relative.parts and relative.parts[0] in RUNTIME_DIRS:
+                # plugins/ is a mod's own files; SullysAutoPinnerFiles/ is data the
+                # pinner rewrites continuously, and versioning it made every commit a
+                # diff of coordinates nobody edits.
+                continue
             found[f"{world_dir.name}/server-config/{relative.as_posix()}"] = path
     return found
 

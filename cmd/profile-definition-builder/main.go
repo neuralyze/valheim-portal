@@ -493,6 +493,16 @@ func readAtMost(reader io.Reader, limit int64) ([]byte, error) {
 	return data, nil
 }
 
+// isConfigBackup reports whether a name is a saved copy of a config rather than a config.
+// The markers match tools/settings_history.py's BACKUP_MARKERS, which excludes the same
+// files from the settings store: one rule, two implementations, so a new marker has to be
+// added in both places or the store and the download disagree about what a setting is.
+func isConfigBackup(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.Contains(lower, ".before-") || strings.Contains(lower, ".bak") ||
+		strings.Contains(lower, "_changed.") || strings.HasSuffix(lower, "~")
+}
+
 func collectConfigEntries(root string) ([]configEntry, error) {
 	info, err := os.Lstat(root)
 	if err != nil {
@@ -517,6 +527,15 @@ func collectConfigEntries(root string) ([]configEntry, error) {
 		relative, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
+		}
+		// The publish scripts and the mod tooling leave timestamped copies beside a config
+		// they rewrite - `Azumatt.WardIsLove.cfg.before-f4-20260817T065333Z` and the like.
+		// BepInEx reads only *.cfg, so they were inert, but every published edition was
+		// shipping fourteen to sixteen of them to every player. History is the store's job:
+		// settings_history.py already versions these directories, and it ignores the same
+		// markers for the same reason.
+		if !entry.IsDir() && isConfigBackup(entry.Name()) {
+			return nil
 		}
 		zipName, err := configZIPPath(relative, entry.IsDir())
 		if err != nil {

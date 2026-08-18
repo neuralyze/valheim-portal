@@ -54,6 +54,8 @@ def test_the_store_holds_settings_and_nothing_else(tmp_path):
         if path.is_file() and ".git" not in path.parts and path.name != "README.md"
     )
     assert recorded == [
+        # The link is tracked too: it decides which mod set this server runs.
+        "Hrafnheim/.active-mod-profile",
         "Hrafnheim/server-config/cybrp.ItemDrawers.cfg",
         "profiles/redesign-alpha/client-config-vr/neuralyze.vrfixes.cfg",
         "profiles/redesign-alpha/client-config/Azumatt.WardIsLove.cfg",
@@ -193,3 +195,48 @@ def test_an_override_deleted_later_is_still_recoverable(tmp_path):
 
     reference, content = history.last_version(store, "Doggerland/overrides/client/Azumatt.FastLink.cfg")
     assert "valheim.example:2456" in content and reference.endswith("~1")
+
+
+def test_the_link_and_the_access_lists_are_versioned(tmp_path):
+    """The state the migration introduced, and the lists an operator edits by hand.
+
+    `.active-mod-profile` decides which mod set a server runs and was unversioned; so were
+    adminlist/permittedlist/bannedlist, one of which was edited the night the fleet moved.
+    """
+    fleet = build_fleet(tmp_path)
+    access = fleet / "Hrafnheim" / "config_merged"
+    (access / "adminlist.txt").write_text("76561197987967077\n")
+    (access / "permittedlist.txt").write_text("")
+    (access / "bannedlist.txt").write_text("")
+
+    tracked = history.tracked_files(fleet)
+
+    assert tracked["Hrafnheim/.active-mod-profile"].name == ".active-mod-profile"
+    assert "Hrafnheim/access/adminlist.txt" in tracked
+    assert "Hrafnheim/access/permittedlist.txt" in tracked
+
+
+def test_the_server_password_is_never_versioned(tmp_path):
+    """This store is an ordinary git repository that gets pushed."""
+    fleet = build_fleet(tmp_path)
+    (fleet / "Hrafnheim" / "valheim.env").write_text("SERVER_PASS=hunter2\n")
+
+    tracked = history.tracked_files(fleet)
+
+    assert not any("valheim.env" in key for key in tracked)
+    assert not any("hunter2" in path.read_text() for path in tracked.values() if path.suffix == ".env")
+
+
+def test_runtime_data_a_mod_rewrites_is_not_a_setting(tmp_path):
+    # Versioning these made every commit a diff of map pins nobody typed.
+    fleet = build_fleet(tmp_path)
+    pinner = fleet / "Hrafnheim" / "config_merged" / "bepinex" / "SullysAutoPinnerFiles"
+    pinner.mkdir(parents=True)
+    (pinner / "Pins.txt").write_text("100,200,copper\n")
+    keep = fleet / "Hrafnheim" / "config_merged" / "bepinex" / "com.maxsch.valheim.vnei.blacklist.txt"
+    keep.write_text("SomeItem\n")
+
+    tracked = history.tracked_files(fleet)
+
+    assert not any("SullysAutoPinnerFiles" in key for key in tracked)
+    assert "Hrafnheim/server-config/com.maxsch.valheim.vnei.blacklist.txt" in tracked
