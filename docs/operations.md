@@ -129,11 +129,15 @@ Which is why `valheim_vr` is declared per target rather than inferred from the p
 name: inferring it once shipped ValheimVR to `non-vr` players, who had asked for the
 edition that does not have it.
 
-`audience` is the other required field, `player` or `admin`. It is recorded in the
-published profile definition, and the portal offers an `admin` edition **only to an
-admin login** (`PORTAL_ADMIN_STEAM_IDS`); an ordinary player's world page does not list
-it. Without that, the four cards on a world page would put a working developer console
-in front of everyone who can see the world.
+`audience` is the other required field, `player` or `admin`. It is carried into the
+`releases.audience` column when the release is published, and the portal offers an
+`admin` edition **only to an admin login** (`PORTAL_ADMIN_STEAM_IDS`); an ordinary
+player's world page does not list it. Without that, the four cards on a world page would
+put a working developer console in front of everyone who can see the world.
+
+**It is not recorded in the published profile definition.** On 2026-08-17 it was, and
+every player's install failed to parse the definition — see
+[release-format.md](release-format.md#the-definition-format-is-frozen).
 
 ### Creating, copying and linking
 
@@ -159,11 +163,19 @@ Every mod operation names the profile it acts on, either with `--profile <name>`
 `--world <World>`, which resolves to whatever that world is linked to. A world with no
 link is an error naming the `profile link` command rather than a guess.
 
-A new server is created and *then* linked; it is never populated from another server.
-`tools/valheim_provision.py` takes one `copy_from` profile for that: name a profile that
-exists and the world simply links to it, name one that does not and it is created empty,
-name one that does not and pass `copy_from` and it starts as an independent copy of that
-profile.
+A new server is created and *then* linked; it is never populated from another server. The
+New Server form's mod field is **"Profile this server runs"**: it defaults to the profile
+the most servers already run, and annotates each choice with how many servers run it.
+Name a profile that exists and this server links to it; name one that does not and it is
+created empty; name one that does not and pass a profile to copy from, and it starts as an
+independent copy of that one. `tools/valheim_provision.py` takes that as its `copy_from`
+positional.
+
+A profile no server runs is normally an **edition source** rather than a mistake, which is
+what the counts are for. `flat` and `vr` exist only as sources for published client
+editions; `admin` is the only profile servers link to, because it is the superset —
+linking a server to `flat` or `vr` would strip the admin tools that have to be
+server-side.
 
 ### A profile owns its server settings
 
@@ -218,22 +230,36 @@ profile alone; a server that needs a different mod set needs a different profile
 
 Removing a mod deletes its config files. `<fleet>/settings-history` is a git store
 holding **only the text an operator owns**, mirrored out of the live trees on every
-mutating mod operation. Three things, under the paths it stores them at:
+mutating mod operation. What it tracks, under the paths it stores them at:
 
 | in the store | from |
 |---|---|
 | `profiles/<name>/profile-manifest.json` | the profile's package selection |
 | `profiles/<name>/client-config*/…` | the settings a player's download carries |
-| `<World>/server-config/…` | that server's live `config_merged/bepinex`, `plugins/` excluded |
+| `profiles/<name>/server-config/…` | the profile's canonical server settings, as typed |
+| `<World>/overrides/…` | `<world>/mods/overrides` — what this one server overrides |
+| `<World>/server-config/…` | that server's merged `config_merged/bepinex` result |
+| `<World>/.active-mod-profile` | which profile that server runs |
+| `<World>/access/{adminlist,permittedlist,bannedlist}.txt` | `<world>/config_merged` — who may administer or join |
 
-It deliberately does not hold `manager-cache/`, or the DLLs and cfgs inside a package:
-those belong to the mod, and the cache is 2.1 GB per profile and reproducible from the
-manifest. Nor the `*.before-*` copies the publish scripts leave behind — history replaces
-that convention rather than versioning it.
+Only files whose suffix is `.cfg`, `.yml`, `.yaml`, `.json` or `.txt` count as settings.
+Both the profile's `server-config/` and each server's merged result are tracked: recording
+only the merge left the two files an operator actually types in unversioned, and recording
+only the sources could not answer what a server was really running.
 
-A profile's canonical `server-config/` is recorded through each linked server's live copy
-rather than directly, so what history answers for a server setting is what that server was
-actually running.
+**`valheim.env` is deliberately never versioned.** It holds the server password and the
+rest of a world's production secrets, and this store is an ordinary git repository that
+gets pushed — versioning it would put those secrets in history permanently.
+
+It also does not hold `manager-cache/`, or the DLLs and cfgs inside a package: those
+belong to the mod, and the cache is 2.1 GB per profile and reproducible from the manifest.
+Under a world's merged tree, `plugins/` is a mod's own files and `SullysAutoPinnerFiles/`
+is data the pinner rewrites continuously; both are excluded as not-settings. Nor does it
+hold the saved copies of configs — any name containing `.before-`, `.bak` or `_changed.`,
+or ending in `~` — because history replaces that convention rather than versioning it.
+That marker list (`BACKUP_MARKERS` in `tools/settings_history.py`) is shared with the
+profile-definition builder, so the store and the player download agree about what counts
+as a setting.
 
 ```bash
 python3 tools/settings_history.py list <fleet>              # every settings file tracked
@@ -529,7 +555,7 @@ The explorer overlays deterministic seed terrain and biomes, generated zones, lo
 
 ## Create a server
 
-1. Open **New server** in `/admin`; choose an immutable world slug, display name, password, world generation mode, gameplay/network values, backup policy, and the mod profile it runs - an existing shared profile the server links to, a new empty one, or a new one copied from an existing profile. A server is never created from another server.
+1. Open **New server** in `/admin`; choose an immutable world slug, display name, password, world generation mode, gameplay/network values, backup policy, and the mod profile it runs. That field is labelled **"Profile this server runs"**, defaults to the profile the most servers already run, and shows beside each profile how many servers run it. Name an existing shared profile and the server links to it; name a new one and it is created, empty or copied from an existing profile. A server is never created from another server. A profile with a count of zero is normally an edition source, not a candidate: `flat` and `vr` exist only as sources for published client editions, and `admin` is the profile servers link to because it is the superset - linking a server to `flat` or `vr` would strip the admin tools that have to be server-side.
 2. Review the exact filesystem/container plan, resolved package inventory, visibility, and launch behavior. Type `CREATE <world>` to authorize the short-lived, actor-bound request.
 3. The agent reserves the three-port game range under a host lock, validates collisions against every configured world, builds a staging tree, writes the password only to the mode-0600 world environment file, and atomically renames the staging tree into place.
 4. Seed creation writes current FWL metadata; import copies the selected save pair and preserves seed and UID while changing only the world name. Non-vanilla player limits pin the server-only MaxPlayerCount package and generated config.

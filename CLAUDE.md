@@ -76,6 +76,15 @@ down and restarts it for nothing.
 3. **One behavioural change per publish.** Six changes in one release leave nothing to verify.
 4. **Say "unmeasured" instead of "negligible".** A once-per-second scene sweep was dismissed as too
    small to matter, without ever being timed. It was the cause of a day-long frame-rate collapse.
+5. **Never add a field or a file to anything an installed client parses.** The published profile
+   definition is a wire contract with a separately installed consumer: `cmd/valheim-profile-sync`
+   decodes `profile-manifest.json` with `DisallowUnknownFields`, rejects unknown files in the
+   archive, and tests `schema == 1` by equality, so the version number is no escape. There is no
+   self-update path, and sync runs before launch, so a definition the client cannot parse locks
+   every player out of the game rather than pinning them to an old profile. On 17 Aug an `audience`
+   field added there did exactly that; it now lives on the `releases` row. A portal-only fact goes
+   in the database. The same freeze applies to `internal/app`, which is compiled into the client:
+   `ValidateFlatCompanionArtifact` and its two siblings are frozen inside every installed exe.
 
 ## Reporting to the operator
 

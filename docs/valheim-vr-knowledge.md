@@ -651,13 +651,20 @@ Reading the client share directly is strictly better:
 
 ### Releases are built by `profile-definition-builder`, and the payload carries the package list
 
-The profile payload ZIP contains `profile-manifest.json` **plus** `config/`; the package list lives
-in that manifest, so editing the source manifest changes nothing unless the payload is rebuilt:
+The profile payload ZIP contains `profile-manifest.json` **plus** `config/`, and nothing else; the
+package list lives in that manifest, so editing the source manifest changes nothing unless the
+payload is rebuilt:
 
 ```
 profile-definition-builder -source-manifest <profile-manifest.json> \
-  -world W -profile P -client-type vr -config-dir <MERGED cfg dir> -output <zip>
+  -world W -profile P -client-type vr -audience player \
+  -config-dir <MERGED cfg dir> -output <zip>
 ```
+
+`-audience` is required and has no default. It is validated here but never written into the
+archive: the built manifest carries only `schema`, `world`, `profile`, `client_type`, `packages`
+and an optional `companion`, because an installed client rejects an unknown key outright. See
+[release-format.md](release-format.md#the-definition-format-is-frozen).
 
 `-config-dir` takes **one** directory, but a VR profile's configs live in **two**
 (`client-config/` and `client-config-vr/`). Merge them, VR overlaying shared, or the build silently

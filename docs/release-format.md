@@ -2,16 +2,77 @@
 
 A release is immutable and scoped by `world`, `profile`, `client_type` (`flat` or `vr`), and version. Publishing archives only the previous current release with the same scope.
 
+## The release row
+
+The `releases` table holds the portal's own facts about a release. One of them is
+`releases.audience`, added by migration 20 (`internal/app/store.go:302-316`):
+
+- Values are exactly `player` or `admin`; a `CHECK` constraint enforces it and an explicit
+  bad value fails loudly rather than being corrected.
+- `cmd/seed-release` writes it from `-audience`, which is required and has no default
+  (`cmd/seed-release/main.go:48`, `:123-126`).
+- The profile-card classifier reads it (`internal/app/profile_cards.go:172-181`) to decide
+  which card kind a release is, and the admin edition is offered **only to an admin login**
+  (`profile_cards.go:105-107`): an ordinary player's world page does not list it.
+
+The audience is a portal-only fact, and [it has to live here](#the-definition-format-is-frozen)
+rather than in the artifact players download.
+
 ## Artifacts
 
-Every release has exactly one immutable `profile` ZIP. It contains only:
+Every release has exactly one immutable `profile` ZIP, the profile definition. It contains
+exactly two entries:
 
 ```text
 profile-manifest.json
 config/
 ```
 
-The manifest has schema `1`, exact world/profile/client-type binding, an `audience` of `player` or `admin`, and filename-sorted Thunderstore package pins with size and SHA-256. The portal offers an `admin` edition only to an admin login, so that field is what keeps a developer console off an ordinary player's world page.
+### The definition format is frozen
+
+`profile-manifest.json` carries exactly these keys and no others:
+
+| key | value |
+|---|---|
+| `schema` | always `1` |
+| `world` | the world the release is scoped to |
+| `profile` | the published profile name |
+| `client_type` | `flat` or `vr` |
+| `packages` | Thunderstore package pins, sorted by filename, each with namespace, name, version, filename, size and SHA-256 |
+| `companion` | optional, and only on a `flat` definition: the Flat companion's filename, size and SHA-256 |
+
+**Nothing may be added to the file or to the archive.** The definition is a wire contract
+with a separately installed consumer:
+
+- An installed client decodes the manifest with `json.Decoder.DisallowUnknownFields()`
+  (`cmd/valheim-profile-sync/sync.go:715-718`), so one unknown key fails the whole sync.
+- The archive allowlist admits only `profile-manifest.json` and `config/`
+  (`sync.go:696-712`), so an extra file fails it too.
+- `schema` cannot be bumped. The client tests `schema == 1` by equality
+  (`sync.go:622`), so a definition declaring `2` is rejected by every client already
+  installed. The version number is not an escape hatch.
+
+There is no self-update path in the client, and sync runs before the game launches - a
+failed `synchronize` returns before `launchProfile` is ever reached
+(`cmd/valheim-profile-sync/main.go:54` and `:117`) - so a definition a client cannot parse
+locks players out of Valheim rather than pinning them to an old profile. On 2026-08-17 an
+`audience` field was added to the manifest and every player's install failed with
+`decode profile definition: json: unknown field "audience"`.
+
+A portal-only fact therefore goes on the release row instead. That is where `audience`
+lives now; `cmd/profile-definition-builder` still validates its `-audience` flag but does
+not write it into the archive.
+
+### What `config/` excludes
+
+`config/` carries the client configs an operator owns, not saved copies of them. The
+builder skips any name containing `.before-`, `.bak` or `_changed.`, or ending in `~`
+(`isConfigBackup`, `cmd/profile-definition-builder/main.go:496-503`). The marker list is
+shared with `BACKUP_MARKERS` in `tools/settings_history.py:61`, so the settings store and
+the player download agree about what counts as a setting; a new marker has to be added in
+both places. Before this exclusion every edition shipped 14-16 backup files to players.
+
+### Auxiliary artifacts
 
 A `flat` release may additionally contain exactly one immutable `flat_companion` ZIP. Its filename, size, and SHA-256 are declared by the profile manifest and must match the release artifact. A `vr` release instead requires exactly one immutable `vr_runtime` ZIP. Upload and publication verify every artifact's size and SHA-256; publication validates every profile, companion, and runtime payload again.
 

@@ -87,8 +87,9 @@ A player signs in with Steam and sees only the worlds they have been granted.
 
 Opening a world offers one card per published edition. The card copy is derived from the
 published profile definition rather than the release's `client_type`, so a profile
-that installs ValheimVR can never be labelled plain Desktop, and an `admin` edition is
-listed only for an admin login.
+that installs ValheimVR can never be labelled plain Desktop. Whether a card is the admin
+edition comes from the release's `audience` column instead, and that card is listed only
+for an admin login.
 
 ![A world page offering Desktop and VR headset profiles, with join address and world seed](docs/images/player-profiles.webp)
 
@@ -606,7 +607,8 @@ profile manifest, so `vr-flat` and `non-vr` come from the same `flat` profile an
 only in whether the checksum-validated Flat companion is attached — which is why each
 release target declares `valheim_vr` rather than having it inferred from the name.
 `audience` is declared the same way, and the portal offers an `admin` edition only to an
-admin login.
+admin login. It is stored on the release row, never in the published definition — see
+[docs/release-format.md](docs/release-format.md#the-definition-format-is-frozen).
 
 `deploy/profiles/` ships the three primaries as example seed data — manifests only, no
 package cache. [docs/operations.md](docs/operations.md#mod-profiles) covers creating,
@@ -632,7 +634,7 @@ The three-argument form `build-profile-definition.sh <WORLD> <published-profile>
 derives all of those paths from `VALHEIM_PROFILE_SOURCE_ROOT`. Both forms require
 `VALHEIM_PROFILE_AUDIENCE` to be `player` or `admin`.
 
-The builder resolves enabled package pins from the managed manifest, records each package SHA-256 and size, merges the optional client-type config overlay over the common config, and creates a canonical `profile-manifest.json` plus profile config ZIP. Build the Windows application with:
+The builder resolves enabled package pins from the managed manifest, records each package SHA-256 and size, merges the optional client-type config overlay over the common config, and creates a canonical `profile-manifest.json` plus profile config ZIP. Saved copies of configs (`.before-`, `.bak`, `_changed.`, trailing `~`) are skipped rather than shipped to players. The manifest carries exactly `schema`, `world`, `profile`, `client_type`, `packages` and an optional `companion`; nothing may be added, because installed clients reject an unknown key or file. Build the Windows application with:
 
 ```sh
 ./scripts/build-windows-client.sh

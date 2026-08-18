@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Mod profiles are shared. A profile lives once at `<fleet root>/profiles/<name>` and a
+  server links to one through `<world>/mods/.active-mod-profile`; editing the profile
+  changes what every linked server runs at that server's next restart. Previously each
+  world held its own 2.1 GB copy with nothing connecting them, and four worlds had drifted
+  to four different mod sets. `tools/profile_store.py` owns the model, `tools/migrate_profiles.py`
+  performed the one-time migration, and `deploy/profiles/` ships the three primaries as
+  example seed manifests without their package caches.
+- Four published editions per world, built from three primaries: `<world>-vr` from `vr`,
+  `<world>-vr-flat` and `<world>-non-vr` from `flat`, and `<world>-vr-flat-admin` from
+  `admin`. Each release target declares `valheim_vr` and `audience` explicitly, with no
+  defaults, because both were previously inferred from the profile's name.
+- `releases.audience` (`player` or `admin`, migration 20). The admin edition carries the
+  console and world-editing tools and is offered only to admin logins; it renders as its
+  own card kind rather than a second card identical to the ordinary desktop one.
+- A profile can own its server-side settings in `<profile>/server-config/`, which
+  `deploy --apply` places on every linked server. A single server overrides individual
+  settings in `<world>/mods/overrides/{server,client}/`, merged per key by
+  `tools/config_merge.py` so a later profile change still reaches that server.
+- `tools/settings_history.py`, a git store of every settings file in the fleet, so removing
+  a mod can no longer lose its configuration. It versions profile manifests, client and
+  server settings, each server's overrides, the profile link and the admin, permitted and
+  banned lists. It never versions `valheim.env`, which holds the server password.
+- `hostops/tests/agent_argv_contract.sh`, which compares the host scripts against the
+  callers that build their argv. Both breaks it now guards shipped silently because nothing
+  tested that seam.
+
 - A source-code link on the player-facing pages, carrying the official GitHub
   mark. This is the AGPL-3.0 section 13 offer, which the interface previously
   did not make anywhere: a network service running modified code owes its users
@@ -22,6 +48,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PORTAL_ADMIN_STEAM_IDS`, an optional comma-separated list of SteamID64s
   allowed to administer the portal. Empty or unset means there are no Steam
   operators, which preserves the previous behaviour exactly.
+
+### Fixed
+
+- Published profile definitions no longer carry portal-only fields. An `audience` field
+  written into `profile-manifest.json` failed every install with
+  `unknown field "audience"`: the client decodes that file with `DisallowUnknownFields`,
+  and because sync runs before launch it locked players out of the game rather than pinning
+  them to an old profile. The definition's keys are fixed, `schema` cannot be bumped, and
+  the client rejects unknown files in the archive as well.
+- Staged artifact filenames no longer accrete their kind prefix. `flat_companion-` had been
+  prepended nine times, and the resulting 205-character name crossed the 180-character cap
+  the builder and the client both enforce, which had already made every Flat publish fail.
+- `hostops/portal_publish_profile.sh` resolves its target by published profile. Matching the
+  source primary stopped identifying one target once a world published two Flat editions
+  from `flat`, so every agent-driven Flat publish exited 2.
+- `hostops/provision_valheim_server.sh` takes the 14 positionals the agent now sends; the
+  `TEMPLATE_WORLD`/`TEMPLATE_PROFILE` pair became a single `COPY_FROM`.
+- Published editions no longer ship the timestamped config backups the tooling leaves
+  behind; every edition had been carrying fourteen to sixteen of them to players.
+- A Flat edition whose ValheimVR comes only from the companion is classified as
+  VR-compatible. Reading the package list alone was accidentally right until the VR fixes
+  moved to the headset edition, after which two editions were offered as plain desktop.
 
 ### Changed
 
