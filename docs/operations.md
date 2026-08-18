@@ -317,7 +317,17 @@ python3 tools/migrate_profiles.py adopt <profile>          # link every server t
 
 ## Publish a Flat ValheimVR release
 
-1. Rebuild `ValheimVRMod.dll` on the Windows ValheimVR build host from the ValheimVR source project, using the established local build process; see [valheimvr-packaging.md](valheimvr-packaging.md). Package the rebuilt DLL into the known-good Flat companion ZIP, remove the temporary `ValheimVRFlatDodgePatchFix.dll`, and confirm its configuration contains `nonVrPlayer = true`.
+1. Rebuild the Flat companion on this host from the ValheimVR source checkout. The script compiles `ValheimVRMod.dll` with Mono, swaps it into the template, deletes the superseded `ValheimVRFlatDodgePatchFix.dll`, and refuses a template whose configuration does not contain `nonVrPlayer = true`; see [valheimvr-packaging.md](valheimvr-packaging.md).
+
+   ```sh
+   ./scripts/build-valheimvr-artifact.sh \
+     --source-root <ValheimVR checkout> \
+     --template /path/to/known-good-flat-companion.zip \
+     --output /incoming/valheimvr-flat-companion.zip \
+     --client-type flat
+   ```
+
+   Record the `sha256` it prints; that is what the release must carry.
 2. Stage only that Flat companion ZIP for portal publication. Do not include Valheim game files, Unity runtime files, server files, or a VR runtime ZIP.
 3. Generate a definition for every Flat edition the catalog declares. The shared profiles and the published edition names are deliberately separate — several editions are built from one profile:
 
@@ -336,13 +346,18 @@ python3 tools/migrate_profiles.py adopt <profile>          # link every server t
 ## Publish a profile
 
 1. Build and inspect the deterministic profile-definition ZIP with `scripts/build-profile-definition.sh`. Pass `client-config-flat/` or `client-config-vr/` as the optional final overlay directory; it is merged over the protected common `client-config/`.
-2. For VR, rebuild and package ValheimVR locally using the existing local ValheimVR release process, then validate and stage its canonical runtime ZIP:
+2. For VR, rebuild the ValheimVR release archive on this host, then validate and stage its canonical runtime ZIP:
 
    ```sh
-   ./scripts/build-vr-runtime-artifact.sh \
-     /path/to/vhvr-release.zip \
-     /path/to/valheimvr-vr-runtime.zip
+   ./scripts/build-valheimvr-artifact.sh \
+     --source-root <ValheimVR checkout> \
+     --template /path/to/vhvr-release.zip \
+     --output /tmp/vhvr-release-rebuilt.zip \
+     --client-type vr
 
+   ./scripts/build-vr-runtime-artifact.sh \
+     /tmp/vhvr-release-rebuilt.zip \
+     /path/to/valheimvr-vr-runtime.zip
    ```
 3. Build `dist/ValheimProfileSync.exe` with `scripts/build-windows-client.sh`.
 4. Create a draft in `/admin` with the exact world, profile, Flat/VR type, version, and player-facing notes.

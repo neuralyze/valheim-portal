@@ -6,6 +6,15 @@ The portal's host agent executes nothing but files in `hostops/`, which is what
 `AGENT_SCRIPT_DIR` points at by default, and it may only run the fixed set named in the
 `agent operation` column below — everything else in `hostops/` is operator-only.
 
+`scripts/` is the third directory and the agent never reaches it: build and install entry
+points an operator runs by hand. Two of them build ValheimVR on this host, now that the
+Windows build host is gone — `scripts/build-valheimvr.sh` compiles `ValheimVRMod.dll`
+with Mono's `mcs`, and `scripts/build-valheimvr-artifact.sh` stages that DLL into either
+the Flat companion or the VR release archive, selected by `--client-type`. Their flags are
+in [command-reference.md](command-reference.md#scripts-scripts); why the build looks the
+way it does, and the two `mcs` traps it encodes, are in
+[valheimvr-packaging.md](valheimvr-packaging.md).
+
 `tools/upstream_sources.py` tracks the projects this deployment builds source from, which is a
 different question from mod freshness: `verify` is the offline `upstream` gate, `status` reaches
 GitHub and reports any upstream commit nobody has reviewed, and `review` records the decision.

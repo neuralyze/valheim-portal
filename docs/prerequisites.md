@@ -2,8 +2,8 @@
 
 What you need before `scripts/install-portal.sh` can produce a working deployment.
 The installer checks most of this and reports every missing item at once, but three
-things it cannot check for you — DNS, TLS, and a Windows build host — are the ones
-that block a release rather than an install.
+things it cannot check for you — DNS, TLS, and the assemblies the ValheimVR build
+compiles against — are the ones that block a release rather than an install.
 
 Read [repository-layout.md](repository-layout.md) first: it names the two paths that
 stay outside this repository and must be configured.
@@ -139,13 +139,23 @@ egress requirement to `api.steampowered.com`. A per-identity manual label
 (`POST /admin/steam-identities/label`) overrides any fetched name and needs no network
 access, so it is the workaround on a deployment without a key.
 
-**A Windows host for the ValheimVR build.** Cross-compiling the client is enough for
-`ValheimProfileSync.exe` — `scripts/build-windows-client.sh` runs on Linux. But
-rebuilding `ValheimVRMod.dll` requires building `ValheimVRMod.sln` on Windows against a
-disposable Valheim installation, and the resulting archive is the input to
-`scripts/build-vr-runtime-artifact.sh`. There is no Linux path for that step. See
-[valheimvr-packaging.md](valheimvr-packaging.md). A Windows machine is also the only
-way to smoke-test a released client end to end.
+**Mono's C# compiler and the game's managed assemblies, for the ValheimVR build.** Both
+ValheimVR artifacts are built on this Linux host: `scripts/build-valheimvr.sh` compiles
+`ValheimVRMod.dll` with `mcs` (the `mono-devel` package), and
+`scripts/build-valheimvr-artifact.sh` stages it into the Flat companion or the VR release
+archive that `scripts/build-vr-runtime-artifact.sh` consumes. There is no Windows build
+host any more and MSBuild is not involved.
+
+What the installer cannot supply is the reference set: the game's own managed assemblies
+(`UnityEngine*`, `assembly_valheim`, `SteamVR`, `final_ik` and the rest) plus a BepInEx
+core directory. They are not redistributable and are therefore not in this repository —
+you point `--refs` and `--bepinex` at a real installation, reached through the CIFS
+mounts `scripts/mount-windows.sh` creates. See
+[valheimvr-packaging.md](valheimvr-packaging.md).
+
+**A Windows machine, for smoke-testing only.** It is the only way to exercise a released
+client end to end. Building no longer needs one: `scripts/build-windows-client.sh`
+cross-compiles `ValheimProfileSync.exe` from Linux.
 
 ## Container resource ceilings
 

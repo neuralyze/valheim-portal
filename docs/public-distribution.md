@@ -140,7 +140,7 @@ actual artifacts contradicts the comfortable reading:
   `Valheim_Data/Plugins/x86_64/ucrtbased.dll` — Microsoft's *debug* Universal CRT,
   which the Visual Studio licence does not permit redistributing.
 
-Everything objectionable is inherited: `tools/build-valheimvr-flat.ps1` takes an
+Everything objectionable is inherited: `scripts/build-valheimvr-artifact.sh` takes an
 upstream ValheimVR release archive as a template and swaps in one locally built
 `ValheimVRMod.dll`.
 

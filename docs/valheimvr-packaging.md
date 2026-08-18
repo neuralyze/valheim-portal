@@ -5,7 +5,7 @@ ValheimVR compatibility is shared by Flat and VR profiles. Both retain ValheimVR
 ## The one modification this project makes to ValheimVR
 
 Everything else in the companion is upstream ValheimVR. This project changes exactly one
-behaviour, and `tools/build-valheimvr-flat.ps1` refuses to build without it.
+behaviour, and `scripts/build-valheimvr-artifact.sh` refuses to build without it.
 
 **The problem.** ValheimVR applies a Harmony postfix to `Player.Update`
 (`ValheimVRMod.Patches.ControlPatches+Player_UpdateDodge_Patch`) that implements
@@ -18,14 +18,14 @@ carries a Harmony `[HarmonyPrepare]` method returning `!VHVRConfig.NonVrPlayer()
 Harmony calls it before patching and skips the patch when it returns false, so on a
 Flat profile — which sets `nonVrPlayer = true` — the patch is never applied at all.
 
-This lives in `ValheimVRMod/Patches/ControlPatches.cs` in the ValheimVR working copy on
-the build host, not in this repository. It is the single reason the Flat companion needs
-a locally built `ValheimVRMod.dll` rather than the upstream binary. The build script
-greps for both markers and aborts with `Flat dodge guard is absent from
-ControlPatches.cs.` if a ValheimVR update has overwritten them.
+This lives in `ValheimVRMod/Patches/ControlPatches.cs` in the ValheimVR working copy, not
+in this repository. It is the single reason the Flat companion needs a locally built
+`ValheimVRMod.dll` rather than the upstream binary. The build script greps for both
+markers and aborts with `Flat dodge guard is absent from ControlPatches.cs.` if a
+ValheimVR update has overwritten them.
 
 **Carrying it across an upstream update.** Since 2026-08-18 the working copy is not a tree
-of uncommitted edits: our changes are six named commits on a branch, `neuralyze/local`, and
+of uncommitted edits: our changes are seven named commits on a branch, `neuralyze/local`, and
 the guard is the first of them. Taking upstream work is
 `git fetch origin master && git rebase origin/master`, which replays them — so the guard
 arrives with the update instead of being overwritten by it, and the build script's grep
@@ -42,39 +42,133 @@ it. It worked, but it was strictly worse: it let the patch be applied and then r
 it, so correctness depended on plugin load order, and a silent failure to find the patch
 left VR dodging active for Flat players.
 
-It is superseded. `build-valheimvr-flat.ps1` deletes `ValheimVRFlatDodgePatchFix.dll`
-from the companion, and `release-format.md` accepts it only in already-published
-releases. New companions must not contain it. The source is retained under
-`tools/valheimvr/` for the published releases that still reference it.
+It is superseded. `build-valheimvr-artifact.sh` deletes `ValheimVRFlatDodgePatchFix.dll`
+from every companion it builds, and `release-format.md` accepts it only in
+already-published releases. New companions must not contain it. `FlatDodgePatchFix.cs` is
+retained in the shared mapping directory described under *Profile artifact mapping* below,
+for the published releases that still reference it.
 
-## Build on the Windows ValheimVR host
+## Build on this host
 
-The source project lives on the Windows build host, under the ValheimVR working copy
-kept beside the world's custom mods:
+The Windows build host and its Visual Studio are gone, and MSBuild with them. Nothing
+about ValheimVR needed Windows: it is a BepInEx plugin compiled against the game's own
+managed assemblies, which is what `tools/vrfixes/build.sh` has always done for our own
+plugin. Mono's `mcs` compiles the whole mod on this host in about two seconds.
 
-```text
-<world-root>/<WORLD>/mods/custom/ValheimVR-latest/ValheimVRMod
-```
-
-Build `ValheimVRMod.sln` in `Release|AnyCPU`. Its existing `make-release.cmd` must run only against a disposable/development Windows Valheim installation; it stages the required runtime output and may copy files into `GAME_DIR`.
-
-The canonical input archive is the release ZIP that build produces, currently
-ValheimVR 0.9.21:
+The source checkout is the ValheimVR working copy kept beside the world's custom mods,
+reached over the CIFS mounts `scripts/mount-windows.sh` creates:
 
 ```text
-<world-root>/<WORLD>/mods/custom/ValheimVR-latest/vhvr-0.9.21.zip
+<world-root>/<WORLD>/mods/custom/ValheimVR-latest
 ```
 
-It must have only top-level `BepInEx/` and `Valheim_Data/`. Create the portal artifact with:
+### Compiling the mod
 
 ```sh
 cd <portal checkout>
+./scripts/build-valheimvr.sh \
+  --source-root <ValheimVR checkout> \
+  --output /tmp/ValheimVRMod.dll \
+  --bepinex <ValheimVR checkout>/build/bepinex
+```
+
+`--configuration` takes `Release` (the default), `Debug`, `SyncOnlyRelease` or
+`SyncOnlyDebug`, which are the four `ValheimVRMod.csproj` declares and carry the same
+defines. `--refs DIR` names the reference assemblies and defaults to
+`<source-root>/build/latest`. The script prints one JSON object — `valheimvr_dll`,
+`valheimvr_dll_sha256`, `configuration`, `sources`, `references`. A current full build is
+107 sources against 110 references.
+
+### Three things that will otherwise cost you a session
+
+**`-nostdlib -noconfig` makes `mcs` hang, not fail.** It sits there indefinitely instead
+of reporting a missing corlib. Let `mcs` use its own default configuration. This is why
+`build-valheimvr.sh` does not pass those flags, and why it must not be "tidied up" to.
+
+**`-langversion:latest` is required, not cosmetic.** The default language version rejects
+this source outright with `CS1644` (feature not available in this language version) and
+`CS1738` (named arguments before positional ones).
+
+**The reference assemblies are the game's, and are not vendored.** They are
+`UnityEngine*`, `assembly_valheim`, `SteamVR`, `final_ik` and the rest, published under
+the game's own licence, so this repository does not and cannot carry them. Point `--refs`
+at a directory holding them — a synchronized VR profile's `Valheim_Data/Managed` serves —
+and `--bepinex` at a BepInEx core directory holding `BepInEx.dll` and `0Harmony.dll`.
+**Copy the BepInEx core directory off the SMB profile share first.** Reading references
+across the share makes the build appear to hang; it is only the compiler waiting on the
+network, but it looks exactly like the `-nostdlib` failure above.
+
+### Building the portal artifacts
+
+`scripts/build-valheimvr-artifact.sh` compiles the mod, swaps the result into a template
+archive and rezips. It replaces both the PowerShell Flat companion builder that needed
+MSBuild and the staging upstream's `make-release.cmd` did on Windows, so the Flat
+companion and the VR input archive now come out of one script that differs only in
+`--client-type`:
+
+```sh
+./scripts/build-valheimvr-artifact.sh \
+  --source-root <ValheimVR checkout> \
+  --template <existing artifact of the same client type> \
+  --output <artifact ZIP> \
+  --client-type flat
+```
+
+`--configuration` here takes `Release` (the default) or `SyncOnlyRelease`; `--refs` and
+`--bepinex` are passed through to `build-valheimvr.sh`. It prints one JSON object —
+`artifact`, `sha256`, `valheimvr_dll_sha256`, `configuration`.
+
+`--client-type flat` requires the template's
+`BepInEx/config/org.bepinex.plugins.valheimvrmod.cfg` to set `nonVrPlayer = true`. A
+template without it would produce a companion running VR input handling for desktop
+players, which is the whole failure the dodge guard exists to prevent. It also deletes the
+superseded `ValheimVRFlatDodgePatchFix.dll`; a companion carrying both would unpatch what
+was never patched. The output is the Flat companion, uploaded as the `flat_companion`
+artifact.
+
+`--client-type vr` requires `nonVrPlayer = false` and produces a ValheimVR release
+archive with only top-level `BepInEx/` and `Valheim_Data/` — the canonical input,
+currently ValheimVR 0.9.21, that the existing runtime builder takes as its first
+argument:
+
+```sh
+./scripts/build-valheimvr-artifact.sh \
+  --source-root <ValheimVR checkout> \
+  --template /path/to/vhvr-release.zip \
+  --output /tmp/vhvr-release-rebuilt.zip \
+  --client-type vr
+
 ./scripts/build-vr-runtime-artifact.sh \
-  /path/to/vhvr-release.zip \
+  /tmp/vhvr-release-rebuilt.zip \
   /path/to/valheimvr-vr-runtime.zip
 ```
 
-The command validates the fixed ValheimVR 0.9.21 allowlist before atomically copying the archive. It rejects unknown files, symlinks, duplicate paths ignoring case, traversal, malformed archives, and oversize content.
+`build-vr-runtime-artifact.sh` validates the fixed ValheimVR 0.9.21 allowlist before
+atomically copying the archive. It rejects unknown files, symlinks, duplicate paths
+ignoring case, traversal, malformed archives, and oversize content.
+
+Neither artifact is ever placed in the dedicated-server container. The companion is a
+client payload; the server has no use for `ValheimVRMod.dll` and must not receive it.
+
+### How the Mono build was shown to match the Roslyn one
+
+The DLL that shipped before this change was built by Roslyn on the Windows host. The
+Mono-built DLL was compared against it by type surface: both declare the same **350
+non-compiler-generated type names, with no difference at all** in that set. The two
+assemblies differ only where a compiler is free to differ — Roslyn's `<>c` and
+`<>c__DisplayClass*` closures and `<M>d__*` iterators against Mono's `c__AnonStorey*` and
+`c__Iterator*`, plus two Roslyn-only marker attributes
+(`Microsoft.CodeAnalysis.EmbeddedAttribute` and
+`System.Runtime.CompilerServices.IsReadOnlyAttribute`) that Mono does not emit. The Flat
+companion built around the Mono DLL was then run through the portal's own
+`app.ValidateFlatCompanionArtifact` and accepted; the VR archive is gated the same way by
+`app.ValidateVRRuntimeArtifact` at publication.
+
+**That is a static equivalence result, not a play-test.** It says the two compilers
+produced the same declared API from the same source, and that the packaging still passes
+the checks the portal enforces. It does not say the mod was run in the game. Step 6 of
+[Publish a Flat ValheimVR release](operations.md#publish-a-flat-valheimvr-release) is
+still the thing that proves a companion works.
 
 ## Profile artifact mapping
 

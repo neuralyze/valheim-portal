@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The ValheimVR mod is built on this host now, with Mono's compiler, because the Windows build
+  host is gone. `scripts/build-valheimvr.sh` compiles it in about two seconds;
+  `scripts/build-valheimvr-artifact.sh --client-type flat|vr` produces the Flat companion or the
+  VR release zip that feeds `scripts/build-vr-runtime-artifact.sh`, replacing both
+  `tools/build-valheimvr-flat.ps1` (MSBuild) and the Windows `make-release.cmd` staging. Artifacts
+  are byte-reproducible, and the portal's own validators accept both. The Mono build carries the
+  identical 350-name type surface as the previous Roslyn one, differing only in compiler-generated
+  closure and iterator types.
+
 - The ValheimVR working copy is now six named commits on a branch instead of seventeen
   uncommitted files, rebased onto upstream `50d333d`, which brings in the refined gestured
   draw-from-back logic the VR bow work needs. Carrying our patches across an upstream update is
