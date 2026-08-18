@@ -66,6 +66,25 @@ down and restarts it for nothing.
 4. **Say "unmeasured" instead of "negligible".** A once-per-second scene sweep was dismissed as too
    small to matter, without ever being timed. It was the cause of a day-long frame-rate collapse.
 
+## Reporting to the operator
+
+The operator is the only reader. Length is a cost they pay, not a measure of work done.
+
+1. **Answer the question, then stop.** No evidence trail, no implications, no next steps, no
+   recommendations unless asked. On 18 Aug a two-line question about one mod was answered with
+   thirty lines of enum decoding, and the session before it ended with the operator quitting.
+2. **Verify silently. Report a finding only when it contradicts what was asked for.** Checking is
+   the job; narrating the check is not. "I confirmed X from source" is worth one line at most, and
+   usually zero.
+3. **Never restate what the operator has already said.** Repeating their own reasoning back reads
+   as not having listened, which is how it is meant.
+4. **When told a fact, use it.** Do not re-derive it to see if it holds. If it turns out to be
+   wrong, say so in one line at the point it matters.
+5. **When told to stop discussing something, stop - including in closing summaries.** Listing
+   "still outstanding" items after being told they are not issues is the same error twice.
+
+`detail` is the word that lifts these; until it is said, assume the short form.
+
 ## Task tracking
 
 `bd` (beads) is the source of truth for outstanding work — not chat, not markdown checklists.
