@@ -4,7 +4,9 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -383,6 +385,70 @@ class DispatchTest(unittest.TestCase):
             status = valheim_mods.main()
         self.assertEqual(status, 2)
         self.assertIn("custom-add", stderr.getvalue())
+
+
+class SettingsHistoryWiringTest(RemoveTest):
+    """main() records settings around every mutating command.
+
+    Inherits RemoveTest's world because that fixture already has the three places
+    settings live: the manifest, the profile's configs, and the server's cfg tree.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.store = Path(self.temp.name) / "settings-history"
+        os.environ["VALHEIM_SETTINGS_HISTORY"] = str(self.store)
+        self.addCleanup(os.environ.pop, "VALHEIM_SETTINGS_HISTORY", None)
+
+    def run_main(self, *arguments):
+        argv = sys.argv
+        sys.argv = ["valheim_mods.py", "--manifest", str(self.manifest), *arguments]
+        self.addCleanup(setattr, sys, "argv", argv)
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            status = valheim_mods.main()
+        return status, out.getvalue(), err.getvalue()
+
+    def commit_subjects(self):
+        return subprocess.run(["git", "-C", str(self.store), "log", "--format=%s"],
+                              capture_output=True, text=True, check=True).stdout.split("\n")
+
+    def test_a_manifest_edit_lands_in_history(self):
+        # exclude is the one mutating command that needs neither the network nor
+        # a container, so it exercises the wiring rather than a mod download.
+        status, out, _ = self.run_main("exclude", "some-Mod", "1.0", "--reason", "test")
+
+        self.assertEqual(status, 0)
+        self.assertIn("settings_history=", out)
+        subjects = self.commit_subjects()
+        self.assertIn("TestWorld: exclude some-Mod 1.0 --reason test", subjects)
+        # The pre-work snapshot is what survives a crash inside the handler.
+        self.assertIn("TestWorld: before exclude some-Mod 1.0 --reason test", subjects)
+        recorded = self.store / "TestWorld/profiles/test-profile/profile-manifest.json"
+        self.assertIn("some-Mod", recorded.read_text())
+
+    def test_a_read_only_command_records_nothing(self):
+        status, _, _ = self.run_main("list")
+
+        self.assertEqual(status, 0)
+        self.assertFalse(self.store.exists())
+
+    def test_a_removal_stops_when_history_cannot_be_written(self):
+        # A file where the store must go: git init cannot succeed, so the only
+        # copy of these configs would be the removal backup alone.
+        blocked = Path(self.temp.name) / "blocked"
+        blocked.write_text("not a directory")
+        os.environ["VALHEIM_SETTINGS_HISTORY"] = str(blocked / "store")
+        config = self.world / "config_merged/bepinex/warpalicious.More_World_Traders.cfg"
+
+        status, _, err = self.run_main("remove", self.identifier, "--reason", "obsolete")
+
+        self.assertEqual(status, 2)
+        self.assertIn("history", err)
+        # Refused before the work: the mod and its config are untouched.
+        self.assertTrue(config.is_file())
+        self.assertTrue(valheim_mods.matching_manifest_entries(
+            json.loads(self.manifest.read_text()), self.identifier))
 
 
 class ExportCodeTest(unittest.TestCase):

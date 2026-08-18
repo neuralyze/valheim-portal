@@ -8,9 +8,10 @@ import requests
 from packaging.version import Version
 
 if __package__:
-    from . import portal_paths
+    from . import portal_paths, settings_history
 else:
     import portal_paths
+    import settings_history
 
 TOOLS_ROOT = portal_paths.TOOLS_ROOT
 API = 'https://thunderstore.io/c/valheim/api/v1/package/'
@@ -1019,6 +1020,40 @@ COMMANDS={
     'release-confirm':cmd_release_confirm,
 }
 
+# Commands that can change settings text. `deploy` is here because the overlay it
+# copies is what makes the server generate its configs, and `update` because
+# --apply rewrites versions; a run of either that changes nothing records nothing,
+# since snapshot() answers None rather than committing an empty tree.
+HISTORY_COMMANDS = {
+    'add', 'sync', 'remove', 'purge', 'exclude', 'disable', 'enable',
+    'custom-add', 'custom-remove', 'custom-disable', 'custom-enable',
+    'update', 'deploy', 'profile',
+}
+
+# Commands that delete settings. For these the snapshot BEFORE the work is not
+# advisory: if the store cannot be written, the only copy of those configs is
+# about to be deleted, so the operation is refused instead.
+HISTORY_REQUIRED_COMMANDS = {'remove', 'purge'}
+
+def record_settings(world_dir, message, required):
+    """Snapshot the world's settings. Returns True when the store is usable.
+
+    History must not be able to fail a mod operation that already succeeded, so
+    every call after the work only warns. The call before a deletion is the one
+    that matters, and its caller refuses the work when this returns False.
+    """
+    try:
+        commit = settings_history.snapshot(world_dir, message)
+    except settings_history.HistoryError as failure:
+        if required:
+            print(f'error: settings history is unwritable: {failure}', file=sys.stderr)
+            return False
+        print(f'warning: settings not recorded: {failure}', file=sys.stderr)
+        return False
+    if commit:
+        print(f'settings_history={commit[:12]}')
+    return True
+
 def build_parser():
     p=argparse.ArgumentParser(); p.add_argument('--world'); p.add_argument('--profile'); p.add_argument('--manifest',type=Path); sub=p.add_subparsers(dest='command',required=True)
     listing=sub.add_parser('list'); listing.add_argument('--json',action='store_true')
@@ -1064,7 +1099,23 @@ def main():
         print(f'error: {args.command} has no handler; the subcommand is registered but unwired',file=sys.stderr)
         return 2
     args.manifest=resolve_manifest(args); root=args.manifest.parent; m=load(args.manifest)
-    return handler(root,m,args) or 0
+    # root is <world>/mods/profiles/<profile>, so the world is three levels up -
+    # the same derivation package_paths and plugin_config_files already make.
+    world_dir = root.parents[2]
+    # The subject reads as the operation an operator recognises. Slicing from the
+    # subcommand drops --manifest/--world/--profile, whose absolute paths are noise
+    # in a log and differ between the agent's invocation and a hand-run one.
+    operation = ' '.join(sys.argv[sys.argv.index(args.command):])
+    if args.command in HISTORY_COMMANDS:
+        recorded = record_settings(world_dir, f'{world_dir.name}: before {operation}',
+                                   args.command in HISTORY_REQUIRED_COMMANDS)
+        if not recorded and args.command in HISTORY_REQUIRED_COMMANDS:
+            print('error: refusing to delete settings that history cannot recover',file=sys.stderr)
+            return 2
+    outcome = handler(root,m,args) or 0
+    if args.command in HISTORY_COMMANDS and outcome == 0:
+        record_settings(world_dir, f'{world_dir.name}: {operation}', required=False)
+    return outcome
 if __name__=='__main__':
     try: raise SystemExit(main())
     except portal_paths.ConfigurationError as e: print(f'error: {e}',file=sys.stderr); raise SystemExit(portal_paths.EX_CONFIG)
