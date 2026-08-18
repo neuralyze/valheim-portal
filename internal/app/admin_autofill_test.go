@@ -54,7 +54,8 @@ func TestAdminHomeUsesWorldBoundProfileAutofillAndAuthoritativeDefaults(t *testi
 		`name="profile" list="mod-profile-slugs" data-profile-slug`,
 		`name="profile" list="release-profiles-Midgard"`,
 		`<input type="hidden" name="world" value="Midgard">`,
-		`Choose a profile from this world or type a new slug.`,
+		// A profile is shared now: the copy must not imply it belongs to the world.
+		`A shared profile: every server linked to it runs this mod set.`,
 		`pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}"`,
 		`src="/assets/admin-profile-autofill.js"`,
 		`value="draft-midgard-flat" label="redesign-alpha / flat / 1.0.0"`,

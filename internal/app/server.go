@@ -2133,7 +2133,7 @@ body{font:16px system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 
 <p>Inspect installed packages, search Thunderstore, select approved local custom packages, and deploy an immutable profile.</p>
 {{if .Worlds}}<form method="get" action="/admin/mods" data-profile-autofill>
 <label>World <select name="world" data-profile-world required>{{range .Worlds}}<option value="{{.Name}}">{{.Name}}</option>{{end}}</select></label>
-<label>Profile slug <input name="profile" list="mod-profile-slugs" data-profile-slug autocomplete="off" placeholder="redesign-alpha" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}"><small>Choose a profile from this world or type a new slug.</small></label>
+<label>Profile slug <input name="profile" list="mod-profile-slugs" data-profile-slug autocomplete="off" placeholder="admin" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}"><small>A shared profile: every server linked to it runs this mod set.</small></label>
 <datalist id="mod-profile-slugs"></datalist>
 <button>Manage mods</button>
 </form>{{else}}<p>No configured worlds are available.</p>{{end}}
