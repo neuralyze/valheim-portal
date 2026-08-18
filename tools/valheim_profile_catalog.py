@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-"""List controlled mod profiles for one configured world as JSON."""
+"""List the mod profiles one world may run, as JSON.
+
+Profiles are shared, so every profile is available to every world: the ``world`` field
+is the world that was asked about, not a property of the profile. The shape is
+unchanged because the portal filters on it - it checks ``world`` matches the world it
+queried before offering a profile in the admin UI.
+"""
 from __future__ import annotations
 
 import json
 import re
 import sys
 if __package__:
-    from . import portal_paths
+    from . import portal_paths, profile_store
 else:
     import portal_paths
+    import profile_store
 
 VALID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 
@@ -20,22 +27,22 @@ def main() -> int:
     world = (root / sys.argv[1]).resolve()
     if root not in world.parents or not world.is_dir():
         raise ValueError("world unavailable")
-    profiles_root = (world / "mods" / "profiles").resolve()
+    store = profile_store.profiles_root(root)
+    linked = profile_store.linked_profile(world)
     result = []
-    for directory in sorted(profiles_root.iterdir() if profiles_root.is_dir() else []):
-        manifest_path = directory / "profile-manifest.json"
-        if directory.is_symlink() or not directory.is_dir() or not VALID.fullmatch(directory.name) or not manifest_path.is_file() or manifest_path.is_symlink():
-            continue
+    for name in profile_store.profile_names(store):
+        manifest_path = store / name / profile_store.MANIFEST_NAME
         try:
             manifest = json.loads(manifest_path.read_text())
-            if manifest.get("world_name") != sys.argv[1]:
-                continue
             packages = [*manifest.get("packages", []), *manifest.get("client_only_packages", [])]
             result.append({
-                "world": sys.argv[1], "profile": directory.name,
-                "name": manifest.get("profile_name", directory.name),
+                "world": sys.argv[1], "profile": name,
+                "name": manifest.get("profile_name", name),
                 "packages": len(packages), "custom_packages": len(manifest.get("custom_packages", [])),
                 "disabled_packages": len(manifest.get("disabled_packages", [])),
+                # Which one this world runs today. Several worlds can name the same profile,
+                # so this is the only per-world fact in the row.
+                "linked": name == linked,
             })
         except (OSError, ValueError, TypeError):
             continue

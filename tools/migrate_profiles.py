@@ -137,6 +137,27 @@ def _differences(copies: list[dict]) -> list[dict]:
     return differences
 
 
+def _copies_for_history(state: dict) -> dict[str, Path]:
+    """Every settings file in the per-world copies, keyed for the history store.
+
+    Only the text: a manifest and the client configs. The 2.1 GB package cache is
+    rebuildable from the manifest and belongs nowhere near a git store.
+    """
+    files: dict[str, Path] = {}
+    for copy in state["copies"]:
+        source = Path(copy["path"])
+        prefix = f'migration/{copy["world"]}/{copy["profile"]}'
+        manifest = source / profile_store.MANIFEST_NAME
+        if manifest.is_file():
+            files[f"{prefix}/{profile_store.MANIFEST_NAME}"] = manifest
+        for directory in sorted(d for d in source.iterdir()
+                                if d.is_dir() and d.name.startswith("client-config")):
+            for path in sorted(directory.rglob("*")):
+                if path.is_file() and not path.is_symlink() and settings_history.is_settings_file(path):
+                    files[f"{prefix}/{path.relative_to(source).as_posix()}"] = path
+    return files
+
+
 def _move(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
@@ -171,10 +192,11 @@ def apply(fleet_root: Path, *, fold: str | None = None, take: str | None = None,
     root = profiles_root or profile_store.profiles_root(fleet_root)
     root.mkdir(parents=True, exist_ok=True)
 
-    for world in worlds:
-        # Recorded before the move: a fold that takes the wrong copy is then a git
-        # question rather than a lost mod set.
-        settings_history.snapshot(world, f"{world.name}: before profile migration")
+    # Recorded before the move: a fold that takes the wrong copy is then a git question
+    # rather than a lost mod set. The store tracks the shared layout, which these copies
+    # are not in yet, so they are handed over explicitly under a migration/ prefix.
+    settings_history.snapshot(fleet_root, "before profile migration",
+                              extra=_copies_for_history(state))
 
     actions = []
     if separate:

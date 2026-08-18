@@ -8,9 +8,10 @@ import requests
 from packaging.version import Version
 
 if __package__:
-    from . import portal_paths, settings_history
+    from . import portal_paths, profile_store, settings_history
 else:
     import portal_paths
+    import profile_store
     import settings_history
 
 TOOLS_ROOT = portal_paths.TOOLS_ROOT
@@ -90,9 +91,8 @@ def plugin_config_files(world_root, identifier):
             matches.append(config)
     return matches
 
-def package_paths(root, identifier):
+def package_paths(root, world_root, identifier):
     plugin_name = package_install_name(identifier)
-    world_root = root.parents[2]
     paths = [
         *(cache(root) / side / 'BepInEx' / 'plugins' / plugin_name for side in ('client', 'server')),
         root / 'manual-mods' / plugin_name,
@@ -101,8 +101,7 @@ def package_paths(root, identifier):
     ]
     return [path for path in paths if path.exists() and not path.is_symlink()]
 
-def backup_removal_inputs(root, manifest_path, paths, configs):
-    world_root = root.parents[2]
+def backup_removal_inputs(root, world_root, manifest_path, paths, configs):
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     backup = world_root / 'mods' / 'removal-backups' / root.name / stamp
     backup.mkdir(parents=True)
@@ -127,18 +126,18 @@ def remove_paths(paths):
         else:
             path.unlink()
 
-def assert_package_purged(root, manifest, identifier):
+def assert_package_purged(root, world_root, manifest, identifier):
     matches = matching_manifest_entries(manifest, identifier)
     if matches:
         raise RuntimeError(f'Package remains in manifest: {identifier}')
-    paths = package_paths(root, identifier)
+    paths = package_paths(root, world_root, identifier)
     if paths:
         raise RuntimeError(f'Package files remain: {", ".join(str(path) for path in paths)}')
-    configs = plugin_config_files(root.parents[2], identifier)
+    configs = plugin_config_files(world_root, identifier)
     if configs:
         raise RuntimeError(f'Package configs remain: {", ".join(str(config) for config in configs)}')
 
-def client_release_targets(root, manifest):
+def client_release_targets(root, world_root, manifest):
     targets_path = portal_paths.REPO_ROOT / 'release-targets.json'
     if not targets_path.is_file():
         # Returning [] here silently disables the whole client-release cutover guard:
@@ -163,7 +162,7 @@ def client_release_targets(root, manifest):
         for entry in entries:
             if not isinstance(entry, dict):
                 raise RuntimeError(f'Invalid {client_type} release target: {targets_path}')
-            if entry.get('world') == manifest['world_name'] and entry.get('source_profile') == root.name:
+            if entry.get('world') == world_root.name and entry.get('source_profile') == root.name:
                 profile = entry.get('published_profile')
                 if not isinstance(profile, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}', profile):
                     raise RuntimeError(f'Invalid published profile in {targets_path}')
@@ -188,20 +187,19 @@ def pending_release_targets(cutover):
                 targets.setdefault((profile, client_type), set()).add(identifier)
     return targets
 
-def record_release_cutover(root, manifest, identifier):
-    targets = client_release_targets(root, manifest)
+def record_release_cutover(root, world_root, manifest, identifier):
+    targets = client_release_targets(root, world_root, manifest)
     if not targets:
         return None
-    world_root = root.parents[2]
     path, cutover = load_release_cutover(world_root)
     if cutover is None:
         cutover = {
             'schema_version': 1,
-            'world_name': manifest['world_name'],
+            'world_name': world_root.name,
             'removals': [],
             'confirmations': {},
         }
-    if cutover.get('schema_version') != 1 or cutover.get('world_name') != manifest['world_name']:
+    if cutover.get('schema_version') != 1 or cutover.get('world_name') != world_root.name:
         raise RuntimeError(f'Invalid client release cutover record: {path}')
     cutover['removals'].append({
         'identifier': identifier,
@@ -258,17 +256,17 @@ def archive_manifest(path):
         raise RuntimeError(f'Invalid profile archive: {path}') from error
 
 def cmd_release_status(root, manifest, args):
-    path, cutover = load_release_cutover(root.parents[2])
+    path, cutover = load_release_cutover(args.world_dir)
     if not cutover:
         print('client_release_cutover=complete')
         return
-    require_release_cutover_complete(root.parents[2]) if args.require_complete else None
+    require_release_cutover_complete(args.world_dir) if args.require_complete else None
     for (profile, client_type), identifiers in sorted(pending_release_targets(cutover).items()):
         print(f'pending={profile}/{client_type} identifiers={",".join(sorted(identifiers))}')
     print(f'cutover_record={path}')
 
 def cmd_release_confirm(root, manifest, args):
-    world_root = root.parents[2]
+    world_root = args.world_dir
     path, cutover = load_release_cutover(world_root)
     if not cutover:
         raise RuntimeError('No client release cutover is pending')
@@ -278,7 +276,7 @@ def cmd_release_confirm(root, manifest, args):
     if not identifiers:
         raise RuntimeError(f'No pending release target: {args.profile_name}/{args.client_type}')
     release = archive_manifest(args.archive.resolve())
-    if release.get('world') != manifest['world_name'] or release.get('profile') != args.profile_name or release.get('client_type') != args.client_type:
+    if release.get('world') != world_root.name or release.get('profile') != args.profile_name or release.get('client_type') != args.client_type:
         raise RuntimeError('Profile archive does not match the pending release target')
     archive_identifiers = {
         identifier for item in release.get('packages', []) + release.get('client_only_packages', [])
@@ -305,7 +303,11 @@ def cmd_release_confirm(root, manifest, args):
         return
     path.unlink()
     print(f'client_release_confirmed={args.profile_name}/{args.client_type}')
-def custom_root(root): return root.parents[2] / 'mods' / 'custom'
+def custom_root(root):
+    # Inside the profile, not the world. A profile is shared by several servers, so an
+    # archive its custom_packages names cannot live in one server's directory: the same
+    # entry would resolve on one world and be missing on the next.
+    return root / 'custom'
 
 def valid_custom_id(value):
     path = PurePosixPath(value)
@@ -500,7 +502,7 @@ def ensure_dependencies(root, registry, package, version_number, scope, selected
 def cmd_list(root, m, args):
     if getattr(args, 'json', False):
         payload = {
-            'world': m['world_name'],
+            'world': args.world_dir.name if args.world_dir else '',
             'profile': m['profile_name'],
             'packages': [{**item, 'enabled': True, 'source': 'thunderstore'} for item in all_packages(m)],
             'disabled_packages': [{**item, 'enabled': False, 'source': 'thunderstore'} for item in disabled_packages(m)],
@@ -708,10 +710,10 @@ def cmd_remove(root, m, args):
     matches = matching_manifest_entries(m, args.identifier)
     if not matches:
         raise RuntimeError(f'Not present: {args.identifier}')
-    require_stopped(m['world_name'])
-    paths = package_paths(root, args.identifier)
-    configs = plugin_config_files(root.parents[2], args.identifier)
-    backup = backup_removal_inputs(root, args.manifest, paths, configs)
+    require_stopped(args.world_dir.name)
+    paths = package_paths(root, args.world_dir, args.identifier)
+    configs = plugin_config_files(args.world_dir, args.identifier)
+    backup = backup_removal_inputs(root, args.world_dir, args.manifest, paths, configs)
     # The record is written before anything is mutated and rewritten with the outcome. A failure
     # after the manifest save used to leave the backup with no record at all, and because the
     # manifest no longer selected the package, the next run answered 'Not present' - which reads
@@ -731,8 +733,8 @@ def cmd_remove(root, m, args):
         save(args.manifest, m)
         remove_paths(paths)
         remove_paths(configs)
-        assert_package_purged(root, load(args.manifest), args.identifier)
-        cutover = record_release_cutover(root, m, args.identifier)
+        assert_package_purged(root, args.world_dir, load(args.manifest), args.identifier)
+        cutover = record_release_cutover(root, args.world_dir, m, args.identifier)
     except Exception as failure:
         write_removal_record(record, args.identifier, args.reason, started, 'failed',
                              failure=f'{type(failure).__name__}: {failure}')
@@ -749,15 +751,15 @@ def cmd_remove(root, m, args):
 def cmd_purge(root, m, args):
     if matching_manifest_entries(m, args.identifier):
         raise RuntimeError(f'Package is still selected: {args.identifier}; use remove instead')
-    require_stopped(m['world_name'])
-    paths = package_paths(root, args.identifier)
-    configs = plugin_config_files(root.parents[2], args.identifier)
+    require_stopped(args.world_dir.name)
+    paths = package_paths(root, args.world_dir, args.identifier)
+    configs = plugin_config_files(args.world_dir, args.identifier)
     if not paths and not configs:
         raise RuntimeError(f'No orphaned package files found: {args.identifier}')
-    backup = backup_removal_inputs(root, args.manifest, paths, configs)
+    backup = backup_removal_inputs(root, args.world_dir, args.manifest, paths, configs)
     remove_paths(paths)
     remove_paths(configs)
-    assert_package_purged(root, m, args.identifier)
+    assert_package_purged(root, args.world_dir, m, args.identifier)
     (backup / 'removal.json').write_text(json.dumps({
         'identifier': args.identifier,
         'reason': args.reason,
@@ -891,10 +893,10 @@ def validate_server_cache(root, manifest):
             )
 
 def cmd_deploy(root,m,args):
-    world=m['world_name']
+    world=args.world_dir.name
     server_plugins=cache(root)/'server'/'BepInEx'/'plugins'
     manual_plugins=root/'manual-mods'
-    world_root=root.parents[2]
+    world_root=args.world_dir
     target=world_root/'config_merged'/'bepinex'/'plugins'
     runtime_plugins=world_root/'data'/'bepinex'/'BepInEx'/'plugins'
     print(f'source={server_plugins}\ntarget={target}\nmanual={manual_plugins}')
@@ -939,77 +941,82 @@ def cmd_deploy(root,m,args):
                 entry.unlink()
     print('deployed=true')
 def cmd_profile(root, m, args):
-    world_root=root.parents[2]
-    profiles_root=world_root/'mods'/'profiles'
-    active_path=world_root/'mods'/'.active-mod-profile'
-    active=active_path.read_text().strip() if active_path.is_file() else None
+    """Profile lifecycle, delegated to the shared store.
+
+    Nothing here writes a profile directory itself any more: a profile is one shared
+    definition and `profile_store` owns its layout, its name rules and the refusal to
+    delete one a server still links to.
+    """
+    fleet = portal_paths.world_root()
+    store = profile_store.profiles_root(fleet)
     if args.profile_command == 'list':
-        for profile in sorted(profiles_root.iterdir() if profiles_root.is_dir() else []):
-            if (profile/'profile-manifest.json').is_file():
-                marker=' *' if profile.name == active else ''
-                print(f'{profile.name}{marker}')
+        linked = profile_store.linked_profile(args.world_dir) if args.world_dir else None
+        for row in profile_store.describe(fleet, store):
+            marker = ' *' if row['profile'] == linked else ''
+            servers = ', '.join(row['servers']) or 'no servers'
+            print(f'{row["profile"]}{marker}  {row["packages"]} packages  {servers}')
         return
-    valid=lambda name: __import__('re').fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', name)
-    if not valid(args.name):
-        raise RuntimeError(f'Invalid profile name: {args.name}')
-    destination=profiles_root/args.name
     if args.profile_command == 'create':
-        if destination.exists():
-            raise RuntimeError(f'Profile already exists: {args.name}')
-        destination.mkdir(parents=True)
-        for side in ('client', 'server'):
-            (destination/'manager-cache'/side/'BepInEx'/'plugins').mkdir(parents=True)
-        (destination/'manual-mods').mkdir()
-        save(destination/'profile-manifest.json', {
-            'schema_version': 1, 'profile_name': args.name, 'world_name': m['world_name'],
-            'packages': [], 'client_only_packages': [], 'disabled_packages': [], 'custom_packages': [],
-            'manual_server_packages': [], 'excluded_packages': [],
-        })
+        profile_store.create(args.name, store)
         print(f'created={args.name}')
         return
     if args.profile_command == 'copy':
-        source=profiles_root/args.source
-        if not valid(args.source) or not (source/'profile-manifest.json').is_file():
-            raise RuntimeError(f'Profile not found: {args.source}')
-        if destination.exists():
-            raise RuntimeError(f'Profile already exists: {args.name}')
-        shutil.copytree(source, destination)
-        copied=load(destination/'profile-manifest.json')
-        copied['profile_name']=args.name
-        copied['world_name']=m['world_name']
-        save(destination/'profile-manifest.json', copied)
+        profile_store.copy(args.source, args.name, store)
         print(f'copied={args.source}->{args.name}')
         return
-    if args.name == active:
-        raise RuntimeError('Cannot remove the active profile; activate another profile first')
-    if not destination.is_dir():
-        raise RuntimeError(f'Profile not found: {args.name}')
-    shutil.rmtree(destination)
+    if args.profile_command == 'link':
+        if not args.world_dir:
+            raise RuntimeError('link needs --world WORLD')
+        profile_store.link(args.world_dir, args.name, store)
+        print(f'linked={args.world_dir.name}->{args.name}')
+        return
+    profile_store.delete(args.name, fleet, store)
     print(f'removed={args.name}')
+
 def resolve_manifest(args):
+    """The manifest of the profile this invocation acts on.
+
+    Profiles live once, in the shared store, so this no longer walks into a world's
+    directory. A world names its profile in its link file; --profile overrides it.
+    """
     if args.manifest:
         manifest = args.manifest.resolve()
         if manifest.name != 'profile-manifest.json':
             raise RuntimeError('Manifest must be named profile-manifest.json')
         return manifest
-    valid = lambda value: bool(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}', value or ''))
-    if not valid(args.world):
-        raise RuntimeError('Specify a valid --world WORLD')
-    base = portal_paths.world_root()
-    world_root = (base / args.world).resolve()
-    if base not in world_root.parents or not world_root.is_dir():
-        raise RuntimeError(f'World not found: {args.world}')
+    store = profile_store.profiles_root(portal_paths.world_root())
     profile = args.profile
     if not profile:
-        active = world_root / 'mods' / '.active-mod-profile'
-        profile = active.read_text().strip() if active.is_file() else ''
-    if not valid(profile):
-        raise RuntimeError('Specify a valid --profile PROFILE')
-    manifest = (world_root / 'mods' / 'profiles' / profile / 'profile-manifest.json').resolve()
-    profiles_root = (world_root / 'mods' / 'profiles').resolve()
-    if profiles_root not in manifest.parents or not manifest.is_file():
-        raise RuntimeError(f'Manifest not found for {args.world}/{profile}')
+        world = resolve_world(args)
+        if not world:
+            raise RuntimeError('Specify --profile PROFILE, or --world WORLD to use that world\'s profile')
+        profile = profile_store.linked_profile(world)
+        if not profile:
+            raise RuntimeError(
+                f'{world.name} is not linked to a profile. Link it with '
+                f'"valheim_mods.py --world {world.name} profile link <name>", or name one with --profile.'
+            )
+    manifest = profile_store.manifest_path(profile, store)
+    if not manifest.is_file():
+        raise RuntimeError(f'Profile not found: {profile} (looked in {store})')
     return manifest
+
+def resolve_world(args):
+    """The world this invocation acts on, or None when it named no world.
+
+    A profile no longer sits inside a world, so the world cannot be recovered from the
+    manifest path. Commands that touch a server require it and say so; the rest work
+    without one.
+    """
+    if not args.world:
+        return None
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}', args.world):
+        raise RuntimeError('Specify a valid --world WORLD')
+    base = portal_paths.world_root()
+    world = (base / args.world).resolve()
+    if base not in world.parents or not world.is_dir():
+        raise RuntimeError(f'World not found: {args.world}')
+    return world
 
 COMMANDS={
     'list':cmd_list, 'check-updates':cmd_check, 'notes':cmd_notes, 'search':cmd_search, 'add':cmd_add, 'sync':cmd_sync,
@@ -1035,15 +1042,20 @@ HISTORY_COMMANDS = {
 # about to be deleted, so the operation is refused instead.
 HISTORY_REQUIRED_COMMANDS = {'remove', 'purge'}
 
-def record_settings(world_dir, message, required):
-    """Snapshot the world's settings. Returns True when the store is usable.
+# Commands that read or write one server's own directories, which a profile does not
+# name. Without --world these used to walk out of the profile path and land in the
+# wrong tree; now they refuse.
+WORLD_COMMANDS = {'remove', 'purge', 'deploy', 'release-status', 'release-confirm'}
+
+def record_settings(fleet_root, message, required):
+    """Snapshot the fleet's settings. Returns True when the store is usable.
 
     History must not be able to fail a mod operation that already succeeded, so
     every call after the work only warns. The call before a deletion is the one
     that matters, and its caller refuses the work when this returns False.
     """
     try:
-        commit = settings_history.snapshot(world_dir, message)
+        commit = settings_history.snapshot(fleet_root, message)
     except settings_history.HistoryError as failure:
         if required:
             print(f'error: settings history is unwritable: {failure}', file=sys.stderr)
@@ -1087,6 +1099,7 @@ def build_parser():
     profile_create=profile_sub.add_parser('create'); profile_create.add_argument('name')
     profile_copy=profile_sub.add_parser('copy'); profile_copy.add_argument('source'); profile_copy.add_argument('name')
     profile_remove=profile_sub.add_parser('remove'); profile_remove.add_argument('name')
+    profile_link=profile_sub.add_parser('link'); profile_link.add_argument('name')
     return p
 
 def main():
@@ -1098,23 +1111,35 @@ def main():
     if handler is None:
         print(f'error: {args.command} has no handler; the subcommand is registered but unwired',file=sys.stderr)
         return 2
+    args.world_dir = resolve_world(args)
     args.manifest=resolve_manifest(args); root=args.manifest.parent; m=load(args.manifest)
-    # root is <world>/mods/profiles/<profile>, so the world is three levels up -
-    # the same derivation package_paths and plugin_config_files already make.
-    world_dir = root.parents[2]
+    # A profile is shared, so the world can no longer be read off the manifest path.
+    # Commands that touch a server say which one they need rather than assuming.
+    if args.command in WORLD_COMMANDS and not args.world_dir:
+        print(f'error: {args.command} needs --world WORLD; a profile alone does not name a server',
+              file=sys.stderr)
+        return 2
     # The subject reads as the operation an operator recognises. Slicing from the
     # subcommand drops --manifest/--world/--profile, whose absolute paths are noise
     # in a log and differ between the agent's invocation and a hand-run one.
     operation = ' '.join(sys.argv[sys.argv.index(args.command):])
+    # The profile sits at <fleet>/profiles/<name>, so the fleet is two levels up. Read
+    # that from the resolved manifest rather than the environment: a --manifest run has
+    # no VALHEIM_ROOT and still has settings worth recording.
+    try:
+        fleet_root = portal_paths.world_root()
+    except portal_paths.ConfigurationError:
+        fleet_root = root.parents[1]
+    label = args.world_dir.name if args.world_dir else root.name
     if args.command in HISTORY_COMMANDS:
-        recorded = record_settings(world_dir, f'{world_dir.name}: before {operation}',
+        recorded = record_settings(fleet_root, f'{label}: before {operation}',
                                    args.command in HISTORY_REQUIRED_COMMANDS)
         if not recorded and args.command in HISTORY_REQUIRED_COMMANDS:
             print('error: refusing to delete settings that history cannot recover',file=sys.stderr)
             return 2
     outcome = handler(root,m,args) or 0
     if args.command in HISTORY_COMMANDS and outcome == 0:
-        record_settings(world_dir, f'{world_dir.name}: {operation}', required=False)
+        record_settings(fleet_root, f'{label}: {operation}', required=False)
     return outcome
 if __name__=='__main__':
     try: raise SystemExit(main())

@@ -161,7 +161,7 @@ def test_the_settings_are_recorded_before_anything_moves(fleet, tmp_path):
     migrate.apply(fleet, fold="survival", take="Hrafnheim", profiles_root=fleet / "profiles")
 
     store_path = tmp_path / "settings-history"
-    recorded = store_path / "Storgard/profiles/redesign-alpha/client-config/Azumatt.WardIsLove.cfg"
+    recorded = store_path / "migration/Storgard/redesign-alpha/client-config/Azumatt.WardIsLove.cfg"
     assert recorded.is_file()  # the copy that lost is in history, not only on disk
     assert "Storgard" in recorded.read_text()
 

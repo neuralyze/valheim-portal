@@ -18,17 +18,19 @@ import pytest
 import settings_history as history
 
 
-def build_world(root, *, world="Hrafnheim", profile="redesign-alpha"):
-    """A world with the four places settings actually live, plus the traps."""
+def build_fleet(root, *, world="Hrafnheim", profile="redesign-alpha"):
+    """A fleet with the shared profile store and one server linked to it."""
     world_dir = root / world
-    profile_dir = world_dir / "mods" / "profiles" / profile
+    profile_dir = root / "profiles" / profile
     (profile_dir / "client-config").mkdir(parents=True)
     (profile_dir / "client-config-vr").mkdir()
     (profile_dir / "manager-cache" / "client" / "BepInEx" / "plugins").mkdir(parents=True)
     server_config = world_dir / "config_merged" / "bepinex"
     (server_config / "plugins" / "Cybrp-ItemDrawers").mkdir(parents=True)
+    (world_dir / "mods").mkdir(parents=True)
+    (world_dir / "mods" / ".active-mod-profile").write_text(profile + "\n")
 
-    (profile_dir / "profile-manifest.json").write_text('{"profile_name": "Redesign Test"}\n')
+    (profile_dir / "profile-manifest.json").write_text('{"profile_name": "redesign-alpha"}\n')
     (profile_dir / "client-config" / "Azumatt.WardIsLove.cfg").write_text("WardHotKey = F4\n")
     (profile_dir / "client-config-vr" / "neuralyze.vrfixes.cfg").write_text("ward = key:F4\n")
     (server_config / "cybrp.ItemDrawers.cfg").write_text("Plugin GUID: cybrp-ItemDrawers\nrows = 4\n")
@@ -37,14 +39,14 @@ def build_world(root, *, world="Hrafnheim", profile="redesign-alpha"):
     (profile_dir / "manager-cache" / "client" / "BepInEx" / "plugins" / "Jotunn.dll").write_bytes(b"MZ")
     (server_config / "plugins" / "Cybrp-ItemDrawers" / "drawers.cfg").write_text("shipped\n")
     (profile_dir / "client-config" / "Azumatt.WardIsLove.cfg.before-20260817").write_text("WardHotKey = G\n")
-    return world_dir
+    return root
 
 
 def test_the_store_holds_settings_and_nothing_else(tmp_path):
-    world = build_world(tmp_path)
+    fleet = build_fleet(tmp_path)
     store = tmp_path / "settings-history"
 
-    assert history.snapshot(world, "first", store)
+    assert history.snapshot(fleet, "first", store)
 
     recorded = sorted(
         path.relative_to(store).as_posix()
@@ -52,32 +54,32 @@ def test_the_store_holds_settings_and_nothing_else(tmp_path):
         if path.is_file() and ".git" not in path.parts and path.name != "README.md"
     )
     assert recorded == [
-        "Hrafnheim/profiles/redesign-alpha/client-config-vr/neuralyze.vrfixes.cfg",
-        "Hrafnheim/profiles/redesign-alpha/client-config/Azumatt.WardIsLove.cfg",
-        "Hrafnheim/profiles/redesign-alpha/profile-manifest.json",
         "Hrafnheim/server-config/cybrp.ItemDrawers.cfg",
+        "profiles/redesign-alpha/client-config-vr/neuralyze.vrfixes.cfg",
+        "profiles/redesign-alpha/client-config/Azumatt.WardIsLove.cfg",
+        "profiles/redesign-alpha/profile-manifest.json",
     ]
 
 
 def test_an_unchanged_world_is_not_a_commit(tmp_path):
     # A `list` or a dry-run `update` runs the hook too. Recording an empty commit
     # per read would bury the operations that changed something.
-    world = build_world(tmp_path)
+    fleet = build_fleet(tmp_path)
     store = tmp_path / "settings-history"
 
-    assert history.snapshot(world, "first", store)
-    assert history.snapshot(world, "second", store) is None
+    assert history.snapshot(fleet, "first", store)
+    assert history.snapshot(fleet, "second", store) is None
 
 
 def test_a_removed_config_is_still_readable(tmp_path):
     """The promise: the mod is gone, its settings are not."""
-    world = build_world(tmp_path)
+    fleet = build_fleet(tmp_path)
     store = tmp_path / "settings-history"
-    history.snapshot(world, "before removing ItemDrawers", store)
+    history.snapshot(fleet, "before removing ItemDrawers", store)
 
-    deleted = world / "config_merged" / "bepinex" / "cybrp.ItemDrawers.cfg"
+    deleted = fleet / "Hrafnheim" / "config_merged" / "bepinex" / "cybrp.ItemDrawers.cfg"
     deleted.unlink()
-    assert history.snapshot(world, "remove cybrp-ItemDrawers", store)
+    assert history.snapshot(fleet, "remove cybrp-ItemDrawers", store)
 
     relative = "Hrafnheim/server-config/cybrp.ItemDrawers.cfg"
     assert not (store / relative).exists()  # the deletion is recorded as a deletion
@@ -87,17 +89,15 @@ def test_a_removed_config_is_still_readable(tmp_path):
 
 
 def test_an_edit_keeps_the_previous_value_reachable(tmp_path):
-    world = build_world(tmp_path)
+    fleet = build_fleet(tmp_path)
     store = tmp_path / "settings-history"
-    history.snapshot(world, "ward on F4", store)
+    history.snapshot(fleet, "ward on F4", store)
 
-    ward = world / "profiles-not-used"  # guard against a typo passing silently
-    assert not ward.exists()
-    live = world / "mods" / "profiles" / "redesign-alpha" / "client-config" / "Azumatt.WardIsLove.cfg"
+    live = fleet / "profiles" / "redesign-alpha" / "client-config" / "Azumatt.WardIsLove.cfg"
     live.write_text("WardHotKey = F7\n")
-    history.snapshot(world, "move ward to F7", store)
+    history.snapshot(fleet, "move ward to F7", store)
 
-    relative = "Hrafnheim/profiles/redesign-alpha/client-config/Azumatt.WardIsLove.cfg"
+    relative = "profiles/redesign-alpha/client-config/Azumatt.WardIsLove.cfg"
     reference, content = history.last_version(store, relative)
     assert reference == "HEAD" and "F7" in content
     earlier = subprocess.run(["git", "-C", str(store), "show", "HEAD~1:" + relative],
@@ -106,48 +106,48 @@ def test_an_edit_keeps_the_previous_value_reachable(tmp_path):
 
 
 def test_history_lists_the_commits_that_touched_one_file(tmp_path):
-    world = build_world(tmp_path)
+    fleet = build_fleet(tmp_path)
     store = tmp_path / "settings-history"
-    history.snapshot(world, "first", store)
-    (world / "config_merged" / "bepinex" / "cybrp.ItemDrawers.cfg").write_text(
+    history.snapshot(fleet, "first", store)
+    (fleet / "Hrafnheim" / "config_merged" / "bepinex" / "cybrp.ItemDrawers.cfg").write_text(
         "Plugin GUID: cybrp-ItemDrawers\nrows = 6\n")
-    history.snapshot(world, "widen the drawers", store)
+    history.snapshot(fleet, "widen the drawers", store)
 
     lines = history.history(store, "Hrafnheim/server-config/cybrp.ItemDrawers.cfg")
     assert len(lines) == 2 and "widen the drawers" in lines[0]
 
 
 def test_a_file_never_recorded_is_a_named_failure(tmp_path):
-    world = build_world(tmp_path)
+    fleet = build_fleet(tmp_path)
     store = tmp_path / "settings-history"
-    history.snapshot(world, "first", store)
+    history.snapshot(fleet, "first", store)
 
     with pytest.raises(history.HistoryError, match="no history"):
         history.last_version(store, "Hrafnheim/server-config/never-existed.cfg")
 
 
 def test_the_store_defaults_beside_the_worlds(tmp_path, monkeypatch):
-    # The fleet root, not inside a world: the same settings are about to be
-    # shared between servers, and a store inside Hrafnheim would then be a lie.
+    # The fleet root, not inside a world: profile settings are shared between
+    # servers, so a store inside Hrafnheim would be a lie.
     monkeypatch.delenv(history.STORE_ENVIRONMENT, raising=False)
-    world = build_world(tmp_path)
-    assert history.store_path(world) == tmp_path / "settings-history"
+    fleet = build_fleet(tmp_path)
+    assert history.store_path(fleet) == tmp_path / "settings-history"
 
     monkeypatch.setenv(history.STORE_ENVIRONMENT, str(tmp_path / "elsewhere"))
-    assert history.store_path(world) == tmp_path / "elsewhere"
+    assert history.store_path(fleet) == tmp_path / "elsewhere"
 
     monkeypatch.setenv(history.STORE_ENVIRONMENT, "relative/path")
     with pytest.raises(history.HistoryError, match="absolute"):
-        history.store_path(world)
+        history.store_path(fleet)
 
 
 def test_the_cli_restores_outside_the_live_tree(tmp_path, capsys):
-    world = build_world(tmp_path)
+    fleet = build_fleet(tmp_path)
     store = tmp_path / "settings-history"
-    history.snapshot(world, "first", store)
-    live = world / "config_merged" / "bepinex" / "cybrp.ItemDrawers.cfg"
+    history.snapshot(fleet, "first", store)
+    live = fleet / "Hrafnheim" / "config_merged" / "bepinex" / "cybrp.ItemDrawers.cfg"
     live.unlink()
-    history.snapshot(world, "remove cybrp-ItemDrawers", store)
+    history.snapshot(fleet, "remove cybrp-ItemDrawers", store)
 
     destination = tmp_path / "recovered.cfg"
     assert history.main(["--store", str(store), "restore",

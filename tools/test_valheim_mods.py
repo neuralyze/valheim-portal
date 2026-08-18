@@ -24,8 +24,10 @@ SPEC.loader.exec_module(valheim_mods)
 class DeployTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.world = Path(self.temp.name) / "TestWorld"
-        self.root = self.world / "mods/profiles/test-profile"
+        self.fleet = Path(self.temp.name)
+        self.world = self.fleet / "TestWorld"
+        (self.world / "mods").mkdir(parents=True)
+        self.root = self.fleet / "profiles/test-profile"
         server = self.root / "manager-cache/server/BepInEx/plugins/NewPlugin"
         server.mkdir(parents=True)
         (server / "new.dll").write_text("new")
@@ -38,7 +40,7 @@ class DeployTest(unittest.TestCase):
         original = valheim_mods.require_stopped
         valheim_mods.require_stopped = lambda _: None
         try:
-            valheim_mods.cmd_deploy(self.root, {"world_name": "TestWorld"}, SimpleNamespace(apply=True))
+            valheim_mods.cmd_deploy(self.root, {}, SimpleNamespace(apply=True, world_dir=self.world))
         finally:
             valheim_mods.require_stopped = original
 
@@ -74,8 +76,8 @@ class DeployTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "does not match profile manifest"):
                 valheim_mods.cmd_deploy(
                     self.root,
-                    {"world_name": "TestWorld", "packages": [{"identifier": "Yggdrah-BetterRiding", "version": "1.3.5"}]},
-                    SimpleNamespace(apply=True),
+                    {"packages": [{"identifier": "Yggdrah-BetterRiding", "version": "1.3.5"}]},
+                    SimpleNamespace(apply=True, world_dir=self.world),
                 )
         finally:
             valheim_mods.require_stopped = original
@@ -94,8 +96,8 @@ class DeployTest(unittest.TestCase):
         try:
             valheim_mods.cmd_deploy(
                 self.root,
-                {"world_name": "TestWorld", "packages": [{"identifier": "Owner-NewPlugin", "version": "1.2.3"}]},
-                SimpleNamespace(apply=True),
+                {"packages": [{"identifier": "Owner-NewPlugin", "version": "1.2.3"}]},
+                SimpleNamespace(apply=True, world_dir=self.world),
             )
         finally:
             valheim_mods.require_stopped = original
@@ -119,7 +121,7 @@ class DeployTest(unittest.TestCase):
         valheim_mods.require_stopped = lambda _: None
         try:
             with self.assertRaisesRegex(RuntimeError, "cutover is incomplete"):
-                valheim_mods.cmd_deploy(self.root, {"world_name": "TestWorld"}, SimpleNamespace(apply=True))
+                valheim_mods.cmd_deploy(self.root, {}, SimpleNamespace(apply=True, world_dir=self.world))
         finally:
             valheim_mods.require_stopped = original
 
@@ -130,8 +132,9 @@ class RemoveTest(unittest.TestCase):
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.world = Path(self.temp.name) / "TestWorld"
-        self.root = self.world / "mods/profiles/test-profile"
+        self.fleet = Path(self.temp.name)
+        self.world = self.fleet / "TestWorld"
+        self.root = self.fleet / "profiles/test-profile"
         self.manifest = self.root / "profile-manifest.json"
         self.data = {
             "world_name": "TestWorld",
@@ -144,6 +147,8 @@ class RemoveTest(unittest.TestCase):
         }
         self.manifest.parent.mkdir(parents=True)
         self.manifest.write_text(json.dumps(self.data))
+        (self.world / "mods").mkdir(parents=True)
+        (self.world / "mods/.active-mod-profile").write_text("test-profile\n")
         for side in ("client", "server"):
             plugin = self.root / f"manager-cache/{side}/BepInEx/plugins/More_World_Traders"
             plugin.mkdir(parents=True)
@@ -175,7 +180,7 @@ class RemoveTest(unittest.TestCase):
             valheim_mods.cmd_remove(
                 self.root,
                 self.data,
-                SimpleNamespace(identifier=self.identifier, reason="obsolete", manifest=self.manifest),
+                SimpleNamespace(identifier=self.identifier, reason="obsolete", manifest=self.manifest, world_dir=self.world),
             )
         finally:
             valheim_mods.require_stopped = original
@@ -184,7 +189,7 @@ class RemoveTest(unittest.TestCase):
         self.remove()
         manifest = json.loads(self.manifest.read_text())
         self.assertFalse(valheim_mods.matching_manifest_entries(manifest, self.identifier))
-        self.assertFalse(valheim_mods.package_paths(self.root, self.identifier))
+        self.assertFalse(valheim_mods.package_paths(self.root, self.world, self.identifier))
         self.assertFalse(valheim_mods.plugin_config_files(self.world, self.identifier))
         self.assertTrue((self.world / "config_merged/bepinex/unrelated.cfg").is_file())
         backups = list((self.world / "mods/removal-backups/test-profile").iterdir())
@@ -200,7 +205,7 @@ class RemoveTest(unittest.TestCase):
                 valheim_mods.cmd_remove(
                     self.root,
                     self.data,
-                    SimpleNamespace(identifier=self.identifier, reason="obsolete", manifest=self.manifest),
+                    SimpleNamespace(identifier=self.identifier, reason="obsolete", manifest=self.manifest, world_dir=self.world),
                 )
         finally:
             valheim_mods.require_stopped = original
@@ -216,11 +221,11 @@ class RemoveTest(unittest.TestCase):
             valheim_mods.cmd_purge(
                 self.root,
                 self.data,
-                SimpleNamespace(identifier=self.identifier, reason="orphaned", manifest=self.manifest),
+                SimpleNamespace(identifier=self.identifier, reason="orphaned", manifest=self.manifest, world_dir=self.world),
             )
         finally:
             valheim_mods.require_stopped = original
-        self.assertFalse(valheim_mods.package_paths(self.root, self.identifier))
+        self.assertFalse(valheim_mods.package_paths(self.root, self.world, self.identifier))
         self.assertFalse(valheim_mods.plugin_config_files(self.world, self.identifier))
         backups = list((self.world / "mods/removal-backups/test-profile").iterdir())
         removal = json.loads((backups[0] / "removal.json").read_text())
@@ -245,7 +250,7 @@ class ClientReleaseCutoverTest(RemoveTest):
             valheim_mods.cmd_remove(
                 self.root,
                 self.data,
-                SimpleNamespace(identifier=self.identifier, reason="obsolete", manifest=self.manifest),
+                SimpleNamespace(identifier=self.identifier, reason="obsolete", manifest=self.manifest, world_dir=self.world),
             )
         finally:
             valheim_mods.require_stopped = original_stopped
@@ -273,6 +278,7 @@ class ClientReleaseCutoverTest(RemoveTest):
                 client_type=client_type,
                 release_id=f"{profile}-2.0.0",
                 archive=archive,
+                world_dir=self.world,
             ),
         )
 
@@ -401,8 +407,10 @@ class SettingsHistoryWiringTest(RemoveTest):
         self.addCleanup(os.environ.pop, "VALHEIM_SETTINGS_HISTORY", None)
 
     def run_main(self, *arguments):
+        os.environ["VALHEIM_ROOT"] = str(self.fleet)
+        self.addCleanup(os.environ.pop, "VALHEIM_ROOT", None)
         argv = sys.argv
-        sys.argv = ["valheim_mods.py", "--manifest", str(self.manifest), *arguments]
+        sys.argv = ["valheim_mods.py", "--world", "TestWorld", *arguments]
         self.addCleanup(setattr, sys, "argv", argv)
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -424,7 +432,7 @@ class SettingsHistoryWiringTest(RemoveTest):
         self.assertIn("TestWorld: exclude some-Mod 1.0 --reason test", subjects)
         # The pre-work snapshot is what survives a crash inside the handler.
         self.assertIn("TestWorld: before exclude some-Mod 1.0 --reason test", subjects)
-        recorded = self.store / "TestWorld/profiles/test-profile/profile-manifest.json"
+        recorded = self.store / "profiles/test-profile/profile-manifest.json"
         self.assertIn("some-Mod", recorded.read_text())
 
     def test_a_read_only_command_records_nothing(self):

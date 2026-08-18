@@ -34,6 +34,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+if __package__:
+    from . import profile_store
+else:
+    import profile_store
+
 # git refuses to record a commit without an identity, and the host may have none
 # configured for the account the portal agent runs as. Every other tool in this
 # repository commits as the operator, so this matches rather than invents.
@@ -58,8 +63,8 @@ class HistoryError(RuntimeError):
     """The store could not be read or written. Never raised for "no changes"."""
 
 
-def store_path(world_dir: Path) -> Path:
-    """Where the repository lives for the world at ``world_dir``.
+def store_path(fleet_root: Path) -> Path:
+    """Where the repository lives for the fleet at ``fleet_root``.
 
     One store for the whole fleet: an operator asking what a setting used to say
     should not have to know which world happened to hold it.
@@ -69,7 +74,7 @@ def store_path(world_dir: Path) -> Path:
         if not override.startswith("/"):
             raise HistoryError(f"{STORE_ENVIRONMENT} must be an absolute path: {override}")
         return Path(override)
-    return world_dir.parent / "settings-history"
+    return Path(fleet_root) / "settings-history"
 
 
 def _git(store: Path, *arguments: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -121,65 +126,72 @@ def ensure_store(store: Path) -> Path:
     return store
 
 
-def _is_settings_file(path: Path) -> bool:
+def is_settings_file(path: Path) -> bool:
     if path.suffix.lower() not in SETTINGS_SUFFIXES:
         return False
     name = path.name
     return not any(marker in name for marker in BACKUP_MARKERS)
 
 
-def tracked_files(world_dir: Path) -> dict[str, Path]:
-    """Map every settings file in one world to its path inside the store.
+def tracked_files(fleet_root: Path) -> dict[str, Path]:
+    """Map every settings file in the fleet to its path inside the store.
 
-    Ordering is by store path so a caller printing this reads the same list
-    twice, and so the mirror walk below is deterministic.
+    Two kinds, and the split is the design: profile settings are shared, so they are
+    keyed by profile with no world in the path; server settings are written by the
+    plugins on each server's own first run, so they stay keyed by world.
+
+    Ordering is by store path so a caller printing this reads the same list twice, and
+    so the mirror walk below is deterministic.
     """
-    world = world_dir.name
+    fleet_root = Path(fleet_root)
     found: dict[str, Path] = {}
 
-    profiles = world_dir / "mods" / "profiles"
-    for profile in sorted(p for p in profiles.iterdir() if p.is_dir()) if profiles.is_dir() else []:
-        manifest = profile / "profile-manifest.json"
-        if manifest.is_file():
-            found[f"{world}/profiles/{profile.name}/profile-manifest.json"] = manifest
-        # client-config, client-config-flat, client-config-vr: the settings a
-        # player's download carries. Named by prefix because a new client type
-        # is a directory, not a code change.
+    profiles_root = profile_store.profiles_root(fleet_root)
+    for name in profile_store.profile_names(profiles_root):
+        profile = profiles_root / name
+        found[f"profiles/{name}/profile-manifest.json"] = profile / profile_store.MANIFEST_NAME
+        # client-config, client-config-flat, client-config-vr: the settings a player's
+        # download carries. Named by prefix because a new client type is a directory,
+        # not a code change.
         for directory in sorted(d for d in profile.iterdir()
                                 if d.is_dir() and d.name.startswith("client-config")):
             for path in sorted(directory.rglob("*")):
-                if path.is_file() and not path.is_symlink() and _is_settings_file(path):
+                if path.is_file() and not path.is_symlink() and is_settings_file(path):
                     relative = path.relative_to(profile).as_posix()
-                    found[f"{world}/profiles/{profile.name}/{relative}"] = path
+                    found[f"profiles/{name}/{relative}"] = path
 
-    # The server side: written by the plugins on the server's first run after a
-    # deploy, which is why it is per world today and not inside the profile.
-    server_config = world_dir / "config_merged" / "bepinex"
-    if server_config.is_dir():
+    for world_dir in profile_store.worlds_in(fleet_root):
+        server_config = world_dir / "config_merged" / "bepinex"
+        if not server_config.is_dir():
+            continue
         for path in sorted(server_config.rglob("*")):
-            if not path.is_file() or path.is_symlink() or not _is_settings_file(path):
+            if not path.is_file() or path.is_symlink() or not is_settings_file(path):
                 continue
             relative = path.relative_to(server_config)
             if relative.parts and relative.parts[0] == "plugins":
                 continue  # a mod's own files, not the operator's settings
-            found[f"{world}/server-config/{relative.as_posix()}"] = path
+            found[f"{world_dir.name}/server-config/{relative.as_posix()}"] = path
     return found
 
 
-def _mirror(store: Path, world: str, desired: dict[str, Path]) -> None:
-    """Make the store's copy of one world equal ``desired``.
+def _mirror(store: Path, desired: dict[str, Path]) -> None:
+    """Make the store equal ``desired``.
 
-    Stale files are deleted rather than left: a removal has to appear in history
-    as a deletion, otherwise the store answers "still there" forever.
+    Stale files are deleted rather than left: a removal has to appear in history as a
+    deletion, otherwise the store answers "still there" forever. The whole tree is
+    compared, not one world's subtree, because a profile is no longer inside a world -
+    folding four copies into one has to read as four deletions and one addition.
     """
-    subtree = store / world
-    if subtree.is_dir():
-        for existing in sorted(subtree.rglob("*"), reverse=True):
-            if existing.is_file():
-                if existing.relative_to(store).as_posix() not in desired:
-                    existing.unlink()
-            elif existing.is_dir() and not any(existing.iterdir()):
-                existing.rmdir()
+    keep = {"README.md"}
+    for existing in sorted(store.rglob("*"), reverse=True):
+        if ".git" in existing.relative_to(store).parts:
+            continue
+        if existing.is_file():
+            relative = existing.relative_to(store).as_posix()
+            if relative not in desired and relative not in keep:
+                existing.unlink()
+        elif existing.is_dir() and not any(existing.iterdir()):
+            existing.rmdir()
     for relative, source in desired.items():
         destination = store / relative
         try:
@@ -193,18 +205,29 @@ def _mirror(store: Path, world: str, desired: dict[str, Path]) -> None:
             raise HistoryError(f"cannot copy {source} into {destination}: {unusable}") from unusable
 
 
-def snapshot(world_dir: Path, message: str, store: Path | None = None) -> str | None:
-    """Record the world's settings. Returns the commit, or None if unchanged.
+def snapshot(fleet_root: Path, message: str, store: Path | None = None,
+             extra: dict[str, Path] | None = None) -> str | None:
+    """Record the fleet's settings. Returns the commit, or None if unchanged.
 
-    "Unchanged" is the ordinary case - a `list` or a dry-run `update` changes
-    nothing - so it is a return value and not an error.
+    One commit covers every profile and every server, because one profile edit is one
+    change to every server linked to it: splitting it per world would record the same
+    edit four times and still not say they were the same edit.
+
+    ``extra`` adds files this store would not otherwise see, keyed by their path inside
+    it. The migration uses it to record the per-world profile copies before folding
+    them, since after the fold those paths do not exist to be tracked. A later snapshot
+    drops them from the working tree, which is the ordinary deletion case: gone from
+    HEAD, still readable through `last_version`.
+
+    "Unchanged" is the ordinary case - a `list` or a dry-run `update` changes nothing -
+    so it is a return value and not an error.
     """
-    world_dir = Path(world_dir).resolve()
-    if not world_dir.is_dir():
-        raise HistoryError(f"not a world directory: {world_dir}")
-    store = ensure_store(Path(store) if store else store_path(world_dir))
-    _mirror(store, world_dir.name, tracked_files(world_dir))
-    _git(store, "add", "-A", "--", world_dir.name)
+    fleet_root = Path(fleet_root).resolve()
+    if not fleet_root.is_dir():
+        raise HistoryError(f"not a directory: {fleet_root}")
+    store = ensure_store(Path(store) if store else store_path(fleet_root))
+    _mirror(store, {**tracked_files(fleet_root), **(extra or {})})
+    _git(store, "add", "-A")
     if _git(store, "diff", "--cached", "--quiet", check=False).returncode == 0:
         return None
     _git(store, *COMMIT_IDENTITY, "commit", "-q", "-m", message)
@@ -237,10 +260,10 @@ def history(store: Path, relative: str | None = None, limit: int = 20) -> list[s
     return [line for line in _git(ensure_store(Path(store)), *arguments).stdout.splitlines() if line]
 
 
-def _world_from_argument(value: str) -> Path:
+def _fleet_from_argument(value: str) -> Path:
     path = Path(value)
     if not path.is_dir():
-        raise SystemExit(f"error: not a world directory: {value}")
+        raise SystemExit(f"error: not a directory: {value}")
     return path.resolve()
 
 
@@ -248,11 +271,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--store", help="override the store location")
     sub = parser.add_subparsers(dest="command", required=True)
-    snap = sub.add_parser("snapshot", help="record one world's settings now")
-    snap.add_argument("world", help="path to a world directory")
+    snap = sub.add_parser("snapshot", help="record the fleet's settings now")
+    snap.add_argument("fleet", help="path to the directory holding the worlds and profiles/")
     snap.add_argument("-m", "--message", default="manual snapshot")
-    listing = sub.add_parser("list", help="print the settings files a world contributes")
-    listing.add_argument("world")
+    listing = sub.add_parser("list", help="print every settings file the store tracks")
+    listing.add_argument("fleet")
     log = sub.add_parser("log", help="commits, newest first")
     log.add_argument("path", nargs="?", help="limit to one path inside the store")
     log.add_argument("-n", "--limit", type=int, default=20)
@@ -266,13 +289,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command in ("snapshot", "list"):
-        world = _world_from_argument(args.world)
-        store = Path(args.store) if args.store else store_path(world)
+        fleet = _fleet_from_argument(args.fleet)
+        store = Path(args.store) if args.store else store_path(fleet)
         if args.command == "list":
-            for relative in tracked_files(world):
+            for relative in tracked_files(fleet):
                 print(relative)
             return 0
-        commit = snapshot(world, args.message, store)
+        commit = snapshot(fleet, args.message, store)
         print(f"store={store}\n{'commit=' + commit if commit else 'unchanged'}")
         return 0
 
