@@ -100,14 +100,27 @@ server_plugin_change() {
   [[ $want != "$have" ]]
 }
 
+# The profile a world's SERVER runs, which is not the profile a client edition is built
+# from: a world publishes editions sourced from several primaries, and only the linked one
+# says anything about the plugins on that server. Comparing a target's source profile here
+# refused every publish, because a flat or vr edition legitimately stages a different set
+# than the admin profile the servers run.
+linked_profile() {
+  local link="$source_root/$1/mods/.active-mod-profile"
+  [[ -f $link ]] || return 0
+  tr -d '[:space:]' <"$link"
+}
+
 # Checked for every world before publishing anything, so a refusal never leaves some worlds updated
-# and others not.
+# and others not. One check per world rather than per target, so a world is named once.
 running=()
-while read -r world profile _ _; do
-  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "valheim-server-$world" && server_plugin_change "$world" "$profile"; then
+while read -r world; do
+  linked=$(linked_profile "$world")
+  [[ -n $linked ]] || continue
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "valheim-server-$world" && server_plugin_change "$world" "$linked"; then
     running+=("$world")
   fi
-done <<<"$plan"
+done <<<"$(cut -d' ' -f1 <<<"$plan" | sort -u)"
 if ((${#running[@]})); then
   printf 'refusing to start: these worlds are running and their server plugins would change, stop them first: %s\n' "$(printf '%s ' "${running[@]}")" >&2
   exit 1
