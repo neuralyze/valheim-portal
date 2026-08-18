@@ -57,7 +57,9 @@ func TestNewServerPageOffersOnlyAgentCatalogProfiles(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("new server page = %d: %s", response.Code, response.Body.String())
 	}
-	for _, expected := range []string{`value="Midgard-Redesign/redesign-alpha"`, "63 Thunderstore", "1 custom", "2 disabled"} {
+	// The option value is the profile alone: a profile belongs to no world, and a new
+	// server links to it rather than copying a world.
+	for _, expected := range []string{`value="redesign-alpha"`, "63 Thunderstore", "1 custom", "2 disabled"} {
 		if !strings.Contains(response.Body.String(), expected) {
 			t.Fatalf("profile choice missing %q: %s", expected, response.Body.String())
 		}

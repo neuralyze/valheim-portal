@@ -306,7 +306,7 @@ The explorer overlays deterministic seed terrain and biomes, generated zones, lo
 
 ## Create a server
 
-1. Open **New server** in `/admin`; choose an immutable world slug, display name, password, world generation mode, gameplay/network values, backup policy, and a controlled template profile or clean profile.
+1. Open **New server** in `/admin`; choose an immutable world slug, display name, password, world generation mode, gameplay/network values, backup policy, and the mod profile it runs - an existing shared profile the server links to, a new empty one, or a new one copied from an existing profile. A server is never created from another server.
 2. Review the exact filesystem/container plan, resolved package inventory, visibility, and launch behavior. Type `CREATE <world>` to authorize the short-lived, actor-bound request.
 3. The agent reserves the three-port game range under a host lock, validates collisions against every configured world, builds a staging tree, writes the password only to the mode-0600 world environment file, and atomically renames the staging tree into place.
 4. Seed creation writes current FWL metadata; import copies the selected save pair and preserves seed and UID while changing only the world name. Non-vanilla player limits pin the server-only MaxPlayerCount package and generated config.

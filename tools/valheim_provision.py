@@ -102,35 +102,28 @@ def copy_selected_custom(source_world: Path, destination_world: Path, manifest: 
         shutil.copy2(source, destination)
 
 
-def prepare_profile(stage: Path, world: str, profile: str, source_world_name: str, source_profile: str) -> Path:
-    profiles = stage / "mods" / "profiles"
-    destination = profiles / profile
-    if source_world_name:
-        if not valid_name(source_world_name) or not valid_name(source_profile):
-            raise RuntimeError("invalid template profile")
-        worlds_root = portal_paths.world_root()
-        source_world = (worlds_root / source_world_name).resolve()
-        source = (source_world / "mods" / "profiles" / source_profile).resolve()
-        expected = (source_world / "mods" / "profiles").resolve()
-        if worlds_root not in source_world.parents or expected not in source.parents or not (source / "profile-manifest.json").is_file():
-            raise RuntimeError("template profile is unavailable")
-        shutil.copytree(source, destination, symlinks=False)
-        manifest = json.loads((destination / "profile-manifest.json").read_text())
-        copy_selected_custom(source_world, stage, manifest)
+def prepare_profile(stage: Path, profile: str, copy_from: str) -> Path:
+    """Link the new server to a profile, creating it only when it does not exist.
+
+    A server is never populated from another server. The three cases an operator has
+    are all here: name a profile that already exists and the world simply links to it;
+    name one that does not, and it is created empty; name one that does not and pass
+    ``copy_from``, and it starts as an independent copy of that profile.
+    """
+    store = profile_store.profiles_root(portal_paths.world_root())
+    if profile_store.manifest_path(profile, store).is_file():
+        if copy_from:
+            raise RuntimeError(f"profile already exists, so it cannot be copied into: {profile}")
+    elif copy_from:
+        if not valid_name(copy_from):
+            raise RuntimeError("invalid profile to copy from")
+        profile_store.copy(copy_from, profile, store)
     else:
-        for side in ("client", "server"):
-            (destination / "manager-cache" / side / "BepInEx" / "plugins").mkdir(parents=True)
-        (destination / "manual-mods").mkdir(parents=True)
-        (destination / "server-config" / "bepinex" / "config").mkdir(parents=True)
-        (destination / "server-config" / "bepinex" / "plugins").mkdir(parents=True)
-        manifest = {
-            "schema_version": 1, "profile_name": profile, "world_name": world,
-            "packages": [], "client_only_packages": [], "disabled_packages": [],
-            "custom_packages": [], "manual_server_packages": [], "excluded_packages": [],
-        }
-    manifest["profile_name"] = profile
-    manifest["world_name"] = world
-    (destination / "profile-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        profile_store.create(profile, store)
+    destination = profile_store.profile_dir(profile, store)
+    # The staged world is not under the fleet root yet, so the link is written by hand
+    # here rather than through profile_store.link, which validates a live world.
+    (stage / "mods").mkdir(parents=True, exist_ok=True)
     (stage / "mods" / ".active-mod-profile").write_text(profile + "\n")
     return destination
 
@@ -282,7 +275,7 @@ def provision(args: argparse.Namespace) -> None:
             (stage / "config_merged" / "bepinex" / "config").mkdir(parents=True)
             os.symlink("bepinex", stage / "config_merged" / "BepInEx")
             prepare_world(stage, args)
-            profile = prepare_profile(stage, args.world, args.profile, args.template_world, args.template_profile)
+            profile = prepare_profile(stage, args.profile, args.copy_from)
             configure_player_limit(profile, args.player_limit)
             deploy_profile(stage, profile)
             if args.seed:
@@ -321,8 +314,7 @@ def main() -> int:
     parser.add_argument("profile", help="name of the mod profile created in the new world")
     parser.add_argument("seed", help="world seed to pin, or empty to let Valheim generate one; not allowed with source_world")
     parser.add_argument("source_world", help="existing world whose save pair is copied in, or empty for a new world")
-    parser.add_argument("template_world", help="existing world to copy the mod profile from, or empty to scaffold an empty profile")
-    parser.add_argument("template_profile", help="profile name inside template_world; ignored when template_world is empty")
+    parser.add_argument("copy_from", help="existing profile to copy, or empty to link an existing profile or create an empty one")
     args = parser.parse_args()
     args.public = args.public == "true"
     args.crossplay = args.crossplay == "true"

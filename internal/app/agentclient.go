@@ -22,34 +22,33 @@ type AgentClient struct {
 	token  []byte
 }
 type agentRequest struct {
-	ID              string `json:"id"`
-	World           string `json:"world"`
-	Operation       string `json:"operation"`
-	Backup          string `json:"backup,omitempty"`
-	Port            int    `json:"port,omitempty"`
-	Profile         string `json:"profile,omitempty"`
-	Query           string `json:"query,omitempty"`
-	Identifier      string `json:"identifier,omitempty"`
-	Version         string `json:"version,omitempty"`
-	Scope           string `json:"scope,omitempty"`
-	Reason          string `json:"reason,omitempty"`
-	ServerName      string `json:"server_name,omitempty"`
-	Password        string `json:"password,omitempty"`
-	Public          bool   `json:"public,omitempty"`
-	Crossplay       bool   `json:"crossplay,omitempty"`
-	PlayerLimit     int    `json:"player_limit,omitempty"`
-	Preset          string `json:"preset,omitempty"`
-	BackupInterval  string `json:"backup_interval,omitempty"`
-	BackupAge       int    `json:"backup_age,omitempty"`
-	BackupCount     int    `json:"backup_count,omitempty"`
-	Seed            string `json:"seed,omitempty"`
-	SourceWorld     string `json:"source_world,omitempty"`
-	TemplateWorld   string `json:"template_world,omitempty"`
-	TemplateProfile string `json:"template_profile,omitempty"`
-	Start           bool   `json:"start,omitempty"`
-	Admins          string `json:"admins,omitempty"`
-	Permitted       string `json:"permitted,omitempty"`
-	Timestamp       int64  `json:"timestamp"`
+	ID             string `json:"id"`
+	World          string `json:"world"`
+	Operation      string `json:"operation"`
+	Backup         string `json:"backup,omitempty"`
+	Port           int    `json:"port,omitempty"`
+	Profile        string `json:"profile,omitempty"`
+	Query          string `json:"query,omitempty"`
+	Identifier     string `json:"identifier,omitempty"`
+	Version        string `json:"version,omitempty"`
+	Scope          string `json:"scope,omitempty"`
+	Reason         string `json:"reason,omitempty"`
+	ServerName     string `json:"server_name,omitempty"`
+	Password       string `json:"password,omitempty"`
+	Public         bool   `json:"public,omitempty"`
+	Crossplay      bool   `json:"crossplay,omitempty"`
+	PlayerLimit    int    `json:"player_limit,omitempty"`
+	Preset         string `json:"preset,omitempty"`
+	BackupInterval string `json:"backup_interval,omitempty"`
+	BackupAge      int    `json:"backup_age,omitempty"`
+	BackupCount    int    `json:"backup_count,omitempty"`
+	Seed           string `json:"seed,omitempty"`
+	SourceWorld    string `json:"source_world,omitempty"`
+	CopyFrom       string `json:"copy_from,omitempty"`
+	Start          bool   `json:"start,omitempty"`
+	Admins         string `json:"admins,omitempty"`
+	Permitted      string `json:"permitted,omitempty"`
+	Timestamp      int64  `json:"timestamp"`
 	// Arguments the agent surface added. They are part of the signed payload on the agent
 	// side, so anything added here must also be added to agent.Canonical.
 	Lines            int    `json:"lines,omitempty"`
@@ -84,22 +83,21 @@ type ModAgentRequest struct {
 	Archive          string
 }
 type ProvisionAgentRequest struct {
-	ServerName      string
-	Password        string
-	Port            int
-	Public          bool
-	Crossplay       bool
-	PlayerLimit     int
-	Preset          string
-	BackupInterval  string
-	BackupAge       int
-	BackupCount     int
-	Profile         string
-	Seed            string
-	SourceWorld     string
-	TemplateWorld   string
-	TemplateProfile string
-	Start           bool
+	ServerName     string
+	Password       string
+	Port           int
+	Public         bool
+	Crossplay      bool
+	PlayerLimit    int
+	Preset         string
+	BackupInterval string
+	BackupAge      int
+	BackupCount    int
+	Profile        string
+	Seed           string
+	SourceWorld    string
+	CopyFrom       string
+	Start          bool
 }
 
 func NewAgentClient(socket, tokenFile string) (*AgentClient, error) {
@@ -181,8 +179,8 @@ func (a *AgentClient) RunProvision(ctx context.Context, id, world string, reques
 		ServerName: request.ServerName, Password: request.Password, Public: request.Public,
 		Crossplay: request.Crossplay, PlayerLimit: request.PlayerLimit, Preset: request.Preset,
 		BackupInterval: request.BackupInterval, BackupAge: request.BackupAge, BackupCount: request.BackupCount,
-		Seed: request.Seed, SourceWorld: request.SourceWorld, TemplateWorld: request.TemplateWorld,
-		TemplateProfile: request.TemplateProfile, Start: request.Start, Timestamp: time.Now().Unix(),
+		Seed: request.Seed, SourceWorld: request.SourceWorld, CopyFrom: request.CopyFrom,
+		Start: request.Start, Timestamp: time.Now().Unix(),
 	})
 }
 
@@ -211,8 +209,8 @@ func (a *AgentClient) do(ctx context.Context, r agentRequest) (AgentReply, error
 		Scope: r.Scope, Reason: r.Reason, ServerName: r.ServerName, Password: r.Password,
 		Public: r.Public, Crossplay: r.Crossplay, PlayerLimit: r.PlayerLimit, Preset: r.Preset,
 		BackupInterval: r.BackupInterval, BackupAge: r.BackupAge, BackupCount: r.BackupCount,
-		Seed: r.Seed, SourceWorld: r.SourceWorld, TemplateWorld: r.TemplateWorld,
-		TemplateProfile: r.TemplateProfile, Start: r.Start, Admins: r.Admins, Permitted: r.Permitted,
+		Seed: r.Seed, SourceWorld: r.SourceWorld, CopyFrom: r.CopyFrom,
+		Start: r.Start, Admins: r.Admins, Permitted: r.Permitted,
 		Timestamp: r.Timestamp, Lines: r.Lines, ClientType: r.ClientType,
 		PublishedProfile: r.PublishedProfile, ReleaseID: r.ReleaseID, Archive: r.Archive, Notes: r.Notes,
 	})

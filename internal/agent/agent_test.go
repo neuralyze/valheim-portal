@@ -388,7 +388,7 @@ func TestProvisionUsesFixedCreateStartHealthSequence(t *testing.T) {
 	t.Setenv("LOG", log)
 	t.Setenv("ROOT", root)
 	provision := []byte(`#!/bin/sh
-[ "$#" = 15 ] || exit 8
+[ "$#" = 14 ] || exit 8
 [ "$PORTAL_SERVER_PASSWORD" = "SafePass-123" ] || exit 9
 printf '%s:%s\n' "$(basename "$0")" "$*" >> "$LOG"
 mkdir "$ROOT/$1"
@@ -417,7 +417,7 @@ printf 'schema=1\n' > "$ROOT/$1/.portal-managed"
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "provision_valheim_server.sh:NewWorld Neuralyze New World 26000 true false 10 Normal 1h 7 168 default SafeSeed123   \n" +
+	want := "provision_valheim_server.sh:NewWorld Neuralyze New World 26000 true false 10 Normal 1h 7 168 default SafeSeed123  \n" +
 		"start_valheim_server.sh:NewWorld\nwait_valheim_server_ready.sh:NewWorld\n"
 	if string(got) != want {
 		t.Fatalf("operations = %q, want %q", got, want)

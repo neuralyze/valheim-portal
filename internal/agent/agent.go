@@ -40,34 +40,33 @@ type Config struct {
 	AllowedWorlds map[string]struct{}
 }
 type Request struct {
-	ID              string `json:"id"`
-	World           string `json:"world"`
-	Operation       string `json:"operation"`
-	Backup          string `json:"backup,omitempty"`
-	Port            int    `json:"port,omitempty"`
-	Profile         string `json:"profile,omitempty"`
-	Query           string `json:"query,omitempty"`
-	Identifier      string `json:"identifier,omitempty"`
-	Version         string `json:"version,omitempty"`
-	Scope           string `json:"scope,omitempty"`
-	Reason          string `json:"reason,omitempty"`
-	Timestamp       int64  `json:"timestamp"`
-	ServerName      string `json:"server_name,omitempty"`
-	Password        string `json:"password,omitempty"`
-	Public          bool   `json:"public,omitempty"`
-	Crossplay       bool   `json:"crossplay,omitempty"`
-	PlayerLimit     int    `json:"player_limit,omitempty"`
-	Preset          string `json:"preset,omitempty"`
-	BackupInterval  string `json:"backup_interval,omitempty"`
-	BackupAge       int    `json:"backup_age,omitempty"`
-	BackupCount     int    `json:"backup_count,omitempty"`
-	Seed            string `json:"seed,omitempty"`
-	SourceWorld     string `json:"source_world,omitempty"`
-	TemplateWorld   string `json:"template_world,omitempty"`
-	TemplateProfile string `json:"template_profile,omitempty"`
-	Start           bool   `json:"start,omitempty"`
-	Admins          string `json:"admins,omitempty"`
-	Permitted       string `json:"permitted,omitempty"`
+	ID             string `json:"id"`
+	World          string `json:"world"`
+	Operation      string `json:"operation"`
+	Backup         string `json:"backup,omitempty"`
+	Port           int    `json:"port,omitempty"`
+	Profile        string `json:"profile,omitempty"`
+	Query          string `json:"query,omitempty"`
+	Identifier     string `json:"identifier,omitempty"`
+	Version        string `json:"version,omitempty"`
+	Scope          string `json:"scope,omitempty"`
+	Reason         string `json:"reason,omitempty"`
+	Timestamp      int64  `json:"timestamp"`
+	ServerName     string `json:"server_name,omitempty"`
+	Password       string `json:"password,omitempty"`
+	Public         bool   `json:"public,omitempty"`
+	Crossplay      bool   `json:"crossplay,omitempty"`
+	PlayerLimit    int    `json:"player_limit,omitempty"`
+	Preset         string `json:"preset,omitempty"`
+	BackupInterval string `json:"backup_interval,omitempty"`
+	BackupAge      int    `json:"backup_age,omitempty"`
+	BackupCount    int    `json:"backup_count,omitempty"`
+	Seed           string `json:"seed,omitempty"`
+	SourceWorld    string `json:"source_world,omitempty"`
+	CopyFrom       string `json:"copy_from,omitempty"`
+	Start          bool   `json:"start,omitempty"`
+	Admins         string `json:"admins,omitempty"`
+	Permitted      string `json:"permitted,omitempty"`
 	// Lines bounds the changelog output of mod_notes. ClientType, ReleaseID and Archive are
 	// the release-confirm arguments; Notes is the mandatory release note for publish_profile.
 	Lines      int    `json:"lines,omitempty"`
@@ -146,7 +145,7 @@ func Canonical(r Request) string {
 		r.Query, r.Identifier, r.Version, r.Scope, r.Reason, r.ServerName, r.Password,
 		fmt.Sprint(r.Public), fmt.Sprint(r.Crossplay), fmt.Sprint(r.PlayerLimit), r.Preset,
 		r.BackupInterval, fmt.Sprint(r.BackupAge), fmt.Sprint(r.BackupCount), r.Seed,
-		r.SourceWorld, r.TemplateWorld, r.TemplateProfile, fmt.Sprint(r.Start), r.Admins, r.Permitted, fmt.Sprint(r.Timestamp),
+		r.SourceWorld, r.CopyFrom, fmt.Sprint(r.Start), r.Admins, r.Permitted, fmt.Sprint(r.Timestamp),
 		fmt.Sprint(r.Lines), r.ClientType, r.PublishedProfile, r.ReleaseID, r.Archive, r.Notes,
 	}, "\n")
 }
@@ -231,7 +230,7 @@ func argumentProblem(err error) bool { return !errors.Is(err, ErrCapability) }
 func provisionFieldsEmpty(r Request) bool {
 	return r.ServerName == "" && r.Password == "" && !r.Public && !r.Crossplay && r.PlayerLimit == 0 &&
 		r.Preset == "" && r.BackupInterval == "" && r.BackupAge == 0 && r.BackupCount == 0 &&
-		r.Seed == "" && r.SourceWorld == "" && r.TemplateWorld == "" && r.TemplateProfile == "" && !r.Start
+		r.Seed == "" && r.SourceWorld == "" && r.CopyFrom == "" && !r.Start
 }
 
 func validateProvisionRequest(r Request) error {
@@ -258,9 +257,10 @@ func validateProvisionRequest(r Request) error {
 	} else if r.SourceWorld != "" && !worldName.MatchString(r.SourceWorld) {
 		return errors.New("invalid source world")
 	}
-	if (r.TemplateWorld == "") != (r.TemplateProfile == "") ||
-		(r.TemplateWorld != "" && (!worldName.MatchString(r.TemplateWorld) || !worldName.MatchString(r.TemplateProfile))) {
-		return errors.New("invalid template profile")
+	// A profile to copy is named on its own: profiles are shared, so there is no world
+	// to qualify it with, and a server is never created from another server.
+	if r.CopyFrom != "" && !worldName.MatchString(r.CopyFrom) {
+		return errors.New("invalid profile to copy")
 	}
 	if r.Query != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" || r.Backup != "" {
 		return errors.New("unexpected provisioning argument")
@@ -275,7 +275,7 @@ func validateWorldCreateRequest(r Request) error {
 	if !worldSeed.MatchString(r.Seed) {
 		return errors.New("invalid world seed")
 	}
-	if r.SourceWorld != "" || r.TemplateWorld != "" || r.TemplateProfile != "" ||
+	if r.SourceWorld != "" || r.CopyFrom != "" ||
 		r.ServerName != "" || r.Password != "" || r.Public || r.Crossplay || r.PlayerLimit != 0 ||
 		r.Preset != "" || r.BackupInterval != "" || r.BackupAge != 0 || r.BackupCount != 0 || r.Start {
 		return errors.New("unexpected world creation arguments")
@@ -718,7 +718,7 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 			args = append(args,
 				r.ServerName, fmt.Sprint(r.Port), fmt.Sprint(r.Public), fmt.Sprint(r.Crossplay),
 				fmt.Sprint(r.PlayerLimit), r.Preset, r.BackupInterval, fmt.Sprint(r.BackupAge),
-				fmt.Sprint(r.BackupCount), r.Profile, r.Seed, r.SourceWorld, r.TemplateWorld, r.TemplateProfile,
+				fmt.Sprint(r.BackupCount), r.Profile, r.Seed, r.SourceWorld, r.CopyFrom,
 			)
 		case operation == "world_log":
 			args = append(args, fmt.Sprint(r.Lines), r.Query)
