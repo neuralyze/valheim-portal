@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are byte-reproducible, and the portal's own validators accept both. The Mono build carries the
   identical 350-name type surface as the previous Roslyn one, differing only in compiler-generated
   closure and iterator types.
+  Templates whose archives store no directory entries - the portal's own VR runtime artifact is
+  one - need their staged modes normalised, or `unzip` gives the invented directories the 0600
+  of the files inside and `BepInEx/plugins` cannot even be listed.
 
 - The ValheimVR working copy is now six named commits on a branch instead of seventeen
   uncommitted files, rebased onto upstream `50d333d`, which brings in the refined gestured

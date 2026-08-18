@@ -89,12 +89,22 @@ if ! grep -q '\[HarmonyPrepare\]' "$control_patches" ||
 fi
 
 work="$(mktemp -d -t valheimvr-artifact-XXXXXXXX)"
-cleanup() { rm -rf -- "$work"; }
+# A staged tree can be read-only (see the chmod below), which would defeat rm too.
+cleanup() { chmod -R u+rwX -- "$work" 2>/dev/null || true; rm -rf -- "$work"; }
 trap cleanup EXIT
 
 staged="$work/staged"
 mkdir -p "$staged"
 unzip -q "$template" -d "$staged"
+# Archives that store no directory entries - the portal's own VR runtime artifact is one -
+# leave unzip to invent the directories, and it gives them the mode of the files inside.
+# Those are 0600 there, so BepInEx/plugins arrives with no execute bit and cannot even be
+# listed. Normalising modes also keeps the output independent of the caller's umask, which
+# reproducibility needs as much as the pinned timestamps below.
+# chmod -R first, because find cannot descend into a directory it has no execute bit on.
+chmod -R u+rwX "$staged"
+find "$staged" -type d -exec chmod 755 {} +
+find "$staged" -type f -exec chmod 644 {} +
 
 # Everything about the template is checked before the compile: a wrong template is the
 # likely mistake, and finding out after a build wastes the build and buries the message
