@@ -176,3 +176,44 @@ def test_a_setting_shared_by_every_world_is_not_a_difference(fleet):
 
     assert "ValheimVR-ValheimVR" not in reported
     assert {"VNEI", "MSchmoecker-VNEI", "cybrp-ItemDrawers"} == reported
+
+
+def test_adopt_links_every_server_to_an_existing_profile(fleet):
+    """The path taken when the primaries were built before the migration ran."""
+    root = fleet / "profiles"
+    store.create("admin", root)
+
+    actions = migrate.adopt(fleet, "admin", profiles_root=root)
+
+    assert store.linked_servers("admin", fleet) == ["Hrafnheim", "Storgard"]
+    for world in ("Hrafnheim", "Storgard"):
+        assert not (fleet / world / "mods" / "profiles" / "redesign-alpha").exists()
+        assert (fleet / world / "mods" / migrate.SET_ASIDE / "redesign-alpha" / store.MANIFEST_NAME).is_file()
+    assert len(actions) == 2
+
+
+def test_adopt_refuses_a_profile_that_does_not_exist(fleet):
+    with pytest.raises(migrate.MigrationError, match="no such profile: ghost"):
+        migrate.adopt(fleet, "ghost", profiles_root=fleet / "profiles")
+    # Nothing moved, so a typo costs nothing.
+    assert (fleet / "Hrafnheim" / "mods" / "profiles" / "redesign-alpha").is_dir()
+
+
+def test_adopt_refuses_while_a_server_is_running(fleet, monkeypatch):
+    root = fleet / "profiles"
+    store.create("admin", root)
+    monkeypatch.setattr(migrate, "running_servers", lambda worlds: ["Storgard"])
+
+    with pytest.raises(migrate.MigrationError, match="stop these servers first: Storgard"):
+        migrate.adopt(fleet, "admin", profiles_root=root)
+    assert store.linked_profile(fleet / "Hrafnheim") == "redesign-alpha"
+
+
+def test_adopt_records_the_copies_before_setting_them_aside(fleet, tmp_path):
+    root = fleet / "profiles"
+    store.create("admin", root)
+
+    migrate.adopt(fleet, "admin", profiles_root=root)
+
+    recorded = tmp_path / "settings-history/migration/Storgard/redesign-alpha/client-config/Azumatt.WardIsLove.cfg"
+    assert recorded.is_file() and "Storgard" in recorded.read_text()

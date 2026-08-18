@@ -232,6 +232,42 @@ def apply(fleet_root: Path, *, fold: str | None = None, take: str | None = None,
     return actions
 
 
+def adopt(fleet_root: Path, profile: str, profiles_root: Path | None = None) -> list[str]:
+    """Point every server at a profile that already exists, and set its copy aside.
+
+    This is the second way in, and the one used when the primaries were built first:
+    the shared store already holds flat, vr and admin, so nothing needs folding. Each
+    world links to ``profile`` - normally admin, because it is the superset of what any
+    server has to run - and its per-world copy moves out of the way rather than being
+    deleted, so a link can be reverted by hand while the old set still exists.
+
+    The link takes effect at that server's next restart, which is why this refuses to
+    run while one is up: a running server would otherwise be told it runs a mod set it
+    has not loaded.
+    """
+    fleet_root = Path(fleet_root)
+    root = profiles_root or profile_store.profiles_root(fleet_root)
+    if not profile_store.manifest_path(profile, root).is_file():
+        raise MigrationError(f"no such profile: {profile} (looked in {root})")
+    worlds = profile_store.worlds_in(fleet_root)
+    if not worlds:
+        raise MigrationError(f"no worlds found under {fleet_root}")
+    running = running_servers(worlds)
+    if running:
+        raise MigrationError(f"stop these servers first: {', '.join(running)}")
+
+    state = plan(fleet_root)
+    settings_history.snapshot(fleet_root, f"before adopting {profile}",
+                              extra=_copies_for_history(state))
+    actions = []
+    for copy in state["copies"]:
+        aside = fleet_root / copy["world"] / "mods" / SET_ASIDE / copy["profile"]
+        _move(Path(copy["path"]), aside)
+        profile_store.link(fleet_root / copy["world"], profile, root)
+        actions.append(f'{copy["world"]}: {copy["profile"]} set aside, linked to {profile}')
+    return actions
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--fleet-root", type=Path)
@@ -243,6 +279,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--fold", metavar="NAME", help="one shared profile with this name")
     run.add_argument("--take", metavar="WORLD", help="whose copy becomes that profile")
     run.add_argument("--separate", action="store_true", help="one profile per world instead")
+    take = sub.add_parser("adopt", help="link every server to a profile that already exists")
+    take.add_argument("profile")
     args = parser.parse_args(argv)
 
     fleet = args.fleet_root or portal_paths.world_root()
@@ -259,6 +297,10 @@ def main(argv: list[str] | None = None) -> int:
         print("\ndifferences a fold has to decide:")
         for difference in state["differences"]:
             print("  " + json.dumps(difference, separators=(",", ": ")))
+        return 0
+    if args.command == "adopt":
+        for action in adopt(fleet, args.profile, profiles_root=args.profiles_root):
+            print(action)
         return 0
     if args.fold and not args.take:
         raise MigrationError("--fold NAME also needs --take WORLD naming whose copy to keep")
