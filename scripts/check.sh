@@ -26,6 +26,7 @@ gates=(
   "policy|policy.yaml, the docs and the Go verb table agree|python3 tools/check_agent_policy.py"
   "perframe|no unbounded scene searches on a frame path|python3 tools/check_perframe_work.py"
   "beads|the task tracker belongs to this project|python3 tools/check_beads_workspace.py"
+  "upstream|the upstream source registry matches its checkouts|python3 tools/upstream_sources.py verify"
   "pytest|the Python tool tests pass|cd tools && python3 -m pytest -q"
   "hostops|the host script regression tests pass|for t in hostops/tests/*.sh; do bash \"\$t\" >/dev/null || exit 1; done"
   "installer|install.conf reaches the compose environment unchanged|for t in scripts/tests/*.sh; do bash \"\$t\" >/dev/null || exit 1; done"

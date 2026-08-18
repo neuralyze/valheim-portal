@@ -6,6 +6,11 @@ The portal's host agent executes nothing but files in `hostops/`, which is what
 `AGENT_SCRIPT_DIR` points at by default, and it may only run the fixed set named in the
 `agent operation` column below — everything else in `hostops/` is operator-only.
 
+`tools/upstream_sources.py` tracks the projects this deployment builds source from, which is a
+different question from mod freshness: `verify` is the offline `upstream` gate, `status` reaches
+GitHub and reports any upstream commit nobody has reviewed, and `review` records the decision.
+See [upstream sources](upstream-sources.md).
+
 `hostops/` and `tools/` ship together and must stay siblings: `hostops/lib/common.sh`
 resolves the tools directory from its own location. Everything the scripts need from
 outside the repository is configuration with no default — the world root as

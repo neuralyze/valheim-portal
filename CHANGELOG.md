@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A registry of the projects this deployment builds source from, with a check that fails
+  while an upstream commit has not been read. `deploy/upstream-sources.json` records what each
+  source is pinned to and what was last reviewed; `tools/upstream_sources.py status` reports the
+  gap and `review` records the conclusion. The offline half is the `upstream` gate and asserts a
+  checkout has not drifted off its pin, since published artifacts are built from those trees. It
+  found two things on its first run: the VR mod was a commit behind, and the container project
+  had changed owner from `lloesche` to `community-valheim-tools` months earlier.
+
 - Mod profiles are shared. A profile lives once at `<fleet root>/profiles/<name>` and a
   server links to one through `<world>/mods/.active-mod-profile`; editing the profile
   changes what every linked server runs at that server's next restart. Previously each

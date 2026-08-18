@@ -691,6 +691,7 @@ Never pass host paths such as `/var/lib/docker/volumes/portal_portal-data/_data/
 | [docs/prerequisites.md](docs/prerequisites.md) | Before installing. Versions, ports, DNS/TLS, and what an absent Steam API key costs you. |
 | [docs/installation.md](docs/installation.md) | Installing. The security model the deployment depends on. |
 | [docs/operations.md](docs/operations.md) | Running it. Mod profiles and the four published editions, releases, world operations, player access, how world status is measured, driving the agent, and reading a server log. |
+| [docs/upstream-sources.md](docs/upstream-sources.md) | Keeping current. What we build source from, how far behind each is, and the review that clears it. |
 | [docs/development.md](docs/development.md) | Changing it. What a clean clone can and cannot verify. |
 | [docs/agent-harness.md](docs/agent-harness.md) | Letting an agent operate it. The verb surface, the approval classes, the bridge API, the runner, and what it may never decide. |
 | [policy.yaml](policy.yaml) / [CLAUDE.md](CLAUDE.md) | The authoritative verb and approval definition, and the law automated work follows in this repository. |
