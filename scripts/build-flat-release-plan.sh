@@ -9,7 +9,7 @@ Builds one checksum-bound Flat profile definition per configured target and
 writes OUTPUT_DIR/publication-plan.json for valheim-flat-release-publish.
 
 VALHEIM_PROFILE_SOURCE_ROOT is required: the world root holding
-<WORLD>/mods/profiles/<PROFILE>. There is no default.
+profiles/<PROFILE>. There is no default.
 USAGE
   exit 2
 }
@@ -24,7 +24,7 @@ targets=${5:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/release-tar
 # every other host silently built plans against profiles that were not there.
 source_root=${VALHEIM_PROFILE_SOURCE_ROOT:-}
 [[ -n $source_root ]] || {
-  echo "VALHEIM_PROFILE_SOURCE_ROOT is not set: point it at the world root holding <WORLD>/mods/profiles" >&2
+  echo "VALHEIM_PROFILE_SOURCE_ROOT is not set: point it at the root holding profiles/" >&2
   exit 78
 }
 [[ -d $source_root ]] || { echo "VALHEIM_PROFILE_SOURCE_ROOT is not a directory: $source_root" >&2; exit 78; }
@@ -59,9 +59,9 @@ PY
 payloads=()
 for entry in "${targets_list[@]}"; do
   IFS=$'\t' read -r world source_profile published_profile <<<"$entry"
-  source_manifest="$source_root/$world/mods/profiles/$source_profile/profile-manifest.json"
-  base_config="$source_root/$world/mods/profiles/$source_profile/client-config"
-  flat_config="$source_root/$world/mods/profiles/$source_profile/client-config-flat"
+  source_manifest="$source_root/profiles/$source_profile/profile-manifest.json"
+  base_config="$source_root/profiles/$source_profile/client-config"
+  flat_config="$source_root/profiles/$source_profile/client-config-flat"
   [[ -f "$source_manifest" && -d "$base_config" && -d "$flat_config" ]] || { echo "incomplete source profile for $world/$source_profile" >&2; exit 1; }
   merged=$(mktemp -d)
   trap 'rm -rf -- "$merged"' EXIT

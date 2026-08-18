@@ -12,8 +12,8 @@ set -euo pipefail
 # judgement; it is bookkeeping, so it belongs in a script.
 #
 # What it does per target in release-targets.json:
-#   1. builds the profile definition from <WORLD>/mods/profiles/<SOURCE>/profile-manifest.json,
-#      naming it with the PUBLISHED profile, which is what the release scope requires
+#   1. builds the profile definition from profiles/<SOURCE>/profile-manifest.json in the shared
+#      profile store, naming it with the PUBLISHED profile, which is what the release scope requires
 #   2. publishes it with seed-release, which now refuses a non-deployed artifact root and reads
 #      every artifact back through its recorded path before reporting success
 #   3. bumps the patch version from whatever is currently published for that scope
@@ -24,7 +24,7 @@ set -euo pipefail
 # usage: republish-profiles.sh NOTES [TARGETS_JSON]
 #
 # Environment:
-#   VALHEIM_PROFILE_SOURCE_ROOT  required  world root holding <WORLD>/mods/profiles/<PROFILE>
+#   VALHEIM_PROFILE_SOURCE_ROOT  required  root holding profiles/<PROFILE> and one dir per world
 #   VALHEIM_FLAT_COMPANION       required for flat targets  reviewed Flat companion ZIP
 #   PORTAL_DATABASE              optional  defaults to the deployed database
 #   PORTAL_ARTIFACT_ROOT         optional  defaults to the deployed artifact root
@@ -83,8 +83,8 @@ plugin_entries() {
 
 server_plugin_change() {
   local world=$1 profile=$2
-  local staged="$source_root/$world/mods/profiles/$profile/manager-cache/server/BepInEx/plugins"
-  local manual="$source_root/$world/mods/profiles/$profile/manual-mods"
+  local staged="$source_root/profiles/$profile/manager-cache/server/BepInEx/plugins"
+  local manual="$source_root/profiles/$profile/manual-mods"
   local deployed="$source_root/$world/config_merged/bepinex/plugins"
   [[ -d $staged && -d $deployed ]] || return 0
   local want have
@@ -127,7 +127,7 @@ PY
 
 failures=0
 while read -r world source published client_type; do
-  profile_dir=$source_root/$world/mods/profiles/$source
+  profile_dir=$source_root/profiles/$source
   version=$(next_version "$world" "$published" "$client_type")
   payload=$build_dir/$published-profile.zip
   printf '%-20s %-4s %-8s ' "$published" "$client_type" "$version"

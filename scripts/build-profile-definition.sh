@@ -9,7 +9,7 @@ Usage:
 
 The three-argument form reads the managed profile manifest and client-config
 layout from VALHEIM_PROFILE_SOURCE_ROOT, which is required and has no default:
-it is the world root holding <WORLD>/mods/profiles/<PROFILE>. The explicit form
+it is the root holding profiles/<PROFILE>. The explicit form
 accepts an absolute managed profile manifest path and does not need it. Set
 VALHEIM_PACKAGE_BASE_URL to use an approved Thunderstore archive mirror instead
 of the public package endpoint.
@@ -32,15 +32,15 @@ if (($# == 3)); then
   # so every other host silently built against profiles that were not there.
   source_root=${VALHEIM_PROFILE_SOURCE_ROOT:-}
   [[ -n $source_root ]] || {
-    echo "VALHEIM_PROFILE_SOURCE_ROOT is not set: point it at the world root holding <WORLD>/mods/profiles" >&2
+    echo "VALHEIM_PROFILE_SOURCE_ROOT is not set: point it at the root holding profiles/" >&2
     exit 78
   }
   [[ -d $source_root ]] || { echo "VALHEIM_PROFILE_SOURCE_ROOT is not a directory: $source_root" >&2; exit 78; }
-  source_manifest="$source_root/$world/mods/profiles/$profile/profile-manifest.json"
-  config_dir="$source_root/$world/mods/profiles/$profile/client-config"
-  config_overlay_dir="$source_root/$world/mods/profiles/$profile/client-config-$client_type"
+  source_manifest="$source_root/profiles/$profile/profile-manifest.json"
+  config_dir="$source_root/profiles/$profile/client-config"
+  config_overlay_dir="$source_root/profiles/$profile/client-config-$client_type"
   output="$source_root/$world/mods/manager/exports/$world-($profile)-$client_type-profile.zip"
-  artifact_map="$source_root/$world/mods/profiles/$profile/valheimvr-artifacts.json"
+  artifact_map="$source_root/profiles/$profile/valheimvr-artifacts.json"
   if [[ ! -f "$artifact_map" ]]; then
     shared_mod_root=${VALHEIM_SHARED_MODS_ROOT:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../boilerplate/mods/valheimvr" && pwd)"}
     artifact_map="$shared_mod_root/valheimvr-artifacts.json"

@@ -18,8 +18,10 @@ _manage_mods_worlds() {
 }
 
 _manage_mods_profiles() {
-    local world=$1 path
-    for path in "$WORLDS_ROOT/$world/mods/profiles"/*; do
+    # The world argument is accepted and ignored: every profile is available to every
+    # server now, so completing per world would hide the one an operator wants to link.
+    local path
+    for path in "$WORLDS_ROOT/profiles"/*; do
         [[ -f "$path/profile-manifest.json" ]] && basename -- "$path"
     done
 }
@@ -53,9 +55,7 @@ function __manage_mods_worlds
 end
 
 function __manage_mods_profiles
-    set -l words (commandline -opc)
-    set -l world \$words[2]
-    for profile in $WORLDS_ROOT/\$world/mods/profiles/*
+    for profile in $WORLDS_ROOT/profiles/*
         test -f "\$profile/profile-manifest.json"; and basename "\$profile"
     end
 end
