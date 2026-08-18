@@ -131,6 +131,46 @@ func TestBuildProfileDefinitionSortsManifestAndCapturesHashes(t *testing.T) {
 	}
 }
 
+// A shared profile is schema 2 and belongs to no world, so there is no world_name to
+// match. Schema 1 kept that check because a per-world copy carrying the wrong world's
+// name meant the wrong mod set was about to be published under this world's slug; the
+// check has to survive for those, and a schema 2 manifest that still names a world is a
+// half-migrated file rather than a shared one.
+func TestBuildAcceptsASharedProfileAndStillGuardsPerWorldCopies(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	build := func(manifest string, output string) error {
+		return buildProfileDefinition(context.Background(), builderOptions{
+			SourceManifestPath: writeManagedManifest(t, dir, manifest),
+			World:              "world-one",
+			Profile:            "world-one-non-vr",
+			ClientType:         "flat",
+			ConfigDir:          configDir,
+			Output:             filepath.Join(dir, output),
+			TrueNonVR:          true,
+		})
+	}
+
+	if err := build(`{"schema_version":2,"packages":[]}`, "shared.zip"); err != nil {
+		t.Fatalf("shared profile = %v", err)
+	}
+	if err := build(`{"schema_version":2,"world_name":"world-one","packages":[]}`, "named.zip"); err == nil ||
+		!strings.Contains(err.Error(), "must not name a world") {
+		t.Fatalf("shared profile naming a world = %v", err)
+	}
+	if err := build(`{"schema_version":1,"world_name":"other-world","packages":[]}`, "mismatch.zip"); err == nil ||
+		!strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("per-world copy for another world = %v", err)
+	}
+	if err := build(`{"schema_version":3,"packages":[]}`, "future.zip"); err == nil ||
+		!strings.Contains(err.Error(), "unsupported managed profile manifest schema 3") {
+		t.Fatalf("unknown schema = %v", err)
+	}
+}
+
 func TestBuildProfileDefinitionRejectsInvalidInput(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "config")

@@ -182,6 +182,16 @@ func profileDefinitionInstallsValheimVR(path string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+		// The companion IS ValheimVRMod.dll - ValidateFlatCompanionArtifact refuses an
+		// archive without it - so a definition carrying one installs ValheimVR even
+		// though no package says so. Before the mod set was split into flat/vr/admin
+		// primaries, every VR-capable Flat edition happened to also carry the geekstreet
+		// VR fixes, so reading packages alone was accidentally right. It is not any more:
+		// the fixes now ship only to headsets, and a vr-flat edition would have been
+		// offered to players as a plain Desktop profile.
+		if manifest.Companion != nil {
+			return true, nil
+		}
 		for _, installed := range manifest.Packages {
 			if valheimvr.IsIntegrationPackage(installed.Namespace + "-" + installed.Name) {
 				return true, nil

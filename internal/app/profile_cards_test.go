@@ -1,6 +1,8 @@
 package app
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -23,13 +25,55 @@ var ordinaryPackage = ProfilePackage{
 	Filename: "Azumatt-AzuCraftyBoxes-1.0.0.zip", SHA256: strings.Repeat("d", 64), Size: 1,
 }
 
+// writeFlatCompanionArtifact stores a minimal valid companion and returns the manifest
+// block that names it. ValidateFlatCompanionArtifact insists on ValheimVRMod.dll, which
+// is exactly why the companion is proof that an edition installs ValheimVR.
+func writeFlatCompanionArtifact(t *testing.T, server *Server, release Release) *ProfileCompanion {
+	t.Helper()
+	var buffer bytes.Buffer
+	archive := zip.NewWriter(&buffer)
+	entry, err := archive.Create("BepInEx/plugins/ValheimVRMod.dll")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("MZ")); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	name := release.ID + "-companion.zip"
+	path := filepath.Join(server.cfg.ArtifactRoot, name)
+	if err := os.WriteFile(path, buffer.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(buffer.Bytes())
+	digest := hex.EncodeToString(sum[:])
+	artifact := Artifact{
+		ID: release.ID + "-companion", ReleaseID: release.ID, Kind: "flat_companion",
+		Name: name, SHA256: digest, Size: int64(buffer.Len()), Path: path,
+	}
+	if err := server.store.AddArtifact(context.Background(), artifact, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	return &ProfileCompanion{Filename: name, SHA256: digest, Size: int64(buffer.Len())}
+}
+
 func publishProfileWithPackages(t *testing.T, server *Server, release Release, packages []ProfilePackage) {
+	t.Helper()
+	publishProfileDefinition(t, server, release, func(manifest *ProfileManifest) { manifest.Packages = packages })
+}
+
+// publishProfileDefinition publishes one release whose packaged manifest is whatever
+// the caller makes it. The companion field matters as much as the package list now:
+// a Flat edition can be VR-capable through the companion alone.
+func publishProfileDefinition(t *testing.T, server *Server, release Release, shape func(*ProfileManifest)) {
 	t.Helper()
 	ctx := context.Background()
 	if err := server.store.CreateRelease(ctx, release, "admin"); err != nil {
 		t.Fatal(err)
 	}
-	content := testProfileArtifact(t, release, func(manifest *ProfileManifest) { manifest.Packages = packages })
+	content := testProfileArtifact(t, release, shape)
 	path := filepath.Join(server.cfg.ArtifactRoot, release.ID+"-profile.zip")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatal(err)
@@ -143,6 +187,27 @@ func TestProfileClassificationFollowsTheManifestNotTheClientType(t *testing.T) {
 	publishProfileWithPackages(t, server, plain, []ProfilePackage{ordinaryPackage})
 	if kind := server.profileKindOf(context.Background(), plain); kind != profileDesktop {
 		t.Fatalf("flat release without ValheimVR classified as %q", kind.Title())
+	}
+}
+
+// The split into flat/vr/admin primaries moved the geekstreet VR fixes to the headset
+// edition only, so a vr-flat release carries ValheimVR solely as the companion. Reading
+// packages alone classified it as a plain Desktop profile and hid VR from the players it
+// was built for.
+func TestFlatEditionWithOnlyTheCompanionStillCountsAsVRCapable(t *testing.T) {
+	server := testServer(t)
+	describedTestWorld(t, server)
+	release := Release{ID: "vr-flat", World: describedWorld, Profile: "midgard-vr-flat", ClientType: "flat", Version: "1.0.0"}
+	// The store cross-checks the declared companion against a real artifact, and an
+	// artifact needs its release row, so the archive is written from inside the shape
+	// callback - which runs after the release exists.
+	publishProfileDefinition(t, server, release, func(manifest *ProfileManifest) {
+		manifest.Packages = []ProfilePackage{ordinaryPackage}
+		manifest.Companion = writeFlatCompanionArtifact(t, server, release)
+	})
+
+	if kind := server.profileKindOf(context.Background(), release); kind != profileDesktopVR {
+		t.Fatalf("vr-flat edition classified as %q, want Desktop VR", kind.Title())
 	}
 }
 

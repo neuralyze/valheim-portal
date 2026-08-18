@@ -302,11 +302,20 @@ func profilePackages(manifestPath, world string) ([]packageManifest, error) {
 	if err := json.Unmarshal(metadata, &source); err != nil {
 		return nil, fmt.Errorf("parse managed profile manifest: %w", err)
 	}
-	if source.SchemaVersion != 1 {
+	// Schema 2 is a shared profile: it belongs to no world, so it carries no
+	// world_name to check. Schema 1 is a per-world copy, where a mismatch meant the
+	// wrong world's mod set was about to be published under this world's name.
+	switch source.SchemaVersion {
+	case 1:
+		if source.WorldName != world {
+			return nil, fmt.Errorf("managed profile manifest world %q does not match %q", source.WorldName, world)
+		}
+	case 2:
+		if source.WorldName != "" {
+			return nil, fmt.Errorf("shared profile manifest must not name a world, got %q", source.WorldName)
+		}
+	default:
 		return nil, fmt.Errorf("unsupported managed profile manifest schema %d", source.SchemaVersion)
-	}
-	if source.WorldName != world {
-		return nil, fmt.Errorf("managed profile manifest world %q does not match %q", source.WorldName, world)
 	}
 
 	entries := append(append([]managedPackage{}, source.Packages...), source.ClientOnlyPackages...)
