@@ -22,8 +22,17 @@ This lives in `ValheimVRMod/Patches/ControlPatches.cs` in the ValheimVR working 
 the build host, not in this repository. It is the single reason the Flat companion needs
 a locally built `ValheimVRMod.dll` rather than the upstream binary. The build script
 greps for both markers and aborts with `Flat dodge guard is absent from
-ControlPatches.cs.` if a ValheimVR update has overwritten them — which is exactly what
-happens after pulling upstream, so expect to reapply it.
+ControlPatches.cs.` if a ValheimVR update has overwritten them.
+
+**Carrying it across an upstream update.** Since 2026-08-18 the working copy is not a tree
+of uncommitted edits: our changes are six named commits on a branch, `neuralyze/local`, and
+the guard is the first of them. Taking upstream work is
+`git fetch origin master && git rebase origin/master`, which replays them — so the guard
+arrives with the update instead of being overwritten by it, and the build script's grep
+passes without anyone reapplying anything by hand. Record the new head in
+`deploy/upstream-sources.json`; the `upstream` gate compares the two. What the branch
+carries, and which parts are offered upstream, is listed in
+[upstream sources](upstream-sources.md).
 
 **The fix, previous generation.** Before the in-mod guard, the same outcome was reached
 from outside with a small standalone BepInEx plugin, `FlatDodgePatchFix.cs`

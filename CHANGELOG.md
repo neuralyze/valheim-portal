@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The ValheimVR working copy is now six named commits on a branch instead of seventeen
+  uncommitted files, rebased onto upstream `50d333d`, which brings in the refined gestured
+  draw-from-back logic the VR bow work needs. Carrying our patches across an upstream update is
+  a rebase now, so the Flat dodge guard arrives with the update rather than being overwritten by
+  it; `docs/valheimvr-packaging.md` no longer tells you to reapply it by hand.
+
 - A registry of the projects this deployment builds source from, with a check that fails
   while an upstream commit has not been read. `deploy/upstream-sources.json` records what each
   source is pinned to and what was last reviewed; `tools/upstream_sources.py status` reports the

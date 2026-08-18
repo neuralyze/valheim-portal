@@ -7,11 +7,11 @@
       "license": "GPL-3.0",
       "why": "The VR mod itself. We build it and ship the result to players as the Flat companion and the VR runtime, so its licence obliges us to offer the corresponding source for what we ship.",
       "checkout_path": "/media/big4/projects/game/valheim/Vangard/mods/custom/ValheimVR-latest",
-      "pinned_commit": "a10f24fc6099",
+      "pinned_commit": "098363900b7f",
       "reviewed_commit": "50d333d4fcae",
       "reviewed_at": "2026-08-18",
       "reviewed_note": "Read 1 commit: Pose.cs only (+47-12), gestured bow draw refinement. Touches no file our tree modifies. The upstream PR (#704) was branched from it and merges clean. Relevant to the VR bow work, so take it with the next VR build.",
-      "local_changes": "Uncommitted working tree: the non-VR HarmonyPrepare guards, a csproj PostBuild condition, the body-tracking pose-action revert, Linux toolchain fixes and diagnostics. The first two are offered upstream; the rest are ours."
+      "local_changes": "Branch neuralyze/local: six commits rebased onto upstream 50d333d, no longer an uncommitted tree. Two are offered upstream as PR #704 (the non-VR HarmonyPrepare guards, the csproj SkipReleasePackaging condition); one is the BodyPose workaround behind issue #705; the rest are startup-stage reporting, name-based tracker role resolution, and Mono/Linux compilation. Rebase onto a new upstream tip to carry them forward - that is what the branch is for. Untracked beside it: build/ (the reference assemblies a build leaves) and four vhvr-0.9.21*.zip release archives, none of them source."
     },
     {
       "id": "valheim-server-docker",
