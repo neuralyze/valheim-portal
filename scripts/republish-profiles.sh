@@ -52,13 +52,20 @@ dry_run=${DRY_RUN:-0}
 build_dir=$(mktemp -d)
 trap 'rm -rf -- "$build_dir"' EXIT
 
-# One row per target: world, source profile, published profile, client type.
+# One row per target: world, source profile, published profile, client type, ValheimVR.
+#
+# valheim_vr is declared per target and has no default. It used to be inferred from the
+# published name matching *nonvr*, which is a trap: rename a profile to "non-vr" and the
+# match silently fails, shipping ValheimVR to the players who asked not to have it.
 plan=$(python3 - "$targets" <<'PY'
 import json, sys
 catalog = json.load(open(sys.argv[1]))
 for client_type in ("flat", "vr"):
     for entry in catalog.get(client_type) or []:
-        print(entry["world"], entry["source_profile"], entry["published_profile"], client_type)
+        if not isinstance(entry.get("valheim_vr"), bool):
+            raise SystemExit(f'target {entry.get("published_profile")!r} must declare valheim_vr')
+        print(entry["world"], entry["source_profile"], entry["published_profile"],
+              client_type, str(entry["valheim_vr"]).lower())
 PY
 )
 [[ -n $plan ]] || { echo "no targets in $targets" >&2; exit 1; }
@@ -126,7 +133,7 @@ PY
 }
 
 failures=0
-while read -r world source published client_type; do
+while read -r world source published client_type valheim_vr; do
   profile_dir=$source_root/profiles/$source
   version=$(next_version "$world" "$published" "$client_type")
   payload=$build_dir/$published-profile.zip
@@ -193,9 +200,9 @@ PY
       publish_args+=(-vr-runtime "$runtime")
       ;;
     flat)
-      # A true non-VR profile ships neither ValheimVR nor a companion; every other Flat one needs
-      # the reviewed companion.
-      if [[ $published == *nonvr* ]]; then
+      # A true non-VR profile ships neither ValheimVR nor a companion; every other Flat one
+      # needs the reviewed companion. The catalog says which this is.
+      if [[ $valheim_vr == false ]]; then
         build_args+=(-true-nonvr)
       else
         [[ -n $companion && -f $companion ]] ||
