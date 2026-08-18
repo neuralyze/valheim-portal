@@ -19,7 +19,14 @@ Not "always be on the newest commit". Forcing that would fail unrelated work eve
 somebody else pushes, and would pull in changes nobody had read.
 
 The rule is that upstream movement has to be **seen**. The registry records two commits per
-source: the one our checkout is `pinned_commit` to, and the one we last `reviewed_commit`.
+source, and they answer different questions:
+
+- `pinned_commit` — what our checkout is actually on. It may be a commit of **ours**: the
+  container checkout sits on a local commit on top of upstream, and the artifacts we ship are
+  built from that tree, so this is the commit that describes what we published.
+- `reviewed_commit` — the newest **upstream** commit somebody has read. Never a local commit,
+  or `status` could never clear.
+
 `status` fails while upstream is ahead of the reviewed commit. Clearing it is a decision
 somebody makes and records:
 
@@ -54,9 +61,12 @@ are ours — a body-tracking revert, Linux toolchain fixes and diagnostics.
 
 `valheim-server-docker` — `community-valheim-tools/valheim-server-docker`, Apache-2.0. The
 container the world operation scripts drive; `valheim_provision.py` reads its `default.env`
-for the PGID a world's mounts are chowned to. Its checkout carries a modified
-`docker-compose.yaml` and some untracked files, two of which — `default.env` and
-`discord.env` — hold deployment values and must never be offered upstream.
+for the PGID a world's mounts are chowned to. The checkout sits on one local commit,
+`3ad0632`, and carries untracked `default.env` and `discord.env` which hold deployment values
+and must never be offered upstream. Eighteen upstream commits are read but not taken: two
+base-image upgrades (Debian 12 then 13), busybox cron replacing Debian's, a UMASK change that
+would land on the directories provisioning chowns, and a libdoorstop env-var rename our local
+commit already made independently — so upgrading converges rather than conflicts there.
 
 ## Adding a source
 

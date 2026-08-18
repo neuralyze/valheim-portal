@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import urllib.error
@@ -153,6 +154,24 @@ def remote_head(repo: str, token: str | None = None) -> tuple[str, str, str]:
             commit["commit"]["message"].splitlines()[0])
 
 
+def resolve_token(explicit: str | None = None) -> str | None:
+    """A token, because unauthenticated GitHub rate-limits per address.
+
+    Sixty requests an hour is shared with everything else on the host, so the periodic run
+    would report `unavailable` at random. An operator who has `gh` logged in already has a
+    token; asking them to paste it into a flag as well is friction with no benefit.
+    """
+    if explicit:
+        return explicit
+    for variable in ("GITHUB_TOKEN", "GH_TOKEN"):
+        if os.environ.get(variable):
+            return os.environ[variable]
+    result = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True)
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return None
+
+
 def status(registry: dict, token: str | None = None) -> tuple[list[dict], bool]:
     """One row per source, plus whether anything upstream is unreviewed."""
     rows, unreviewed = [], False
@@ -188,7 +207,8 @@ def review(registry: dict, identifier: str, commit: str, note: str) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--registry", type=Path, default=None)
-    parser.add_argument("--token", default=None, help="GitHub token, for rate limits")
+    parser.add_argument("--token", default=None,
+                        help="GitHub token; defaults to GITHUB_TOKEN, GH_TOKEN, then `gh auth token`")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("verify", help="offline: the registry matches the checkouts")
     show = sub.add_parser("status", help="compare each source against its upstream")
@@ -214,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"reviewed {entry['id']} up to {entry['reviewed_commit'][:12]} on {entry['reviewed_at']}")
         return 0
 
-    rows, unreviewed = status(registry, args.token)
+    rows, unreviewed = status(registry, resolve_token(args.token))
     if args.json:
         print(json.dumps(rows, indent=2))
     else:

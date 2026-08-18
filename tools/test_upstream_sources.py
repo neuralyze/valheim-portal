@@ -180,3 +180,24 @@ def test_the_shipped_registry_verifies(tmp_path):
     for entry in registry["sources"]:
         for field in upstream.REQUIRED_FIELDS:
             assert entry.get(field), f"{entry.get('id')}: missing {field}"
+
+
+def test_a_token_comes_from_the_environment_before_gh(tmp_path, monkeypatch):
+    # Unauthenticated GitHub allows sixty requests an hour per address, shared with
+    # everything else on the host, so a missing token makes the periodic run unreliable.
+    monkeypatch.setenv("GITHUB_TOKEN", "from-env")
+    assert upstream.resolve_token() == "from-env"
+    assert upstream.resolve_token("explicit") == "explicit"
+
+
+def test_a_token_falls_back_to_gh_then_to_nothing(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+
+    monkeypatch.setattr(upstream.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a, 0, "from-gh\n", ""))
+    assert upstream.resolve_token() == "from-gh"
+
+    monkeypatch.setattr(upstream.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a, 1, "", "not logged in"))
+    assert upstream.resolve_token() is None

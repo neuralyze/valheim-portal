@@ -8,9 +8,9 @@
       "why": "The VR mod itself. We build it and ship the result to players as the Flat companion and the VR runtime, so its licence obliges us to offer the corresponding source for what we ship.",
       "checkout_path": "/media/big4/projects/game/valheim/Vangard/mods/custom/ValheimVR-latest",
       "pinned_commit": "a10f24fc6099",
-      "reviewed_commit": "a10f24fc6099",
+      "reviewed_commit": "50d333d4fcae",
       "reviewed_at": "2026-08-18",
-      "reviewed_note": "Registry created. Upstream is one commit ahead at 50d333d 'Refine gestured draw logic', unreviewed.",
+      "reviewed_note": "Read 1 commit: Pose.cs only (+47-12), gestured bow draw refinement. Touches no file our tree modifies. The upstream PR (#704) was branched from it and merges clean. Relevant to the VR bow work, so take it with the next VR build.",
       "local_changes": "Uncommitted working tree: the non-VR HarmonyPrepare guards, a csproj PostBuild condition, the body-tracking pose-action revert, Linux toolchain fixes and diagnostics. The first two are offered upstream; the rest are ours."
     },
     {
@@ -21,10 +21,10 @@
       "why": "The container the world operation scripts drive. valheim_provision.py reads its default.env for the PGID a world's mounts are chowned to.",
       "checkout_path": "/media/big3/Projects/Game/valheim/server/ValheimConfig/valheim-server-docker",
       "pinned_commit": "3ad0632125c8",
-      "reviewed_commit": "3ad0632125c8",
+      "reviewed_commit": "732221f4d5b5",
       "reviewed_at": "2026-08-18",
-      "reviewed_note": "Registry created. Upstream moved owner to community-valheim-tools and has moved to 732221f (2026-03-18); our remote URL still names the old owner. Unreviewed.",
-      "local_changes": "Modified docker-compose.yaml, plus untracked CHANGES-neuralyze.md, Dockerfile_k, default.env and discord.env. default.env and discord.env hold deployment values and must never be offered upstream; the compose change and Dockerfile_k are unreviewed for whether they belong there."
+      "reviewed_note": "Read all 18 commits and the 14 files they touch. Material to us: Debian 12 then 13 base-image upgrades with 32-bit glibc restored, busybox cron replacing Debian vixie-cron, a UMASK calculation change that would land on the world directories provisioning chowns, and secrets support. The libdoorstop env-var rename (DOORSTOP_ENABLED/DOORSTOP_TARGET_ASSEMBLY) is already in our tree: our local commit 3ad0632 made the same fix independently, so upgrading converges and that part of our patch can be dropped. Upgrade deferred to a maintenance window because it replaces the base image under four live worlds; filed as a bead.",
+      "local_changes": "One local commit, 3ad0632 'Update local Valheim server runtime', on top of upstream 20e6258: Dockerfile, bepinex-updater, common, docker-compose.yaml and valheim-server. Its libdoorstop env-var rename duplicates upstream's own later fix. Plus untracked default.env and discord.env, which hold deployment values and must never be offered upstream, and an untracked Dockerfile_k and CHANGES-neuralyze.md."
     }
   ]
 }
