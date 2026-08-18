@@ -24,8 +24,15 @@ plugin. Changing the portal's own code is permitted but is not the point of the 
 because Valheim is a Unity game and BepInEx plugins are C# assemblies. A parent project forbids
 authoring C#; that rule is about Godot game code and does not apply here.
 
-**This deployment is VR only.** There is no flat or non-VR client in use. Do not propose one, and do
-not reason about flat performance as if it were a target.
+**Three client types are live, not one.** Every world publishes `<world>-flatvr` (monitor, with the
+ValheimVR companion installed), `<world>-nonvr` (monitor, ValheimVR stripped) and `<world>-vr`
+(headset). Hrafnheim currently serves all three, and the player guide ships a desktop edition and a
+VR edition from one source. Flat is a real target: do not dismiss flat performance, flat keybinds or
+mouse-driven mod UI as irrelevant.
+
+What VR genuinely cannot do is separate: VHVR maps controllers to ZInput game actions only, so a mod
+that reads its own BepInEx keybind, or needs a typed search box, is unreachable in a headset even
+though it works on a monitor. That is an input limit, not a reason to treat flat as absent.
 
 ## Where you may write
 
