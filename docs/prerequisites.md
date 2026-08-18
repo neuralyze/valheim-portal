@@ -54,7 +54,7 @@ a fresh clone has neither. Copy both and edit them before running anything:
 
 ```sh
 cp hostops/worlds.txt.example hostops/worlds.txt
-cp release-targets.json.example release-targets.json
+cp deploy/release-targets.json.example release-targets.json
 ```
 
 **`hostops/worlds.txt`** — one world name per line. The bulk
@@ -63,8 +63,10 @@ list. A world missing from it is never backed up, and nothing reports that: the 
 run succeeds having quietly skipped it. Reconcile the file whenever you add or rename
 a world.
 
-**`release-targets.json`** — schema 1, mapping each world's source profile to
-its published Flat and VR profile names. `scripts/build-flat-release-plan.sh` reads
+**`release-targets.json`** — schema 1, one entry per published edition, naming the
+shared profile it is built from, the published name, `valheim_vr` and `audience`.
+Four editions per world is the shape here; the example ships that shape for one world.
+`scripts/build-flat-release-plan.sh` reads
 the `flat` array to decide what to build (override with its optional fifth argument);
 `tools/valheim_mods.py` reads both arrays to build the client-release
 cutover guard. If the file is absent that guard silently returns no targets, so a

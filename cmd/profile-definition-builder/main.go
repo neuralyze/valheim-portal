@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -43,16 +44,20 @@ type builderOptions struct {
 	HTTPClient         *http.Client
 	FlatCompanion      string
 	TrueNonVR          bool
+	Audience           string
 	DebugLogging       bool
 }
 
 type profileManifest struct {
-	Schema     int                `json:"schema"`
-	World      string             `json:"world"`
-	Profile    string             `json:"profile"`
-	ClientType string             `json:"client_type"`
-	Packages   []packageManifest  `json:"packages"`
-	Companion  *companionManifest `json:"companion,omitempty"`
+	Schema     int    `json:"schema"`
+	World      string `json:"world"`
+	Profile    string `json:"profile"`
+	ClientType string `json:"client_type"`
+	// Who the edition is for. "player" is the ordinary download; "admin" carries the
+	// console and world-editing tools, and the portal only offers it to a world's admins.
+	Audience  string             `json:"audience"`
+	Packages  []packageManifest  `json:"packages"`
+	Companion *companionManifest `json:"companion,omitempty"`
 }
 
 type packageManifest struct {
@@ -95,6 +100,7 @@ func main() {
 	flag.StringVar(&options.World, "world", "", "world identifier")
 	flag.StringVar(&options.Profile, "profile", "", "profile identifier")
 	flag.StringVar(&options.ClientType, "client-type", "", "client type (flat or vr)")
+	flag.StringVar(&options.Audience, "audience", "", "who the edition is for (player or admin)")
 	flag.StringVar(&options.ConfigDir, "config-dir", "", "directory containing client configuration")
 	flag.StringVar(&options.Output, "output", "", "output profile definition ZIP")
 	flag.StringVar(&options.FlatCompanion, "flat-companion", "", "path to the locally built Flat ValheimVR companion ZIP")
@@ -182,6 +188,7 @@ func buildProfileDefinition(ctx context.Context, options builderOptions) error {
 		World:      options.World,
 		Profile:    options.Profile,
 		ClientType: options.ClientType,
+		Audience:   options.Audience,
 		Packages:   packages,
 		Companion:  companion,
 	})
@@ -205,6 +212,12 @@ func validateBuilderOptions(options builderOptions) error {
 	}
 	if !validIdentifier(options.Profile) {
 		return fmt.Errorf("invalid profile identifier")
+	}
+	// No default: an admin edition that silently published as a player one would put the
+	// console in front of every player, and a player edition marked admin would hide the
+	// download everyone needs.
+	if options.Audience != "player" && options.Audience != "admin" {
+		return errors.New("audience must be player or admin")
 	}
 	if options.ClientType != "flat" && options.ClientType != "vr" {
 		return fmt.Errorf("client type must be flat or vr")

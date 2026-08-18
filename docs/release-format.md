@@ -11,7 +11,7 @@ profile-manifest.json
 config/
 ```
 
-The manifest has schema `1`, exact world/profile/client-type binding, and filename-sorted Thunderstore package pins with size and SHA-256.
+The manifest has schema `1`, exact world/profile/client-type binding, an `audience` of `player` or `admin`, and filename-sorted Thunderstore package pins with size and SHA-256. The portal offers an `admin` edition only to an admin login, so that field is what keeps a developer console off an ordinary player's world page.
 
 A `flat` release may additionally contain exactly one immutable `flat_companion` ZIP. Its filename, size, and SHA-256 are declared by the profile manifest and must match the release artifact. A `vr` release instead requires exactly one immutable `vr_runtime` ZIP. Upload and publication verify every artifact's size and SHA-256; publication validates every profile, companion, and runtime payload again.
 

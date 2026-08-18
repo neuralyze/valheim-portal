@@ -53,12 +53,31 @@ itself, but the scripts are the supported path.
 table above is derived from it, which is why a value that is right in `.env` but missing from
 `install.conf` reappears wrong after a reinstall.
 
+## The fleet tree
+
+`VALHEIM_WORLD_ROOT` holds one directory per server plus two directories that belong to
+no server, because what is in them is shared:
+
+| path | role |
+| --- | --- |
+| `<fleet>/<World>/` | one server: its saves, `valheim.env`, `config_merged/`, and `mods/.active-mod-profile` naming the profile it runs |
+| `<fleet>/profiles/<name>/` | the profile store. One definition per name, edited once, read by every server linked to it |
+| `<fleet>/settings-history/` | the git store of settings text, so removing a mod cannot lose its configuration |
+
+Which servers a profile drives, and which profile a server runs:
+
+```bash
+python3 tools/profile_store.py list
+python3 tools/profile_store.py linked <World>
+```
+
 ## release-targets.json
 
-Gitignored, because the set of published profiles is per-deployment. It therefore drifts between
-copies: the live one lacked the two `-nonvr` targets for a while, so a republish silently skipped
-them and both kept shipping a mod that had been removed everywhere else. When a profile is added,
-update the copy in `/srv/valheim-portal` **and** the working checkout, and check the count:
+Gitignored, because the set of published editions is per-deployment. It therefore drifts
+between copies: the live one lacked the two `-non-vr` targets for a while, so a republish
+silently skipped them and both kept shipping a mod that had been removed everywhere else.
+When an edition is added, update the copy in `/srv/valheim-portal` **and** the working
+checkout, and check the count — four editions per world:
 
 ```bash
 python3 -c "import json;d=json.load(open('release-targets.json'));print(len(d['flat'])+len(d['vr']))"

@@ -268,6 +268,48 @@ def adopt(fleet_root: Path, profile: str, profiles_root: Path | None = None) -> 
     return actions
 
 
+def seed_server_config(fleet_root: Path, profile: str, from_world: str,
+                       profiles_root: Path | None = None) -> list[str]:
+    """Copy one world's live server settings into the profile as its canonical set.
+
+    Until a profile declares server settings, each server's plugins write their own on
+    first run, so the same shared mod set can be configured differently on every server
+    with nothing recording that it is. This makes one world's settings the profile's,
+    which every linked server then receives on deploy - and a server that genuinely
+    needs one value of its own puts it in <world>/mods/overrides/server/ instead.
+
+    Only ``*.cfg`` directly under config_merged/bepinex is taken: the plugins/ subtree is
+    the mods' own files, not settings, and copying it in would make the profile claim
+    ownership of DLLs it does not install.
+    """
+    fleet_root = Path(fleet_root)
+    root = profiles_root or profile_store.profiles_root(fleet_root)
+    destination = profile_store.profile_dir(profile, root) / "server-config"
+    if not profile_store.manifest_path(profile, root).is_file():
+        raise MigrationError(f"no such profile: {profile} (looked in {root})")
+    if destination.exists() and any(destination.rglob("*.cfg")):
+        raise MigrationError(
+            f"{profile} already declares server settings at {destination}; "
+            f"edit them there rather than seeding over them"
+        )
+    source = fleet_root / from_world / "config_merged" / "bepinex"
+    if not source.is_dir():
+        raise MigrationError(f"{from_world} has no server config at {source}")
+
+    settings_history.snapshot(fleet_root, f"before seeding {profile} server settings from {from_world}")
+    destination.mkdir(parents=True, exist_ok=True)
+    seeded = []
+    for path in sorted(source.rglob("*.cfg")):
+        relative = path.relative_to(source)
+        if relative.parts and relative.parts[0] == "plugins":
+            continue
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target)
+        seeded.append(relative.as_posix())
+    return seeded
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--fleet-root", type=Path)
@@ -281,6 +323,10 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--separate", action="store_true", help="one profile per world instead")
     take = sub.add_parser("adopt", help="link every server to a profile that already exists")
     take.add_argument("profile")
+    seed = sub.add_parser("seed-server-config",
+                          help="make one world's live server settings the profile's canonical set")
+    seed.add_argument("profile")
+    seed.add_argument("--from", dest="from_world", required=True, metavar="WORLD")
     args = parser.parse_args(argv)
 
     fleet = args.fleet_root or portal_paths.world_root()
@@ -301,6 +347,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "adopt":
         for action in adopt(fleet, args.profile, profiles_root=args.profiles_root):
             print(action)
+        return 0
+    if args.command == "seed-server-config":
+        seeded = seed_server_config(fleet, args.profile, args.from_world,
+                                    profiles_root=args.profiles_root)
+        print(f"seeded={len(seeded)} files into {args.profile}/server-config from {args.from_world}")
         return 0
     if args.fold and not args.take:
         raise MigrationError("--fold NAME also needs --take WORLD naming whose copy to keep")

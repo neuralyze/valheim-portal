@@ -68,6 +68,7 @@ func TestBuildProfileDefinitionSortsManifestAndCapturesHashes(t *testing.T) {
 		World:              "world-one",
 		Profile:            "profile-one",
 		ClientType:         "flat",
+		Audience:           "player",
 		ConfigDir:          configDir,
 		Output:             filepath.Join(dir, "profile-one.zip"),
 		PackageBaseURL:     server.URL + "/",
@@ -148,6 +149,7 @@ func TestBuildAcceptsASharedProfileAndStillGuardsPerWorldCopies(t *testing.T) {
 			World:              "world-one",
 			Profile:            "world-one-non-vr",
 			ClientType:         "flat",
+			Audience:           "player",
 			ConfigDir:          configDir,
 			Output:             filepath.Join(dir, output),
 			TrueNonVR:          true,
@@ -188,6 +190,7 @@ func TestBuildProfileDefinitionRejectsInvalidInput(t *testing.T) {
 		World:              "world-one",
 		Profile:            "not/a-profile",
 		ClientType:         "flat",
+		Audience:           "player",
 		ConfigDir:          configDir,
 		Output:             filepath.Join(dir, "output.zip"),
 		FlatCompanion:      companion,
@@ -333,5 +336,36 @@ func TestStripValheimVRPackagesLeavesCleanSetUntouched(t *testing.T) {
 	}
 	if len(kept) != 1 {
 		t.Fatalf("kept %d, want 1", len(kept))
+	}
+}
+
+// The audience has no default: a wrong value either hides the download every player
+// needs or offers the console to all of them, so an unset one has to fail loudly.
+func TestBuildRefusesAMissingOrUnknownAudience(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := writeManagedManifest(t, dir, `{"schema_version":2,"packages":[]}`)
+	build := func(audience, output string) error {
+		return buildProfileDefinition(context.Background(), builderOptions{
+			SourceManifestPath: manifest,
+			World:              "world-one",
+			Profile:            "world-one-non-vr",
+			ClientType:         "flat",
+			Audience:           audience,
+			ConfigDir:          configDir,
+			Output:             filepath.Join(dir, output),
+			TrueNonVR:          true,
+		})
+	}
+	for _, audience := range []string{"", "operator", "Admin"} {
+		if err := build(audience, "refused.zip"); err == nil || !strings.Contains(err.Error(), "audience must be player or admin") {
+			t.Fatalf("audience %q = %v", audience, err)
+		}
+	}
+	if err := build("admin", "admin.zip"); err != nil {
+		t.Fatalf("admin audience = %v", err)
 	}
 }

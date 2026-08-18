@@ -68,8 +68,8 @@ flowchart LR
 
 | Area | Capability |
 |---|---|
-| **Profiles** | Immutable releases scoped by world, profile, client type and version, with a SHA-256 for every archive |
-| **Client types** | Desktop, Desktop VR-compatible, and VR headset profiles for the same world |
+| **Profiles** | One shared mod definition per name, stored once, with servers linked to it; immutable releases scoped by world, profile, client type and version, with a SHA-256 for every archive |
+| **Client types** | Four editions per world — VR headset, Desktop with the ValheimVR companion, plain Desktop, and an admin Desktop edition only admins are offered |
 | **Player access** | Steam OpenID sign-in, per-world grants, RFC 8628 device authorisation with a typed confirmation code |
 | **Installation** | Atomic profile generations, resumable downloads, checksum verification, rollback to the previous generation |
 | **Server operations** | Start, stop, pause, restart, back up, restore, change ports, capture logs and diagnostics |
@@ -85,9 +85,10 @@ A player signs in with Steam and sees only the worlds they have been granted.
 
 ![The player's world list, showing three worlds with live status and the Windows client download](docs/images/player-worlds.webp)
 
-Opening a world offers one card per client type. The card copy is derived from the
+Opening a world offers one card per published edition. The card copy is derived from the
 published profile definition rather than the release's `client_type`, so a profile
-that installs ValheimVR can never be labelled plain Desktop.
+that installs ValheimVR can never be labelled plain Desktop, and an `admin` edition is
+listed only for an admin login.
 
 ![A world page offering Desktop and VR headset profiles, with join address and world seed](docs/images/player-profiles.webp)
 
@@ -194,7 +195,7 @@ Without it, every lifecycle script exits 78 naming `VALHEIM_SERVER_DOCKER_DIR`.
 
 ```sh
 cp hostops/worlds.txt.example hostops/worlds.txt
-cp release-targets.json.example release-targets.json
+cp deploy/release-targets.json.example release-targets.json
 # edit both to your real worlds before continuing
 ```
 
@@ -366,8 +367,8 @@ operations come first:
   files.
 * **Server operations** — start, stop, pause, restart, back up, change the game port,
   capture logs and diagnostics. Anything that interrupts play is backup-first.
-* **Mods** — manage Thunderstore and custom packages against a world's profile, then
-  deploy with a reviewed diff.
+* **Mods** — manage Thunderstore and custom packages against the shared profile a world
+  is linked to, then deploy with a reviewed diff.
 * **Releases** — create, publish, batch-publish, discard and archive immutable profile
   releases and their artifacts.
 * **World creation** — a random or supplied seed, or an imported save pair; copies an
@@ -573,23 +574,63 @@ The first is the one that matters most for this section: it fails when `policy.y
 table in `internal/app/verbs.go`, and the documented tables disagree — including the counts
 above. The details are in [docs/agent-harness.md](docs/agent-harness.md).
 
+## Mod profiles and published editions
+
+A **mod profile** is one shared definition, stored once at `<fleet>/profiles/<name>` and
+owned by no world. A server links to one by name in `<world>/mods/.active-mod-profile`,
+so several servers run the same definition and editing it changes every linked server at
+that server's next restart. Three primaries exist:
+
+| profile | packages | what it is |
+|---|---|---|
+| `flat` | 101 | the base set |
+| `vr` | 103 | base plus the three `geekstreet-*VRFix` shims, minus `MSchmoecker-VNEI`, whose search box needs a keyboard |
+| `admin` | 111 | base plus the ten admin and world-editing tools |
+
+Servers link to `admin`, because a server must run the superset of what any client may
+load. The split is safe because only four packages enforce client presence and all four
+are base packages.
+
+A **published edition** is built from a profile rather than being one, and each server
+publishes four:
+
+| published name | built from | client type | ValheimVR | audience |
+|---|---|---|---|---|
+| `<world>-vr` | `vr` | vr | yes, as the VR runtime artifact | player |
+| `<world>-vr-flat` | `flat` | flat | yes, as the Flat companion artifact | player |
+| `<world>-non-vr` | `flat` | flat | no | player |
+| `<world>-vr-flat-admin` | `admin` | flat | yes, as the Flat companion artifact | admin |
+
+The "vr" in `vr-flat` is not a package. `ValheimVR-ValheimVR` is excluded from every
+profile manifest, so `vr-flat` and `non-vr` come from the same `flat` profile and differ
+only in whether the checksum-validated Flat companion is attached — which is why each
+release target declares `valheim_vr` rather than having it inferred from the name.
+`audience` is declared the same way, and the portal offers an `admin` edition only to an
+admin login.
+
+`deploy/profiles/` ships the three primaries as example seed data — manifests only, no
+package cache. [docs/operations.md](docs/operations.md#mod-profiles) covers creating,
+copying and linking profiles, recovering a setting a removal deleted, and turning that
+seed data into a live store.
+
 ## Profile releases
 
 A release is scoped by world, profile, client type (`flat` or `vr`), and version. Multiple profiles for the same world and client type may be current simultaneously.
 
-Build a deterministic profile definition from an approved managed profile manifest and client config:
+Build a deterministic profile definition from a shared profile manifest and client config:
 
 ```sh
-./scripts/build-profile-definition.sh \
+VALHEIM_PROFILE_AUDIENCE=player ./scripts/build-profile-definition.sh \
   <WORLD> <published-profile> flat \
-  '<world-root>/<WORLD>/mods/profiles/<source-profile>/profile-manifest.json' \
-  '<world-root>/<WORLD>/mods/profiles/<source-profile>/client-config' \
+  '<fleet>/profiles/<source-profile>/profile-manifest.json' \
+  '<fleet>/profiles/<source-profile>/client-config' \
   '<world-root>/<WORLD>/mods/manager/exports/<published-profile>-profile-<version>.zip' \
-  '<world-root>/<WORLD>/mods/profiles/<source-profile>/client-config-flat'
+  '<fleet>/profiles/<source-profile>/client-config-flat'
 ```
 
 The three-argument form `build-profile-definition.sh <WORLD> <published-profile> flat`
-derives all of those paths from `VALHEIM_PROFILE_SOURCE_ROOT`.
+derives all of those paths from `VALHEIM_PROFILE_SOURCE_ROOT`. Both forms require
+`VALHEIM_PROFILE_AUDIENCE` to be `player` or `admin`.
 
 The builder resolves enabled package pins from the managed manifest, records each package SHA-256 and size, merges the optional client-type config overlay over the common config, and creates a canonical `profile-manifest.json` plus profile config ZIP. Build the Windows application with:
 
@@ -647,7 +688,7 @@ Never pass host paths such as `/var/lib/docker/volumes/portal_portal-data/_data/
 | [docs/repository-layout.md](docs/repository-layout.md) | Before cloning. The required layout and the `-buildvcs=false` gotcha. |
 | [docs/prerequisites.md](docs/prerequisites.md) | Before installing. Versions, ports, DNS/TLS, and what an absent Steam API key costs you. |
 | [docs/installation.md](docs/installation.md) | Installing. The security model the deployment depends on. |
-| [docs/operations.md](docs/operations.md) | Running it. Releases, world operations, player access, how world status is measured, driving the agent, and reading a server log. |
+| [docs/operations.md](docs/operations.md) | Running it. Mod profiles and the four published editions, releases, world operations, player access, how world status is measured, driving the agent, and reading a server log. |
 | [docs/development.md](docs/development.md) | Changing it. What a clean clone can and cannot verify. |
 | [docs/agent-harness.md](docs/agent-harness.md) | Letting an agent operate it. The verb surface, the approval classes, the bridge API, the runner, and what it may never decide. |
 | [policy.yaml](policy.yaml) / [CLAUDE.md](CLAUDE.md) | The authoritative verb and approval definition, and the law automated work follows in this repository. |

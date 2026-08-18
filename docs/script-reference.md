@@ -79,7 +79,7 @@ them. Copy both before running anything, then edit them:
 
 ```sh
 cp hostops/worlds.txt.example hostops/worlds.txt
-cp release-targets.json.example release-targets.json
+cp deploy/release-targets.json.example release-targets.json
 ```
 
 ### `hostops/worlds.txt`
@@ -102,12 +102,25 @@ works regardless.
 
 ### `release-targets.json`
 
-Schema 1, with a `flat` array and a `vr` array. Each entry maps a world's source
-profile to the profile name published for that client type:
+Schema 1, with a `flat` array and a `vr` array. Each entry names one published
+edition: the shared profile it is built from, the name players see, whether the
+edition carries ValheimVR, and who it is offered to.
 
 ```json
-{ "world": "<WORLD>", "source_profile": "<source-profile>", "published_profile": "<world>-flatvr" }
+{
+  "world": "<WORLD>",
+  "source_profile": "admin",
+  "published_profile": "<world>-vr-flat-admin",
+  "valheim_vr": true,
+  "audience": "admin"
+}
 ```
+
+All five fields are required and none has a default. ValheimVR used to be inferred
+from the profile name, which shipped it to `-non-vr` players; `valheim_vr: false` now
+makes the builder run `-true-nonvr` instead, and `audience` is what keeps the admin
+edition off an ordinary player's world page. Four editions per world is the shape
+here — see [operations.md](operations.md#the-four-published-editions).
 
 Two consumers, and they read different parts:
 

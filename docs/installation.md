@@ -104,7 +104,7 @@ clone. Copy both, then edit them:
 
 ```sh
 cp hostops/worlds.txt.example hostops/worlds.txt
-cp release-targets.json.example release-targets.json
+cp deploy/release-targets.json.example release-targets.json
 ```
 
 Both fail **quietly** if you skip this, which is why they come before anything

@@ -170,6 +170,15 @@ forbidden       upstream_push delete_server provision secrets_read
 Every mod verb is profile-scoped: the host refuses one without a valid profile name, so the
 portal requires it before dispatch rather than discovering it downstream.
 
+A profile is shared. One definition lives under `<fleet>/profiles/<name>` and each server names
+the one it runs in `<world>/mods/.active-mod-profile`, so a mod verb changes every server linked
+to that profile. The `world` argument stays required because host operations are routed per world,
+but it is a route, not the scope. The approval summary says so - a mutating mod verb is summarised
+as `mod_add profile=<name> servers=<A,B,C> ...` rather than `world=<one>`, and `servers=unknown`
+appears when the links could not be read, because an unread link and no linked server are
+different answers to somebody about to approve. A deploy keeps `world=`: it replaces the deployed
+plugin set of the world it names and no other.
+
 Two verbs carry arguments that decide what players receive, and both are checked before a request
 is even recorded:
 

@@ -26,6 +26,10 @@ type profileCatalogChoice struct {
 	Packages         int    `json:"packages"`
 	CustomPackages   int    `json:"custom_packages"`
 	DisabledPackages int    `json:"disabled_packages"`
+	// Linked marks the profile this row's world runs today. It is the only per-world fact in a
+	// row - profiles are shared, so every profile is offered to every world - and it is what
+	// tells the admin site which servers a mod change reaches.
+	Linked bool `json:"linked"`
 }
 
 type newServerPage struct {

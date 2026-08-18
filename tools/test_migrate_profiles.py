@@ -217,3 +217,42 @@ def test_adopt_records_the_copies_before_setting_them_aside(fleet, tmp_path):
 
     recorded = tmp_path / "settings-history/migration/Storgard/redesign-alpha/client-config/Azumatt.WardIsLove.cfg"
     assert recorded.is_file() and "Storgard" in recorded.read_text()
+
+
+def test_seeding_makes_one_worlds_server_settings_the_profiles(fleet):
+    """Until a profile declares server settings, every server keeps its own silently."""
+    root = fleet / "profiles"
+    store.create("admin", root)
+    live = fleet / "Hrafnheim" / "config_merged" / "bepinex"
+    (live / "plugins" / "SomeMod").mkdir(parents=True)
+    (live / "Azumatt.WardIsLove.cfg").write_text("[General]\nWardHotKey = F4\n")
+    (live / "plugins" / "SomeMod" / "shipped.cfg").write_text("[A]\nKey = 1\n")
+
+    seeded = migrate.seed_server_config(fleet, "admin", "Hrafnheim", profiles_root=root)
+
+    assert seeded == ["Azumatt.WardIsLove.cfg"]  # the plugins/ subtree is the mods' own
+    assert (root / "admin" / "server-config" / "Azumatt.WardIsLove.cfg").is_file()
+    assert not (root / "admin" / "server-config" / "plugins").exists()
+
+
+def test_seeding_refuses_to_overwrite_settings_the_profile_already_declares(fleet):
+    root = fleet / "profiles"
+    store.create("admin", root)
+    declared = root / "admin" / "server-config"
+    declared.mkdir()
+    (declared / "kept.cfg").write_text("[A]\nKey = keep\n")
+    live = fleet / "Hrafnheim" / "config_merged" / "bepinex"
+    live.mkdir(parents=True)
+    (live / "other.cfg").write_text("[A]\nKey = live\n")
+
+    with pytest.raises(migrate.MigrationError, match="already declares server settings"):
+        migrate.seed_server_config(fleet, "admin", "Hrafnheim", profiles_root=root)
+    assert (declared / "kept.cfg").read_text() == "[A]\nKey = keep\n"
+
+
+def test_seeding_a_world_with_no_server_config_is_a_named_refusal(fleet):
+    root = fleet / "profiles"
+    store.create("admin", root)
+
+    with pytest.raises(migrate.MigrationError, match="has no server config"):
+        migrate.seed_server_config(fleet, "admin", "Storgard", profiles_root=root)

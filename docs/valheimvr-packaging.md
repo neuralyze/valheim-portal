@@ -100,11 +100,13 @@ The portal validates a Flat companion before publication. It permits only `BepIn
 
 `internal/valheimvr/packages.json` is the authoritative list of ValheimVR integration packages. The profile-definition builder embeds and validates that JSON when it builds a `-true-nonvr` profile, rejecting every listed package.
 
-True nonVR profiles have no ValheimVR package, configuration, Flat companion, or VR runtime. Name them `<world>-nonvr`; they retain every package outside that JSON policy.
+True nonVR editions have no ValheimVR package, configuration, Flat companion, or VR
+runtime. They are built from the `flat` profile with `valheim_vr: false` in the release
+target, and named `<world>-non-vr`; they retain every package outside that JSON policy.
 
 ## Release publication
 
-1. Build Flat and VR definitions for each active world: `<world>-flatvr` and `<world>-vr`.
+1. Build every edition the release target catalog declares for each active world. Four per world here: `<world>-vr` (from the `vr` profile), `<world>-vr-flat` and `<world>-non-vr` (both from `flat`), and `<world>-vr-flat-admin` (from `admin`). Only `<world>-non-vr` sets `valheim_vr: false`; the other two Flat editions carry the companion.
 2. Create separate Flat and VR drafts with the exact world, profile identifier, and version.
 3. Upload the Flat profile ZIP and its mapped `flat_companion` ZIP to the Flat draft. Upload the VR profile ZIP and its validated `vr_runtime` ZIP to the VR draft.
 4. Publish. The portal scopes each artifact to the selected release and verifies checksum, size, structure, and client type.

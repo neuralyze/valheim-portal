@@ -24,11 +24,15 @@ plugin. Changing the portal's own code is permitted but is not the point of the 
 because Valheim is a Unity game and BepInEx plugins are C# assemblies. A parent project forbids
 authoring C#; that rule is about Godot game code and does not apply here.
 
-**Three client types are live, not one.** Every world publishes `<world>-flatvr` (monitor, with the
-ValheimVR companion installed), `<world>-nonvr` (monitor, ValheimVR stripped) and `<world>-vr`
-(headset). Hrafnheim currently serves all three, and the player guide ships a desktop edition and a
-VR edition from one source. Flat is a real target: do not dismiss flat performance, flat keybinds or
-mouse-driven mod UI as irrelevant.
+**Four editions per world, from three shared profiles.** A mod profile lives once at
+`<fleet root>/profiles/<name>` and every server links to one; editing it changes what every linked
+server runs at that server's next restart. The three primaries are `flat` (base set), `vr` (base plus
+the geekstreet VR fixes, for headsets) and `admin` (base plus the console and world-editing tools,
+and what the servers link to because it is the superset). Each world publishes `<world>-vr` from
+`vr`, `<world>-vr-flat` and `<world>-non-vr` from `flat`, and `<world>-vr-flat-admin` from `admin`.
+The "vr" in the flat names comes from the Flat companion artifact, not from a package: ValheimVR sits
+in `excluded_packages` in every manifest. Flat is a real target: do not dismiss flat performance,
+flat keybinds or mouse-driven mod UI as irrelevant.
 
 What VR genuinely cannot do is separate: VHVR maps controllers to ZInput game actions only, so a mod
 that reads its own BepInEx keybind, or needs a typed search box, is unreachable in a headset even

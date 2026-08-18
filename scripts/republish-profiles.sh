@@ -64,8 +64,10 @@ for client_type in ("flat", "vr"):
     for entry in catalog.get(client_type) or []:
         if not isinstance(entry.get("valheim_vr"), bool):
             raise SystemExit(f'target {entry.get("published_profile")!r} must declare valheim_vr')
+        if entry.get("audience") not in ("player", "admin"):
+            raise SystemExit(f'target {entry.get("published_profile")!r} must declare audience player or admin')
         print(entry["world"], entry["source_profile"], entry["published_profile"],
-              client_type, str(entry["valheim_vr"]).lower())
+              client_type, str(entry["valheim_vr"]).lower(), entry["audience"])
 PY
 )
 [[ -n $plan ]] || { echo "no targets in $targets" >&2; exit 1; }
@@ -146,7 +148,7 @@ PY
 }
 
 failures=0
-while read -r world source published client_type valheim_vr; do
+while read -r world source published client_type valheim_vr audience; do
   profile_dir=$source_root/profiles/$source
   version=$(next_version "$world" "$published" "$client_type")
   payload=$build_dir/$published-profile.zip
@@ -160,7 +162,22 @@ while read -r world source published client_type valheim_vr; do
   [[ -d "$profile_dir/client-config-$client_type" ]] &&
     cp -a -- "$profile_dir/client-config-$client_type/." "$merged/"
 
-  build_args=(-world "$world" -profile "$published" -client-type "$client_type"
+  # This server's own setting overrides, applied per KEY over the profile's values. The
+  # profile is shared, so a value only one server needs - the address a link mod
+  # advertises - lives here rather than being edited into the shared config. A whole-file
+  # override would freeze every other setting in that file at today's value, which is the
+  # drift that left four worlds with four different mod sets.
+  overrides=$source_root/$world/mods/overrides/client
+  if [[ -d $overrides ]]; then
+    layered=$build_dir/config-$published-layered
+    while read -r touched; do
+      [[ -n $touched ]] && printf 'override %s ' "$touched"
+    done < <(python3 "$repo_root/tools/config_merge.py" tree "$merged" "$overrides" "$layered")
+    rm -rf -- "$merged"
+    mv -- "$layered" "$merged"
+  fi
+
+  build_args=(-world "$world" -profile "$published" -client-type "$client_type" -audience "$audience"
               -source-manifest "$profile_dir/profile-manifest.json"
               -config-dir "$merged" -output "$payload")
   publish_args=(-world "$world" -profile "$published" -client-type "$client_type"

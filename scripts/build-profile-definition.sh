@@ -13,6 +13,11 @@ it is the root holding profiles/<PROFILE>. The explicit form
 accepts an absolute managed profile manifest path and does not need it. Set
 VALHEIM_PACKAGE_BASE_URL to use an approved Thunderstore archive mirror instead
 of the public package endpoint.
+
+VALHEIM_PROFILE_AUDIENCE is required and has no default: "player" for an ordinary
+edition, "admin" for the one carrying the console and world-editing tools. The
+portal offers an admin edition only to admin logins, so a wrong value either hides
+the download every player needs or puts the console in front of all of them.
 USAGE
   exit 2
 }
@@ -25,6 +30,12 @@ client_type=$3
 case "$client_type" in
   flat|vr) ;;
   *) echo "client type must be flat or vr" >&2; exit 2 ;;
+esac
+
+audience=${VALHEIM_PROFILE_AUDIENCE:-}
+case "$audience" in
+  player|admin) ;;
+  *) echo "VALHEIM_PROFILE_AUDIENCE must be player or admin" >&2; exit 2 ;;
 esac
 
 if (($# == 3)); then
@@ -95,6 +106,7 @@ args=(
   -world "$world"
   -profile "$profile"
   -client-type "$client_type"
+  -audience "$audience"
   -config-dir "$config_dir"
   -output "$output"
 )

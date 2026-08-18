@@ -38,12 +38,15 @@ type Artifact struct {
 // ProfileManifest is the immutable definition packaged in a profile artifact.
 // Package content is fetched separately from the Thunderstore repository.
 type ProfileManifest struct {
-	Schema     int               `json:"schema"`
-	World      string            `json:"world"`
-	Profile    string            `json:"profile"`
-	ClientType string            `json:"client_type"`
-	Packages   []ProfilePackage  `json:"packages"`
-	Companion  *ProfileCompanion `json:"companion,omitempty"`
+	Schema     int    `json:"schema"`
+	World      string `json:"world"`
+	Profile    string `json:"profile"`
+	ClientType string `json:"client_type"`
+	// "player" or "admin". Absent on definitions built before the split, which
+	// profileKindOf treats as player editions rather than rejecting.
+	Audience  string            `json:"audience,omitempty"`
+	Packages  []ProfilePackage  `json:"packages"`
+	Companion *ProfileCompanion `json:"companion,omitempty"`
 }
 
 type ProfilePackage struct {

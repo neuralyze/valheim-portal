@@ -27,6 +27,10 @@ const (
 	profileDesktop
 	profileDesktopVR
 	profileHeadset
+	// profileAdmin is the same monitor build as profileDesktopVR plus the console and
+	// the world-editing tools. It is a separate kind because two cards reading
+	// "Desktop, VR-compatible" left a player picking between them by slug alone.
+	profileAdmin
 )
 
 func (k profileKind) Title() string {
@@ -37,6 +41,8 @@ func (k profileKind) Title() string {
 		return "Desktop, VR-compatible"
 	case profileHeadset:
 		return "VR headset"
+	case profileAdmin:
+		return "Desktop, admin tools"
 	}
 	return "Profile unavailable"
 }
@@ -49,6 +55,8 @@ func (k profileKind) Summary() string {
 		return "Play on a monitor alongside VR players. Installs ValheimVR in flat mode."
 	case profileHeadset:
 		return "Requires SteamVR and a headset."
+	case profileAdmin:
+		return "The VR-compatible desktop build plus the console and world-editing tools. Only useful to a world admin."
 	}
 	return "The portal could not read this profile. Ask the world owner before installing it."
 }
@@ -81,7 +89,12 @@ func guideAudienceFor(kind profileKind) string {
 // profileReleaseCards turns a world's published releases into the cards a player
 // chooses between, ordered so the safe default comes first and marked so exactly
 // one card carries the recommendation.
-func (s *Server) profileReleaseCards(ctx context.Context, releases []Release) ([]profileReleaseCard, error) {
+//
+// The admin edition is offered only when “admin“ is set - an admin login. It is not a
+// secret (its tools do nothing without server-side admin rights) but it is one more
+// identical-looking download beside the one a player wants, and the whole reason for a
+// separate card kind was that two of them could not be told apart.
+func (s *Server) profileReleaseCards(ctx context.Context, releases []Release, admin bool) ([]profileReleaseCard, error) {
 	cards := make([]profileReleaseCard, 0, len(releases))
 	for _, release := range releases {
 		link, err := s.profileSyncURL(release)
@@ -89,6 +102,9 @@ func (s *Server) profileReleaseCards(ctx context.Context, releases []Release) ([
 			return nil, err
 		}
 		kind := s.profileKindOf(ctx, release)
+		if kind == profileAdmin && !admin {
+			continue
+		}
 		audience := guideAudienceFor(kind)
 		cards = append(cards, profileReleaseCard{
 			Release: release, SyncURL: template.URL(link),
@@ -123,8 +139,12 @@ func kindOrder(kind profileKind) int {
 		return 1
 	case profileHeadset:
 		return 2
+	// After the three a player picks from: an admin who is also a player still wants
+	// their own build first, and the admin edition is the one they take deliberately.
+	case profileAdmin:
+		return 3
 	}
-	return 3
+	return 4
 }
 
 // profileKindOf classifies one release. The ValheimVR fact comes from the
@@ -132,72 +152,89 @@ func kindOrder(kind profileKind) int {
 // the mod stack the definition installs. A release whose two halves disagree is
 // mis-built, and the card says so rather than picking one of them.
 func (s *Server) profileKindOf(ctx context.Context, release Release) profileKind {
-	installsVR, err := s.releaseInstallsValheimVR(ctx, release)
+	definition, err := s.releaseDefinition(ctx, release)
 	if err != nil {
 		slog.Error("cannot classify a published profile",
 			"release", release.ID, "world", release.World, "profile", release.Profile, "error", err)
 		return profileUnverified
+	}
+	installsVR := definition.Companion != nil
+	for _, installed := range definition.Packages {
+		if valheimvr.IsIntegrationPackage(installed.Namespace + "-" + installed.Name) {
+			installsVR = true
+		}
 	}
 	switch {
 	case release.ClientType == "vr" && !installsVR:
 		slog.Error("VR release does not install ValheimVR",
 			"release", release.ID, "world", release.World, "profile", release.Profile)
 		return profileUnverified
+	case release.ClientType == "vr" && definition.Audience == "admin":
+		// An admin build for a headset is not a shape the catalog produces; treating it
+		// as an ordinary headset card would put the console in front of every VR player.
+		slog.Error("admin audience on a VR release",
+			"release", release.ID, "world", release.World, "profile", release.Profile)
+		return profileUnverified
 	case release.ClientType == "vr":
 		return profileHeadset
+	case definition.Audience == "admin":
+		return profileAdmin
 	case installsVR:
 		return profileDesktopVR
 	}
 	return profileDesktop
 }
 
-// releaseInstallsValheimVR reads the answer out of the immutable profile
-// definition the player will actually install. internal/valheimvr owns the
-// package list, so adding a VR integration package there is enough to keep this
-// honest; nothing here restates which packages are VR.
-func (s *Server) releaseInstallsValheimVR(ctx context.Context, release Release) (bool, error) {
+// releaseDefinition reads the immutable profile definition the player will actually
+// install. Every classification fact comes from this one read: which packages it
+// carries, whether it carries the ValheimVR companion, and who it is for. Asking for
+// those separately meant opening the archive once per question and, worse, letting the
+// answers disagree.
+//
+// internal/valheimvr owns the VR package list, so adding an integration package there
+// is enough to keep the VR half honest; nothing here restates which packages are VR.
+func (s *Server) releaseDefinition(ctx context.Context, release Release) (ProfileManifest, error) {
 	artifacts, err := s.store.PublishedArtifacts(ctx, release.ID)
 	if err != nil {
-		return false, err
+		return ProfileManifest{}, err
 	}
 	for _, artifact := range artifacts {
-		if artifact.Kind == "profile" {
-			return profileDefinitionInstallsValheimVR(artifact.Path)
+		if artifact.Kind != "profile" {
+			continue
 		}
+		archive, err := zip.OpenReader(artifact.Path)
+		if err != nil {
+			return ProfileManifest{}, err
+		}
+		defer archive.Close()
+		for _, file := range archive.File {
+			if file.Name == "profile-manifest.json" {
+				return readProfileManifest(file)
+			}
+		}
+		return ProfileManifest{}, errors.New("profile definition has no manifest")
 	}
-	return false, errors.New("published release has no profile definition")
+	return ProfileManifest{}, errors.New("published release has no profile definition")
 }
 
-func profileDefinitionInstallsValheimVR(path string) (bool, error) {
-	archive, err := zip.OpenReader(path)
+// releaseInstallsValheimVR answers the single question the release-detail surfaces ask.
+// The companion IS ValheimVRMod.dll - ValidateFlatCompanionArtifact refuses an archive
+// without it - so a definition carrying one installs ValheimVR even though no package
+// says so. Before the split, every VR-capable Flat edition also carried the geekstreet
+// VR fixes, so reading packages alone was accidentally right; the fixes now ship to
+// headsets only, and a vr-flat edition would have read as a plain Desktop profile.
+func (s *Server) releaseInstallsValheimVR(ctx context.Context, release Release) (bool, error) {
+	definition, err := s.releaseDefinition(ctx, release)
 	if err != nil {
 		return false, err
 	}
-	defer archive.Close()
-	for _, file := range archive.File {
-		if file.Name != "profile-manifest.json" {
-			continue
-		}
-		manifest, err := readProfileManifest(file)
-		if err != nil {
-			return false, err
-		}
-		// The companion IS ValheimVRMod.dll - ValidateFlatCompanionArtifact refuses an
-		// archive without it - so a definition carrying one installs ValheimVR even
-		// though no package says so. Before the mod set was split into flat/vr/admin
-		// primaries, every VR-capable Flat edition happened to also carry the geekstreet
-		// VR fixes, so reading packages alone was accidentally right. It is not any more:
-		// the fixes now ship only to headsets, and a vr-flat edition would have been
-		// offered to players as a plain Desktop profile.
-		if manifest.Companion != nil {
+	if definition.Companion != nil {
+		return true, nil
+	}
+	for _, installed := range definition.Packages {
+		if valheimvr.IsIntegrationPackage(installed.Namespace + "-" + installed.Name) {
 			return true, nil
 		}
-		for _, installed := range manifest.Packages {
-			if valheimvr.IsIntegrationPackage(installed.Namespace + "-" + installed.Name) {
-				return true, nil
-			}
-		}
-		return false, nil
 	}
-	return false, errors.New("profile definition has no manifest")
+	return false, nil
 }

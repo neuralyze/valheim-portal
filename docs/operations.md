@@ -67,11 +67,233 @@ unreachable or the allowlist is wrong. Both paths, and the nginx `auth_basic`
 change the allowlist requires, are in
 [installation.md](installation.md#the-security-model).
 
+## Mod profiles
+
+A mod profile is **one shared definition, stored once**. It lives at
+`<fleet>/profiles/<name>`, belongs to no world, and is the single place that mod set is
+edited. A server *links* to a profile by name in `<world>/mods/.active-mod-profile`;
+several servers may link to the same one, and editing a profile changes what every
+linked server runs **at that server's next restart** — a link is a reference, not a
+copy, so there is nothing to propagate and nothing to forget to propagate.
+
+This replaced four unrelated 2.1 GB copies, one inside each world, with no record of
+which came from which. Changing a mod across the fleet was four edits, and the copies
+drifted: one world silently excluded VNEI, another was missing a plugin the rest had.
+
+A copy is the other operation, and it is the opposite of a link: `copy` produces an
+independent profile from the moment it exists, with no reference back to its source.
+Two servers that must diverge get two profiles; two servers that must agree share one.
+
+### The three primaries
+
+| profile | packages | what it is |
+|---|---|---|
+| `flat` | 101 | the base set. Monitor and mouse, no VR fixes, no admin tools |
+| `vr` | 103 | base plus the three `geekstreet-*VRFix` packages, minus `MSchmoecker-VNEI` |
+| `admin` | 111 | base plus the ten admin tools |
+
+`vr` drops VNEI because its UI needs a keyboard and a mouse to search, which a headset
+does not have; VHVR maps controllers to ZInput game actions only, so a typed search box
+is unreachable there. It is excluded rather than merely absent, so nothing re-adds it.
+
+`admin` adds `JereKuusela-{Server_devcommands,Infinity_Hammer,Structure_Tweaks,World_Edit_Commands,Upgrade_World}`,
+`Azumatt-PerfectPlacement`, `Neobotics-RuinsMaker`, `Tristan-ValheimRcon` and the
+client-only `sighsorry-{AdminQoL,LoadTimeProfiler}`.
+
+**Every server links to `admin`, because it is the superset a server must run.** Only
+four packages in the fleet enforce client presence — `FearMe`, `OdinArchitect` and
+`ZenRaids` through Jotunn's `EveryoneMustHaveMod`, and `ZenWorldSettings` through
+`ClientMustHaveMod` — and all four are base packages, present in all three primaries.
+That is what makes the split safe: a player on `flat` and an operator on `admin` can
+join the same server.
+
+### The four published editions
+
+Each server publishes four client editions, built from those three profiles and declared
+in `release-targets.json`:
+
+| published name | built from | client type | ValheimVR | audience |
+|---|---|---|---|---|
+| `<world>-vr` | `vr` | vr | yes, as the VR runtime artifact | player |
+| `<world>-vr-flat` | `flat` | flat | yes, as the Flat companion artifact | player |
+| `<world>-non-vr` | `flat` | flat | no | player |
+| `<world>-vr-flat-admin` | `admin` | flat | yes, as the Flat companion artifact | admin |
+
+**The "vr" in `vr-flat` does not come from a package.** `ValheimVR-ValheimVR` is
+excluded from every profile manifest; VR reaches a client only as a separately built,
+checksum-validated artifact — the `vr_runtime` for a headset, the Flat companion for a
+monitor. So `vr-flat` and `non-vr` are built from the same `flat` profile and differ
+only in whether that companion is attached.
+
+Which is why `valheim_vr` is declared per target rather than inferred from the profile
+name: inferring it once shipped ValheimVR to `non-vr` players, who had asked for the
+edition that does not have it.
+
+`audience` is the other required field, `player` or `admin`. It is recorded in the
+published profile definition, and the portal offers an `admin` edition **only to an
+admin login** (`PORTAL_ADMIN_STEAM_IDS`); an ordinary player's world page does not list
+it. Without that, the four cards on a world page would put a working developer console
+in front of everyone who can see the world.
+
+### Creating, copying and linking
+
+```bash
+python3 tools/profile_store.py list                    # profiles, package counts, linked servers
+python3 tools/profile_store.py linked <World>          # which profile one server runs
+python3 tools/profile_store.py create <name>           # a new profile with no mods
+python3 tools/profile_store.py copy <source> <name>    # an independent duplicate
+python3 tools/profile_store.py delete <name>           # refused while any server links to it
+python3 tools/profile_store.py link <World> <name>     # point one server at a profile
+```
+
+The same operations are on the mod controller, which is the form the agent verbs and the
+admin site use:
+
+```bash
+python3 tools/valheim_mods.py --world <World> profile link <name>
+python3 tools/valheim_mods.py --world <World> profile list      # marks that world's profile with *
+python3 tools/valheim_mods.py --profile <name> list             # act on a profile directly
+```
+
+Every mod operation names the profile it acts on, either with `--profile <name>` or with
+`--world <World>`, which resolves to whatever that world is linked to. A world with no
+link is an error naming the `profile link` command rather than a guess.
+
+A new server is created and *then* linked; it is never populated from another server.
+`tools/valheim_provision.py` takes one `copy_from` profile for that: name a profile that
+exists and the world simply links to it, name one that does not and it is created empty,
+name one that does not and pass `copy_from` and it starts as an independent copy of that
+profile.
+
+### A profile owns its server settings
+
+A profile may also carry the server side of its configuration. `<profile>/server-config/`
+holds `*.cfg` files that are **canonical**: `deploy --apply` places them onto every linked
+server, keeping what was there at
+`<world>/mods/deployment-backups/<profile>/server-config.previous/`. A profile that
+declares none behaves exactly as before — the plugins write their own on first run — so
+this is additive rather than a migration.
+
+`admin` was seeded from Hrafnheim's live settings, 108 cfgs. To do the same for another
+profile:
+
+```bash
+python3 tools/migrate_profiles.py seed-server-config <profile> --from <World>
+```
+
+It takes only `*.cfg` directly under that world's `config_merged/bepinex` — the `plugins/`
+subtree is the mods' own files, not settings — and refuses to overwrite settings a profile
+already declares, so it cannot silently replace a curated set with one world's copy.
+
+### When one server needs a different value
+
+**Override the setting; do not fork the profile.** A second profile makes the whole mod
+list diverge, and diverging mod lists are what the shared store exists to end. Two
+override directories layer over the shared values instead:
+
+| path | layered over | applied at |
+|---|---|---|
+| `<world>/mods/overrides/server/<file>.cfg` | the profile's `server-config/` | deploy |
+| `<world>/mods/overrides/client/<file>.cfg` | the profile's client config | publish |
+
+**The merge is per key, not per file** (`tools/config_merge.py`). An override file carries
+only the keys that differ; every other key still comes from the profile, so a later
+profile change still reaches that server. This is the whole point. Overriding one line
+used to mean copying a 700-line config, and that copy then silently kept yesterday's
+defaults for every other setting in the file — the same drift that left four worlds with
+four different mod sets.
+
+The merge keeps the profile's own text, comments, order and spacing, and replaces only the
+overridden values, so a diff against the profile shows exactly what that server changed. A
+key the profile does not define is appended under its section with a marker comment.
+
+A file that is not INI cannot be key-merged — `Azumatt.FastLink_servers.yml`, for
+instance. An override replaces those whole, and the tools report it as `(whole file)` so
+that the stronger, drift-prone form is visible rather than assumed.
+
+**An override never changes the mod list.** Packages, versions and scopes come from the
+profile alone; a server that needs a different mod set needs a different profile.
+
+### Recovering a setting a removal deleted
+
+Removing a mod deletes its config files. `<fleet>/settings-history` is a git store
+holding **only the text an operator owns**, mirrored out of the live trees on every
+mutating mod operation. Three things, under the paths it stores them at:
+
+| in the store | from |
+|---|---|
+| `profiles/<name>/profile-manifest.json` | the profile's package selection |
+| `profiles/<name>/client-config*/…` | the settings a player's download carries |
+| `<World>/server-config/…` | that server's live `config_merged/bepinex`, `plugins/` excluded |
+
+It deliberately does not hold `manager-cache/`, or the DLLs and cfgs inside a package:
+those belong to the mod, and the cache is 2.1 GB per profile and reproducible from the
+manifest. Nor the `*.before-*` copies the publish scripts leave behind — history replaces
+that convention rather than versioning it.
+
+A profile's canonical `server-config/` is recorded through each linked server's live copy
+rather than directly, so what history answers for a server setting is what that server was
+actually running.
+
+```bash
+python3 tools/settings_history.py list <fleet>              # every settings file tracked
+python3 tools/settings_history.py log <path> -n 20          # that file's commits, newest first
+python3 tools/settings_history.py show <path>               # its newest recorded content
+python3 tools/settings_history.py restore <path> --to /tmp/recovered.cfg
+python3 tools/settings_history.py snapshot <fleet> -m "before the ward experiment"
+```
+
+`restore` requires `--to` and will not write into the live tree, so a recovery cannot
+silently resurrect the settings of a mod that is no longer selected. Read the file out,
+then put the value back through the normal mod operation.
+
+### Seeding a profile store from this repository
+
+`deploy/profiles/` is **example seed data**: the three primaries as manifests and nothing
+else. No `manager-cache`, no client configs, no archives — the caches are 2.1 GB of
+Thunderstore zips per profile and are reproducible from the manifest, and this repository
+tracks no third-party binary at all (see
+[public-distribution.md](public-distribution.md)).
+
+To turn it into a live store, copy the manifests in and fill the cache from Thunderstore:
+
+```bash
+cp -r deploy/profiles/. <fleet>/profiles/
+python3 tools/valheim_mods.py --profile flat list                    # confirm it parses
+python3 tools/valheim_mods.py --profile flat sync <Author-Package>   # fetch one package
+```
+
+`sync` resolves one already-selected package and its dependencies into the profile's
+cache, so it is the per-package form. A world's own deploy stages whatever the cache
+holds:
+
+```bash
+python3 tools/valheim_mods.py --world <World> deploy            # the diff, no changes
+python3 tools/valheim_mods.py --world <World> deploy --apply    # world-state; ask first, every time
+```
+
+A deploy stops and restarts the world, so it is a `world_state` action needing fresh
+confirmation on every invocation, and a deploy whose plan shows no changes is refused
+rather than confirmed.
+
+### The migration is historical
+
+`tools/migrate_profiles.py` moved the four per-world copies into the shared store and
+linked the servers to them. **The fleet has already migrated**; these commands are
+recorded for a deployment still on the old layout, and are not part of routine work:
+
+```bash
+python3 tools/migrate_profiles.py plan                     # the copies and how they differ
+python3 tools/migrate_profiles.py apply --fold <name> --take <World>
+python3 tools/migrate_profiles.py apply --separate         # one profile per world instead
+python3 tools/migrate_profiles.py adopt <profile>          # link every server to an existing profile
+```
+
 ## Publish a Flat ValheimVR release
 
 1. Rebuild `ValheimVRMod.dll` on the Windows ValheimVR build host from the ValheimVR source project, using the established local build process; see [valheimvr-packaging.md](valheimvr-packaging.md). Package the rebuilt DLL into the known-good Flat companion ZIP, remove the temporary `ValheimVRFlatDodgePatchFix.dll`, and confirm its configuration contains `nonVrPlayer = true`.
 2. Stage only that Flat companion ZIP for portal publication. Do not include Valheim game files, Unity runtime files, server files, or a VR runtime ZIP.
-3. Generate both scoped definitions from the catalog. The source profiles and public profiles are deliberately separate:
+3. Generate a definition for every Flat edition the catalog declares. The shared profiles and the published edition names are deliberately separate — several editions are built from one profile:
 
    ```sh
    scripts/build-flat-release-plan.sh \
@@ -80,10 +302,11 @@ change the allowlist requires, are in
      /srv/valheim-flat-2.1.3
    ```
 
-   This reads `release-targets.json`, which maps each source profile to its published Flat profile — one entry per world, in the form `<WORLD>/<source-profile> → <published-profile>`. It is untracked operator data: create it once with `cp release-targets.json.example release-targets.json` and edit it to your worlds. Only its `flat` array is used here; pass a different catalog as the script's optional fifth argument. Inspect `publication-plan.json` and every generated profile ZIP before upload.
+   This reads `release-targets.json`, whose every entry declares `world`, `source_profile`, `published_profile`, `valheim_vr` and `audience`, all required. `source_profile` names a profile in the shared store, so the three Flat editions of a world come from two profiles: `<world>-vr-flat` and `<world>-non-vr` from `flat`, `<world>-vr-flat-admin` from `admin`. It is untracked operator data: create it once with `cp deploy/release-targets.json.example release-targets.json` and edit it to your worlds. Only its `flat` array is used here; pass a different catalog as the script's optional fifth argument. Inspect `publication-plan.json` and every generated profile ZIP before upload.
 4. In authenticated `/admin`, create one Flat draft for every plan target, upload its matching `profile` ZIP and the same Flat companion ZIP, then submit their IDs to `POST /admin/releases/batch-publish`. The endpoint requires the trusted proxy identity and CSRF token, validates every release scope, skips already-published matching IDs on a retry, and publishes each remaining draft.
 5. If staging is abandoned or invalid, submit `POST /admin/releases/{id}/discard`. It archives only a draft and retains the audit record. Never modify the SQLite database or artifact tree by hand.
 6. From a Windows client with authorized Steam access, launch each world’s Flat Desktop shortcut twice: the first run downloads, validates, and atomically activates the new companion; the second must report no change. Confirm Flat keeps `nonVrPlayer = true` and that the VR profile remains unchanged.
+
 ## Publish a profile
 
 1. Build and inspect the deterministic profile-definition ZIP with `scripts/build-profile-definition.sh`. Pass `client-config-flat/` or `client-config-vr/` as the optional final overlay directory; it is merged over the protected common `client-config/`.
@@ -101,7 +324,7 @@ change the allowlist requires, are in
 6. Publish. The portal re-verifies artifact SHA-256/size, scope binding, profile metadata, and the VR runtime or Flat companion archive allowlist.
 7. With an authorized Steam account, verify the selected world card, scoped manifest/payload/runtime endpoints, VR installation, and switch back to Flat. Another-world and unauthenticated accounts must be denied.
 
-VR-compatible Flat and VR definitions retain `BackpacksVRFix` and `EpicLootVRFix`. The reviewed Flat companion or VR runtime supplies `ValheimVRMod.dll`; it is never deployed to a dedicated server. True nonVR definitions exclude ValheimVR, both VR-fix packages, the ValheimVR config, and every companion/runtime artifact. Verify the Flat profile contains `nonVrPlayer = true`, the VR profile contains `nonVrPlayer = false`, and only the VR release has `vr_runtime`.
+The `vr` profile carries `BackpacksVRFix`, `EpicLootVRFix` and `CLLCVRFix` as client-only packages; the `flat` and `admin` profiles do not, so no Flat edition ships them. The reviewed Flat companion or VR runtime supplies `ValheimVRMod.dll`; it is never deployed to a dedicated server. A `valheim_vr: false` target excludes ValheimVR, its config, and every companion or runtime artifact. Verify a Flat definition contains `nonVrPlayer = true`, a VR definition contains `nonVrPlayer = false`, and only a VR release has `vr_runtime`.
 
 Archive, never delete, a bad release. Publishing a replacement archives only the prior release for the same world/profile/client-type scope.
 

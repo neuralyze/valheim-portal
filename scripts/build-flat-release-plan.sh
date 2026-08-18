@@ -47,18 +47,27 @@ for entry in catalog["flat"]:
     world = entry.get("world")
     source = entry.get("source_profile")
     published = entry.get("published_profile")
+    audience = entry.get("audience")
     if not all(isinstance(value, str) and value for value in (world, source, published)):
         raise SystemExit("invalid Flat release target")
+    # Both are declared per target with no default. valheim_vr says whether the edition
+    # installs ValheimVR at all - inferring it from the published name shipped the VR mod
+    # to the players who asked not to have it - and audience decides whether the portal
+    # offers the edition to every player or only to an admin login.
+    if not isinstance(entry.get("valheim_vr"), bool):
+        raise SystemExit(f"Flat release target {published} must declare valheim_vr")
+    if audience not in ("player", "admin"):
+        raise SystemExit(f"Flat release target {published} must declare audience player or admin")
     if (world, published) in seen:
         raise SystemExit("duplicate Flat release target")
     seen.add((world, published))
-    print("\t".join((world, source, published)))
+    print("\t".join((world, source, published, str(entry["valheim_vr"]).lower(), audience)))
 PY
 )
 
 payloads=()
 for entry in "${targets_list[@]}"; do
-  IFS=$'\t' read -r world source_profile published_profile <<<"$entry"
+  IFS=$'\t' read -r world source_profile published_profile valheim_vr audience <<<"$entry"
   source_manifest="$source_root/profiles/$source_profile/profile-manifest.json"
   base_config="$source_root/profiles/$source_profile/client-config"
   flat_config="$source_root/profiles/$source_profile/client-config-flat"
@@ -70,10 +79,15 @@ for entry in "${targets_list[@]}"; do
   payload="$output_dir/${published_profile}-profile-${version}.zip"
   (
     cd "$portal_dir"
-    go run ./cmd/profile-definition-builder \
-      -source-manifest "$source_manifest" -world "$world" -profile "$published_profile" \
-      -client-type flat -config-dir "$merged" -output "$payload" \
-      -flat-companion "$companion"
+    build_args=(-source-manifest "$source_manifest" -world "$world" -profile "$published_profile"
+                -client-type flat -audience "$audience" -config-dir "$merged" -output "$payload")
+    # A true non-VR edition ships neither ValheimVR nor its companion.
+    if [[ $valheim_vr == false ]]; then
+      build_args+=(-true-nonvr)
+    else
+      build_args+=(-flat-companion "$companion")
+    fi
+    go run ./cmd/profile-definition-builder "${build_args[@]}"
   )
   rm -rf -- "$merged"
   trap - EXIT

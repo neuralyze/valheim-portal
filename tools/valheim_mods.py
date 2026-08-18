@@ -8,8 +8,9 @@ import requests
 from packaging.version import Version
 
 if __package__:
-    from . import portal_paths, profile_store, settings_history
+    from . import config_merge, portal_paths, profile_store, settings_history
 else:
+    import config_merge
     import portal_paths
     import profile_store
     import settings_history
@@ -892,6 +893,57 @@ def validate_server_cache(root, manifest):
                 f'expected {item["version"]}, found {metadata.get("name")} {metadata.get("version_number")}'
             )
 
+SERVER_CONFIG_DIR = 'server-config'
+OVERRIDE_DIR = 'overrides'
+
+def server_config_source(root):
+    """The profile's canonical server settings, or None when it declares none.
+
+    A profile that has never had them stays as it was: the plugins write their own
+    defaults on first run, which is how every world worked before. Declaring them makes
+    the profile the source of truth for every linked server instead.
+    """
+    source = root / SERVER_CONFIG_DIR
+    return source if source.is_dir() and any(source.rglob('*.cfg')) else None
+
+def deploy_server_config(root, world_root):
+    """Place the profile's server settings, with this server's overrides applied.
+
+    The override is per key, not per file: a server that needed one value used to copy
+    the whole config, and the copy then kept yesterday's defaults for every other
+    setting when the profile moved on. That is the same drift that left four worlds
+    running four different mod sets.
+
+    The previous configs are kept beside the deployment backup rather than replaced in
+    place, because a plugin's own file is the only record of what a server was running
+    before the profile claimed ownership.
+    """
+    source = server_config_source(root)
+    if source is None:
+        return
+    target = world_root / 'config_merged' / 'bepinex'
+    overrides = world_root / 'mods' / OVERRIDE_DIR / 'server'
+    backup = world_root / 'mods' / 'deployment-backups' / root.name / 'server-config.previous'
+    with tempfile.TemporaryDirectory(dir=target.parent) as temp:
+        staged = Path(temp) / 'config'
+        touched = config_merge.merge_tree(source, overrides, staged)
+        shutil.rmtree(backup, ignore_errors=True)
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        backup.mkdir()
+        for entry in sorted(staged.rglob('*')):
+            if not entry.is_file():
+                continue
+            relative = entry.relative_to(staged)
+            live = target / relative
+            if live.is_file():
+                (backup / relative).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(live, backup / relative)
+            live.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(entry, live)
+    print(f'server_config={len(list(source.rglob("*.cfg")))} files')
+    for entry in touched:
+        print(f'server_config_override={entry}')
+
 def cmd_deploy(root,m,args):
     world=args.world_dir.name
     server_plugins=cache(root)/'server'/'BepInEx'/'plugins'
@@ -939,6 +991,7 @@ def cmd_deploy(root,m,args):
                 shutil.rmtree(entry)
             else:
                 entry.unlink()
+    deploy_server_config(root, world_root)
     print('deployed=true')
 def cmd_profile(root, m, args):
     """Profile lifecycle, delegated to the shared store.

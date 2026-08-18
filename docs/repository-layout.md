@@ -27,7 +27,7 @@ valheim-portal/
 │   ├── map-source-exporter/       # C# BepInEx plugin source for map export
 │   └── worldseed/                 # C# seed-forcing plugin source and build script
 ├── scripts/                       # installer and release/build tooling
-├── deploy/                        # unit and proxy examples
+├── deploy/                        # unit and proxy examples, the release-target example, and the three example mod profiles
 └── docs/
 ```
 
@@ -60,15 +60,24 @@ That is not defensiveness. These scripts run `docker compose down`,
 guessed default would tear down or delete the wrong thing. `hostops/tests/valheim_root_resolution.sh`
 holds both resolvers to that contract.
 
-A world directory looks like this:
+The world root holds one directory per server, plus two that belong to no server:
 
 ```text
-<world root>/<WORLD>/
-├── valheim.env                    # per-world server environment (holds SERVER_PASS)
-├── config_merged/                 # BepInEx config + worlds_local save pair
-├── data/                          # container /opt/valheim, incl. data/htdocs/status.json
-└── mods/                          # managed profiles and package cache
+<world root>/
+├── profiles/<name>/                # the shared profile store: one mod definition per name
+├── settings-history/               # git store of settings text
+└── <WORLD>/
+    ├── valheim.env                 # per-world server environment (holds SERVER_PASS)
+    ├── config_merged/              # BepInEx config + worlds_local save pair
+    ├── data/                       # container /opt/valheim, incl. data/htdocs/status.json
+    └── mods/
+        ├── .active-mod-profile     # the profile this server is linked to
+        └── overrides/              # this server's own setting values, layered per key
 ```
+
+A profile belongs to no world, which is why the store is beside the worlds rather than
+inside one. Several servers may link to the same profile; see
+[operations.md](operations.md#mod-profiles).
 
 `compose.yaml` mounts the world root read-only at `/var/lib/valheim-worlds`, and
 `PORTAL_MAP_SOURCE_ROOT` points at the same mount. World status is read from

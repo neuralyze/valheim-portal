@@ -26,7 +26,10 @@ classes:
     approval: every_invocation
     description: >
       Touches a server, its mods or its data. Confirmation is required on every call, including
-      repeats against other worlds, because each one implies downtime for players.
+      repeats against other worlds, because each one implies downtime for players. A mod verb is
+      confirmed against the profile it edits and the servers linked to that profile, not against
+      the world the request is routed through: profiles are shared, so one confirmation can be a
+      change to four running servers.
   player_facing:
     approval: every_invocation
     description: >
@@ -145,13 +148,17 @@ verbs:
   - id: mod_add
     class: world_state
     maps_to: tools/valheim_mods.py add
-    purpose: Select a package in a world's manifest.
+    purpose: >
+      Select a package in a shared mod profile. Every server linked to that profile runs it after
+      its own deploy, so the approval names the profile and those servers.
     invariants: [client_server_parity, dependencies_complete]
 
   - id: mod_remove
     class: world_state
     maps_to: tools/valheim_mods.py remove
-    purpose: Deselect a package, back up its files and record the removal.
+    purpose: >
+      Deselect a package from a shared mod profile, back up its files and record the removal.
+      Every server linked to the profile loses it at its next deploy.
     preconditions: [server_stopped]
     evidence: removal.json in the backup directory reads state=completed
     rollback: the backup directory beside it holds the manifest and the removed files

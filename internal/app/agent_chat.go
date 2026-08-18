@@ -85,9 +85,10 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 type agentChatRow struct {
 	VerbCall
 	Approvable bool
-	Summary    string
 	// Arguments is every value the call carries, so an operator approves what they can see rather
-	// than a one-line summary of it.
+	// than a one-line summary of it. There is deliberately no summary on this row: the one-liner
+	// belongs to the conversation, the audit log and the bridge, and building it here would cost a
+	// profile-link read per rendered call for something the page does not show.
 	Arguments []agentArgument
 	// LongEvidence collapses output that would otherwise bury the page. The threshold is lines,
 	// not bytes: one 4 KB line is readable, forty short ones are a wall.
@@ -139,7 +140,6 @@ func (s *Server) agentChat(w http.ResponseWriter, r *http.Request) {
 		row := agentChatRow{
 			VerbCall:     call,
 			Approvable:   call.Status == VerbPending,
-			Summary:      verbSummary(call),
 			Arguments:    verbArguments(call),
 			LongEvidence: strings.Count(call.Evidence, "\n") > 12,
 		}
@@ -181,9 +181,18 @@ func (s *Server) agentChat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func verbSummary(call VerbCall) string {
+// verbSummary is the one line an operator reads when approving, denying, or reading back a call.
+//
+// A mod verb is summarised by the profile it edits and the servers that run it, not by the world
+// the request was routed through. The world is how the portal reaches a host script; the change
+// lands in one shared definition under <fleet>/profiles/<name>, and every server whose
+// .active-mod-profile names it runs the result. "mod_add world=Hrafnheim ..." told an operator they
+// were approving a change to Hrafnheim when all four worlds were linked to that profile.
+func verbSummary(call VerbCall, reach profileReach) string {
 	parts := []string{call.Verb}
-	if call.World != "" {
+	if changesSharedProfile(call) {
+		parts = append(parts, "profile="+call.Profile, "servers="+serversReached(call.Profile, reach))
+	} else if call.World != "" {
 		parts = append(parts, "world="+call.World)
 	}
 	if call.Identifier != "" {
@@ -205,6 +214,39 @@ func verbSummary(call VerbCall) string {
 		parts = append(parts, "note="+call.Notes)
 	}
 	return strings.Join(parts, " ")
+}
+
+// changesSharedProfile reports whether approving this call edits a profile definition rather than
+// one world's server. A deploy is deliberately not one of them: it replaces the deployed plugin set
+// of the world it names, and no other.
+func changesSharedProfile(call VerbCall) bool {
+	verb, err := VerbByID(call.Verb)
+	if err != nil || !verb.NeedsApproval() || verb.Operation == "mod_deploy" {
+		return false
+	}
+	return strings.HasPrefix(verb.Operation, "mod_") && validProfileName(call.Profile)
+}
+
+// serversReached names the servers a shared-profile edit lands on. "unknown" and "none linked" are
+// different answers to someone about to approve one, so an unread link is never shown as an empty
+// list of servers.
+func serversReached(profile string, reach profileReach) string {
+	if reach == nil {
+		return "unknown"
+	}
+	linkage := reach()
+	servers := linkage.servers(profile)
+	switch {
+	case len(servers) == 0 && !linkage.Read:
+		return "unknown"
+	case len(servers) == 0:
+		return "none linked"
+	case !linkage.Complete:
+		// A world that did not answer may be linked too, so the list says it is short rather
+		// than reading as the whole set.
+		return strings.Join(servers, ",") + ",+unread"
+	}
+	return strings.Join(servers, ",")
 }
 
 func (s *Server) agentChatMessage(w http.ResponseWriter, r *http.Request) {
@@ -309,8 +351,9 @@ func (s *Server) agentChatDecide(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		_ = s.store.Audit(r.Context(), actor, "agent.verb.denied", call.Verb, verbSummary(call))
-		_, _ = s.store.AppendAgentMessage(r.Context(), "system", "Denied: "+verbSummary(call))
+		summary := verbSummary(call, s.profileReach(r.Context()))
+		_ = s.store.Audit(r.Context(), actor, "agent.verb.denied", call.Verb, summary)
+		_, _ = s.store.AppendAgentMessage(r.Context(), "system", "Denied: "+summary)
 	case "approve":
 		s.executeApproved(r.Context(), call, actor)
 	default:
@@ -339,8 +382,9 @@ func (s *Server) executeApproved(ctx context.Context, call VerbCall, actor strin
 	if err := s.store.FinishVerbCall(ctx, call.ID, status, actor, evidence, detail); err != nil {
 		return
 	}
-	_ = s.store.Audit(ctx, actor, "agent.verb."+status, call.Verb, verbSummary(call))
-	note := fmt.Sprintf("%s: %s", status, verbSummary(call))
+	summary := verbSummary(call, s.profileReach(ctx))
+	_ = s.store.Audit(ctx, actor, "agent.verb."+status, call.Verb, summary)
+	note := fmt.Sprintf("%s: %s", status, summary)
 	if detail != "" {
 		note += "\n" + detail
 	}
@@ -457,8 +501,9 @@ func (s *Server) agentInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	waiting := make([]map[string]any, 0, len(pending))
+	reach := s.profileReach(r.Context())
 	for _, call := range pending {
-		waiting = append(waiting, map[string]any{"id": call.ID, "verb": call.Verb, "summary": verbSummary(call)})
+		waiting = append(waiting, map[string]any{"id": call.ID, "verb": call.Verb, "summary": verbSummary(call, reach)})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"messages": out, "cursor": cursor, "awaiting_approval": waiting})
 }
@@ -686,7 +731,7 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 				return
 			}
-			_, _ = s.store.AppendAgentMessage(r.Context(), "system", "Awaiting approval: "+verbSummary(call))
+			_, _ = s.store.AppendAgentMessage(r.Context(), "system", "Awaiting approval: "+verbSummary(call, s.profileReach(r.Context())))
 			writeJSON(w, http.StatusAccepted, map[string]any{
 				"status": VerbPending, "id": call.ID, "verb": verb.ID,
 				"note": "an operator must confirm this on every invocation",
@@ -701,7 +746,7 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
-		_, _ = s.store.AppendAgentMessage(r.Context(), "system", "Auto-approved by policy: "+verbSummary(call))
+		_, _ = s.store.AppendAgentMessage(r.Context(), "system", "Auto-approved by policy: "+verbSummary(call, s.profileReach(r.Context())))
 		status, evidence, detail := s.executeApproved(r.Context(), call, autoApproveActor)
 		code := http.StatusOK
 		if status != VerbSucceeded {
@@ -731,7 +776,9 @@ func (s *Server) agentVerb(w http.ResponseWriter, r *http.Request) {
 		status, detail = VerbFailed, "agent reported status "+reply.Status
 	}
 	_ = s.store.FinishVerbCall(r.Context(), call.ID, status, "", replyEvidence(reply), detail)
-	_ = s.store.Audit(r.Context(), "agent", "agent.verb."+status, verb.ID, verbSummary(call))
+	// Only approved verbs reach here after editing a profile; this path is reads and repo work,
+	// so the summary needs no link lookup and pays for no host round trip.
+	_ = s.store.Audit(r.Context(), "agent", "agent.verb."+status, verb.ID, verbSummary(call, nil))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": status, "id": call.ID, "verb": verb.ID, "evidence": replyEvidence(reply), "detail": detail,
 	})

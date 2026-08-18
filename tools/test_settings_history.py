@@ -156,3 +156,40 @@ def test_the_cli_restores_outside_the_live_tree(tmp_path, capsys):
     assert "rows = 4" in destination.read_text()
     assert not live.exists()  # recovery reads history; it does not deploy
     assert "restored=" in capsys.readouterr().out
+
+
+def test_the_canonical_set_and_the_overrides_are_versioned(tmp_path):
+    """The two files an operator edits by hand.
+
+    Tracking only the merged per-world result left the profile's canonical settings and
+    a server's override keys unversioned - which is the pair you need when a server
+    behaves unlike its profile, and exactly what this store exists to keep.
+    """
+    fleet = build_fleet(tmp_path)
+    profile = fleet / "profiles" / "redesign-alpha"
+    (profile / "server-config").mkdir()
+    (profile / "server-config" / "Azumatt.WardIsLove.cfg").write_text("[General]\nWardHotKey = F4\n")
+    overrides = fleet / "Hrafnheim" / "mods" / "overrides" / "server"
+    overrides.mkdir(parents=True)
+    (overrides / "Azumatt.WardIsLove.cfg").write_text("[General]\nWardHotKey = F7\n")
+
+    tracked = history.tracked_files(fleet)
+
+    assert "profiles/redesign-alpha/server-config/Azumatt.WardIsLove.cfg" in tracked
+    assert "Hrafnheim/overrides/server/Azumatt.WardIsLove.cfg" in tracked
+
+
+def test_an_override_deleted_later_is_still_recoverable(tmp_path):
+    fleet = build_fleet(tmp_path)
+    store = tmp_path / "settings-history"
+    overrides = fleet / "Doggerland" / "mods" / "overrides" / "client"
+    overrides.mkdir(parents=True)
+    (overrides / "Azumatt.FastLink.cfg").write_text("[General]\nAddress = valheim.example:2456\n")
+    (fleet / "Doggerland" / "config_merged" / "bepinex").mkdir(parents=True)
+    history.snapshot(fleet, "add the Doggerland override", store)
+
+    (overrides / "Azumatt.FastLink.cfg").unlink()
+    history.snapshot(fleet, "drop the Doggerland override", store)
+
+    reference, content = history.last_version(store, "Doggerland/overrides/client/Azumatt.FastLink.cfg")
+    assert "valheim.example:2456" in content and reference.endswith("~1")

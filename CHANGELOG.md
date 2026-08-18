@@ -104,7 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upstream does not ship and the installer requires. The README's first-run section
   is now the same sequence as one copy-pasteable block.
 - **Breaking for existing checkouts.** `release-targets.json` is no longer tracked; it
-  named the operator's real worlds. Copy `release-targets.json.example` to
+  named the operator's real worlds. Copy `deploy/release-targets.json.example` to
   `release-targets.json` and edit it. `scripts/build-flat-release-plan.sh` reads its
   `flat` array (overridable as the script's fifth argument), and
   `tools/valheim_mods.py` reads both arrays for the client-release

@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "flat": [
+    {
+      "world": "Midgard",
+      "source_profile": "flat",
+      "published_profile": "midgard-vr-flat",
+      "valheim_vr": true,
+      "audience": "player"
+    },
+    {
+      "world": "Midgard",
+      "source_profile": "flat",
+      "published_profile": "midgard-non-vr",
+      "valheim_vr": false,
+      "audience": "player"
+    },
+    {
+      "world": "Midgard",
+      "source_profile": "admin",
+      "published_profile": "midgard-vr-flat-admin",
+      "valheim_vr": true,
+      "audience": "admin"
+    }
+  ],
+  "vr": [
+    {
+      "world": "Midgard",
+      "source_profile": "vr",
+      "published_profile": "midgard-vr",
+      "valheim_vr": true,
+      "audience": "player"
+    }
+  ]
+}

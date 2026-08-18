@@ -1,0 +1,545 @@
+{
+  "schema_version": 2,
+  "profile_name": "flat",
+  "packages": [
+    {
+      "identifier": "Advize-PlantEasily",
+      "version": "2.1.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Advize-PlantEverything",
+      "version": "1.20.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Azumatt-AAA_Crafting",
+      "version": "2.1.6",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Azumatt-AzuAreaRepair",
+      "version": "1.1.6",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Azumatt-AzuAutoStore",
+      "version": "3.0.14",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Azumatt-AzuWearNTearPatches",
+      "version": "1.0.8",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Azumatt-BowsBeforeHoes",
+      "version": "1.3.14",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Azumatt-TrueInstantLootDrop",
+      "version": "1.0.3",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Azumatt-WardIsLove",
+      "version": "3.7.2",
+      "scope": "shared"
+    },
+    {
+      "identifier": "blacks7ar-BoatAdditions",
+      "version": "1.4.2",
+      "scope": "shared"
+    },
+    {
+      "identifier": "blacks7ar-CoreWoodPieces",
+      "version": "1.2.4",
+      "scope": "shared"
+    },
+    {
+      "identifier": "blacks7ar-Endurance",
+      "version": "1.1.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "blacks7ar-Herbalist",
+      "version": "1.4.8",
+      "scope": "shared"
+    },
+    {
+      "identifier": "blacks7ar-MagicRevamp",
+      "version": "1.4.9",
+      "scope": "shared"
+    },
+    {
+      "identifier": "blacks7ar-Mask",
+      "version": "1.0.3",
+      "scope": "shared"
+    },
+    {
+      "identifier": "blacks7ar-VikingsDoSwim",
+      "version": "1.4.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "blacks7ar-WieldEquipmentWhileSwimming",
+      "version": "1.1.3",
+      "scope": "shared"
+    },
+    {
+      "identifier": "blacks7ar-Wisdom",
+      "version": "1.0.5",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ChangosOF-DropCleaner",
+      "version": "1.1.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ChangosOF-ValheimOptimizer",
+      "version": "2.1.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "coemt-No_New_Recipe_Notifications",
+      "version": "1.0.2",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ComfyMods-PotteryBarn",
+      "version": "1.21.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ComfyMods-SearsCatalog",
+      "version": "1.8.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "CookieMilk-IdentityCrisis",
+      "version": "1.2.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "CookieMilk-ReadMe",
+      "version": "1.1.8",
+      "scope": "shared"
+    },
+    {
+      "identifier": "CookieMilk-YouAreBeingWatched",
+      "version": "1.0.9",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Crystal-DeathPenalty",
+      "version": "1.1.4",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Crystal-DigDeeper",
+      "version": "1.1.7",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Cytraen-BiggerChests",
+      "version": "1.1.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "denikson-BepInExPack_Valheim",
+      "version": "5.4.2333",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Disboard-Ballista_Infinite_Ammo",
+      "version": "1.0.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "GoldenJude-Blacksmiths_tools",
+      "version": "2.0.3",
+      "scope": "shared"
+    },
+    {
+      "identifier": "GoldenJude-Judes_Equipment",
+      "version": "2.3.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Goldenrevolver-Quick_Stack_Store_Sort_Trash_Restock",
+      "version": "1.4.13",
+      "scope": "shared"
+    },
+    {
+      "identifier": "HappyDragoon-DragoonCapes",
+      "version": "1.3.5",
+      "scope": "shared"
+    },
+    {
+      "identifier": "JamesJonesTV-RavenwoodRestorations",
+      "version": "1.0.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "JereKuusela-Item_Stand_All_Items",
+      "version": "1.25.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "JereKuusela-Wearable_Trophies",
+      "version": "1.10.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "lunarbin-Cross_Server_Portals",
+      "version": "1.2.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "MidnightMods-ImpactfulSkills",
+      "version": "0.12.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "MidnightMods-ValheimArmory",
+      "version": "1.28.2",
+      "scope": "shared"
+    },
+    {
+      "identifier": "MSchmoecker-MultiUserChest",
+      "version": "0.6.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "mvp-Serverside_Simulations",
+      "version": "1.1.9",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Neobotics-RequipMe",
+      "version": "0.2.2",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Neobotics-TagConnectedPortals",
+      "version": "0.1.4",
+      "scope": "shared"
+    },
+    {
+      "identifier": "OdinPlus-Basements",
+      "version": "1.4.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "OdinPlus-BlacksmithingExpanded",
+      "version": "1.1.7",
+      "scope": "shared"
+    },
+    {
+      "identifier": "OdinPlus-CraftyCartsRemake",
+      "version": "3.1.12",
+      "scope": "shared"
+    },
+    {
+      "identifier": "OdinPlus-OdinArchitect",
+      "version": "1.7.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "OdinPlus-OdinCampsite",
+      "version": "1.6.3",
+      "scope": "shared"
+    },
+    {
+      "identifier": "OdinPlus-OdinsFoodBarrels",
+      "version": "1.2.3",
+      "scope": "shared"
+    },
+    {
+      "identifier": "OdinPlus-OdinsHorsePen",
+      "version": "1.1.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "OdinPlus-OdinsKingdom",
+      "version": "1.5.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "OdinPlus-OdinsUndercroft",
+      "version": "1.3.3",
+      "scope": "shared"
+    },
+    {
+      "identifier": "RandyKnapp-EpicLoot",
+      "version": "0.12.15",
+      "scope": "shared"
+    },
+    {
+      "identifier": "RustyMods-RustyBuildPieces",
+      "version": "1.0.8",
+      "scope": "shared"
+    },
+    {
+      "identifier": "RustyMods-Shipwright",
+      "version": "1.0.2",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Searica-AdvancedTerrainModifiers",
+      "version": "1.4.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "shudnal-CheatDeath",
+      "version": "1.0.7",
+      "scope": "shared"
+    },
+    {
+      "identifier": "shudnal-ConditionalConfigSync",
+      "version": "1.0.4",
+      "scope": "shared"
+    },
+    {
+      "identifier": "shudnal-HarpoonExtended",
+      "version": "1.1.12",
+      "scope": "shared"
+    },
+    {
+      "identifier": "shudnal-HipLantern",
+      "version": "1.1.4",
+      "scope": "shared"
+    },
+    {
+      "identifier": "shudnal-LongshipUpgrades",
+      "version": "1.0.17",
+      "scope": "shared"
+    },
+    {
+      "identifier": "shudnal-TradersExtended",
+      "version": "2.0.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Smoothbrain-Backpacks",
+      "version": "1.3.8",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Smoothbrain-ComfortTweaks",
+      "version": "3.3.10",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Smoothbrain-CreatureLevelAndLootControl",
+      "version": "4.6.4",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Smoothbrain-Foraging",
+      "version": "1.0.10",
+      "scope": "shared"
+    },
+    {
+      "identifier": "southsil-SouthsilArmor",
+      "version": "3.1.8",
+      "scope": "shared"
+    },
+    {
+      "identifier": "SurplusTradingCo-SullysAutoPinner",
+      "version": "1.4.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "TastyChickenLegs-AutomaticFermenters",
+      "version": "1.1.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "TastyChickenLegs-AutomaticFuel",
+      "version": "1.4.8",
+      "scope": "shared"
+    },
+    {
+      "identifier": "TastyChickenLegs-BedRules",
+      "version": "2.0.5",
+      "scope": "shared"
+    },
+    {
+      "identifier": "TastyChickenLegs-CandlesForever",
+      "version": "1.0.4",
+      "scope": "shared"
+    },
+    {
+      "identifier": "TastyChickenLegs-TimedTorchesStayLit",
+      "version": "1.3.9",
+      "scope": "shared"
+    },
+    {
+      "identifier": "tulivu-FearMe",
+      "version": "0.2.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "turbero-ForsakenPowersPlusRemastered",
+      "version": "2.0.2",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ValheimModding-Jotunn",
+      "version": "2.29.2",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ValheimModding-JsonDotNET",
+      "version": "13.0.4",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ValheimModding-YamlDotNet",
+      "version": "16.3.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ZenDragon-Zen_ModLib",
+      "version": "1.13.7",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ZenDragon-ZenBreeding",
+      "version": "0.6.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ZenDragon-ZenItemStands",
+      "version": "1.0.2",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ZenDragon-ZenPath",
+      "version": "1.0.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ZenDragon-ZenRaids",
+      "version": "1.1.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ZenDragon-ZenRedecorate",
+      "version": "1.4.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "warpalicious-More_World_Locations_AIO",
+      "version": "5.0.8",
+      "scope": "shared"
+    },
+    {
+      "identifier": "DragonMotion-VHModpackFix",
+      "version": "1.1.24",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Azumatt-AzuCraftyBoxes",
+      "version": "1.8.15",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Azumatt-AzuExtendedPlayerInventory",
+      "version": "2.4.3",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ComfyMods-ComfyLadders",
+      "version": "1.1.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "hoskope-RhythmicRepairs",
+      "version": "1.0.0",
+      "scope": "shared"
+    },
+    {
+      "identifier": "ZenDragon-ZenWorldSettings",
+      "version": "1.11.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "95Shade-CarryWeightSkill",
+      "version": "1.0.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "AstralBeauty-SpearFishing",
+      "version": "2.0.1",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Smoothbrain-Lumberjacking",
+      "version": "1.0.6",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Smoothbrain-Farming",
+      "version": "2.2.2",
+      "scope": "shared"
+    },
+    {
+      "identifier": "Smoothbrain-Mining",
+      "version": "1.1.6",
+      "scope": "shared"
+    }
+  ],
+  "client_only_packages": [
+    {
+      "identifier": "Azumatt-FastLink",
+      "version": "1.4.8"
+    },
+    {
+      "identifier": "cjayride-AdvancedSigns",
+      "version": "0.4.0",
+      "scope": "client-only"
+    },
+    {
+      "identifier": "MSchmoecker-VNEI",
+      "version": "0.17.5",
+      "scope": "client-only"
+    }
+  ],
+  "manual_server_packages": [],
+  "excluded_packages": [
+    {
+      "identifier": "ValheimVR-ValheimVR",
+      "version": "0.9.2100",
+      "reason": "Explicitly removed from redesign client and server."
+    },
+    {
+      "identifier": "NightOfGames-Huginn_Map",
+      "version": "1.0.5",
+      "reason": "Experimental test-only package; not approved for redesign."
+    },
+    {
+      "identifier": "OdinPlus-CrystalLights",
+      "version": "1.1.8",
+      "reason": "Requires Jewelcrafting; Epic Loot remains selected"
+    },
+    {
+      "identifier": "Smoothbrain-Jewelcrafting",
+      "version": "2.0.1",
+      "reason": "Conflicts with active Epic Loot"
+    },
+    "Azumatt-AAABuildMenu",
+    "EchoesOfBunglas-New_Horizons_Treelines"
+  ],
+  "disabled_packages": [
+    {
+      "identifier": "cybrp-ItemDrawers",
+      "version": "1.2.6",
+      "scope": "shared"
+    }
+  ],
+  "custom_packages": []
+}

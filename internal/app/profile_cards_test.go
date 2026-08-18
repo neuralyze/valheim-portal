@@ -222,3 +222,80 @@ func TestMisbuiltVRReleaseIsNotPresentedAsAWorkingChoice(t *testing.T) {
 		t.Fatalf("a VR release without ValheimVR was presented as %q", kind.Title())
 	}
 }
+
+// The admin edition is a fourth card kind because two cards both reading
+// "Desktop, VR-compatible" left a player choosing between them by slug. It is offered
+// only to an admin login: its tools do nothing without server-side admin rights, but an
+// extra identical-looking download beside the one a player wants is the whole problem.
+func TestAdminEditionIsItsOwnKindAndOnlyShownToAdmins(t *testing.T) {
+	server := testServer(t)
+	describedTestWorld(t, server)
+	release := Release{ID: "vr-flat-admin", World: describedWorld, Profile: "midgard-vr-flat-admin", ClientType: "flat", Version: "1.0.0"}
+	publishProfileDefinition(t, server, release, func(manifest *ProfileManifest) {
+		manifest.Audience = "admin"
+		manifest.Packages = []ProfilePackage{ordinaryPackage}
+		manifest.Companion = writeFlatCompanionArtifact(t, server, release)
+	})
+
+	if kind := server.profileKindOf(context.Background(), release); kind != profileAdmin {
+		t.Fatalf("admin edition classified as %q", kind.Title())
+	}
+
+	hidden, err := server.profileReleaseCards(context.Background(), []Release{release}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hidden) != 0 {
+		t.Fatalf("admin edition offered to a player: %+v", hidden)
+	}
+
+	shown, err := server.profileReleaseCards(context.Background(), []Release{release}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shown) != 1 || shown[0].Title != "Desktop, admin tools" {
+		t.Fatalf("admin login sees %+v", shown)
+	}
+}
+
+// A player edition and the admin edition differ only in that field, so the field is the
+// only thing that may decide the card.
+func TestTheSameBuildWithoutTheAdminAudienceIsAnOrdinaryCard(t *testing.T) {
+	server := testServer(t)
+	describedTestWorld(t, server)
+	release := Release{ID: "vr-flat-player", World: describedWorld, Profile: "midgard-vr-flat", ClientType: "flat", Version: "1.0.0"}
+	publishProfileDefinition(t, server, release, func(manifest *ProfileManifest) {
+		manifest.Audience = "player"
+		manifest.Packages = []ProfilePackage{ordinaryPackage}
+		manifest.Companion = writeFlatCompanionArtifact(t, server, release)
+	})
+
+	cards, err := server.profileReleaseCards(context.Background(), []Release{release}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != 1 || cards[0].Kind != profileDesktopVR {
+		t.Fatalf("player edition = %+v", cards)
+	}
+}
+
+// An admin build for a headset is not a shape the catalog produces. Rendering it as an
+// ordinary headset card would hand the console to every VR player.
+func TestAdminAudienceOnAHeadsetReleaseIsRefused(t *testing.T) {
+	server := testServer(t)
+	describedTestWorld(t, server)
+	release := Release{ID: "vr-admin", World: describedWorld, Profile: "midgard-vr", ClientType: "vr", Version: "1.0.0"}
+	publishProfileWithPackagesAudience(t, server, release, []ProfilePackage{ordinaryPackage, valheimVRPackage}, "admin")
+
+	if kind := server.profileKindOf(context.Background(), release); kind != profileUnverified {
+		t.Fatalf("admin headset release classified as %q", kind.Title())
+	}
+}
+
+func publishProfileWithPackagesAudience(t *testing.T, server *Server, release Release, packages []ProfilePackage, audience string) {
+	t.Helper()
+	publishProfileDefinition(t, server, release, func(manifest *ProfileManifest) {
+		manifest.Packages = packages
+		manifest.Audience = audience
+	})
+}

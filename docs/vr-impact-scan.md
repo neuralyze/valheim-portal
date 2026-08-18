@@ -299,9 +299,10 @@ the pre-install bundle, and the header lists `new_plugins`.
 cd tools
 
 # Stage 1 - static scan of everything the VR profile pins.
-# <world-root> is the directory holding one subdirectory per world -- the same path
-# tools/portal_paths.py resolves from VALHEIM_ROOT. Neither tool reads it itself.
-PROFILE=<world-root>/<WORLD>/mods/profiles/<profile>
+# <world-root> is the directory holding one subdirectory per world plus the shared
+# profile store -- the same path tools/portal_paths.py resolves from VALHEIM_ROOT.
+# Neither tool reads it itself.
+PROFILE=<world-root>/profiles/vr
 python3 vr_impact_scan.py \
   --packages "$PROFILE/manager-cache/packages" \
   --manifest "$PROFILE/profile-manifest.json" \

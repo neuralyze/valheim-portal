@@ -642,7 +642,8 @@ func (s *Server) world(w http.ResponseWriter, r *http.Request) {
 		info = PublicWorld{Name: world, Status: "offline", ServerVersion: "unknown"}
 	}
 	info = s.withLiveStatus(info, time.Now())
-	cards, err := s.profileReleaseCards(r.Context(), rs)
+	admin := s.isAdmin(r)
+	cards, err := s.profileReleaseCards(r.Context(), rs, admin)
 	if err != nil {
 		http.Error(w, "portal configuration unavailable", http.StatusServiceUnavailable)
 		return
@@ -652,7 +653,7 @@ func (s *Server) world(w http.ResponseWriter, r *http.Request) {
 		seed = metadataSeed
 	}
 	render(w, playerWorldTemplate, map[string]any{
-		"World": info, "Profiles": cards, "Seed": seed, "IsAdmin": s.isAdmin(r), "SourceURL": s.cfg.SourceURL,
+		"World": info, "Profiles": cards, "Seed": seed, "IsAdmin": admin, "SourceURL": s.cfg.SourceURL,
 		"ClientUnavailable": s.clientDownloadProblem() != "",
 	})
 }
@@ -2025,9 +2026,10 @@ body{font:16px system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 
 </form>
 </details>
 <details class="server-card-section">
-<summary>Mods <small>Profiles, packages, and diagnostics</small></summary>
+<summary>Mods <small>Shared profiles, packages, and diagnostics</small></summary>
+<p class="muted">Every profile below is shared with the other servers. Editing one changes what each server linked to it runs; only the profile tagged <em>running here</em> is this world's.</p>
 {{range $.Profiles}}{{if eq .World $w.Name}}<div class="server-subrow">
-<b>{{.Profile}}</b> <span class="muted">{{.Packages}} Thunderstore, {{.CustomPackages}} custom</span>
+<b>{{.Profile}}</b> <span class="muted">{{.Packages}} Thunderstore, {{.CustomPackages}} custom</span>{{if .Linked}} <span class="server-tag">running here</span>{{end}}
 <a class="button-link" href="/admin/mods?world={{.World}}&amp;profile={{.Profile}}">Manage mods</a>
 </div>{{end}}{{end}}
 <form class="server-card-form" method="get" action="/admin/mods">

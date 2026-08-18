@@ -393,6 +393,78 @@ class DispatchTest(unittest.TestCase):
         self.assertIn("custom-add", stderr.getvalue())
 
 
+class ServerConfigDeployTest(unittest.TestCase):
+    """Deploy places the profile's server settings, with this server's overrides applied.
+
+    Before this, the plugins wrote their own settings on each server's first run, so one
+    shared mod set could be configured four different ways with nothing recording it.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.fleet = Path(self.temp.name)
+        self.world = self.fleet / "TestWorld"
+        self.root = self.fleet / "profiles/test-profile"
+        server = self.root / "manager-cache/server/BepInEx/plugins/NewPlugin"
+        server.mkdir(parents=True)
+        (server / "new.dll").write_text("new")
+        (self.root / "manual-mods").mkdir()
+        (self.world / "mods").mkdir(parents=True)
+        (self.world / "config_merged/bepinex").mkdir(parents=True)
+        self.declared = self.root / "server-config"
+        self.declared.mkdir()
+        (self.declared / "Azumatt.WardIsLove.cfg").write_text(
+            "## Plugin GUID: Azumatt.WardIsLove\n[General]\nWardHotKey = F4\nShowMarker = true\n")
+
+    def deploy(self):
+        original = valheim_mods.require_stopped
+        valheim_mods.require_stopped = lambda _: None
+        try:
+            valheim_mods.cmd_deploy(self.root, {}, SimpleNamespace(apply=True, world_dir=self.world))
+        finally:
+            valheim_mods.require_stopped = original
+
+    def test_profile_settings_reach_the_server(self):
+        self.deploy()
+
+        live = (self.world / "config_merged/bepinex/Azumatt.WardIsLove.cfg").read_text()
+        self.assertIn("WardHotKey = F4", live)
+        self.assertIn("ShowMarker = true", live)
+
+    def test_a_server_override_replaces_only_its_own_key(self):
+        overrides = self.world / "mods/overrides/server"
+        overrides.mkdir(parents=True)
+        (overrides / "Azumatt.WardIsLove.cfg").write_text("[General]\nWardHotKey = F7\n")
+
+        self.deploy()
+
+        live = (self.world / "config_merged/bepinex/Azumatt.WardIsLove.cfg").read_text()
+        self.assertIn("WardHotKey = F7", live)      # the override
+        self.assertIn("ShowMarker = true", live)    # still the profile's value
+        self.assertIn("## Plugin GUID: Azumatt.WardIsLove", live)
+
+    def test_the_previous_settings_are_kept_before_the_profile_claims_them(self):
+        # A plugin's own file is the only record of what a server ran before.
+        live = self.world / "config_merged/bepinex/Azumatt.WardIsLove.cfg"
+        live.write_text("[General]\nWardHotKey = G\n")
+
+        self.deploy()
+
+        kept = self.world / "mods/deployment-backups/test-profile/server-config.previous/Azumatt.WardIsLove.cfg"
+        self.assertTrue(kept.is_file())
+        self.assertIn("WardHotKey = G", kept.read_text())
+
+    def test_a_profile_that_declares_no_server_settings_changes_nothing(self):
+        shutil.rmtree(self.declared)
+        live = self.world / "config_merged/bepinex/Azumatt.WardIsLove.cfg"
+        live.write_text("[General]\nWardHotKey = G\n")
+
+        self.deploy()
+
+        self.assertEqual(live.read_text(), "[General]\nWardHotKey = G\n")
+
+
 class SettingsHistoryWiringTest(RemoveTest):
     """main() records settings around every mutating command.
 

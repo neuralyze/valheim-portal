@@ -150,17 +150,29 @@ def tracked_files(fleet_root: Path) -> dict[str, Path]:
     for name in profile_store.profile_names(profiles_root):
         profile = profiles_root / name
         found[f"profiles/{name}/profile-manifest.json"] = profile / profile_store.MANIFEST_NAME
-        # client-config, client-config-flat, client-config-vr: the settings a player's
-        # download carries. Named by prefix because a new client type is a directory,
-        # not a code change.
+        # client-config* is what a player's download carries; server-config is the
+        # canonical set a deploy places on every linked server. Both are edited by hand,
+        # so both are versioned - tracking only the per-world result of the merge left
+        # the two files an operator actually types in unversioned.
         for directory in sorted(d for d in profile.iterdir()
-                                if d.is_dir() and d.name.startswith("client-config")):
+                                if d.is_dir() and (d.name.startswith("client-config")
+                                                   or d.name == "server-config")):
             for path in sorted(directory.rglob("*")):
                 if path.is_file() and not path.is_symlink() and is_settings_file(path):
                     relative = path.relative_to(profile).as_posix()
                     found[f"profiles/{name}/{relative}"] = path
 
     for world_dir in profile_store.worlds_in(fleet_root):
+        # What this server overrides. Small by design - a handful of keys - and the first
+        # thing to read when a server behaves unlike its profile.
+        overrides = world_dir / "mods" / "overrides"
+        for path in sorted(overrides.rglob("*")) if overrides.is_dir() else []:
+            if path.is_file() and not path.is_symlink() and is_settings_file(path):
+                relative = path.relative_to(overrides).as_posix()
+                found[f"{world_dir.name}/overrides/{relative}"] = path
+
+        # The merged result the server actually reads, written by the plugins before a
+        # profile claimed ownership and by the deploy afterwards.
         server_config = world_dir / "config_merged" / "bepinex"
         if not server_config.is_dir():
             continue
