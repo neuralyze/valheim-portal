@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/neuralyze/valheim-portal/internal/app"
 )
@@ -195,12 +196,21 @@ func stage(root, releaseID, kind, source string) (app.Artifact, error) {
 	if err != nil || !info.Mode().IsRegular() {
 		return app.Artifact{}, fmt.Errorf("%s is not a regular file", source)
 	}
+	// A republish carries an artifact forward by handing back the file this function
+	// staged last time, so prefixing unconditionally added "flat_companion-" once per
+	// publish. After nine republishes the companion's name reached 205 characters and
+	// crossed the 180-character cap the profile builder enforces, which stopped every
+	// Flat publish outright. Strip the prefix before adding it.
 	name := filepath.Base(source)
+	prefix := kind + "-"
+	for strings.HasPrefix(name, prefix) {
+		name = strings.TrimPrefix(name, prefix)
+	}
 	dir := filepath.Join(root, "releases", releaseID)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return app.Artifact{}, err
 	}
-	dest := filepath.Join(dir, kind+"-"+name)
+	dest := filepath.Join(dir, prefix+name)
 	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
 	if err != nil {
 		return app.Artifact{}, err
