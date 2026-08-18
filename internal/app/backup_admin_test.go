@@ -58,11 +58,51 @@ func TestNewServerPageOffersOnlyAgentCatalogProfiles(t *testing.T) {
 		t.Fatalf("new server page = %d: %s", response.Code, response.Body.String())
 	}
 	// The option value is the profile alone: a profile belongs to no world, and a new
-	// server links to it rather than copying a world.
-	for _, expected := range []string{`value="redesign-alpha"`, "63 Thunderstore", "1 custom", "2 disabled"} {
+	// server links to it rather than copying a world. The server count says which profiles
+	// are actually run by a server versus which are only edition sources.
+	for _, expected := range []string{`value="redesign-alpha"`, "63 Thunderstore", "1 custom", "2 disabled",
+		"Profile this server runs", "no servers"} {
 		if !strings.Contains(response.Body.String(), expected) {
 			t.Fatalf("profile choice missing %q: %s", expected, response.Body.String())
 		}
+	}
+}
+
+// A profile fills two unrelated roles: the mod set a server runs, and the source a
+// published client edition is built from. The form chooses the first. `flat` and `vr` are
+// only edition sources - linking a server to one would strip the admin tools that have to
+// be server-side - so the page shows how many servers run each and defaults to the one
+// most of them run, rather than offering three equal-looking names.
+func TestNewServerPageDefaultsToTheProfileMostServersRun(t *testing.T) {
+	server := testServer(t)
+	for _, world := range []string{"Midgard-Redesign", "Asgard"} {
+		if err := server.store.UpsertPublicWorld(t.Context(), PublicWorld{
+			Name: world, JoinAddress: "valheim.example:2456", Status: "online", ServerVersion: "test",
+		}, "test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Both worlds run "admin"; "flat" is an edition source no server runs.
+	serveAgentCatalog(t, server, func(world string) string {
+		return `[{"world":"` + world + `","profile":"admin","name":"admin","packages":111,"custom_packages":0,"disabled_packages":1,"linked":true},` +
+			`{"world":"` + world + `","profile":"flat","name":"flat","packages":101,"custom_packages":0,"disabled_packages":1,"linked":false}]`
+	})
+
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, adminTestRequest(http.MethodGet, "/admin/servers/new", nil))
+	page := response.Body.String()
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("new server page = %d: %s", response.Code, page)
+	}
+	if !strings.Contains(page, `name="profile" list="server-profiles" value="admin"`) {
+		t.Fatalf("form does not default to the profile both servers run: %s", page)
+	}
+	if !strings.Contains(page, `label="111 packages · 2 server(s)"`) {
+		t.Fatalf("admin is not shown as running on two servers: %s", page)
+	}
+	if !strings.Contains(page, `label="101 packages · no servers"`) {
+		t.Fatalf("flat is not shown as an edition source no server runs: %s", page)
 	}
 }
 
@@ -81,6 +121,33 @@ func TestPlayerWorldPageDisplaysSeedReadFromFWLMetadata(t *testing.T) {
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "SafeSeed123") {
 		t.Fatalf("world seed page = %d: %s", response.Code, response.Body.String())
 	}
+}
+
+// serveAgentCatalog answers profile_catalog for every world with that world's own rows, so a
+// test can exercise a fact that only appears across several servers - such as how many run a
+// given profile. serveAgentReply binds the socket for exactly one world, and a second call
+// would replace the first rather than adding to it.
+func serveAgentCatalog(t *testing.T, server *Server, rows func(world string) string) {
+	t.Helper()
+	socket := server.agent.socket
+	_ = os.Remove(socket)
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mock := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request agentRequest
+		if json.NewDecoder(r.Body).Decode(&request) != nil || request.Operation != "profile_catalog" {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(AgentReply{Status: "succeeded", Data: json.RawMessage(rows(request.World))}); err != nil {
+			t.Errorf("encode agent reply: %v", err)
+		}
+	})}
+	go func() { _ = mock.Serve(listener) }()
+	t.Cleanup(func() { _ = mock.Close() })
 }
 
 func serveAgentReply(t *testing.T, server *Server, operation, world string, reply AgentReply) {
