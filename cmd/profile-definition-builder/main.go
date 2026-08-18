@@ -17,6 +17,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+
+	app "github.com/neuralyze/valheim-portal/internal/app"
 	"sort"
 	"strconv"
 	"strings"
@@ -55,7 +57,6 @@ type profileManifest struct {
 	ClientType string `json:"client_type"`
 	// Who the edition is for. "player" is the ordinary download; "admin" carries the
 	// console and world-editing tools, and the portal only offers it to a world's admins.
-	Audience  string             `json:"audience"`
 	Packages  []packageManifest  `json:"packages"`
 	Companion *companionManifest `json:"companion,omitempty"`
 }
@@ -163,7 +164,10 @@ func buildProfileDefinition(ctx context.Context, options builderOptions) error {
 		if err != nil {
 			return err
 		}
-		companion = &companionManifest{Filename: filename, SHA256: checksum, Size: size}
+		// The name the publisher will record for this artifact, not the path it happened to
+		// be handed: a carried-forward companion arrives already prefixed, and the store
+		// compares this string against the staged artifact's name.
+		companion = &companionManifest{Filename: app.StagedArtifactName("flat_companion", filename), SHA256: checksum, Size: size}
 	}
 
 	baseURL := options.PackageBaseURL
@@ -188,7 +192,6 @@ func buildProfileDefinition(ctx context.Context, options builderOptions) error {
 		World:      options.World,
 		Profile:    options.Profile,
 		ClientType: options.ClientType,
-		Audience:   options.Audience,
 		Packages:   packages,
 		Companion:  companion,
 	})
@@ -216,6 +219,9 @@ func validateBuilderOptions(options builderOptions) error {
 	// No default: an admin edition that silently published as a player one would put the
 	// console in front of every player, and a player edition marked admin would hide the
 	// download everyone needs.
+	// Validated here, then passed to seed-release, which records it on the release row.
+	// It must never enter the ZIP: installed clients decode profile-manifest.json with
+	// DisallowUnknownFields, so a new field there fails every install.
 	if options.Audience != "player" && options.Audience != "admin" {
 		return errors.New("audience must be player or admin")
 	}

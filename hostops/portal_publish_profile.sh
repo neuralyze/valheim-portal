@@ -45,12 +45,16 @@ import json, sys
 
 catalog_path, world, profile, client_type, out_path = sys.argv[1:6]
 catalog = json.load(open(catalog_path))
+# Matched on the PUBLISHED profile, which is what the verb names and what a release is
+# scoped to. Matching the source profile stopped resolving the moment a world published
+# more than one edition from the same primary: "flat" now feeds both <world>-vr-flat and
+# <world>-non-vr, so every Flat publish saw two targets and refused.
 matches = [
     entry for entry in (catalog.get(client_type) or [])
-    if entry.get("world") == world and entry.get("source_profile") == profile
+    if entry.get("world") == world and entry.get("published_profile") == profile
 ]
 if len(matches) != 1:
-    names = [f'{e.get("world")}/{e.get("source_profile")}' for e in (catalog.get(client_type) or [])]
+    names = [f'{e.get("world")}/{e.get("published_profile")}' for e in (catalog.get(client_type) or [])]
     print(
         f"catalog has {len(matches)} {client_type} targets for {world}/{profile}; "
         f"declared: {', '.join(names) or 'none'}",
@@ -58,7 +62,7 @@ if len(matches) != 1:
     )
     raise SystemExit(2)
 json.dump({"schema": 1, "flat": [], "vr": [], client_type: matches}, open(out_path, "w"))
-print(f"publishing {matches[0]['published_profile']} ({client_type}) for {world}/{profile}")
+print(f"publishing {matches[0]['published_profile']} ({client_type}) for {world} from {matches[0]['source_profile']}")
 PY
 
 exec env VALHEIM_PROFILE_SOURCE_ROOT="${VALHEIM_PROFILE_SOURCE_ROOT:-$VALHEIM_ROOT}" \

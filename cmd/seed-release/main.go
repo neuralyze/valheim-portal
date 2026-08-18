@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/neuralyze/valheim-portal/internal/app"
 )
@@ -25,7 +24,7 @@ const (
 )
 
 func main() {
-	var database, artifactRoot, world, profile, clientType, version, payload, runtime, companion, diagPlugin, actor, joinAddress, serverVersion, archiveDraft, archiveRelease, notes string
+	var database, artifactRoot, world, profile, clientType, version, payload, runtime, companion, diagPlugin, actor, joinAddress, serverVersion, archiveDraft, archiveRelease, notes, audience string
 	var allowForeignRoot, skipDownloadCheck bool
 	flag.StringVar(&database, "database", deployedDatabase, "absolute SQLite database path")
 	flag.StringVar(&artifactRoot, "artifact-root", deployedArtifactRoot, "absolute immutable artifact root")
@@ -46,6 +45,7 @@ func main() {
 	flag.StringVar(&serverVersion, "server-version", "", "compatible Valheim server version")
 	flag.StringVar(&archiveDraft, "archive-draft", "", "draft release ID to archive instead of publishing")
 	flag.StringVar(&archiveRelease, "archive-release", "", "published release ID to archive")
+	flag.StringVar(&audience, "audience", "", "who the edition is for (player or admin); required when publishing")
 	flag.StringVar(&notes, "notes", "Incremental Valheim Profile Sync definition.", "release notes")
 	flag.Parse()
 	if archiveDraft != "" && archiveRelease != "" {
@@ -117,7 +117,13 @@ func main() {
 	} else if err != nil {
 		fatal(err.Error())
 	}
-	release := app.Release{ID: id, World: world, Profile: profile, ClientType: clientType, Version: version, Notes: notes}
+	// Recorded on the release, never in the published definition: an installed client
+	// decodes profile-manifest.json with DisallowUnknownFields, so a portal-only field
+	// there fails every install.
+	if audience != "player" && audience != "admin" {
+		fatal("audience must be player or admin")
+	}
+	release := app.Release{ID: id, World: world, Profile: profile, ClientType: clientType, Version: version, Notes: notes, Audience: audience}
 	existing, err := store.Release(ctx, id)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -196,16 +202,11 @@ func stage(root, releaseID, kind, source string) (app.Artifact, error) {
 	if err != nil || !info.Mode().IsRegular() {
 		return app.Artifact{}, fmt.Errorf("%s is not a regular file", source)
 	}
-	// A republish carries an artifact forward by handing back the file this function
-	// staged last time, so prefixing unconditionally added "flat_companion-" once per
-	// publish. After nine republishes the companion's name reached 205 characters and
-	// crossed the 180-character cap the profile builder enforces, which stopped every
-	// Flat publish outright. Strip the prefix before adding it.
-	name := filepath.Base(source)
+	// Shared with the profile-definition builder, which records the companion's filename
+	// into the definition the store cross-checks against this row: both sides must reach
+	// the same answer for a file carried forward from a previous release.
+	name := app.StagedArtifactName(kind, source)
 	prefix := kind + "-"
-	for strings.HasPrefix(name, prefix) {
-		name = strings.TrimPrefix(name, prefix)
-	}
 	dir := filepath.Join(root, "releases", releaseID)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return app.Artifact{}, err

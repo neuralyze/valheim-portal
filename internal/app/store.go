@@ -299,6 +299,23 @@ INSERT INTO schema_migrations(version, applied_at) VALUES (19, CURRENT_TIMESTAMP
 		}
 	}
 
+	// The audience lives here, not in the published profile definition. It was briefly a
+	// field in profile-manifest.json inside the ZIP, and every installed client decodes
+	// that file with DisallowUnknownFields: on 2026-08-17 the field shipped and every
+	// player's install failed with `unknown field "audience"`. The client never reads this
+	// table, so a portal-only fact belongs in it.
+	var releaseAudienceSchema int
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=20)`).Scan(&releaseAudienceSchema); err != nil {
+		return err
+	}
+	if releaseAudienceSchema == 0 {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE releases ADD COLUMN audience TEXT NOT NULL DEFAULT 'player' CHECK(audience IN ('player','admin'));
+INSERT INTO schema_migrations(version, applied_at) VALUES (20, CURRENT_TIMESTAMP);`); err != nil {
+			return err
+		}
+	}
+
 	// mod_add and mod_custom_add are refused by the agent without a scope of exactly "shared" or
 	// "client-only", and the verb-call table had nowhere to put one - so those two verbs could not
 	// succeed through the bridge at all, and the refusal said only "invalid mod selection".
@@ -1075,7 +1092,17 @@ func (s *Store) CreateRelease(ctx context.Context, r Release, actor string) erro
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := s.db.ExecContext(ctx, `INSERT INTO releases(id,world,profile,client_type,version,notes,status,created_at) VALUES(?,?,?,?,?,?,?,?)`, r.ID, r.World, r.Profile, r.ClientType, r.Version, r.Notes, Draft, now)
+	audience := r.Audience
+	if audience == "" {
+		// A release that names no audience is an ordinary player download. The default
+		// lives here rather than in the CHECK constraint so an explicit bad value still
+		// fails loudly instead of being silently corrected.
+		audience = "player"
+	}
+	if audience != "player" && audience != "admin" {
+		return errors.New("release audience must be player or admin")
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO releases(id,world,profile,client_type,version,notes,status,audience,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, r.ID, r.World, r.Profile, r.ClientType, r.Version, r.Notes, Draft, audience, now)
 	if err == nil {
 		err = s.Audit(ctx, actor, "release.create", r.ID, fmt.Sprintf("world=%s version=%s", r.World, r.Version))
 	}
@@ -1400,7 +1427,7 @@ func (s *Store) ArchivedWorldReleases(ctx context.Context, world string) ([]Rele
 	return s.releases(ctx, "WHERE world=? AND status='archived' ORDER BY CASE WHEN profile LIKE '%-nonvr' THEN 0 WHEN profile LIKE '%-flatvr' THEN 1 WHEN profile LIKE '%-vr' THEN 2 ELSE 3 END, profile, client_type, published_at DESC", world)
 }
 func (s *Store) releases(ctx context.Context, where string, args ...any) ([]Release, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id,world,profile,client_type,version,notes,status,maintenance,published_at,published_by,created_at FROM releases "+where, args...)
+	rows, err := s.db.QueryContext(ctx, "SELECT id,world,profile,client_type,version,notes,status,maintenance,audience,published_at,published_by,created_at FROM releases "+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1411,7 +1438,7 @@ func (s *Store) releases(ctx context.Context, where string, args ...any) ([]Rele
 		var publishedAt, publishedBy sql.NullString
 		var c string
 		var m int
-		if err = rows.Scan(&r.ID, &r.World, &r.Profile, &r.ClientType, &r.Version, &r.Notes, &r.Status, &m, &publishedAt, &publishedBy, &c); err != nil {
+		if err = rows.Scan(&r.ID, &r.World, &r.Profile, &r.ClientType, &r.Version, &r.Notes, &r.Status, &m, &r.Audience, &publishedAt, &publishedBy, &c); err != nil {
 			return nil, err
 		}
 		r.Maintenance = m == 1
@@ -1564,11 +1591,11 @@ func (s *Store) PublicRelease(ctx context.Context, id string, historical bool) (
 	if historical {
 		statuses = "status IN ('published','archived')"
 	}
-	row := s.db.QueryRowContext(ctx, "SELECT id,world,profile,client_type,version,notes,status,maintenance,published_at,published_by,created_at FROM releases WHERE id=? AND "+statuses, id)
+	row := s.db.QueryRowContext(ctx, "SELECT id,world,profile,client_type,version,notes,status,maintenance,audience,published_at,published_by,created_at FROM releases WHERE id=? AND "+statuses, id)
 	var r Release
 	var publishedAt, createdAt string
 	var maintenance int
-	if err := row.Scan(&r.ID, &r.World, &r.Profile, &r.ClientType, &r.Version, &r.Notes, &r.Status, &maintenance, &publishedAt, &r.PublishedBy, &createdAt); err != nil {
+	if err := row.Scan(&r.ID, &r.World, &r.Profile, &r.ClientType, &r.Version, &r.Notes, &r.Status, &maintenance, &r.Audience, &publishedAt, &r.PublishedBy, &createdAt); err != nil {
 		return Release{}, err
 	}
 	r.Maintenance = maintenance == 1

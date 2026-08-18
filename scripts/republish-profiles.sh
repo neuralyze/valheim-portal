@@ -181,7 +181,7 @@ while read -r world source published client_type valheim_vr audience; do
               -source-manifest "$profile_dir/profile-manifest.json"
               -config-dir "$merged" -output "$payload")
   publish_args=(-world "$world" -profile "$published" -client-type "$client_type"
-                -version "$version" -profile-payload "$payload"
+                -version "$version" -profile-payload "$payload" -audience "$audience"
                 -notes "$notes" -actor republish-profiles
                 -database "$database" -artifact-root "$artifact_root")
 

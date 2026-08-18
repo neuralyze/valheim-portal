@@ -339,8 +339,10 @@ func TestStripValheimVRPackagesLeavesCleanSetUntouched(t *testing.T) {
 	}
 }
 
-// The audience has no default: a wrong value either hides the download every player
-// needs or offers the console to all of them, so an unset one has to fail loudly.
+// The audience has no default: a wrong value either hides the download every player needs
+// or offers the console to all of them, so an unset one has to fail loudly. It is
+// validated here and recorded by seed-release; it must NOT reach the archive, because an
+// installed client decodes profile-manifest.json with DisallowUnknownFields.
 func TestBuildRefusesAMissingOrUnknownAudience(t *testing.T) {
 	dir := t.TempDir()
 	configDir := filepath.Join(dir, "config")
@@ -367,5 +369,62 @@ func TestBuildRefusesAMissingOrUnknownAudience(t *testing.T) {
 	}
 	if err := build("admin", "admin.zip"); err != nil {
 		t.Fatalf("admin audience = %v", err)
+	}
+}
+
+// The definition is read by clients that reject any key they do not know, so the archive
+// must contain exactly the keys those clients expect. On 2026-08-17 an "audience" field
+// shipped here and every player's install failed with `unknown field "audience"`.
+func TestTheBuiltDefinitionCarriesNoPortalOnlyFields(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(dir, "profile.zip")
+	if err := buildProfileDefinition(context.Background(), builderOptions{
+		SourceManifestPath: writeManagedManifest(t, dir, `{"schema_version":2,"packages":[]}`),
+		World:              "world-one",
+		Profile:            "world-one-vr-flat-admin",
+		ClientType:         "flat",
+		Audience:           "admin",
+		ConfigDir:          configDir,
+		Output:             output,
+		TrueNonVR:          true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	archive, err := zip.OpenReader(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	var manifest map[string]any
+	for _, file := range archive.File {
+		if file.Name != "profile-manifest.json" {
+			continue
+		}
+		reader, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.NewDecoder(reader).Decode(&manifest); err != nil {
+			t.Fatal(err)
+		}
+		reader.Close()
+	}
+	if manifest == nil {
+		t.Fatal("no profile-manifest.json in the built definition")
+	}
+	for key := range manifest {
+		switch key {
+		case "schema", "world", "profile", "client_type", "packages", "companion":
+		default:
+			t.Fatalf("definition carries %q, which an installed client will reject", key)
+		}
+	}
+	if manifest["schema"] != float64(1) {
+		t.Fatalf("schema = %v; a bump also breaks every installed client (sync.go rejects != 1)", manifest["schema"])
 	}
 }

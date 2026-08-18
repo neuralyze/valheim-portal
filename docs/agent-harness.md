@@ -183,7 +183,10 @@ Two verbs carry arguments that decide what players receive, and both are checked
 is even recorded:
 
 ```
-publish_profile   world + source profile + client_type (vr|flat) + notes (8-500 chars, one line)
+publish_profile   world + PUBLISHED profile + client_type (vr|flat) + notes (8-500 chars, one line)
+                  The published name, not the source primary: a world publishes two Flat
+                  editions from `flat` (`<world>-vr-flat` and `<world>-non-vr`), so a source
+                  profile no longer identifies one target.
 release_confirm   published_profile + client_type + release_id + archive (a plain .zip name)
 mod_notes         lines, bounded to 1-200, because every crossed version's changelog is fetched
 ```

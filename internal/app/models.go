@@ -19,6 +19,10 @@ type Release struct {
 	Notes       string
 	Status      ReleaseStatus
 	Maintenance bool
+	// "player" or "admin". Portal-only, and deliberately not in the published definition:
+	// installed clients decode profile-manifest.json with DisallowUnknownFields, so a new
+	// field there failed every install on 2026-08-17.
+	Audience    string
 	PublishedAt *time.Time
 	PublishedBy string
 	CreatedAt   time.Time
@@ -38,15 +42,12 @@ type Artifact struct {
 // ProfileManifest is the immutable definition packaged in a profile artifact.
 // Package content is fetched separately from the Thunderstore repository.
 type ProfileManifest struct {
-	Schema     int    `json:"schema"`
-	World      string `json:"world"`
-	Profile    string `json:"profile"`
-	ClientType string `json:"client_type"`
-	// "player" or "admin". Absent on definitions built before the split, which
-	// profileKindOf treats as player editions rather than rejecting.
-	Audience  string            `json:"audience,omitempty"`
-	Packages  []ProfilePackage  `json:"packages"`
-	Companion *ProfileCompanion `json:"companion,omitempty"`
+	Schema     int               `json:"schema"`
+	World      string            `json:"world"`
+	Profile    string            `json:"profile"`
+	ClientType string            `json:"client_type"`
+	Packages   []ProfilePackage  `json:"packages"`
+	Companion  *ProfileCompanion `json:"companion,omitempty"`
 }
 
 type ProfilePackage struct {

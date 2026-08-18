@@ -1,6 +1,7 @@
 package main
 
 import (
+	app "github.com/neuralyze/valheim-portal/internal/app"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,5 +70,30 @@ func TestStageKeepsEachKindsOwnPrefixExactlyOnce(t *testing.T) {
 		if want := kind + "-payload.zip"; filepath.Base(staged.Path) != want {
 			t.Fatalf("%s staged as %q, want %q", kind, filepath.Base(staged.Path), want)
 		}
+	}
+}
+
+// The builder records the companion's filename into the definition and the store compares
+// that string against the staged artifact's Name. A republish hands both sides the file
+// staged last time, whose basename already carries the prefix, so the two must reach the
+// same answer or the publish is refused with "does not match the profile manifest".
+func TestStagedNameMatchesWhatTheBuilderRecords(t *testing.T) {
+	root := t.TempDir()
+	carried := filepath.Join(root, "flat_companion-ValheimVR-flat-companion.zip")
+	if err := os.WriteFile(carried, []byte("companion"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	staged, err := stage(root, "world-vr-flat-1.0.2", "flat_companion", carried)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorded := app.StagedArtifactName("flat_companion", carried)
+
+	if staged.Name != recorded {
+		t.Fatalf("artifact name %q, definition records %q", staged.Name, recorded)
+	}
+	if filepath.Base(staged.Path) != "flat_companion-"+recorded {
+		t.Fatalf("on-disk name %q does not carry exactly one prefix", filepath.Base(staged.Path))
 	}
 }

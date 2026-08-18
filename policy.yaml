@@ -206,7 +206,8 @@ verbs:
   - id: publish_profile
     class: player_facing
     maps_to: scripts/republish-profiles.sh
-    purpose: Publish a profile version that players download.
+    purpose: Publish a profile version that players download. The profile argument is the
+      published edition name, not the shared primary it is built from.
     requires:
       - One behavioural change per publish. Six changes in a release leave nothing to verify.
       - >

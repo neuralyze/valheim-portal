@@ -169,7 +169,7 @@ func (s *Server) profileKindOf(ctx context.Context, release Release) profileKind
 		slog.Error("VR release does not install ValheimVR",
 			"release", release.ID, "world", release.World, "profile", release.Profile)
 		return profileUnverified
-	case release.ClientType == "vr" && definition.Audience == "admin":
+	case release.ClientType == "vr" && release.Audience == "admin":
 		// An admin build for a headset is not a shape the catalog produces; treating it
 		// as an ordinary headset card would put the console in front of every VR player.
 		slog.Error("admin audience on a VR release",
@@ -177,7 +177,7 @@ func (s *Server) profileKindOf(ctx context.Context, release Release) profileKind
 		return profileUnverified
 	case release.ClientType == "vr":
 		return profileHeadset
-	case definition.Audience == "admin":
+	case release.Audience == "admin":
 		return profileAdmin
 	case installsVR:
 		return profileDesktopVR

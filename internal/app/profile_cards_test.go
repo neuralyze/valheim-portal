@@ -231,8 +231,8 @@ func TestAdminEditionIsItsOwnKindAndOnlyShownToAdmins(t *testing.T) {
 	server := testServer(t)
 	describedTestWorld(t, server)
 	release := Release{ID: "vr-flat-admin", World: describedWorld, Profile: "midgard-vr-flat-admin", ClientType: "flat", Version: "1.0.0"}
+	release.Audience = "admin"
 	publishProfileDefinition(t, server, release, func(manifest *ProfileManifest) {
-		manifest.Audience = "admin"
 		manifest.Packages = []ProfilePackage{ordinaryPackage}
 		manifest.Companion = writeFlatCompanionArtifact(t, server, release)
 	})
@@ -264,8 +264,8 @@ func TestTheSameBuildWithoutTheAdminAudienceIsAnOrdinaryCard(t *testing.T) {
 	server := testServer(t)
 	describedTestWorld(t, server)
 	release := Release{ID: "vr-flat-player", World: describedWorld, Profile: "midgard-vr-flat", ClientType: "flat", Version: "1.0.0"}
+	release.Audience = "player"
 	publishProfileDefinition(t, server, release, func(manifest *ProfileManifest) {
-		manifest.Audience = "player"
 		manifest.Packages = []ProfilePackage{ordinaryPackage}
 		manifest.Companion = writeFlatCompanionArtifact(t, server, release)
 	})
@@ -284,7 +284,9 @@ func TestTheSameBuildWithoutTheAdminAudienceIsAnOrdinaryCard(t *testing.T) {
 func TestAdminAudienceOnAHeadsetReleaseIsRefused(t *testing.T) {
 	server := testServer(t)
 	describedTestWorld(t, server)
-	release := Release{ID: "vr-admin", World: describedWorld, Profile: "midgard-vr", ClientType: "vr", Version: "1.0.0"}
+	// Set on the caller's copy too: profileKindOf classifies the Release it is given, and
+	// Release is a value, so the helper's copy is not the one under test.
+	release := Release{ID: "vr-admin", World: describedWorld, Profile: "midgard-vr", ClientType: "vr", Version: "1.0.0", Audience: "admin"}
 	publishProfileWithPackagesAudience(t, server, release, []ProfilePackage{ordinaryPackage, valheimVRPackage}, "admin")
 
 	if kind := server.profileKindOf(context.Background(), release); kind != profileUnverified {
@@ -294,8 +296,8 @@ func TestAdminAudienceOnAHeadsetReleaseIsRefused(t *testing.T) {
 
 func publishProfileWithPackagesAudience(t *testing.T, server *Server, release Release, packages []ProfilePackage, audience string) {
 	t.Helper()
+	release.Audience = audience
 	publishProfileDefinition(t, server, release, func(manifest *ProfileManifest) {
 		manifest.Packages = packages
-		manifest.Audience = audience
 	})
 }
