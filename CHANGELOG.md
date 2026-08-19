@@ -89,6 +89,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The hover menu can be cancelled - Cancel is the last entry in every group, one push up from the
+  opening highlight - and navigating it no longer dodges. That bug was ours: the plugin read
+  `valheim_Dodge`, which is bound to the same right-stick-down the menu navigates with, and an
+  earlier suppression prefixed `Player.UpdateDodge`, a method VHVR replaces outright, so it had
+  never done anything. Proved with a Harmony probe rather than assumed. The suppression now sits on
+  `Player.Dodge`, whose whole body is a queue write.
+- Height resets on the headset's own recenter. The system button moves the tracking origin, which
+  fixes facing, but VHVR caches its own eye-height offset until something nulls it, so height stayed
+  wrong. The plugin now subscribes to the SteamVR zero-pose and chaperone events, calls
+  `VRPlayer.RequestRecentering()`, and logs which event arrived - nobody knows yet which one a Quest
+  long-press produces. A `Reset Height` wrist entry remains for the case where the runtime swallows
+  the event entirely.
+
 - Published profile definitions no longer carry portal-only fields. An `audience` field
   written into `profile-manifest.json` failed every install with
   `unknown field "audience"`: the client decodes that file with `DisallowUnknownFields`,

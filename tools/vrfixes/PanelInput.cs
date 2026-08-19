@@ -192,16 +192,34 @@ namespace NeuralyzeVRFixes
         }
     }
 
-    // Dodge is on the same stick the hover menu uses to move its highlight, so it is suppressed for
-    // as long as the list is up. Patching the player's own dodge step catches every route into it -
-    // stick, gesture or button - rather than guessing which binding VHVR used this build.
+    // Dodge is on the same stick the hover menu uses to move its highlight, so it is suppressed
+    // for exactly as long as the list is up - the operator pushed down to move the highlight and
+    // rolled at the same time.
+    //
+    // This used to patch Player.UpdateDodge, which suppressed NOTHING in a VR session. VHVR
+    // replaces that method outright: UpdateDodgeVr.Prefix does the whole dodge itself - queue
+    // consumption, m_zanim.SetTrigger("dodge"), stamina - and returns false
+    // (ControlPatches.cs:1320-1382), so the original body we were skipping was already dead code.
+    // Nor can one prefix cancel another: measured against the shipped 0Harmony.dll, a prefix
+    // returning false still lets every other prefix on that method run (probe: ours returned
+    // false, theirs ran, original did not).
+    //
+    // Player.Dodge is the narrowest funnel that actually closes it. Verified from the game's IL,
+    // its whole body is "if encumbered return; m_queuedDodgeTimer = 0.5; m_queuedDodgeDir = dir;
+    // m_skills.RaiseSkill(Dodge, 0.1)" - a queue write and nothing else - and every route into a
+    // dodge goes through it: VHVR's own valheim_Dodge read and gesture roll
+    // (ControlPatches.cs:1304), vanilla's Player.SetControls, and this plugin's own two direct
+    // invocations. Refusing the queue write while the list is open therefore drops the roll
+    // without touching how a dodge behaves; the gate is a live property read, so nothing can
+    // outlive the menu and disable dodge for the session.
     [HarmonyPatch]
     internal static class Dodge_WhileMenuOpen
     {
         private static System.Reflection.MethodBase TargetMethod()
         {
             System.Type player = TypeCache.Get("Player");
-            return player == null ? null : AccessTools.Method(player, "UpdateDodge");
+            // Private in the game assembly, hence AccessTools rather than a typed reference.
+            return player == null ? null : AccessTools.Method(player, "Dodge");
         }
 
         private static bool Prepare() { return TargetMethod() != null; }

@@ -518,6 +518,60 @@ namespace NeuralyzeVRFixes
             }
         }
 
+        // Re-measure the player's eye height.
+        //
+        // WHY this exists at all: the Meta/system button's long press DOES recenter, and it does
+        // fix which way the player is facing, because it moves the tracking origin. It does not fix
+        // height, because VHVR caches its own measurement and keeps using it - firstPersonHeightOffset
+        // (VRPlayer.cs:312) is measured once (VRPlayer.cs:1601-1604) and then added to the camera
+        // position every frame at VRPlayer.cs:1188-1193 until something sets it back to null. The
+        // system recenter never touches it, so a player who was sitting when the offset was taken
+        // stays sunk into the ground after standing up, with the world correctly oriented around him.
+        //
+        // VRPlayer.RequestRecentering() (VRPlayer.cs:342-347) is the one thing that nulls it, and
+        // until now it was reachable only from VHVR's own three call sites - VRManager.cs:175 and
+        // EyeRotationPatch.cs:266 and :404 - none of which a player can ask for.
+        //
+        // Reflection, like every other VHVR reach in this plugin, so a flat profile with no
+        // ValheimVRMod.dll still loads the assembly and simply reports the type as missing.
+        internal static bool ResetHeight()
+        {
+            try
+            {
+                Type vrp = TypeCache.Get("ValheimVRMod.VRCore.VRPlayer");
+                if (vrp == null)
+                {
+                    Warn("reset height: ValheimVRMod.VRCore.VRPlayer not present (no VR profile loaded)");
+                    return false;
+                }
+                MethodInfo request = vrp.GetMethod("RequestRecentering", BindingFlags.Static | BindingFlags.Public);
+                if (request == null)
+                {
+                    Warn("reset height: VRPlayer.RequestRecentering not found in this VHVR build");
+                    return false;
+                }
+
+                // The offset that was WRONG is readable right now and is the only measured number
+                // this call can honestly report. The replacement is taken on a later frame inside
+                // VHVR's own update (VRPlayer.cs:1601-1604), so reading it here would either be
+                // null or a value invented by polling - neither is worth logging.
+                FieldInfo offset = vrp.GetField("firstPersonHeightOffset", BindingFlags.Static | BindingFlags.NonPublic);
+                object before = null;
+                try { before = offset == null ? null : offset.GetValue(null); } catch { }
+                string was = offset == null ? "unreadable in this build"
+                    : before == null ? "already cleared"
+                    : Convert.ToSingle(before).ToString("F3") + "m";
+
+                request.Invoke(null, null);
+                Log("reset height requested: VHVR's cached firstPersonHeightOffset was " + was
+                    + " and is now cleared; it is re-measured inside VHVR on a later frame"
+                    + " (VRPlayer.cs:1601-1604), which this call cannot read without polling, so the"
+                    + " new value is not reported here");
+                return true;
+            }
+            catch (Exception e) { Warn("reset height failed: " + e.Message); return false; }
+        }
+
         internal static bool ClosePanels()
         {
             int closed = 0;
@@ -915,6 +969,132 @@ namespace NeuralyzeVRFixes
                 return true;
             }
             catch (Exception e) { Warn("panel '" + canvasName + "' failed: " + e.Message); return false; }
+        }
+    }
+
+    // The system recenter, made to reset height as well.
+    //
+    // The operator's Meta button long press already recenters, and he reasonably expects it to fix
+    // height too. It does not, for the reason recorded on DirectActions.ResetHeight: SteamVR moves
+    // the tracking origin, while VHVR keeps its own cached firstPersonHeightOffset
+    // (VRPlayer.cs:1188-1193) until something nulls it. So the recenter he already performs is the
+    // right trigger for our reset, and the wrist entry becomes the fallback for when it does not
+    // arrive.
+    //
+    // Whether it arrives at all is unknown and is exactly what the log line is for: a Quest long
+    // press through Link may raise a standing reset, a seated reset, a chaperone change, or - if
+    // the Oculus runtime handles it internally - nothing that reaches OpenVR. All three are
+    // subscribed and the one that fires names itself.
+    //
+    // Reached by reflection like the rest of our VHVR/SteamVR access, so nothing here is a load-time
+    // dependency: SteamVR_Events.System(EVREventType) lives in the game's own SteamVR.dll and is
+    // the same API VHVR itself uses for a system event (Patches/TextInputPatches.cs:153). Delivery
+    // is a dictionary lookup at dispatch time inside SteamVR_Render.Update, so subscribing before
+    // SteamVR finishes initialising is safe.
+    internal static class SystemRecenter
+    {
+        private static bool _installed;
+        private static float _lastAt = -99f;
+
+        private static readonly string[] Events =
+        {
+            "VREvent_StandingZeroPoseReset",
+            "VREvent_SeatedZeroPoseReset",
+            "VREvent_ChaperoneUniverseHasChanged"
+        };
+
+        internal static void Install()
+        {
+            if (_installed) return;
+            _installed = true;   // once per session either way; a failed resolve must not be retried per frame
+
+            Type events = TypeCache.Get("Valve.VR.SteamVR_Events");
+            Type kind = TypeCache.Get("Valve.VR.EVREventType");
+            MethodInfo system = events == null ? null
+                : events.GetMethod("System", BindingFlags.Static | BindingFlags.Public);
+            if (system == null || kind == null)
+            {
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "system recenter hook: SteamVR_Events.System not found; the Meta button will"
+                    + " still recenter facing but height must be reset from the wrist entry");
+                return;
+            }
+
+            // The handler is generic so this file never names Valve.VR.VREvent_t. Instantiated over
+            // the event struct the listener actually takes, it matches UnityAction<VREvent_t>
+            // exactly, and the source keeps its no-static-VR-references property.
+            MethodInfo handler = typeof(SystemRecenter).GetMethod("OnEvent",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            int subscribed = 0;
+            foreach (string name in Events)
+            {
+                try
+                {
+                    object ev = system.Invoke(null, new object[] { Enum.Parse(kind, name) });
+                    if (ev == null) continue;
+                    MethodInfo listen = ev.GetType().GetMethod("Listen");
+                    if (listen == null) continue;
+                    Type action = listen.GetParameters()[0].ParameterType;          // UnityAction<VREvent_t>
+                    Type payload = action.GetGenericArguments()[0];                  // VREvent_t
+                    Delegate cb = Delegate.CreateDelegate(action, handler.MakeGenericMethod(payload));
+                    listen.Invoke(ev, new object[] { cb });
+                    subscribed++;
+                }
+                catch (Exception e)
+                {
+                    NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                        + "system recenter hook: " + name + " not subscribed: " + e.Message);
+                }
+            }
+            NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                + "system recenter hook listening on " + subscribed + " of " + Events.Length
+                + " SteamVR events (standing reset, seated reset, chaperone change); a long press of"
+                + " the system button will name the one it produces");
+
+            // There is no teardown convention in this plugin to follow: nothing here unpatches or
+            // unsubscribes, and Harmony patches likewise live for the process. The subscription is
+            // therefore left for the session, which is why Install is idempotent.
+        }
+
+        // One argument, named by the event, so a rare event costs a compare and three field writes.
+        // Coalesced: a recenter storm - the chaperone change and a zero-pose reset arrive together -
+        // must not re-request per event, and RequestRecentering does its work on VHVR's next frame
+        // regardless, so a second request inside the window would only duplicate the log line.
+        private static void OnEvent<T>(T args)
+        {
+            try
+            {
+                float now = Time.realtimeSinceStartup;
+                if (now - _lastAt < 0.5f) return;
+                _lastAt = now;
+                NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                    + "SteamVR system recenter observed (" + Describe(args)
+                    + "); resetting VHVR's cached eye height too, because the origin move alone"
+                    + " fixes facing and leaves firstPersonHeightOffset stale (VRPlayer.cs:1188-1193)");
+                DirectActions.ResetHeight();
+            }
+            catch (Exception e)
+            {
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "system recenter handler failed: " + e.Message);
+            }
+        }
+
+        // WHICH event fired is the whole point of the line, and it is only available off the event
+        // struct's own eventType field, read reflectively for the same reason as everything else.
+        private static string Describe(object args)
+        {
+            try
+            {
+                if (args == null) return "unknown event";
+                FieldInfo f = args.GetType().GetField("eventType");
+                if (f == null) return args.GetType().Name;
+                uint raw = Convert.ToUInt32(f.GetValue(args));
+                Type kind = TypeCache.Get("Valve.VR.EVREventType");
+                string name = kind == null ? null : Enum.GetName(kind, Enum.ToObject(kind, raw));
+                return (name ?? "event") + " = " + raw;
+            }
+            catch { return "event name unreadable"; }
         }
     }
 }

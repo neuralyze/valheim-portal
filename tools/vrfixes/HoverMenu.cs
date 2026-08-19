@@ -26,6 +26,8 @@ namespace NeuralyzeVRFixes
     //       (which hand: the Modifier config, RIGHT grip by default)
     //     right stick up / down             -> move the highlight, standing or seated
     //     release the GRIP                  -> run the highlighted one
+    //     one push UP, then release         -> Cancel: it is the last entry, and the highlight
+    //                                          wraps, so it sits one step from the opening one
     //
     // The list is written to the message area as it changes, so the target teaches its own
     // options rather than needing documentation.
@@ -37,6 +39,13 @@ namespace NeuralyzeVRFixes
             internal string Kind;    // key | hold
             internal string Value;   // key name(s)
         }
+
+        // The way out of the list. Release always runs the highlighted option, so without an
+        // entry that does nothing there was no way to close the menu without performing an
+        // action - the operator hit exactly that in the first live session. Held as constants
+        // because Parse writes it and Commit recognises it.
+        internal const string CancelLabel = "Cancel";
+        private const string CancelKind = "cancel";
 
         // target kind -> options, parsed from config so a new target is a config edit
         private static readonly Dictionary<string, List<Option>> _table =
@@ -84,7 +93,22 @@ namespace NeuralyzeVRFixes
                         Value = action.Substring(sep + 1).Trim()
                     });
                 }
-                if (options.Count > 0) _table[kind] = options;
+                if (options.Count == 0) continue;
+                // Cancel is appended LAST, and deliberately is not what the list opens on.
+                //
+                // Appended, not prepended, because the group order in the config
+                // (neuralyze.vrfixes.cfg:46) is the player's statement of which action he wants
+                // first, and the list still opens on index 0: prepending would silently demote
+                // every configured first choice by one place. Last costs nothing, because the
+                // highlight WRAPS (see the step in TickBody) - so the last entry is exactly one
+                // push UP from the opening highlight. Cancel is one step away without putting a
+                // step in front of anything else.
+                //
+                // Not the opening highlight either: a stray grip is already covered, since a hold
+                // shorter than MinHoldSeconds runs nothing. What was missing was an exit from a
+                // DELIBERATE hold, and that is one push up.
+                options.Add(new Option { Label = CancelLabel, Kind = CancelKind, Value = "" });
+                _table[kind] = options;
             }
             NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
                 + "hover menu: " + _table.Count + " target kind(s) configured");
@@ -157,7 +181,7 @@ namespace NeuralyzeVRFixes
             {
                 text += (i == _index ? "> " : "    ") + options[i].Label + "\n";
             }
-            return text + "(stick up/down to move, release the grip to run)";
+            return text + "(stick to move, release to run; one push up = Cancel)";
         }
 
         private static void Announce(Player p, List<Option> options)
@@ -317,6 +341,16 @@ namespace NeuralyzeVRFixes
             List<Option> options;
             if (_kind == null || !_table.TryGetValue(_kind, out options) || _index >= options.Count) return;
             Option chosen = options[_index];
+            // Chosen Cancel: run nothing, say nothing at Info - a cancel is not an event worth a
+            // log line - and leave no state behind for the next open to inherit.
+            if (chosen.Kind.Equals(CancelKind, StringComparison.OrdinalIgnoreCase))
+            {
+                _index = 0;
+                _openedAt = 0f;
+                _target = null;
+                _kind = null;
+                return;
+            }
             Resolve();
             try
             {

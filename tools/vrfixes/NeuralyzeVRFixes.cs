@@ -397,6 +397,10 @@ namespace NeuralyzeVRFixes
                 Guard("panelInput", delegate { PanelInput.Install(harmony); });
                 Guard("renderScale", delegate { SteamVrRenderScale.Apply(); });
             }
+            // Outside the misc-menu block on purpose: the wrist entry is the FALLBACK for resetting
+            // height, this is the primary route, and it must still work for a player who turned the
+            // ring off. Subscription only - the events are rare and nothing is polled.
+            Guard("systemRecenter", delegate { SystemRecenter.Install(); });
             Guard("renderScale", delegate { ApplyRenderScale(); });
             Guard("adoptCanvases", delegate { StartCoroutine(AdoptCanvasesLater()); });
             Log.LogInfo(Tag + "loaded " + Version
@@ -1284,7 +1288,15 @@ namespace NeuralyzeVRFixes
                 // valheim_Dodge is declared in the action manifest but VHVR bound it to
                 // nothing and never reads it, so dodge had no input at all once grip+jump was
                 // disabled for breaking jump. Now bound to right-stick-down.
-                if (Down(_dodge) && _mDodge != null && !Flag(_mInDodge, p))
+                //
+                // Which is the same stick, and the same direction, the hover menu uses to move
+                // its highlight - so the first live session dodged on every downward push while
+                // choosing an action. THIS read is the route that produced it, so it is gated
+                // here at the source rather than anywhere downstream: Down() is an edge
+                // (GetStateDown), so an edge dropped while the list is open is dropped, not
+                // deferred, and no roll fires when the grip is released. Dodge_WhileMenuOpen in
+                // PanelInput.cs closes the same window for every other route into Player.Dodge.
+                if (Down(_dodge) && !HoverMenu.MenuOpen && _mDodge != null && !Flag(_mInDodge, p))
                 {
                     Vector3 dir = DodgeDirection(p);
                     _mDodge.Invoke(p, DodgeArgs(dir));

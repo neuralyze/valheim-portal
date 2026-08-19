@@ -54,6 +54,9 @@ namespace NeuralyzeVRFixes
                     if (Kind == "ui") return DirectActions.AdoptAndShow(Value);
                     if (Kind == "mount") return DirectActions.ReleaseMount();
                     if (Kind == "sail") return DirectActions.ShipSpeed(Value);
+                    // Re-measures eye height; see DirectActions.ResetHeight for why the system
+                    // recenter does not.
+                    if (Kind == "recenter") return DirectActions.ResetHeight();
                     NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
                         + "misc action '" + Label + "' has unknown kind '" + Kind + "'");
                     return false;
@@ -193,7 +196,11 @@ namespace NeuralyzeVRFixes
         internal static void Load(string spec)
         {
             _entries.Clear();
-            if (string.IsNullOrEmpty(spec)) return;
+            // No early return on an empty list any more: the built-in Reset Height entry below is
+            // the one thing a player must still be able to reach after clearing Actions, and an
+            // empty _entries list makes the whole ring vanish (BeforeReorderTimed bails on zero).
+            // "".Split(',') yields one empty item, which the loop skips.
+            if (spec == null) spec = "";
             foreach (string raw in spec.Split(','))
             {
                 string item = raw.Trim();
@@ -229,11 +236,33 @@ namespace NeuralyzeVRFixes
                 if (kind != "zinput" && kind != "key" && kind != "hold" && kind != "console"
                     && kind != "emote" && kind != "zoom" && kind != "chat" && kind != "power"
                     && kind != "panel" && kind != "cmd" && kind != "ui"
-                    && kind != "mount" && kind != "sail") continue;
+                    && kind != "mount" && kind != "sail" && kind != "recenter") continue;
                 // console and cmd are admin surfaces by nature; an explicit when: still wins.
                 if (when.Length == 0 && (kind == "console" || kind == "cmd")) when = "admin";
                 _entries.Add(new Entry { Label = label, Group = group, Kind = kind, Value = value, When = when });
             }
+
+            // Reset Height is built in rather than left to the config default.
+            //
+            // BepInEx writes the config once and then keeps the player's file, so a new entry added
+            // to the default string would not appear for anyone who has already run the plugin -
+            // including the operator, who needs this tonight. A player who wants it somewhere else
+            // writes his own "Label = recenter:height" line and that one wins.
+            //
+            // APPENDED last, deliberately. Paging is by index (PerPage below), so appending cannot
+            // move an existing entry to another page or another slot: it fills the next free place
+            // on the last page. With the shipped default of eight top-level entries that is page 2,
+            // which had two entries and now has three. Note the pre-existing limit it shares with
+            // every other entry: group doors are appended after the entries of whichever page is
+            // showing and stop at PerPage, so on a config whose last page is already full a door
+            // can be crowded out - "More >" pages entries, not doors.
+            bool hasRecenter = false;
+            foreach (Entry e in _entries) { if (e.Kind == "recenter") { hasRecenter = true; break; } }
+            if (!hasRecenter)
+            {
+                _entries.Add(new Entry { Label = "Reset Height", Group = "", Kind = "recenter", Value = "height", When = "" });
+            }
+
             var contexts = new List<string>();
             foreach (Entry e in _entries)
             {
