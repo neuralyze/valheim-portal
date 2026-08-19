@@ -85,6 +85,23 @@ down and restarts it for nothing.
    field added there did exactly that; it now lives on the `releases` row. A portal-only fact goes
    in the database. The same freeze applies to `internal/app`, which is compiled into the client:
    `ValidateFlatCompanionArtifact` and its two siblings are frozen inside every installed exe.
+6. **Print one record before parsing a structure.** Never read a field that has not been seen with
+   your own eyes. On 18 Aug a package list was read with `p.get("identifier")` on objects whose
+   fields are `name`, `namespace`, `version`, `filename`. Every value came back empty, so a
+   comparison against it reported all 104 server plugins as missing from the client - including
+   BepInEx and Jotunn, without which the client could not load a mod at all - and the operator was
+   handed "the VR edition ships no admin tools" as a finding when it was a bug printing `False`.
+7. **Every comparison carries a control.** Assert something that MUST match before trusting what
+   does not. Zero matches out of many is a broken method, not a discovery, and an empty intermediate
+   list must abort instead of printing a conclusion. A method that already produced an absurd result
+   is never run a second time.
+8. **Attach the source to the claim.** "From the server log" and "from my parse" are different
+   confidences and the operator cannot tell them apart unless they are labelled.
+9. **When a log states the answer, stop looking.** The 18 Aug disconnect named the mod and the
+   version in one line. What followed - a 45-second strings scan of 104 plugins that hit on the
+   ServerSync library nearly every mod embeds, then the broken comparison twice - produced nothing
+   and cost the operator their test window. Corroboration hunting after a definitive fact is not
+   diligence.
 
 ## Reporting to the operator
 
