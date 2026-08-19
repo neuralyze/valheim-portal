@@ -532,6 +532,11 @@ namespace NeuralyzeVRFixes
         // until now it was reachable only from VHVR's own three call sites - VRManager.cs:175 and
         // EyeRotationPatch.cs:266 and :404 - none of which a player can ask for.
         //
+        // Two callers now, both automatic, neither a menu entry: SystemRecenter below, when the
+        // player performs a system/Meta recenter, and SitRecenter below that, when his posture
+        // changes. The wrist "Reset Height" entry that used to call this was removed on 2026-08-19
+        // once the operator confirmed the recenter hook fixes height by itself.
+        //
         // Reflection, like every other VHVR reach in this plugin, so a flat profile with no
         // ValheimVRMod.dll still loads the assembly and simply reports the type as missing.
         internal static bool ResetHeight()
@@ -978,8 +983,9 @@ namespace NeuralyzeVRFixes
     // height too. It does not, for the reason recorded on DirectActions.ResetHeight: SteamVR moves
     // the tracking origin, while VHVR keeps its own cached firstPersonHeightOffset
     // (VRPlayer.cs:1188-1193) until something nulls it. So the recenter he already performs is the
-    // right trigger for our reset, and the wrist entry becomes the fallback for when it does not
-    // arrive.
+    // right trigger for our reset. It proved itself in the live session on 2026-08-19, which is
+    // why the wrist "Reset Height" entry that used to back it up is gone: nothing manual is
+    // needed for the case this covers, and SitRecenter below covers the case it does not.
     //
     // Whether it arrives at all is unknown and is exactly what the log line is for: a Quest long
     // press through Link may raise a standing reset, a seated reset, a chaperone change, or - if
@@ -1016,7 +1022,8 @@ namespace NeuralyzeVRFixes
             {
                 NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
                     + "system recenter hook: SteamVR_Events.System not found; the Meta button will"
-                    + " still recenter facing but height must be reset from the wrist entry");
+                    + " still recenter facing, and height will then be re-measured only when the"
+                    + " player's posture changes (SitRecenter below) - there is no manual entry");
                 return;
             }
 
@@ -1095,6 +1102,145 @@ namespace NeuralyzeVRFixes
                 return (name ?? "event") + " = " + raw;
             }
             catch { return "event name unreadable"; }
+        }
+    }
+
+    // Re-measure the player's eye height when his posture changes.
+    //
+    // WHY this exists: VHVR measures firstPersonHeightOffset ONCE (VRPlayer.cs:1601-1604, behind
+    // the headPositionInitialized gate at :1593), then adds it to the camera every frame
+    // (VRPlayer.cs:1188-1193) until something nulls it - and RequestRecentering (VRPlayer.cs:342-347)
+    // is the only thing that does. On top of that measurement, a seated character gets a flat
+    // -0.6/-0.7m from getHeadHeightAdjust (VRPlayer.cs:1246-1259), which is correct only if the
+    // measurement was taken while the player was physically standing and he then physically sits.
+    // That is exactly the operator's report: standing, then sitting physically, THEN triggering Sit
+    // looked right, while triggering Sit when he was already seated left the character too high,
+    // because the cached number was a standing measurement of an already-seated player. Nulling it
+    // as the posture changes is the same mechanism that fixed the system recenter above, and it was
+    // that fix proving itself live on 2026-08-19 which identified this one.
+    internal static class SitRecenter
+    {
+        // Character.IsSitting() is the signal, and it is authoritative rather than a proxy: it is
+        // the same predicate VHVR's own height model branches on - getHeadHeightAdjust tests it at
+        // VRPlayer.cs:1249 and CheckSitRoomscale at :1903 - so it flips exactly when the number our
+        // recenter corrects becomes wrong. It is also true for EVERY way a player sits: the "sit"
+        // emote VHVR's roomscale path starts (VRPlayer.cs:1913), a chair or bench (IsSitting stays
+        // true while attached, which is why VRPlayer.cs:1251 tests IsAttached INSIDE the IsSitting
+        // branch), and an emote run from chat. Hooking our own menu entry, or VHVR's startingSit
+        // flag, or IsAttached, would each cover one route and miss the others.
+        //
+        // Called directly rather than reflectively: IsSitting is the game's own public method in
+        // assembly_valheim, which this plugin already calls this way (NeuralyzeVRFixes.cs:724 calls
+        // IsAttached). The VHVR reach stays reflection-only, inside DirectActions.ResetHeight, so a
+        // flat profile with no ValheimVRMod.dll still loads this file and merely logs the miss.
+        private static bool _known;
+        private static bool _sitting;
+
+        // The thrash bound, two independent parts, both required.
+        //
+        // A chair attaches in stages - the attach point, the sitting animation and IsAttached do not
+        // all land on one frame - so a raw edge can arrive more than once while a single sit settles,
+        // and sitting down and standing straight back up is a normal thing to do. A recenter per
+        // edge would null VHVR's offset while it was still re-measuring the previous one.
+        //
+        //   StableFrames - the new state must hold for five consecutive frames (69ms at 72Hz) before
+        //   it counts, which swallows a flicker that goes back without deferring a real change
+        //   perceptibly.
+        //
+        //   MinSeconds - at most one request per second. A transition inside that window still
+        //   COMMITS its state and leaves the request OWED rather than dropping it, because dropping
+        //   it is the bug this class exists to fix: a sit-stand burst would end with the last
+        //   posture measured for the previous one. The debt is paid on the first frame the window
+        //   allows, from whatever posture the player is in by then, so a burst costs one late
+        //   re-measure instead of one per edge.
+        private const int StableFrames = 5;
+        private const float MinSeconds = 1.0f;
+        private static int _stable;
+        private static float _lastAt = -99f;
+        private static bool _owed;
+
+        internal static void Tick()
+        {
+            // lint:per-frame bounded - one IsSitting() call and a bool compare per frame; every
+            // reflective step is inside ResetHeight, reached only on a settled transition.
+            Player p = Player.m_localPlayer;
+            if (p == null)
+            {
+                // Death, teleport, logout: the next sample is a baseline again, not a transition,
+                // and an unpaid debt goes with it - VHVR clears headPositionInitialized on a scene
+                // change itself (VRPlayer.cs:374 and :1755), so paying it later would be noise.
+                _known = false;
+                _stable = 0;
+                _owed = false;
+                return;
+            }
+
+            bool sitting;
+            try { sitting = p.IsSitting(); }
+            catch (Exception e)
+            {
+                _known = false;
+                _owed = false;
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "sit posture watch: IsSitting unreadable: " + e.Message);
+                return;
+            }
+
+            if (!_known)
+            {
+                // The first sample establishes the posture without firing: there is no transition to
+                // react to, and VHVR's own measurement is fresh at that point.
+                _known = true;
+                _sitting = sitting;
+                _stable = 0;
+                return;
+            }
+            float now = Time.realtimeSinceStartup;
+
+            // A settled transition is handled first, so a request made on this frame carries the
+            // posture read on this frame rather than the one a deferred payment would still be
+            // holding.
+            if (sitting != _sitting)
+            {
+                if (++_stable < StableFrames) return;
+                _stable = 0;
+                _sitting = sitting;
+                string direction = sitting ? "SEATED" : "STANDING";
+                if (now - _lastAt >= MinSeconds)
+                {
+                    Request(direction, now, "");
+                    return;
+                }
+                _owed = true;
+                NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                    + "sit posture transition: character is now " + direction
+                    + "; recenter deferred - one landed less than " + MinSeconds.ToString("F1")
+                    + "s ago and VHVR is still re-measuring from it");
+                return;
+            }
+            _stable = 0;
+
+            // Steady posture: pay a debt an earlier transition left owed, as soon as the window
+            // allows, and from the CURRENT posture - the only one worth measuring, whatever route
+            // the player took to reach it.
+            if (_owed && now - _lastAt >= MinSeconds)
+            {
+                _owed = false;
+                Request(_sitting ? "SEATED" : "STANDING", now, " (deferred from a transition inside"
+                    + " the " + MinSeconds.ToString("F1") + "s window)");
+            }
+        }
+
+        private static void Request(string direction, float now, string note)
+        {
+            _lastAt = now;
+            NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                + "sit posture transition: character is now " + direction + note
+                + "; re-measuring eye height, because VHVR keeps the offset it took in the previous"
+                + " posture (VRPlayer.cs:1601-1604 measures once, :1188-1193 uses it every frame)."
+                + " The replacement is measured inside VHVR on a later frame, so it is not reported"
+                + " here; the next line reports the stale value that was cleared");
+            DirectActions.ResetHeight();
         }
     }
 }

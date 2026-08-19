@@ -89,6 +89,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hover menu navigation follows the stick. VHVR's `GetJoyRightStickY` returns `-axis.y`
+  (`VRControls.cs:661`), so pushing down moved the highlight up; the read is negated once and the
+  arithmetic keeps up positive, with index 0 wrapping to Cancel.
+- Sitting re-measures eye height. VHVR branches its height model on `Player.IsSitting()`
+  (`VRPlayer.cs:1249`) and adds the result to a cached offset every frame, so a player already
+  seated when the sit began kept a standing measurement and the character sat too high. The
+  posture transition now triggers the same recentre the headset's own button does.
+- The wrist `Reset Height` entry is gone. The SteamVR recenter hook covers it, confirmed in a live
+  session, and a manual fallback nobody needs is clutter.
+
 - The hover menu can be cancelled - Cancel is the last entry in every group, one push up from the
   opening highlight - and navigating it no longer dodges. That bug was ours: the plugin read
   `valheim_Dodge`, which is bound to the same right-stick-down the menu navigates with, and an

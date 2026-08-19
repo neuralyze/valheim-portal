@@ -181,7 +181,12 @@ namespace NeuralyzeVRFixes
             {
                 text += (i == _index ? "> " : "    ") + options[i].Label + "\n";
             }
-            return text + "(stick to move, release to run; one push up = Cancel)";
+            // The direction words are load-bearing, so they are stated explicitly. Until the axis
+            // was inverted at the read below, this line was a lie: a push DOWN reached Cancel and a
+            // push down moved the highlight UP. With the read negated, one push UP reaches Cancel -
+            // walked from the step arithmetic below: UP is positive, so _index 0 goes to
+            // (0 - 1 + Count) % Count = Count - 1, and Cancel is appended last in Parse.
+            return text + "(stick up/down to move, release to run; one push UP = Cancel)";
         }
 
         private static void Announce(Player p, List<Option> options)
@@ -297,7 +302,16 @@ namespace NeuralyzeVRFixes
             // Wear. The raw reader is the same VHVR axis without the seated gate, and it changes
             // nothing about mount steering, which still reads the gated Step().
             List<Option> options = _table[_kind];
-            float stick = MountControls.RawRightStickY();
+            // Negated ONCE here, so "up is positive" holds for the arithmetic below.
+            //
+            // The first live session reported pushing DOWN moving the highlight UP, and the sign is
+            // why: VHVR's VRControls.GetJoyRightStickY returns -pitchAndYaw.axis.y
+            // (VRControls.cs:661), i.e. it is NEGATIVE when the stick is pushed up, matching
+            // vanilla ZInput - which is also why VHVR reads run off joystick < -0.85f
+            // (ControlPatches.cs:177-192). Inverting at the read rather than swapping the branches
+            // keeps the Cancel relationship visible in one place: UP is positive, positive steps
+            // _index down by one, and index 0 wraps to the last entry, which Parse makes Cancel.
+            float stick = -MountControls.RawRightStickY();
             if (Mathf.Abs(stick) < 0.4f) _stickReady = true;
             else if (_stickReady)
             {

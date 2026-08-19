@@ -492,6 +492,9 @@ namespace NeuralyzeVRFixes
             FullActionWatch.Tick();
             BuildMenuProbe.Tick();
             HoverMenu.Tick();
+            // Ungated on purpose: a wrong character height is not a diagnostic, it is the game
+            // being unplayable while seated, and the watch costs one IsSitting() per frame.
+            SitRecenter.Tick();
             if (SuppressKeyHints.Value || LogHoverText.Value) HoverTextSweeper.Tick();
             if (HideMinimap.Value) MinimapHider.Tick();
             if (LogJumpInput.Value) JumpInputWatch.Tick();
