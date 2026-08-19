@@ -515,8 +515,28 @@ supplies a VR-safe implementation. It is not a conflict in practice because the 
 
 <!-- guide:vr -->
 
-Bows in VR are physical: two-handed, with full draw restriction, accuracy that ignores draw length and
-an arrow-prediction graphic. Crossbows reload manually. There is no zoom key and no cancel key — you
+**Shooting a bow.** The bow sits in your off hand — your left, unless you set `LeftHanded`.
+Your other hand does the work, and it takes four steps:
+
+1. **Fetch an arrow.** Reach that hand behind your shoulder, or down to your waist, and press
+   **grab**. An arrow appears on the string. The same reach and grab puts it away again.
+2. **Touch the string.** Bring the hand to within about 20 cm of the arrow rest. Farther away and
+   nothing happens when you press anything.
+3. **Hold trigger or grip** to pinch the string, and pull your hand back. About 60 cm is a full
+   draw; the distance is `BowFullDrawLength` and can be shortened.
+4. **Let go** to shoot. The shot happens on release, not on press.
+
+**If nothing fires, you have no arrow nocked.** Step 1 is the one everybody skips: without it the
+string will not move and releasing does nothing at all. And a trigger tap with no draw fires a dead
+arrow into the ground on purpose — full draw restriction makes early releases inaccurate.
+
+Three settings make this easier. `BowFullDrawLength` lowered to around 0.35 suits a small play space
+or a headset that loses your hands near your body. `BowDrawRestrictType = Partial` gives full power
+from the start of the pull. `OneHandedBow = true` removes the pulling motion entirely: hold the
+trigger, release to shoot, always full power — the bow stays in your off hand either way.
+
+Bows are otherwise physical and two-handed, with accuracy that ignores draw length and an
+arrow-prediction graphic. Crossbows reload manually. There is no zoom key and no cancel key — you
 simply lower the bow. **Blocking is gestural**: you raise the shield yourself and there is no block
 key at all. The quiver-bar modifier is a hold and has no VR route, so change arrow types from your
 inventory. VHModpackFix exists to supply a VR-safe bow path, which is why it duplicates the flat
