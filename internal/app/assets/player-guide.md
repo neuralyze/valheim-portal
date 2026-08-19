@@ -113,12 +113,22 @@ else, it is listed in the conflicts block.
 
 **How to read every key table in this guide from a headset.** VHVR does not take your keyboard away,
 but you cannot see it, and most of the mod bindings printed here are held modifiers, chords or scroll
-gestures that are impractical blind. Treat the key tables as the flat player's route. Yours is the
-wrist radial menu and the contextual hover menu that the profile's own `NeuralyzeVRFixes` plugin
-adds; both are listed in full in [VR players](#10-vr-players), together with the honest list of
-controls that have no VR route at all. Where a section has a VR-specific route, it is called out in
-place. The vanilla actions in the table above are performed with the motion controllers rather than
-with these keys: blocking is gestural, bows are drawn two-handed, and there is no block key.
+gestures that are impractical blind. Treat the key tables as the flat player's route. Yours are three
+things:
+
+- **The wrist menus.** Press and hold a controller button, move that hand to the entry you want, let
+  the button go. On Oculus Touch controllers that button is **Y** on the left controller and **B** on
+  the right. Procedure and full entry list: [The wrist menus](#the-wrist-menus).
+- **The contextual hover menu.** Point the right laser at a chest, ward, fireplace, ship or built
+  piece and hold the **right grip**, and that object's own actions appear. Procedure:
+  [The contextual hover menu](#the-contextual-hover-menu).
+- **Gestures**, for the things that are physical anyway: drawing a bow, holstering a weapon,
+  recentring your view, talking to people. Those are described where the subject comes up.
+
+[VR players](#10-vr-players) carries all three in full, together with the honest list of controls that
+have no VR route at all. Where a section has a VR-specific route, it is called out in place. The
+vanilla actions in the table above are performed with the motion controllers rather than with these
+keys: blocking is gestural, bows are drawn two-handed, and there is no block key.
 
 <!-- /guide:vr -->
 
@@ -154,10 +164,12 @@ There is **no item-drawer mod** on Hrafnheim. Storage is chests. Chests are bigg
 <!-- guide:vr -->
 
 None of these keys are on the wrist menu: `P`, `L` and `O` are each claimed by more than one mod, and
-a wrist button is a one-frame pulse that would fire all of them. Point the laser at a container and
-hold the **off-hand grip** instead — the container hover menu carries Quick Stack, Restock, Sort and
-Store All. The `Delete` trash key and the `Alt`-hold favouriting modifier have **no VR route**; a
-held modifier cannot be pulsed from a wrist button.
+a wrist button is a one-frame pulse that would fire all of them. Point the right laser at a container
+and hold the **right grip** instead. The Container hover menu carries **Quick Stack**, **Restock**,
+**Sort** and **Store All** in that order, and the right thumbstick moves the highlight between them —
+see [The contextual hover menu](#the-contextual-hover-menu). The `Delete` trash key and the
+`Alt`-hold favouriting modifier have **no VR route**; a held modifier cannot be pulsed from a wrist
+button.
 
 <!-- /guide:vr -->
 
@@ -257,18 +269,23 @@ equipment sets. No extra inventory rows are granted.
 | `Left Alt` + `X` | Use quick slot 2 | AzuExtendedPlayerInventory (default) |
 | `Left Alt` + `C` | Use quick slot 3 | AzuExtendedPlayerInventory (default) |
 
-The on-screen quick-slot strip is **hidden** by the shipped config. This is deliberate: drawing it
-caused a HUD flicker in VR. The keys still work. Bindings for quick slots 4–8 exist in the config
-(`Alt` + `V`/`B`/`N`/`1`/`2`) but only three slots are enabled, so they do nothing.
+The on-screen quick-slot strip is **hidden** by the shipped config. The keys still work. Bindings for
+quick slots 4–8 exist in the config (`Alt` + `V`/`B`/`N`/`1`/`2`) but only three slots are enabled, so
+they do nothing.
 
 `Left Alt` + `Z` is also RequipMe's manual re-equip key. See the conflicts block.
 
 <!-- guide:vr -->
 
+The strip is hidden for your sake: drawing it caused a HUD flicker in VR, because the mod clears and
+rebuilds its icons every frame. The shipped config hides it and the VR fixes plugin deactivates the
+bar object as well, which stops the rebuilding entirely. The keys are input-driven and are unaffected.
+
 Whether the quick-slot chords can be triggered at all from a headset is **not established**: they are
 chords, and the on-screen strip that would confirm the slot fired is switched off. Treat the three
-quick slots as unavailable in VR until you have proved otherwise on your own rig, and put anything
-you need in a hurry on the hotbar instead.
+quick slots as unavailable in VR until you have proved otherwise on your own rig. Use your **hotbar**
+instead — it is a first-class VR control here, because your eight hotbar items are the ring on both
+wrist menus. See [The wrist menus](#the-wrist-menus).
 
 <!-- /guide:vr -->
 
@@ -313,10 +330,25 @@ Enter while placing a piece to move and rotate the ghost freely instead of snapp
 <!-- guide:vr -->
 
 Nothing in these two tables is on the wrist menu or in a hover group, and the `Left Alt` hold cannot
-be pulsed. VHVR's own Advanced Build Mode is switched off in favour of PerfectPlacement, so from a
-headset you build on vanilla snapping plus whatever grid alignment is currently set. Do **not** reach
-for `F6`: it is claimed by three mods, and pressing it in VR opened an unconverted screen-space canvas
-and ended a session — see [Key conflicts](#key-conflicts).
+be pulsed, so PerfectPlacement's keys are out of reach from a headset. You are not stuck with vanilla
+snapping, though: **VHVR's own Advanced Build Mode is switched ON** in the shipped config, against the
+mod's default of off. That gives you free placement and analog rotation with a snap-angle ladder of
+26°, 22.5°, 10°, 5°, 2.5°, 1°, 0.5°, 0.1°, 0.05° and 0.01°.
+
+Equip the hammer and pick a piece. Two rings float on the hammer: a **blue** one above the head and a
+**yellow** one below it. Both are switches, thrown the same way, and both confirm by changing colour.
+
+1. **Free placement.** Put your left hand in the blue ring and hold the **left grip** for five
+   seconds. The ring turns **green** and the ghost stops snapping — you now move and rotate it by
+   hand. The same five-second hold turns it off again and the ring goes back to blue. It does not
+   switch itself off after you place something, so you stay in free placement until you leave it.
+2. **Rotation.** Hold the **right grip** and push the right thumbstick left or right to rotate the
+   piece in 22.5° steps. The yellow ring is the axis switch: five seconds of left grip inside it turns
+   it **cyan** for the world axis and back to **yellow** for the piece's own.
+3. **Placing.** The piece goes down when you **release** the trigger, not when you press it.
+
+Do **not** reach for `F6`: it is claimed by three mods, and pressing it in VR opened an unconverted
+screen-space canvas and ended a session — see [Key conflicts](#key-conflicts).
 
 <!-- /guide:vr -->
 
@@ -372,10 +404,11 @@ RuinsMaker lets you make new builds look old.
 
 <!-- guide:vr -->
 
-Point the laser at a piece and hold the **off-hand grip**: the Piece hover menu carries **Add Wear**
-and **Repair Area**. Those two were re-implemented as hover actions precisely because a hover action
-can hold a key and interact in the same frame. The plain hammer-modifier version has no VR route, so
-wear is applied per-radius rather than per-swing.
+Point the right laser at a piece and hold the **right grip**: the Piece hover menu carries **Repair
+Area** first and **Add Wear** second, and the right thumbstick moves the highlight from one to the
+other — see [The contextual hover menu](#the-contextual-hover-menu). Those two were re-implemented as
+hover actions precisely because a hover action can hold a key and interact in the same frame. The
+plain hammer-modifier version has no VR route, so wear is applied per-radius rather than per-swing.
 
 <!-- /guide:vr -->
 
@@ -476,9 +509,10 @@ real collision — see the conflicts block.
 
 <!-- guide:vr -->
 
-Both spell keys are on the wrist radial menu, as **Cycle Spell** and **Unsummon**, so spells are fully
-reachable in VR. Cycling a spell still pulses `Keypad1`, so it also enters PerfectPlacement's Advanced
-Editing Mode if you are an admin looking at an object.
+Both spell keys are behind the **Misc** entry on the left wrist menu, as **Cycle Spell** and
+**Unsummon**, so spells are fully reachable in VR — hold the left-hand menu button and work the strip
+as described in [The wrist menus](#the-wrist-menus). Cycling a spell still pulses `Keypad1`, so it
+also enters PerfectPlacement's Advanced Editing Mode if you are an admin looking at an object.
 
 <!-- /guide:vr -->
 
@@ -493,8 +527,10 @@ You keep more than one Forsaken Power and cycle between them.
 
 <!-- guide:vr -->
 
-**Cycle Power** on the wrist radial menu pulses `Keypad4`, so cycling powers is reachable in VR. The
-cooldown reset is not on the wrist menu and has no VR route.
+**Cycle Power** is behind the **Misc** entry on the left wrist menu and pulses `Keypad4`, so cycling
+powers is reachable in VR — see [The wrist menus](#the-wrist-menus). Your currently selected power has
+its own icon on that wrist strip as well, so you can fire it without the keyboard. The cooldown reset
+is on neither menu and has no VR route.
 
 <!-- /guide:vr -->
 
@@ -519,9 +555,9 @@ supplies a VR-safe implementation. It is not a conflict in practice because the 
 Your other hand does the work, and it takes four steps:
 
 1. **Fetch an arrow.** Reach that hand behind your shoulder, or down to your waist, and press
-   **grab**. An arrow appears on the string. The same reach and grab puts it away again.
-2. **Touch the string.** Bring the hand to within about 20 cm of the arrow rest. Farther away and
-   nothing happens when you press anything.
+   **grab** — the grip. An arrow appears on the string. The same reach and grab puts it away again.
+2. **Touch the string.** Bring the hand to within 20 cm of the nocking point, which sits 15 cm above
+   the centre of the bow handle. Farther away and nothing happens when you press anything.
 3. **Hold trigger or grip** to pinch the string, and pull your hand back. About 60 cm is a full
    draw; the distance is `BowFullDrawLength` and can be shortened.
 4. **Let go** to shoot. The shot happens on release, not on press.
@@ -530,17 +566,51 @@ Your other hand does the work, and it takes four steps:
 string will not move and releasing does nothing at all. And a trigger tap with no draw fires a dead
 arrow into the ground on purpose — full draw restriction makes early releases inaccurate.
 
-Three settings make this easier. `BowFullDrawLength` lowered to around 0.35 suits a small play space
-or a headset that loses your hands near your body. `BowDrawRestrictType = Partial` gives full power
-from the start of the pull. `OneHandedBow = true` removes the pulling motion entirely: hold the
-trigger, release to shoot, always full power — the bow stays in your off hand either way.
+Four settings make this easier. All four are in
+`BepInEx/config/org.bepinex.plugins.valheimvrmod.cfg`.
 
-Bows are otherwise physical and two-handed, with accuracy that ignores draw length and an
-arrow-prediction graphic. Crossbows reload manually. There is no zoom key and no cancel key — you
-simply lower the bow. **Blocking is gestural**: you raise the shield yourself and there is no block
-key at all. The quiver-bar modifier is a hold and has no VR route, so change arrow types from your
-inventory. VHModpackFix exists to supply a VR-safe bow path, which is why it duplicates the flat
-bindings rather than conflicting with them.
+- `BowFullDrawLength` lowered to around 0.35 suits a small play space or a headset that loses your
+  hands near your body.
+- `BowDrawRestrictType = Partial` gives full power from the start of the pull.
+- `OneHandedBow = true` removes the pulling motion entirely: hold the trigger, release to shoot,
+  always full power — the bow stays in your off hand either way.
+- **If the string will not catch at all**, the catch point is simply not where your hand goes, and two
+  settings move it. `ArrowRestElevation` (0.15 here, range 0 to 0.25) is how far above the bow handle
+  it sits; `ArrowRestSide` puts it dead centre (`Center`, the shipped value), on the far side of the
+  bow from your eye (`Asiatic`) or the near side (`Mediterranean`). Move the catch point to your hand
+  and step 2 starts working.
+
+**Holstering and drawing everything else.** The reach-and-grab of step 1 is not an archery trick, it
+is how you carry every weapon and shield in VR, and nothing in the game tells you so.
+
+- **To put away** what is in a hand: reach that hand behind your back, at shoulder height or at your
+  hip, and let the grip **go**. The item leaves your hand.
+- **To draw it again:** reach the same hand to its own shoulder, turned inward, and **press** the
+  grip. The controller buzzes as the weapon comes out — that buzz is your confirmation.
+- A **two-handed** weapon holsters when either hand reaches back and releases the grip, provided the
+  other hand is not gripping at that moment.
+- **Dual-wielded** weapons take both hands: each to the inside of its own shoulder, both grips.
+- Sixteen positions are told apart — each shoulder and each hip, times four directions of hand
+  rotation — so what you get depends on where you reach and how the hand is turned. If the wrong
+  thing comes out, rotate your wrist and try again rather than reaching somewhere new.
+
+**Throwing a spear.** Hold **grab and the trigger** together, swing, and release the **trigger**. Aim
+follows the direction you swung, and a line previews it while you hold. Hand speed sets throw power up
+to about 2 m/s, past which it is simply full speed. The spear tip is flipped so that you stab forward
+rather than downward.
+
+**Crossbows.** Fetch a bolt exactly as you fetch an arrow — reach behind the shoulder and press grab —
+then **pull the string back by hand** to cock it, before every shot. Only the rear hand tilts the
+weapon, so aim with the hand nearest you.
+
+**Blocking and parrying.** Blocking is gestural, but "raise the shield" is not enough: hold the shield
+— or a two-handed weapon — **across the line of the blow**, its face perpendicular to the attack. Then
+**swing while blocking** to parry. That is how the block-power and stamina-return bonuses below are
+earned. You cannot two-hand a weapon and carry a shield at the same time on this profile.
+
+There is no bow zoom key and no cancel key — you simply lower the bow. The quiver-bar modifier is a
+hold and has no VR route, so change arrow types from your inventory. VHModpackFix exists to supply a
+VR-safe bow path, which is why it duplicates the flat bindings rather than conflicting with them.
 
 <!-- /guide:vr -->
 
@@ -714,10 +784,11 @@ thistle, mushrooms, dandelion, pickable flint and stone, and vines.
 
 <!-- guide:vr -->
 
-**Infinite Fuel** is on the Fireplace hover menu: point the laser at a player-built fireplace and
-hold the off-hand grip, and the plugin performs the `Left Alt` hold for you. Automatic fuelling of
-kilns, smelters and furnaces is already on and its toggle is not on the wrist menu, so leave that one
-alone. Nothing else in this group needs input.
+**Infinite Fuel** is on the Fireplace hover menu: point the right laser at a player-built fireplace
+and hold the **right grip**, and the plugin performs the `Left Alt` hold for you — see
+[The contextual hover menu](#the-contextual-hover-menu). Automatic fuelling of kilns, smelters and
+furnaces is already on and its toggle is not on the wrist menu, so leave that one alone. Nothing else
+in this group needs input.
 
 <!-- /guide:vr -->
 
@@ -746,9 +817,10 @@ Riding is **vanilla only**: saddle a lox or an asksvin and steer with the mouse 
 <!-- guide:vr -->
 
 Riding works, but not from the keyboard. Push the physical **left** thumbstick forward to move and
-left or right to turn, so your head stays free to look around. **Release Mount** on the wrist radial
-menu dismounts. The Horse hover group — Wait Here, Saddlebags, Remove Armour — is dead: it points at
-OdinHorse, which is not installed.
+left or right to turn, so your head stays free to look around. To get off, hold the left-hand menu
+button and pick **Release Mount** from behind the **Misc** entry — see
+[The wrist menus](#the-wrist-menus). The Horse hover group — Wait Here, Saddlebags, Remove Armour — is
+dead: it points at OdinHorse, which is not installed.
 
 <!-- /guide:vr -->
 
@@ -772,10 +844,13 @@ helm.
 
 <!-- guide:vr -->
 
-Point the laser at the ship and hold the **off-hand grip**: the Ship hover menu carries **Anchor**,
-**Sail Faster**, **Sail Slower** and **Release Helm**. Sail Faster and Sail Slower also appear on the
-wrist radial menu while you are at the helm. Steering is gestured rather than keyed, so sailing is one
-of the better-covered systems in VR.
+Point the right laser at the ship and hold the **right grip**: the Ship hover menu carries **Sail
+Faster**, **Sail Slower**, **Release Helm** and **Anchor**, in that order, and the right thumbstick
+moves the highlight — see [The contextual hover menu](#the-contextual-hover-menu). Sail Faster and
+Sail Slower are also behind the left wrist menu's **Misc** entry while you are at the helm. One thing
+to expect at the helm: that same right thumbstick is the ship's throttle, so with the hover list open
+a push both moves the highlight and steps the sail. Steering is gestured rather than keyed, so sailing
+is one of the better-covered systems in VR.
 
 <!-- /guide:vr -->
 
@@ -851,6 +926,11 @@ Connected portals are tagged on the map for everyone. Opening the Tag Connected 
 that dialog is **not reachable in VR**. Portals themselves work normally; only the tagging dialog is
 out of reach.
 
+**Where the map is.** Your minimap is on your **right wrist**, and it fades out unless you are looking
+at it — it has not gone, turn your wrist over. The full map has a VR route too: the **map** icon on
+the strip that the left wrist button raises presses `M` for you. There is no zoom entry on any menu,
+so you get whatever zoom level the map opens at. See [The wrist menus](#the-wrist-menus).
+
 <!-- /guide:vr -->
 
 ### The shared map page
@@ -894,10 +974,12 @@ forces its config, so these rules are the same for everybody.
 
 <!-- guide:vr -->
 
-Point the laser at the ward and hold the **off-hand grip**: the Ward hover menu's **Toggle
-Permission** pulses the ward key for you, and the same entry sits on the wrist radial menu as
-**Identity**. Either route pulses `F4`, so either route also opens IdentityCrisis's transformation UI.
-That collision is unavoidable from a headset; close the UI and carry on.
+Point the right laser at the ward and hold the **right grip**: the Ward hover menu's **Toggle
+Permission** pulses the ward key for you — see
+[The contextual hover menu](#the-contextual-hover-menu). The same action is behind the left wrist
+menu's **Misc** entry as **Identity**. Either route pulses `F4`, so either route also opens
+IdentityCrisis's transformation UI. That collision is unavoidable from a headset; close the UI and
+carry on.
 
 <!-- /guide:vr -->
 
@@ -954,31 +1036,100 @@ this guide rather than here.
 | `PageUp` / `PageDown` | Move the head camera up / down | ValheimVRMod (default) |
 | `Home` | Recentre the headset | ValheimVRMod (default) |
 
-Head repositioning is enabled and the headset recentres on start. Player height is adjusted by
-−0.2 m in the shipped config. Arrow keys and `PageUp`/`PageDown` collide with Infinity Hammer's
-precise-placement nudges, so a VR admin holding a hammer will move both the ghost and their head.
+Head repositioning is enabled and the headset recentres when the game starts. You do not need `Home`
+at all: hold both hands in front of your face — roughly 10 cm to either side of the headset and 10 cm
+forward, with no trigger or grip pressed — and keep them there for three seconds. The view recentres.
+There is also a **recentre** icon on the wrist strip described below. Arrow keys and
+`PageUp`/`PageDown` collide with Infinity Hammer's precise-placement nudges, so a VR admin holding a
+hammer will move both the ghost and their head.
 
 ### How VR actually plays here
 
-Read from the live VHVR config:
+Read from the live VHVR config, value by value, with what each one means for you:
 
-- Smooth turn, not snap turn. Run is a toggle. The character moves with the headset.
-- Sneak is crouching or controller. Gestured locomotion covers swimming and steering.
-- Dominant hand right; two-handed weapons use polearm-sticky wield; spears throw in classic mode.
-- **Blocking is gestural** — you physically raise the shield, there is no block key.
-- Bows are two-handed with full draw restriction and accuracy that ignores draw length, with an
-  arrow prediction graphic. Crossbows reload manually.
-- Attack damage does **not** scale with swing momentum; a minimum swing speed of 3 is required.
-- VHVR's own Advanced Build Mode is off; PerfectPlacement is used instead.
+- **Smooth turn, not snap turn.** Run is a toggle, so nothing is held down to sprint. The character
+  moves with the headset, and gestured locomotion covers swimming and steering a boat. If smooth
+  turning makes you ill, see [Comfort settings worth changing](#comfort-settings-worth-changing).
+- **Sneak is controller-only.** Physically crouching does **nothing** here — duck as low as you like
+  and you are not sneaking. Use the crouch button. The roomscale sneak-height setting is inert as a
+  result, so do not spend time tuning it.
+- **Dominant hand right**, and two-handed weapons use polearm-sticky wield: your hands stay where you
+  put them on the shaft.
+- **Blocking is gestural, and it is not "raise the shield".** Hold the shield, or the two-handed
+  weapon, **across the line of the incoming blow** so its face is perpendicular to the attack, and
+  **swing while blocking** to parry. Details and the shield restriction are in
+  [section 5](#5-combat-magic-and-abilities).
+- **Momentum scales attack damage; it does not gate it.** A swing that lands while your target is
+  still in hit-cooldown is not discarded — it lands for less, scaled by how much momentum the swing
+  carried and how much cooldown was left. Follow through with committed swings; rapid taps do very
+  little.
+- **A swing has to reach 1.5 m/s** to count as an attack, which is half the mod's own default. You do
+  not need to flail — deliberate swings register.
+- **Bows** are two-handed with full draw restriction and accuracy that ignores draw length, with an
+  arrow prediction graphic. **Crossbows are cocked by hand** before each shot. Both procedures, and
+  spear throwing and holstering, are in [section 5](#5-combat-magic-and-abilities).
+- **VHVR's own Advanced Build Mode is ON.** You get free placement and analog rotation rather than
+  vanilla snapping; PerfectPlacement's keys are the part you cannot reach. The gesture that turns
+  free placement on is in [section 4](#4-building).
+
+### Comfort settings worth changing
+
+These live in `BepInEx/config/org.bepinex.plugins.valheimvrmod.cfg`. The release ships that file for
+the VR profile, so an edit of your own holds until the next sync replaces it. If you want a value kept
+for good, ask for it in the release rather than re-editing after every update.
+
+| Setting | Shipped value | What to do with it |
+| --- | --- | --- |
+| `SnapTurnEnabled` | `false` | Set it `true` if smooth turning makes you sick. `SnapTurnAngle` (45, range 0–90) is how far each snap goes; `SmoothSnapTurn` (`true`) makes the snap a very quick turn instead of an instant jump, and `SmoothSnapSpeed` (10, range 5–30) is how quick. Left off, `SmoothTurnSpeed` (1, range 0.25–2.5) is your turn rate instead. |
+| `InvertTurnDirection` | `false` | Set it `true` if the stick turns you the opposite way to the one you expect. |
+| `PlayerHeightAdjust` | `-0.2` | **This is the setting to change when the world feels the wrong size.** It is the difference between your real height and your character's, from −0.5 to 0.25. Raise it if everything looks too tall, lower it if you feel like a giant. |
+| `NearClipPlane` | `0.09` | Raise it, up to 0.5, if you can see your own character's nose. |
+| `RoomscaleFadeToBlack` | `false` | Set it `true` to fade to black at the moment roomscale walking pushes your character back, which is the lurch that catches people out. |
+| `ImmersiveShipCameraSitting` | `false` | Leave it off unless you have sea legs. The mod's own text says it may induce motion sickness: it tilts your view with the deck. |
+| `ImmersiveShipCameraStanding` | `WorldUp` | The comfortable one: your view follows the ship's heading but not its tilt. `ShipUp` adds the tilt as well, `None` neither. |
+| `ImmersiveDodgeRoll` | `false` | Leave it off; the mod flags this one as sickness-inducing too. It rotates your view through a dodge roll. |
 
 ### The problem VR has with a modded server, and how it is solved
 
 Most of the mod keys in this guide are keyboard-only, and a lot of them are "hold a key while
 interacting with a specific object". Neither survives a headset. The profile carries a purpose-built
-plugin (`NeuralyzeVRFixes`) that closes the gap in two ways.
+plugin (`NeuralyzeVRFixes`) that closes the gap in two ways: it adds entries to VHVR's wrist menus for
+global keys, and it puts target-dependent actions on the object you are pointing at.
 
-**A wrist radial menu** on the **left** wrist (`MenuHand = Left`; the value is empirical, VHVR's
-naming does not match the physical controllers). It carries:
+### The wrist menus
+
+You have two, one per controller. Each is a **ring** of your eight hotbar items with a **strip** of
+extra buttons floating over your other wrist.
+
+**The buttons.** On Oculus Touch controllers, **Y** on the left controller raises the left menu and
+**B** on the right controller raises the right one. On Index controllers it is **B** on each hand; on
+Vive wands, the application-menu button on each. Underneath they are the SteamVR actions
+`QuickActions` (left) and `QuickSwitch` (right), so if your controllers are none of those, look those
+two names up in SteamVR's binding view to find your own button.
+
+**How to use one:**
+
+1. **Press and hold** the button. The ring appears where that hand is, with a small red ball marking
+   your hand inside it.
+2. **Move that same hand outward**, at least 7 cm from the centre, towards the entry you want. The
+   controller gives a short buzz every time the highlight moves, so you can feel the selection change
+   without staring at it.
+3. **Release** the button. The highlighted entry runs, and the menu closes.
+
+Each choice costs one press-and-release, so working down into a group is two or three of them.
+
+**The rings** are your eight hotbar slots, on both hands. That is why the hotbar is left visible on
+this profile when VHVR would hide it: in VR the hotbar is your item menu, so anything you may need in
+a hurry belongs on it.
+
+**The strips.** Hold the **left** button and a strip appears over your other wrist carrying your
+Forsaken Power (if you have chosen one), **sit**, **map**, **recentre**, **chat**, and last of all
+**Misc**, which is the profile's own. Touch an icon with the hand that is holding the button and
+release. Hold the **right** button instead and its strip carries four more item slots, taken from the
+right-hand end of your inventory's second row.
+
+**Misc** is the door to every mod action that has no VR binding at all. Selecting it replaces the
+strip with the list below, six at a time, with `More >` for the next six and `< Back` to leave:
 
 | Entry | What it does |
 | --- | --- |
@@ -990,13 +1141,47 @@ naming does not match the physical controllers). It carries:
 | Unsummon | `Keypad2` |
 | Hip Lantern | `Keypad3` |
 | Cycle Power | `Keypad4` |
-| Admin/… | Admin console, admin panel and a set of spawn and cheat commands, hidden from non-admins |
+| Admin/… | A group door. Admin console, admin panel and a set of spawn and cheat commands, hidden from non-admins |
 
-**A contextual hover menu.** Point the laser at a thing, hold the **off-hand grip**, and options for
-that kind of object appear; tap the off-hand grip to move to the next; release to run the highlighted
-one.
+**One trap.** The right-hand button is the same physical button as the laser's right-click, which the
+build menu uses. With a hammer equipped you have to hold it about a third of a second before the menu
+comes up, and a shorter press opens the build menu instead. VHVR's own source says why: there are not
+enough buttons, so the two share one.
 
-| Target | Options |
+### Talking to people, and the VR keyboard
+
+- **Chat.** Hold the left button, touch the **chat** icon on the strip, release. A SteamVR keyboard
+  appears; type on it. To send what you typed, hold either **grip** and release a **trigger**.
+  Choosing the chat icon again while chat has focus also sends it.
+- **Signs, portals and anything else with a text field** open that keyboard by themselves when you
+  interact with them, so you do not have to find a route to it.
+- **Voice to text exists and is switched off.** VHVR can transcribe speech straight into chat: cup
+  both hands in front of your mouth, palms facing each other and fingers up, and it records until you
+  take your hands away — looking upward as you finish sends it as a shout instead of normal speech. It
+  needs a key of your own in `GroqApiKey`, which is empty on this profile, and while it is empty the
+  feature does nothing whatsoever. Nothing is sent anywhere unless you put a key in.
+
+### The contextual hover menu
+
+Fifty-one of the mod bindings on this install are "hold a key while interacting with *that* object",
+which cannot survive a headset: there is no key to hold, and a wrist button cannot say which chest you
+meant. So those actions live on the object instead.
+
+1. **Point** the right laser at the thing.
+2. **Hold the grip** on the hand named by `Modifier` in the VR fixes config. The shipped default is
+   `RightGrip`: the hand that points is the hand that chooses. The list appears in the middle of your
+   view with the first option marked `>`.
+3. **Push the right thumbstick up or down** to move the highlight, one option per push. Up moves
+   towards the first option, down towards the last, and it wraps around. The stick must return near
+   centre before it steps again, so a held stick cannot run away with the list. This works standing as
+   well as seated.
+4. **Release the grip** to run the highlighted option — but hold it for at least a third of a second
+   first. A shorter tap is treated as a stray press and runs nothing.
+
+The list repeats itself while you hold, and its last line says the same thing:
+`(stick up/down to move, release the grip to run)`.
+
+| Target | Options, in the order they appear |
 | --- | --- |
 | Container | Quick Stack, Restock, Sort, Store All |
 | Ward | Toggle Permission (`F4`) |
@@ -1004,6 +1189,12 @@ one.
 | Ship | Sail Faster, Sail Slower, Release Helm, Anchor (`Left Shift` + `F`) |
 | Piece | Repair Area (`Left Shift` + `W`), Add Wear (`Left Alt` + `W`) |
 | Horse | Wait Here, Saddlebags, Remove Armour — **dead entries**, see below |
+
+Two things to know. **Check `Modifier` before you blame the gesture.** It is a real setting with three
+values — `RightGrip`, `LeftGrip`, `LeftTrigger` — and whichever hand it names is the hand you hold. If
+your own `neuralyze.vrfixes.cfg` still reads `Modifier = LeftGrip` from an older release, the *left*
+grip opens your menu until that line is changed. And **at a ship's helm the thumbstick is also the
+throttle**, so with the list open a push both moves the highlight and steps the sail.
 
 Mounts are steered by the physical **left** thumbstick (`HorseStick = VhvrRight`, again an empirical
 name), pushing forward to go and left/right to turn, so your head stays free.
@@ -1029,6 +1220,7 @@ This is the honest list.
 - **The AdminQoL panel** is a screen-space canvas. It can be converted to world space on request via
   the wrist entry, but it is not opened by its own hotkey path in VR.
 - **Terrain-tool radius and hardness** (`Left Alt`/`Left Control` + scroll) have no VR route.
+- **Map zoom.** The map opens from the wrist strip, but no zoom entry ships on any menu.
 - **The horse hover group is dead.** It references `Keypad6`, `B` and `R` for a mod (OdinHorse) that
   is no longer installed. Those three options will appear if you point at a tameable named horse and
   do nothing.
@@ -1055,14 +1247,15 @@ players can press these keys and type these commands; the server refuses them.
 
 <!-- guide:vr -->
 
-**From a headset.** The wrist radial menu's **Admin/…** group carries the admin console, the admin
-panel and a set of spawn and cheat commands, and is hidden from non-admins. The AdminQoL panel is a
-screen-space canvas: it can be converted to world space from that wrist entry, but it is not opened by
-its own hotkey path in VR. Typing console commands still needs a physical keyboard you cannot see.
-Take particular care with Infinity Hammer below: its arrow-key and `PageUp`/`PageDown` nudges are the
-same keys VHVR uses to reposition your head camera, so a VR admin holding a hammer moves the ghost and
-their own viewpoint at once. Map teleport is a chord and cannot be pulsed either. Everything else in
-this appendix is console work and reads the same in both editions of this guide.
+**From a headset.** The **Misc** entry on the left wrist menu carries an **Admin/…** group with the
+admin console, the admin panel and a set of spawn and cheat commands; it is hidden from non-admins.
+See [The wrist menus](#the-wrist-menus) for how to work one. The AdminQoL panel is a screen-space
+canvas: it can be converted to world space from that same menu, but it is not opened by its own hotkey
+path in VR. Typing console commands still needs a physical keyboard you cannot see. Take particular
+care with Infinity Hammer below: its arrow-key and `PageUp`/`PageDown` nudges are the same keys VHVR
+uses to reposition your head camera, so a VR admin holding a hammer moves the ghost and their own
+viewpoint at once. Map teleport is a chord and cannot be pulsed either. Everything else in this
+appendix is console work and reads the same in both editions of this guide.
 
 <!-- /guide:vr -->
 
@@ -1329,6 +1522,9 @@ player has no use for. They are present in the flat profile as well, where they 
 
 Both the arrow keys and `PageUp`/`PageDown` are also Infinity Hammer's precise-placement nudges, so an
 admin holding a hammer moves the ghost and their head at the same time.
+
+You do not need `Home`: the hands-in-front-of-your-face pose and the **recentre** icon on the wrist
+strip both do the same job — see [VR players](#10-vr-players).
 
 <!-- /guide:vr -->
 

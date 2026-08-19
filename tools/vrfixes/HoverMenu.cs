@@ -13,17 +13,19 @@ namespace NeuralyzeVRFixes
     // is no key to hold, and a wrist button cannot say which chest you meant. The audit of
     // this install found 51 of 160 mod bindings are target-dependent in exactly this way.
     //
-    // So: point at the thing, hold the OFF-HAND trigger, and the actions for that kind of
-    // thing are offered. The right hand keeps pointing and its trigger keeps its normal
-    // meaning - mount the horse, open the chest, swing the weapon - because nothing here
-    // suppresses it. That was the flaw in every other gesture considered: the plain trigger
-    // already acts on press, so a hold-to-open-menu scheme would fire the default action
-    // first. Sticks were rejected too, being walk and turn; hand-motion gestures were
-    // rejected because the physics estimator reports 0.00 m/s on this install.
+    // So: point at the thing, hold the GRIP on the pointing hand, and the actions for that kind
+    // of thing are offered. That hand's trigger keeps its normal meaning - mount the horse, open
+    // the chest, swing the weapon - because nothing here suppresses it, and the grip fires nothing
+    // on press so it is free to mean "hold". That was the flaw in every other gesture considered:
+    // the plain trigger already acts on press, so a hold-to-open-menu scheme would fire the default
+    // action first. Hand-motion gestures were rejected because the physics estimator reports
+    // 0.00 m/s on this install. The stick was rejected as the OPENING gesture, being walk and turn,
+    // but it is what moves the highlight once the list is up, where it has no other job.
     //
-    //     point at it, hold the RIGHT GRIP   -> the list appears, first option highlighted
-    //     right stick up / down              -> move the highlight
-    //     release the GRIP                   -> run the highlighted one
+    //     point at it, hold the GRIP        -> the list appears, first option highlighted
+    //       (which hand: the Modifier config, RIGHT grip by default)
+    //     right stick up / down             -> move the highlight, standing or seated
+    //     release the GRIP                  -> run the highlighted one
     //
     // The list is written to the message area as it changes, so the target teaches its own
     // options rather than needing documentation.
@@ -155,7 +157,7 @@ namespace NeuralyzeVRFixes
             {
                 text += (i == _index ? "> " : "    ") + options[i].Label + "\n";
             }
-            return text + "(release to run, tap the other trigger for the next one)";
+            return text + "(stick up/down to move, release the grip to run)";
         }
 
         private static void Announce(Player p, List<Option> options)
@@ -207,7 +209,12 @@ namespace NeuralyzeVRFixes
             // a menu"; the previous gesture dodged that by moving the whole thing to the off hand,
             // which meant pointing with one hand and operating with the other. The grip fires
             // nothing on press, so the hand that points is the hand that chooses.
-            bool modifier = DirectActionInvoker.RightGrabHeld();
+            //
+            // Which hand that is comes from the Modifier config, which until now was declared,
+            // bound and never read while this line hardcoded the right grip - the config told the
+            // player something that was not true. RightGrip stays the default for the reason above;
+            // the setting exists for a left-handed player who points with the other hand.
+            bool modifier = HoverModifierHeld();
             if (modifier != _modWasDown)
             {
                 _modWasDown = modifier;
@@ -259,8 +266,14 @@ namespace NeuralyzeVRFixes
             // The right stick moves the highlight: push up or down, one step per push, and the
             // stick must return near centre before it steps again so a held stick cannot run the
             // list away. The stick is free here - nobody walks in the middle of choosing.
+            //
+            // Read through RawRightStickY, not ApiRightY: the Api readers are zeroed unless the
+            // player is seated, so on foot this saw 0.00 every frame and only the first option of a
+            // group was ever reachable - Quick Stack but never Restock, Repair Area but never Add
+            // Wear. The raw reader is the same VHVR axis without the seated gate, and it changes
+            // nothing about mount steering, which still reads the gated Step().
             List<Option> options = _table[_kind];
-            float stick = MountControls.ApiRightY();
+            float stick = MountControls.RawRightStickY();
             if (Mathf.Abs(stick) < 0.4f) _stickReady = true;
             else if (_stickReady)
             {
@@ -279,6 +292,24 @@ namespace NeuralyzeVRFixes
                 Announce(p, options);
                 _shown = Time.time;
             }
+        }
+
+        // The hand named by the Modifier config. Two ordinal compares per frame and no reflection
+        // lookup: the probes below read the SteamVR actions DirectActionInvoker resolved once in
+        // Prepare().
+        private static bool HoverModifierHeld()
+        {
+            string hand = NeuralyzeVRFixesPlugin.HoverModifier == null
+                ? null : NeuralyzeVRFixesPlugin.HoverModifier.Value;
+            if (string.Equals(hand, "LeftGrip", StringComparison.OrdinalIgnoreCase))
+                return DirectActionInvoker.LeftGrabHeld();
+            // valheim_UseLeft is the left trigger and nothing else, so this cannot collide with the
+            // right trigger's normal use-on-press meaning. There is deliberately no RightTrigger
+            // option: that trigger acts the instant it is pressed, so a hold on it would always run
+            // the default action before any list could appear.
+            if (string.Equals(hand, "LeftTrigger", StringComparison.OrdinalIgnoreCase))
+                return DirectActionInvoker.UseLeftHeld();
+            return DirectActionInvoker.RightGrabHeld();
         }
 
         private static void Commit(Player p)

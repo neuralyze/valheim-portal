@@ -82,6 +82,7 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<bool> ProfileGameMethods;
         internal static ConfigEntry<bool> SweepRenderScale;
         internal static ConfigEntry<bool> MeasureCombatLatency;
+        internal static ConfigEntry<bool> LogBowShots;
         internal static ConfigEntry<bool> RestorePhysicsRate;
         internal static ConfigEntry<bool> MoveWhilePanelOpen;
         internal static ConfigEntry<bool> HideAdminEntries;
@@ -183,11 +184,12 @@ namespace NeuralyzeVRFixes
                 "Contextual actions on whatever the laser is pointing at. 51 of the 160 mod key bindings on this " +
                 "install are target-dependent - \"hold a key while interacting with X\", or a global hotkey that " +
                 "guesses which container you meant - and neither idiom survives VR. Point at the thing, hold the " +
-                "OFF-HAND trigger, tap the off-hand grip to move through the offered actions, release to run one. " +
-                "The right hand keeps pointing and its trigger keeps its normal meaning, because nothing here " +
-                "suppresses it: a hold-to-open scheme on the right trigger would fire mount/open/attack first. " +
-                "Sticks were rejected as walk and turn; hand-motion gestures because the physics estimator reports " +
-                "0.00 m/s on this install.");
+                "grip on the hand named by Modifier - the right, pointing hand by default - push the right stick " +
+                "up or down to move through the offered actions, and release the grip to run the highlighted one. " +
+                "That hand's trigger keeps its normal meaning, because nothing here suppresses it: a hold-to-open " +
+                "scheme on a trigger would fire mount/open/attack first. The stick was rejected as the opening " +
+                "gesture, being walk and turn, but it has no other job once the list is up; hand-motion gestures " +
+                "were rejected because the physics estimator reports 0.00 m/s on this install.");
             HoverActions = Config.Bind("11 - Hover actions", "Actions",
                 "horse: Wait Here=hold:Keypad6 | Saddlebags=hold:B | Remove Armour=hold:R"
                 + " ; container: Quick Stack=key:P | Restock=key:L | Sort=key:O | Store All=key:Period"
@@ -208,13 +210,19 @@ namespace NeuralyzeVRFixes
                     "is what a desktop player gets from the mouse. Speed is the same stick either way.",
                     new AcceptableValueList<string>(new string[] { "Stick", "Look" })));
 
-            HoverModifier = Config.Bind("11 - Hover actions", "Modifier", "LeftGrip",
+            // Was declared with a LeftGrip default and then never read - HoverMenu hardcoded the
+            // right grip - so the config file has been announcing a hand the plugin does not use.
+            // The default now names the hand that actually ships, and the value is read.
+            HoverModifier = Config.Bind("11 - Hover actions", "Modifier", "RightGrip",
                 new ConfigDescription(
-                    "Which off-hand control opens the contextual menu on whatever you point at: LeftGrip or " +
-                    "LeftTrigger. Grip is the default because the trigger is the game's own use button - pointing " +
-                    "at a horse and pulling it mounts you, which then makes the horse unpointable and its menu " +
-                    "unreachable.",
-                    new AcceptableValueList<string>(new string[] { "LeftGrip", "LeftTrigger" })));
+                    "Which control opens the contextual menu on whatever you point at: RightGrip, LeftGrip or " +
+                    "LeftTrigger. RightGrip is the default because the hand that points is the hand that " +
+                    "chooses, and the grip fires nothing on press. The other two are for a player who points " +
+                    "with the left hand. A trigger is a poor choice either way - it is the game's own use " +
+                    "button, so pointing at a horse and pulling it mounts you, which then makes the horse " +
+                    "unpointable and its menu unreachable - and there is no RightTrigger option for that " +
+                    "reason. The highlight is moved with the right stick regardless of this setting.",
+                    new AcceptableValueList<string>(new string[] { "RightGrip", "LeftGrip", "LeftTrigger" })));
 
             ProfileHooks = Config.Bind("9 - Diagnostics", "ProfileOurHooks", false,
                 "Off by default for players: the timer wraps every hook, and the panel hook alone runs 400+ times a frame, so the measurement costs more than most of what it measures. Turn it on to diagnose a frame rate complaint. Logs what THIS plugin's hooks cost, in milliseconds per frame, every five seconds. Three frame " +
@@ -294,6 +302,14 @@ namespace NeuralyzeVRFixes
                 "tuning can recover, so it separates frame-rate cost from code cost. Also counts swings that never " +
                 "produced an attack, which is a different complaint from everything being late. Cheap - two postfixes " +
                 "and one velocity read per frame.");
+            LogBowShots = Config.Bind("9 - Profiling", "LogBowShots", true,
+                "ON by default. One Info line per bow shot ('BOWSHOT ...') measuring where the arrow actually went: " +
+                "BowLocalManager.aimDir, the aimDir vanilla was handed by VHVR's GetProjectileSpawnPoint prefix, the " +
+                "direction the spawned arrow actually flies, the angle between them, and the spread/draw fields " +
+                "vanilla used. Default enabled because the 2026-08-19 report of arrows leaving ~30 degrees off the " +
+                "aim line produced four inferred explanations in one evening and zero measurements; the next session " +
+                "must produce the number. Costs nothing until a bow is fired - two postfixes on methods only reached " +
+                "from Attack.ProjectileAttackTriggered, and no per-frame work at all.");
             RestorePhysicsRate = Config.Bind("9 - Profiling", "RestoreVanillaPhysicsRate", false,
                 "OFF by default - enable for one session and compare. SteamVR overwrites Time.fixedDeltaTime with " +
                 "1/hmd_DisplayFrequency every frame (lockPhysicsUpdateRateToRenderFrequency in its settings asset), so " +
@@ -367,6 +383,7 @@ namespace NeuralyzeVRFixes
             Guard("patchAll", delegate { harmony.PatchAll(typeof(NeuralyzeVRFixesPlugin).Assembly); });
             Guard("panelFrameGuard", delegate { PanelFrameGuard.Install(harmony); });
             if (MeasureCombatLatency.Value) Guard("combatLatency", delegate { CombatLatency.Install(harmony); });
+            if (LogBowShots.Value) Guard("bowDiagnostics", delegate { BowDiagnostics.Install(harmony); });
             if (RestorePhysicsRate.Value) Guard("physicsRate", delegate { PhysicsRateRestorer.Install(harmony); });
             if (ProfilePlugins.Value) Guard("pluginProfiler", delegate { PluginProfiler.Install(harmony); });
             if (ProfileInventory.Value) Guard("inventoryProfiler", delegate { InventoryProfiler.Install(harmony); });

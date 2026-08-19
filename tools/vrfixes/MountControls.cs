@@ -119,6 +119,35 @@ namespace NeuralyzeVRFixes
         internal static float ApiRightX() { Sample(); return _cachedApiRightX; }
         internal static float ApiRightY() { Sample(); return _cachedApiRightY; }
 
+        // The right stick's Y axis, read whether or not the player is seated, for the hover menu.
+        //
+        // Sample() above zeroes every channel and returns at :95 unless attached, on purpose: while
+        // seated the stick belongs to mount steering and to nothing else, and Step() must never see
+        // a deflection that came from a player on foot. Loosening that gate would feed walking input
+        // into vehicle speed, which is the class of steering bug that already cost days. So this is a
+        // separate read that shares nothing with the seated caches: the same VHVR source resolved at
+        // :55 (GetJoyRightStickY), its own one-read-per-frame cache, and no attachment test. It is
+        // safe because it only reports the axis - no button answer is derived from it - and its only
+        // caller consults it while the hover list is open, when the stick has no other job.
+        private static int _rawFrame = -1;
+        private static float _rawRightY;
+
+        internal static float RawRightStickY()
+        {
+            if (_rawFrame == Time.frameCount) return _rawRightY;
+            _rawFrame = Time.frameCount;
+            _rawRightY = 0f;
+            Resolve();
+            try
+            {
+                object controls = _vrControls == null ? null : _vrControls.GetValue(null, null);
+                if (controls == null || _stickY == null) return _rawRightY;
+                _rawRightY = Convert.ToSingle(_stickY.Invoke(controls, null));
+            }
+            catch { }
+            return _rawRightY;
+        }
+
         // The DRIVE stick's sideways axis. Established by the calibration ride: pushing the left
         // stick down stopped the horse and showed up as apiLeft, so that channel is the rider's
         // left hand, and it is also the one the game takes speed from. One stick, both jobs.

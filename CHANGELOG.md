@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- VR players can reach the hover menu again, and the guide finally tells them how. The menu
+  opened on the right grip while six places in the guide said the off hand, its `Modifier` setting
+  was read by nothing, and its highlight could not move at all on foot because the thumbstick was
+  only sampled while seated on a mount. Fixed in `tools/vrfixes`, and the player guide grew twenty
+  corrections: the wrist menus never named a button, four values in the VR section quoted mod
+  defaults the live config overrides, and holstering, spear throwing, crossbow reload, chat, the
+  wrist minimap and every comfort setting were undocumented.
+- `BowDiagnostics` logs one line per bow shot - the aim vector, what was handed to the engine, the
+  direction the arrow actually left with, and the angle between them. Four inferred explanations
+  for a 30-degree deviation collapsed in one evening; this measures it instead.
+
 - The ValheimVR mod is built on this host now, with Mono's compiler, because the Windows build
   host is gone. `scripts/build-valheimvr.sh` compiles it in about two seconds;
   `scripts/build-valheimvr-artifact.sh --client-type flat|vr` produces the Flat companion or the
