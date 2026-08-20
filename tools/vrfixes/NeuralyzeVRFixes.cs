@@ -302,8 +302,8 @@ namespace NeuralyzeVRFixes
                 "tuning can recover, so it separates frame-rate cost from code cost. Also counts swings that never " +
                 "produced an attack, which is a different complaint from everything being late. Cheap - two postfixes " +
                 "and one velocity read per frame.");
-            LogBowShots = Config.Bind("9 - Profiling", "LogBowShots", true,
-                "ON by default. One Info line per bow shot ('BOWSHOT ...') measuring where the arrow actually went: " +
+            LogBowShots = Config.Bind("9 - Profiling", "LogBowShots", false,
+                "OFF by default; with it false the patch is never installed, so it costs nothing per shot or frame. One Info line per bow shot ('BOWSHOT ...') measuring where the arrow actually went: " +
                 "BowLocalManager.aimDir, the aimDir vanilla was handed by VHVR's GetProjectileSpawnPoint prefix, the " +
                 "direction the spawned arrow actually flies, the angle between them, and the spread/draw fields " +
                 "vanilla used. Default enabled because the 2026-08-19 report of arrows leaving ~30 degrees off the " +
