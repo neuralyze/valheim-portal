@@ -82,7 +82,6 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<bool> ProfileGameMethods;
         internal static ConfigEntry<bool> SweepRenderScale;
         internal static ConfigEntry<bool> MeasureCombatLatency;
-        internal static ConfigEntry<bool> LogBowShots;
         internal static ConfigEntry<bool> RestorePhysicsRate;
         internal static ConfigEntry<bool> MoveWhilePanelOpen;
         internal static ConfigEntry<bool> HideAdminEntries;
@@ -190,10 +189,16 @@ namespace NeuralyzeVRFixes
                 "scheme on a trigger would fire mount/open/attack first. The stick was rejected as the opening " +
                 "gesture, being walk and turn, but it has no other job once the list is up; hand-motion gestures " +
                 "were rejected because the physics estimator reports 0.00 m/s on this install.");
+            // The ward default was key:F5 until 2026-08-20. F5 is Valheim's console, which the
+            // launcher keeps live by passing -console, so a first run with no shipped cfg pointed
+            // the ward button at the console. Keypad4 is what the release now ships (see the
+            // 2026-08-17 F4 collision with IdentityCrisis, recorded in neuralyze.vrfixes.cfg);
+            // the default has to agree with it, because a code default only applies on that first
+            // run and BepInEx then persists whatever it wrote.
             HoverActions = Config.Bind("11 - Hover actions", "Actions",
                 "horse: Wait Here=hold:Keypad6 | Saddlebags=hold:B | Remove Armour=hold:R"
                 + " ; container: Quick Stack=key:P | Restock=key:L | Sort=key:O | Store All=key:Period"
-                + " ; ward: Toggle Permission=key:F5"
+                + " ; ward: Toggle Permission=key:Keypad4"
                 + " ; fireplace: Infinite Fuel=hold:LeftAlt"
                 + " ; ship: Anchor=key:LeftShift+F"
                 + " ; piece: Repair Area=key:LeftShift+W | Add Wear=key:LeftAlt+W",
@@ -302,14 +307,6 @@ namespace NeuralyzeVRFixes
                 "tuning can recover, so it separates frame-rate cost from code cost. Also counts swings that never " +
                 "produced an attack, which is a different complaint from everything being late. Cheap - two postfixes " +
                 "and one velocity read per frame.");
-            LogBowShots = Config.Bind("9 - Profiling", "LogBowShots", false,
-                "OFF by default; with it false the patch is never installed, so it costs nothing per shot or frame. One Info line per bow shot ('BOWSHOT ...') measuring where the arrow actually went: " +
-                "BowLocalManager.aimDir, the aimDir vanilla was handed by VHVR's GetProjectileSpawnPoint prefix, the " +
-                "direction the spawned arrow actually flies, the angle between them, and the spread/draw fields " +
-                "vanilla used. Default enabled because the 2026-08-19 report of arrows leaving ~30 degrees off the " +
-                "aim line produced four inferred explanations in one evening and zero measurements; the next session " +
-                "must produce the number. Costs nothing until a bow is fired - two postfixes on methods only reached " +
-                "from Attack.ProjectileAttackTriggered, and no per-frame work at all.");
             RestorePhysicsRate = Config.Bind("9 - Profiling", "RestoreVanillaPhysicsRate", false,
                 "OFF by default - enable for one session and compare. SteamVR overwrites Time.fixedDeltaTime with " +
                 "1/hmd_DisplayFrequency every frame (lockPhysicsUpdateRateToRenderFrequency in its settings asset), so " +
@@ -383,7 +380,6 @@ namespace NeuralyzeVRFixes
             Guard("patchAll", delegate { harmony.PatchAll(typeof(NeuralyzeVRFixesPlugin).Assembly); });
             Guard("panelFrameGuard", delegate { PanelFrameGuard.Install(harmony); });
             if (MeasureCombatLatency.Value) Guard("combatLatency", delegate { CombatLatency.Install(harmony); });
-            if (LogBowShots.Value) Guard("bowDiagnostics", delegate { BowDiagnostics.Install(harmony); });
             if (RestorePhysicsRate.Value) Guard("physicsRate", delegate { PhysicsRateRestorer.Install(harmony); });
             if (ProfilePlugins.Value) Guard("pluginProfiler", delegate { PluginProfiler.Install(harmony); });
             if (ProfileInventory.Value) Guard("inventoryProfiler", delegate { InventoryProfiler.Install(harmony); });

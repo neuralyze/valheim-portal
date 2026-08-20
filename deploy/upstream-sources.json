@@ -20,11 +20,11 @@
       "license": "Apache-2.0",
       "why": "The container the world operation scripts drive. valheim_provision.py reads its default.env for the PGID a world's mounts are chowned to.",
       "checkout_path": "/media/big3/Projects/Game/valheim/server/ValheimConfig/valheim-server-docker",
-      "pinned_commit": "3ad0632125c8",
+      "pinned_commit": "40252fcec3a5",
       "reviewed_commit": "732221f4d5b5",
       "reviewed_at": "2026-08-18",
       "reviewed_note": "Read all 18 commits and the 14 files they touch. Material to us: Debian 12 then 13 base-image upgrades with 32-bit glibc restored, busybox cron replacing Debian vixie-cron, a UMASK calculation change that would land on the world directories provisioning chowns, and secrets support. The libdoorstop env-var rename (DOORSTOP_ENABLED/DOORSTOP_TARGET_ASSEMBLY) is already in our tree: our local commit 3ad0632 made the same fix independently, so upgrading converges and that part of our patch can be dropped. Upgrade deferred to a maintenance window because it replaces the base image under four live worlds; filed as a bead.",
-      "local_changes": "One local commit, 3ad0632 'Update local Valheim server runtime', on top of upstream 20e6258: Dockerfile, bepinex-updater, common, docker-compose.yaml and valheim-server. Its libdoorstop env-var rename duplicates upstream's own later fix. Plus untracked default.env and discord.env, which hold deployment values and must never be offered upstream, and an untracked Dockerfile_k and CHANGES-neuralyze.md."
+      "local_changes": "One local commit, 40252fcec3a5 'Update local Valheim server runtime', rebased onto upstream 732221f on 2026-08-20. Its libdoorstop env-var rename was dropped as already applied - upstream 8c24d6c made the identical change. Only the LD_LIBRARY_PATH line conflicted and ours was kept, byte-for-byte what the live containers run. Git also produced an incoherent Dockerfile merge, putting our bookworm bump on the i386 stage that upstream had deliberately reverted to buster-slim (8a824e6, 32-bit SteamCMD deps); buster-slim restored by hand. Image built as valheim-server-docker:upgrade-probe, NOT yet deployed to any world. Untracked beside it: default.env and discord.env hold deployment values and must never be offered upstream, plus Dockerfile_k and CHANGES-neuralyze.md."
     }
   ]
 }

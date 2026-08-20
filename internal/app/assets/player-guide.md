@@ -501,18 +501,21 @@ MagicRevamp adds a spellbook, elemental essences and summons.
 
 | Key | Action | Mod |
 | --- | --- | --- |
-| `Keypad1` | Cycle to the next spell in your inventory | MagicRevamp (shipped) |
-| `Keypad2` | Unsummon your summons | MagicRevamp (shipped) |
+| `G` | Cycle to the next spell in your inventory | MagicRevamp (shipped) |
+| `Left Shift` + `F` | Unsummon your summons | MagicRevamp (shipped) |
 
-`Keypad1` is also PerfectPlacement's Enter Advanced Editing Mode. Both are shipped, and this is a
-real collision — see the conflicts block.
+Both of these are `[Synced with Server]`, so the server's values are what fire and a client config
+still reading `Keypad1`/`Keypad2` is simply stale. Both are shared: `G` is also EpicLoot's ability 1,
+PerfectPlacement's perpendicular rotation copy and, for admins, AdminQoL's prefab inspector, and
+`Left Shift` + `F` is also BoatAdditions' anchor. See the conflicts block.
 
 <!-- guide:vr -->
 
 Both spell keys are behind the **Misc** entry on the left wrist menu, as **Cycle Spell** and
 **Unsummon**, so spells are fully reachable in VR — hold the left-hand menu button and work the strip
-as described in [The wrist menus](#the-wrist-menus). Cycling a spell still pulses `Keypad1`, so it
-also enters PerfectPlacement's Advanced Editing Mode if you are an admin looking at an object.
+as described in [The wrist menus](#the-wrist-menus). Cycling a spell pulses `G`, so it also fires
+EpicLoot ability 1, and rotates the build ghost if you are holding a hammer. Unsummoning pulses
+`Left Shift` + `F`, which also raises or drops the anchor if you are pointing at a rudder.
 
 <!-- /guide:vr -->
 
@@ -522,15 +525,16 @@ You keep more than one Forsaken Power and cycle between them.
 
 | Key | Action | Mod |
 | --- | --- | --- |
-| `Keypad4` | Cycle to your next Forsaken Power | ForsakenPowersPlusRemastered (shipped) |
+| `F8` | Cycle to your next Forsaken Power | ForsakenPowersPlusRemastered (shipped) |
 | `F9` | Reset the power cooldown so you can use another | ForsakenPowersPlusRemastered (shipped) |
 
 <!-- guide:vr -->
 
-**Cycle Power** is behind the **Misc** entry on the left wrist menu and pulses `Keypad4`, so cycling
-powers is reachable in VR — see [The wrist menus](#the-wrist-menus). Your currently selected power has
-its own icon on that wrist strip as well, so you can fire it without the keyboard. The cooldown reset
-is on neither menu and has no VR route.
+**Cycle Power** and **Reset Power** are both behind the **Misc** entry on the left wrist menu,
+pulsing `F8` and `F9`, so cycling powers and clearing the cooldown are both reachable in VR — see
+[The wrist menus](#the-wrist-menus). Your currently selected power has its own icon on that wrist
+strip as well, so you can fire it without the keyboard. `F8` is shared: it also aborts
+PerfectPlacement's Advanced Editing Mode and toggles every PlantEasily feature.
 
 <!-- /guide:vr -->
 
@@ -968,18 +972,19 @@ forces its config, so these rules are the same for everybody.
 
 | Key | Action | Mod |
 | --- | --- | --- |
-| `F4` | Toggle your permission on a ward you are permitted on | WardIsLove (shipped) |
+| `Keypad4` | Toggle your permission on a ward you are permitted on | WardIsLove (shipped) |
 
-`F4` is also IdentityCrisis's transformation UI key, which was not moved. Expect both to respond.
+The ward key is ours to set — `WardHotKey` is `[Not Synced with Server]`, so the shipped client
+config decides it, not the server. It was `F4` until 2026-08-20, which is also IdentityCrisis's
+transformation UI key, so toggling a ward opened the transformation UI as well. It is `Keypad4` now.
 
 <!-- guide:vr -->
 
 Point the right laser at the ward and hold the **right grip**: the Ward hover menu's **Toggle
-Permission** pulses the ward key for you — see
-[The contextual hover menu](#the-contextual-hover-menu). The same action is behind the left wrist
-menu's **Misc** entry as **Identity**. Either route pulses `F4`, so either route also opens
-IdentityCrisis's transformation UI. That collision is unavoidable from a headset; close the UI and
-carry on.
+Permission** pulses `Keypad4` for you — see
+[The contextual hover menu](#the-contextual-hover-menu). This is a different key from the wrist
+menu's **Identity** entry, which still pulses `F4` for IdentityCrisis. Before 2026-08-20 both were
+`F4`, so each of the two entries fired the other's feature.
 
 <!-- /guide:vr -->
 
@@ -1136,11 +1141,12 @@ strip with the list below, six at a time, with `More >` for the next six and `< 
 | Close Panel | Escape hatch — deactivates adopted canvases, hides the main menu, pulses Escape |
 | Release Mount | Dismount |
 | Sail Faster / Sail Slower | Only shown while at the helm |
-| Identity | `F4` |
-| Cycle Spell | `Keypad1` |
-| Unsummon | `Keypad2` |
+| Identity | `F4` — IdentityCrisis's transformation UI |
+| Cycle Spell | `G` — also EpicLoot ability 1 and PerfectPlacement's perpendicular rotation copy |
+| Unsummon | `Left Shift` + `F` — also BoatAdditions' anchor |
 | Hip Lantern | `Keypad3` |
-| Cycle Power | `Keypad4` |
+| Cycle Power | `F8` — also aborts PerfectPlacement's Advanced Editing Mode and toggles PlantEasily |
+| Reset Power | `F9` — clears the Forsaken Power cooldown |
 | Admin/… | A group door. Admin console, admin panel and a set of spawn and cheat commands, hidden from non-admins |
 
 **One trap.** The right-hand button is the same physical button as the laser's right-click, which the
@@ -1184,7 +1190,7 @@ The list repeats itself while you hold, and its last line says the same thing:
 | Target | Options, in the order they appear |
 | --- | --- |
 | Container | Quick Stack, Restock, Sort, Store All |
-| Ward | Toggle Permission (`F4`) |
+| Ward | Toggle Permission (`Keypad4`) |
 | Fireplace | Infinite Fuel (holds `Left Alt` while interacting) |
 | Ship | Sail Faster, Sail Slower, Release Helm, Anchor (`Left Shift` + `F`) |
 | Piece | Repair Area (`Left Shift` + `W`), Add Wear (`Left Alt` + `W`) |
@@ -1395,7 +1401,6 @@ nothing without a headset.
 | `F1` | Enter Advanced Building Mode | PerfectPlacement | shipped |
 | `F2` | Skills | Valheim | vanilla default |
 | `F3` | Exit Advanced Building Mode | PerfectPlacement | shipped |
-| `F4` | Toggle your permission on a ward | WardIsLove | shipped |
 | `F4` | Open / close the transformation UI | IdentityCrisis | default |
 | `F5` | Open / close the game console | Valheim (`-console` passed by the launcher) | launcher source |
 | `F6` | Change the default build-grid alignment | PerfectPlacement | shipped |
@@ -1405,22 +1410,22 @@ nothing without a headset.
 | `F7` | Toggle build-grid alignment | PerfectPlacement | shipped |
 | `F8` | Abort and exit Advanced Editing Mode | PerfectPlacement | shipped |
 | `F8` | Toggle every PlantEasily feature | PlantEasily | default |
+| `F8` | Cycle your Forsaken Power | ForsakenPowersPlusRemastered | shipped |
 | `F9` | Reset your Forsaken Power cooldown | ForsakenPowersPlusRemastered | shipped |
 | `F10` | Toggle automatic fuelling | AutomaticFuel | default |
 | `F10` | Toggle planting-grid snapping | PlantEasily | default |
 | `G` | EpicLoot ability slot 1 | EpicLoot | shipped |
 | `G` | Copy the rotation of the piece in front of you (perpendicular) | PerfectPlacement | shipped |
 | `G` | Prefab inspector — **admin** | AdminQoL | shipped |
+| `G` | Cycle to the next spell in your inventory | MagicRevamp | shipped |
 | `H` | EpicLoot ability slot 2 | EpicLoot | shipped |
 | `H` | Copy the inspection snapshot — **admin** | AdminQoL | shipped |
 | `J` | EpicLoot ability slot 3 | EpicLoot | shipped |
 | `Keypad0` | Freeze the placement position | Infinity Hammer | documented default |
 | `Keypad1` | Enter Advanced Editing Mode — **admin** | PerfectPlacement | shipped |
-| `Keypad1` | Cycle to the next spell in your inventory | MagicRevamp | shipped |
-| `Keypad2` | Unsummon your summons | MagicRevamp | shipped |
 | `Keypad3` | Copy the selected object's rotation (ABM / AEM) | PerfectPlacement | shipped |
 | `Keypad3` | Toggle the equipped hip lantern | HipLantern | shipped |
-| `Keypad4` | Cycle your Forsaken Power | ForsakenPowersPlusRemastered | shipped |
+| `Keypad4` | Toggle your permission on a ward | WardIsLove | shipped |
 | `Keypad5` | Select the object you are looking at | Infinity Hammer | documented default |
 | `Left Alt` + `Keypad5` | Pick the object you are looking at | Infinity Hammer | documented default |
 | `Left Control` + `Keypad5` | Select the object and freeze it | Infinity Hammer | documented default |
@@ -1476,6 +1481,7 @@ nothing without a headset.
 | `Left Shift` + `E` | Alternate interact | Valheim | vanilla default |
 | `Left Shift` + `E` | Open the Tag Connected Portals dialog | TagConnectedPortals | default |
 | `Left Shift` + `F` | Raise or drop the anchor, mouse over the rudder | BoatAdditions | default |
+| `Left Shift` + `F` | Unsummon your summons | MagicRevamp | shipped |
 | `Left Shift` + `PageUp` | Toggle the crafting Recipe UI | AAA_Crafting | shipped |
 | `Left Shift` + `Period` | Pause automatic storing | AzuAutoStore | shipped |
 | `Left Shift` + `W` | Repair every piece in a radius | RuinsMaker | default |
@@ -1535,19 +1541,18 @@ keys only and excluding vanilla bindings.
 
 | Key | Claimed by | Why it matters |
 | --- | --- | --- |
-| `F4` | WardIsLove (ward permission), IdentityCrisis (transformation UI) | Toggling a ward also opens the transformation UI |
 | `F6` | PerfectPlacement (default grid alignment), PlantEasily (replant-on-harvest), ComfortTweaks (comfort list) | Three-way. Avoid `F6`; this exact key opened an unconverted screen-space canvas in VR and broke a session |
-| `F8` | PerfectPlacement (abort Advanced Editing Mode), PlantEasily (master toggle) | Aborting an edit also silently disables every PlantEasily feature |
+| `F8` | PerfectPlacement (abort Advanced Editing Mode), PlantEasily (master toggle), ForsakenPowersPlusRemastered (cycle power) | Three-way, and the VR wrist strip's **Cycle Power** sends it. Cycling a power mid-build also aborts the edit and disables every PlantEasily feature |
 | `F10` | AutomaticFuel (toggle auto-fuel), PlantEasily (snapping) | Both fire on one press |
-| `G` | EpicLoot (ability 1), PerfectPlacement (perpendicular rotation), AdminQoL (prefab inspector, admin) | Three-way. Firing an ability while holding a hammer also rotates the ghost |
+| `G` | EpicLoot (ability 1), PerfectPlacement (perpendicular rotation), AdminQoL (prefab inspector, admin), MagicRevamp (cycle spell) | Four-way, and the VR wrist strip's **Cycle Spell** sends it. Firing an ability while holding a hammer also rotates the ghost and cycles your spell |
 | `H` | EpicLoot (ability 2), AdminQoL (copy snapshot, admin) | Ability 2 also copies to the clipboard for admins |
-| `Keypad1` | PerfectPlacement (enter Advanced Editing Mode), MagicRevamp (cycle spell) | **New**, created by moving PerfectPlacement off `Keypad0`. Both values are shipped |
 | `Keypad3` | PerfectPlacement (copy object rotation), HipLantern (toggle lantern) | **New**, created by moving PerfectPlacement off `Keypad7`. Both values are shipped |
 | `Q` | Zen.ModLib (alternate interact), Infinity Hammer (change selection shape) | Interacting while holding a hammer also changes the selection shape |
 | `E` | BowsBeforeHoes / VHModpackFix (cancel bow draw), BedRules (claim bed) | Only overlaps if you are drawing a bow next to an unclaimed bed |
 | `Left Alt` + `Z` | AzuExtendedPlayerInventory (quick slot 1), RequipMe (manual re-equip) | Using quick slot 1 also triggers a re-equip |
 | `Arrow keys` | Infinity Hammer (precise placement), PlantEasily (planting grid), ValheimVRMod (VR head reposition) | Three-way |
 | `PageUp` / `PageDown` | Infinity Hammer (precise placement), ValheimVRMod (VR head reposition) | Two-way. Not three-way — see the SkToolbox note below |
+| `Left Shift` + `F` | BoatAdditions (raise / drop anchor), MagicRevamp (unsummon) | Both server-forced. The ship hover menu's **Anchor** and the wrist strip's **Unsummon** are the same keystroke |
 | `Left Shift` (hold) | AzuCraftyBoxes, BowsBeforeHoes, VikingsDoSwim, Wearable Trophies, PlantEasily, Smoothbrain Farming, HarpoonExtended | Seven mods. All are context-scoped, so they rarely bite, but sprinting is `Left Shift` too |
 | `Left Control` (hold) | AAA_Crafting, VikingsDoSwim, Wearable Trophies, ZenRedecorate, Smoothbrain Farming, Infinity Hammer | Six mods, plus vanilla crouch |
 | `Left Alt` (hold) | PerfectPlacement (rotate Y and grid align), ZenWorldSettings, ZenRaids, RuinsMaker, Infinity Hammer | Five mods, plus vanilla dodge |
@@ -1590,8 +1595,10 @@ A config file existing is never proof a mod is installed. Check
 - **The installed profile on the reference client is one sync behind the release.** Its generated
   `Azumatt.WardIsLove.cfg` still reads `WardHotKey = G`, and its `ForsakenPowersPlusRemastered` and
   `MagicRevamp` configs still hold the pre-move values. The shipped client-config values quoted in
-  this guide (`F4`, `Keypad4`, `Keypad1`) are what a player gets after the next sync. If your ward
-  key is `G`, run the launcher again.
+  this guide (`Keypad4`, `F8`, `G`) are what a player gets after the next sync. If your ward key is
+  `G` or `F4`, or **Cycle Spell** does nothing, run the launcher again. The spell and power keys are
+  `[Synced with Server]` and so are corrected on connect regardless; the ward key is not, so only a
+  sync moves it.
 
 <!-- guide:vr -->
 

@@ -205,7 +205,7 @@ PY
   if [[ -n $plugin && -f $plugin ]]; then
     publish_args+=(-diag-plugin "$plugin")
   elif [[ -n ${VALHEIM_CLIENT_PLUGIN:-} ]]; then
-    echo "VALHEIM_CLIENT_PLUGIN is not a file: $VALHEIM_CLIENT_PLUGIN"; ((failures++)); continue
+    echo "VALHEIM_CLIENT_PLUGIN is not a file: $VALHEIM_CLIENT_PLUGIN"; failures=$((failures + 1)); continue
   fi
 
   case "$client_type" in
@@ -226,7 +226,7 @@ PY
       # An explicit build wins, so a runtime fix - removing a diagnostic mod bundled inside it -
       # ships without hand-publishing first and republishing to pick it up.
       [[ -n ${VALHEIM_VR_RUNTIME:-} ]] && runtime=$VALHEIM_VR_RUNTIME
-      [[ -n $runtime && -f $runtime ]] || { echo "no VR runtime found for $published"; ((failures++)); continue; }
+      [[ -n $runtime && -f $runtime ]] || { echo "no VR runtime found for $published"; failures=$((failures + 1)); continue; }
       publish_args+=(-vr-runtime "$runtime")
       ;;
     flat)
@@ -236,7 +236,7 @@ PY
         build_args+=(-true-nonvr)
       else
         [[ -n $companion && -f $companion ]] ||
-          { echo "VALHEIM_FLAT_COMPANION is required for $published"; ((failures++)); continue; }
+          { echo "VALHEIM_FLAT_COMPANION is required for $published"; failures=$((failures + 1)); continue; }
         build_args+=(-flat-companion "$companion")
         publish_args+=(-flat-companion "$companion")
       fi
@@ -244,7 +244,14 @@ PY
   esac
 
   if ! (cd "$repo_root" && go run ./cmd/profile-definition-builder "${build_args[@]}") >"$build_dir/$published.log" 2>&1; then
-    echo "BUILD FAILED: $(tail -1 "$build_dir/$published.log")"; ((failures++)); continue
+    # `go run` appends its own "exit status 1" AFTER the program's stderr, so tail -1 reported
+    # the trailer and never the cause - and the mktemp build_dir is deleted by the EXIT trap, so
+    # the real error was gone. On 2026-08-20 that turned one transient Thunderstore download into
+    # "BUILD FAILED: exit status 1" with nothing to diagnose. Keep the log; skip the trailer.
+    kept="${TMPDIR:-/tmp}/$published.build.$(date -u +%Y%m%dT%H%M%SZ).log"
+    cp "$build_dir/$published.log" "$kept" || true
+    echo "BUILD FAILED: $(grep -vE '^exit status [0-9]+$' "$build_dir/$published.log" | tail -1) (full log: $kept)"
+    failures=$((failures + 1)); continue
   fi
   if [[ $dry_run == 1 ]]; then
     echo "built (dry run, not published)"; continue
@@ -252,7 +259,7 @@ PY
   if ! (cd "$repo_root" && go run ./cmd/seed-release "${publish_args[@]}") >>"$build_dir/$published.log" 2>&1; then
     kept="${TMPDIR:-/tmp}/republish-$published-$(date -u +%Y%m%dT%H%M%SZ).log"
     cp "$build_dir/$published.log" "$kept" 2>/dev/null || true
-    echo "PUBLISH FAILED: $(tail -1 "$build_dir/$published.log") (full log: $kept)"; ((failures++)); continue
+    echo "PUBLISH FAILED: $(tail -1 "$build_dir/$published.log") (full log: $kept)"; failures=$((failures + 1)); continue
   fi
   echo "published and verified"
 done <<<"$plan"

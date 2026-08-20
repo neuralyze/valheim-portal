@@ -16,9 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   corrections: the wrist menus never named a button, four values in the VR section quoted mod
   defaults the live config overrides, and holstering, spear throwing, crossbow reload, chat, the
   wrist minimap and every comfort setting were undocumented.
-- `BowDiagnostics` logs one line per bow shot - the aim vector, what was handed to the engine, the
-  direction the arrow actually left with, and the angle between them. Four inferred explanations
-  for a 30-degree deviation collapsed in one evening; this measures it instead.
 
 - The ValheimVR mod is built on this host now, with Mono's compiler, because the Windows build
   host is gone. `scripts/build-valheimvr.sh` compiles it in about two seconds;
@@ -88,6 +85,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operators, which preserves the previous behaviour exactly.
 
 ### Fixed
+
+- Three wrist entries pulsed keys nothing listens for, and one was missing. The server enforces
+  `Cycle Spell = G`, `Unsummon = Shift+F` and `ForsakenPowerHotkey = F8`; our entries still sent the
+  keypad bindings somebody had rebound locally before ServerSync reverted them, which is why they
+  pressed cleanly and did nothing. `Reset Power = F9` added.
+- The `F4` collision was ours: we shipped `WardHotKey = F4` on 2026-08-17, and IdentityCrisis reads
+  F4 too, so each fired the other. WardIsLove moves to `Keypad4` - the only side of it we control,
+  since we ship no copy of IdentityCrisis's config. `ForsakenPowerHotkey` in the shipped file was
+  also corrected to the enforced F8, so an offline session cannot hand the collision back.
+- One transient Thunderstore fetch no longer aborts a whole republish. `((failures++))` returns the
+  pre-increment value, which is 0 on the first failure, and `set -e` killed the run there - three
+  worlds went unattempted with no summary. The build-failed branch also reported `go run`'s own
+  "exit status 1" trailer and let the EXIT trap delete the real error; it now keeps the log.
 
 - Hover menu navigation follows the stick. VHVR's `GetJoyRightStickY` returns `-axis.y`
   (`VRControls.cs:661`), so pushing down moved the highlight up; the read is negated once and the
