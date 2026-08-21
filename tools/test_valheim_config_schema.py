@@ -213,22 +213,37 @@ def test_crlf_and_a_bom_do_not_reach_the_values(tmp_path):
 # Whole-world assembly: sections, immutability, attribution, fingerprint.
 # ---------------------------------------------------------------------------
 
-def build_world(root, world="Hrafnheim"):
-    """A fleet with one world's server config tree and one profile, as this host lays it out."""
+def build_world(root, world="Hrafnheim", client=("flat",)):
+    """A fleet with one world's server config tree and its profiles, as this host lays it out.
+
+    Returns the config root, the profiles root and a REPO root holding a release-targets.json
+    that names this world. The repo root is returned rather than defaulted because
+    client_trees reads the real one otherwise: the live file names Hrafnheim and the profiles
+    flat/vr/admin, so a test using those names would silently depend on repo data and change
+    behaviour the day someone edits a release target.
+    """
     config = root / world / "config_merged" / "bepinex"
     plugin = config / "plugins" / "AAA_Crafting"
     plugin.mkdir(parents=True)
     plugin.joinpath("AzuAntiArthriticCrafting.dll").write_bytes(b"MZ")
     # utf-8-sig on purpose: 26 of the 100 real manifests carry a BOM and fail strict utf-8.
     plugin.joinpath("manifest.json").write_bytes(json.dumps({"name": "AAA_Crafting"}).encode("utf-8-sig"))
-    profile = root / "profiles" / "flat"
-    profile.mkdir(parents=True)
-    (profile / "profile-manifest.json").write_text(json.dumps({
-        "schema_version": 2, "profile_name": "flat",
-        "packages": [{"identifier": "Azumatt-AAA_Crafting", "version": "2.1.6"}],
-    }))
+    for name in client:
+        profile = root / "profiles" / name
+        (profile / "client-config").mkdir(parents=True)
+        (profile / "profile-manifest.json").write_text(json.dumps({
+            "schema_version": 2, "profile_name": name,
+            "packages": [{"identifier": "Azumatt-AAA_Crafting", "version": "2.1.6"}],
+        }))
     (config / "Azumatt.AzuAntiArthriticCrafting.cfg").write_text(AAA_CRAFTING)
-    return config, root / "profiles"
+    repo = root / "repo"
+    repo.mkdir()
+    (repo / "release-targets.json").write_text(json.dumps({
+        "schema": 1,
+        "flat": [{"world": world, "source_profile": name, "published_profile": f"{world}-{name}",
+                  "valheim_vr": True, "audience": "player"} for name in client],
+    }))
+    return config, root / "profiles", repo
 
 
 def test_a_config_is_attributed_through_the_filesystem(tmp_path):
@@ -238,8 +253,8 @@ def test_a_config_is_attributed_through_the_filesystem(tmp_path):
     `Azumatt.AzuAntiArthriticCrafting`, the assembly `AzuAntiArthriticCrafting.dll`, the
     directory `AAA_Crafting` and the package `Azumatt-AAA_Crafting`.
     """
-    _, profiles = build_world(tmp_path)
-    result = schema.world_schema(tmp_path, "Hrafnheim", profiles)
+    _, profiles, repo = build_world(tmp_path)
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
     assert result["schema"] == "world-config-schema/v1"
     assert result["world"] == "Hrafnheim"
     assert [record["file"] for record in result["files"]] == ["Azumatt.AzuAntiArthriticCrafting.cfg"]
@@ -254,11 +269,11 @@ def test_an_unattributable_config_is_named_not_guessed(tmp_path):
     Reported by name with an empty identifier. Guessing an owner from the string would file a
     stranger's settings under a mod the admin does have.
     """
-    config, profiles = build_world(tmp_path)
+    config, profiles, repo = build_world(tmp_path)
     (config / "marcopogo.PlanBuild.cfg").write_text(
         "## Settings file was created by plugin PlanBuild v0.13.4\n"
         "## Plugin GUID: marcopogo.PlanBuild\n\n[General]\n# Setting type: Boolean\nK = true\n")
-    result = schema.world_schema(tmp_path, "Hrafnheim", profiles)
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
     orphan = next(item for item in result["files"] if item["file"] == "marcopogo.PlanBuild.cfg")
     assert orphan["mod_identifier"] == ""
     # The name still comes from the file's own header, so the page can group it honestly.
@@ -271,14 +286,14 @@ def test_a_config_in_a_subdirectory_is_attributed_by_that_directory(tmp_path):
 
     `shudnal.ConditionalConfigSync/` is the only attribution those files have.
     """
-    config, profiles = build_world(tmp_path)
+    config, profiles, repo = build_world(tmp_path)
     owner = config / "plugins" / "ConditionalConfigSync"
     owner.mkdir()
     owner.joinpath("manifest.json").write_text(json.dumps({"name": "ConditionalConfigSync"}))
     nested = config / "shudnal.ConditionalConfigSync"
     nested.mkdir()
     (nested / "ConditionalConfigSync.Debug.cfg").write_text("[Debug]\nEnabled = false\n")
-    result = schema.world_schema(tmp_path, "Hrafnheim", profiles)
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
     record = next(item for item in result["files"]
                   if item["file"] == "shudnal.ConditionalConfigSync/ConditionalConfigSync.Debug.cfg")
     assert record["mod_name"] == "ConditionalConfigSync"
@@ -298,11 +313,11 @@ def test_immutable_is_a_section_fact_and_only_a_section_fact(tmp_path):
     section flag in when it looks an entry up, and two copies of one fact are two things to
     drift.
     """
-    config, profiles = build_world(tmp_path)
+    config, profiles, repo = build_world(tmp_path)
     (config / "org.bepinex.plugins.valheimvrmod.cfg").write_text(
         "[Graphics]\n# Setting type: Boolean\nShowDamageText = true\n"
         "[Immutable]\n# Setting type: Boolean\nModEnabled = true\n")
-    result = schema.world_schema(tmp_path, "Hrafnheim", profiles)
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
     record = next(item for item in result["files"]
                   if item["file"] == "org.bepinex.plugins.valheimvrmod.cfg")
     by_name = {section["name"]: section for section in record["sections"]}
@@ -321,13 +336,13 @@ def test_a_sections_verdict_needs_every_declaring_entry_to_agree(tmp_path):
     A section where the entries disagree, or where none declared anything, gets neither flag:
     a majority vote there would invent a declaration no mod author made.
     """
-    config, profiles = build_world(tmp_path)
+    config, profiles, repo = build_world(tmp_path)
     (config / "mixed.cfg").write_text(
         "[All]\n## A [Synced with Server]\nOne = 1\n## B [Synced with Server]\nTwo = 2\n"
         "[None]\n## A [Not Synced with Server]\nOne = 1\n## B [Not Synced with Server]\nTwo = 2\n"
         "[Split]\n## A [Synced with Server]\nOne = 1\n## B [Not Synced with Server]\nTwo = 2\n"
         "[Silent]\nOne = 1\n")
-    result = schema.world_schema(tmp_path, "Hrafnheim", profiles)
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
     record = next(item for item in result["files"] if item["file"] == "mixed.cfg")
     verdict = {section["name"]: (section["synced"], section["client_side"])
                for section in record["sections"]}
@@ -337,17 +352,17 @@ def test_a_sections_verdict_needs_every_declaring_entry_to_agree(tmp_path):
 
 def test_plugin_shipped_configs_are_not_settings(tmp_path):
     """A cfg inside plugins/ is the mod's own data, and 100 packages plus their DLLs live there."""
-    config, profiles = build_world(tmp_path)
+    config, profiles, repo = build_world(tmp_path)
     (config / "plugins" / "AAA_Crafting" / "shipped.cfg").write_text("[S]\nK = 1\n")
-    result = schema.world_schema(tmp_path, "Hrafnheim", profiles)
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
     assert [record["file"] for record in result["files"]] == ["Azumatt.AzuAntiArthriticCrafting.cfg"]
 
 
 def test_the_backup_copies_the_publish_scripts_leave_are_not_configs(tmp_path):
     """21 `.cfg.before-*` files sit beside 18 real configs in one profile directory."""
-    config, profiles = build_world(tmp_path)
+    config, profiles, repo = build_world(tmp_path)
     (config / "Azumatt.WardIsLove.cfg.before-f4-20260817T065333Z").write_text("[S]\nK = 1\n")
-    result = schema.world_schema(tmp_path, "Hrafnheim", profiles)
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
     assert [record["file"] for record in result["files"]] == ["Azumatt.AzuAntiArthriticCrafting.cfg"]
 
 
@@ -358,7 +373,7 @@ def test_the_fingerprint_moves_when_a_config_does(tmp_path):
     of them. Configs change on this host without the portal seeing it, so a cache keyed on
     portal events alone would serve a stale schema.
     """
-    config, _ = build_world(tmp_path)
+    config, _, _ = build_world(tmp_path)
     before = schema.fingerprint(config)
     assert len(before) == 64
     (config / "Azumatt.AzuAntiArthriticCrafting.cfg").write_text(AAA_CRAFTING + "Extra = 1\n")
@@ -371,7 +386,7 @@ def test_the_fingerprint_moves_when_a_config_does(tmp_path):
 
 def test_an_unreadable_config_is_named_never_skipped(tmp_path, monkeypatch):
     """A config that vanishes silently is indistinguishable from a mod with no settings."""
-    config, profiles = build_world(tmp_path)
+    config, profiles, repo = build_world(tmp_path)
     (config / "broken.cfg").write_text("[S]\nK = 1\n")
     real = schema.read_text
 
@@ -381,7 +396,7 @@ def test_an_unreadable_config_is_named_never_skipped(tmp_path, monkeypatch):
         return real(path)
 
     monkeypatch.setattr(schema, "read_text", refuse)
-    result = schema.world_schema(tmp_path, "Hrafnheim", profiles)
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
     assert [item["file"] for item in result["unreadable"]] == ["broken.cfg"]
     assert "broken.cfg" not in [record["file"] for record in result["files"]]
 
@@ -395,3 +410,157 @@ def test_a_world_name_that_is_a_path_is_refused(tmp_path, monkeypatch):
             schema.resolve_world(name)
     # The control: a real world beside those still resolves, so the guard is not a blanket no.
     assert schema.resolve_world("Hrafnheim")[0] == tmp_path
+
+
+# ---------------------------------------------------------------------------
+# The union of both config sources, and the two facts that travel with each file.
+# ---------------------------------------------------------------------------
+
+def test_a_client_only_config_is_in_the_schema(tmp_path):
+    """The reason the union exists.
+
+    neuralyze.vrfixes.cfg is absent from config_merged in all four worlds, because the mod
+    never runs server-side so the server never generated its metadata - and it is the file
+    C3's own example names, holding the settings the operator actually edits. A schema built
+    from the world tree alone cannot see it at all.
+    """
+    config, profiles, repo = build_world(tmp_path)
+    (profiles / "flat" / "client-config" / "neuralyze.vrfixes.cfg").write_text(
+        "[11 - Hover actions]\n## Which grip [Not Synced with Server]\n"
+        "# Setting type: String\nModifier = RightGrip\n")
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
+    record = next(item for item in result["files"] if item["file"] == "neuralyze.vrfixes.cfg")
+    assert record["source"] == "client_profile"
+    assert record["shipped"] is True
+    assert record["sections"][0]["entries"][0]["key"] == "Modifier"
+    # The control: the world-tree file beside it is untouched and is NOT marked shipped,
+    # because no client tree carries it.
+    other = next(item for item in result["files"]
+                 if item["file"] == "Azumatt.AzuAntiArthriticCrafting.cfg")
+    assert (other["source"], other["shipped"]) == ("config_merged", False)
+
+
+def test_source_and_shipped_are_on_every_file(tmp_path):
+    """Both unconditional, never omitempty.
+
+    With omitempty a false `shipped` is indistinguishable from a cached payload written
+    before the field existed, and the page would state "not in force" about a file it knows
+    nothing about. Absence has to mean absence.
+    """
+    config, profiles, repo = build_world(tmp_path)
+    (profiles / "flat" / "client-config" / "only-here.cfg").write_text("[S]\nK = 1\n")
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
+    assert len(result["files"]) == 2
+    for record in result["files"]:
+        assert "source" in record and "shipped" in record
+        assert record["source"] in {"config_merged", "client_profile", "both"}
+        assert isinstance(record["shipped"], bool)
+
+
+def test_a_file_in_both_trees_takes_the_world_trees_metadata(tmp_path):
+    """Measured, not assumed: the world tree is a full dump, the client tree an overlay.
+
+    org.bepinex.plugins.valheimvrmod.cfg is 145 keys across 7 sections in config_merged
+    against 26 across 6 in profiles/vr/client-config-vr. Preferring the overlay would drop
+    119 real settings, including the whole Immutable section.
+    """
+    config, profiles, repo = build_world(tmp_path)
+    (config / "org.bepinex.plugins.valheimvrmod.cfg").write_text(
+        "[Graphics]\n# Setting type: Boolean\nShowDamageText = true\n"
+        "# Setting type: String\nShowAttackOutline = All\n"
+        "[Immutable]\n# Setting type: Boolean\nModEnabled = true\n")
+    (profiles / "flat" / "client-config" / "org.bepinex.plugins.valheimvrmod.cfg").write_text(
+        "[Graphics]\nShowDamageText = false\n")
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
+    matching = [item for item in result["files"]
+                if item["file"] == "org.bepinex.plugins.valheimvrmod.cfg"]
+    # Exactly one record. Two would give the page two answers for one key.
+    assert len(matching) == 1
+    record = matching[0]
+    assert record["source"] == "both"
+    assert record["shipped"] is True
+    keys = [entry["key"] for section in record["sections"] for entry in section["entries"]]
+    assert keys == ["ShowDamageText", "ShowAttackOutline", "ModEnabled"]
+    assert any(section["immutable"] for section in record["sections"])
+
+
+def test_the_richest_copy_wins_and_the_divergence_is_reported(tmp_path):
+    """Two profiles ship DIFFERENT content under one basename, and publish order loses keys.
+
+    Measured: neuralyze.vrfixes.cfg is 31 keys in profiles/vr and 30 in profiles/flat and
+    profiles/admin, the extra one being LogShieldBlocks - a setting the operator spent the
+    evening editing. republish copies flat first, so first-wins precedence drops exactly the
+    key that matters, invisibly. The richest copy describes the file and the disagreement is
+    reported rather than resolved in silence.
+    """
+    config, profiles, repo = build_world(tmp_path, client=("flat", "vr"))
+    (profiles / "flat" / "client-config" / "neuralyze.vrfixes.cfg").write_text(
+        "[9 - Profiling]\nProfileGameMethods = false\n")
+    (profiles / "vr" / "client-config" / "neuralyze.vrfixes.cfg").write_text(
+        "[9 - Profiling]\nLogShieldBlocks = true\nProfileGameMethods = false\n")
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
+    record = next(item for item in result["files"] if item["file"] == "neuralyze.vrfixes.cfg")
+    keys = [entry["key"] for section in record["sections"] for entry in section["entries"]]
+    assert "LogShieldBlocks" in keys
+    assert next(item for item in result["divergent"]
+                if item["file"] == "neuralyze.vrfixes.cfg")["copies"] == [
+        {"profile": "vr", "tree": "client-config", "keys": 2},
+        {"profile": "flat", "tree": "client-config", "keys": 1}]
+
+
+def test_identical_copies_are_not_reported_as_divergent(tmp_path):
+    """The control for the test above: three matching copies are the normal case.
+
+    Reporting those would drown the one real disagreement in noise.
+    """
+    config, profiles, repo = build_world(tmp_path, client=("flat", "vr"))
+    for name in ("flat", "vr"):
+        (profiles / name / "client-config" / "same.cfg").write_text("[S]\nK = 1\n")
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
+    assert result["divergent"] == []
+
+
+def test_a_world_with_no_release_target_ships_nothing(tmp_path):
+    """shipped comes from the publish plan, never from an authority record.
+
+    A world nothing publishes has no client trees, so no file can be claimed to reach a
+    player. Guessing true here would silently promise delivery.
+    """
+    config, profiles, repo = build_world(tmp_path)
+    (profiles / "flat" / "client-config" / "orphan.cfg").write_text("[S]\nK = 1\n")
+    assert schema.client_trees("Hrafnheim", profiles, repo) != []
+    assert schema.client_trees("Nowhere", profiles, repo) == []
+    result = schema.world_schema(tmp_path, "Nowhere", profiles, repo)
+    assert result["files"] == []
+    assert result["sources"] == [str(tmp_path / "Nowhere" / "config_merged" / "bepinex")]
+
+
+def test_the_fingerprint_moves_when_a_client_config_does(tmp_path):
+    """A client tree edit must invalidate the cache, or the page serves a stale schema.
+
+    This is not hypothetical: the operator hand-edited neuralyze.vrfixes.cfg repeatedly this
+    evening, and a fingerprint over the world tree alone would have gone on matching.
+    """
+    config, profiles, repo = build_world(tmp_path)
+    trees = schema.client_trees("Hrafnheim", profiles, repo)
+    client = profiles / "flat" / "client-config" / "neuralyze.vrfixes.cfg"
+    client.write_text("[S]\nModifier = RightGrip\n")
+    before = schema.fingerprint(config, trees)
+    client.write_text("[S]\nModifier = LeftGrip\nExtra = 1\n")
+    assert schema.fingerprint(config, trees) != before
+    # The control: the same tree unchanged hashes the same, so the check is not just noisy.
+    assert schema.fingerprint(config, trees) == schema.fingerprint(config, trees)
+
+
+def test_mod_name_falls_back_to_the_plugin_guid(tmp_path):
+    """A client config has no plugin directory, no manifest and often no created-by header.
+
+    neuralyze.vrfixes.cfg is exactly that, and an empty mod_name would leave the page unable
+    to group it under anything. The stem IS the plugin's BepInEx GUID.
+    """
+    config, profiles, repo = build_world(tmp_path)
+    (profiles / "flat" / "client-config" / "neuralyze.vrfixes.cfg").write_text("[S]\nK = 1\n")
+    result = schema.world_schema(tmp_path, "Hrafnheim", profiles, repo)
+    record = next(item for item in result["files"] if item["file"] == "neuralyze.vrfixes.cfg")
+    assert record["mod_name"] == "neuralyze.vrfixes"
+    assert record["mod_identifier"] == ""

@@ -8,30 +8,40 @@ accept. This module turns that corpus into `world-config-schema/v1`, which is
 what the portal's settings manager renders and what the authority store
 validates a stored value against.
 
-Why the SERVER's config tree and not the profiles' client-config trees
----------------------------------------------------------------------
+Both config sources, because neither alone is the set to manage
+--------------------------------------------------------------
 Measured on this host, 2026-08-21:
 
-* ``<world>/config_merged/bepinex``: 108 ``.cfg`` files, 107 of them carrying
-  ``# Setting type`` comments.
-* ``profiles/{flat,vr,admin}/client-config``: 18 ``.cfg`` files, 12 of them
+* ``<world>/config_merged/bepinex``: 108 top-level ``.cfg`` files plus 5 in
+  subdirectories, 107 of the top-level ones carrying ``# Setting type`` comments.
+* the client trees a publish copies, ``profiles/<name>/client-config`` and
+  ``client-config-<client_type>``: 20 distinct basenames, 12 of 18 in one tree
   carrying any metadata at all.
 
-The client-config trees are not a corpus of a client's settings. They are the
-handful of files an operator has hand-customised, and six of the eighteen carry
-no metadata whatsoever, so a schema built from them would be blind to
-essentially every setting the page is supposed to show. They are also
-per-PROFILE and shared by all four worlds - byte-identical between `flat` and
-`admin`, differing only in `neuralyze.vrfixes.cfg` between `flat` and `vr` - so
-they cannot express a per-world value even in principle.
+The world tree leads, and the metadata decides it: it is where the plugins wrote
+their own descriptions out, and a schema built from the client trees alone would
+be blind to essentially every setting the page exists to show. Where a file is in
+both, the world tree describes it - measured, not assumed:
+``org.bepinex.plugins.valheimvrmod.cfg`` is 145 keys across 7 sections there
+against the profile overlay's 26 across 6, because the overlay is a sparse
+override file and the world tree is a full dump.
 
-The server tree is per-world, and it is where the plugins themselves wrote their
-metadata out. It is also, measurably, not clean: fourteen of its config files
-belong to mods with no plugin directory and no assembly anywhere under
-``plugins/`` - leftovers from removals. That is why attribution is reported
-rather than assumed, and why an unattributable file is named in the payload's
-``unattributed`` list instead of being silently dropped or silently given an
-owner.
+But the world tree cannot be the only source. A mod that never RUNS server-side
+never generated anything there, and ``neuralyze.vrfixes.cfg`` is absent from all
+four worlds for that reason - while being the file C3's own example names and
+holding the settings the operator actually edits. So the client trees are read
+too, and every file carries where it came from and whether a publish would ship
+it.
+
+Neither tree is clean and the payload says so rather than smoothing it over.
+Fourteen of the world tree's configs belong to mods with no plugin directory and
+no assembly anywhere under ``plugins/`` - leftovers from removals - which is why
+attribution is reported and never guessed. And one basename holds DIFFERENT
+content in different profiles: ``neuralyze.vrfixes.cfg`` is 31 keys in
+``profiles/vr`` and 30 in ``flat`` and ``admin``, the extra one being
+``LogShieldBlocks``. republish copies ``flat`` first, so first-wins precedence
+would have dropped exactly the key the operator was editing, invisibly. The copy
+describing the most keys wins and the disagreement is listed in ``divergent``.
 
 What the comment block actually looks like
 ------------------------------------------
@@ -417,23 +427,145 @@ def config_files(config_root: Path) -> list[Path]:
     return sorted(found, key=lambda path: str(path.relative_to(config_root)).lower())
 
 
-def fingerprint(config_root: Path) -> str:
+def release_targets(repo_root: Path) -> dict:
+    try:
+        loaded = json.loads(read_text(repo_root / "release-targets.json"))
+    except (OSError, ValueError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def client_trees(world: str, profiles: Path, repo_root: Path) -> list[Path]:
+    """The client config directories a publish of this world would copy, in publish order.
+
+    republish-profiles.sh:161-163 copies ``profiles/<source>/client-config/.`` and then
+    ``client-config-<client_type>/.`` into the payload for each of the world's release
+    targets, so those directories - and only those - are what a player actually receives.
+    Membership here is therefore the honest answer to "does a value written into this file
+    ever reach anyone", which is a different question from "does the file exist".
+
+    Driven by release-targets.json rather than by a hardcoded profile list, because the
+    mapping from a world to its source profiles lives there and a world publishing from a
+    new profile must not need this tool edited. With no targets for the world the answer is
+    an empty list: claiming a file ships when nothing publishes it would be a guess in the
+    direction that silently promises delivery.
+    """
+    targets = release_targets(repo_root)
+    trees: list[Path] = []
+    for client_type, entries in targets.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("world") != world:
+                continue
+            profile = entry.get("source_profile")
+            if not isinstance(profile, str) or not profile:
+                continue
+            for name in ("client-config", f"client-config-{client_type}"):
+                tree = profiles / profile / name
+                if tree.is_dir() and tree not in trees:
+                    trees.append(tree)
+    return trees
+
+
+def tree_configs(tree: Path) -> dict[str, Path]:
+    """The ``.cfg`` files in one client config directory, by the name they land under.
+
+    A client tree is flat and holds no ``plugins/``, so the landing name is the basename.
+    The ``.cfg.before-*`` copies the publish scripts leave beside them are excluded by the
+    suffix test - 21 of them sit beside 18 real configs in profiles/flat/client-config.
+    """
+    if not tree.is_dir():
+        return {}
+    return {path.name: path for path in sorted(tree.glob("*.cfg"))
+            if path.is_file() and not path.is_symlink()}
+
+
+def fingerprint(config_root: Path, trees: list[Path] | None = None) -> str:
     """The staleness check: every config's path, size and mtime, hashed.
 
     Taken over the inputs rather than the parsed output, on the same reasoning as the mod
     catalog's: the portal asks for this on every page view, so it must stay two stats per
     file. Configs are edited on this host by scripts the portal never sees, so pure event
     invalidation would serve a stale schema.
+
+    The client trees are hashed alongside the world tree because they are part of the schema
+    now. A fingerprint over the world tree alone would go on matching after an operator
+    edited a client config by hand - which is exactly what happened to neuralyze.vrfixes.cfg
+    all evening - and the portal would keep serving a schema that no longer describes the
+    file. Each tree is keyed by profile and directory name rather than by basename, so the
+    same config in two profiles cannot collide into one row.
     """
     rows = []
     for path in config_files(config_root):
         stat = path.stat()
         rows.append(f"{path.relative_to(config_root)}\t{stat.st_size}\t{stat.st_mtime_ns}")
+    for tree in trees or []:
+        for name, path in tree_configs(tree).items():
+            stat = path.stat()
+            rows.append(f"{tree.parent.name}/{tree.name}/{name}\t{stat.st_size}\t{stat.st_mtime_ns}")
     return hashlib.sha256("\n".join(rows).encode()).hexdigest()
 
 
-def world_schema(world_root: Path, world: str, profiles: Path) -> dict:
-    """`world-config-schema/v1` for one world.
+def build_sections(sections: list[dict]) -> list[dict]:
+    """The section records for one file, with the verdicts the page renders badges from."""
+    built = []
+    for section in sections:
+        # `immutable` exists at SECTION level only, because that is the only level the
+        # corpus supports: there is no key-level immutable annotation anywhere in it. The
+        # flag is a section literally named Immutable, which is not a BepInEx annotation at
+        # all but a name one mod chose - VHVR's createImmutableSettingWithOverride binds
+        # those keys normally and then overrides them from the command line at startup. So it
+        # means read-once-per-session, not unwritable: the page should render them read-only
+        # and say the value takes effect on restart, rather than implying it cannot be set.
+        # Deliberately NOT copied onto each entry - the consumer folds the section flag in
+        # when it looks an entry up, and a second copy of one fact is a second thing to drift.
+        immutable = section["name"].strip().lower() == IMMUTABLE_SECTION
+        # ServerSync mods annotate per key and write nothing on the section header, so a
+        # section-level verdict has to be derived from its entries. An entry declares nothing
+        # unless it carries one of the two flags, so the verdict is taken over the entries
+        # that SPOKE: a section is synced when all of them said synced and at least one did,
+        # and client_side when all of them said client_side. A section where the two disagree,
+        # or where nobody spoke, gets neither - which keeps the third state intact at section
+        # level too, rather than letting a majority vote invent a declaration no author made.
+        declared = [bool(item.get("synced")) for item in section["entries"]
+                    if item.get("synced") or item.get("client_side")]
+        built.append({
+            "name": section["name"],
+            "synced": bool(declared) and all(declared),
+            "client_side": bool(declared) and not any(declared),
+            "immutable": immutable,
+            "entries": section["entries"],
+        })
+    return built
+
+
+def world_schema(world_root: Path, world: str, profiles: Path,
+                 repo_root: Path = portal_paths.REPO_ROOT) -> dict:
+    """`world-config-schema/v1` for one world: the UNION of both config sources.
+
+    Neither source alone is the set of settings an admin needs to manage.
+
+    The world's own ``config_merged/bepinex`` is where the plugins wrote their metadata out,
+    and it is the only place with enough of it to build a schema from - 107 of its 108
+    top-level files carry ``# Setting type`` comments. But a mod that never RUNS server-side
+    never generated anything there, and the two files the operator spent this evening editing
+    are exactly that case: ``neuralyze.vrfixes.cfg`` is absent from all four worlds' trees,
+    and it is the file C3's own example names. A page that cannot manage it is missing the
+    settings most likely to be used.
+
+    So the client trees are read too, and a file present in both takes its metadata from
+    ``config_merged`` - measured, not assumed: for ``org.bepinex.plugins.valheimvrmod.cfg``
+    the world tree holds 145 keys across 7 sections against the profile overlay's 26 across
+    6, because the overlay is a sparse override file and the world tree is a full dump.
+
+    Two facts travel with every file so no consumer has to infer them. ``source`` is where it
+    was read - ``config_merged``, ``client_profile`` or ``both`` - and ``shipped`` says a
+    publish of this world would actually carry it, which is the difference between a value
+    that reaches a player and one that is merely recorded. Both are emitted unconditionally:
+    with ``omitempty`` a false would be indistinguishable from a cached payload written before
+    the field existed, and the page would state "not in force" about a file it knows nothing
+    about.
 
     ``generated_at`` is omitted on purpose. It would change on every rebuild while the portal
     caches this payload keyed on a fingerprint of the inputs, so a timestamp in the body
@@ -441,61 +573,114 @@ def world_schema(world_root: Path, world: str, profiles: Path) -> dict:
     freshness signal and the state mode returns it.
     """
     config_root = world_root / world / "config_merged" / "bepinex"
+    trees = client_trees(world, profiles, repo_root)
     attribution = Attribution(config_root / "plugins", profiles)
+    # Landing name -> every tree copy of it. NOT first-wins: the same basename holds
+    # DIFFERENT content in different profiles, and picking by publish order silently loses
+    # keys. Measured - neuralyze.vrfixes.cfg is 30 keys in profiles/flat and profiles/admin
+    # and 31 in profiles/vr, the extra one being LogShieldBlocks, which is one of the
+    # settings the operator spent this evening editing. Taking flat because it is copied
+    # first would have dropped exactly the key that matters, invisibly. So every copy is
+    # collected and the richest one describes the file, on the same reasoning that prefers
+    # config_merged over a sparse overlay: the schema's job is to describe what CAN be set.
+    shipped: dict[str, list[Path]] = {}
+    for tree in trees:
+        for name, path in tree_configs(tree).items():
+            shipped.setdefault(name, []).append(path)
+
     files = []
     unattributed = []
     unreadable = []
-    for path in config_files(config_root):
-        relative = str(path.relative_to(config_root))
+
+    def richest(candidates: list[Path]) -> tuple[Path, list[dict], str, str, list[dict]]:
+        """The copy of one landing name that describes the most keys, and what the others held.
+
+        Parsing every candidate rather than stat-comparing them: a copy can be larger in
+        bytes and describe fewer settings, so key count is the only measure of the thing
+        actually wanted. Divergence is reported, not silently resolved - an operator whose
+        VR profile carries a key their flat profile does not needs to know that from the
+        payload rather than from a missing row.
+        """
+        parsed = []
+        for candidate in candidates:
+            try:
+                sections, guid, mod_name = parse_config(read_text(candidate))
+            except OSError as error:
+                unreadable.append({"file": str(candidate), "reason": str(error)})
+                continue
+            parsed.append((candidate, sections, guid, mod_name,
+                           sum(len(section["entries"]) for section in sections)))
+        if not parsed:
+            return candidates[0], [], "", "", []
+        parsed.sort(key=lambda item: (-item[4], str(item[0])))
+        best = parsed[0]
+        # Only a real disagreement is worth reporting. Identical copies in three profiles are
+        # the normal case and would drown the signal.
+        counts = {item[4] for item in parsed}
+        others = ([{"profile": item[0].parent.parent.name, "tree": item[0].parent.name,
+                    "keys": item[4]} for item in parsed] if len(counts) > 1 else [])
+        return best[0], best[1], best[2], best[3], others
+
+    def record(sections: list[dict], guid: str, mod_name: str,
+               relative: str, source: str, is_shipped: bool) -> None:
+        container = Path(relative).parent.name
+        stem = Path(relative).stem
+        identifier, name = attribution.resolve(guid or stem, mod_name, container)
+        if not identifier:
+            unattributed.append({"file": relative, "guid": guid, "mod_name": name})
+        files.append({
+            "file": relative,
+            "mod_identifier": identifier,
+            # Falls back to the file's stem, which IS the plugin's BepInEx GUID for every
+            # file in this corpus that carries a header. An empty mod_name would leave the
+            # page unable to group the file under anything at all - neuralyze.vrfixes.cfg
+            # has no plugin directory, no manifest and no created-by header, and it is one
+            # of the two files this union exists to reach.
+            "mod_name": name or stem,
+            "source": source,
+            "shipped": is_shipped,
+            "sections": build_sections(sections),
+        })
+
+    def read_one(path: Path, relative: str, source: str, is_shipped: bool) -> None:
         try:
             sections, guid, mod_name = parse_config(read_text(path))
         except OSError as error:
             # Named, never skipped. A config that vanishes from the page without a word is
             # indistinguishable from a mod that has no settings.
             unreadable.append({"file": relative, "reason": str(error)})
+            return
+        record(sections, guid, mod_name, relative, source, is_shipped)
+
+    seen = set()
+    divergent = []
+    for path in config_files(config_root):
+        relative = str(path.relative_to(config_root))
+        seen.add(relative)
+        in_both = relative in shipped
+        read_one(path, relative, "both" if in_both else "config_merged", in_both)
+    for name in sorted(shipped, key=str.lower):
+        # Only the files the world tree does not already describe. A client config the server
+        # also generated is NOT parsed twice: the world tree's copy is the fuller one, and a
+        # second record under the same name would give the page two answers for one key.
+        if name in seen:
             continue
-        container = Path(relative).parent.name
-        identifier, name = attribution.resolve(guid or Path(relative).stem, mod_name, container)
-        record = {"file": relative, "mod_identifier": identifier, "mod_name": name, "sections": []}
-        for section in sections:
-            # `immutable` exists at SECTION level only, because that is the only level the
-            # corpus supports: there is no key-level immutable annotation anywhere in it. The
-            # flag is a section literally named Immutable, which is not a BepInEx annotation
-            # at all but a name one mod chose - VHVR's createImmutableSettingWithOverride
-            # binds those keys normally and then overrides them from the command line at
-            # startup. So it means read-once-per-session, not unwritable: the page should
-            # render them read-only and say the value takes effect on restart, rather than
-            # implying it cannot be set. Deliberately NOT copied onto each entry - the
-            # consumer folds the section flag in when it looks an entry up, and a second copy
-            # of one fact is a second thing to drift.
-            immutable = section["name"].strip().lower() == IMMUTABLE_SECTION
-            # ServerSync mods annotate per key and write nothing on the section header, so a
-            # section-level verdict has to be derived from its entries. An entry declares
-            # nothing unless it carries one of the two flags, so the verdict is taken over
-            # the entries that SPOKE: a section is synced when all of them said synced and at
-            # least one did, and client_side when all of them said client_side. A section
-            # where the two disagree, or where nobody spoke, gets neither - which keeps the
-            # third state intact at section level too, rather than letting a majority vote
-            # invent a declaration no mod author made.
-            declared = [bool(item.get("synced")) for item in section["entries"]
-                        if item.get("synced") or item.get("client_side")]
-            record["sections"].append({
-                "name": section["name"],
-                "synced": bool(declared) and all(declared),
-                "client_side": bool(declared) and not any(declared),
-                "immutable": immutable,
-                "entries": section["entries"],
-            })
-        if not identifier:
-            unattributed.append({"file": relative, "guid": guid, "mod_name": name})
-        files.append(record)
+        _, sections, guid, mod_name, others = richest(shipped[name])
+        if others:
+            divergent.append({"file": name, "copies": others})
+        record(sections, guid, mod_name, name, "client_profile", True)
+
     return {
         "schema": SCHEMA,
         "world": world,
-        "source": str(config_root),
+        # Plural, and a list: per-file `source` is a different thing under a similar name, and
+        # an operator needs to see whether a client tree was read at all rather than guess
+        # from a file count why a config is missing.
+        "sources": [str(config_root)] + [str(tree) for tree in trees],
         "files": files,
         "unattributed": unattributed,
         "unreadable": unreadable,
+        "divergent": divergent,
     }
 
 
@@ -523,11 +708,17 @@ def main(argv: list[str] | None = None) -> int:
     config_root = root / args.world / "config_merged" / "bepinex"
     if args.state:
         # The cheap half, called on every page view: stat each file and hash. No parsing.
+        # The client trees are counted and hashed here too, or an operator's hand edit to a
+        # client config would leave the fingerprint matching and the portal would keep
+        # serving a schema that no longer describes the file.
+        trees = client_trees(args.world, profiles, portal_paths.REPO_ROOT)
+        names = {name for tree in trees for name in tree_configs(tree)}
+        names |= {str(path.relative_to(config_root)) for path in config_files(config_root)}
         print(json.dumps({
             "schema": STATE_SCHEMA,
             "world": args.world,
-            "fingerprint": fingerprint(config_root),
-            "files": len(config_files(config_root)),
+            "fingerprint": fingerprint(config_root, trees),
+            "files": len(names),
         }, separators=(",", ":")))
         return 0
     print(json.dumps(world_schema(root, args.world, profiles), separators=(",", ":")))
