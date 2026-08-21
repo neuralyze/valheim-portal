@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A shield-block probe behind [9 - Profiling] LogShieldBlocks, default off. Shields do not block
+  in VR and the cause is in VHVR: its ShieldBlock component is never attached to anything, so
+  ShieldBlock.instance is null for the whole session - 161 AddComponent sites in the installed
+  ValheimVRMod.dll, four attach a Block subclass, none of them ShieldBlock. With Gesture blocking
+  and TwoHandedWithShield false a shield also forces the weapon single-handed, closing the weapon
+  path, and a shield in hand closes the fist path, so Humanoid.IsBlocking() is false for every hit
+  and vanilla BlockAttack never runs. The probe exists because that claim - upstream shipping dead
+  shield-block code - is unusual enough to be worth falsifying before anyone changes a profile.
+
 - An anchor toggle on the left grip while seated at a helm, so dropping anchor no longer means
   opening the hover ring. It pulses the same LeftShift+F chord the ring's Anchor entry uses and
   drives the anchor mod's own reader in the same frame, because BoatAdditions reads that hotkey
