@@ -91,6 +91,7 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<string> AnchorGrip;
         internal static ConfigEntry<string> AnchorKey;
         internal static ConfigEntry<bool> WatchHelm;
+        internal static ConfigEntry<bool> LogShieldBlocks;
 
         private void Awake()
         {
@@ -217,6 +218,41 @@ namespace NeuralyzeVRFixes
                     "to turn - and your head is free to look around. Look: the horse follows where you look, which " +
                     "is what a desktop player gets from the mouse. Speed is the same stick either way.",
                     new AcceptableValueList<string>(new string[] { "Stick", "Look" })));
+
+            // Anchor on a grip while you are steering, so dropping it does not mean letting go of
+            // the helm, turning to find the rudder and opening a ring menu on it. Reported as
+            // "can we add one mapping to grip which drops/raises anchor rather than having to look
+            // and use hover menu?".
+            //
+            // LEFT by default, and the choice is forced rather than preferred. The RIGHT grip is
+            // the hover menu's modifier (Modifier=RightGrip above), and it is also what
+            // VHVR's gestured steering reads. Left grip is claimed by nothing of ours: the only
+            // reader is HoverMenu's modifier when a player has moved the menu to that hand, and
+            // the grip+A dodge chord, which needs A pressed as well. It IS still one of the two
+            // hands VHVR's gestured steering accepts (ShipSteering.cs:49-54 takes either), so a
+            // held left grip also arms VHVR's steer-by-hand-velocity - which reads zero turn for a
+            // hand slower than 0.05 m/s (ShipSteering.cs:118-127), so a still hand tapping the
+            // grip is a no-op there. Set this to Right if you have moved the hover menu to the
+            // left hand, or Off to keep the grips clear.
+            AnchorGrip = Config.Bind("12 - Mounts", "AnchorGrip", "Left",
+                new ConfigDescription(
+                    "Which grip toggles the anchor while you are at a ship's helm: Left, Right or Off. Fires once " +
+                    "per press, never while held, and never when you are not steering a ship - so it cannot go off " +
+                    "on a horse or on foot. Left is the default because the right grip already opens the hover menu.",
+                    new AcceptableValueList<string>(new string[] { "Left", "Right", "Off" })));
+
+            AnchorKey = Config.Bind("12 - Mounts", "AnchorKey", "LeftShift+F",
+                "The anchor hotkey to deliver, in the same form the hover menu's 'Anchor=key:LeftShift+F' entry " +
+                "uses. The anchor is a mod's, not the game's - vanilla Ship has no anchor at all - so this has to " +
+                "match that mod's own binding. BoatAdditions calls it 'Anchor Key' and ships 'F + LeftShift'.");
+
+            WatchHelm = Config.Bind("9 - Diagnostics", "WatchHelm", true,
+                "Records one line, at Message level so it reaches the disk log, whenever something material " +
+                "changes while you are steering a ship - and one line the moment the helm is lost. On by default " +
+                "because \"controlling boat sitting at rudder, it seems to timeout after 10-20 seconds and controls " +
+                "stop being responsive\" has no cause visible in the source of this plugin, VHVR or the game: there " +
+                "is no timer anywhere near that range. This line is what tells the difference between the game " +
+                "dropping the helm, VHVR delivering nothing, and the stick being delivered but overridden.");
 
             // Was declared with a LeftGrip default and then never read - HoverMenu hardcoded the
             // right grip - so the config file has been announcing a hand the plugin does not use.
@@ -360,6 +396,15 @@ namespace NeuralyzeVRFixes
                 "processor time that mod update loops did not account for, which is where 111 mods' patches on game " +
                 "methods live. Off for players; on to find out what owns a frame.");
 
+            LogShieldBlocks = Config.Bind("9 - Profiling", "LogShieldBlocks", false,
+                "Log one line per hit you take, naming whether the game considered you blocking, whether its own " +
+                "BlockAttack ran, the damage taken against what a successful block would have left, and the shield " +
+                "and weapon orientations against the thresholds VHVR tests. Off by default - a player who is not " +
+                "diagnosing blocking does not want a line per hit. Exists because VHVR replaces vanilla blocking " +
+                "outright: its prefix on Humanoid.IsBlocking returns ShieldBlock/WeaponBlock/FistBlock state and " +
+                "discards Character.m_blocking, so 'the shield does not block' has to be read out of VHVR's own " +
+                "components rather than the game's. Logs at Message level so it survives the client's log filter.");
+
             HideFastLinkTitle = Config.Bind("5 - Hover text", "HideFastLinkTitle", true,
                 "Hide the FastLink panel's title. FastLink scales as one piece, so enlarging the server names to " +
                 "read them in VR enlarges a title that was already the largest thing on the panel, and it covers " +
@@ -387,6 +432,7 @@ namespace NeuralyzeVRFixes
             if (ProfilePlugins.Value) Guard("pluginProfiler", delegate { PluginProfiler.Install(harmony); });
             if (ProfileInventory.Value) Guard("inventoryProfiler", delegate { InventoryProfiler.Install(harmony); });
             if (ProfileGameMethods.Value) Guard("gameMethodProfiler", delegate { GameMethodProfiler.Install(harmony); });
+            if (LogShieldBlocks.Value) Guard("shieldDiagnostics", delegate { ShieldDiagnostics.Install(harmony); });
             if (MiscMenuEnabled.Value)
             {
                 Guard("miscMenuLoad", delegate { MiscMenu.Load(MiscMenuActions.Value); });
@@ -494,6 +540,11 @@ namespace NeuralyzeVRFixes
             // Ungated on purpose: a wrong character height is not a diagnostic, it is the game
             // being unplayable while seated, and the watch costs one IsSitting() per frame.
             SitRecenter.Tick();
+            // After HoverMenu.Tick, deliberately: the anchor stands down while the ring is up, and
+            // that decision has to be made against the ring's state for THIS frame, not last one.
+            // Both cost two cached field reads per frame off a helm and nothing else.
+            ShipAnchor.Tick();
+            HelmWatch.Tick();
             if (SuppressKeyHints.Value || LogHoverText.Value) HoverTextSweeper.Tick();
             if (HideMinimap.Value) MinimapHider.Tick();
             if (LogJumpInput.Value) JumpInputWatch.Tick();
@@ -942,6 +993,9 @@ namespace NeuralyzeVRFixes
         private static MethodInfo _emulate;
         private static bool _ready, _failed;
         private static int _logged;
+        // Runtime-failure backoff. See the catch in Tick: this used to latch permanently.
+        private static float _bridgeRetryAt;
+        private static int _bridgeStrikes;
 
         private static bool Prepare()
         {
@@ -984,6 +1038,7 @@ namespace NeuralyzeVRFixes
         internal static void Tick()
         {
             if (!Prepare()) return;
+            if (Time.realtimeSinceStartup < _bridgeRetryAt) return;
             foreach (KeyValuePair<object, string> pair in _pairs)
             {
                 if (!Down(pair.Key)) continue;
@@ -998,8 +1053,22 @@ namespace NeuralyzeVRFixes
                 }
                 catch (Exception e)
                 {
-                    NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "bridge invoke failed: " + e.Message);
-                    _failed = true; return;
+                    // Same reasoning as DirectActionInvoker.Tick: a runtime throw here used to be
+                    // permanent, so one transient exception silenced every bridged button for the rest
+                    // of the session. Back off and retry; give up only if it keeps failing.
+                    _bridgeStrikes++;
+                    _bridgeRetryAt = Time.realtimeSinceStartup + 5f;
+                    if (_bridgeStrikes >= 5)
+                    {
+                        _failed = true;
+                        NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                            + "input bridge DISABLED for this session after " + _bridgeStrikes
+                            + " failures, last: " + e.Message);
+                        return;
+                    }
+                    NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                        + "bridge invoke failed (" + _bridgeStrikes + "/5, retrying in 5s): " + e.Message);
+                    return;
                 }
             }
         }
@@ -1031,6 +1100,9 @@ namespace NeuralyzeVRFixes
         private static FieldInfo _fHovering;
         private static int _logged;
         private static float _nextState;
+        // Runtime-failure backoff, not a latch. See the catch in Tick for why one throw must not be fatal.
+        private static float _retryAt;
+        private static int _strikes;
 
         private static bool Prepare()
         {
@@ -1158,6 +1230,7 @@ namespace NeuralyzeVRFixes
         internal static void Tick()
         {
             if (!Prepare()) return;
+            if (Time.realtimeSinceStartup < _retryAt) return;
             Player p = Player.m_localPlayer;
             if (p == null) return;
             try
@@ -1317,8 +1390,25 @@ namespace NeuralyzeVRFixes
             }
             catch (Exception e)
             {
-                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "direct action failed: " + e.Message);
-                _failed = true;
+                // A SETUP failure latches on purpose - an absent SteamVR or a missing method will not
+                // appear later. A RUNTIME throw is different and must not be permanent: this catch used
+                // to set _failed and Prepare() then returned false forever, so one transient exception
+                // killed jump, use, dodge, inventory, map and A-to-release for the rest of the session
+                // with a single Warning line to show for it. That is indistinguishable from the
+                // operator's report on 2026-08-21 that "controls stop being responsive" while sailing.
+                // Back off and retry instead, and only give up after this keeps happening.
+                _strikes++;
+                _retryAt = Time.realtimeSinceStartup + 5f;
+                if (_strikes >= 5)
+                {
+                    _failed = true;
+                    NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                        + "direct actions DISABLED for this session after " + _strikes
+                        + " failures, last: " + e.Message);
+                    return;
+                }
+                NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                    + "direct action failed (" + _strikes + "/5, retrying in 5s): " + e.Message);
             }
         }
 

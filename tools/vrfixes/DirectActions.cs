@@ -421,15 +421,26 @@ namespace NeuralyzeVRFixes
                 catch { }
             }
 
-            Type player = TypeCache.Get("Player");
-            object local = player == null ? null : AccessTools.Field(player, "m_localPlayer").GetValue(null);
+            // Refs, not a fresh lookup by name. AccessTools.Field is Type.GetField underneath and
+            // caches nothing, and SteeredShip below now runs from LateUpdate every frame the player
+            // is at a helm - which is exactly the shape of the three frame rate regressions this
+            // class's own header records. The m_ship handle is cached against the doodad type
+            // because a helm and a saddle are different types and only one of them has the field.
+            object local = Refs.Local();
             if (local == null) return null;
-            FieldInfo doodadField = AccessTools.Field(player, "m_doodadController");
-            object doodad = doodadField == null ? null : doodadField.GetValue(local);
+            object doodad = Refs.Doodad();
             if (doodad == null) return null;
-            FieldInfo shipField = AccessTools.Field(doodad.GetType(), "m_ship");
-            return shipField == null ? null : shipField.GetValue(doodad);
+            Type doodadType = doodad.GetType();
+            if (doodadType != _shipFieldOwner)
+            {
+                _shipFieldOwner = doodadType;
+                _shipField = AccessTools.Field(doodadType, "m_ship");
+            }
+            return _shipField == null ? null : _shipField.GetValue(doodad);
         }
+
+        private static Type _shipFieldOwner;
+        private static FieldInfo _shipField;
 
         // The ship this player is steering, or null. Same resolution the sail steps already use,
         // exposed because the grip anchor needs the ship object itself and not just "am I at a

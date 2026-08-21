@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An anchor toggle on the left grip while seated at a helm, so dropping anchor no longer means
+  opening the hover ring. It pulses the same LeftShift+F chord the ring's Anchor entry uses and
+  drives the anchor mod's own reader in the same frame, because BoatAdditions reads that hotkey
+  only inside GetHoverText, which the game calls only for what the player is hovering.
+- Diagnostics for losing helm control, behind [9 - Diagnostics] WatchHelm. The reported 10-20
+  second timeout has no timer behind it - there is no clock of any kind on the steering path in
+  the game, VHVR or our plugin - so it logs which of four state transitions actually fires.
+
 - Seven more location categories with their own glyphs: shrine, tower, ruins, monument, port, mine
   and arena, plus tombs moved to dungeon. A church 100 m from a player's raft used to draw the same
   blue diamond as a runestone, and it was one of 322 sacred structures split between two buckets.
@@ -95,6 +103,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operators, which preserves the previous behaviour exactly.
 
 ### Fixed
+
+- Zooming the large map no longer rolls the character. valheim_Dodge sits on right-stick-down,
+  which is also the map's zoom-out, so reading the map dodged. Gated on the game's own
+  Minimap.m_mode == MapMode.Large rather than Minimap.IsOpen(), which keeps answering true for
+  two frames after the map closes and does not say which map.
+- A single runtime exception no longer kills VR input for the session. Both the direct-action
+  invoker and the input bridge latched a failure flag permanently, so one transient throw
+  silenced jump, use, dodge, inventory, map and stand-up until restart, with one Warning line
+  to show for it - indistinguishable from the operator's report that controls stop responding
+  while sailing. Runtime failures now back off five seconds and retry, and only give up after
+  five consecutive failures, saying so at Message level. Setup failures still latch, because an
+  absent SteamVR or a missing method will not appear later.
 
 - Towers and fortresses show on the map by default, and map layer choices survive a reload.
   Splitting one 1202-strong "fortress" bucket into 1455 towers and 75 real strongholds left both
