@@ -792,7 +792,16 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 	}
 	if _, ok := jsonOperations[r.Operation]; ok {
 		raw := strings.TrimSpace(output.String())
-		if len(raw) > 4<<20 || !json.Valid([]byte(raw)) {
+		// 32 MiB, not the 4 MiB this held until 2026-08-21. The world config schema is genuinely
+		// this large: measured 4.5 MiB for Hrafnheim's 119 files and 19,937 keys, and Vangard has
+		// 185 files and 31,289, so the old cap refused the payload outright. Size and malformed
+		// JSON are also reported separately now, because they were one message and an oversize
+		// document read as "invalid data" - which sent the first diagnosis looking for a parser
+		// fault that did not exist.
+		if len(raw) > 32<<20 {
+			return Response{Status: "failed", Error: "operation returned " + strconv.Itoa(len(raw)) + " bytes, over the 32 MiB limit"}
+		}
+		if !json.Valid([]byte(raw)) {
 			return Response{Status: "failed", Error: "operation returned invalid data"}
 		}
 		return Response{Status: "succeeded", Data: json.RawMessage(raw)}

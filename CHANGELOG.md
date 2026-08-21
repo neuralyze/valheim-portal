@@ -168,6 +168,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The agent's JSON payload cap no longer refuses a world's settings schema. It was 4 MiB and
+  the schema is 4.5 MiB for the smallest world - 119 files, 19,937 keys - so the settings page
+  showed its unavailable state on every world. Raised to 32 MiB with the portal's reader to
+  match, and an oversize payload now reports its size instead of sharing one message with
+  malformed JSON, which had sent the first diagnosis hunting a parser fault that did not exist.
+  The schema fetch also logs the agent's status and error rather than only its transport error,
+  which is why the original failure read as `error=<nil>`.
+
 - Zooming the large map no longer rolls the character. valheim_Dodge sits on right-stick-down,
   which is also the map's zoom-out, so reading the map dodged. Gated on the game's own
   Minimap.m_mode == MapMode.Large rather than Minimap.IsOpen(), which keeps answering true for

@@ -235,7 +235,10 @@ func (a *AgentClient) do(ctx context.Context, r agentRequest) (AgentReply, error
 	// into "invalid character 'o' in literal false", because the agent's plain-text "forbidden"
 	// was parsed as the literal false. The operator then saw a JSON complaint about a request the
 	// agent had correctly rejected, with nothing naming the actual reason.
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	// 32 MiB matches the agent's own JSON cap. The world config schema is 4.5 MiB for the
+	// smallest world and grows with the mod set, so an 8 MiB reader here would have become the
+	// next ceiling the moment the agent's was raised on 2026-08-21.
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if readErr != nil {
 		return AgentReply{}, fmt.Errorf("agent reply unreadable: %w", readErr)
 	}

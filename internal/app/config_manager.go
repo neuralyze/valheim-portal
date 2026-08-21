@@ -1212,7 +1212,11 @@ func (s *Server) worldConfigSchemaFingerprint(ctx context.Context, world string)
 func (s *Server) rebuildWorldConfigSchema(ctx context.Context, world, fingerprint string, checked bool) (ConfigSchema, bool) {
 	reply, err := s.agent.Run(ctx, randomID(), world, "world_config_schema")
 	if err != nil || reply.Status != "succeeded" || len(reply.Data) == 0 {
-		slog.Error("cannot extract the world config schema", "world", world, "error", err)
+		// All three conditions are reported, not just err. This logged `error=<nil>` on
+		// 2026-08-21 while the real cause was the agent refusing a 4.5 MiB payload against a
+		// 4 MiB cap, and a failure that says nothing sends the diagnosis to the wrong layer.
+		slog.Error("cannot extract the world config schema", "world", world, "error", err,
+			"status", reply.Status, "agent_error", reply.Error, "bytes", len(reply.Data))
 		return ConfigSchema{}, false
 	}
 	schema, ok := decodeConfigSchema(reply.Data, world)
