@@ -330,6 +330,36 @@ INSERT INTO schema_migrations(version, applied_at) VALUES (18, CURRENT_TIMESTAMP
 			return err
 		}
 	}
+
+	// The player-visible mod list, cached per world, and the operator's note per mod.
+	//
+	// Two tables rather than one because they have different lifetimes. The catalog is derived and
+	// disposable: it is thrown away whenever the installed set moves and built again from the host.
+	// A note is written by hand and must survive every one of those rebuilds, so it is keyed by
+	// identifier alone - the same mod on four worlds is one mod, and it is not versioned, so a
+	// version bump does not silently drop what somebody wrote.
+	var modCatalogSchema int
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=21)`).Scan(&modCatalogSchema); err != nil {
+		return err
+	}
+	if modCatalogSchema == 0 {
+		if _, err := s.db.ExecContext(ctx, `
+CREATE TABLE world_mod_catalogs (
+ world TEXT PRIMARY KEY,
+ fingerprint TEXT NOT NULL,
+ payload BLOB NOT NULL,
+ built_at TEXT NOT NULL
+);
+CREATE TABLE mod_player_notes (
+ identifier TEXT PRIMARY KEY,
+ note TEXT NOT NULL,
+ actor TEXT NOT NULL DEFAULT '',
+ set_at TEXT NOT NULL
+);
+INSERT INTO schema_migrations(version, applied_at) VALUES (21, CURRENT_TIMESTAMP);`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1773,4 +1803,96 @@ INSERT INTO builder_labels(world, creator, label, actor, set_at) VALUES(?,?,?,?,
 ON CONFLICT(world, creator) DO UPDATE SET label=excluded.label, actor=excluded.actor, set_at=excluded.set_at`,
 		world, creator, label, actor, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
+}
+
+// SaveWorldModCatalog replaces one world's cached player-visible mod list.
+//
+// The payload is stored as the host produced it rather than as re-encoded Go structs: the host owns
+// the derivation, and a round trip through a Go type would silently drop any field the portal does
+// not read yet. One row per world, because a stale generation of this list has no value - unlike an
+// analysis snapshot, which is history.
+func (s *Store) SaveWorldModCatalog(ctx context.Context, world, fingerprint string, payload []byte) error {
+	if !validWorld(world) || len(fingerprint) != 64 {
+		return errors.New("invalid mod catalog")
+	}
+	if len(payload) == 0 || len(payload) > 4<<20 || !json.Valid(payload) {
+		return errors.New("mod catalog payload is invalid or too large")
+	}
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO world_mod_catalogs(world, fingerprint, payload, built_at) VALUES(?,?,?,?)
+ON CONFLICT(world) DO UPDATE SET fingerprint=excluded.fingerprint, payload=excluded.payload, built_at=excluded.built_at`,
+		world, fingerprint, payload, time.Now().UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+// WorldModCatalog returns the cached list and the fingerprint it was built from. A world with no
+// cached list yields an empty fingerprint and no error: not having built one yet is an ordinary
+// state, not a failure.
+func (s *Store) WorldModCatalog(ctx context.Context, world string) (string, []byte, error) {
+	if !validWorld(world) {
+		return "", nil, errors.New("invalid world")
+	}
+	var fingerprint string
+	var payload []byte
+	err := s.db.QueryRowContext(ctx, `SELECT fingerprint, payload FROM world_mod_catalogs WHERE world=?`, world).Scan(&fingerprint, &payload)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil, nil
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	return fingerprint, payload, nil
+}
+
+// DiscardModCatalogs drops every cached list. Called after a successful mod mutation through the
+// portal: an edit to the admin profile alone cannot change what a player sees, but proving that
+// here would mean restating which profiles are the player editions in a second language, and one
+// wasted rebuild is cheaper than two definitions that can disagree.
+func (s *Store) DiscardModCatalogs(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM world_mod_catalogs`)
+	return err
+}
+
+// ModPlayerNotes maps mod identifiers to the note an operator wrote about each one.
+func (s *Store) ModPlayerNotes(ctx context.Context) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT identifier, note FROM mod_player_notes`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	notes := map[string]string{}
+	for rows.Next() {
+		var identifier, note string
+		if err := rows.Scan(&identifier, &note); err != nil {
+			return nil, err
+		}
+		notes[identifier] = note
+	}
+	return notes, rows.Err()
+}
+
+// SetModPlayerNote records what an operator wants players told about one mod, or clears it when the
+// text is empty. Nothing generates this text: a description of how a player uses a mod that nobody
+// wrote is a fabrication, so the absence of a note is a state the page renders, never a gap to fill.
+func (s *Store) SetModPlayerNote(ctx context.Context, identifier, note, actor string) error {
+	if identifier == "" || len(identifier) > 240 || strings.ContainsAny(identifier, "\r\n\x00") {
+		return errors.New("invalid mod identifier")
+	}
+	note = strings.TrimSpace(note)
+	if len(note) > 400 || strings.ContainsAny(note, "\r\n\x00") {
+		return errors.New("a player note must be one line of at most 400 characters")
+	}
+	if note == "" {
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM mod_player_notes WHERE identifier=?`, identifier); err != nil {
+			return err
+		}
+		return s.Audit(ctx, actor, "mod.note.clear", identifier, "")
+	}
+	if _, err := s.db.ExecContext(ctx, `
+INSERT INTO mod_player_notes(identifier, note, actor, set_at) VALUES(?,?,?,?)
+ON CONFLICT(identifier) DO UPDATE SET note=excluded.note, actor=excluded.actor, set_at=excluded.set_at`,
+		identifier, note, actor, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return err
+	}
+	return s.Audit(ctx, actor, "mod.note.set", identifier, note)
 }

@@ -121,11 +121,16 @@ var operations = map[string]string{
 	"world_log": "portal_world_log.sh",
 	// Whether a log exists and how large it is, reading none of it.
 	"world_log_info": "portal_world_log.sh",
-	"world_catalog":  "@internal",
-	"world_analysis": "@internal",
-	"world_map":      "export_valheim_map_sources.sh",
-	"provision":      "provision_valheim_server.sh",
-	"health":         "wait_valheim_server_ready.sh",
+	// The player-visible mod list of one world, and the cheap fingerprint that says whether a
+	// cached one is still current. Same script, because the fingerprint is the first thing the
+	// full build computes and the two must never be able to disagree about what it covers.
+	"world_mod_catalog":       "portal_world_mod_catalog.sh",
+	"world_mod_catalog_state": "portal_world_mod_catalog.sh",
+	"world_catalog":           "@internal",
+	"world_analysis":          "@internal",
+	"world_map":               "export_valheim_map_sources.sh",
+	"provision":               "provision_valheim_server.sh",
+	"health":                  "wait_valheim_server_ready.sh",
 	// world_create regenerates a world on a chosen seed. It carries a seed but is
 	// not provisioning: the world directory already exists and only its save pair
 	// is replaced.
@@ -134,6 +139,13 @@ var operations = map[string]string{
 	// them to the host, access_state reads back what is actually in place.
 	"access_apply": "portal_access_lists.sh",
 	"access_state": "@internal",
+}
+
+// Operations whose script prints JSON for the portal to parse, rather than output for an operator
+// to read. Their reply carries Data and no Output; anything not listed here is treated as text.
+var jsonOperations = map[string]struct{}{
+	"mod_inventory": {}, "mod_search": {}, "mod_custom_list": {}, "profile_catalog": {},
+	"world_metadata": {}, "world_mod_catalog": {}, "world_mod_catalog_state": {},
 }
 
 // Canonical is the signed payload. A field absent from this list travels unauthenticated, so
@@ -724,6 +736,8 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 			args = append(args, fmt.Sprint(r.Lines), r.Query)
 		case operation == "world_log_info":
 			args = append(args, "info")
+		case operation == "world_mod_catalog_state":
+			args = append(args, "state")
 		case operation == "publish_profile":
 			// The world is already args[0]; the script resolves the single catalog target and
 			// carries the previous release's artifacts forward, so no paths come from here.
@@ -767,7 +781,7 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 			ready = true
 		}
 	}
-	if r.Operation == "mod_inventory" || r.Operation == "mod_search" || r.Operation == "mod_custom_list" || r.Operation == "profile_catalog" || r.Operation == "world_metadata" {
+	if _, ok := jsonOperations[r.Operation]; ok {
 		raw := strings.TrimSpace(output.String())
 		if len(raw) > 4<<20 || !json.Valid([]byte(raw)) {
 			return Response{Status: "failed", Error: "operation returned invalid data"}

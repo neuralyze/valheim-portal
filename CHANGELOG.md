@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The mods a player actually gets, listed at the bottom of each world page with a description and
+  the operator's own note where one exists. The set is derived, not curated by hand: the union of
+  the `vr` and `flat` profiles, so anything only the `admin` profile carries is gone by set
+  difference and a new admin tool needs no code change. Measured on Hrafnheim, 108 installed
+  packages become 93 entries - 5 removed as Thunderstore-categorised libraries and 10 named in
+  `PLAYER_IRRELEVANT`, each with its reason. The library rule is a conjunction, not a tag test:
+  Backpacks and CreatureLevelAndLootControl are categorised `Libraries` because their authors also
+  publish an API, and dropping on the tag alone deleted two of the most visible mods on the server.
+  Four admin tools are named explicitly because they ship to both player editions and the set
+  difference cannot reach them.
+- A player note per mod, written on the admin mods page and shown on the world page when it exists.
+  Nothing generates this text and no entry acquires one it was not given: an instruction for using
+  a mod that no person wrote is a fabrication, and the guide audit found twenty of those.
+- The list is cached per world and stays static until the mods change. A portal mutation drops the
+  cache, but that alone is not enough: mods are also changed by `tools/valheim_mods.py` on the host,
+  where the portal sees nothing, and Hrafnheim's deployed plugin tree was already out of step with
+  its profile manifests by four packages. So a read also checks a cheap fingerprint - the sorted
+  `identifier@version` set of the player editions, no network - and rebuilds when it moved.
+
 - A shield-block probe behind [9 - Profiling] LogShieldBlocks, default off. Shields do not block
   in VR and the cause is in VHVR: its ShieldBlock component is never attached to anything, so
   ShieldBlock.instance is null for the whole session - 161 AddComponent sites in the installed

@@ -594,3 +594,199 @@ class RemovalRecordSurvivesFailureTest(RemoveTest):
         record = json.loads((backups[0] / "removal.json").read_text())
         self.assertEqual(record["state"], "completed")
         self.assertIn("removed_at", record)
+
+
+class PlayerCatalogTest(unittest.TestCase):
+    """The player-visible mod list: who is on it, who is not, and why.
+
+    Every fixture identifier below is real and installed on this fleet, because the rules being
+    tested are judgements about specific packages and a synthetic name proves nothing about them.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.fleet = Path(self.temp.name)
+        self.world = self.fleet / "Hrafnheim"
+        (self.world / "config_merged/bepinex/plugins").mkdir(parents=True)
+        self.store = self.fleet / "profiles"
+        self.registry = {}
+        original = valheim_mods.index
+        valheim_mods.index = lambda: self.registry
+        self.addCleanup(setattr, valheim_mods, "index", original)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def profile(self, name, packages, client_only=()):
+        path = self.store / name
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "profile-manifest.json").write_text(json.dumps({
+            "profile_name": name,
+            "schema_version": 3,
+            "packages": [{"identifier": i, "version": v, "scope": "shared"} for i, v in packages],
+            # Real manifests carry entries with no scope key at all, so one fixture entry omits it.
+            "client_only_packages": [{"identifier": i, "version": v} for i, v in client_only],
+            "disabled_packages": [],
+            "custom_packages": [],
+            # Mixed objects and bare strings, exactly as a live manifest carries them.
+            "excluded_packages": [{"identifier": "Some-Thing", "version": "1.0.0", "reason": "x"}, "Other-Thing"],
+        }) + "\n")
+
+    def package(self, identifier, categories, description="a description", version="1.0.0"):
+        name = valheim_mods.package_install_name(identifier)
+        self.registry[identifier] = {
+            "full_name": identifier, "name": name, "owner": identifier.partition("-")[0],
+            "categories": list(categories), "package_url": f"https://thunderstore.io/p/{name}/",
+            "versions": [{"version_number": version, "description": description, "downloads": 1}],
+        }
+
+    def plugin_manifest(self, plugin_name, body, bom=False):
+        directory = self.world / "config_merged/bepinex/plugins" / plugin_name
+        directory.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(body).encode()
+        (directory / "manifest.json").write_bytes(b"\xef\xbb\xbf" + payload if bom else payload)
+
+    def catalog(self):
+        return valheim_mods.player_catalog(self.world, self.store)
+
+    def listed(self):
+        return [mod["identifier"] for mod in self.catalog()["mods"]]
+
+    def test_a_package_only_the_admin_edition_installs_never_appears(self):
+        # Not because it is named anywhere: the union of the player editions simply does not
+        # contain it. Tristan-ValheimRcon is one of the 6 that are the admin profile's alone.
+        self.profile("vr", [("Advize-PlantEasily", "2.1.1")])
+        self.profile("flat", [("Advize-PlantEasily", "2.1.1")])
+        self.profile("admin", [("Advize-PlantEasily", "2.1.1"), ("Tristan-ValheimRcon", "1.4.0")])
+        self.package("Advize-PlantEasily", ["Mods"])
+        self.package("Tristan-ValheimRcon", ["Server-side"])
+
+        self.assertEqual(self.listed(), ["Advize-PlantEasily"])
+
+    def test_an_admin_tool_in_both_player_editions_is_excluded_by_name_with_a_reason(self):
+        # The set difference is necessary but not sufficient: these four ship to both player
+        # editions, so nothing structural is left to filter them on and each carries its reason.
+        admin_tools = [
+            "JereKuusela-Server_devcommands", "JereKuusela-World_Edit_Commands",
+            "JereKuusela-Infinity_Hammer", "Neobotics-RuinsMaker",
+        ]
+        installed = [(identifier, "1.0.0") for identifier in admin_tools]
+        self.profile("vr", [("Advize-PlantEasily", "2.1.1")], client_only=installed)
+        self.profile("flat", [("Advize-PlantEasily", "2.1.1")], client_only=installed)
+        self.package("Advize-PlantEasily", ["Mods"])
+        for identifier in admin_tools:
+            self.package(identifier, ["Tools"])
+
+        self.assertEqual(self.listed(), ["Advize-PlantEasily"])
+        for identifier in admin_tools:
+            self.assertIn(identifier, valheim_mods.PLAYER_IRRELEVANT)
+            self.assertTrue(valheim_mods.PLAYER_IRRELEVANT[identifier].strip(),
+                            f"{identifier} is excluded with no reason recorded")
+
+    def test_a_library_never_appears_but_a_mod_that_also_exposes_an_api_does(self):
+        # The bare "categories contains Libraries" rule deleted Backpacks and
+        # CreatureLevelAndLootControl, two of the most visible mods on the server, because their
+        # authors also publish an API. The conjunction with a content category is what saves them.
+        self.profile("vr", [
+            ("ValheimModding-Jotunn", "2.24.3"),
+            ("Smoothbrain-Backpacks", "1.3.9"),
+            ("Smoothbrain-CreatureLevelAndLootControl", "13.2.2"),
+        ])
+        self.profile("flat", [("ValheimModding-Jotunn", "2.24.3")])
+        self.package("ValheimModding-Jotunn", ["Libraries"])
+        self.package("Smoothbrain-Backpacks", ["Gear", "Libraries"])
+        self.package("Smoothbrain-CreatureLevelAndLootControl", ["Enemies", "Libraries"])
+
+        self.assertEqual(sorted(self.listed()),
+                         ["Smoothbrain-Backpacks", "Smoothbrain-CreatureLevelAndLootControl"])
+
+    def test_the_library_tag_is_not_shown_to_a_player_on_a_mod_that_is_kept(self):
+        self.profile("vr", [("Smoothbrain-Backpacks", "1.3.9")])
+        self.profile("flat", [("Smoothbrain-Backpacks", "1.3.9")])
+        self.package("Smoothbrain-Backpacks", ["Gear", "Libraries"])
+
+        self.assertEqual(self.catalog()["mods"][0]["categories"], ["Gear"])
+
+    def test_a_mod_whose_manifest_carries_a_utf8_bom_still_appears(self):
+        # 26 of the 100 manifests shipped under this world begin EF BB BF, and strict utf-8 json
+        # fails all 26 with "Unexpected UTF-8 BOM". On 2026-08-20 that made an installed mod read
+        # as absent. blacks7ar-CoreWoodPieces is one of the 26.
+        self.profile("vr", [("blacks7ar-CoreWoodPieces", "1.1.2")])
+        self.profile("flat", [("blacks7ar-CoreWoodPieces", "1.1.2")])
+        self.plugin_manifest("CoreWoodPieces", {
+            "name": "CoreWoodPieces", "version_number": "1.1.2",
+            "description": "Adds core wood building pieces.",
+        }, bom=True)
+
+        catalog = self.catalog()
+        self.assertEqual([mod["identifier"] for mod in catalog["mods"]], ["blacks7ar-CoreWoodPieces"])
+        entry = catalog["mods"][0]
+        self.assertEqual(entry["description"], "Adds core wood building pieces.")
+        self.assertEqual(entry["source"], "plugin-manifest")
+
+    def test_an_unreadable_manifest_leaves_the_mod_listed_with_unknown_metadata(self):
+        # A parse failure must degrade to "we do not know", never to "it is not installed".
+        self.profile("vr", [("blacks7ar-CoreWoodPieces", "1.1.2")])
+        self.profile("flat", [("blacks7ar-CoreWoodPieces", "1.1.2")])
+        directory = self.world / "config_merged/bepinex/plugins/CoreWoodPieces"
+        directory.mkdir(parents=True)
+        (directory / "manifest.json").write_bytes(b"{ this is not json")
+
+        entry = self.catalog()["mods"][0]
+        self.assertEqual(entry["identifier"], "blacks7ar-CoreWoodPieces")
+        self.assertEqual(entry["name"], "blacks7ar-CoreWoodPieces")
+        self.assertEqual(entry["description"], "")
+        self.assertEqual(entry["source"], "unknown")
+
+    def test_a_thunderstore_outage_lists_every_mod_and_says_the_metadata_is_incomplete(self):
+        self.profile("vr", [("blacks7ar-CoreWoodPieces", "1.1.2")])
+        self.profile("flat", [("blacks7ar-CoreWoodPieces", "1.1.2")])
+        self.plugin_manifest("CoreWoodPieces", {"name": "CoreWoodPieces", "description": "Core wood pieces."})
+        valheim_mods.index = lambda: (_ for _ in ()).throw(valheim_mods.requests.RequestException("no network"))
+
+        catalog = self.catalog()
+        self.assertFalse(catalog["metadata_complete"])
+        self.assertEqual([mod["identifier"] for mod in catalog["mods"]], ["blacks7ar-CoreWoodPieces"])
+
+    def test_the_description_comes_from_the_installed_version_not_the_newest(self):
+        self.profile("vr", [("Advize-PlantEasily", "2.1.1")])
+        self.profile("flat", [("Advize-PlantEasily", "2.1.1")])
+        self.package("Advize-PlantEasily", ["Mods"], description="the installed one", version="2.1.1")
+        self.registry["Advize-PlantEasily"]["versions"].insert(
+            0, {"version_number": "2.2.0", "description": "a release nobody here runs", "downloads": 1})
+
+        self.assertEqual(self.catalog()["mods"][0]["description"], "the installed one")
+
+    def test_the_fingerprint_moves_when_the_installed_set_moves(self):
+        # This is the staleness check the portal reads on every page view, so it has to react to a
+        # version bump and to an addition, and stay put when nothing changed.
+        self.profile("vr", [("Advize-PlantEasily", "2.1.1")])
+        self.profile("flat", [("Advize-PlantEasily", "2.1.1")])
+        before = valheim_mods.catalog_fingerprint(valheim_mods.player_package_versions(self.store))
+        self.assertEqual(before, valheim_mods.catalog_fingerprint(valheim_mods.player_package_versions(self.store)))
+
+        self.profile("vr", [("Advize-PlantEasily", "2.1.2")])
+        bumped = valheim_mods.catalog_fingerprint(valheim_mods.player_package_versions(self.store))
+        self.assertNotEqual(before, bumped)
+
+        self.profile("vr", [("Advize-PlantEasily", "2.1.2"), ("Azumatt-FastLink", "1.0.4")])
+        self.assertNotEqual(bumped, valheim_mods.catalog_fingerprint(valheim_mods.player_package_versions(self.store)))
+
+    def test_the_fingerprint_ignores_a_change_to_the_admin_edition_alone(self):
+        # An admin tool added to the admin profile cannot change what a player sees, so it must not
+        # force a rebuild either.
+        self.profile("vr", [("Advize-PlantEasily", "2.1.1")])
+        self.profile("flat", [("Advize-PlantEasily", "2.1.1")])
+        self.profile("admin", [("Advize-PlantEasily", "2.1.1")])
+        before = valheim_mods.catalog_fingerprint(valheim_mods.player_package_versions(self.store))
+
+        self.profile("admin", [("Advize-PlantEasily", "2.1.1"), ("sighsorry-AdminQoL", "1.0.0")])
+        self.assertEqual(before, valheim_mods.catalog_fingerprint(valheim_mods.player_package_versions(self.store)))
+
+    def test_a_profile_manifest_with_a_utf8_bom_is_still_read(self):
+        self.profile("vr", [("Advize-PlantEasily", "2.1.1")])
+        self.profile("flat", [("Advize-PlantEasily", "2.1.1")])
+        manifest = self.store / "vr/profile-manifest.json"
+        manifest.write_bytes(b"\xef\xbb\xbf" + manifest.read_bytes())
+
+        self.assertEqual(list(valheim_mods.player_package_versions(self.store)), ["Advize-PlantEasily"])

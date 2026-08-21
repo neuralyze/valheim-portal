@@ -18,6 +18,71 @@ else:
 TOOLS_ROOT = portal_paths.TOOLS_ROOT
 API = 'https://thunderstore.io/c/valheim/api/v1/package/'
 
+# ---------------------------------------------------------------------------------------------
+# The player-visible mod list
+# ---------------------------------------------------------------------------------------------
+# The two profiles a player installs. Everything outside this pair - today the `admin` profile,
+# tomorrow whatever else an operator creates - is off the player list without anything naming it,
+# and that is the whole point: a list of admin tool NAMES rots the moment a new tool is added,
+# while a set difference cannot. Measured on this fleet 2026-08-21: union(vr, flat) is 108
+# identifiers, admin is 111, and the 6 that are admin's alone (Azumatt-PerfectPlacement,
+# JereKuusela-Structure_Tweaks, JereKuusela-Upgrade_World, Tristan-ValheimRcon,
+# sighsorry-AdminQoL, sighsorry-LoadTimeProfiler) fall out with no rule mentioning them.
+#
+# `vr` and `flat` are also the only two client types the portal accepts anywhere
+# (internal/agent/agent.go refuses any other), so this is a closed pair, not a growing list.
+PLAYER_EDITIONS = ('vr', 'flat')
+
+# Thunderstore's own category for code that exists for other mods to call.
+LIBRARY_CATEGORY = 'Libraries'
+
+# Categories that mean a player can see or touch the thing. A package tagged Libraries AND one of
+# these is a mod whose author also exposes an API, not a library: dropping on the Libraries tag
+# alone removed Smoothbrain-Backpacks (Gear, Libraries) and Smoothbrain-CreatureLevelAndLootControl
+# (Enemies, Libraries), two of the most visible mods on the server. Checked against all 7
+# Libraries-tagged packages in the player union: the other five carry no content category at all.
+CONTENT_CATEGORIES = frozenset({
+    'Gear', 'Building', 'Enemies', 'Crafting', 'Vehicles', 'Transportation', 'Skins',
+    'World Generation',
+})
+
+# Installed in a player edition, and still nothing a player can see or use. Every entry carries
+# the reason it is here, because "meaningless to players" is a judgement and an unexplained
+# identifier here is indistinguishable from a mistake.
+#
+# Libraries do NOT belong in this dict: the category rule above already removes them.
+#
+# The set difference is necessary but NOT sufficient, which was measured and not assumed: only 6
+# packages are the admin profile's alone, while four admin tools ship to BOTH player editions as
+# client_only_packages and so survive the union. They are named here because there is no structural
+# fact left to filter them on - what makes them admin tools is that the server's adminlist.txt
+# gates every command they expose, so to a player who is not on that list they are capabilities
+# that do nothing.
+PLAYER_IRRELEVANT = {
+    # The loader and the plumbing.
+    'denikson-BepInExPack_Valheim': 'The BepInEx loader itself; ships the mod entry point and no gameplay content.',
+    'mvp-Serverside_Simulations': 'Moves world and monster simulation onto the dedicated server; no client-side surface.',
+    # Compatibility shims. Each one exists to make a mod that IS on the list work; the feature a
+    # player sees belongs to that mod, and listing the shim beside it describes the same thing twice.
+    'DragonMotion-VHModpackFix': 'Compatibility shim that patches other listed mods; adds no feature of its own.',
+    'geekstreet-BackpacksVRFix': 'Compatibility patch so Backpacks works under VR; the feature it fixes is Backpacks, already listed.',
+    'geekstreet-EpicLootVRFix': 'Compatibility patch so EpicLoot works under VR; the feature it fixes is EpicLoot, already listed.',
+    'geekstreet-CLLCVRFix': 'Compatibility patch so CreatureLevelAndLootControl works under VR; the feature it fixes is CLLC, already listed.',
+    # Admin tools that the union keeps, because they are installed in both player editions. The
+    # operator's own classification: he restored these to his player edition because he plays as an
+    # admin, and grouped RuinsMaker with the other three - a survey of the packages alone read
+    # RuinsMaker as player-facing, and the operator's grouping overrides that reading.
+    'JereKuusela-Server_devcommands': 'Console commands gated by the server adminlist; a player who is not an admin cannot run any of them.',
+    'JereKuusela-World_Edit_Commands': 'World editing through admin console commands; gated by the same adminlist.',
+    'JereKuusela-Infinity_Hammer': 'Unrestricted building and spawning through the admin console; gated by the same adminlist.',
+    'Neobotics-RuinsMaker': 'Terrain and ruin generation for building the world, not for playing in it; grouped with the admin tools by the operator.',
+    # CookieMilk-YouAreBeingWatched is deliberately NOT here. It can spectate a player and inspect
+    # their inventory, and hiding a surveillance capability from the people subject to it is a worse
+    # failure than a confusing list entry. Uncommenting the line below is the whole change if that
+    # judgement is ever reversed.
+    # 'CookieMilk-YouAreBeingWatched': '<reason required before this is switched on>',
+}
+
 def load(path): return json.loads(path.read_text(encoding='utf-8-sig'))
 def save(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -519,6 +584,151 @@ def cmd_list(root, m, args):
     for p in custom_packages(m):
         state = p.get('scope', 'client-only') if p.get('enabled', True) else 'disabled'
         print(f"{state:11} custom:{p['id']}")
+
+def player_package_versions(store):
+    """Every identifier the player editions install, mapped to the versions they install.
+
+    The union is taken over `packages` and `client_only_packages` of each edition. Which array an
+    entry sits in says nothing here, and `scope` is not read at all: a real manifest carries
+    entries with no `scope` key (Azumatt-FastLink in client_only_packages of all three profiles
+    today), and admin's `packages` array carries scope "client-only" entries. Only the identifier
+    and the version are needed, and those two keys are always present.
+
+    A package both editions install at the same version yields one version; if the editions ever
+    disagree, both are kept, so the fingerprint moves when either one moves.
+    """
+    versions = {}
+    for edition in PLAYER_EDITIONS:
+        manifest = profile_store.manifest_path(edition, store)
+        if not manifest.is_file():
+            continue
+        for item in all_packages(load(manifest)):
+            identifier = package_identifier(item)
+            if not identifier or not isinstance(item, dict):
+                continue
+            versions.setdefault(identifier, set()).add(item.get('version', ''))
+    return versions
+
+
+def catalog_fingerprint(versions):
+    """The sorted identifier@version set of the player editions, hashed.
+
+    This is the staleness check, and it is deliberately taken over the INPUT to the derivation
+    rather than its output: the output needs Thunderstore's categories, which is the expensive
+    part being avoided. Anything that can change the list changes this.
+    """
+    rows = sorted(f'{identifier}@{version}' for identifier, entries in versions.items() for version in entries)
+    return hashlib.sha256('\n'.join(rows).encode()).hexdigest()
+
+
+def is_library(categories):
+    return LIBRARY_CATEGORY in categories and not (CONTENT_CATEGORIES & set(categories))
+
+
+def local_plugin_metadata(world_root, identifier):
+    """What the installed plugin says about itself, when Thunderstore cannot be reached.
+
+    Read with utf-8-sig: 26 of the 100 manifests shipped under this world carry a UTF-8 BOM, and
+    strict utf-8 json fails all 26 with "Unexpected UTF-8 BOM". On 2026-08-20 that made a mod
+    that was installed read as absent, so a manifest that cannot be read returns nothing at all
+    and the caller lists the mod with unknown metadata. It never drops it.
+    """
+    try:
+        manifest = world_root / 'config_merged' / 'bepinex' / 'plugins' / package_install_name(identifier) / 'manifest.json'
+        if not manifest.is_file():
+            return None
+        local = load(manifest)
+    except (OSError, ValueError, RuntimeError):
+        return None
+    if not isinstance(local, dict):
+        return None
+    return {
+        'name': local.get('name') or '',
+        'description': local.get('description') or '',
+        'url': local.get('website_url') or '',
+        'source': 'plugin-manifest',
+    }
+
+
+def player_catalog(world_root, store):
+    """The mods a player of this world has, with what to say about each one.
+
+    Three subtractions, in order: everything outside the player editions is gone by set
+    difference, then Thunderstore's Libraries category, then PLAYER_IRRELEVANT.
+
+    Metadata comes from Thunderstore, which carries all 108 identifiers in the player union with a
+    non-empty description for every one. The installed plugin's own manifest is therefore an
+    UNAVAILABILITY path, not a coverage path: it is read when Thunderstore could not be reached at
+    rebuild time. `metadata_complete` says which happened, so a page can be honest rather than
+    showing a name with no description and implying the mod has none.
+    """
+    versions = player_package_versions(store)
+    fingerprint = catalog_fingerprint(versions)
+    try:
+        registry = index()
+        metadata_complete = True
+    except (requests.RequestException, ValueError):
+        registry = {}
+        metadata_complete = False
+    mods = []
+    for identifier in sorted(versions, key=str.lower):
+        if identifier in PLAYER_IRRELEVANT:
+            continue
+        installed = sorted(entry for entry in versions[identifier] if entry)
+        version_text = ' / '.join(installed)
+        package = registry.get(identifier)
+        if package:
+            categories = package.get('categories', [])
+            if is_library(categories):
+                continue
+            # The description belongs to a version, not to the package, so it is read from the
+            # version actually installed. versions[0] is the fallback rather than latest(): a
+            # description for a release nobody here runs is the wrong description.
+            current = (installed and version(package, installed[0])) or package['versions'][0]
+            mods.append({
+                'identifier': identifier,
+                'name': package.get('name') or identifier,
+                'version': version_text,
+                'description': current.get('description', '')[:1200],
+                'categories': [category for category in categories if category != LIBRARY_CATEGORY],
+                'url': package.get('package_url', ''),
+                'source': 'thunderstore',
+            })
+            continue
+        # No Thunderstore record. A library cannot be recognised without categories, so a mod that
+        # only the local manifest describes is listed: over-listing is recoverable, and silently
+        # dropping an installed mod because a network call failed is what must not happen.
+        local = local_plugin_metadata(world_root, identifier) or {'name': '', 'description': '', 'url': '', 'source': 'unknown'}
+        mods.append({
+            'identifier': identifier,
+            'name': local['name'] or identifier,
+            'version': version_text,
+            'description': local['description'],
+            'categories': [],
+            'url': local['url'],
+            'source': local['source'],
+        })
+    return {
+        'world': world_root.name,
+        'fingerprint': fingerprint,
+        'metadata_complete': metadata_complete,
+        'editions': list(PLAYER_EDITIONS),
+        'installed': sum(len(entries) for entries in versions.values()),
+        'mods': mods,
+    }
+
+
+def cmd_player_catalog(_root, _manifest, args):
+    store = profile_store.profiles_root(portal_paths.world_root())
+    if args.state:
+        # The cheap half: two manifest reads and a hash, no network. The portal calls this on
+        # every world page view, because mods also change through this script on the host, where
+        # the portal never sees the mutation and pure event invalidation would serve a stale list.
+        print(json.dumps({'fingerprint': catalog_fingerprint(player_package_versions(store))}, separators=(',', ':')))
+        return 0
+    print(json.dumps(player_catalog(args.world_dir, store), separators=(',', ':')))
+    return 0
+
 def cmd_check(root, m, _):
     reg=index(); updates=[]
     for item in all_packages(m):
@@ -1077,7 +1287,7 @@ COMMANDS={
     'custom-add':cmd_custom_add, 'custom-remove':cmd_custom_remove, 'custom-disable':cmd_custom_disable,
     'custom-enable':cmd_custom_enable, 'update':cmd_update, 'export-code':cmd_export,
     'deploy':cmd_deploy, 'profile':cmd_profile, 'release-status':cmd_release_status,
-    'release-confirm':cmd_release_confirm,
+    'release-confirm':cmd_release_confirm, 'player-catalog':cmd_player_catalog,
 }
 
 # Commands that can change settings text. `deploy` is here because the overlay it
@@ -1099,6 +1309,11 @@ HISTORY_REQUIRED_COMMANDS = {'remove', 'purge'}
 # name. Without --world these used to walk out of the profile path and land in the
 # wrong tree; now they refuse.
 WORLD_COMMANDS = {'remove', 'purge', 'deploy', 'release-status', 'release-confirm'}
+
+# Commands that span the player editions rather than acting on one profile, so they resolve no
+# manifest. Forcing one would make the answer depend on which profile the caller happened to
+# name, which is exactly the ambiguity the union rule exists to remove.
+PROFILE_FREE_COMMANDS = {'player-catalog'}
 
 def record_settings(fleet_root, message, required):
     """Snapshot the fleet's settings. Returns True when the store is usable.
@@ -1153,6 +1368,9 @@ def build_parser():
     profile_copy=profile_sub.add_parser('copy'); profile_copy.add_argument('source'); profile_copy.add_argument('name')
     profile_remove=profile_sub.add_parser('remove'); profile_remove.add_argument('name')
     profile_link=profile_sub.add_parser('link'); profile_link.add_argument('name')
+    player_catalog=sub.add_parser('player-catalog')
+    player_catalog.add_argument('--state', action='store_true',
+                                help='Print only the fingerprint of the installed player set, reading no network.')
     return p
 
 def main():
@@ -1165,6 +1383,12 @@ def main():
         print(f'error: {args.command} has no handler; the subcommand is registered but unwired',file=sys.stderr)
         return 2
     args.world_dir = resolve_world(args)
+    if args.command in PROFILE_FREE_COMMANDS:
+        if not args.world_dir:
+            print(f'error: {args.command} needs --world WORLD; it reads that world\'s installed plugins',
+                  file=sys.stderr)
+            return 2
+        return handler(None, None, args)
     args.manifest=resolve_manifest(args); root=args.manifest.parent; m=load(args.manifest)
     # A profile is shared, so the world can no longer be read off the manifest path.
     # Commands that touch a server say which one they need rather than assuming.

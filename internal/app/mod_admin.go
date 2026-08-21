@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -80,6 +81,11 @@ type modAdminPage struct {
 	CustomCatalog []customPackageChoice
 	SearchResults []thunderstoreMod
 	CSRF          string
+	// PlayerNotes is what an operator has written about each mod for the world pages, keyed by
+	// identifier. Notes are not profile-scoped: the same mod on four worlds is one mod, and one
+	// note. Absent from the map means nobody has written one, which is a state the player page
+	// renders rather than a gap for the portal to fill in.
+	PlayerNotes map[string]string
 }
 
 // profileLinkage is which server runs which profile, as the agent reports it.
@@ -187,7 +193,41 @@ func (s *Server) modAdmin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	notes, err := s.store.ModPlayerNotes(r.Context())
+	if err != nil {
+		// A note that cannot be read must not take the page down with it: the mod actions on this
+		// page are what an operator came for, and an empty note field is a recoverable wrong.
+		slog.Error("cannot read the mod player notes", "world", world, "profile", profile, "error", err)
+	}
+	page.PlayerNotes = notes
 	render(w, modAdminTemplate, page)
+}
+
+// setModPlayerNote records what players are told about one mod, or clears it when the field is
+// emptied. It is the only writer of that text. Nothing derives it: an instruction for how to use a
+// mod that no person wrote would be an invention, and the world page renders the absence honestly.
+//
+// No cached list is invalidated here, and that is by design - notes are joined onto the list when
+// the page renders, so they survive every rebuild and none is needed to show a new one.
+func (s *Server) setModPlayerNote(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	world := strings.TrimSpace(r.FormValue("world"))
+	profile := strings.TrimSpace(r.FormValue("profile"))
+	identifier := strings.TrimSpace(r.FormValue("identifier"))
+	note := strings.TrimSpace(r.FormValue("note"))
+	if !validWorld(world) || !validWorld(profile) || !validModFormValue(identifier, 240) || identifier == "" || !validModFormValue(note, 400) {
+		http.Error(w, "invalid player note", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.SetModPlayerNote(r.Context(), identifier, note, r.Header.Get("X-Portal-Actor")); err != nil {
+		http.Error(w, "unable to save the player note", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin/mods?world="+template.URLQueryEscaper(world)+"&profile="+template.URLQueryEscaper(profile), http.StatusSeeOther)
 }
 
 func (s *Server) readModData(ctx context.Context, world string, request ModAgentRequest, destination any) error {
@@ -296,6 +336,14 @@ func (s *Server) runModJob(w http.ResponseWriter, r *http.Request, world, profil
 		http.Error(w, "mod operation failed; see recent jobs", http.StatusConflict)
 		return
 	}
+	// The player-visible list is derived from what is installed, so a successful mutation has just
+	// invalidated it. Dropping the cache rather than rebuilding here is deliberate: a rebuild
+	// fetches the whole Thunderstore index, and the operator waiting on this redirect should not
+	// pay for it. The next world-page view rebuilds, and the fingerprint check makes the outcome
+	// identical either way.
+	if err := s.store.DiscardModCatalogs(r.Context()); err != nil {
+		slog.Error("cannot invalidate the cached player mod lists", "world", world, "profile", profile, "error", err)
+	}
 	http.Redirect(w, r, "/admin/mods?world="+template.URLQueryEscaper(world)+"&profile="+template.URLQueryEscaper(profile), http.StatusSeeOther)
 }
 
@@ -311,7 +359,7 @@ const modAdminTemplate = `<!doctype html><html lang="en"><head><meta charset="ut
 {{if .RoutedProfile}}{{if ne .RoutedProfile .Profile}}<p><strong>{{.World}} does not run {{.Profile}}.</strong> Nothing here changes what {{.World}} serves until {{.World}} is linked to this profile.</p>{{end}}{{end}}
 <p class="muted">Linking a server to another profile is not available from the portal. On the host it is <code>tools/profile_store.py link WORLD PROFILE</code>, followed by a deploy of that world.</p></section>
 <section><h2>Thunderstore search</h2><form method="get" action="/admin/mods"><input type="hidden" name="world" value="{{.World}}"><input type="hidden" name="profile" value="{{.Profile}}"><label>Find mods <input name="q" value="{{.Query}}" minlength="2" maxlength="100" required></label><button>Search Thunderstore</button></form>{{if .Searched}}<h3>Results</h3><div class="grid">{{range .SearchResults}}<article class="card"><header>{{if .Icon}}<img class="icon" src="{{.Icon}}" alt="">{{end}}<div><strong>{{.Name}}</strong><br><span class="muted">{{.Owner}} · {{.Downloads}} downloads · rating {{.Rating}}</span></div></header><p class="description">{{.Description}}</p><p>{{range .Categories}}<small>{{.}} </small>{{end}}</p><details><summary>Dependencies ({{len .Dependencies}})</summary><ul>{{range .Dependencies}}<li><code>{{.}}</code></li>{{else}}<li>None declared</li>{{end}}</ul></details><form method="post" action="/admin/mods/action"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="world" value="{{$.World}}"><input type="hidden" name="profile" value="{{$.Profile}}"><input type="hidden" name="action" value="add"><input type="hidden" name="identifier" value="{{.Identifier}}"><label>Version <select name="version">{{range .Versions}}<option value="{{.}}">{{.}}</option>{{end}}</select></label><label>Scope <select name="scope"><option value="shared">Server and clients</option><option value="client-only">Clients only</option></select></label><button {{if .Deprecated}}class="danger"{{end}}>Select{{if .Deprecated}} deprecated package{{end}}</button></form>{{if .Website}}<a href="{{.Website}}" rel="noreferrer">Project page</a>{{end}}</article>{{else}}<p>No matching Thunderstore packages.</p>{{end}}</div>{{end}}</section>
-<section><h2>Installed Thunderstore mods</h2><div class="grid">{{range .Inventory.Packages}}<article class="card"><strong>{{.Identifier}}</strong><p>{{.Version}} · {{.Scope}}</p><form method="post" action="/admin/mods/action"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="world" value="{{$.World}}"><input type="hidden" name="profile" value="{{$.Profile}}"><input type="hidden" name="identifier" value="{{.Identifier}}"><button name="action" value="disable">Disable</button><label>Removal reason <input name="reason" minlength="3"></label><button class="danger" name="action" value="remove">Remove</button></form></article>{{else}}<p>No enabled Thunderstore mods.</p>{{end}}</div><h3>Disabled</h3>{{range .Inventory.DisabledPackages}}<article><code>{{.Identifier}}</code> {{.Version}} <form method="post" action="/admin/mods/action"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="world" value="{{$.World}}"><input type="hidden" name="profile" value="{{$.Profile}}"><input type="hidden" name="identifier" value="{{.Identifier}}"><button name="action" value="enable">Enable</button><label>Removal reason <input name="reason" minlength="3"></label><button class="danger" name="action" value="remove">Remove</button></form></article>{{else}}<p>No disabled Thunderstore mods.</p>{{end}}</section>
+<section><h2>Installed Thunderstore mods</h2><p class="muted">The player note on each card is what the world pages show players about that mod. It is optional and it is never generated: leave it empty and the entry shows the name, version and Thunderstore description alone. A note is stored per package, not per profile, so it reaches every world running the mod, and it survives every rebuild of the player list.</p><div class="grid">{{range .Inventory.Packages}}<article class="card"><strong>{{.Identifier}}</strong><p>{{.Version}} · {{.Scope}}</p><form method="post" action="/admin/mods/action"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="world" value="{{$.World}}"><input type="hidden" name="profile" value="{{$.Profile}}"><input type="hidden" name="identifier" value="{{.Identifier}}"><button name="action" value="disable">Disable</button><label>Removal reason <input name="reason" minlength="3"></label><button class="danger" name="action" value="remove">Remove</button></form><form method="post" action="/admin/mods/note"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="world" value="{{$.World}}"><input type="hidden" name="profile" value="{{$.Profile}}"><input type="hidden" name="identifier" value="{{.Identifier}}"><label>Player note <input name="note" maxlength="400" value="{{index $.PlayerNotes .Identifier}}" placeholder="what a player should know; leave empty for none"></label><button>Save note</button></form></article>{{else}}<p>No enabled Thunderstore mods.</p>{{end}}</div><h3>Disabled</h3>{{range .Inventory.DisabledPackages}}<article><code>{{.Identifier}}</code> {{.Version}} <form method="post" action="/admin/mods/action"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="world" value="{{$.World}}"><input type="hidden" name="profile" value="{{$.Profile}}"><input type="hidden" name="identifier" value="{{.Identifier}}"><button name="action" value="enable">Enable</button><label>Removal reason <input name="reason" minlength="3"></label><button class="danger" name="action" value="remove">Remove</button></form></article>{{else}}<p>No disabled Thunderstore mods.</p>{{end}}</section>
 <section><h2>Approved local custom packages</h2><p>These files are discovered separately from Thunderstore under the world's controlled custom-package directory. Their checksums are verified again during installation.</p><div class="grid">{{range .CustomCatalog}}<article class="card"><strong>{{.Filename}}</strong><p><code>{{.ID}}</code></p><p>{{.Size}} bytes · SHA-256 <code>{{.SHA256}}</code></p>{{if .Description}}<p class="description">{{.Description}}</p>{{end}}<details><summary>Detected DLLs ({{len .DLLs}})</summary><ul>{{range .DLLs}}<li><code>{{.}}</code></li>{{end}}</ul></details>{{if .Selected}}<p>Already selected · {{.Scope}} · {{if .Enabled}}enabled{{else}}disabled{{end}}</p>{{else}}<form method="post" action="/admin/mods/action"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="world" value="{{$.World}}"><input type="hidden" name="profile" value="{{$.Profile}}"><input type="hidden" name="action" value="custom-add"><input type="hidden" name="identifier" value="{{.ID}}"><label>Scope <select name="scope"><option value="client-only">Clients only</option><option value="shared">Server and clients</option></select></label><button>Select custom package</button></form>{{end}}</article>{{else}}<p>No valid custom ZIP packages were found.</p>{{end}}</div><h3>Selected custom packages</h3>{{range .Inventory.CustomPackages}}<article><code>{{.ID}}</code> · {{.Scope}} · {{if .Enabled}}enabled{{else}}disabled{{end}}<form method="post" action="/admin/mods/action"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="world" value="{{$.World}}"><input type="hidden" name="profile" value="{{$.Profile}}"><input type="hidden" name="identifier" value="{{.ID}}">{{if .Enabled}}<button name="action" value="custom-disable">Disable</button>{{else}}<button name="action" value="custom-enable">Enable</button>{{end}}<button class="danger" name="action" value="custom-remove">Remove</button></form></article>{{else}}<p>No custom packages selected.</p>{{end}}</section>
 <section><h2>Deploy selected server mods to {{.World}}</h2><p>This creates a backup of {{.World}}, stops its server, atomically replaces the deployed server plugin set, then starts it again. It deploys to <b>{{.World}}</b> alone: every other server linked to {{.Profile}} keeps running what was last deployed to it until you deploy that world too.</p><form method="post" action="/admin/mods/deploy"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="world" value="{{.World}}"><input type="hidden" name="profile" value="{{.Profile}}"><button class="danger">Back up {{.World}} and deploy {{.Profile}} to it</button></form></section>
 </main></body></html>`
