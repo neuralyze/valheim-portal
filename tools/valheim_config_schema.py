@@ -39,9 +39,19 @@ no assembly anywhere under ``plugins/`` - leftovers from removals - which is why
 attribution is reported and never guessed. And one basename holds DIFFERENT
 content in different profiles: ``neuralyze.vrfixes.cfg`` is 31 keys in
 ``profiles/vr`` and 30 in ``flat`` and ``admin``, the extra one being
-``LogShieldBlocks``. republish copies ``flat`` first, so first-wins precedence
-would have dropped exactly the key the operator was editing, invisibly. The copy
-describing the most keys wins and the disagreement is listed in ``divergent``.
+``LogShieldBlocks``. The copy describing the most keys wins and the disagreement
+is listed in ``divergent``.
+
+``divergent`` is NOT evidence of a publish defect, and should not be read as one.
+The real publish path resolves per profile and each edition ships its own copy -
+verified against the published artifacts, where hrafnheim-vr carries
+LogShieldBlocks across 43 keys and hrafnheim-flat correctly does not, at 22. The
+fault was only ever in a SCAN that walks all seven client directories as one set,
+which is what this module does and the publisher does not: with first-wins
+precedence, ``flat`` being copied first meant the 30-key copy described the file
+and the operator's key vanished from the page built to manage it. So the entry in
+``divergent`` reports a per-profile difference the schema has to flatten, not a
+bug downstream.
 
 What the comment block actually looks like
 ------------------------------------------
@@ -576,13 +586,20 @@ def world_schema(world_root: Path, world: str, profiles: Path,
     trees = client_trees(world, profiles, repo_root)
     attribution = Attribution(config_root / "plugins", profiles)
     # Landing name -> every tree copy of it. NOT first-wins: the same basename holds
-    # DIFFERENT content in different profiles, and picking by publish order silently loses
-    # keys. Measured - neuralyze.vrfixes.cfg is 30 keys in profiles/flat and profiles/admin
-    # and 31 in profiles/vr, the extra one being LogShieldBlocks, which is one of the
-    # settings the operator spent this evening editing. Taking flat because it is copied
-    # first would have dropped exactly the key that matters, invisibly. So every copy is
-    # collected and the richest one describes the file, on the same reasoning that prefers
-    # config_merged over a sparse overlay: the schema's job is to describe what CAN be set.
+    # DIFFERENT content in different profiles, so ordering the seven directories and taking
+    # the first silently loses keys. Measured - neuralyze.vrfixes.cfg is 30 keys in
+    # profiles/flat and profiles/admin and 31 in profiles/vr, the extra one being
+    # LogShieldBlocks, which is one of the settings the operator spent this evening editing.
+    # Taking flat because it is copied first dropped exactly the key that matters, invisibly.
+    #
+    # Note this is a hazard of FLATTENING several profiles into one per-world schema, which
+    # is this module's job alone. The publisher has no such problem: it builds one payload
+    # per edition, so each edition ships its own copy - verified in the published artifacts,
+    # hrafnheim-vr with LogShieldBlocks and hrafnheim-flat correctly without.
+    #
+    # So every copy is collected and the richest one describes the file, on the same
+    # reasoning that prefers config_merged over a sparse overlay: the schema's job is to
+    # describe what CAN be set.
     shipped: dict[str, list[Path]] = {}
     for tree in trees:
         for name, path in tree_configs(tree).items():

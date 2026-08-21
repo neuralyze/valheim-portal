@@ -485,13 +485,17 @@ def test_a_file_in_both_trees_takes_the_world_trees_metadata(tmp_path):
 
 
 def test_the_richest_copy_wins_and_the_divergence_is_reported(tmp_path):
-    """Two profiles ship DIFFERENT content under one basename, and publish order loses keys.
+    """Two profiles ship DIFFERENT content under one basename, and flattening loses keys.
 
     Measured: neuralyze.vrfixes.cfg is 31 keys in profiles/vr and 30 in profiles/flat and
     profiles/admin, the extra one being LogShieldBlocks - a setting the operator spent the
-    evening editing. republish copies flat first, so first-wins precedence drops exactly the
-    key that matters, invisibly. The richest copy describes the file and the disagreement is
-    reported rather than resolved in silence.
+    evening editing. Ordering the seven client directories and taking the first gave the
+    30-key copy, so the key vanished from the page built to manage it, invisibly.
+
+    This is a hazard of flattening several profiles into ONE per-world schema, which is this
+    module's job and nobody else's. The publisher builds a payload per edition and was
+    checked: hrafnheim-vr ships LogShieldBlocks at 43 keys, hrafnheim-flat correctly does not
+    at 22. So `divergent` reports a difference the schema must flatten, never a publish bug.
     """
     config, profiles, repo = build_world(tmp_path, client=("flat", "vr"))
     (profiles / "flat" / "client-config" / "neuralyze.vrfixes.cfg").write_text(
