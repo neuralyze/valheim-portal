@@ -355,6 +355,12 @@ namespace NeuralyzeVRFixes
             _keyHash = null;
             Component shipComponent = ship as Component;
             if (shipComponent == null) return null;
+            // lint:per-frame bounded by the grip rising edge in Tick and the ship-identity check in
+            // Fire - this runs at most once per ship boarded, never on a frame where nothing changed.
+            // The gate reaches it statically through LateUpdate -> Tick -> Fire and cannot see either
+            // guard, so the bound is stated here rather than the scan being made lazier than it is.
+            // Kept as one scan on purpose: the alternative, resolving on attach, would need a hook on
+            // the attach path for a component that only matters the moment a grip is pressed.
             MonoBehaviour[] all = shipComponent.GetComponentsInChildren<MonoBehaviour>(true);
             foreach (MonoBehaviour mb in all)
             {
