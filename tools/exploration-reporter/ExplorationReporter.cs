@@ -29,6 +29,17 @@ namespace Neuralyze.ValheimExplorationReporter
         private static BepInEx.Logging.ManualLogSource log;
         private static string outputDirectory;
         private static float lastWriteTime = -9999f;
+        // Which Game object's exit has already been reported. A quit runs several of the hooks below in
+        // sequence, and one exit must produce one upload; instance ids are unique per object, so this
+        // also lets a second session in the same process (main menu, play again) report again.
+        private static int exitReportedForGame;
+        // How long the whole exit upload may take, across both files. The game itself only blocks for
+        // two seconds on the way out - Game.OnApplicationQuit ends in Thread.Sleep(2000),
+        // assembly_valheim.dll IL_0033 - and a player whose game appears to hang on quit kills it,
+        // which loses the very upload this is trying to make. Anything left unsent is left unmarked for
+        // the launcher's sweep, which is the path that has always worked.
+        private const int ExitUploadBudgetMs = 5000;
+        private static int exitUploadDeadline;
         private Harmony harmony;
 
         private static string uploadURL;
@@ -51,7 +62,14 @@ namespace Neuralyze.ValheimExplorationReporter
             }
             harmony = new Harmony("com.neuralyze.valheim.explorationreporter");
             harmony.PatchAll();
-            log.LogInfo("exploration reported to " + outputDirectory);
+            // LogMessage, not LogInfo: the client's BepInEx.cfg excludes Info from the disk log, so
+            // everything the plugin said about itself was invisible on 2026-08-20 while it was quietly
+            // failing to upload anything at all. Whether the upload is configured goes out here too -
+            // an empty URL or token is the other way this ends up sending nothing without a word.
+            log.LogMessage("exploration reporter loaded; writing to " + outputDirectory
+                + (string.IsNullOrEmpty(uploadURL) || string.IsNullOrEmpty(uploadToken)
+                    ? "; no upload configured, the launcher will collect these"
+                    : "; uploading on exit"));
         }
 
         private void OnDestroy()
@@ -74,15 +92,61 @@ namespace Neuralyze.ValheimExplorationReporter
             }
         }
 
-        // Logging out is the last chance to record the session, and the one moment a player will notice
-        // if it is missed.
-        [HarmonyPatch(typeof(Game), "Logout")]
-        private static class ReportOnLogout
+        // Every way out of a session funnels through Game.Shutdown: the logout paths reach it from
+        // ContinueLogout (assembly_valheim.dll, ContinueLogout IL_0009) and a quit straight to the
+        // desktop reaches it from OnApplicationQuit (IL_0024). Those are its only two callers in the
+        // whole assembly, and Game.m_startScene is only ever loaded by ContinueLogout, so there is no
+        // return to the main menu that skips this.
+        //
+        // Patching Game.Logout alone - which is what this did until 2026-08-20 - covered exactly one of
+        // those two routes. That evening four players finished a session and the portal received
+        // nothing: the maps were written (Hrafnheim--322254472.explored at 19:40:14 with
+        // cells_uncovered=2278) while its .sent marker still held the 934-cell digest from 17:20:15,
+        // and the session log contained no warning from this plugin, because nothing was attempted.
+        //
+        // A prefix, not a postfix: the body sets m_shuttingDown, saves the profile, then tears down
+        // ZNetScene and ZNet (IL_0034), and Report needs ZNet.instance for the world name.
+        [HarmonyPatch(typeof(Game), "Shutdown")]
+        private static class ReportOnShutdown
         {
-            private static void Prefix()
+            private static void Prefix(Game __instance)
             {
-                Report(true);
+                ReportExit(__instance);
             }
+        }
+
+        // The backstop for a quit that does not reach Shutdown again: OnApplicationQuit returns before
+        // its own call to Shutdown when m_shuttingDown is already set (IL_0006). A prefix still runs,
+        // and it is the last moment at which the minimap and the player object are alive - the body
+        // ends in Thread.Sleep(2000) and then Unity destroys the scene.
+        //
+        // Application.quitting exists (UnityEngine.CoreModule, add_quitting) and is not used: it fires
+        // after OnApplicationQuit has already run Game.Shutdown, so ZNet is down and Report would bail
+        // on an empty world name. ZNet.Shutdown is not used either - Game.Shutdown is its only caller
+        // in the assembly, so it would add a second hook covering nothing. Game.OnDestroy is not used:
+        // it only nulls Game.instance, and by then Player.m_localPlayer may already be gone.
+        [HarmonyPatch(typeof(Game), "OnApplicationQuit")]
+        private static class ReportOnApplicationQuit
+        {
+            private static void Prefix(Game __instance)
+            {
+                ReportExit(__instance);
+            }
+        }
+
+        // One upload per exit, however many of the hooks above fire. A quit from the in-game menu runs
+        // Logout, ContinueLogout, Shutdown and then OnApplicationQuit, so two of them firing for one
+        // quit is the ordinary case rather than the exception.
+        private static void ReportExit(Game game)
+        {
+            int id = game.GetInstanceID();
+            if (id == exitReportedForGame)
+            {
+                return;
+            }
+            exitReportedForGame = id;
+            exitUploadDeadline = Environment.TickCount + ExitUploadBudgetMs;
+            Report(true);
         }
 
         private static void Report(bool force)
@@ -192,7 +256,11 @@ namespace Neuralyze.ValheimExplorationReporter
                 File.Delete(path);
             }
             File.Move(temporary, path);
-            log.LogInfo("reported " + uncovered + " uncovered cells for " + safeWorld);
+            // LogMessage: with Info excluded from the client's disk log, "it wrote" and "it sent" were
+            // both unanswerable from a session log on 2026-08-20. "wrote", not "reported", because
+            // reporting is what the upload below does and confusing the two is how a written-but-never-
+            // sent map read as a delivered one.
+            log.LogMessage("wrote " + uncovered + " uncovered cells for " + safeWorld);
             return path;
         }
 
@@ -275,12 +343,24 @@ namespace Neuralyze.ValheimExplorationReporter
     }
 
     // Sends one report to the portal, then writes the same .sent marker the launcher writes, so the two
-    // upload paths never send the same bytes twice. Best effort throughout: a player logging out must
-    // not wait on a network call, and anything missed here is collected by the launcher next time.
+    // upload paths never send the same bytes twice. Best effort throughout, and bounded: this runs while
+    // the game is shutting down, so it gets whatever is left of ExitUploadBudgetMs and no more. Anything
+    // missed here keeps no marker and is collected by the launcher's sweep next launch.
     private static void Upload(string path)
     {
         if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(uploadURL) || string.IsNullOrEmpty(uploadToken))
         {
+            return;
+        }
+        // The budget for the whole exit, shared by both files. TickCount wraps roughly every 25 days;
+        // the subtraction is correct across the wrap for an interval this short, which is why it is
+        // written as a difference rather than a comparison.
+        int remaining = exitUploadDeadline - Environment.TickCount;
+        if (remaining <= 0)
+        {
+            // A Warning, not Info: this is the one thing an operator needs to see if quits start
+            // outrunning the budget, and Warning is in the client's disk log.
+            log.LogWarning("out of time on the way out; leaving " + Path.GetFileName(path) + " for the launcher");
             return;
         }
         try
@@ -306,8 +386,13 @@ namespace Neuralyze.ValheimExplorationReporter
             request.Method = "POST";
             request.ContentType = "multipart/form-data; boundary=" + boundary;
             request.Headers.Add("Authorization", "Bearer " + uploadToken);
-            request.Timeout = 15000;
-            request.ReadWriteTimeout = 15000;
+            // Was a flat 15 s each, so two files could hold a quitting game for up to a minute.
+            // Timeout is applied to GetRequestStream and again to GetResponse and cannot be changed
+            // once the request has started, so half the remaining budget each bounds one request by
+            // what is actually left of it.
+            int slice = Math.Max(1, remaining / 2);
+            request.Timeout = slice;
+            request.ReadWriteTimeout = slice;
             request.ContentLength = head.Length + payload.Length + tail.Length;
             using (System.IO.Stream body = request.GetRequestStream())
             {
@@ -315,16 +400,19 @@ namespace Neuralyze.ValheimExplorationReporter
                 body.Write(payload, 0, payload.Length);
                 body.Write(tail, 0, tail.Length);
             }
+            int status;
             using (System.Net.HttpWebResponse response = (System.Net.HttpWebResponse)request.GetResponse())
             {
-                if (response.StatusCode != System.Net.HttpStatusCode.Created)
-                {
-                    log.LogWarning("portal refused the report: " + (int)response.StatusCode);
-                    return;
-                }
+                status = (int)response.StatusCode;
+            }
+            if (status != (int)System.Net.HttpStatusCode.Created)
+            {
+                // No marker: only a 201 means the portal has it, and anything else must stay collectable.
+                log.LogWarning("portal refused the report: " + status);
+                return;
             }
             File.WriteAllText(marker, digest);
-            log.LogInfo("sent " + Path.GetFileName(path) + " to the portal");
+            log.LogMessage("sent " + Path.GetFileName(path) + " (" + payload.Length + " bytes) to the portal: HTTP " + status);
         }
         catch (Exception error)
         {

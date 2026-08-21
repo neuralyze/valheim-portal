@@ -86,6 +86,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Exploration maps upload when a player exits, instead of at the start of their next launch. The
+  inline upload was reached only from a `Game.Logout` prefix, so quitting to desktop wrote the map
+  and sent nothing, silently. On 2026-08-20 four players finished a session and the portal received
+  nothing at all - the two files it did hold predated the session and had been swept up by an
+  earlier launch. `Game.Shutdown` is the funnel (proven: its only two callers are `ContinueLogout`
+  and `OnApplicationQuit`), with `OnApplicationQuit` as a backstop and a once-per-exit guard.
+- The reporter's loaded, wrote and sent lines are `LogMessage` now. They were `Info`, which the
+  client's `BepInEx.cfg` excludes, so a pipeline that never uploaded produced 63 clean warnings and
+  no trace of itself. `bundle.sh` also carried a trap that would have shipped the previous reporter
+  DLL inside a new artifact.
+
 - Three wrist entries pulsed keys nothing listens for, and one was missing. The server enforces
   `Cycle Spell = G`, `Unsummon = Shift+F` and `ForsakenPowerHotkey = F8`; our entries still sent the
   keypad bindings somebody had rebound locally before ServerSync reverted them, which is why they

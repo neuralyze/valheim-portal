@@ -31,10 +31,10 @@ fi
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 
-# Unpack, add, repack. A zip written in place would rewrite the existing entries' metadata; this keeps
-# the file list explicit so the diff against the old bundle is one added path.
+# Unpack, replace, repack. A zip written in place would rewrite the existing entries' metadata; this
+# keeps the file list explicit so the diff against the old bundle is one path.
 python3 - "$source_zip" "$reporter" "$output_zip" <<'PY'
-import shutil
+import os
 import sys
 import zipfile
 
@@ -43,16 +43,23 @@ added = "BepInEx/plugins/NeuralyzeExplorationReporter/ExplorationReporter.dll"
 
 with zipfile.ZipFile(source) as existing:
     names = existing.namelist()
-    if added in names:
-        print(f"  {added} is already in the bundle; copying it unchanged")
-        shutil.copyfile(source, output)
-        raise SystemExit(0)
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as bundle:
         for info in existing.infolist():
-            # Entry metadata is carried over with the bytes, so the only difference between the two
-            # bundles is the new file.
+            if info.filename == added:
+                # Replaced, not skipped. Until 2026-08-20 this branch copied the source bundle
+                # unchanged whenever the reporter was already in it, which meant every artifact after
+                # the first carried the first build of the reporter for good. The published
+                # neuralyze-plugins-2.17.0.zip already contains this path, so the exit-upload fix could
+                # not have reached a player by running this script as it stood: it would have produced a
+                # byte-identical copy and said so as if that were success.
+                print(f"  {added} replaced ({info.file_size} -> {os.path.getsize(reporter)} bytes)")
+                continue
+            # Entry metadata is carried over with the bytes, so every other entry - NeuralyzeVRFixes.dll
+            # above all - is the same file it was in the source bundle.
             bundle.writestr(info, existing.read(info.filename))
         bundle.write(reporter, added)
+        if added not in names:
+            print(f"  {added} added")
 
 with zipfile.ZipFile(output) as check:
     if check.testzip() is not None:
