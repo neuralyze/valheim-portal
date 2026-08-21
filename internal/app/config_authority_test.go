@@ -357,6 +357,77 @@ func TestConfigAuthorityValueRoundTripsExactly(t *testing.T) {
 	}
 }
 
+// A keybind that DECLARES its acceptable values declares the ~140-member KeyCode enum, and a chord
+// is never a member of it. Real records, Hrafnheim/config_merged/bepinex:
+//
+//	Azumatt.WardIsLove.cfg:101-105   # Setting type: KeyboardShortcut
+//	                                 # Acceptable values: None, Backspace, Tab, ... F, G, ... LeftShift, ...
+//	                                 WardHotKey = G
+//	Azumatt.AzuAutoStore.cfg:104-107 same list, Pause Shortcut = Period + LeftShift
+//
+// 8 of the 131 KeyboardShortcut entries carry that list and 36 values in the corpus contain " + ",
+// so strict membership would refuse a value the file already holds - an admin pressing save on an
+// untouched setting would be told it is invalid. The chord is ONE binding, checked component by
+// component, and it is never routed through the flags-enum path: "Period + LeftShift" is a single
+// value, not two.
+func TestConfigAuthorityAcceptsKeybindChordsAgainstAKeyCodeList(t *testing.T) {
+	ctx := context.Background()
+	store := newConfigStore(t)
+	keycodes := []string{"None", "Backspace", "Tab", "Return", "Pause", "Escape", "Space", "Period", "F", "G", "LeftShift", "RightShift", "PageUp"}
+	schema := ConfigSchema{
+		Schema: configSchemaVersion,
+		World:  "Hrafnheim",
+		Files: []ConfigSchemaFile{{
+			File: "Azumatt.AzuAutoStore.cfg",
+			Sections: []ConfigSchemaSection{{
+				Name: "1 - General",
+				Entries: []ConfigSchemaEntry{{
+					Key:        "Pause Shortcut",
+					Type:       "KeyboardShortcut",
+					Default:    "Period + LeftShift",
+					Acceptable: ConfigAcceptable{Kind: "list", Values: keycodes},
+				}, {
+					// 415 of 17429 keys carry no "# Setting type" comment at all. Omitting the type
+					// is the extractor refusing to invent metadata, so an empty type must stay
+					// editable rather than becoming unknown-and-refused.
+					Key:        "Untyped Setting",
+					Acceptable: ConfigAcceptable{Kind: "none"},
+				}},
+			}},
+		}},
+	}
+	ref := ConfigSettingRef{File: "Azumatt.AzuAutoStore.cfg", Section: "1 - General", Key: "Pause Shortcut"}
+	for _, value := range []string{"G", "Period + LeftShift", "LeftShift+F", "None"} {
+		if err := store.SetWorldConfigSetting(ctx, "Hrafnheim", schema,
+			ConfigSetting{ConfigSettingRef: ref, Value: value, Policy: PolicyServerForced}, "admin"); err != nil {
+			t.Fatalf("refused the keybind %q: %v", value, err)
+		}
+		authority, err := store.WorldConfigAuthority(ctx, "Hrafnheim")
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, ok := authority.Setting(ref.File, ref.Section, ref.Key)
+		if !ok || stored.Value != value {
+			t.Fatalf("%q round-tripped as %q (present=%v)", value, stored.Value, ok)
+		}
+	}
+	// Control: a component that is not a key name is still refused, so the chord handling is not a
+	// blanket exemption from the list.
+	if err := store.SetWorldConfigSetting(ctx, "Hrafnheim", schema,
+		ConfigSetting{ConfigSettingRef: ref, Value: "Period + Atlantis", Policy: PolicyServerForced}, "admin"); err == nil {
+		t.Fatal("accepted a chord naming a key that does not exist")
+	}
+	untyped := ConfigSettingRef{File: "Azumatt.AzuAutoStore.cfg", Section: "1 - General", Key: "Untyped Setting"}
+	if err := store.SetWorldConfigSetting(ctx, "Hrafnheim", schema,
+		ConfigSetting{ConfigSettingRef: untyped, Value: "whatever the mod reads", Policy: PolicyServerForced}, "admin"); err != nil {
+		t.Fatalf("a setting whose file states no type became uneditable: %v", err)
+	}
+	if err := store.SetWorldConfigSetting(ctx, "Hrafnheim", schema,
+		ConfigSetting{ConfigSettingRef: untyped, Value: "", Policy: PolicyServerForced}, "admin"); err == nil {
+		t.Fatal("accepted a blank as a decision")
+	}
+}
+
 // A world with nothing managed still exports a well-formed document, so pointing the profile
 // builder at it is a no-op rather than a parse failure.
 func TestConfigAuthorityExportsEmptyWorld(t *testing.T) {
