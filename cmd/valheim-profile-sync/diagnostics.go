@@ -207,6 +207,18 @@ func diagnosticSources(gameDir, profileRoot string) []diagnosticSource {
 	); path != "" {
 		sources = append(sources, diagnosticSource{"LoadTimeProfiler/latest.log", path})
 	}
+	// The two records the managed-settings merge leaves behind. Together they
+	// answer "why does this player have a different value" from a bundle alone:
+	// the baseline is what the portal last wrote, the divergence report names
+	// every overridable setting whose value is the player's own and why it was
+	// kept. Without them the config files below show a value with no account of
+	// where it came from.
+	if path := firstExisting(filepath.Join(active, settingsBaselineFilename)); path != "" {
+		sources = append(sources, diagnosticSource{settingsBaselineFilename, path})
+	}
+	if path := firstExisting(filepath.Join(active, settingsDivergenceFile)); path != "" {
+		sources = append(sources, diagnosticSource{settingsDivergenceFile, path})
+	}
 	// The effective configuration is the only way to tell whether a published
 	// profile setting actually reached the client. Mods rewrite these files at
 	// runtime and ServerSync overwrites synced entries at connect, so the shipped

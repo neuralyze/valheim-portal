@@ -63,6 +63,36 @@ func TestBuildDiagnosticsBundlePrefersProfileGenerationLogs(t *testing.T) {
 	}
 }
 
+// An operator asking "why does this player have a different value" must get an
+// answer from a bundle, without a headset and without a support call. The two
+// records the managed-settings merge leaves behind are that answer: what the
+// portal last wrote, and every overridable setting whose value is the player's
+// own.
+func TestBuildDiagnosticsBundleIncludesManagedSettingsRecords(t *testing.T) {
+	gameDir := t.TempDir()
+	profileRoot := t.TempDir()
+	active := filepath.Join(profileRoot, "active")
+	if err := os.MkdirAll(active, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(active, settingsBaselineFilename), []byte(`{"schema":"settings-baseline/v1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(active, settingsDivergenceFile), []byte(`{"schema":"settings-divergence/v1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := buildDiagnosticsBundle(gameDir, profileRoot, profileState{World: "Hrafnheim", Profile: "hrafnheim-vr", ClientType: clientVR, ReleaseID: "release"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(bundle)
+	for _, name := range []string{settingsBaselineFilename, settingsDivergenceFile} {
+		if !bundleContains(t, bundle, name) {
+			t.Fatalf("bundle omitted %s", name)
+		}
+	}
+}
+
 func bundleContains(t *testing.T, bundle, name string) bool {
 	t.Helper()
 	archive, err := zip.OpenReader(bundle)

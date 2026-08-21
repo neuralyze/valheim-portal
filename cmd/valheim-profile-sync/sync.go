@@ -244,7 +244,7 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 	}
 	defer os.RemoveAll(configStage)
 	report(syncer.Progress, progressUpdate{Stage: "Verifying profile definition", Detail: "Checking the selected profile before applying it.", Percent: 42})
-	definition, err := unpackProfileDefinition(profileArchive, configStage, request)
+	definition, publishedSettings, err := unpackProfileDefinition(profileArchive, configStage, request)
 	if err != nil {
 		return false, err
 	}
@@ -351,6 +351,39 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 	// mod rewriting its own config cannot make the profile look drifted.
 	if err := preserveUnmanagedConfig(filepath.Join(root, "active", "BepInEx", "config"), filepath.Join(next, "BepInEx", "config")); err != nil {
 		return false, fmt.Errorf("preserve local configuration: %w", err)
+	}
+	// preserveUnmanagedConfig rescues whole files the release has no opinion about.
+	// It cannot rescue one key inside a file the release does ship, and the copy at
+	// :339 has just written the release's value over every one of those. So the
+	// managed-settings merge runs last, restoring the values a player chose for the
+	// settings the admin marked overridable. It edits next/BepInEx/config only, for
+	// the same reason as above: next/config stays exactly what the release shipped so
+	// ConfigSHA256 keeps describing release content.
+	appliedSettings, appliedFound, err := loadSettingsBaselineFile(filepath.Join(root, "active", settingsBaselineFilename))
+	if err != nil {
+		return false, fmt.Errorf("read the last applied settings baseline: %w", err)
+	}
+	var lastApplied *settingsBaseline
+	if appliedFound {
+		lastApplied = &appliedSettings
+	}
+	if publishedSettings != nil || lastApplied != nil {
+		merge, err := mergeManagedSettings(publishedSettings, lastApplied, filepath.Join(root, "active", "BepInEx", "config"), filepath.Join(next, "BepInEx", "config"))
+		if err != nil {
+			return false, fmt.Errorf("merge managed settings: %w", err)
+		}
+		if err := storeAppliedSettingsBaseline(next, publishedSettings); err != nil {
+			return false, fmt.Errorf("record the applied settings baseline: %w", err)
+		}
+		if err := writeSettingsDivergenceReport(next, publishedSettings, merge.Records); err != nil {
+			return false, fmt.Errorf("record settings divergence: %w", err)
+		}
+		report(syncer.Progress, progressUpdate{
+			Stage:    "Applying managed settings",
+			Detail:   merge.Detail(),
+			Percent:  82,
+			LogLines: settingsDivergenceLines(merge.Records),
+		})
 	}
 	newState := profileState{
 		Schema:  1,
@@ -679,56 +712,76 @@ func validSHA256(value string) bool {
 	return err == nil
 }
 
-func unpackProfileDefinition(source, destination string, request profileRequest) (profileDefinition, error) {
+// unpackProfileDefinition also returns the published settings baseline when the
+// release carries one. It is nil for a release published before managed settings
+// existed, and the installer then behaves exactly as it did before.
+func unpackProfileDefinition(source, destination string, request profileRequest) (profileDefinition, *settingsBaseline, error) {
 	archive, err := zip.OpenReader(source)
 	if err != nil {
-		return profileDefinition{}, err
+		return profileDefinition{}, nil, err
 	}
 	defer archive.Close()
 	var manifestData []byte
+	var baselineData []byte
 	configFound := false
 	var total int64
 	for _, file := range archive.File {
 		name, err := validateArchiveEntry(file, &total)
 		if err != nil {
-			return profileDefinition{}, err
+			return profileDefinition{}, nil, err
 		}
 		switch {
 		case name == "profile-manifest.json":
 			if archiveEntryIsDirectory(file) || manifestData != nil {
-				return profileDefinition{}, errors.New("profile definition has an invalid manifest")
+				return profileDefinition{}, nil, errors.New("profile definition has an invalid manifest")
 			}
 			manifestData, err = readArchiveFile(file, 1<<20)
 			if err != nil {
-				return profileDefinition{}, err
+				return profileDefinition{}, nil, err
+			}
+		case name == settingsBaselineFilename:
+			if archiveEntryIsDirectory(file) || baselineData != nil {
+				return profileDefinition{}, nil, errors.New("profile definition has an invalid settings baseline")
+			}
+			baselineData, err = readArchiveFile(file, maxSettingsBaselineBytes)
+			if err != nil {
+				return profileDefinition{}, nil, err
 			}
 		case name == "config" || strings.HasPrefix(name, "config/"):
 			configFound = true
 		default:
-			return profileDefinition{}, errors.New("profile definition contains an unsupported file")
+			return profileDefinition{}, nil, errors.New("profile definition contains an unsupported file")
 		}
 	}
 	if manifestData == nil || !configFound {
-		return profileDefinition{}, errors.New("profile definition must contain profile-manifest.json and config")
+		return profileDefinition{}, nil, errors.New("profile definition must contain profile-manifest.json and config")
 	}
 	var definition profileDefinition
 	decoder := json.NewDecoder(bytes.NewReader(manifestData))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&definition); err != nil {
-		return profileDefinition{}, fmt.Errorf("decode profile definition: %w", err)
+		return profileDefinition{}, nil, fmt.Errorf("decode profile definition: %w", err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return profileDefinition{}, errors.New("profile definition has trailing JSON")
+		return profileDefinition{}, nil, errors.New("profile definition has trailing JSON")
 	}
 	if err := validateProfileDefinition(definition, request); err != nil {
-		return profileDefinition{}, err
+		return profileDefinition{}, nil, err
+	}
+	var baseline *settingsBaseline
+	if baselineData != nil {
+		parsed, err := loadSettingsBaselineBytes(baselineData)
+		if err != nil {
+			return profileDefinition{}, nil, err
+		}
+		baseline = &parsed
 	}
 	if err := extractSelectedZip(source, destination, func(name string) bool {
 		return name == "config" || strings.HasPrefix(name, "config/")
 	}, false); err != nil {
-		return profileDefinition{}, err
+		return profileDefinition{}, nil, err
 	}
-	return definition, nil
+	return definition, baseline, nil
 }
 
 func extractPackageArchive(source, destination string, packageInfo packageDefinition) error {
