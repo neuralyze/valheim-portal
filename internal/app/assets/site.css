@@ -48,6 +48,7 @@
   --map-container: #d0a06a;
   --map-production: #c69ae8;
   --map-creature: #dce9df;
+  --map-vehicle: #f0c66b;
   --map-risk: #ef807b;
   --map-other: #b5c0b8;
   --map-biome-void: #07100c;
@@ -1027,6 +1028,7 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
 .map-key--container { color: var(--map-container); }
 .map-key--production { color: var(--map-production); }
 .map-key--creature { color: var(--map-creature); }
+.map-key--vehicle { color: var(--map-vehicle); }
 .map-key--risk { color: var(--map-risk); }
 .map-key--other { color: var(--map-other); }
 .map-category-summary dl {

@@ -37,6 +37,13 @@ type worldAnalysisPage struct {
 	// cluster without a
 	// second request.
 	LabelsJSON string
+	// LocationNamesJSON carries the readable name derived from each location's prefab id, keyed on
+	// the id itself. A location's name in a snapshot is the id Valheim placed - MWL_AshlandsFort1 -
+	// which reads as a mod's asset key rather than as a place. The derivation happens here rather
+	// than in the canvas so one function decides what a place is called, and it travels with the
+	// page because overlay tiles are pre-built on disk: enriching the tile payload would leave
+	// every already-published world showing raw ids until somebody republished it.
+	LocationNamesJSON string
 	// DataBase is where the renderer fetches tiles, overlays and the analysis from: the admin route
 	// for the operator's map, the world route for the players'. One renderer, two hosts - a second
 	// copy of it would drift from this one the first time either changed.
@@ -126,18 +133,22 @@ func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := worldAnalysisPage{
-		World:        info,
-		HaveAnalysis: len(snapshots) > 0,
-		CSRF:         s.csrfCookie(w, r),
-		LabelsJSON:   "{}",
-		DataBase:     "/admin/worlds/" + world,
-		Admin:        true,
+		World:             info,
+		HaveAnalysis:      len(snapshots) > 0,
+		CSRF:              s.csrfCookie(w, r),
+		LabelsJSON:        "{}",
+		LocationNamesJSON: "{}",
+		DataBase:          "/admin/worlds/" + world,
+		Admin:             true,
 	}
 	if len(snapshots) > 0 {
 		page.Backup = snapshots[0].Source.Backup
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
 		page.Explored = formatExplored(snapshots[0].Summary)
 		page.Builders, page.LabelsJSON = s.builderLegend(r.Context(), world, snapshots[0])
+		// The operator's map is unclipped and so are its overlay tiles, so the legend is built from
+		// the whole snapshot.
+		page.LocationNamesJSON = locationNameLegend(snapshots[0].Locations)
 	}
 	render(w, worldAnalysisTemplate, page)
 }
@@ -556,7 +567,7 @@ const worldAnalysisTemplate = `<!doctype html>
 <title>{{.World.Name}} {{if .Admin}}world map and analysis{{else}}map{{end}}</title>
 <link rel="stylesheet" href="/assets/site.css">
 </head>
-<body class="world-map-page" data-world="{{.World.Name}}" data-map-base="{{.DataBase}}"{{if .Fog}} data-map-fog="1"{{end}}{{if .SelectedPlayer}} data-map-player="{{.SelectedPlayer}}"{{end}}>
+<body class="world-map-page" data-world="{{.World.Name}}" data-map-base="{{.DataBase}}" data-location-names="{{.LocationNamesJSON}}"{{if .Fog}} data-map-fog="1"{{end}}{{if .SelectedPlayer}} data-map-player="{{.SelectedPlayer}}"{{end}}>
 <header class="map-header">
 <a class="map-back" href="{{if .Admin}}/admin{{else}}/worlds/{{.World.Name}}{{end}}">{{if .Admin}}Administration{{else}}{{.World.Name}}{{end}}</a>
 <div class="map-heading">
@@ -605,6 +616,7 @@ const worldAnalysisTemplate = `<!doctype html>
 {{if not .Admin}}<label class="map-layer"><input type="checkbox" data-layer="pins" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player pins</span></label>{{end}}
 <label class="map-layer"><input type="checkbox" data-layer="clusters" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player construction</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="portal" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Portals</span></label>
+<label class="map-layer"><input type="checkbox" data-layer="vehicle" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Boats and carts</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="container" {{if not .HaveAnalysis}}disabled{{end}}><span>Containers</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="production" {{if not .HaveAnalysis}}disabled{{end}}><span>Production</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="creature" {{if not .HaveAnalysis}}disabled{{end}}><span>Persistent creatures</span></label>
@@ -649,6 +661,7 @@ const worldAnalysisTemplate = `<!doctype html>
 <li><span class="map-key map-key--location-other" aria-hidden="true">•</span>Other location</li>
 <li><span class="map-key map-key--build" aria-hidden="true">⌂</span>Build cluster / coverage</li>
 <li><span class="map-key map-key--portal" aria-hidden="true">◎</span>Portal</li>
+<li><span class="map-key map-key--vehicle" aria-hidden="true">⛵</span>Boat / cart</li>
 <li><span class="map-key map-key--container" aria-hidden="true">▣</span>Container</li>
 <li><span class="map-key map-key--production" aria-hidden="true">▲</span>Production</li>
 <li><span class="map-key map-key--creature" aria-hidden="true">●</span>Persistent creature</li>

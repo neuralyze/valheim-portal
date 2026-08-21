@@ -105,6 +105,7 @@
     container: token('--map-container'),
     production: token('--map-production'),
     creature: token('--map-creature'),
+    vehicle: token('--map-vehicle'),
     risk: token('--map-risk'),
     other: token('--map-other'),
   };
@@ -133,6 +134,17 @@
   // character may see; a tile fetched without it would arrive clipped to somebody else's map.
   const mapPlayer = document.body.dataset.mapPlayer || '';
   const withPlayer = (url) => (mapPlayer ? url + (url.includes('?') ? '&' : '?') + 'player=' + encodeURIComponent(mapPlayer) : url);
+  // A location's name in the snapshot is the prefab id the game placed - "MWL_AshlandsFort1" - so
+  // the server hands over the readable name it derived for each id and the readout shows both. The
+  // derivation is not repeated here: one function decides what a place is called, and it is the one
+  // with tests over the real corpus.
+  const locationNames = (() => {
+    try {
+      return JSON.parse(document.body.dataset.locationNames || '{}');
+    } catch (error) {
+      return {};
+    }
+  })();
   let fogCanvas = null;
   // The players' own revealed map, unpacked from base64 once when the analysis arrives.
   let maskBits = null;
@@ -1329,6 +1341,20 @@
         context.arc(toeX, -radius * 0.55, radius * 0.22, 0, Math.PI * 2);
         context.fill();
       }
+    } else if (kind === 'vehicle') {
+      // A hull with a mast. Boats and carts are the only movable property on the map, so they get a
+      // silhouette of their own rather than the generic dot they had while they were miscategorised.
+      context.beginPath();
+      context.moveTo(-radius, -radius * 0.1);
+      context.lineTo(radius, -radius * 0.1);
+      context.lineTo(radius * 0.55, radius * 0.7);
+      context.lineTo(-radius * 0.55, radius * 0.7);
+      context.closePath();
+      context.stroke();
+      context.beginPath();
+      context.moveTo(0, -radius * 0.1);
+      context.lineTo(0, -radius);
+      context.stroke();
     } else if (kind === 'terrain') {
       context.beginPath();
       context.moveTo(0, -radius);
@@ -1468,7 +1494,7 @@
 
   function layerForCategory(category) {
     if (category === 'terrain') return 'terrain-risk';
-    if (['portal', 'container', 'production', 'creature'].includes(category)) return category;
+    if (['portal', 'container', 'production', 'creature', 'vehicle'].includes(category)) return category;
     return 'other';
   }
 
@@ -1577,7 +1603,18 @@
         lines.push(`shared with ${data.builders - 1} other builder(s) - the colour shows the majority`);
       }
     }
-    if (data.name) lines.push(`name: ${data.name}`);
+    // A location's name is a prefab id, so it is shown as a place name with the id kept on the next
+    // line: a player reads the name, and an operator chasing a spawn needs "MWL_AshlandsFort1" and
+    // nothing shorter. A player pin also arrives with a name, and that one is the player's own text
+    // - it is printed exactly as they wrote it.
+    if (data.name && selection.kind.endsWith('location')) {
+      const derived = locationNames[data.name] || {};
+      lines.push(`name: ${derived.display || data.name}`);
+      lines.push(`prefab id: ${data.name}`);
+      if (derived.mod) lines.push(`from location pack: ${derived.mod}`);
+    } else if (data.name) {
+      lines.push(`name: ${data.name}`);
+    }
     if (data.generated !== undefined) lines.push(`generated: ${data.generated ? 'yes' : 'not yet'}`);
     if (data.id !== undefined) lines.push(`id: ${data.id}`);
     if (data.prefab) lines.push(`prefab: ${data.prefab}`);
@@ -1659,6 +1696,7 @@
       container: 'Containers',
       production: 'Production',
       creature: 'Persistent creatures',
+      vehicle: 'Boats and carts',
       terrain: 'Terrain edits',
       boss: 'Boss',
       trader: 'Trader',

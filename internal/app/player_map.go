@@ -165,13 +165,14 @@ func (s *Server) playerWorldMap(w http.ResponseWriter, r *http.Request) {
 	}
 	player := selectedPlayer(r)
 	page := worldAnalysisPage{
-		World:          info,
-		HaveAnalysis:   len(snapshots) > 0,
-		LabelsJSON:     "{}",
-		DataBase:       "/worlds/" + world,
-		Fog:            true,
-		Reporters:      s.explorationReporters(world),
-		SelectedPlayer: player,
+		World:             info,
+		HaveAnalysis:      len(snapshots) > 0,
+		LabelsJSON:        "{}",
+		LocationNamesJSON: "{}",
+		DataBase:          "/worlds/" + world,
+		Fog:               true,
+		Reporters:         s.explorationReporters(world),
+		SelectedPlayer:    player,
 	}
 	for index := range page.Reporters {
 		page.Reporters[index].Selected = page.Reporters[index].PlayerID == player
@@ -181,6 +182,11 @@ func (s *Server) playerWorldMap(w http.ResponseWriter, r *http.Request) {
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
 		page.Explored = formatExplored(snapshots[0].Summary)
 		page.Builders, page.LabelsJSON = s.builderLegend(r.Context(), world, clipped)
+		// The clipped snapshot, not the whole one: a legend covering every location in the world
+		// would name places this player has never found, on the one map built to withhold them.
+		// Overlay tiles are clipped the same way before they are cut, so every id a tile can hand
+		// the canvas is already in here.
+		page.LocationNamesJSON = locationNameLegend(clipped.Locations)
 	}
 	render(w, worldAnalysisTemplate, page)
 }

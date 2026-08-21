@@ -626,6 +626,7 @@ func TestWorldAnalysisMapExposesDetailedLayerAndZoomControls(t *testing.T) {
 		`data-layer="locations"`,
 		`data-layer="clusters"`,
 		`data-layer="portal"`,
+		`data-layer="vehicle"`,
 		`data-layer="container"`,
 		`data-layer="production"`,
 		`data-layer="creature"`,
@@ -653,6 +654,11 @@ func TestWorldAnalysisMapExposesDetailedLayerAndZoomControls(t *testing.T) {
 	}
 	if strings.Contains(page, `data-layer="zones" checked`) {
 		t.Fatal("generated zones default to enabled")
+	}
+	// Boats and carts were missing from the map altogether, so shipping them behind a box the operator
+	// has to find and tick would leave them just as invisible in practice.
+	if !strings.Contains(page, `data-layer="vehicle" checked`) {
+		t.Fatal("boats and carts default to hidden")
 	}
 	if strings.Contains(page, `id="detail"`) {
 		t.Fatal("world analysis page still exposes the removed manual terrain detail control")

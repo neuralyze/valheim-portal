@@ -86,6 +86,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Map locations read as place names instead of prefab ids: `MWL_AshlandsFort1` shows as Ashlands
+  Fort with the id beside it. Splitting happens only at boundaries the author encoded - underscore,
+  case change, digit - and never inside a lowercase run, which is what keeps Greydwarf, Dvergr,
+  Volture and Mistlands whole without a table of exceptions. Variant numbers are dropped from the
+  display because they index a mod's asset set rather than counting anything: StoneTowerRuins has
+  03, 04, 05, 07, 08, 09, 10 and no 01. Derived over all 326 distinct names in the live snapshot.
+
 - Exploration maps upload when a player exits, instead of at the start of their next launch. The
   inline upload was reached only from a `Game.Logout` prefix, so quitting to desktop wrote the map
   and sent nothing, silently. On 2026-08-20 four players finished a session and the portal received
