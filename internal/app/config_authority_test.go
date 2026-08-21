@@ -442,6 +442,101 @@ func TestConfigAuthorityExportsEmptyWorld(t *testing.T) {
 	}
 }
 
+// "[Synced with Server]", "[Not Synced with Server]" and no annotation at all are THREE states, and
+// the middle one is a mod author declaring the setting client-side - the best client_default
+// candidates in the corpus. Measured tonight: a substring test for "Synced with Server" counted
+// 1213 keys where only 989 are synced, because the negation contains the positive. Overloading
+// synced=false would have buried those 224 explicit hints among the 16216 keys that say nothing.
+//
+// The hint is advice for the page, never a licence: a key that is genuinely synced stays refused
+// for client_default whatever a section-level hint says.
+func TestConfigSchemaClientSideHintIsAThirdState(t *testing.T) {
+	schema := testConfigSchema()
+	// Explicitly client-side, on the key.
+	schema.Files[0].Sections[0].Entries[1].ClientSide = true
+	hinted, ok := schema.Entry("Azumatt.AzuAntiArthriticCrafting.cfg", "1 - Crafting Tweaks", "Paginator")
+	if !ok || !hinted.ClientSide || hinted.Synced {
+		t.Fatalf("explicit client-side hint lost: %+v", hinted)
+	}
+	if err := ValidateConfigSetting(hinted, "Off", PolicyClientDefault); err != nil {
+		t.Fatalf("refused client_default on an explicitly client-side key: %v", err)
+	}
+	// No annotation at all is the third state: neither synced nor hinted, and still overridable.
+	silent, _ := schema.Entry("Azumatt.AzuAntiArthriticCrafting.cfg", "1 - Crafting Tweaks", "Crafting Speed")
+	if silent.ClientSide || silent.Synced {
+		t.Fatalf("an unannotated key claimed an annotation: %+v", silent)
+	}
+	// A hint on the section does not soften the refusal for a key the server genuinely syncs.
+	schema.Files[0].Sections[0].ClientSide = true
+	synced, _ := schema.Entry("Azumatt.AzuAntiArthriticCrafting.cfg", "1 - Crafting Tweaks", "Reset Crafting Value")
+	if synced.ClientSide {
+		t.Fatal("a synced key inherited a client-side hint")
+	}
+	if err := ValidateConfigSetting(synced, "Off", PolicyClientDefault); err == nil {
+		t.Fatal("a section hint let client_default through on a synced key")
+	}
+}
+
+// Key names are not a character class. Real record, xyz.alcan.comfortcalc.cfg:739:
+//
+//	<color#00FFFF>Thor</color> Comfort = 2
+//
+// with the plain "Armour Stand Comfort = 1" in the same file as the control. A key-name pattern of
+// [A-Za-z0-9_ ] silently dropped about 2600 keys of the corpus tonight; a store that refused this
+// reference would make those keys uneditable rather than merely uncounted.
+func TestConfigAuthorityAcceptsRealKeyAndSectionNames(t *testing.T) {
+	ctx := context.Background()
+	store := newConfigStore(t)
+	ref := ConfigSettingRef{File: "xyz.alcan.comfortcalc.cfg", Section: "09 - Comfort Piece Settings", Key: "<color#00FFFF>Thor</color> Comfort"}
+	control := ConfigSettingRef{File: "xyz.alcan.comfortcalc.cfg", Section: "09 - Comfort Piece Settings", Key: "Armour Stand Comfort"}
+	schema := ConfigSchema{
+		Schema: configSchemaVersion,
+		World:  "Hrafnheim",
+		Files: []ConfigSchemaFile{{
+			File: "xyz.alcan.comfortcalc.cfg",
+			Sections: []ConfigSchemaSection{{
+				Name: "09 - Comfort Piece Settings",
+				Entries: []ConfigSchemaEntry{
+					{Key: ref.Key, Type: "Int32", Default: "2", Acceptable: ConfigAcceptable{Kind: "none"}},
+					{Key: control.Key, Type: "Int32", Default: "1", Acceptable: ConfigAcceptable{Kind: "none"}},
+				},
+			}},
+		}},
+	}
+	for _, target := range []ConfigSettingRef{ref, control} {
+		if err := store.SetWorldConfigSetting(ctx, "Hrafnheim", schema,
+			ConfigSetting{ConfigSettingRef: target, Value: "3", Policy: PolicyServerForced}, "admin"); err != nil {
+			t.Fatalf("refused the key %q: %v", target.Key, err)
+		}
+	}
+	authority, err := store.WorldConfigAuthority(ctx, "Hrafnheim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two distinct rows: the markup key is not folded into its plain neighbour by any normalising.
+	if len(authority) != 2 {
+		t.Fatalf("expected both keys stored separately, got %d: %v", len(authority), authority)
+	}
+	stored, ok := authority.Setting(ref.File, ref.Section, ref.Key)
+	if !ok || stored.Key != ref.Key {
+		t.Fatalf("markup key round-tripped as %q (present=%v)", stored.Key, ok)
+	}
+	// Clearing addresses it by the same exact name.
+	if err := store.ClearWorldConfigSetting(ctx, "Hrafnheim", ref, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	authority, err = store.WorldConfigAuthority(ctx, "Hrafnheim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := authority.Setting(ref.File, ref.Section, ref.Key); ok {
+		t.Fatal("clearing the markup key left the row behind")
+	}
+	if _, ok := authority.Setting(control.File, control.Section, control.Key); !ok {
+		t.Fatal("clearing the markup key took its neighbour with it")
+	}
+}
+
 // The section's own annotations apply to every key inside it, so Entry folds them in. A caller that
 // had to remember to OR them would eventually forget, and the forgetting looks exactly like C4's
 // failure: a client override offered for a key the server overrides anyway.

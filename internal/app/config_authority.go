@@ -111,14 +111,23 @@ type ConfigSchemaFile struct {
 // ConfigSchemaSection carries the section-level annotations. BepInEx writes them on the section, so
 // they apply to every key inside it.
 type ConfigSchemaSection struct {
-	Name      string              `json:"name"`
-	Synced    bool                `json:"synced"`
-	Immutable bool                `json:"immutable"`
-	Entries   []ConfigSchemaEntry `json:"entries"`
+	Name       string              `json:"name"`
+	Synced     bool                `json:"synced"`
+	ClientSide bool                `json:"client_side,omitempty"`
+	Immutable  bool                `json:"immutable"`
+	Entries    []ConfigSchemaEntry `json:"entries"`
 }
 
 // ConfigSchemaEntry is one setting's declared type and allowed values. Fields the file did not
 // state are absent rather than guessed, so an empty Default means "the file did not say".
+//
+// Synced and ClientSide are three states, not a boolean. BepInEx writes either
+// "[Synced with Server]" or "[Not Synced with Server]" or nothing at all, and the middle one is a
+// mod author explicitly declaring the setting client-side - the best client_default candidates in
+// the corpus. Measured tonight: a substring test for "Synced with Server" counted 1213 keys where
+// only 989 are synced, because the negation contains the positive as a substring. Overloading
+// Synced=false would have thrown those 224 explicit hints in with the 16216 keys that simply say
+// nothing.
 type ConfigSchemaEntry struct {
 	Key         string           `json:"key"`
 	Type        string           `json:"type"`
@@ -127,6 +136,7 @@ type ConfigSchemaEntry struct {
 	Description string           `json:"description,omitempty"`
 	Acceptable  ConfigAcceptable `json:"acceptable"`
 	Synced      bool             `json:"synced"`
+	ClientSide  bool             `json:"client_side,omitempty"`
 	Immutable   bool             `json:"immutable"`
 	Advanced    bool             `json:"advanced"`
 }
@@ -210,6 +220,10 @@ func (s ConfigSchema) Entry(file, section, key string) (ConfigSchemaEntry, bool)
 				}
 				entry.Synced = entry.Synced || sec.Synced
 				entry.Immutable = entry.Immutable || sec.Immutable
+				// A synced annotation on the key wins over a client-side hint on the section: the
+				// hint is only ever advice to the page about which keys are safe to hand to
+				// players, and it never softens the refusal below.
+				entry.ClientSide = (entry.ClientSide || sec.ClientSide) && !entry.Synced
 				return entry, true
 			}
 		}
