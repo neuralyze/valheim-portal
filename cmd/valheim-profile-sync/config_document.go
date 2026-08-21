@@ -35,6 +35,15 @@ type configDocument struct {
 	// lines each include their own terminator, so joining them reproduces the
 	// input exactly.
 	lines []string
+	// keys and ends index the file so a lookup is not a scan. A managed world is
+	// tens of thousands of keys - measured 31,218 for Vangard - and one file,
+	// southsil.SouthsilArmor.cfg, holds 3,361 of them. Scanning per key would
+	// make that file quadratic and turn a sync into a wait before the game
+	// starts. Built on first use and dropped when a line is inserted, which is
+	// the only edit that moves the others.
+	keys    map[string]int
+	ends    map[string]int
+	indexed bool
 }
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
@@ -119,8 +128,16 @@ func configLineIsComment(trimmed string) bool {
 	return strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";")
 }
 
+// configSectionName also accepts "[]", which is a real header rather than a
+// malformed one: BepInEx writes it when a mod binds an entry with an empty
+// section, and the keys under it are ordinary settings. Real record -
+// TastyChickenLegs.AutomaticFuel.cfg:4 is literally "[]", with "IsOn = true" at
+// :9 and "Enabled = true" at :14 beneath it, and "[1 - General]" at :16 as the
+// control. Rejecting it left those keys unreachable, which is a managed setting
+// that silently never applies - found by walking the live corpus, where 6 keys
+// across 108 files sit in an empty section.
 func configSectionName(trimmed string) (string, bool) {
-	if !strings.HasPrefix(trimmed, "[") || !strings.HasSuffix(trimmed, "]") || len(trimmed) < 3 {
+	if !strings.HasPrefix(trimmed, "[") || !strings.HasSuffix(trimmed, "]") || len(trimmed) < 2 {
 		return "", false
 	}
 	return strings.TrimSpace(trimmed[1 : len(trimmed)-1]), true
@@ -135,40 +152,67 @@ func configSectionName(trimmed string) (string, bool) {
 // case-insensitive match would only ever paper over a mismatch that means
 // something.
 func (document *configDocument) locate(section, key string) (line int, sectionEnd int) {
+	document.buildIndex()
+	line, found := document.keys[section+"\x00"+key]
+	if !found {
+		line = -1
+	}
+	sectionEnd, found = document.ends[section]
+	if !found {
+		sectionEnd = -1
+	}
+	return line, sectionEnd
+}
+
+// buildIndex walks the file once and records where every setting lives.
+//
+// Only the FIRST run of a section counts, and within it the first occurrence of a
+// key. A .cfg can repeat a section header, and BepInEx itself reads the first
+// binding, so following it is what keeps a read and a write agreeing about which
+// line owns a setting.
+func (document *configDocument) buildIndex() {
+	if document.indexed {
+		return
+	}
+	document.keys = make(map[string]int, len(document.lines))
+	document.ends = make(map[string]int)
+	closed := map[string]bool{}
 	current := ""
-	line, sectionEnd = -1, -1
-	inSection := false
+	sawHeader := false
 	for index, raw := range document.lines {
 		body, _ := splitConfigLine(raw)
 		trimmed := strings.TrimSpace(body)
 		if name, isSection := configSectionName(trimmed); isSection {
-			if inSection {
-				return line, sectionEnd
+			if sawHeader {
+				closed[current] = true
 			}
-			current = name
-			inSection = current == section
-			if inSection {
-				sectionEnd = index + 1
+			current, sawHeader = name, true
+			if _, seen := document.ends[current]; !seen && !closed[current] {
+				document.ends[current] = index + 1
 			}
 			continue
 		}
-		if trimmed == "" || configLineIsComment(trimmed) {
+		if trimmed == "" || configLineIsComment(trimmed) || !sawHeader || closed[current] {
 			continue
 		}
 		name, _, split := strings.Cut(trimmed, "=")
 		if !split {
 			continue
 		}
-		if inSection {
-			// Track the last real setting in the section, so an appended key
-			// lands with its siblings instead of after a trailing comment block.
-			sectionEnd = index + 1
-			if strings.TrimSpace(name) == key {
-				return index, sectionEnd
-			}
+		// The last real setting in the section, so an appended key lands with its
+		// siblings instead of after a trailing comment block.
+		document.ends[current] = index + 1
+		identity := current + "\x00" + strings.TrimSpace(name)
+		if _, exists := document.keys[identity]; !exists {
+			document.keys[identity] = index
 		}
 	}
-	return line, sectionEnd
+	document.indexed = true
+}
+
+// dropIndex is called after an insertion, the only edit that moves other lines.
+func (document *configDocument) dropIndex() {
+	document.keys, document.ends, document.indexed = nil, nil, false
 }
 
 func (document *configDocument) value(section, key string) (string, bool) {
@@ -198,15 +242,20 @@ func (document *configDocument) setValue(section, key, value string) (bool, erro
 	assignment := strings.Index(body, "=")
 	prefix := body[:assignment+1]
 	rest := body[assignment+1:]
+	// Already the wanted value: leave the line exactly as it is. Comparing the
+	// TRIMMED text matters, because a value may legitimately end in a space and
+	// rebuilding the line would silently eat it. Real record - Doggerland's
+	// redseiko.valheim.zonescouter.cfg:50 is "copyPositionValuePrefix = Position: "
+	// with a trailing space, which is a display prefix, and a merge that rewrote
+	// it would change a file it was asked to leave alone.
+	if strings.TrimSpace(rest) == value {
+		return false, nil
+	}
 	// Whatever the file already puts between "=" and its value stays, including
 	// nothing at all: "Threshold=4" is a real shape, and normalising it to
 	// "Threshold = 4" turns a one-value edit into a line nobody asked to change.
 	spacing := rest[:len(rest)-len(strings.TrimLeft(rest, " \t"))]
-	replacement := prefix + spacing + value + terminator
-	if replacement == document.lines[index] {
-		return false, nil
-	}
-	document.lines[index] = replacement
+	document.lines[index] = prefix + spacing + value + terminator
 	return true, nil
 }
 
@@ -222,8 +271,12 @@ func (document *configDocument) insert(section, key, value string, sectionEnd in
 	if strings.ContainsAny(section, "[]\r\n\x00") || strings.ContainsAny(key, "=\r\n\x00") {
 		return false, fmt.Errorf("cannot insert %q into section %q", key, section)
 	}
+	if !document.appendable() {
+		return false, errConfigNotAppendable
+	}
 	terminator := document.dominantTerminator()
 	setting := key + " = " + value + terminator
+	defer document.dropIndex()
 	if sectionEnd >= 0 {
 		document.lines = append(document.lines, "")
 		copy(document.lines[sectionEnd+1:], document.lines[sectionEnd:])
@@ -238,6 +291,36 @@ func (document *configDocument) insert(section, key, value string, sectionEnd in
 	}
 	document.lines = append(document.lines, "["+section+"]"+terminator, setting)
 	return true, nil
+}
+
+// errConfigNotAppendable reports that a file is not shaped like a BepInEx config,
+// so a key must not be appended to it. The caller records the entry as
+// inapplicable and carries on rather than failing the sync.
+var errConfigNotAppendable = errors.New("file is not a BepInEx configuration")
+
+// appendable reports whether adding a "[Section]" and a "Key = Value" to this
+// file could possibly be right.
+//
+// Not every .cfg is a config. Real record: Doggerland's
+// AllTameable_TameList_From_Default.cfg is a mod's own comma-separated data file
+// - 188 CRLF lines, zero section headers, and lines like
+// "Deer,offspringName=Fawn" whose "=" is inside a field. Appending a setting
+// there would corrupt the mod's data. A file that is empty or contains nothing
+// but comments is still fair game, because that is what a config looks like
+// before anything is written to it.
+func (document *configDocument) appendable() bool {
+	for _, raw := range document.lines {
+		body, _ := splitConfigLine(raw)
+		trimmed := strings.TrimSpace(body)
+		if trimmed == "" || configLineIsComment(trimmed) {
+			continue
+		}
+		if _, isSection := configSectionName(trimmed); isSection {
+			return true
+		}
+		return false
+	}
+	return true
 }
 
 // dominantTerminator copies whatever the file already uses, because these files

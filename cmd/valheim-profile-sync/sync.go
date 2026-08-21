@@ -353,12 +353,13 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 		return false, fmt.Errorf("preserve local configuration: %w", err)
 	}
 	// preserveUnmanagedConfig rescues whole files the release has no opinion about.
-	// It cannot rescue one key inside a file the release does ship, and the copy at
-	// :339 has just written the release's value over every one of those. So the
-	// managed-settings merge runs last, restoring the values a player chose for the
-	// settings the admin marked overridable. It edits next/BepInEx/config only, for
-	// the same reason as above: next/config stays exactly what the release shipped so
-	// ConfigSHA256 keeps describing release content.
+	// It cannot rescue one key inside a file the release does ship, and the
+	// copyDirectory above has just written the release's value over every one of
+	// those. So the managed-settings merge runs last, restoring the values a player
+	// chose for the settings the admin marked overridable. It edits
+	// next/BepInEx/config only, for the same reason as above: next/config stays
+	// exactly what the release shipped, so ConfigSHA256 keeps describing release
+	// content.
 	appliedSettings, appliedFound, err := loadSettingsBaselineFile(filepath.Join(root, "active", settingsBaselineFilename))
 	if err != nil {
 		return false, fmt.Errorf("read the last applied settings baseline: %w", err)
@@ -715,6 +716,18 @@ func validSHA256(value string) bool {
 // unpackProfileDefinition also returns the published settings baseline when the
 // release carries one. It is nil for a release published before managed settings
 // existed, and the installer then behaves exactly as it did before.
+//
+// The baseline rides inside the config payload rather than as a new top-level
+// archive member, and that placement is load-bearing. Every client built before
+// managed settings rejects an unrecognised top-level member outright - the
+// default arm below, unchanged - and a failed synchronize returns before
+// launchProfile is ever reached, so an archive an old binary cannot parse does
+// not pin players to an old profile: it stops them launching Valheim at all.
+// That happened on 2026-08-17 with an added manifest FIELD (docs/release-format.md:55);
+// an added archive MEMBER would repeat it, and loosening this check would protect
+// only the players who happen to re-download the launcher. config/ was already a
+// blanket allow, so an old client accepts this file and merely extracts an inert
+// .json that BepInEx, which reads *.cfg, never looks at.
 func unpackProfileDefinition(source, destination string, request profileRequest) (profileDefinition, *settingsBaseline, error) {
 	archive, err := zip.OpenReader(source)
 	if err != nil {
@@ -739,7 +752,9 @@ func unpackProfileDefinition(source, destination string, request profileRequest)
 			if err != nil {
 				return profileDefinition{}, nil, err
 			}
-		case name == settingsBaselineFilename:
+		case name == settingsBaselineArchivePath:
+			// Deliberately does not satisfy configFound: a release still has to
+			// ship actual configuration, not just a baseline describing it.
 			if archiveEntryIsDirectory(file) || baselineData != nil {
 				return profileDefinition{}, nil, errors.New("profile definition has an invalid settings baseline")
 			}
@@ -776,8 +791,13 @@ func unpackProfileDefinition(source, destination string, request profileRequest)
 		}
 		baseline = &parsed
 	}
+	// The baseline has already been read into memory, and it is a release artifact
+	// rather than configuration, so it is kept out of the staged tree: it must not
+	// reach the player's BepInEx/config, and it must not enter ConfigSHA256, which
+	// exists to describe shipped .cfg content. The last-applied copy the merge
+	// compares against is written separately, under the profile's active directory.
 	if err := extractSelectedZip(source, destination, func(name string) bool {
-		return name == "config" || strings.HasPrefix(name, "config/")
+		return name != settingsBaselineArchivePath && (name == "config" || strings.HasPrefix(name, "config/"))
 	}, false); err != nil {
 		return profileDefinition{}, nil, err
 	}

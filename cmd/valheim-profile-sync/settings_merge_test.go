@@ -101,7 +101,7 @@ func (harness *settingsHarness) publish(body string, baseline *settingsBaseline)
 		if err != nil {
 			harness.t.Fatal(err)
 		}
-		extra = append(extra, zipEntry{Name: settingsBaselineFilename, Body: string(data)})
+		extra = append(extra, zipEntry{Name: settingsBaselineArchivePath, Body: string(data)})
 	}
 	payload := testProfileArchive(harness.t, harness.request, nil, []zipEntry{{Name: "config/" + managedConfigName, Body: body}}, extra)
 	harness.release++
@@ -299,16 +299,21 @@ func TestClientDefaultKeepsThePlayerEditWhenTheAdminChangesTheDefault(t *testing
 	}
 }
 
-// Branch 5: no stored baseline and the key is already in the player's file.
-// Nothing can attribute that value to the portal, so it is treated as the
-// player's. Every player already has config files, so seeding on first sight
-// would destroy exactly what this feature promises to protect.
+// Branch 5, and the one that runs for EVERY player on the first sync after this
+// ships: there is no stored baseline yet and the key is already in their file.
+// Nothing can attribute that value to the portal, so it is treated as theirs.
+// Seeding over it would destroy exactly what the feature promises to protect.
 func TestFirstBaselineLeavesAnExistingPlayerValueAlone(t *testing.T) {
 	harness := newSettingsHarness(t)
+	// A release from before managed settings: the player ends up with a real
+	// config file and no baseline on disk, which is every existing installation.
 	harness.publish(managedConfigBody("RightGrip"), nil)
 	harness.playerEdits(managedConfigBody("None"))
 	if _, found := harness.storedBaseline(); found {
 		t.Fatal("precondition failed, a baseline was stored before one was published")
+	}
+	if live := harness.live(); live != managedConfigBody("None") {
+		t.Fatalf("precondition failed, the player's file does not hold their value:\n%q", live)
 	}
 
 	harness.publish(managedConfigBody("LeftGrip"), managedBaseline(policyClientDefault, "LeftGrip"))
@@ -317,6 +322,49 @@ func TestFirstBaselineLeavesAnExistingPlayerValueAlone(t *testing.T) {
 		t.Fatalf("a value present before the first baseline was overwritten:\n%q", live)
 	}
 	requireDivergence(t, harness.divergence(), "Modifier", divergenceReasonNoBaseline, "None")
+	// And the sync leaves a baseline behind, so the next one can tell a player
+	// edit from an admin change instead of guessing again.
+	stored, found := harness.storedBaseline()
+	if !found || len(stored.Entries) != 1 || stored.Entries[0].Written != "LeftGrip" {
+		t.Fatalf("stored baseline = %+v found:%t", stored, found)
+	}
+}
+
+// The baseline must ship inside the config payload. A client built before
+// managed settings rejects any unrecognised top-level archive member outright,
+// and because sync runs before launch with no self-update path, such an archive
+// stops players launching Valheim rather than pinning them to an old profile -
+// the 2026-08-17 incident, in docs/release-format.md:55. config/ was already a
+// blanket allow, so this placement needs no loosening of that check.
+func TestSettingsBaselineShipsInsideTheConfigPayload(t *testing.T) {
+	name := settingsBaselineArchivePath
+	if accepted := name == "config" || strings.HasPrefix(name, "config/"); !accepted {
+		t.Fatalf("%q would be refused by a client built before managed settings", name)
+	}
+	// Control: the placement this replaces is exactly the one that would be
+	// refused, so the check above is not vacuous.
+	if root := settingsBaselineFilename; strings.HasPrefix(root, "config/") {
+		t.Fatalf("control failed, %q is not a top-level name", root)
+	}
+}
+
+// The baseline is a release artifact, not configuration. It must not reach the
+// player's BepInEx/config, where it would linger as a stray file, and it must not
+// enter the shipped-config hash, which exists to describe .cfg content.
+func TestSettingsBaselineDoesNotLandInTheConfigDirectory(t *testing.T) {
+	harness := newSettingsHarness(t)
+	harness.publish(managedConfigBody("RightGrip"), managedBaseline(policyClientDefault, "RightGrip"))
+	for _, directory := range []string{
+		filepath.Join(harness.root, "active", "config"),
+		filepath.Join(harness.root, "active", "BepInEx", "config"),
+	} {
+		if _, err := os.Stat(filepath.Join(directory, settingsBaselineFilename)); !os.IsNotExist(err) {
+			t.Fatalf("%s holds the baseline: %v", directory, err)
+		}
+	}
+	if _, found := harness.storedBaseline(); !found {
+		t.Fatal("the baseline was not stored beside the generation")
+	}
 }
 
 // Branch 6: the admin stopped managing the key. The portal has relinquished it,
@@ -480,5 +528,183 @@ func TestBaselineRejectsUnsafeAndUnknownEntries(t *testing.T) {
 	}
 	if _, err := loadSettingsBaselineBytes(valid); err != nil {
 		t.Fatalf("rejected a valid baseline: %v", err)
+	}
+}
+
+// entries[].file is the path RELATIVE to the config root, not a basename, and
+// five real files live in subdirectories - ItemStacksRewrite/ and
+// shudnal.ConditionalConfigSync/ - holding 2,437 entries between them. Flattening
+// to a basename would send two mods' settings to the same path; a top-level
+// enumeration would miss all five.
+func TestManagedSettingInASubdirectoryResolvesUnderTheConfigRoot(t *testing.T) {
+	const nested = "ItemStacksRewrite/fortis.mods.itemstacksrewrite.weights.cfg"
+	staged, player := t.TempDir(), t.TempDir()
+	for root, value := range map[string]string{staged: "1.0", player: "2.5"} {
+		path := filepath.Join(root, filepath.FromSlash(nested))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("[Weights]\nOre = "+value+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	baseline := &settingsBaseline{Schema: settingsBaselineSchema, Entries: []settingsBaselineEntry{
+		{File: nested, Section: "Weights", Key: "Ore", Policy: policyClientDefault, Written: "1.0"},
+	}}
+	applied := &settingsBaseline{Schema: settingsBaselineSchema, Entries: []settingsBaselineEntry{
+		{File: nested, Section: "Weights", Key: "Ore", Policy: policyClientDefault, Written: "0.5"},
+	}}
+	result, err := mergeManagedSettings(baseline, applied, player, staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Diverged != 1 || result.Files != 1 {
+		t.Fatalf("merge result = %+v", result)
+	}
+	data, err := os.ReadFile(filepath.Join(staged, filepath.FromSlash(nested)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "[Weights]\nOre = 2.5\n" {
+		t.Fatalf("nested file = %q", data)
+	}
+	// Control: nothing was written to a flattened basename beside the root.
+	if _, err := os.Stat(filepath.Join(staged, "fortis.mods.itemstacksrewrite.weights.cfg")); !os.IsNotExist(err) {
+		t.Fatalf("the merge flattened the path: %v", err)
+	}
+}
+
+// Not every .cfg is a config. Doggerland's AllTameable_TameList_From_Default.cfg
+// is a mod's own comma-separated data file: 188 CRLF lines, no section headers,
+// and an "=" inside its fields. A key must not be appended there, and one such
+// entry must not stop a player launching the game.
+func TestBaselineNamingADataFileIsReportedNotWritten(t *testing.T) {
+	const name = "AllTameable_TameList_From_Default.cfg"
+	const body = "####Any line starting with a # will be skipped\r\n" +
+		"*Default,false,1400,300,1,10,30,15,Raspberry:Onion,false,true,7,0.66,90,2100,size=1.5\r\n" +
+		"Deer,offspringName=Fawn\r\n"
+	staged := t.TempDir()
+	if err := os.WriteFile(filepath.Join(staged, name), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	baseline := &settingsBaseline{Schema: settingsBaselineSchema, Entries: []settingsBaselineEntry{
+		{File: name, Section: "General", Key: "size", Policy: policyServerForced, Written: "2.0"},
+	}}
+	result, err := mergeManagedSettings(baseline, nil, t.TempDir(), staged)
+	if err != nil {
+		t.Fatalf("one inapplicable entry failed the whole sync: %v", err)
+	}
+	if result.Files != 0 || len(result.Records) != 1 || result.Records[0].Reason != divergenceReasonNotAConfig {
+		t.Fatalf("merge result = %+v", result)
+	}
+	data, err := os.ReadFile(filepath.Join(staged, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != body {
+		t.Fatalf("the data file was modified:\n%q", data)
+	}
+}
+
+// The publish path records settings it deliberately did not write - a managed key
+// whose config file the profile does not ship - so nothing is silently dropped.
+// The installer must decode that list without acting on it. It has to be a real
+// struct field: the baseline is parsed with DisallowUnknownFields, so an
+// unmodelled field would fail the decode, and a failed decode is a failed sync.
+func TestBaselineCarriesUnshippedRecordsWithoutActingOnThem(t *testing.T) {
+	document := `{"schema":"settings-baseline/v1","world":"world","profile":"alpha","version":"1.0.0",` +
+		`"entries":[{"file":"` + managedConfigName + `","section":"11 - Hover actions","key":"Modifier",` +
+		`"policy":"client_default","written":"RightGrip"}],` +
+		`"unshipped":[{"file":"southsil.SouthsilArmor.cfg","section":"General","key":"Enabled",` +
+		`"policy":"server_forced","value":"true","reason":"config_file_not_shipped"}]}`
+	baseline, err := loadSettingsBaselineBytes([]byte(document))
+	if err != nil {
+		t.Fatalf("rejected a baseline carrying unshipped records: %v", err)
+	}
+	if len(baseline.Unshipped) != 1 || baseline.Unshipped[0].Value != "true" {
+		t.Fatalf("unshipped = %+v", baseline.Unshipped)
+	}
+
+	// The merge acts on entries and nothing else: the unshipped file is not
+	// created, and the shipped one is still seeded.
+	staged, player := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(staged, managedConfigName), []byte(managedConfigBody("RightGrip")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := mergeManagedSettings(&baseline, nil, player, staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Seeded != 1 || len(result.Records) != 0 {
+		t.Fatalf("merge result = %+v", result)
+	}
+	if _, err := os.Stat(filepath.Join(staged, "southsil.SouthsilArmor.cfg")); !os.IsNotExist(err) {
+		t.Fatalf("the merge created a file for an unshipped record: %v", err)
+	}
+}
+
+// Real scale, in one file. southsil.SouthsilArmor.cfg holds 3,361 of a world's
+// keys, and a world holds up to 31,218, so a lookup per key cannot be a scan of
+// the file: that is quadratic and turns a sync into a wait before the game
+// starts. This merges every key in a file that size, half of them diverged, and
+// checks the outcome of each one.
+func TestMergeHandlesAFileWithThousandsOfManagedKeys(t *testing.T) {
+	const count = 3361
+	var shipped, local strings.Builder
+	shipped.WriteString("[Armour]\n")
+	local.WriteString("[Armour]\n")
+	entries := make([]settingsBaselineEntry, 0, count)
+	appliedEntries := make([]settingsBaselineEntry, 0, count)
+	for i := range count {
+		key := fmt.Sprintf("Piece %d Weight", i)
+		shipped.WriteString("## documentation for " + key + "\n")
+		shipped.WriteString("# Setting type: Single\n")
+		shipped.WriteString(key + " = 2.0\n")
+		// Every other key holds a value the player chose; the rest still hold
+		// what the portal last wrote.
+		playerValue := "1.0"
+		if i%2 == 0 {
+			playerValue = "9.9"
+		}
+		local.WriteString(key + " = " + playerValue + "\n")
+		entries = append(entries, settingsBaselineEntry{File: managedConfigName, Section: "Armour", Key: key, Policy: policyClientDefault, Written: "2.0"})
+		appliedEntries = append(appliedEntries, settingsBaselineEntry{File: managedConfigName, Section: "Armour", Key: key, Policy: policyClientDefault, Written: "1.0"})
+	}
+	staged, player := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(staged, managedConfigName), []byte(shipped.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(player, managedConfigName), []byte(local.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	published := &settingsBaseline{Schema: settingsBaselineSchema, Entries: entries}
+	applied := &settingsBaseline{Schema: settingsBaselineSchema, Entries: appliedEntries}
+
+	result, err := mergeManagedSettings(published, applied, player, staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Diverged != count/2+1 || result.Updated != count/2 || result.Files != 1 {
+		t.Fatalf("merge result = %+v", result)
+	}
+	data, err := os.ReadFile(filepath.Join(staged, managedConfigName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := parseConfigDocument(data)
+	for i := range count {
+		key := fmt.Sprintf("Piece %d Weight", i)
+		want := "2.0"
+		if i%2 == 0 {
+			want = "9.9"
+		}
+		if value, found := document.value("Armour", key); value != want || !found {
+			t.Fatalf("%s = %q,%t want %q", key, value, found, want)
+		}
+	}
+	// Every comment line the file shipped with is still there: the comment block
+	// is the schema the extractor reads back.
+	if got := strings.Count(string(data), "# Setting type: Single\n"); got != count {
+		t.Fatalf("comment lines = %d, want %d", got, count)
 	}
 }

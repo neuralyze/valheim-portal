@@ -30,10 +30,16 @@ import (
 // against that. Without the recorded copy the first time an admin edits a
 // default would silently wipe every player's customisation of that setting.
 const (
-	settingsBaselineSchema   = "settings-baseline/v1"
-	settingsBaselineFilename = "settings-baseline.json"
-	settingsDivergenceSchema = "settings-divergence/v1"
-	settingsDivergenceFile   = "settings-divergence.json"
+	settingsBaselineSchema = "settings-baseline/v1"
+	// Where the baseline arrives, and where the last-applied copy is kept, are two
+	// different paths. It ships inside the config payload because an older client
+	// refuses an unrecognised top-level archive member and then cannot launch the
+	// game at all; it is stored beside the generation because the stored copy has
+	// to ride the same rename as the configs it describes.
+	settingsBaselineArchivePath = "config/settings-baseline.json"
+	settingsBaselineFilename    = "settings-baseline.json"
+	settingsDivergenceSchema    = "settings-divergence/v1"
+	settingsDivergenceFile      = "settings-divergence.json"
 
 	// server_forced: the portal's value is written on every sync.
 	// client_default: the portal's value is a starting value only.
@@ -42,7 +48,14 @@ const (
 	policyServerForced  = "server_forced"
 	policyClientDefault = "client_default"
 
-	maxSettingsBaselineBytes = int64(8 << 20)
+	// Sized against the largest world, not the one that is convenient to test on.
+	// Measured: Vangard 174 config files and 28,781 keys, Doggerland and Storgard
+	// 28,777, Hrafnheim only 17,429. A settings-baseline/v1 entry is roughly 130
+	// bytes of JSON, so a fully managed world is about 3.7 MiB, and one mod -
+	// southsil.SouthsilArmor.cfg, 3,361 keys - is about 440 KiB on its own. A cap
+	// that fits Hrafnheim would refuse a legitimate archive at sync time, in front
+	// of a player.
+	maxSettingsBaselineBytes = int64(16 << 20)
 	maxManagedConfigBytes    = int64(16 << 20)
 )
 
@@ -54,12 +67,36 @@ type settingsBaselineEntry struct {
 	Written string `json:"written"`
 }
 
+// settingsUnshippedEntry is a managed setting the publish path deliberately did
+// NOT write, because the profile ships no config file for it. Around 95 of the
+// 113 schema files belong to server-side plugins, so writing their values into a
+// player's BepInEx/config would put them where they have no effect while never
+// putting them where they would - the wrist-keybind failure again, a change that
+// looks like it landed. The list is informational: the installer never acts on
+// it, and it exists so nothing is silently dropped between the page and the file.
+type settingsUnshippedEntry struct {
+	File    string `json:"file"`
+	Section string `json:"section"`
+	Key     string `json:"key"`
+	Policy  string `json:"policy"`
+	// Value, not Written: nothing was written, which is the point of the list.
+	Value  string `json:"value"`
+	Reason string `json:"reason"`
+}
+
 type settingsBaseline struct {
 	Schema  string                  `json:"schema"`
 	World   string                  `json:"world"`
 	Profile string                  `json:"profile"`
 	Version string                  `json:"version"`
 	Entries []settingsBaselineEntry `json:"entries"`
+	// Entries holds only keys the profile really wrote. Unshipped holds the ones
+	// it refused to write and why, and the merge acts on neither more nor less
+	// than Entries. The field is decoded rather than ignored because the baseline
+	// is parsed with DisallowUnknownFields - deliberately, so a malformed
+	// document is refused whole rather than half applied - which means every
+	// field the publish path may emit has to exist here.
+	Unshipped []settingsUnshippedEntry `json:"unshipped,omitempty"`
 	// raw is the document exactly as published. It is what gets stored as the
 	// last-applied copy, so a field this build does not understand survives to
 	// the build that does.
@@ -105,6 +142,11 @@ const (
 	// portal cannot write a value into a file that is not there; reported so the
 	// publish side is visible rather than silently ineffective.
 	divergenceReasonMissingFile = "config_file_not_shipped"
+	// The named file is not shaped like a BepInEx config - a mod's own data file
+	// that merely ends in .cfg - so the key cannot be added to it without
+	// corrupting the file. Reported and skipped, never fatal: one bad entry must
+	// not stop a player launching the game.
+	divergenceReasonNotAConfig = "not_a_configuration_file"
 )
 
 type settingsMergeResult struct {
@@ -168,7 +210,12 @@ func validateSettingsBaselineEntry(entry settingsBaselineEntry) error {
 	if _, err := archivePath(entry.File); err != nil {
 		return fmt.Errorf("settings baseline names an unsafe config file %q", entry.File)
 	}
-	if entry.Section == "" || strings.ContainsAny(entry.Section, "[]\r\n\x00") {
+	// An empty section is legitimate: BepInEx writes "[]" for an entry bound with
+	// no section, and TastyChickenLegs.AutomaticFuel.cfg:4 is exactly that, with
+	// IsOn at :9 under it. Rejecting the whole baseline over one such entry would
+	// fail the sync for the world; refusing to manage those keys would make the
+	// portal silently ineffective on them.
+	if strings.ContainsAny(entry.Section, "[]\r\n\x00") {
 		return fmt.Errorf("settings baseline has an invalid section %q", entry.Section)
 	}
 	if entry.Key == "" || strings.ContainsAny(entry.Key, "=\r\n\x00") || strings.TrimSpace(entry.Key) != entry.Key {
@@ -269,32 +316,41 @@ func mergeManagedSettings(published *settingsBaseline, applied *settingsBaseline
 			if playerFound {
 				playerValue, playerHas = player.value(entry.Section, entry.Key)
 			}
+			// record notes an entry the merge acted on or declined to act on.
 			// serverValue is what the file would have held had the merge not
-			// intervened, and a record is only worth keeping when it differs from
-			// the player's: an identical pair explains nothing and would bury the
-			// records that do answer a question.
-			keep := func(reason, serverValue string) error {
-				if serverValue != playerValue {
-					result.Records = append(result.Records, settingsDivergenceRecord{
-						File: entry.File, Section: entry.Section, Key: entry.Key,
-						Policy: entry.Policy, ServerValue: serverValue, PlayerValue: playerValue,
-						Reason: reason,
-					})
-				}
-				wrote, err := staged.setValue(entry.Section, entry.Key, playerValue)
+			// intervened, and a divergence is only worth recording when it differs
+			// from the player's: an identical pair explains nothing and would bury
+			// the records that answer a question.
+			record := func(reason, serverValue string) {
+				result.Records = append(result.Records, settingsDivergenceRecord{
+					File: entry.File, Section: entry.Section, Key: entry.Key,
+					Policy: entry.Policy, ServerValue: serverValue, PlayerValue: playerValue,
+					Reason: reason,
+				})
+			}
+			apply := func(value string) error {
+				wrote, err := staged.setValue(entry.Section, entry.Key, value)
 				if err != nil {
+					// The file is not shaped like a config at all, so the key
+					// cannot be added to it. One bad entry must not stop a player
+					// launching the game, so it is reported and skipped.
+					if errors.Is(err, errConfigNotAppendable) {
+						record(divergenceReasonNotAConfig, value)
+						return nil
+					}
 					return err
 				}
 				changed = changed || wrote
 				return nil
 			}
-			write := func() error {
-				wrote, err := staged.setValue(entry.Section, entry.Key, entry.Written)
-				if err != nil {
-					return err
+			keep := func(reason, serverValue string) error {
+				if serverValue != playerValue {
+					record(reason, serverValue)
 				}
-				changed = changed || wrote
-				return nil
+				return apply(playerValue)
+			}
+			write := func() error {
+				return apply(entry.Written)
 			}
 			if retired {
 				// The portal no longer writes this key. Whatever the player's file
