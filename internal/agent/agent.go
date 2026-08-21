@@ -126,11 +126,17 @@ var operations = map[string]string{
 	// full build computes and the two must never be able to disagree about what it covers.
 	"world_mod_catalog":       "portal_world_mod_catalog.sh",
 	"world_mod_catalog_state": "portal_world_mod_catalog.sh",
-	"world_catalog":           "@internal",
-	"world_analysis":          "@internal",
-	"world_map":               "export_valheim_map_sources.sh",
-	"provision":               "provision_valheim_server.sh",
-	"health":                  "wait_valheim_server_ready.sh",
+	// One world's configuration schema - every mod's declared settings, types and allowed values -
+	// and the cheap fingerprint of the config files it was read from. Same script and the same
+	// reason as the mod catalog above: the fingerprint is what the full extraction is keyed on, so
+	// the two must never be able to disagree about which files they covered.
+	"world_config_schema":       "portal_world_config_schema.sh",
+	"world_config_schema_state": "portal_world_config_schema.sh",
+	"world_catalog":             "@internal",
+	"world_analysis":            "@internal",
+	"world_map":                 "export_valheim_map_sources.sh",
+	"provision":                 "provision_valheim_server.sh",
+	"health":                    "wait_valheim_server_ready.sh",
 	// world_create regenerates a world on a chosen seed. It carries a seed but is
 	// not provisioning: the world directory already exists and only its save pair
 	// is replaced.
@@ -146,6 +152,7 @@ var operations = map[string]string{
 var jsonOperations = map[string]struct{}{
 	"mod_inventory": {}, "mod_search": {}, "mod_custom_list": {}, "profile_catalog": {},
 	"world_metadata": {}, "world_mod_catalog": {}, "world_mod_catalog_state": {},
+	"world_config_schema": {}, "world_config_schema_state": {},
 }
 
 // Canonical is the signed payload. A field absent from this list travels unauthenticated, so
@@ -737,6 +744,8 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 		case operation == "world_log_info":
 			args = append(args, "info")
 		case operation == "world_mod_catalog_state":
+			args = append(args, "state")
+		case operation == "world_config_schema_state":
 			args = append(args, "state")
 		case operation == "publish_profile":
 			// The world is already args[0]; the script resolves the single catalog target and

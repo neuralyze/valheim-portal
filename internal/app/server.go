@@ -64,6 +64,9 @@ var adminDockJS []byte
 //go:embed assets/builder-labels.js
 var builderLabelsJS []byte
 
+//go:embed assets/config-manager.js
+var configManagerJS []byte
+
 //go:embed assets/site.css
 var siteCSS []byte
 
@@ -238,6 +241,12 @@ func (s *Server) routes() {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Write(builderLabelsJS)
 	})
+	s.mux.HandleFunc("GET /assets/config-manager.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Write(configManagerJS)
+	})
 	s.mux.HandleFunc("GET /assets/admin-dock.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -328,6 +337,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /admin/backups", s.admin(s.backupAdmin))
 	s.mux.HandleFunc("GET /admin/mods", s.admin(s.modAdmin))
 	s.mux.HandleFunc("GET /admin/worlds/{world}/map", s.admin(s.worldAnalysisMap))
+	// The world's settings configuration manager: every mod's settings, and per setting whether the
+	// server forces the value or a player may change it. authority.json is the same record as a
+	// file, which is what the publish path consumes.
+	s.mux.HandleFunc("GET /admin/worlds/{world}/settings", s.admin(s.settingsManager))
+	s.mux.HandleFunc("POST /admin/worlds/{world}/settings", s.admin(s.setWorldConfigSetting))
+	s.mux.HandleFunc("POST /admin/worlds/{world}/settings/reset", s.admin(s.resetWorldConfigSetting))
+	s.mux.HandleFunc("GET /admin/worlds/{world}/settings/authority.json", s.admin(s.worldConfigAuthorityJSON))
 	s.mux.HandleFunc("GET /admin/worlds/{world}/analysis.json", s.admin(s.worldAnalysisJSON))
 	s.mux.HandleFunc("POST /admin/worlds/{world}/analysis", s.admin(s.runWorldAnalysis))
 	s.mux.HandleFunc("POST /admin/worlds/{world}/builders", s.admin(s.nameBuilder))
@@ -1938,6 +1954,7 @@ body{font:16px system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 
 <code class="server-card-address">{{.JoinAddress}}</code>
 <nav class="server-card-links" aria-label="{{.Name}} admin views">
 <a class="button-link" href="/admin/worlds/{{.Name}}/map">World map and analysis</a>
+<a class="button-link" href="/admin/worlds/{{.Name}}/settings">Settings configuration</a>
 </nav>
 </header>
 <div class="server-card-controls">
