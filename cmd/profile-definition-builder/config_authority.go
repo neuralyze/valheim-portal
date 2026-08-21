@@ -45,7 +45,13 @@ const (
 	// the allowlist will not explain it, so it is written down here.
 	settingsBaselineZIPName = "config/settings-baseline.json"
 
-	maxConfigAuthorityBytes = 4 << 20
+	// Sized against the real corpus rather than guessed. Measured 2026-08-21: Vangard is the
+	// largest world at 174 cfg files and 28,781 keys, and Hrafnheim's 17,429 is only 60% of
+	// that - so a cap chosen against Hrafnheim would refuse a build on the worlds that matter
+	// most. A managed entry costs roughly 130 bytes of JSON, so an admin who managed EVERY key
+	// on Vangard would produce about 3.7 MiB. 16 MiB leaves that a factor of four of room while
+	// still refusing a document that is obviously not one.
+	maxConfigAuthorityBytes = 16 << 20
 
 	policyServerForced  = "server_forced"
 	policyClientDefault = "client_default"
