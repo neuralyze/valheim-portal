@@ -181,7 +181,22 @@ func (s *Server) playerWorldMap(w http.ResponseWriter, r *http.Request) {
 		clipped := clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0], player))
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
 		page.Explored = formatExplored(snapshots[0].Summary)
-		page.Builders, page.LabelsJSON = s.builderLegend(r.Context(), world, clipped)
+		var styles map[string]map[string]string
+		page.Builders, styles = s.builderLegend(r.Context(), world, clipped)
+		// The pins this view will actually draw: one character's own when a character is chosen,
+		// everybody's on the shared map, matching what playerAnalysisJSON hands the canvas.
+		pins := s.reportedPins(world)
+		if player != 0 {
+			kept := make([]explorationPins, 0, len(pins))
+			for _, pin := range pins {
+				if pin.PlayerID == player {
+					kept = append(kept, pin)
+				}
+			}
+			pins = kept
+		}
+		page.PinOwners = s.pinLegend(r.Context(), world, pins, styles)
+		page.LabelsJSON = encodeStyles(styles)
 		// The clipped snapshot, not the whole one: a legend covering every location in the world
 		// would name places this player has never found, on the one map built to withhold them.
 		// Overlay tiles are clipped the same way before they are cut, so every id a tile can hand

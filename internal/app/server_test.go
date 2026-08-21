@@ -636,11 +636,25 @@ func TestWorldAnalysisMapExposesDetailedLayerAndZoomControls(t *testing.T) {
 		`data-location-category="boss"`,
 		`data-location-category="trader"`,
 		`data-location-category="dungeon"`,
+		`data-location-category="shrine"`,
+		`data-location-category="tower"`,
 		`data-location-category="fortress"`,
+		`data-location-category="arena"`,
+		`data-location-category="mine"`,
+		`data-location-category="port"`,
+		`data-location-category="monument"`,
 		`data-location-category="settlement"`,
 		`data-location-category="resource"`,
+		`data-location-category="ruins"`,
 		`data-location-category="landmark"`,
 		`data-location-category="other"`,
+		`map-key--location-shrine`,
+		`map-key--location-tower`,
+		`map-key--location-arena`,
+		`map-key--location-mine`,
+		`map-key--location-port`,
+		`map-key--location-monument`,
+		`map-key--location-ruins`,
 		`id="zoom-out"`,
 		`id="zoom-in"`,
 		`tabindex="0"`,
@@ -659,6 +673,19 @@ func TestWorldAnalysisMapExposesDetailedLayerAndZoomControls(t *testing.T) {
 	// has to find and tick would leave them just as invisible in practice.
 	if !strings.Contains(page, `data-layer="vehicle" checked`) {
 		t.Fatal("boats and carts default to hidden")
+	}
+	// A church 100 m from a raft is no use behind an unticked box, and the four small distinctive
+	// categories are 623 locations against 13,279 - they cost nothing to leave on. The three big
+	// ones stay off, which is the clutter the original defaults were protecting against.
+	for _, on := range []string{"shrine", "arena", "mine", "port"} {
+		if !strings.Contains(page, `data-location-category="`+on+`" checked`) {
+			t.Fatalf("location category %q defaults to hidden", on)
+		}
+	}
+	for _, off := range []string{"tower", "ruins", "monument"} {
+		if strings.Contains(page, `data-location-category="`+off+`" checked`) {
+			t.Fatalf("location category %q defaults to visible", off)
+		}
 	}
 	if strings.Contains(page, `id="detail"`) {
 		t.Fatal("world analysis page still exposes the removed manual terrain detail control")

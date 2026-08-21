@@ -1039,22 +1039,53 @@ func LocationCategory(name string) string {
 		}
 		return false
 	}
+	// Order is the whole contract. Prefab ids stack words, so the interesting names match more than
+	// one rule: MWL_RuinsChurch1 is a church that happens to be ruined, StoneTowerRuins03 is a
+	// tower, StartTemple is the world spawn that happens to be a temple. Every case claims the most
+	// specific noun and the generic condition word ("ruin") is left for last. On 2026-08-21 a church
+	// 100 m from a player's raft was indistinguishable from a runestone, because everything carrying
+	// "ruin" landed in one blue landmark bucket; this ordering is what separates them.
 	switch {
 	case contains("starttemple"):
+		// Ahead of shrine: the spawn altar contains "temple", and there is exactly one of it.
 		return "spawn"
 	case contains("eikthyr", "gdking", "bonemass", "dragonqueen", "goblinking", "bossentrance", "faderlocation"):
 		return "boss"
 	case contains("vendor", "hildir_camp", "bogwitch", "tavern", "blacksmith"):
 		return "trader"
-	case contains("crypt", "cave", "trollcave", "morgenhole", "firehole", "bfd_exterior"):
+	case contains("crypt", "cave", "trollcave", "morgenhole", "firehole", "bfd_exterior", "tomb"):
+		// Tombs belong with the crypts: they are enterable structures, not scenery.
 		return "dungeon"
-	case contains("fortress", "guardtower", "stonetower", "charredtower"):
+	case contains("church", "chapel", "temple", "altar", "shrine"):
+		// Ahead of tower and ruins. A sacred building is what the player sees whatever state it is
+		// in, and 31 of these 322 also match "ruin".
+		return "shrine"
+	case contains("tower"):
+		// Ahead of fortress, or the 1127 GuardTower/StoneTower locations already reading "fortress"
+		// never move. A guard tower is a tower; fortress below keeps the actual strongholds.
+		return "tower"
+	case contains("fortress"):
+		// FortressRuins is a fortress in a state of disrepair, so the noun beats "ruin" below.
 		return "fortress"
-	case contains("camp", "village", "farm", "woodhouse", "stonehouse", "swamphut", "dvergrtown", "harbour"):
+	case contains("arena"):
+		// Ahead of ruins: three of the four arena prefabs are named MWL_RuinsArena*.
+		return "arena"
+	case contains("mine", "quarry", "excavat"):
+		return "mine"
+	case contains("port", "harbour", "harbor", "dock", "pier"):
+		// Ahead of settlement, which used to file Mistlands_Harbour1 as a village.
+		return "port"
+	case contains("statue", "monument", "obelisk", "dolmen", "stonecircle", "stonehenge", "runestone"):
+		return "monument"
+	case contains("camp", "village", "farm", "woodhouse", "stonehouse", "swamphut", "dvergrtown"):
 		return "settlement"
 	case contains("tarpit", "volturenest", "drakenest", "leviathan", "spawner", "sulfur", "infestedtree"):
 		return "resource"
-	case contains("runestone", "ruin", "grave", "dolmen", "ship", "statue", "giant", "sword", "viaduct", "lighthouse", "roadpost", "waymarker", "well", "excavation", "arch", "stonecircle", "stonehenge", "placeofmystery"):
+	case contains("ruin"):
+		// Deliberately the last structure rule: "ruin" is a condition, not a building, so every rule
+		// above gets first refusal on the 2009 names carrying the word.
+		return "ruins"
+	case contains("grave", "ship", "giant", "sword", "viaduct", "lighthouse", "roadpost", "waymarker", "well", "arch", "placeofmystery"):
 		return "landmark"
 	default:
 		return "other"

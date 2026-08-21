@@ -61,7 +61,10 @@ func TestOverviewOverlayRetainsEveryBossBeforeLocationTruncation(t *testing.T) {
 			Name: name, Position: worldintel.Vec3{X: float32(index), Z: float32(index)},
 		})
 	}
-	for _, category := range []string{"trader", "dungeon", "fortress", "settlement", "resource", "other"} {
+	// "Ruin1" above is the bulk that gets truncated, and it classifies as "ruins" now that a ruined
+	// wall and a runestone are no longer the same thing. The explicit list is every other category a
+	// truncated overview still has to carry one of.
+	for _, category := range []string{"trader", "dungeon", "shrine", "tower", "fortress", "arena", "mine", "port", "monument", "settlement", "resource", "landmark", "other"} {
 		for index := 0; index < 200; index++ {
 			snapshot.Locations = append(snapshot.Locations, worldintel.Location{
 				Name: category, Category: category, Position: worldintel.Vec3{X: float32(index - 100), Z: float32(index - 100)},
@@ -87,7 +90,7 @@ func TestOverviewOverlayRetainsEveryBossBeforeLocationTruncation(t *testing.T) {
 	for _, location := range tile.Locations {
 		categoryCounts[location.Category]++
 	}
-	for _, category := range []string{"spawn", "boss", "trader", "dungeon", "fortress", "settlement", "resource", "landmark", "other"} {
+	for _, category := range []string{"spawn", "boss", "trader", "dungeon", "shrine", "tower", "fortress", "arena", "mine", "port", "monument", "settlement", "resource", "ruins", "landmark", "other"} {
 		if categoryCounts[category] == 0 {
 			t.Errorf("overview truncation omitted the %q location category", category)
 		}

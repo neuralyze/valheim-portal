@@ -95,18 +95,40 @@ func TestStableHashMatchesValheimContract(t *testing.T) {
 	}
 }
 
+// Real prefab names from the Hrafnheim corpus, chosen because each one matches more than one
+// keyword: the classifier is an ordered switch, so these are the cases that pin the order down.
 func TestLocationCategoryClassifiesWorldFeaturesAndEveryBoss(t *testing.T) {
 	tests := map[string]string{
 		"Eikthyrnir": "boss", "GDKing": "boss", "Bonemass": "boss", "Dragonqueen": "boss",
 		"GoblinKing": "boss", "Mistlands_DvergrBossEntrance1": "boss", "FaderLocation": "boss",
 		"Vendor_BlackForest": "trader", "Hildir_camp": "trader", "BogWitch_Camp": "trader",
 		"SunkenCrypt4": "dungeon", "MountainCave02": "dungeon", "MorgenHole1": "dungeon",
-		"CharredFortress": "fortress", "Mistlands_GuardTower1_new": "fortress",
-		"StartTemple":  "spawn",
-		"WoodVillage1": "settlement", "GoblinCamp2": "settlement",
+		// Controls that must not regress: the world spawn contains "temple" and the crypts and
+		// caves are 1056 locations that were already right before shrines existed.
+		"StartTemple": "spawn", "Crypt2": "dungeon", "TrollCave02": "dungeon",
+		// Tombs are enterable, so they belong with the crypts rather than in "other".
+		"MWL_MeadowsTomb4": "dungeon",
+		// The church that started this: it contains "ruin", and read as a landmark until shrine was
+		// evaluated ahead of the ruins rule.
+		"MWL_RuinsChurch1": "shrine", "MWL_AncientShrine1": "shrine", "MWL_FulingTemple3": "shrine",
+		"MWL_SwampAltar1": "shrine",
+		// Tower beats fortress and ruins; fortress keeps the strongholds even when ruined.
+		"Mistlands_GuardTower1_new": "tower", "StoneTowerRuins03": "tower",
+		"CharredTowerRuins2": "tower", "MWL_SwampBrokenTower3": "tower",
+		"CharredFortress": "fortress", "FortressRuins": "fortress",
+		"MWL_RuinsArena1": "arena", "MWL_PlainsArena2": "arena",
+		"Mistlands_Excavation1": "mine",
+		"Mistlands_Harbour1":    "port", "MWL_Port3": "port",
+		"Runestone_Meadows": "monument", "Dolmen01": "monument", "Mistlands_Statue1": "monument",
+		"StoneCircle":  "monument",
+		"WoodVillage1": "settlement", "GoblinCamp2": "settlement", "Greydwarf_camp1": "settlement",
 		"TarPit3": "resource", "VoltureNest": "resource", "InfestedTree01": "resource",
-		"Runestone_Meadows": "landmark", "ShipWreck01": "landmark", "AshlandRuins": "landmark",
-		"CombatRuin01": "landmark", "Greydwarf_camp1": "settlement",
+		"AshlandRuins": "ruins", "CombatRuin01": "ruins", "Ruin1": "ruins",
+		"MWL_RuinsCastle1": "ruins",
+		// What is left in landmark once monuments, mines and ruins have been taken out of it.
+		"ShipWreck01": "landmark", "Mistlands_RoadPost1": "landmark", "Grave1": "landmark",
+		"StoneHenge5": "monument", "PlaceofMystery1": "landmark",
+		"MWL_MistHut1": "other",
 	}
 	for name, want := range tests {
 		if got := LocationCategory(name); got != want {

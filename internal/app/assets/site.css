@@ -37,9 +37,16 @@
   --map-location-boss: #ff796c;
   --map-location-trader: #66d9d0;
   --map-location-dungeon: #b79bf2;
+  --map-location-shrine: #ef8ad4;
+  --map-location-tower: #a8d84f;
   --map-location-fortress: #ed9b62;
+  --map-location-arena: #7ce87c;
+  --map-location-mine: #d99a3f;
+  --map-location-port: #8f8cff;
+  --map-location-monument: #a9c8e8;
   --map-location-settlement: #72d68d;
   --map-location-resource: #e8d467;
+  --map-location-ruins: #ab9c85;
   --map-location-landmark: #7dbcf2;
   --map-location-other: #b5c0b8;
   --map-location-pending: #9a8246;
@@ -1018,9 +1025,16 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
 .map-key--location-boss { color: var(--map-location-boss); }
 .map-key--location-trader { color: var(--map-location-trader); }
 .map-key--location-dungeon { color: var(--map-location-dungeon); }
+.map-key--location-shrine { color: var(--map-location-shrine); }
+.map-key--location-tower { color: var(--map-location-tower); }
 .map-key--location-fortress { color: var(--map-location-fortress); }
+.map-key--location-arena { color: var(--map-location-arena); }
+.map-key--location-mine { color: var(--map-location-mine); }
+.map-key--location-port { color: var(--map-location-port); }
+.map-key--location-monument { color: var(--map-location-monument); }
 .map-key--location-settlement { color: var(--map-location-settlement); }
 .map-key--location-resource { color: var(--map-location-resource); }
+.map-key--location-ruins { color: var(--map-location-ruins); }
 .map-key--location-landmark { color: var(--map-location-landmark); }
 .map-key--location-other { color: var(--map-location-other); }
 .map-key--build { color: var(--map-build); }
@@ -1203,6 +1217,17 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
   cursor: pointer;
 }
 .map-builder summary::-webkit-details-marker { display: none; }
+/* One row per contributor of map pins. Same three-column shape as a builder row, and deliberately
+   the same swatch and name treatment: a person's base and their markers are one contributor. */
+.map-pin-owner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .15rem .4rem;
+  padding: .3rem 0;
+  border-top: 1px solid var(--site-line);
+  font-size: .78rem;
+}
 .map-builder-swatch {
   grid-column: 1;
   grid-row: 1;

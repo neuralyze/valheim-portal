@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Seven more location categories with their own glyphs: shrine, tower, ruins, monument, port, mine
+  and arena, plus tombs moved to dungeon. A church 100 m from a player's raft used to draw the same
+  blue diamond as a runestone, and it was one of 322 sacred structures split between two buckets.
+  Ordering carries the meaning: shrine and tower beat ruins because a ruin is a condition rather
+  than a building, tower beats fortress so 1127 guard towers stop reading as strongholds, and
+  StartTemple stays the world spawn despite containing the word temple.
+- Player map pins show on the admin map, drawn per pin type and attributed per player, with the
+  crossed-off strike-through preserved. The operator's own markers were reaching the portal and
+  had no way to be displayed there.
+
 - VR players can reach the hover menu again, and the guide finally tells them how. The menu
   opened on the right grip while six places in the guide said the off hand, its `Modifier` setting
   was read by nothing, and its highlight could not move at all on foot because the thumbstick was

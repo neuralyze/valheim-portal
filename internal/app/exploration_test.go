@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -377,5 +378,134 @@ func TestTheNarrowExplorationScopeMayOnlyUploadMaps(t *testing.T) {
 		if response.Code == http.StatusOK {
 			t.Errorf("%s answered 200 to a token that may only upload maps", target)
 		}
+	}
+}
+
+// The six pins the operator's own client uploaded for Hrafnheim on 2026-08-21, verbatim, including
+// the duplicate "Shipwreck Chest". Real data, so the numeric Minimap.PinType values are the ones the
+// map has to be able to draw.
+const operatorPinsFile = `{"schema":1,"world":"Midgard","player_id":-322254472,"written":"2026-08-21T06:45:27Z","pins":[
+{"name":"Crypt","type":3,"type_name":"icon3","x":122,"z":502.9,"crossed_off":false,"owner_id":0},
+{"name":"","type":0,"type_name":"icon0","x":53.46,"z":229.72,"crossed_off":false,"owner_id":0},
+{"name":"","type":0,"type_name":"icon0","x":242.59,"z":740.88,"crossed_off":false,"owner_id":0},
+{"name":"Shipwreck Chest","type":3,"type_name":"icon3","x":340.4,"z":1110.8,"crossed_off":false,"owner_id":0},
+{"name":"Shipwreck Chest","type":3,"type_name":"icon3","x":340.4,"z":1110.8,"crossed_off":false,"owner_id":0},
+{"name":"BASE 1","type":1,"type_name":"icon1","x":3.83,"z":323.49,"crossed_off":true,"owner_id":0}]}`
+
+func writeOperatorPins(t *testing.T, server *Server, world string) {
+	t.Helper()
+	directory := server.explorationRoot(world)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Join(directory, "76561197987967077--322254472.pins.json")
+	if err := os.WriteFile(name, []byte(operatorPinsFile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The operator's map had a pins layer that could never draw anything: the checkbox was hidden behind
+// {{if not .Admin}} and the admin payload did not carry pins at all. Both halves are asserted here,
+// because either one alone leaves the layer invisible - the same trap the boats fell into.
+func TestAdminAnalysisPayloadCarriesPinsWithTheirValheimType(t *testing.T) {
+	server := testServer(t)
+	world := "Midgard"
+	writeOperatorPins(t, server, world)
+	snapshot := worldintel.Snapshot{
+		Schema:  worldintel.SchemaVersion,
+		World:   world,
+		Source:  worldintel.Source{Backup: "world-Midgard-test.tgz", SHA256: strings.Repeat("b", 64)},
+		Summary: worldintel.Summary{Categories: map[string]int{}},
+	}
+	if err := server.store.SaveWorldAnalysis(t.Context(), snapshot, "test"); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/admin/worlds/"+world+"/analysis.json", nil)
+	request.RemoteAddr = "192.0.2.10:12345"
+	request.Header.Set("X-Forwarded-User", "admin@example.test")
+	request.Header.Set(adminTokenHeader, testAdminToken)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("admin analysis = %d: %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Pins []explorationPins `json:"pins"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Pins) != 6 {
+		t.Fatalf("admin payload carried %d pins, want 6", len(payload.Pins))
+	}
+	types := map[int]int{}
+	for _, pin := range payload.Pins {
+		types[pin.Type]++
+		if pin.PlayerID != -322254472 {
+			t.Errorf("pin %q lost its placer: player_id=%d", pin.Name, pin.PlayerID)
+		}
+	}
+	// Icon3 x3, Icon0 x2, Icon1 x1: the ordinal is what picks the glyph, so it has to survive the
+	// round trip rather than being flattened to the "icon3" string beside it.
+	for ordinal, want := range map[int]int{3: 3, 0: 2, 1: 1} {
+		if types[ordinal] != want {
+			t.Errorf("pin type %d appeared %d times, want %d", ordinal, types[ordinal], want)
+		}
+	}
+	// The duplicate is carried through, not deduplicated: two markers on one spot is a fact about
+	// what the player did, and the canvas counts them into one label instead of dropping one.
+	duplicates := 0
+	for _, pin := range payload.Pins {
+		if pin.Name == "Shipwreck Chest" && pin.X == 340.4 && pin.Z == 1110.8 {
+			duplicates++
+		}
+	}
+	if duplicates != 2 {
+		t.Errorf("the duplicate Shipwreck Chest pin arrived %d time(s), want 2", duplicates)
+	}
+}
+
+// One contributor is the state tonight, so the legend has to be right with exactly one row - and the
+// colour it shows has to be the colour the canvas draws, or the legend is lying about the map.
+func TestPinLegendAttributesEachContributorLikeABuilder(t *testing.T) {
+	server := testServer(t)
+	world := "Midgard"
+	writeOperatorPins(t, server, world)
+	styles := map[string]map[string]string{}
+	owners := server.pinLegend(t.Context(), world, server.reportedPins(world), styles)
+	if len(owners) != 1 {
+		t.Fatalf("pin owners = %d, want 1", len(owners))
+	}
+	owner := owners[0]
+	if owner.PlayerID != -322254472 || owner.Pins != 6 || owner.Struck != 1 {
+		t.Fatalf("owner row = %+v, want the 6 pins with 1 crossed off", owner)
+	}
+	if owner.Colour != builderColour(-322254472) {
+		t.Errorf("pin colour %q is not the builder colour %q for the same character", owner.Colour, builderColour(-322254472))
+	}
+	// No identity plugin file in this world, so the row must say what it knows rather than invent a
+	// name; the Steam id in the file name is not a character name and is never used as one.
+	if owner.Named || owner.Label != builderFallbackName(-322254472) {
+		t.Errorf("unknown character row = %+v, want the id-derived stand-in", owner)
+	}
+	// The canvas colours and names a pin through the same fold as a cluster, so a contributor who
+	// placed markers and never built has to be in it.
+	style := styles["-322254472"]
+	if style == nil || style["colour"] != owner.Colour || style["name"] != owner.Label || style["unnamed"] != "1" {
+		t.Errorf("canvas style fold = %+v, want the legend's colour and stand-in name", style)
+	}
+
+	// With the identity plugin deployed the same row carries the name the game reported.
+	identities := filepath.Join(server.cfg.MapSourceRoot, world, "config_merged")
+	if err := os.MkdirAll(identities, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(identities, "player_identities.json"),
+		[]byte(`{"schema":1,"players":[{"player_id":-322254472,"name":"westar"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	named := server.pinLegend(t.Context(), world, server.reportedPins(world), map[string]map[string]string{})
+	if len(named) != 1 || named[0].Label != "westar" || !named[0].Named || !named[0].Reported {
+		t.Fatalf("named row = %+v, want westar reported by the server", named)
 	}
 }

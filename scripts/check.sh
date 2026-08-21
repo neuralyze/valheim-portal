@@ -30,7 +30,11 @@ gates=(
   "pytest|the Python tool tests pass|cd tools && python3 -m pytest -q"
   "hostops|the host script regression tests pass|for t in hostops/tests/*.sh; do bash \"\$t\" >/dev/null || exit 1; done"
   "installer|install.conf reaches the compose environment unchanged|for t in scripts/tests/*.sh; do bash \"\$t\" >/dev/null || exit 1; done"
-  "gotest|the Go tests pass under the race detector|go test -race ./..."
+  # -timeout 20m, not Go's default 10m: TestBuildPublishesImmutableDeterministicPyramid renders a
+  # real tile pyramid and takes ~55s on its own, which the race detector multiplies until the
+  # package alone crosses 600s and panics with "test timed out". On 2026-08-21 that read as a
+  # failing gate while every assertion passed. Shrinking that fixture is the better fix.
+  "gotest|the Go tests pass under the race detector|go test -race -timeout 20m ./..."
 )
 
 list() {

@@ -33,6 +33,10 @@ type worldAnalysisPage struct {
 	// piece and nothing resolves that to a person - names live in client character files - so the
 	// operator names each one once and the portal remembers.
 	Builders []pageBuilder
+	// PinOwners is every character that has uploaded map pins, with the same colour and name the
+	// map draws its builder rows in. Pins used to be one anonymous blue pile; who put a marker down
+	// is half of what a marker means once more than one person plays.
+	PinOwners []pagePinOwner
 	// LabelsJSON carries each builder's name and colour as JSON, so the canvas can label and colour a
 	// cluster without a
 	// second request.
@@ -84,6 +88,21 @@ type pageBuilder struct {
 	Nameable bool
 	// Reported marks a name the game itself supplied through the identity plugin, rather than one an
 	// operator typed. Worth showing: it is the difference between evidence and somebody's note.
+	Reported bool
+}
+
+// pagePinOwner is one contributor's map pins. The id is the character id Valheim stamps on pieces -
+// the same id space as pageBuilder.Creator - so the colour and the name deliberately come from the
+// builder palette: a person's base and a person's markers must read as one contributor.
+type pagePinOwner struct {
+	PlayerID int64
+	Label    string
+	Colour   string
+	Pins     int
+	// Struck is how many of those the player crossed off. A crossed pin is still information: it is
+	// somewhere they went and finished with.
+	Struck   int
+	Named    bool
 	Reported bool
 }
 
@@ -145,7 +164,11 @@ func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
 		page.Backup = snapshots[0].Source.Backup
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
 		page.Explored = formatExplored(snapshots[0].Summary)
-		page.Builders, page.LabelsJSON = s.builderLegend(r.Context(), world, snapshots[0])
+		var styles map[string]map[string]string
+		page.Builders, styles = s.builderLegend(r.Context(), world, snapshots[0])
+		// Every contributor's pins: this is the one map that sees all of them.
+		page.PinOwners = s.pinLegend(r.Context(), world, s.reportedPins(world), styles)
+		page.LabelsJSON = encodeStyles(styles)
 		// The operator's map is unclipped and so are its overlay tiles, so the legend is built from
 		// the whole snapshot.
 		page.LocationNamesJSON = locationNameLegend(snapshots[0].Locations)
@@ -165,7 +188,9 @@ func formatExplored(summary worldintel.Summary) string {
 // builderLegend turns the clusters in a snapshot into legend rows and the styles the canvas draws
 // with. Both maps call it, so the players' map cannot end up with a different palette or a different
 // set of builders from the operator's: it is the same function over a differently clipped snapshot.
-func (s *Server) builderLegend(ctx context.Context, world string, snapshot worldintel.Snapshot) ([]pageBuilder, string) {
+// The styles come back as a map rather than as JSON so pinLegend can add the contributors who placed
+// markers but never built anything, and the canvas still reads one fold for colour and name.
+func (s *Server) builderLegend(ctx context.Context, world string, snapshot worldintel.Snapshot) ([]pageBuilder, map[string]map[string]string) {
 	labels, labelErr := s.store.BuilderLabels(ctx, world)
 	if labelErr != nil {
 		labels = map[int64]string{}
@@ -227,11 +252,82 @@ func (s *Server) builderLegend(ctx context.Context, world string, snapshot world
 		}
 		return rows[i].Creator < rows[j].Creator
 	})
+	return rows, styles
+}
+
+// pinLegend attributes uploaded pins to the characters that placed them. A pin carries the character
+// id the game stamps on pieces - the same id space as a cluster's creator - so a person's base and
+// their markers are given the same colour and the same name deliberately: on the operator's map they
+// are one contributor, not two mysteries. Steam ids are not consulted: the pins payload names its
+// owner by character id, and player_identities.json is what resolves that to a name the game itself
+// reported. With a single contributor this is one row, which is the state tonight.
+func (s *Server) pinLegend(ctx context.Context, world string, pins []explorationPins, styles map[string]map[string]string) []pagePinOwner {
+	if len(pins) == 0 {
+		return nil
+	}
+	labels, labelErr := s.store.BuilderLabels(ctx, world)
+	if labelErr != nil {
+		labels = map[int64]string{}
+	}
+	reported := s.reportedPlayerNames(world)
+	counts, struck := map[int64]int{}, map[int64]int{}
+	for _, pin := range pins {
+		counts[pin.PlayerID]++
+		if pin.Crossed {
+			struck[pin.PlayerID]++
+		}
+	}
+	owners := make([]pagePinOwner, 0, len(counts))
+	for player, count := range counts {
+		owner := pagePinOwner{
+			PlayerID: player,
+			Pins:     count,
+			Struck:   struck[player],
+			Colour:   builderColour(player),
+		}
+		switch label, chosen := labels[player]; {
+		case chosen:
+			owner.Label = label
+			owner.Named = true
+		default:
+			if name, ok := reported[player]; ok {
+				owner.Label = name
+				owner.Named = true
+				owner.Reported = true
+			} else {
+				owner.Label = builderFallbackName(player)
+			}
+		}
+		// Seed the canvas fold for a contributor the builder legend never listed, or their pins
+		// would be labelled "builder 4472" on a map whose legend says "westar".
+		key := strconv.FormatInt(player, 10)
+		if _, seen := styles[key]; !seen {
+			style := map[string]string{"colour": owner.Colour, "name": owner.Label}
+			if !owner.Named {
+				style["unnamed"] = "1"
+			}
+			styles[key] = style
+		}
+		owners = append(owners, owner)
+	}
+	sort.Slice(owners, func(i, j int) bool {
+		if owners[i].Pins != owners[j].Pins {
+			return owners[i].Pins > owners[j].Pins
+		}
+		return owners[i].PlayerID < owners[j].PlayerID
+	})
+	return owners
+}
+
+// encodeStyles hands the canvas the colour and name fold as JSON. An empty object on failure: the
+// script has its own stable fallback for an id the page never listed, so a broken fold degrades to
+// unnamed rather than to an unrendered map.
+func encodeStyles(styles map[string]map[string]string) string {
 	encoded, err := json.Marshal(styles)
 	if err != nil {
-		return rows, "{}"
+		return "{}"
 	}
-	return rows, string(encoded)
+	return string(encoded)
 }
 
 type worldAnalysisFailure struct {
@@ -408,11 +504,16 @@ func (s *Server) worldAnalysisJSON(w http.ResponseWriter, r *http.Request) {
 	if len(snapshots) > 1 {
 		diff = worldintel.Compare(snapshots[1], snapshots[0])
 	}
+	// Pins ride along on the operator's payload for the same reason they do on a player's: the
+	// checkbox, the glyph and the colour are worth nothing if the JSON never carries the pins. That
+	// is exactly how the boats kept four surfaces out of five and drew nothing on 2026-08-21. Every
+	// contributor's pins, unfiltered - the operator's map is the one view that sees all of them.
 	response := struct {
 		Snapshot        worldintel.Snapshot `json:"snapshot"`
 		Diff            *worldintel.Diff    `json:"diff,omitempty"`
 		Recommendations []string            `json:"recommendations"`
-	}{snapshot, diff, worldintel.Recommendations(snapshots[0], diff)}
+		Pins            []explorationPins   `json:"pins,omitempty"`
+	}{snapshot, diff, worldintel.Recommendations(snapshots[0], diff), s.reportedPins(world)}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(response)
@@ -536,7 +637,12 @@ func (s *Server) worldOverlayTile(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	etag := `"` + snapshots[0].Source.SHA256 + "-" + strconv.Itoa(zoom) + "-" + strconv.Itoa(x) + "-" + strconv.Itoa(y) + `"`
+	// The save's hash and the tile's coordinates are not enough to identify a tile's CONTENT: the
+	// same save re-cut by a newer renderer is a different tile at the same address. Measured on
+	// 2026-08-21: after the location categories were split, a browser holding a cached tile kept
+	// being told 304 and went on drawing a church as a landmark, because this ETag never mentioned
+	// what was in the file. The overlay schema version is what changes when the meaning does.
+	etag := `"` + snapshots[0].Source.SHA256 + "-v" + strconv.Itoa(maptiles.OverlaySchemaVersion) + "-" + strconv.Itoa(zoom) + "-" + strconv.Itoa(x) + "-" + strconv.Itoa(y) + `"`
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, no-cache")
 	if r.Header.Get("If-None-Match") == etag {
@@ -608,12 +714,21 @@ const worldAnalysisTemplate = `<!doctype html>
 </form>{{else if not .Nameable}}<p class="map-hint">These pieces carry no player id at all - Valheim leaves the stamp empty on generated structures and on anything whose builder was never recorded.{{if $.Admin}} There is nobody here to name.{{end}}</p>{{end}}
 </details>{{end}}
 </fieldset>{{end}}
+{{if .PinOwners}}<fieldset class="map-pin-owners">
+<legend>Map pins</legend>
+<p class="map-hint">Markers players placed in game, in the same colour as their building. The shape is Valheim's own pin icon; a struck-through pin is one the player crossed off.</p>
+{{range .PinOwners}}<div class="map-pin-owner">
+<span class="map-builder-swatch" style="background:{{.Colour}}"></span>
+<span class="map-builder-name{{if not .Named}} map-builder-unnamed{{end}}"{{if .Reported}} title="the character name the game reported for this player id"{{end}}>{{.Label}}{{if .Reported}} <span class="map-builder-source">from the server</span>{{end}}</span>
+<span class="map-builder-count">{{.Pins}} pin(s){{if .Struck}} · {{.Struck}} crossed off{{end}}</span>
+</div>{{end}}
+</fieldset>{{end}}
 <fieldset>
 <legend>Map layers</legend>
 <label class="map-layer"><input type="checkbox" data-layer="terrain" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Terrain and biomes</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="zones" {{if not .HaveAnalysis}}disabled{{end}}><span>Explored area{{if .Explored}} · {{.Explored}}{{end}}</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="locations" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Locations</span></label>
-{{if not .Admin}}<label class="map-layer"><input type="checkbox" data-layer="pins" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player pins</span></label>{{end}}
+<label class="map-layer"><input type="checkbox" data-layer="pins" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player pins</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="clusters" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player construction</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="portal" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Portals</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="vehicle" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Boats and carts</span></label>
@@ -629,9 +744,16 @@ const worldAnalysisTemplate = `<!doctype html>
 <label class="map-layer"><input type="checkbox" data-location-category="boss" checked><span>Bosses</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="trader" checked><span>Traders</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="dungeon"><span>Dungeons</span></label>
+<label class="map-layer"><input type="checkbox" data-location-category="shrine" checked><span>Shrines and temples</span></label>
+<label class="map-layer"><input type="checkbox" data-location-category="tower"><span>Towers</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="fortress"><span>Fortresses</span></label>
+<label class="map-layer"><input type="checkbox" data-location-category="arena" checked><span>Arenas</span></label>
+<label class="map-layer"><input type="checkbox" data-location-category="mine" checked><span>Mines</span></label>
+<label class="map-layer"><input type="checkbox" data-location-category="port" checked><span>Ports</span></label>
+<label class="map-layer"><input type="checkbox" data-location-category="monument"><span>Monuments</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="settlement"><span>Settlements</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="resource"><span>Resources</span></label>
+<label class="map-layer"><input type="checkbox" data-location-category="ruins"><span>Ruins</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="landmark"><span>Landmarks</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="other"><span>Other locations</span></label>
 </fieldset>
@@ -654,9 +776,16 @@ const worldAnalysisTemplate = `<!doctype html>
 <li><span class="map-key map-key--location-boss" aria-hidden="true">★</span>Boss</li>
 <li><span class="map-key map-key--location-trader" aria-hidden="true">¤</span>Trader</li>
 <li><span class="map-key map-key--location-dungeon" aria-hidden="true">∩</span>Dungeon</li>
+<li><span class="map-key map-key--location-shrine" aria-hidden="true">✚</span>Shrine / temple</li>
+<li><span class="map-key map-key--location-tower" aria-hidden="true">⊤</span>Tower</li>
 <li><span class="map-key map-key--location-fortress" aria-hidden="true">▥</span>Fortress</li>
+<li><span class="map-key map-key--location-arena" aria-hidden="true">○</span>Arena</li>
+<li><span class="map-key map-key--location-mine" aria-hidden="true">▼</span>Mine</li>
+<li><span class="map-key map-key--location-port" aria-hidden="true">⚓</span>Port</li>
+<li><span class="map-key map-key--location-monument" aria-hidden="true">▮</span>Monument</li>
 <li><span class="map-key map-key--location-settlement" aria-hidden="true">⌂</span>Settlement</li>
 <li><span class="map-key map-key--location-resource" aria-hidden="true">◈</span>Resource</li>
+<li><span class="map-key map-key--location-ruins" aria-hidden="true">▨</span>Ruins</li>
 <li><span class="map-key map-key--location-landmark" aria-hidden="true">◆</span>Landmark</li>
 <li><span class="map-key map-key--location-other" aria-hidden="true">•</span>Other location</li>
 <li><span class="map-key map-key--build" aria-hidden="true">⌂</span>Build cluster / coverage</li>

@@ -8,7 +8,13 @@ import (
 	"github.com/neuralyze/valheim-portal/internal/worldintel"
 )
 
-const OverlaySchemaVersion = 3
+// OverlaySchemaVersion is part of the path an overlay pyramid is stored under, and the builder reuses
+// an existing pyramid whenever the save's hash still matches. That reuse is keyed on the WORLD, not
+// on this code, so a classifier change alone would leave every already-published world serving tiles
+// that still call a church a landmark - the tiles are what the map draws locations from at close
+// zoom. Bumped from 3 to 4 on 2026-08-21 when shrine, tower, ruins, monument, port, mine and arena
+// were split out: any change to what a tile's categories MEAN has to be bumped here too.
+const OverlaySchemaVersion = 4
 
 const MaxOverlayFeatures = 4096
 
@@ -152,27 +158,23 @@ func SelectOverlay(snapshot worldintel.Snapshot, level Level, x, y int) (Overlay
 	return tile, true
 }
 
+// locationPriorities is the order a truncated overview tile gives up locations in. Every category the
+// classifier can return has to appear here: one that falls through shares the last bucket with
+// "other", which is how a shrine would end up scarcer on an overview tile than a rock spire. The
+// small, deliberately-visible categories sit near the top for the same reason they are ticked by
+// default - a church 100 m from a raft is the thing somebody is looking for.
+var locationPriorities = map[string]int{
+	"spawn": 0, "boss": 1, "trader": 2, "shrine": 3, "dungeon": 4, "port": 5, "mine": 6, "arena": 7,
+	"tower": 8, "fortress": 9, "monument": 10, "settlement": 11, "resource": 12, "ruins": 13,
+	"landmark": 14,
+}
+
 func locationPriority(category string) int {
-	switch category {
-	case "spawn":
-		return 0
-	case "boss":
-		return 1
-	case "trader":
-		return 2
-	case "dungeon":
-		return 3
-	case "fortress":
-		return 4
-	case "settlement":
-		return 5
-	case "resource":
-		return 6
-	case "landmark":
-		return 7
-	default:
-		return 8
+	if priority, known := locationPriorities[category]; known {
+		return priority
 	}
+	// "other", and anything a newer classifier invents before this map is updated.
+	return len(locationPriorities)
 }
 
 func boundedLocations(values []worldintel.Location, maximum int, alreadyTruncated bool) ([]worldintel.Location, bool) {
@@ -182,7 +184,7 @@ func boundedLocations(values []worldintel.Location, maximum int, alreadyTruncate
 	if len(values) <= maximum {
 		return values, alreadyTruncated
 	}
-	buckets := make([][]worldintel.Location, 9)
+	buckets := make([][]worldintel.Location, len(locationPriorities)+1)
 	for _, location := range values {
 		priority := locationPriority(location.Category)
 		buckets[priority] = append(buckets[priority], location)

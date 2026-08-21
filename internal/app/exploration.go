@@ -413,10 +413,15 @@ func readExplorationReport(path string) (*explorationUpload, error) {
 	return report, nil
 }
 
-// explorationPins is every saved pin every player reported, with whose it is.
+// explorationPins is every saved pin every player reported, with whose it is. Type is Valheim's own
+// Minimap.PinType ordinal (assembly_valheim.dll: Icon0=0, Icon1=1, Icon2=2, Icon3=3, Death=4, Bed=5,
+// Icon4=6, Shout=7, None=8, Boss=9, Player=10, RandomEvent=11, Ping=12, EventArea=13, Hildir1..3=
+// 14..16) and it is carried through as the number so the map can draw a bed as a bed. TypeName is
+// what the client wrote alongside it, which for the vanilla marker icons is "icon0".."icon4".
 type explorationPins struct {
 	PlayerID int64   `json:"player_id"`
 	Name     string  `json:"name"`
+	Type     int     `json:"type"`
 	TypeName string  `json:"type_name"`
 	X        float64 `json:"x"`
 	Z        float64 `json:"z"`

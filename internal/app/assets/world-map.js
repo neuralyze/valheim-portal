@@ -94,9 +94,16 @@
     locationSpawnAccent: token('--map-location-spawn-accent'),
     locationTrader: token('--map-location-trader'),
     locationDungeon: token('--map-location-dungeon'),
+    locationShrine: token('--map-location-shrine'),
+    locationTower: token('--map-location-tower'),
     locationFortress: token('--map-location-fortress'),
+    locationArena: token('--map-location-arena'),
+    locationMine: token('--map-location-mine'),
+    locationPort: token('--map-location-port'),
+    locationMonument: token('--map-location-monument'),
     locationSettlement: token('--map-location-settlement'),
     locationResource: token('--map-location-resource'),
+    locationRuins: token('--map-location-ruins'),
     locationLandmark: token('--map-location-landmark'),
     locationOther: token('--map-location-other'),
     locationPending: token('--map-location-pending'),
@@ -1101,6 +1108,11 @@
     return String(location.name || '').toLowerCase().includes('starttemple');
   }
 
+  // Fallback only. The server classified every location in the snapshot and the second line hands
+  // that answer straight back; the keyword rules underneath run only for a location that arrived
+  // with no category at all - an old snapshot, or a hand-built fixture. They mirror
+  // worldintel.LocationCategory in the same order for that reason: the specific noun first, the
+  // condition word "ruin" last, so an uncategorised church still reads as a shrine.
   function locationCategory(location) {
     if (isSpawnLocation(location)) return 'spawn';
     if (location.category) return location.category;
@@ -1108,11 +1120,18 @@
     const has = (...parts) => parts.some((part) => name.includes(part));
     if (has('eikthyr', 'gdking', 'bonemass', 'dragonqueen', 'goblinking', 'bossentrance', 'faderlocation')) return 'boss';
     if (has('vendor', 'hildir_camp', 'bogwitch', 'tavern', 'blacksmith')) return 'trader';
-    if (has('crypt', 'cave', 'trollcave', 'morgenhole', 'firehole', 'bfd_exterior')) return 'dungeon';
-    if (has('fortress', 'guardtower', 'stonetower', 'charredtower')) return 'fortress';
-    if (has('camp', 'village', 'farm', 'woodhouse', 'stonehouse', 'swamphut', 'dvergrtown', 'harbour')) return 'settlement';
+    if (has('crypt', 'cave', 'trollcave', 'morgenhole', 'firehole', 'bfd_exterior', 'tomb')) return 'dungeon';
+    if (has('church', 'chapel', 'temple', 'altar', 'shrine')) return 'shrine';
+    if (has('tower')) return 'tower';
+    if (has('fortress')) return 'fortress';
+    if (has('arena')) return 'arena';
+    if (has('mine', 'quarry', 'excavat')) return 'mine';
+    if (has('port', 'harbour', 'harbor', 'dock', 'pier')) return 'port';
+    if (has('statue', 'monument', 'obelisk', 'dolmen', 'stonecircle', 'stonehenge', 'runestone')) return 'monument';
+    if (has('camp', 'village', 'farm', 'woodhouse', 'stonehouse', 'swamphut', 'dvergrtown')) return 'settlement';
     if (has('tarpit', 'volturenest', 'drakenest', 'leviathan', 'spawner', 'sulfur', 'infestedtree')) return 'resource';
-    if (has('runestone', 'ruin', 'grave', 'dolmen', 'ship', 'statue', 'giant', 'sword', 'viaduct', 'lighthouse', 'roadpost', 'waymarker', 'well', 'excavation', 'arch', 'stonecircle', 'stonehenge', 'starttemple', 'placeofmystery')) return 'landmark';
+    if (has('ruin')) return 'ruins';
+    if (has('grave', 'ship', 'giant', 'sword', 'viaduct', 'lighthouse', 'roadpost', 'waymarker', 'well', 'arch', 'placeofmystery')) return 'landmark';
     return 'other';
   }
 
@@ -1122,9 +1141,16 @@
       boss: colors.locationBoss,
       trader: colors.locationTrader,
       dungeon: colors.locationDungeon,
+      shrine: colors.locationShrine,
+      tower: colors.locationTower,
       fortress: colors.locationFortress,
+      arena: colors.locationArena,
+      mine: colors.locationMine,
+      port: colors.locationPort,
+      monument: colors.locationMonument,
       settlement: colors.locationSettlement,
       resource: colors.locationResource,
+      ruins: colors.locationRuins,
       landmark: colors.locationLandmark,
       other: colors.locationOther,
     }[category] || colors.locationOther;
@@ -1261,6 +1287,35 @@
         context.arc(0, 0, radius * 0.72, Math.PI, 0);
         context.lineTo(radius * 0.72, radius);
         context.closePath();
+      } else if (category === 'shrine') {
+        // A Greek cross: the only concave four-armed glyph here, so a church reads as a church at
+        // 7 px instead of as one more blue diamond 100 m from somebody's raft.
+        const arm = radius * 0.34;
+        context.moveTo(-arm, -radius);
+        context.lineTo(arm, -radius);
+        context.lineTo(arm, -arm);
+        context.lineTo(radius, -arm);
+        context.lineTo(radius, arm);
+        context.lineTo(arm, arm);
+        context.lineTo(arm, radius);
+        context.lineTo(-arm, radius);
+        context.lineTo(-arm, arm);
+        context.lineTo(-radius, arm);
+        context.lineTo(-radius, -arm);
+        context.lineTo(-arm, -arm);
+        context.closePath();
+      } else if (category === 'tower') {
+        // A watchtower: narrow shaft under an overhanging platform. The overhang is the cue - no
+        // other glyph is wider at the top than through the middle.
+        context.moveTo(-radius * 0.34, radius);
+        context.lineTo(-radius * 0.34, -radius * 0.42);
+        context.lineTo(-radius * 0.66, -radius * 0.42);
+        context.lineTo(-radius * 0.66, -radius * 0.8);
+        context.lineTo(radius * 0.66, -radius * 0.8);
+        context.lineTo(radius * 0.66, -radius * 0.42);
+        context.lineTo(radius * 0.34, -radius * 0.42);
+        context.lineTo(radius * 0.34, radius);
+        context.closePath();
       } else if (category === 'fortress') {
         context.moveTo(-radius, radius);
         context.lineTo(-radius, -radius * 0.72);
@@ -1270,6 +1325,34 @@
         context.lineTo(radius * 0.45, -radius * 0.72);
         context.lineTo(radius, -radius * 0.72);
         context.lineTo(radius, radius);
+        context.closePath();
+      } else if (category === 'arena') {
+        // The fighting floor seen from above: the only smooth glyph broader than it is tall.
+        context.ellipse(0, 0, radius, radius * 0.52, 0, 0, Math.PI * 2);
+      } else if (category === 'mine') {
+        // An open pit in section - wide mouth, narrow floor.
+        context.moveTo(-radius, -radius * 0.62);
+        context.lineTo(radius, -radius * 0.62);
+        context.lineTo(radius * 0.42, radius * 0.86);
+        context.lineTo(-radius * 0.42, radius * 0.86);
+        context.closePath();
+      } else if (category === 'port') {
+        // A jetty with its mooring at the far end: the only rectilinear glyph broader than tall.
+        context.moveTo(-radius, -radius * 0.34);
+        context.lineTo(radius, -radius * 0.34);
+        context.lineTo(radius, radius * 0.9);
+        context.lineTo(radius * 0.4, radius * 0.9);
+        context.lineTo(radius * 0.4, radius * 0.24);
+        context.lineTo(-radius, radius * 0.24);
+        context.closePath();
+      } else if (category === 'monument') {
+        // A standing stone, tapering to a tip. Told apart from 'tower' by the top: this one comes
+        // to a point, the tower flares out.
+        context.moveTo(0, -radius);
+        context.lineTo(radius * 0.3, -radius * 0.4);
+        context.lineTo(radius * 0.44, radius);
+        context.lineTo(-radius * 0.44, radius);
+        context.lineTo(-radius * 0.3, -radius * 0.4);
         context.closePath();
       } else if (category === 'settlement') {
         context.moveTo(-radius, -radius * 0.1);
@@ -1285,6 +1368,20 @@
         context.lineTo(radius * 0.82, radius * 0.72);
         context.lineTo(0, radius);
         context.lineTo(-radius * 0.82, radius * 0.72);
+        context.closePath();
+      } else if (category === 'ruins') {
+        // Two stumps of wall of unequal height with daylight between them: the only glyph drawn in
+        // two pieces, which is what still reads as "broken" at 7 px. Nearest neighbour is
+        // 'fortress', and that one is a single solid block with a notch - this one is severed.
+        context.moveTo(-radius, radius);
+        context.lineTo(-radius, -radius * 0.86);
+        context.lineTo(-radius * 0.36, -radius * 0.86);
+        context.lineTo(-radius * 0.36, radius);
+        context.closePath();
+        context.moveTo(radius * 0.36, radius);
+        context.lineTo(radius * 0.36, -radius * 0.1);
+        context.lineTo(radius, -radius * 0.1);
+        context.lineTo(radius, radius);
         context.closePath();
       } else if (category === 'landmark') {
         context.moveTo(0, -radius);
@@ -1390,36 +1487,235 @@
     context.restore();
   }
 
+  // Valheim's own Minimap.PinType, read out of assembly_valheim.dll with monodis (IL line 171027):
+  // Icon0=0, Icon1=1, Icon2=2, Icon3=3, Death=4, Bed=5, Icon4=6, Shout=7, None=8, Boss=9,
+  // Player=10, RandomEvent=11, Ping=12, EventArea=13, Hildir1..3=14..16. The ordinal is what the
+  // upload carries, so the shape is chosen from the number rather than from the "icon3" string the
+  // client writes beside it - that string only ever covers the five marker icons.
+  const PIN_SHAPES = [
+    'icon0', 'icon1', 'icon2', 'icon3', 'death', 'bed', 'icon4', 'shout',
+    'none', 'boss', 'player', 'randomevent', 'ping', 'eventarea', 'hildir1', 'hildir2', 'hildir3',
+  ];
+
+  // Pins are stroked, never filled: that is what keeps a player's own marker separate from the
+  // world's generated locations at a glance. Every enum member gets a shape, including the ones no
+  // save file has produced yet, because falling through to a shared circle is how a bed and a boss
+  // ended up looking identical.
+  function drawPinShape(shape, radius) {
+    switch (shape) {
+      case 'icon0':
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        return;
+      case 'icon1':
+        context.beginPath();
+        context.moveTo(-radius, -radius * 0.1);
+        context.lineTo(0, -radius);
+        context.lineTo(radius, -radius * 0.1);
+        context.lineTo(radius * 0.7, -radius * 0.1);
+        context.lineTo(radius * 0.7, radius);
+        context.lineTo(-radius * 0.7, radius);
+        context.lineTo(-radius * 0.7, -radius * 0.1);
+        context.closePath();
+        context.stroke();
+        return;
+      case 'icon2':
+        context.strokeRect(-radius * 0.78, -radius * 0.78, radius * 1.56, radius * 1.56);
+        return;
+      case 'icon3':
+        context.beginPath();
+        context.moveTo(0, -radius);
+        context.lineTo(radius, 0);
+        context.lineTo(0, radius);
+        context.lineTo(-radius, 0);
+        context.closePath();
+        context.stroke();
+        return;
+      case 'icon4':
+        context.beginPath();
+        for (let point = 0; point < 10; point += 1) {
+          const angle = -Math.PI / 2 + point * Math.PI / 5;
+          const reach = point % 2 === 0 ? radius : radius * 0.42;
+          const pointX = Math.cos(angle) * reach;
+          const pointY = Math.sin(angle) * reach;
+          if (point === 0) context.moveTo(pointX, pointY);
+          else context.lineTo(pointX, pointY);
+        }
+        context.closePath();
+        context.stroke();
+        return;
+      case 'death':
+        // A saltire: where somebody died is not a place they chose to mark.
+        context.beginPath();
+        context.moveTo(-radius * 0.8, -radius * 0.8);
+        context.lineTo(radius * 0.8, radius * 0.8);
+        context.moveTo(radius * 0.8, -radius * 0.8);
+        context.lineTo(-radius * 0.8, radius * 0.8);
+        context.stroke();
+        return;
+      case 'bed':
+        // A bed seen from the side: headboard on the left, mattress to the right.
+        context.beginPath();
+        context.moveTo(-radius, -radius * 0.7);
+        context.lineTo(-radius, radius * 0.6);
+        context.lineTo(radius, radius * 0.6);
+        context.lineTo(radius, -radius * 0.1);
+        context.lineTo(-radius, -radius * 0.1);
+        context.stroke();
+        return;
+      case 'shout':
+        // Two ripples opening to the right, the way a shout carries.
+        context.beginPath();
+        context.arc(-radius * 0.2, 0, radius * 0.45, -Math.PI / 2, Math.PI / 2);
+        context.stroke();
+        context.beginPath();
+        context.arc(-radius * 0.2, 0, radius, -Math.PI / 2, Math.PI / 2);
+        context.stroke();
+        return;
+      case 'none':
+        // The type the game uses for a pin with no icon at all. Drawn small rather than skipped: a
+        // pin that exists and is invisible is indistinguishable from a bug.
+        context.beginPath();
+        context.arc(0, 0, radius * 0.34, 0, Math.PI * 2);
+        context.stroke();
+        return;
+      case 'boss':
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.beginPath();
+        for (let point = 0; point < 6; point += 1) {
+          const angle = -Math.PI / 2 + point * Math.PI / 3;
+          const reach = point % 2 === 0 ? radius * 0.62 : radius * 0.28;
+          const pointX = Math.cos(angle) * reach;
+          const pointY = Math.sin(angle) * reach;
+          if (point === 0) context.moveTo(pointX, pointY);
+          else context.lineTo(pointX, pointY);
+        }
+        context.closePath();
+        context.stroke();
+        return;
+      case 'player':
+        // Head and shoulders.
+        context.beginPath();
+        context.arc(0, -radius * 0.42, radius * 0.4, 0, Math.PI * 2);
+        context.stroke();
+        context.beginPath();
+        context.arc(0, radius * 0.9, radius * 0.78, Math.PI, 0);
+        context.stroke();
+        return;
+      case 'randomevent':
+        // A burst: the game raised this, nobody placed it.
+        context.beginPath();
+        for (let spoke = 0; spoke < 6; spoke += 1) {
+          const angle = spoke * Math.PI / 3;
+          context.moveTo(Math.cos(angle) * radius * 0.3, Math.sin(angle) * radius * 0.3);
+          context.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+        }
+        context.stroke();
+        return;
+      case 'ping':
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.beginPath();
+        context.arc(0, 0, radius * 0.42, 0, Math.PI * 2);
+        context.stroke();
+        return;
+      case 'eventarea':
+        // An area, not a point, so its edge is drawn broken.
+        context.save();
+        context.setLineDash([radius * 0.6, radius * 0.5]);
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.stroke();
+        context.restore();
+        return;
+      case 'hildir1':
+        context.beginPath();
+        context.moveTo(0, -radius);
+        context.lineTo(radius * 0.9, radius * 0.7);
+        context.lineTo(-radius * 0.9, radius * 0.7);
+        context.closePath();
+        context.stroke();
+        return;
+      case 'hildir2':
+        context.beginPath();
+        context.moveTo(0, radius);
+        context.lineTo(radius * 0.9, -radius * 0.7);
+        context.lineTo(-radius * 0.9, -radius * 0.7);
+        context.closePath();
+        context.stroke();
+        return;
+      case 'hildir3':
+        context.beginPath();
+        context.moveTo(0, -radius);
+        context.lineTo(radius, 0);
+        context.lineTo(0, radius);
+        context.lineTo(-radius, 0);
+        context.closePath();
+        context.stroke();
+        context.beginPath();
+        context.arc(0, 0, radius * 0.26, 0, Math.PI * 2);
+        context.stroke();
+        return;
+      default:
+        // An ordinal this build of the game did not have. Drawn as a circle with a bar so it reads
+        // as "a pin whose type we do not know" rather than as one of the known icons.
+        context.beginPath();
+        context.arc(0, 0, radius, 0, Math.PI * 2);
+        context.moveTo(-radius * 0.5, 0);
+        context.lineTo(radius * 0.5, 0);
+        context.stroke();
+    }
+  }
+
   // The pins players placed on their own maps. Drawn last so a name is never buried under terrain
   // detail, and skipped when zoomed far out, where a hundred labels are a smear rather than a map.
+  // Colour is the placer's, taken from the same fold as their build clusters, so one person's base
+  // and one person's markers read as one contributor rather than as an anonymous blue pile.
   function drawReportedPins(pins) {
     if (!pins.length) return;
     const bounds = visibleBounds(40);
     const labelBoxes = [];
     const showNames = state.scale >= 0.12;
+    // Two pins can sit on exactly the same spot: the operator's own upload holds "Shipwreck Chest"
+    // twice at (340.4, 1110.8). Deduping would throw away a fact, and drawing one on top of the
+    // other hides it, so identical pins are drawn once and counted in the label instead.
+    const grouped = new Map();
     for (const pin of pins) {
+      const key = [pin.player_id, pin.x, pin.z, pin.type, pin.name, pin.crossed_off ? 1 : 0].join('|');
+      const seen = grouped.get(key);
+      if (seen) seen.count += 1;
+      else grouped.set(key, { pin, count: 1 });
+    }
+    for (const { pin, count } of grouped.values()) {
       if (pin.x < bounds.minX || pin.x > bounds.maxX || pin.z < bounds.minZ || pin.z > bounds.maxZ) continue;
       const [pixelX, pixelY] = screen(pin.x, pin.z);
-      const colour = pin.crossed_off ? colors.locationOther : colors.locationLandmark;
+      const colour = builderColour(pin.player_id);
       context.save();
+      context.translate(pixelX, pixelY);
       context.globalAlpha = pin.crossed_off ? 0.5 : 0.95;
       context.strokeStyle = colour;
       context.fillStyle = colour;
       context.lineWidth = 1.5;
       const radius = Math.max(3, markerSize() * 0.5);
-      context.beginPath();
-      context.arc(pixelX, pixelY, radius, 0, Math.PI * 2);
-      context.stroke();
+      // A missing or out-of-range ordinal falls to the unknown shape rather than silently reading
+      // as Icon0: "we do not know what this pin is" is a different statement from "plain marker".
+      const ordinal = Number.isInteger(pin.type) ? pin.type : -1;
+      drawPinShape(PIN_SHAPES[ordinal] || 'unknown', radius);
       // A crossed-off pin is struck through, the way the player left it.
       if (pin.crossed_off) {
         context.beginPath();
-        context.moveTo(pixelX - radius, pixelY - radius);
-        context.lineTo(pixelX + radius, pixelY + radius);
+        context.moveTo(-radius * 1.15, -radius * 1.15);
+        context.lineTo(radius * 1.15, radius * 1.15);
         context.stroke();
       }
       context.restore();
-      if (showNames && pin.name) {
-        drawBuilderLabel(pin.name, pixelX, pixelY - radius - 2, colour, labelBoxes);
+      const label = count > 1 ? `${pin.name || 'pin'} ×${count}` : pin.name;
+      if (showNames && label) {
+        drawBuilderLabel(label, pixelX, pixelY - radius - 2, colour, labelBoxes);
       }
     }
   }
@@ -1660,7 +1956,9 @@
         locationCounts[category] = (locationCounts[category] || 0) + 1;
       }
     }
-    const locationOrder = ['boss', 'trader', 'dungeon', 'fortress', 'settlement', 'resource', 'landmark', 'other'];
+    // Same order as worldintel.LocationCategory, so the readout reads down the classifier. A
+    // category missing from this list is counted in the snapshot and never shown.
+    const locationOrder = ['boss', 'trader', 'dungeon', 'shrine', 'tower', 'fortress', 'arena', 'mine', 'port', 'monument', 'settlement', 'resource', 'ruins', 'landmark', 'other'];
     categorySummary.replaceChildren();
     for (const category of categories) {
       const row = document.createElement('div');
@@ -1704,9 +2002,16 @@
       boss: 'Boss',
       trader: 'Trader',
       dungeon: 'Dungeon',
+      shrine: 'Shrine',
+      tower: 'Tower',
       fortress: 'Fortress',
+      arena: 'Arena',
+      mine: 'Mine',
+      port: 'Port',
+      monument: 'Monument',
       settlement: 'Settlement',
       resource: 'Resource',
+      ruins: 'Ruins',
       landmark: 'Landmark',
       other: 'Other',
       world: 'Routine world state',
