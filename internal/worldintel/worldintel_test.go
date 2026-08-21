@@ -144,6 +144,88 @@ func TestRetainDropsUnrelatedWorldObjectsWithStringProperties(t *testing.T) {
 	}
 }
 
+// Boats, ships and carts were absent from the map because category() had no case for a hull: every
+// one of these names returned "world", which retain() drops. The prefab names resolved the whole
+// time - Hrafnheim's Raft came back named "Raft" - so these are the real strings the classifier has
+// to get right, taken from assembly_valheim plus the installed BoatAdditions, LongshipUpgrades,
+// Shipwright and CraftyCartsRemake DLLs.
+func TestCategoryClassifiesHullsWithoutShadowingContainersOrBuildPieces(t *testing.T) {
+	for _, testCase := range []struct {
+		prefab string
+		want   string
+	}{
+		// Vanilla hulls.
+		{"Raft", "vehicle"},
+		{"Karve", "vehicle"},
+		{"VikingShip", "vehicle"},
+		{"Cart", "vehicle"},
+		{"longship_ashlands", "vehicle"},
+		// BoatAdditions hulls, named from the literals in BoatAdditions.dll.
+		{"BBA_Knarr", "vehicle"},
+		{"BBA_LargeRaft", "vehicle"},
+		{"BBA_OutriggerKarve", "vehicle"},
+		{"Knarr", "vehicle"},
+		{"LargeRaft", "vehicle"},
+		{"OutriggerKarve", "vehicle"},
+		// CraftyCartsRemake hulls, named from the literals in CraftyCartsRemake.dll.
+		{"workbench_cart", "vehicle"},
+		{"forge_cart", "vehicle"},
+		{"stone_cart", "vehicle"},
+		{"artisan_cart", "vehicle"},
+		{"blackforge_cart", "vehicle"},
+		{"cauldron_cart", "vehicle"},
+
+		// The control: a wreck chest carries "karve" in its name and must stay a container, because
+		// the container case is ordered ahead of the vehicle case precisely so loot stays loot.
+		{"shipwreck_karve_chest", "container"},
+		// Build pieces that contain a hull noun. "cartographytable" contains "cart".
+		{"piece_cartographytable", "construction"},
+		{"piece_upgradecart", "construction"},
+		// "crafting" contains "raft" and "cartography" contains "cart": 571 names in Hrafnheim's
+		// catalog contain "raft" and nearly all are Crafting symbols, so a bare strings.Contains
+		// would have turned half the mod surface into a boat.
+		{"CraftingStation", "world"},
+		{"AzuAntiArthriticCrafting", "world"},
+		{"AddCrafterName", "world"},
+		{"CRAFT", "world"},
+		{"Cartography", "world"},
+		{"Draft", "world"},
+		// A boat mod's furniture and tent parts are not hulls.
+		{"LongshipUpgrades_MapTable", "world"},
+		{"BBA_Boatyard", "world"},
+		{"ShipTen2_beam", "world"},
+		// Untouched neighbours, so the new case cannot be passing by accident.
+		{"piece_chest_wood", "container"},
+		{"piece_workbench", "construction"},
+		{"portal_wood", "portal"},
+		{"", "unknown"},
+	} {
+		if got := category(testCase.prefab); got != testCase.want {
+			t.Errorf("category(%q) = %q, want %q", testCase.prefab, got, testCase.want)
+		}
+	}
+}
+
+func TestRetainKeepsVehiclesAndSemanticCategoryDoesNotDemoteALoadedHull(t *testing.T) {
+	if !retain(Object{Category: "vehicle"}, valueMaps{}) {
+		t.Fatal("dropped a vehicle: a boat classified correctly but never reached the snapshot")
+	}
+	// A loaded Karve holds an "items" map exactly like a chest, and the container rule used to
+	// relabel it, so a boat was drawn as a chest even once it classified as a hull.
+	loaded := Object{Category: category("Karve")}
+	values := valueMaps{s: map[int32]string{StableHash("items"): "AAAA"}}
+	semanticCategory(&loaded, values)
+	if loaded.Category != "vehicle" {
+		t.Fatalf("a Karve carrying cargo was relabelled %q, want vehicle", loaded.Category)
+	}
+	// The same rule must still catch an actual chest, which is what makes the case above meaningful.
+	chest := Object{Category: category("unnamed_thing")}
+	semanticCategory(&chest, values)
+	if chest.Category != "container" {
+		t.Fatalf("an object carrying cargo was classified %q, want container", chest.Category)
+	}
+}
+
 func TestConstructionCoverageIsBoundedCompleteAndDeterministic(t *testing.T) {
 	buildSnapshot := func() Snapshot {
 		const pieces = 2_500

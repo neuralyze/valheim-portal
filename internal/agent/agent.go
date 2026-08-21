@@ -862,18 +862,38 @@ func analyzeWorldBackup(worldRoot, world string) (worldintel.Snapshot, error) {
 	if err != nil || !within(worldRoot, worldPath) {
 		return worldintel.Snapshot{}, errors.New("world unavailable")
 	}
+	// resources.assets and assembly_valheim.dll carry every vanilla prefab name, so they are listed
+	// first and are never subject to the plugin budget below: without them nothing resolves at all.
 	catalogPaths := []string{
 		filepath.Join(worldPath, "data/server/valheim_server_Data/resources.assets"),
 		filepath.Join(worldPath, "data/server/valheim_server_Data/Managed/assembly_valheim.dll"),
 	}
+	// The two plugin roots are mirrors of each other - measured on Hrafnheim, 118 DLLs each, 236
+	// listings for 118 distinct mods - and the walk reads every file it lists. The old flat cap of 130
+	// total paths spent its whole budget on the first root and then truncated 108 paths, and because
+	// the cap counted duplicates rather than mods it was luck, not design, that no mod was lost:
+	// walking the mirror first would have dropped real ones. Reading the mirror anyway cost real time
+	// (34s capped versus 67s uncapped for a catalog identical to the byte, 1,780,660 entries).
+	//
+	// So the budget now counts distinct DLL names. 512 leaves better than four times today's headroom
+	// while still bounding the walk; the real guard on work is CatalogFromFiles, which stops at 20,000
+	// files or 1 GiB scanned whatever it is handed.
+	const maxPluginDLLs = 512
+	seen := make(map[string]struct{}, maxPluginDLLs)
 	for _, root := range []string{filepath.Join(worldPath, "config_merged/bepinex/plugins"), filepath.Join(worldPath, "data/bepinex/BepInEx/plugins")} {
 		_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil || len(catalogPaths) >= 130 {
+			if walkErr != nil || len(seen) >= maxPluginDLLs {
 				return nil
 			}
-			if !entry.IsDir() && strings.EqualFold(filepath.Ext(entry.Name()), ".dll") {
-				catalogPaths = append(catalogPaths, path)
+			if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".dll") {
+				return nil
 			}
+			name := strings.ToLower(entry.Name())
+			if _, duplicate := seen[name]; duplicate {
+				return nil
+			}
+			seen[name] = struct{}{}
+			catalogPaths = append(catalogPaths, path)
 			return nil
 		})
 	}

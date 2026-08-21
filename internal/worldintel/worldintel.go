@@ -774,6 +774,12 @@ func category(n string) string {
 		return "creature"
 	case strings.HasPrefix(l, "piece_") || strings.Contains(l, "wall") || strings.Contains(l, "floor") || strings.Contains(l, "roof"):
 		return "construction"
+	// Boats and carts sit below the container and construction cases on purpose. shipwreck_karve_chest
+	// is loot furniture rather than a hull, and piece_cartographytable and piece_upgradecart are build
+	// pieces, so the earlier cases must keep them - that ordering is the whole reason a wreck chest
+	// stays a container.
+	case vehicleHull(n):
+		return "vehicle"
 	case n == "":
 		return "unknown"
 	default:
@@ -783,7 +789,61 @@ func category(n string) string {
 func retain(o Object, _ valueMaps) bool {
 	return (o.Category != "world" && o.Category != "unknown") || o.ConnectionType != 0
 }
+
+// hullWords are the nouns Valheim and the boat mods installed on Hrafnheim use for a hull:
+// vanilla Raft, Karve, VikingShip and Cart, BoatAdditions' BBA_Knarr, BBA_LargeRaft and
+// BBA_OutriggerKarve, CraftyCartsRemake's workbench_cart family, and longship_ashlands.
+var hullWords = [...]string{"raft", "karve", "knarr", "vikingship", "longship", "cart"}
+
+// vehicleHull reports whether a prefab name names a boat or a cart.
+//
+// Boats, ships and carts were missing from the map entirely until 2026-08-21: every hull name fell
+// through category() to "world", and retain() drops "world". The prefab hashes resolved perfectly -
+// measured on Hrafnheim, Raft came back named "Raft" at (284, 30, -431) and was then thrown away -
+// so the missing classifier was the whole defect.
+//
+// The match is anchored instead of a bare strings.Contains because the obvious keywords hide inside
+// unrelated words: "crafting" contains "raft" and "cartography" contains "cart". Measured against
+// Hrafnheim's 1,780,660-entry catalog, 571 names contain "raft" and very nearly all of them are
+// Crafting symbols, so a bare Contains would have relabelled half the mod surface as a boat.
+//
+// A hull noun therefore has to end the name or be followed by a separator ("Cart", "workbench_cart",
+// "BBA_LargeRaft", "longship_ashlands"). That right-hand edge is what rejects "Cartography" and
+// "LongshipUpgrades_MapTable" without maintaining an exclusion list. The left edge is looser - start
+// of name, a separator, or a camelCase hump - because the modifier in "LargeRaft" is part of the
+// name, and the original casing is consulted there since lowercasing hides the hump.
+func vehicleHull(name string) bool {
+	for _, word := range hullWords {
+		// range over a negative count simply does not iterate, so a word longer than the name is safe.
+		for at := range len(name) - len(word) + 1 {
+			if !strings.EqualFold(name[at:at+len(word)], word) {
+				continue
+			}
+			if end := at + len(word); end != len(name) && asciiLetter(name[end]) {
+				continue
+			}
+			// A camelCase hump is a lowercase-to-uppercase transition. Requiring the transition rather
+			// than merely an uppercase letter is what stops "CRAFT" and "SECTION_CRAFT_TELEPORT" from
+			// reading as hulls: inside an all-caps run the capital is an acronym letter, not a new word.
+			if at == 0 || !asciiLetter(name[at-1]) || (asciiUpper(name[at]) && !asciiUpper(name[at-1])) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func asciiLetter(b byte) bool { c := b | 0x20; return c >= 'a' && c <= 'z' }
+func asciiUpper(b byte) bool  { return b >= 'A' && b <= 'Z' }
 func semanticCategory(o *Object, v valueMaps) {
+	// A Karve, a longship and a cart all carry cargo, so they hold an "items" map exactly like a chest
+	// does, and the container rule below would relabel every loaded hull a container - a boat would
+	// then be retained but drawn as a chest, which is the second half of why boats never looked like
+	// boats. The hull name is the stronger signal, so it wins; the inventory is attached by the caller
+	// regardless of category, so a boat keeps its cargo either way.
+	if o.Category == "vehicle" {
+		return
+	}
 	if has(v.s, "tag") {
 		o.Category = "portal"
 		return
