@@ -632,6 +632,49 @@ func TestConfigSchemaEntryFoldsSectionFlags(t *testing.T) {
 	}
 }
 
+// A file's scope must not lie about a payload that predates it. world_config_schemas caches
+// payloads, so the first deploy after this field lands will read documents written without it: an
+// omitempty Shipped would make that byte-identical to "the profile does not ship this file", and the
+// page would state a fact about a file it knows nothing about. An empty Source is the signal that
+// the cached payload is older than scope, and it only works if false is written out.
+func TestConfigSchemaFileScopeSurvivesAnOlderPayload(t *testing.T) {
+	var legacy ConfigSchema
+	if err := json.Unmarshal([]byte(`{"schema":"world-config-schema/v1","world":"Hrafnheim",
+"files":[{"file":"BepInEx.cfg","sections":[]}]}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Files[0].Source != "" || legacy.Files[0].Shipped {
+		t.Fatalf("a payload predating scope claimed one: %+v", legacy.Files[0])
+	}
+	var scoped ConfigSchema
+	if err := json.Unmarshal([]byte(`{"schema":"world-config-schema/v1","world":"Hrafnheim",
+"files":[{"file":"BepInEx.cfg","source":"config_merged","shipped":false,"sections":[]},
+{"file":"neuralyze.vrfixes.cfg","source":"both","shipped":true,"sections":[]}]}`), &scoped); err != nil {
+		t.Fatal(err)
+	}
+	if scoped.Files[0].Source != "config_merged" || scoped.Files[0].Shipped {
+		t.Fatalf("unshipped file decoded as %+v", scoped.Files[0])
+	}
+	if scoped.Files[1].Source != "both" || !scoped.Files[1].Shipped {
+		t.Fatalf("shipped file decoded as %+v", scoped.Files[1])
+	}
+	// The tags are unconditional, so a false is written rather than dropped - that is what makes
+	// the two cases above distinguishable on the wire.
+	encoded, err := json.Marshal(scoped.Files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"shipped":false`) || !strings.Contains(string(encoded), `"source":"config_merged"`) {
+		t.Fatalf("scope was dropped on encode: %s", encoded)
+	}
+	// Scope changes nothing about validation: a setting in a file the profile does not ship is
+	// recorded, not refused. The store keeps the intent and the page states the consequence.
+	entry := ConfigSchemaEntry{Key: "HideManagerGameObject", Type: "Boolean", Acceptable: ConfigAcceptable{Kind: "none"}}
+	if err := ValidateConfigSetting(entry, "true", PolicyServerForced); err != nil {
+		t.Fatalf("a setting in an unshipped file was refused: %v", err)
+	}
+}
+
 // The extractor emits range bounds as raw string tokens to avoid float mangling; a number is
 // tolerated too. A bound of zero must stay distinguishable from a missing bound, because
 // "From -0.05 to 0" is a real range in these files.

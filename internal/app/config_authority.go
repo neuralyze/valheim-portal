@@ -101,10 +101,24 @@ type ConfigSchema struct {
 	Files       []ConfigSchemaFile `json:"files"`
 }
 
+// ConfigSchemaFile is one .cfg file. Source and Shipped are the file's SCOPE: which tree it was
+// read from, and whether the published profile actually carries it to a client.
+//
+// Both tags are unconditional on purpose. With omitempty a false Shipped would be byte-identical to
+// a payload written before the field existed, and world_config_schemas caches payloads, so that
+// case arrives the moment this deploys: the page would state "recorded but not shipped" about a
+// file it knows nothing about. An empty Source is the honest signal that a cached payload predates
+// scope, and it can only be told apart from "not shipped" if false is written out.
+//
+// Scope is per FILE, not per entry, so Entry() folds nothing new, and ValidateConfigSetting refuses
+// nothing extra: a setting in a file the profile does not yet ship is RECORDED and shown as
+// pending. The store keeps the operator's intent; stating the consequence is the page's job.
 type ConfigSchemaFile struct {
 	File          string                `json:"file"`
 	ModIdentifier string                `json:"mod_identifier,omitempty"`
 	ModName       string                `json:"mod_name,omitempty"`
+	Source        string                `json:"source"`
+	Shipped       bool                  `json:"shipped"`
 	Sections      []ConfigSchemaSection `json:"sections"`
 }
 
