@@ -485,6 +485,69 @@ func TestConfigSchemaClientSideHintIsAThirdState(t *testing.T) {
 	}
 }
 
+// Five real config files live in SUBDIRECTORIES of the config root - ItemStacksRewrite/ and
+// shudnal.ConditionalConfigSync/ - holding 2437 entries that every top-level *.cfg count tonight
+// missed. Verified: ItemStacksRewrite/fortis.mods.itemstacksrewrite.weights.cfg opens with
+// [Item Weights] and "Acorn_weight = 0.1" under "# Acceptable value range: From 0 to 2147484".
+//
+// So `file` is a path relative to the config root and may carry a forward slash. It must survive as
+// written, because flattening it to a basename would collide two mods' files and write thousands of
+// entries to the wrong path. Traversal is still refused: a relative path is not a licence to escape
+// the config root.
+func TestConfigAuthorityKeepsSubdirectoryFilePaths(t *testing.T) {
+	ctx := context.Background()
+	store := newConfigStore(t)
+	nested := "ItemStacksRewrite/fortis.mods.itemstacksrewrite.weights.cfg"
+	schema := ConfigSchema{
+		Schema: configSchemaVersion,
+		World:  "Hrafnheim",
+		Files: []ConfigSchemaFile{{
+			File: nested,
+			Sections: []ConfigSchemaSection{{
+				Name: "Item Weights",
+				Entries: []ConfigSchemaEntry{{
+					Key:     "Acorn_weight",
+					Type:    "Single",
+					Default: "0.1",
+					Acceptable: ConfigAcceptable{
+						Kind: "range",
+						Min:  ConfigBound{Text: "0", Number: 0, Set: true},
+						Max:  ConfigBound{Text: "2147484", Number: 2147484, Set: true},
+					},
+				}},
+			}},
+		}},
+	}
+	ref := ConfigSettingRef{File: nested, Section: "Item Weights", Key: "Acorn_weight"}
+	if err := store.SetWorldConfigSetting(ctx, "Hrafnheim", schema,
+		ConfigSetting{ConfigSettingRef: ref, Value: "0.25", Policy: PolicyServerForced}, "admin"); err != nil {
+		t.Fatalf("refused a config file in a subdirectory: %v", err)
+	}
+	payload, err := store.ExportWorldConfigAuthority(ctx, "Hrafnheim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(payload), nested) {
+		t.Fatalf("export flattened the path: %s", payload)
+	}
+	authority, err := store.WorldConfigAuthority(ctx, "Hrafnheim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored, ok := authority.Setting(nested, ref.Section, ref.Key); !ok || stored.File != nested {
+		t.Fatalf("path round-tripped as %q (present=%v)", stored.File, ok)
+	}
+	// Controls: a relative path is allowed, an escape is not, whatever the schema claims.
+	for _, bad := range []string{"../plugins/evil.cfg", "/etc/passwd", `ItemStacksRewrite\weights.cfg`} {
+		escaping := schema
+		escaping.Files = []ConfigSchemaFile{{File: bad, Sections: schema.Files[0].Sections}}
+		if err := store.SetWorldConfigSetting(ctx, "Hrafnheim", escaping,
+			ConfigSetting{ConfigSettingRef: ConfigSettingRef{File: bad, Section: ref.Section, Key: ref.Key}, Value: "0.25", Policy: PolicyServerForced}, "admin"); err == nil {
+			t.Fatalf("accepted the file reference %q", bad)
+		}
+	}
+}
+
 // Key names are not a character class. Real record, xyz.alcan.comfortcalc.cfg:739:
 //
 //	<color#00FFFF>Thor</color> Comfort = 2
