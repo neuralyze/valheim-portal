@@ -192,6 +192,59 @@ namespace NeuralyzeVRFixes
         }
     }
 
+    // "The LARGE map is open", read from the game's own state rather than inferred.
+    //
+    // Minimap declares the mode itself - monodis assembly_valheim.dll, Minimap/MapMode:
+    //   None = int32(0x00000000)
+    //   Small = int32(0x00000001)
+    //   Large = int32(0x00000002)
+    // and Minimap::m_mode is a public field of that type. The game's own large-map test is a
+    // compare against Large: Minimap::InTextInput does exactly "m_instance.m_mode == 2 &&
+    // m_instance.m_wasFocused". Minimap.IsOpen() was rejected for this job because it is not that
+    // test - its IL falls through to "m_hiddenFrames <= 2" when m_largeRoot is inactive, so it
+    // keeps answering true for two frames after the map closes, and it says nothing about which
+    // map. VHVR reads the same field the same way (VRControls.cs:122-125, SetMapMode(MapMode.Small)
+    // when IsOpen), so this prefers the game's own signal over any VHVR-side state.
+    internal static class MapState
+    {
+        private const int Large = 2;
+        private static FieldInfo _instance, _mode;
+        private static bool _resolved;
+        private static int _frame = -1;
+        private static bool _large;
+
+        // Cached per frame: the callers are a dodge edge and a Player.Dodge prefix, both rare, but
+        // a reflective field read is not something to repeat inside one frame either.
+        internal static bool LargeMapOpen()
+        {
+            if (_frame == UnityEngine.Time.frameCount) return _large;
+            _frame = UnityEngine.Time.frameCount;
+            _large = false;
+            if (!_resolved)
+            {
+                _resolved = true;
+                Type minimap = TypeCache.Get("Minimap");
+                if (minimap != null)
+                {
+                    _instance = AccessTools.Field(minimap, "m_instance");
+                    _mode = AccessTools.Field(minimap, "m_mode");
+                }
+                NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                    + "map state probe: instance=" + (_instance != null) + " mode=" + (_mode != null)
+                    + " - dodge is suppressed while Minimap.m_mode is Large");
+            }
+            if (_instance == null || _mode == null) return false;
+            try
+            {
+                object map = _instance.GetValue(null);
+                if (map == null) return false;
+                _large = Convert.ToInt32(_mode.GetValue(map)) == Large;
+            }
+            catch { _large = false; }
+            return _large;
+        }
+    }
+
     // Dodge is on the same stick the hover menu uses to move its highlight, so it is suppressed
     // for exactly as long as the list is up - the operator pushed down to move the highlight and
     // rolled at the same time.
@@ -212,6 +265,15 @@ namespace NeuralyzeVRFixes
     // invocations. Refusing the queue write while the list is open therefore drops the roll
     // without touching how a dodge behaves; the gate is a live property read, so nothing can
     // outlive the menu and disable dodge for the session.
+    //
+    // The LARGE MAP closes the same window, for the same reason and one input further along. The
+    // operator's valheim_Dodge is bound to RIGHT-STICK-DOWN, and right-stick-down is also how the
+    // large map zooms OUT (grab + stick, DirectActions.Zoom), so every zoom-out while reading the
+    // map rolled the character. Reported as "when the large map is open and you are using grab +
+    // up/down on right thumbstick, it will dodge on the zoom out as well".
+    //
+    // The two conditions sit side by side rather than replacing each other: with neither the menu
+    // nor the large map up, this returns true and a dodge behaves exactly as it did before.
     [HarmonyPatch]
     internal static class Dodge_WhileMenuOpen
     {
@@ -224,6 +286,6 @@ namespace NeuralyzeVRFixes
 
         private static bool Prepare() { return TargetMethod() != null; }
 
-        private static bool Prefix() { return !HoverMenu.MenuOpen; }
+        private static bool Prefix() { return !HoverMenu.MenuOpen && !MapState.LargeMapOpen(); }
     }
 }

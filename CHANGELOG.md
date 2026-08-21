@@ -96,6 +96,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Towers and fortresses show on the map by default, and map layer choices survive a reload.
+  Splitting one 1202-strong "fortress" bucket into 1455 towers and 75 real strongholds left both
+  classes hidden behind a default written when they were one thing, so an operator reported that
+  fortresses had disappeared. Nothing remembered a ticked box either, so every reload silently
+  reverted to those defaults. Choices are now stored per world and per audience, and a stored
+  key for a category that no longer exists is ignored rather than resurrecting it.
+
 - Map locations read as place names instead of prefab ids: `MWL_AshlandsFort1` shows as Ashlands
   Fort with the id beside it. Splitting happens only at boundaries the author encoded - underscore,
   case change, digit - and never inside a lowercase run, which is what keeps Greydwarf, Dvergr,

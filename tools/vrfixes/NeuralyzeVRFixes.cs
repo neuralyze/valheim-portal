@@ -88,6 +88,9 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<float> SteamVrScale;
         internal static ConfigEntry<bool> MiscMenuEnabled;
         internal static ConfigEntry<string> MiscMenuActions;
+        internal static ConfigEntry<string> AnchorGrip;
+        internal static ConfigEntry<string> AnchorKey;
+        internal static ConfigEntry<bool> WatchHelm;
 
         private void Awake()
         {
@@ -1295,7 +1298,15 @@ namespace NeuralyzeVRFixes
                 // (GetStateDown), so an edge dropped while the list is open is dropped, not
                 // deferred, and no roll fires when the grip is released. Dodge_WhileMenuOpen in
                 // PanelInput.cs closes the same window for every other route into Player.Dodge.
-                if (Down(_dodge) && !HoverMenu.MenuOpen && _mDodge != null && !Flag(_mInDodge, p))
+                //
+                // The LARGE MAP is gated here too, and the reason is the same input collision one
+                // step further out: right-stick-down is ALSO the large map's zoom-out (grab + stick
+                // through DirectActions.Zoom), so reading the map and zooming out rolled the
+                // character. Reported as "when the large map is open and you are using grab +
+                // up/down on right thumbstick, it will dodge on the zoom out as well". MapState
+                // reads Minimap.m_mode == MapMode.Large, the game's own large-map test.
+                if (Down(_dodge) && !HoverMenu.MenuOpen && !MapState.LargeMapOpen()
+                    && _mDodge != null && !Flag(_mInDodge, p))
                 {
                     Vector3 dir = DodgeDirection(p);
                     _mDodge.Invoke(p, DodgeArgs(dir));

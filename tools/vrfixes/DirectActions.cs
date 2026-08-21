@@ -431,6 +431,11 @@ namespace NeuralyzeVRFixes
             return shipField == null ? null : shipField.GetValue(doodad);
         }
 
+        // The ship this player is steering, or null. Same resolution the sail steps already use,
+        // exposed because the grip anchor needs the ship object itself and not just "am I at a
+        // helm": the anchor lives on a component of that ship, not on the helm.
+        internal static object SteeredShip() { return ResolveShip(null); }
+
         // Name a spawn that did nothing.
         //
         // "spawn Horse" ran, the console printed nothing, and no horse appeared. The prefab table is

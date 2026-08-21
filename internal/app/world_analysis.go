@@ -673,7 +673,7 @@ const worldAnalysisTemplate = `<!doctype html>
 <title>{{.World.Name}} {{if .Admin}}world map and analysis{{else}}map{{end}}</title>
 <link rel="stylesheet" href="/assets/site.css">
 </head>
-<body class="world-map-page" data-world="{{.World.Name}}" data-map-base="{{.DataBase}}" data-location-names="{{.LocationNamesJSON}}"{{if .Fog}} data-map-fog="1"{{end}}{{if .SelectedPlayer}} data-map-player="{{.SelectedPlayer}}"{{end}}>
+<body class="world-map-page" data-map-audience="{{if .Admin}}admin{{else}}player{{end}}" data-world="{{.World.Name}}" data-map-base="{{.DataBase}}" data-location-names="{{.LocationNamesJSON}}"{{if .Fog}} data-map-fog="1"{{end}}{{if .SelectedPlayer}} data-map-player="{{.SelectedPlayer}}"{{end}}>
 <header class="map-header">
 <a class="map-back" href="{{if .Admin}}/admin{{else}}/worlds/{{.World.Name}}{{end}}">{{if .Admin}}Administration{{else}}{{.World.Name}}{{end}}</a>
 <div class="map-heading">
@@ -745,8 +745,8 @@ const worldAnalysisTemplate = `<!doctype html>
 <label class="map-layer"><input type="checkbox" data-location-category="trader" checked><span>Traders</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="dungeon"><span>Dungeons</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="shrine" checked><span>Shrines and temples</span></label>
-<label class="map-layer"><input type="checkbox" data-location-category="tower"><span>Towers</span></label>
-<label class="map-layer"><input type="checkbox" data-location-category="fortress"><span>Fortresses</span></label>
+<label class="map-layer"><input type="checkbox" data-location-category="tower" checked><span>Towers</span></label>
+<label class="map-layer"><input type="checkbox" data-location-category="fortress" checked><span>Fortresses</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="arena" checked><span>Arenas</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="mine" checked><span>Mines</span></label>
 <label class="map-layer"><input type="checkbox" data-location-category="port" checked><span>Ports</span></label>

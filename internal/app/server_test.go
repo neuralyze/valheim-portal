@@ -675,17 +675,40 @@ func TestWorldAnalysisMapExposesDetailedLayerAndZoomControls(t *testing.T) {
 		t.Fatal("boats and carts default to hidden")
 	}
 	// A church 100 m from a raft is no use behind an unticked box, and the four small distinctive
-	// categories are 623 locations against 13,279 - they cost nothing to leave on. The three big
-	// ones stay off, which is the clutter the original defaults were protecting against.
-	for _, on := range []string{"shrine", "arena", "mine", "port"} {
+	// categories are 623 locations against 13,279 - they cost nothing to leave on. Towers and
+	// fortresses joined them on 2026-08-21: the operator reported fortresses had vanished from the
+	// map, and the cause was that splitting 1202 mixed "fortresses" into 1455 towers and 75 real
+	// strongholds left both classes behind a default written when they were one bucket.
+	for _, on := range []string{"shrine", "arena", "mine", "port", "tower", "fortress"} {
 		if !strings.Contains(page, `data-location-category="`+on+`" checked`) {
 			t.Fatalf("location category %q defaults to hidden", on)
 		}
 	}
-	for _, off := range []string{"tower", "ruins", "monument"} {
+	// Ruins and monuments stay off - at 1077 and 1583 they are the clutter the original defaults
+	// were protecting against, and neither is something a player steers by.
+	for _, off := range []string{"ruins", "monument"} {
 		if strings.Contains(page, `data-location-category="`+off+`" checked`) {
 			t.Fatalf("location category %q defaults to visible", off)
 		}
+	}
+	// Layer choices are remembered per audience, so the key has to distinguish the two maps this one
+	// template renders. Without it an operator's ticks would be restored for a player looking at the
+	// same world, which is how a shared key silently leaks one audience's view into the other.
+	// The page rendered above leaves Admin unset, so it is the player variant.
+	if !strings.Contains(page, `data-map-audience="player"`) {
+		t.Fatal("player map does not declare its audience, so remembered layers would collide with the admin map")
+	}
+	admin := httptest.NewRecorder()
+	render(admin, worldAnalysisTemplate, worldAnalysisPage{
+		World:        PublicWorld{Name: "Midgard"},
+		HaveAnalysis: true,
+		Admin:        true,
+		Backup:       "world-Midgard-test.tgz",
+		AnalyzedAt:   "2026-07-27 12:00 UTC",
+		CSRF:         "test-csrf",
+	})
+	if !strings.Contains(admin.Body.String(), `data-map-audience="admin"`) {
+		t.Fatal("admin map does not declare its audience")
 	}
 	if strings.Contains(page, `id="detail"`) {
 		t.Fatal("world analysis page still exposes the removed manual terrain detail control")

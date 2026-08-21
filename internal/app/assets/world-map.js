@@ -193,18 +193,49 @@
   let terrainManifest = null;
   const terrainTileCache = new Map();
 
+  // Layer choices survive a reload. Without this every page load reset to the template defaults, so
+  // an operator who ticked Fortresses lost it on the next visit and reported the layer as broken on
+  // 2026-08-21. Keyed per world and per audience, because an operator and a player look at different
+  // things on the same map. A stored key that no longer exists is ignored, so removing a category
+  // cannot resurrect it, and a checkbox with no stored value keeps the server-rendered default -
+  // that is how a NEW category still arrives switched on or off as the template intended.
+  const layerMemoryKey = `valheim-map-layers:${document.body.dataset.world || ''}:${document.body.dataset.mapAudience || 'player'}`;
+  const layerMemory = (() => {
+    try {
+      const raw = window.localStorage.getItem(layerMemoryKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+      return {};
+    }
+  })();
+  const rememberLayer = (key, value) => {
+    layerMemory[key] = value;
+    try {
+      window.localStorage.setItem(layerMemoryKey, JSON.stringify(layerMemory));
+    } catch (error) {
+      // Private browsing and a full quota both throw here. Losing the memory is not worth losing the map.
+    }
+  };
+
   document.querySelectorAll('[data-layer]').forEach((input) => {
+    const key = `layer:${input.dataset.layer}`;
+    if (typeof layerMemory[key] === 'boolean') input.checked = layerMemory[key];
     state.layers[input.dataset.layer] = input.checked;
     input.addEventListener('change', () => {
       state.layers[input.dataset.layer] = input.checked;
+      rememberLayer(key, input.checked);
       requestDraw();
     });
   });
   const locationControls = [...document.querySelectorAll('[data-location-category]')];
   for (const input of locationControls) {
+    const key = `location:${input.dataset.locationCategory}`;
+    if (typeof layerMemory[key] === 'boolean') input.checked = layerMemory[key];
     state.locationCategories[input.dataset.locationCategory] = input.checked;
     input.addEventListener('change', () => {
       state.locationCategories[input.dataset.locationCategory] = input.checked;
+      rememberLayer(key, input.checked);
       requestDraw();
     });
   }

@@ -881,6 +881,21 @@ namespace NeuralyzeVRFixes
                 {
                     KeyCode code = (KeyCode)Enum.Parse(typeof(KeyCode), k, true);
                     _pending.Add((int)code);
+                    // Also answer GetKey once, for every key in the chord.
+                    //
+                    // A chord was only half delivered before, and the half that was missing is the
+                    // half a mod checks. BepInEx KeyboardShortcut.IsDown() is
+                    // "Input.GetKeyDown(MainKey) && every modifier passes Input.GetKey" - two
+                    // different entry points. Send only queued _pending, which PrefixDown answers,
+                    // and PrefixDown only puts the key it just answered into _holdFor. So for
+                    // "LeftShift+F" the main key F resolved and the MODIFIER never did:
+                    // Input.GetKey(LeftShift) fell through to the real keyboard, read false, and
+                    // IsDown() returned false. Every 'key:' entry with a modifier in it - the
+                    // shipped hover ship group's Anchor=key:LeftShift+F, piece Repair Area, Add
+                    // Wear - was therefore a pulse that no mod could see. Queuing the whole chord
+                    // into _holdFor as well closes it; PrefixHeld still answers once and stops, so
+                    // this stays a pulse and cannot leave a modifier stuck down.
+                    _holdFor.Add((int)code);
                     if (_vhvrEmulate == null)
                     {
                         Type patch = TypeCache.Get("ValheimVRMod.Patches.ZInput_GetKeyDown_Patch");
