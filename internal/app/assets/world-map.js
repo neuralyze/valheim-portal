@@ -124,7 +124,10 @@
   ];
   const biomeBySource = new Map(biomes.map((biome, index) => [biome.source, index]));
   const biomeTextureColors = biomes.map((biome) => token(`--map-biome-${biome.id}-texture`));
-  const objectLayers = ['terrain-risk', 'container', 'production', 'creature', 'other', 'portal'];
+  // 'vehicle' must be listed here or the layer never draws: the checkbox, the colour token and the
+  // glyph all existed on 2026-08-21 while two rafts stayed invisible, because drawObjectLayer is
+  // only ever called for members of this array.
+  const objectLayers = ['terrain-risk', 'container', 'production', 'creature', 'other', 'portal', 'vehicle'];
   const world = document.body.dataset.world;
   // The same renderer serves the operator's map and the players' map. Only two things differ: where
   // the data comes from, and whether ground nobody has visited is covered over.
