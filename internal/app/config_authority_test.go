@@ -22,7 +22,7 @@ import (
 //	 Incremental Modifier = LeftShift
 //
 // plus a declared range ("# Acceptable value range: From 0.5 to 2"), a flags enum carrying
-// BepInEx's "Multiple values can be set at the same time" marker, and an [Immutable] section.
+// BepInEx's "Multiple values can be set at the same time" marker, and the section named Immutable.
 func testConfigSchema() ConfigSchema {
 	return ConfigSchema{
 		Schema: configSchemaVersion,
@@ -80,8 +80,12 @@ func testConfigSchema() ConfigSchema {
 					},
 				},
 			}, {
-				// A section BepInEx marked [Immutable]: fixed for the lifetime of the process.
-				Name:      "0 - General",
+				// The section literally named Immutable, which is VHVR's and nobody else's: its keys
+				// are bound normally and then overridden from the launch command at startup
+				// (VHVRConfig.cs:285-307), so they are read once per session. "Immutable" occurs
+				// exactly once in the whole Hrafnheim corpus, as the section header at
+				// org.bepinex.plugins.valheimvrmod.cfg:348.
+				Name:      "Immutable",
 				Immutable: true,
 				Entries: []ConfigSchemaEntry{{
 					Key:        "Nexus ID",
@@ -137,21 +141,25 @@ func TestConfigAuthorityRefusesClientOverrideOfSyncedKey(t *testing.T) {
 	}
 }
 
-// An [Immutable] section cannot change after the game has loaded it, so writing one would publish a
-// value the game ignores (C5). Neither policy is acceptable.
+// The Immutable section is read once at startup and can be overridden from the launch command, so
+// the portal declines to manage it under either policy. The refusal has to SAY that: copy claiming
+// the setting cannot be changed would be false, since VHVR binds those keys like any other.
 func TestConfigAuthorityRefusesImmutableKey(t *testing.T) {
 	ctx := context.Background()
 	store := newConfigStore(t)
 	schema := testConfigSchema()
-	ref := ConfigSettingRef{File: "Azumatt.AzuAntiArthriticCrafting.cfg", Section: "0 - General", Key: "Nexus ID"}
+	ref := ConfigSettingRef{File: "Azumatt.AzuAntiArthriticCrafting.cfg", Section: "Immutable", Key: "Nexus ID"}
 	for _, policy := range []ConfigPolicy{PolicyServerForced, PolicyClientDefault} {
 		err := store.SetWorldConfigSetting(ctx, "Hrafnheim", schema,
 			ConfigSetting{ConfigSettingRef: ref, Value: "1234", Policy: policy}, "admin")
 		if err == nil {
-			t.Fatalf("stored an immutable key with policy %s", policy)
+			t.Fatalf("stored a read-once key with policy %s", policy)
 		}
-		if !strings.Contains(err.Error(), "immutable") {
+		if !strings.Contains(err.Error(), "read once when the game starts") {
 			t.Fatalf("refusal does not say why: %v", err)
+		}
+		if strings.Contains(err.Error(), "cannot be changed") {
+			t.Fatalf("refusal claims the setting is unwritable, which it is not: %v", err)
 		}
 	}
 	authority, err := store.WorldConfigAuthority(ctx, "Hrafnheim")

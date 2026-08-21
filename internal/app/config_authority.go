@@ -110,6 +110,13 @@ type ConfigSchemaFile struct {
 
 // ConfigSchemaSection carries the section-level annotations. BepInEx writes them on the section, so
 // they apply to every key inside it.
+//
+// Immutable is NOT a BepInEx annotation. It is a section literally named "Immutable", and exactly
+// one mod uses it: VHVR, whose createImmutableSettingWithOverride (VHVRConfig.cs:285-307) binds
+// those keys normally and then overrides them from the command line at startup. Verified on this
+// host - the string "Immutable" occurs once in the whole Hrafnheim corpus, as the section header at
+// org.bepinex.plugins.valheimvrmod.cfg:348, alongside ordinary section names like [Controls] and
+// [Graphics]. So it means read once per session, not unwritable.
 type ConfigSchemaSection struct {
 	Name       string              `json:"name"`
 	Synced     bool                `json:"synced"`
@@ -128,6 +135,11 @@ type ConfigSchemaSection struct {
 // only 989 are synced, because the negation contains the positive as a substring. Overloading
 // Synced=false would have thrown those 224 explicit hints in with the 16216 keys that simply say
 // nothing.
+//
+// Immutable here is never emitted by the extractor: there is no key-level immutable annotation
+// anywhere in the corpus, only the one section named Immutable. It exists as the carrier Entry()
+// fills in from that section, so a caller reading a resolved entry sees the constraint without
+// having to look at the section it came from.
 type ConfigSchemaEntry struct {
 	Key         string           `json:"key"`
 	Type        string           `json:"type"`
@@ -137,7 +149,7 @@ type ConfigSchemaEntry struct {
 	Acceptable  ConfigAcceptable `json:"acceptable"`
 	Synced      bool             `json:"synced"`
 	ClientSide  bool             `json:"client_side,omitempty"`
-	Immutable   bool             `json:"immutable"`
+	Immutable   bool             `json:"immutable,omitempty"`
 	Advanced    bool             `json:"advanced"`
 }
 
@@ -254,15 +266,23 @@ func ValidateConfigSetting(entry ConfigSchemaEntry, value string, policy ConfigP
 	default:
 		return errors.New("choose whether the server forces this value or players may override it")
 	}
-	// C5: an [Immutable] section is fixed for the lifetime of the process. Writing it would publish
-	// a value the game ignores.
+	// The Immutable section is VHVR's own: createImmutableSettingWithOverride (VHVRConfig.cs:285-307)
+	// binds those keys normally and then overrides them from the command line at startup, so they
+	// are read once per session rather than being unwritable. The portal declines to manage them
+	// because a value it publishes there can be overridden out from under it by the launch command
+	// and would in any case only be read at the next restart - but the copy says that, rather than
+	// claiming the setting cannot be set, which would be false.
 	if entry.Immutable {
-		return errors.New("this setting is in an immutable section and cannot be changed")
+		return errors.New("this setting is read once when the game starts and can be overridden from the launch command, so the portal does not manage it")
 	}
-	// C4: a synced key is overwritten in memory by the server at runtime whatever the client's file
-	// says. Measured on this host: a client file held the correct wrist keybind, the server pushed
-	// its own, the file was never rewritten, and the change appeared to do nothing. Offering a
-	// client override here would be a promise the runtime breaks.
+	// C4: a synced key cannot honour client_default THROUGH THE FILE at all. ServerSync's Harmony
+	// prefix on ConfigEntryBase.GetSerializedValue (ConfigSync.cs:947-962) makes a save write the
+	// player's own LocalBaseValue rather than the server's runtime value, and the SetSerializedValue
+	// prefix makes a file re-read leave the live value alone - the server value is deliberately
+	// never persisted to the client's .cfg. That is the incident measured on this host: the client
+	// file held the correct wrist keybind, the server pushed its own, the file was never rewritten,
+	// and the change appeared to do nothing. So this is not a risky policy, it is an unimplementable
+	// one.
 	if entry.Synced && policy == PolicyClientDefault {
 		return errors.New("this setting is synced with the server, so the server always wins at runtime and players cannot be allowed to override it")
 	}
