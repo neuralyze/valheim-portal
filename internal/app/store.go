@@ -360,6 +360,43 @@ INSERT INTO schema_migrations(version, applied_at) VALUES (21, CURRENT_TIMESTAMP
 			return err
 		}
 	}
+
+	// The per-world setting authority and the extracted configuration schema it is validated
+	// against. Two tables because their lifetimes differ, the same split as migration 21: the
+	// schema is derived from the installed .cfg files and thrown away whenever the host rebuilds
+	// it, while an authority row is an operator's decision that must outlive every rebuild.
+	//
+	// The row is keyed by world, file, section and key because that is what a .cfg names, and the
+	// ABSENCE of a row is a real state - the portal writes nothing and the mod's own default
+	// applies. That is why policy has only two values: a third value meaning "unmanaged" would be
+	// a row, and a row is already the opposite of unmanaged.
+	var configAuthoritySchema int
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=22)`).Scan(&configAuthoritySchema); err != nil {
+		return err
+	}
+	if configAuthoritySchema == 0 {
+		if _, err := s.db.ExecContext(ctx, `
+CREATE TABLE world_config_settings (
+ world TEXT NOT NULL,
+ file TEXT NOT NULL,
+ section TEXT NOT NULL,
+ "key" TEXT NOT NULL,
+ value TEXT NOT NULL,
+ policy TEXT NOT NULL CHECK(policy IN ('server_forced','client_default')),
+ actor TEXT NOT NULL DEFAULT '',
+ set_at TEXT NOT NULL,
+ PRIMARY KEY (world, file, section, "key")
+);
+CREATE TABLE world_config_schemas (
+ world TEXT PRIMARY KEY,
+ fingerprint TEXT NOT NULL,
+ payload BLOB NOT NULL,
+ built_at TEXT NOT NULL
+);
+INSERT INTO schema_migrations(version, applied_at) VALUES (22, CURRENT_TIMESTAMP);`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
