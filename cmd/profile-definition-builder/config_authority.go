@@ -53,6 +53,11 @@ const (
 	// still refusing a document that is obviously not one.
 	maxConfigAuthorityBytes = 16 << 20
 
+	// The one reason a managed key can go unwritten. It matches the installer's own reason
+	// string for the same condition, so an operator reading a publish log and a divergence
+	// report sees one name for one thing.
+	reasonConfigFileNotShipped = "config_file_not_shipped"
+
 	policyServerForced  = "server_forced"
 	policyClientDefault = "client_default"
 )
@@ -88,6 +93,10 @@ type settingsBaseline struct {
 	Profile string                  `json:"profile"`
 	Version string                  `json:"version,omitempty"`
 	Entries []settingsBaselineEntry `json:"entries"`
+	// Records the portal could NOT apply, so nothing is silently lost. Omitted when empty, so
+	// a profile with nothing unshipped produces the document it always did. The installer
+	// decodes this and acts on nothing but Entries.
+	Unshipped []settingsUnshippedEntry `json:"unshipped,omitempty"`
 }
 
 type settingsBaselineEntry struct {
@@ -96,8 +105,25 @@ type settingsBaselineEntry struct {
 	Key     string `json:"key"`
 	Policy  string `json:"policy"`
 	// Written is the exact string this build put into the .cfg. Server-intended, never
-	// per-player: the installer stores it verbatim as the last applied baseline.
+	// per-player: the installer stores it verbatim as the last applied baseline. A key only
+	// appears here if this build really wrote it.
 	Written string `json:"written"`
+}
+
+// settingsUnshippedEntry is a record the portal holds but this profile cannot carry, because
+// the profile ships no configuration file for it.
+//
+// It says `value` and not `written` precisely because nothing was written; conflating the two
+// would tell the installer to enforce a value that is not in any file. Recording it is what
+// keeps the refusal honest: the operator's intent is neither applied nor thrown away, and the
+// page can tell them which of their own settings did not reach the profile.
+type settingsUnshippedEntry struct {
+	File    string `json:"file"`
+	Section string `json:"section"`
+	Key     string `json:"key"`
+	Policy  string `json:"policy"`
+	Value   string `json:"value"`
+	Reason  string `json:"reason"`
 }
 
 // cfgAddr is a section-qualified key inside one configuration file. The empty section is
@@ -248,34 +274,40 @@ func applyConfigAuthority(entries []configEntry, authority *worldConfigAuthority
 		delete(wanted, entry.zipName)
 	}
 
-	// A record naming a file the profile does not ship. Creating it is the lesser evil: an
-	// admin's forced value that never reaches a file does nothing at all, and that failure is
-	// invisible, whereas an extra .cfg for a mod the client does not load is inert - BepInEx
-	// only reads the configs of plugins that are present. Named on stderr either way, because
-	// creating a file the operator did not write should never be silent.
-	created := make([]string, 0, len(wanted))
+	// A record naming a file this profile does not ship is REFUSED, not created. The reason is
+	// the destination, not tidiness. The schema an admin edits is extracted from the world's
+	// `config_merged/bepinex`, which is what the SERVER reads, and measured 2026-08-21 only 22
+	// of Hrafnheim's 113 config files belong to a plugin the client installs. So creating the
+	// file would write the admin's value into a player's BepInEx/config - where the plugin is
+	// never loaded and the file never read - while never writing it where it would take effect,
+	// and it would do that by default for the majority of the corpus. That is a value which
+	// appears applied and is not: the same failure as the wrist keybind, where the client's file
+	// held the right value and the runtime ignored it.
+	//
+	// Nothing is lost and nothing is hidden: each refusal is named on stderr and recorded in the
+	// baseline's `unshipped` list, which is what lets the portal tell an operator that a setting
+	// they chose has not reached anybody. Applying these needs the server-side half - writing
+	// config_merged and deploying it, which costs a world restart - and that does not exist yet.
+	unshipped := make([]string, 0, len(wanted))
 	for zipName := range wanted {
-		created = append(created, zipName)
+		unshipped = append(unshipped, zipName)
 	}
-	sort.Strings(created)
-	for _, zipName := range created {
+	sort.Strings(unshipped)
+	for _, zipName := range unshipped {
 		keys := wanted[zipName]
-		fmt.Fprintf(os.Stderr, "config authority: %s is not in the profile config, creating it for %d managed key(s)\n", zipName, len(keys))
-		layered = append(layered, configEntry{zipName: zipName, body: newAuthorityCFG(options.World, keys)})
-		baseline.Entries = append(baseline.Entries, baselineEntries(keys)...)
+		fmt.Fprintf(os.Stderr, "config authority: %s is not in the profile config, so %d managed key(s) were not written\n", zipName, len(keys))
+		baseline.Unshipped = append(baseline.Unshipped, unshippedEntries(keys)...)
 	}
 
 	// Sorted so two publishes of the same authority produce identical bytes and a diff
 	// between publishes is readable.
 	sort.Slice(baseline.Entries, func(i, j int) bool {
-		left, right := baseline.Entries[i], baseline.Entries[j]
-		if left.File != right.File {
-			return left.File < right.File
-		}
-		if left.Section != right.Section {
-			return left.Section < right.Section
-		}
-		return left.Key < right.Key
+		return lessConfigAddress(baseline.Entries[i].File, baseline.Entries[i].Section, baseline.Entries[i].Key,
+			baseline.Entries[j].File, baseline.Entries[j].Section, baseline.Entries[j].Key)
+	})
+	sort.Slice(baseline.Unshipped, func(i, j int) bool {
+		return lessConfigAddress(baseline.Unshipped[i].File, baseline.Unshipped[i].Section, baseline.Unshipped[i].Key,
+			baseline.Unshipped[j].File, baseline.Unshipped[j].Section, baseline.Unshipped[j].Key)
 	})
 
 	encoded, err := encodeSettingsBaseline(baseline)
@@ -299,6 +331,31 @@ func baselineEntries(keys map[cfgAddr]configAuthorityEntry) []settingsBaselineEn
 		})
 	}
 	return out
+}
+
+func unshippedEntries(keys map[cfgAddr]configAuthorityEntry) []settingsUnshippedEntry {
+	out := make([]settingsUnshippedEntry, 0, len(keys))
+	for _, entry := range keys {
+		out = append(out, settingsUnshippedEntry{
+			File:    entry.File,
+			Section: entry.Section,
+			Key:     entry.Key,
+			Policy:  entry.Policy,
+			Value:   entry.Value,
+			Reason:  reasonConfigFileNotShipped,
+		})
+	}
+	return out
+}
+
+func lessConfigAddress(leftFile, leftSection, leftKey, rightFile, rightSection, rightKey string) bool {
+	if leftFile != rightFile {
+		return leftFile < rightFile
+	}
+	if leftSection != rightSection {
+		return leftSection < rightSection
+	}
+	return leftKey < rightKey
 }
 
 func encodeSettingsBaseline(baseline *settingsBaseline) ([]byte, error) {
@@ -473,13 +530,6 @@ func patchCFGAuthority(original []byte, wanted map[cfgAddr]configAuthorityEntry)
 func writeAuthorityKey(out *bytes.Buffer, entry configAuthorityEntry, terminator string) {
 	fmt.Fprintf(out, "## portal-managed (%s)%s", entry.Policy, terminator)
 	fmt.Fprintf(out, "%s = %s%s", entry.Key, entry.Value, terminator)
-}
-
-func newAuthorityCFG(world string, keys map[cfgAddr]configAuthorityEntry) []byte {
-	return patchCFGAuthority([]byte(fmt.Sprintf(
-		"## Written by the portal settings configuration manager for %s.\n"+
-			"## The profile shipped no file for these keys, so this file carries only the ones\n"+
-			"## the portal manages. BepInEx will add its own metadata on next load.\n", world)), keys)
 }
 
 // cfgLineKey is the key a configuration line assigns to, if it assigns to one. Comments are

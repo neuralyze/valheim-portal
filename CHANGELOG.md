@@ -51,6 +51,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   archive: `config/settings-baseline.json` accepted, `settings-baseline.json` rejected with
   "profile definition contains an unsupported file". The placement therefore needs no new
   client, no publish ordering and no feature flag.
+- A managed setting whose config file the profile does not ship is refused rather than written,
+  and recorded in the baseline's `unshipped` list with its policy, its value and the reason. The
+  refusal is about the destination: the schema an admin edits comes from the world's
+  `config_merged/bepinex`, which is what the server reads, and only 22 of Hrafnheim's 113 config
+  files belong to a plugin the client installs. Creating a client `.cfg` for one of the other 91
+  would put the value where the plugin is never loaded and the file never read while never
+  putting it where it would take effect - by default, for most of the corpus - which is a value
+  that looks applied and is not. Shipping-set membership is tested directly against the profile
+  being built rather than resolved through mod attribution, because a config's basename is the
+  plugin's BepInEx GUID, the GUID is not derivable from the Thunderstore identifier, and that
+  chain resolves only 95 of 113 files. Applying the rest needs the server-side write and a world
+  restart, which does not exist yet.
 
 - A shield-block probe behind [9 - Profiling] LogShieldBlocks, default off. Shields do not block
   in VR and the cause is in VHVR: its ShieldBlock component is never attached to anything, so

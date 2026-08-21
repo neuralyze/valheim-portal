@@ -127,15 +127,23 @@ func TestAuthorityLeavesUnmanagedFilesByteIdentical(t *testing.T) {
 }
 
 // Two publishes of the same authority must produce the same bytes, or every republish looks
-// like a change to whoever diffs the artifacts.
+// like a change to whoever diffs the artifacts. Both lists are sorted, since an unshipped
+// record is as much a published fact as a written one.
 func TestBaselineEntriesAreSortedAndStable(t *testing.T) {
 	authority := &worldConfigAuthority{Schema: configAuthoritySchema, World: "Hrafnheim", Entries: []configAuthorityEntry{
 		{File: "b.cfg", Section: "S", Key: "Two", Value: "2", Policy: policyServerForced},
 		{File: "a.cfg", Section: "Z", Key: "One", Value: "1", Policy: policyClientDefault},
 		{File: "a.cfg", Section: "A", Key: "Zed", Value: "z", Policy: policyServerForced},
 		{File: "a.cfg", Section: "A", Key: "Abe", Value: "a", Policy: policyServerForced},
+		// Not shipped by the profile below, so it lands in the other list.
+		{File: "c.cfg", Section: "S", Key: "Three", Value: "3", Policy: policyServerForced},
 	}}
-	_, baseline, err := applyConfigAuthority(nil, authority, builderOptions{World: "Hrafnheim", Profile: "p"})
+	shipped := []configEntry{
+		{zipName: "config/", isDir: true},
+		{zipName: "config/a.cfg", body: []byte("[A]\nAbe = 0\nZed = 0\n[Z]\nOne = 0\n")},
+		{zipName: "config/b.cfg", body: []byte("[S]\nTwo = 0\n")},
+	}
+	_, baseline, err := applyConfigAuthority(shipped, authority, builderOptions{World: "Hrafnheim", Profile: "p"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,6 +154,10 @@ func TestBaselineEntriesAreSortedAndStable(t *testing.T) {
 	want := []string{"a.cfg/A/Abe", "a.cfg/A/Zed", "a.cfg/Z/One", "b.cfg/S/Two"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("baseline order = %v, want %v", got, want)
+	}
+	if len(baseline.Unshipped) != 1 || baseline.Unshipped[0].File != "c.cfg" ||
+		baseline.Unshipped[0].Value != "3" || baseline.Unshipped[0].Reason != reasonConfigFileNotShipped {
+		t.Fatalf("unshipped = %+v", baseline.Unshipped)
 	}
 }
 
@@ -221,8 +233,8 @@ func TestAuthorityKeepsNestedConfigPaths(t *testing.T) {
 		[]configEntry{{zipName: "config/", isDir: true}, shipped},
 		&worldConfigAuthority{Schema: configAuthoritySchema, World: "Hrafnheim", Entries: []configAuthorityEntry{
 			{File: nested, Section: "Weights", Key: "Wood", Value: "2", Policy: policyServerForced},
-			// A nested file the profile does not ship, created at its own path rather than at
-			// the config root.
+			// A nested file the profile does not ship: refused, and recorded with its
+			// subdirectory intact rather than flattened to the config root.
 			{File: "shudnal.ConditionalConfigSync/ConditionalConfigSync.SyncPolicy.cfg", Section: "S", Key: "K", Value: "v", Policy: policyServerForced},
 		}}, builderOptions{World: "Hrafnheim", Profile: "hrafnheim-vr"})
 	if err != nil {
@@ -237,9 +249,12 @@ func TestAuthorityKeepsNestedConfigPaths(t *testing.T) {
 	if got := found["config/"+nested]; got != "[Weights]\r\nWood = 2\r\n" {
 		t.Fatalf("nested shipped file = %q", got)
 	}
-	created := "config/shudnal.ConditionalConfigSync/ConditionalConfigSync.SyncPolicy.cfg"
-	if _, ok := found[created]; !ok {
-		t.Fatalf("nested file was not created at its own path; got %v", found)
+	unshipped := "shudnal.ConditionalConfigSync/ConditionalConfigSync.SyncPolicy.cfg"
+	if _, ok := found["config/"+unshipped]; ok {
+		t.Fatalf("a file the profile does not ship was created: %v", found)
+	}
+	if len(baseline.Unshipped) != 1 || baseline.Unshipped[0].File != unshipped {
+		t.Fatalf("unshipped record = %+v", baseline.Unshipped)
 	}
 	// No entry landed at the config root under a flattened name.
 	for name := range found {
@@ -274,7 +289,13 @@ func TestAuthorityHandlesKeysBeforeAnySection(t *testing.T) {
 	}
 }
 
-func TestAuthorityCreatesAFileTheProfileDoesNotShip(t *testing.T) {
+// The refusal that keeps the feature honest. The schema an admin edits comes from the world's
+// config_merged/bepinex, which is what the SERVER reads, and only 22 of Hrafnheim's 113 config
+// files belong to a plugin the client installs. Creating a client .cfg for one of the other 91
+// would write the value where the plugin is never loaded and the file never read, while never
+// writing it where it would take effect - a value that looks applied and is not, which is the
+// wrist-keybind failure. So it is refused, and recorded rather than dropped.
+func TestAuthorityRefusesAFileTheProfileDoesNotShip(t *testing.T) {
 	layered, baseline, err := applyConfigAuthority(
 		[]configEntry{{zipName: "config/", isDir: true}},
 		&worldConfigAuthority{Schema: configAuthoritySchema, World: "Hrafnheim", Entries: []configAuthorityEntry{
@@ -283,20 +304,49 @@ func TestAuthorityCreatesAFileTheProfileDoesNotShip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var created string
 	for _, entry := range layered {
 		if entry.zipName == "config/server.only.cfg" {
-			created = string(entry.body)
+			t.Fatalf("a file the profile does not ship was created: %q", entry.body)
 		}
 	}
-	if !strings.Contains(created, "[S]\n## portal-managed (server_forced)\nKey = on\n") {
-		t.Fatalf("created file = %q", created)
+	// Nothing claims to have been written.
+	if len(baseline.Entries) != 0 {
+		t.Fatalf("baseline claims a write that did not happen: %+v", baseline.Entries)
 	}
-	if !strings.Contains(created, "## Written by the portal settings configuration manager for Hrafnheim.") {
-		t.Fatalf("created file has no provenance header: %q", created)
+	// And nothing was silently lost.
+	want := settingsUnshippedEntry{File: "server.only.cfg", Section: "S", Key: "Key",
+		Policy: policyServerForced, Value: "on", Reason: reasonConfigFileNotShipped}
+	if len(baseline.Unshipped) != 1 || baseline.Unshipped[0] != want {
+		t.Fatalf("unshipped = %+v, want %+v", baseline.Unshipped, want)
 	}
-	if len(baseline.Entries) != 1 {
-		t.Fatalf("baseline = %+v", baseline.Entries)
+	// The document still carries the record, and `value` is deliberately not `written`.
+	encoded, err := encodeSettingsBaseline(baseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"unshipped":[{"file":"server.only.cfg"`) ||
+		strings.Contains(string(encoded), `"written":"on"`) {
+		t.Fatalf("encoded baseline = %s", encoded)
+	}
+}
+
+// An empty list is omitted, so a profile with nothing unshipped emits the document it always
+// did rather than growing a field the installer would have to reason about.
+func TestBaselineOmitsAnEmptyUnshippedList(t *testing.T) {
+	_, baseline, err := applyConfigAuthority(
+		[]configEntry{{zipName: "config/", isDir: true}, {zipName: "config/mod.cfg", body: []byte("[S]\nKey = old\n")}},
+		&worldConfigAuthority{Schema: configAuthoritySchema, World: "Hrafnheim", Entries: []configAuthorityEntry{
+			{File: "mod.cfg", Section: "S", Key: "Key", Value: "new", Policy: policyServerForced},
+		}}, builderOptions{World: "Hrafnheim", Profile: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := encodeSettingsBaseline(baseline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "unshipped") {
+		t.Fatalf("encoded baseline carries an empty unshipped list: %s", encoded)
 	}
 }
 

@@ -112,6 +112,28 @@ extractor parses them, so a writer that reflowed the file would destroy its own 
 endings are preserved per line because they are genuinely mixed:
 `ZenDragon.ZenBreeding.cfg` carries 9 CRLF lines beside 31 LF ones.
 
+A managed key whose file the profile does not ship is **refused, not written and not dropped**.
+It appears in a second list, `unshipped`, carrying the file, section, key, `policy`, the `value`
+that was not written and a `reason` of `config_file_not_shipped`. The field says `value` rather
+than `written` precisely because nothing was written; conflating the two would tell the
+installer to enforce a value that is in no file. The list is omitted entirely when empty.
+
+The refusal is about the destination. The schema an admin edits is extracted from the world's
+`config_merged/bepinex`, which is what the **server** reads, and measured 2026-08-21 only 22 of
+Hrafnheim's 113 config files belong to a plugin the client installs. Creating a client `.cfg`
+for one of the other 91 would write the value into a player's `BepInEx/config`, where the plugin
+is never loaded and the file never read, while never writing it where it would take effect - and
+it would do that by default for most of the corpus. That is a value which appears applied and is
+not, the same failure as the wrist keybind whose client file was correct and whose runtime value
+was not. Applying those needs the server-side half, writing `config_merged` and deploying it at
+the cost of a world restart, which does not exist yet.
+
+Membership of the shipped set is testable directly against the profile being built, which is why
+it is not resolved through mod attribution: a config's basename is the plugin's BepInEx GUID, the
+GUID is not derivable from the Thunderstore identifier (`Azumatt.AzuAntiArthriticCrafting` ships
+as `Azumatt-AAA_Crafting`), and that chain resolves only 95 of 113 files - so it would silently
+guess for the rest.
+
 ### What `config/` excludes
 
 `config/` carries the client configs an operator owns, not saved copies of them. The
