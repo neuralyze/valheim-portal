@@ -210,6 +210,50 @@ func TestAuthorityHandlesHostileRealSectionAndEmptyValues(t *testing.T) {
 	}
 }
 
+// Five real config files live in SUBDIRECTORIES under a world's config root -
+// ItemStacksRewrite/ and shudnal.ConditionalConfigSync/ - holding 2,437 entries between them,
+// and every count taken with a top-level *.cfg glob missed all five. So `file` genuinely
+// carries a slash, and flattening it to a basename would write two mods' settings to one path.
+func TestAuthorityKeepsNestedConfigPaths(t *testing.T) {
+	nested := "ItemStacksRewrite/fortis.mods.itemstacksrewrite.weights.cfg"
+	shipped := configEntry{zipName: "config/" + nested, body: []byte("[Weights]\r\nWood = 1\r\n")}
+	layered, baseline, err := applyConfigAuthority(
+		[]configEntry{{zipName: "config/", isDir: true}, shipped},
+		&worldConfigAuthority{Schema: configAuthoritySchema, World: "Hrafnheim", Entries: []configAuthorityEntry{
+			{File: nested, Section: "Weights", Key: "Wood", Value: "2", Policy: policyServerForced},
+			// A nested file the profile does not ship, created at its own path rather than at
+			// the config root.
+			{File: "shudnal.ConditionalConfigSync/ConditionalConfigSync.SyncPolicy.cfg", Section: "S", Key: "K", Value: "v", Policy: policyServerForced},
+		}}, builderOptions{World: "Hrafnheim", Profile: "hrafnheim-vr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]string{}
+	for _, entry := range layered {
+		if !entry.isDir {
+			found[entry.zipName] = string(entry.body)
+		}
+	}
+	if got := found["config/"+nested]; got != "[Weights]\r\nWood = 2\r\n" {
+		t.Fatalf("nested shipped file = %q", got)
+	}
+	created := "config/shudnal.ConditionalConfigSync/ConditionalConfigSync.SyncPolicy.cfg"
+	if _, ok := found[created]; !ok {
+		t.Fatalf("nested file was not created at its own path; got %v", found)
+	}
+	// No entry landed at the config root under a flattened name.
+	for name := range found {
+		if strings.Contains(name, "itemstacksrewrite") && name != "config/"+nested {
+			t.Fatalf("nested path was flattened to %q", name)
+		}
+	}
+	for _, entry := range baseline.Entries {
+		if !strings.Contains(entry.File, "/") {
+			t.Fatalf("baseline lost the subdirectory: %+v", entry)
+		}
+	}
+}
+
 func TestAuthorityKeepsTheBOMAndAMissingFinalNewline(t *testing.T) {
 	// 26 of the 100 plugin manifests on this host carry a BOM; configs are no different, and
 	// dropping one is a change nobody asked for.
