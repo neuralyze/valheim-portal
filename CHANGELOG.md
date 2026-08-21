@@ -28,6 +28,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its profile manifests by four packages. So a read also checks a cheap fingerprint - the sorted
   `identifier@version` set of the player editions, no network - and rebuilds when it moved.
 
+- Published profiles now carry a world's managed settings. `cmd/profile-definition-builder`
+  layers the portal's stored authority over the profile's hand-maintained `client-config` files
+  per KEY rather than replacing them: a key with a record is rewritten on its own line, and a
+  key with no record is left byte-identical, because those files are how the fleet is actually
+  configured and the VR profile's `neuralyze.vrfixes.cfg` and
+  `org.bepinex.plugins.valheimvrmod.cfg` would be the first casualties of a whole-file rewrite.
+  Measured on a real Hrafnheim VR build with four managed keys: exactly one changed line per
+  file, every comment line identical including its terminator, and `ZenDragon.ZenBreeding.cfg`
+  keeping its 9 CRLF lines beside its 31 LF ones. The comment blocks are the only
+  machine-readable schema BepInEx publishes and the settings extractor reads them, so a writer
+  that reflowed the file would destroy its own next input.
+- `config/settings-baseline.json` in every profile built with an authority source, recording per
+  managed key the policy and the exact value written. Without it `client_default` cannot be
+  implemented: only a recorded baseline distinguishes "the player edited this" from "the admin
+  changed the default", and comparing against the current server value wipes a player's
+  customisation the first time an admin edits a default. It sits under `config/` rather than at
+  the archive root because the installer's allowlist already admits anything under `config/`,
+  while a new top-level member takes the `default:` branch and fails the sync - and a definition
+  an installed client cannot parse stops players launching Valheim, exactly as the `audience`
+  manifest field did on 2026-08-17. Measured against the pre-change client with the same
+  archive: `config/settings-baseline.json` accepted, `settings-baseline.json` rejected with
+  "profile definition contains an unsupported file". The placement therefore needs no new
+  client, no publish ordering and no feature flag.
+
 - A shield-block probe behind [9 - Profiling] LogShieldBlocks, default off. Shields do not block
   in VR and the cause is in VHVR: its ShieldBlock component is never attached to anything, so
   ShieldBlock.instance is null for the whole session - 161 AddComponent sites in the installed

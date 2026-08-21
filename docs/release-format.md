@@ -20,12 +20,19 @@ rather than in the artifact players download.
 
 ## Artifacts
 
-Every release has exactly one immutable `profile` ZIP, the profile definition. It contains
-exactly two entries:
+Every release has exactly one immutable `profile` ZIP, the profile definition. Its top level
+holds exactly two entries, and [must keep holding exactly those two](#why-the-settings-baseline-lives-under-config):
 
 ```text
 profile-manifest.json
 config/
+```
+
+A release published with a world's managed settings additionally carries one file inside the
+config tree:
+
+```text
+config/settings-baseline.json
 ```
 
 ### The definition format is frozen
@@ -41,8 +48,8 @@ config/
 | `packages` | Thunderstore package pins, sorted by filename, each with namespace, name, version, filename, size and SHA-256 |
 | `companion` | optional, and only on a `flat` definition: the Flat companion's filename, size and SHA-256 |
 
-**Nothing may be added to the file or to the archive.** The definition is a wire contract
-with a separately installed consumer:
+**Nothing may be added to the manifest, and nothing may be added to the archive's top level.**
+The definition is a wire contract with a separately installed consumer:
 
 - An installed client decodes the manifest with `json.Decoder.DisallowUnknownFields()`
   (`cmd/valheim-profile-sync/sync.go:715-718`), so one unknown key fails the whole sync.
@@ -62,6 +69,48 @@ locks players out of Valheim rather than pinning them to an old profile. On 2026
 A portal-only fact therefore goes on the release row instead. That is where `audience`
 lives now; `cmd/profile-definition-builder` still validates its `-audience` flag but does
 not write it into the archive.
+
+### Why the settings baseline lives under `config/`
+
+The bullet above is the whole reason `settings-baseline.json` is at
+`config/settings-baseline.json` and not beside `profile-manifest.json`. The allowlist admits
+anything whose name is `config` or starts with `config/`, so an already-installed launcher
+unpacks the file without knowing what it is; a new top-level member would take the `default:`
+branch and fail the sync, which stops the game launching for every player who has not replaced
+their launcher. Measured 2026-08-21 against the pre-change client, same archive built from the
+real Hrafnheim VR config, only the member name moved:
+
+```text
+config/settings-baseline.json   accepted, unpacked
+settings-baseline.json          profile definition contains an unsupported file
+```
+
+So the placement needs no client change, no publish ordering and no feature flag. The whole
+cost is that a client built before the feature leaves an inert `settings-baseline.json` in
+`BepInEx/config`, which BepInEx never reads because it globs `*.cfg`. Anyone adding another
+artifact to this archive faces the identical choice, and the allowlist will not explain it.
+
+The file itself is `settings-baseline/v1`: the world, profile and version it was built for,
+then one entry per key the portal manages, naming the file (relative to `config/`), section,
+key, its `policy` and the exact string this build `written` into the `.cfg`. Only managed keys
+appear. A key with no record is absent, which is a real third state meaning the portal does
+not write it and the mod's own default applies - it must not be read as `client_default`.
+
+The manifest exists because `client_default` is otherwise unimplementable. The installer keeps
+the last applied copy and compares a player's current value against the recorded `written`:
+equal means the player never touched it, so the new value is safe to write, and different means
+they edited it and it must be left alone. Comparing against the current server value cannot
+tell those apart, and would wipe a player's customisation the first time an admin edited a
+default. A build given no authority source emits no baseline at all, and the installer then
+behaves exactly as it did before the feature.
+
+`cmd/profile-definition-builder` layers the world's stored authority over the profile's
+hand-maintained configs per KEY, never per file: it rewrites the value on a managed key's own
+line and leaves everything else byte-identical, comments and line endings included. Those
+comment blocks are the only machine-readable schema BepInEx publishes, and the settings
+extractor parses them, so a writer that reflowed the file would destroy its own input. Line
+endings are preserved per line because they are genuinely mixed:
+`ZenDragon.ZenBreeding.cfg` carries 9 CRLF lines beside 31 LF ones.
 
 ### What `config/` excludes
 

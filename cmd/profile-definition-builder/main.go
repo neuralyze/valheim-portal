@@ -48,6 +48,14 @@ type builderOptions struct {
 	TrueNonVR          bool
 	Audience           string
 	DebugLogging       bool
+	// The world's stored settings authority, layered over the profile's config at build
+	// time. Either source may be given, never both; neither means no layering and no
+	// baseline manifest, which is byte-for-byte the artifact this builder produced before.
+	ConfigAuthorityPath     string
+	ConfigAuthorityDatabase string
+	// Recorded in the baseline manifest so a client can say which publish seeded it. The
+	// version is chosen by the publisher, not here, so it arrives as a flag or not at all.
+	ProfileVersion string
 }
 
 type profileManifest struct {
@@ -108,6 +116,9 @@ func main() {
 	flag.StringVar(&options.PackageBaseURL, "package-base-url", os.Getenv("VALHEIM_PACKAGE_BASE_URL"), "Thunderstore package archive base URL")
 	flag.BoolVar(&options.TrueNonVR, "true-nonvr", false, "build a Flat profile without ValheimVR or its companion")
 	flag.BoolVar(&options.DebugLogging, "debug-logging", false, "force verbose client diagnostics and startup profiling")
+	flag.StringVar(&options.ConfigAuthorityPath, "config-authority", "", "path to a world-config-authority/v1 document to layer over the profile config")
+	flag.StringVar(&options.ConfigAuthorityDatabase, "config-authority-database", "", "portal database to read the world's settings authority from")
+	flag.StringVar(&options.ProfileVersion, "version", "", "profile version recorded in the settings baseline manifest")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		flag.Usage()
@@ -155,6 +166,23 @@ func buildProfileDefinition(ctx context.Context, options builderOptions) error {
 	if options.DebugLogging {
 		config, err = applyDebugLogging(config)
 		if err != nil {
+			return err
+		}
+	}
+	// After -debug-logging on purpose. The two can only collide if an admin has explicitly
+	// recorded one of the logging keys, and when they have, their record is the more specific
+	// statement and must be what the file says - because the baseline manifest promises the
+	// installer that `written` is exactly what this build wrote. A baseline that disagreed
+	// with the shipped file would make the client force a value the build never produced.
+	authority, err := loadConfigAuthority(ctx, options)
+	if err != nil {
+		return err
+	}
+	if authority != nil {
+		// The baseline joins the config entries rather than sitting beside them, because
+		// config/settings-baseline.json is where an already-installed client will accept it.
+		// See settingsBaselineZIPName for the incident that decided the placement.
+		if config, _, err = applyConfigAuthority(config, authority, options); err != nil {
 			return err
 		}
 	}
@@ -239,6 +267,10 @@ func validateBuilderOptions(options builderOptions) error {
 	}
 	if options.TrueNonVR && options.FlatCompanion != "" {
 		return fmt.Errorf("true-nonvr profiles cannot include a flat-companion")
+	}
+	// Two sources for one document, so which one won would be invisible in the build log.
+	if options.ConfigAuthorityPath != "" && options.ConfigAuthorityDatabase != "" {
+		return errors.New("config-authority and config-authority-database are mutually exclusive")
 	}
 	if options.ConfigDir == "" {
 		return fmt.Errorf("config-dir is required")

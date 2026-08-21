@@ -29,9 +29,10 @@ set -euo pipefail
 #   PORTAL_DATABASE              optional  defaults to the deployed database
 #   PORTAL_ARTIFACT_ROOT         optional  defaults to the deployed artifact root
 #   DRY_RUN=1                    optional  build and report, publish nothing
+#   PORTAL_CONFIG_AUTHORITY=0    optional  build without the world's stored settings authority
 
 usage() {
-  sed -n '3,31p' "${BASH_SOURCE[0]}" >&2
+  sed -n '3,32p' "${BASH_SOURCE[0]}" >&2
   exit 2
 }
 
@@ -44,6 +45,11 @@ companion=${VALHEIM_FLAT_COMPANION:-}
 database=${PORTAL_DATABASE:-/var/lib/valheim-portal/portal.sqlite}
 artifact_root=${PORTAL_ARTIFACT_ROOT:-/var/lib/valheim-portal/artifacts}
 dry_run=${DRY_RUN:-0}
+# The world's stored settings authority is layered over the profile config at build time, so a
+# setting an admin edited in the portal reaches the client without anyone hand-editing a .cfg.
+# Off means "publish the profile config as written", which is the escape hatch if a stored value
+# ever needs to be taken out of the picture without emptying the store.
+config_authority=${PORTAL_CONFIG_AUTHORITY:-1}
 
 [[ -n $source_root && -d $source_root ]] ||
   { echo "VALHEIM_PROFILE_SOURCE_ROOT is not set to a directory" >&2; exit 78; }
@@ -179,7 +185,19 @@ while read -r world source published client_type valheim_vr audience; do
 
   build_args=(-world "$world" -profile "$published" -client-type "$client_type" -audience "$audience"
               -source-manifest "$profile_dir/profile-manifest.json"
-              -config-dir "$merged" -output "$payload")
+              -config-dir "$merged" -output "$payload" -version "$version")
+
+  # The settings the admin chose in the portal, layered over the config above per KEY, plus the
+  # settings-baseline.json the client installer needs to tell "the player edited this" from "the
+  # admin changed the default". Without that manifest the installer can only compare against the
+  # current server value, which cannot distinguish the two and wipes a player's customisation the
+  # first time an admin edits a default.
+  #
+  # Skipped when the database is not there, so a build against a fresh host still works; the
+  # profile then ships exactly the config on disk and no baseline at all.
+  if [[ $config_authority != 0 && -f $database ]]; then
+    build_args+=(-config-authority-database "$database")
+  fi
   publish_args=(-world "$world" -profile "$published" -client-type "$client_type"
                 -version "$version" -profile-payload "$payload" -audience "$audience"
                 -notes "$notes" -actor republish-profiles
