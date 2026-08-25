@@ -996,7 +996,22 @@ namespace NeuralyzeVRFixes
             }
         }
 
-        private static readonly Dictionary<string, Delegate> _callbacks = new Dictionary<string, Delegate>();
+        // Keyed by the ACTION, not by its label.
+        //
+        // Delegate equality is target-plus-method, so `entry.Execute` handed in fresh on every
+        // rebuild still hits this cache: that is what it is for - Delegate.CreateDelegate allocated
+        // once per slot per frame, roughly twenty allocations a frame that the GC then collected
+        // during play.
+        //
+        // Keying it by LABEL was a wrong-command hazard, and the second menu level put it within
+        // reach. Two entries may legitimately share a label at different depths - "Admin/Save" and
+        // "Admin/Spawn/Save" both draw SAVE - and the label-keyed cache handed the second one the
+        // first one's callback. Same reason the skip test below now has to agree with this: itemName
+        // is a change-detection key and nothing else (MiscLabels.cs:10), so two same-named entries
+        // landing on the same slot index at two different levels made the slot keep the level it
+        // came from. The word on the button is not an identity.
+        private static readonly Dictionary<Delegate, Delegate> _callbacks = new Dictionary<Delegate, Delegate>();
+        private static readonly Dictionary<object, Func<bool>> _slotAction = new Dictionary<object, Func<bool>>();
 
         private static PropertyInfo _itemName;
         private static int _skipped, _rebuilt;
@@ -1004,23 +1019,29 @@ namespace NeuralyzeVRFixes
         private static void Assign(object element, string label, Func<bool> action)
         {
             if (element == null) return;
-            // Untouched if it already says the right thing. useAsQuickAction rebuilds the slot's
-            // sprite and layout, and doing that to every slot on every frame both burned 4-5ms per
-            // frame and made the ring flicker in and out. VHVR guards its own entries the same way.
+            // Untouched if it already says the right thing AND already does the right thing.
+            // useAsQuickAction rebuilds the slot's sprite and layout, and doing that to every slot
+            // on every frame both burned 4-5ms per frame and made the ring flicker in and out.
+            // VHVR guards its own entries the same way.
             if (_itemName == null) _itemName = element.GetType().GetProperty("itemName");
             if (_itemName != null)
             {
                 object current = _itemName.GetValue(element, null);
-                if (current is string && (string)current == label) { _skipped++; return; }
+                Func<bool> last;
+                if (current is string && (string)current == label
+                    && _slotAction.TryGetValue(element, out last) && last.Equals(action))
+                {
+                    _skipped++;
+                    return;
+                }
             }
             _rebuilt++;
-            // Cached by label. Delegate.CreateDelegate allocated once per slot per frame - roughly
-            // twenty allocations a frame that the GC then had to collect during play.
+            _slotAction[element] = action;
             Delegate cb;
-            if (!_callbacks.TryGetValue(label, out cb))
+            if (!_callbacks.TryGetValue(action, out cb))
             {
                 cb = Delegate.CreateDelegate(_callbackType, action.Target, action.Method);
-                _callbacks[label] = cb;
+                _callbacks[action] = cb;
             }
             // The word is baked INTO the sprite, deliberately.
             //
