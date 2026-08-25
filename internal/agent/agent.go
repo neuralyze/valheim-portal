@@ -32,6 +32,10 @@ var serverDisplayName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._:-]{2,79}$`
 var serverPassword = regexp.MustCompile(`^[A-Za-z0-9!@#$%^&*._+?-]{5,64}$`)
 var worldSeed = regexp.MustCompile(`^[A-Za-z0-9]{1,64}$`)
 
+// worldUploadID is the portal's randomID(): 32 lowercase hex characters. It is joined to
+// the agent's own upload root, so the charset is what stops it naming anything else.
+var worldUploadID = regexp.MustCompile(`^[a-f0-9]{32}$`)
+
 type Config struct {
 	Socket        string
 	TokenFile     string
@@ -64,9 +68,12 @@ type Request struct {
 	Seed           string `json:"seed,omitempty"`
 	SourceWorld    string `json:"source_world,omitempty"`
 	CopyFrom       string `json:"copy_from,omitempty"`
-	Start          bool   `json:"start,omitempty"`
-	Admins         string `json:"admins,omitempty"`
-	Permitted      string `json:"permitted,omitempty"`
+	// WorldUpload is a staging id under WorldUploadRoot, never a path: the agent joins
+	// it to its own configured root so a caller cannot name a directory.
+	WorldUpload string `json:"world_upload,omitempty"`
+	Start       bool   `json:"start,omitempty"`
+	Admins      string `json:"admins,omitempty"`
+	Permitted   string `json:"permitted,omitempty"`
 	// Lines bounds the changelog output of mod_notes. ClientType, ReleaseID and Archive are
 	// the release-confirm arguments; Notes is the mandatory release note for publish_profile.
 	Lines      int    `json:"lines,omitempty"`
@@ -145,6 +152,12 @@ var operations = map[string]string{
 	// them to the host, access_state reads back what is actually in place.
 	"access_apply": "portal_access_lists.sh",
 	"access_state": "@internal",
+	// A maintenance window that loads the two player-kicking mods on one named world.
+	// The script only stages the overlay; the stop/deploy/start/wait ordering is the
+	// sequence built in execute below, from the scripts that already do each step.
+	"admin_mode_on":    "portal_admin_mode.sh",
+	"admin_mode_off":   "portal_admin_mode.sh",
+	"admin_mode_state": "portal_admin_mode.sh",
 }
 
 // Operations whose script prints JSON for the portal to parse, rather than output for an operator
@@ -166,6 +179,7 @@ func Canonical(r Request) string {
 		r.BackupInterval, fmt.Sprint(r.BackupAge), fmt.Sprint(r.BackupCount), r.Seed,
 		r.SourceWorld, r.CopyFrom, fmt.Sprint(r.Start), r.Admins, r.Permitted, fmt.Sprint(r.Timestamp),
 		fmt.Sprint(r.Lines), r.ClientType, r.PublishedProfile, r.ReleaseID, r.Archive, r.Notes,
+		r.WorldUpload,
 	}, "\n")
 }
 func Sign(token []byte, r Request) string {
@@ -249,7 +263,7 @@ func argumentProblem(err error) bool { return !errors.Is(err, ErrCapability) }
 func provisionFieldsEmpty(r Request) bool {
 	return r.ServerName == "" && r.Password == "" && !r.Public && !r.Crossplay && r.PlayerLimit == 0 &&
 		r.Preset == "" && r.BackupInterval == "" && r.BackupAge == 0 && r.BackupCount == 0 &&
-		r.Seed == "" && r.SourceWorld == "" && r.CopyFrom == "" && !r.Start
+		r.Seed == "" && r.SourceWorld == "" && r.CopyFrom == "" && r.WorldUpload == "" && !r.Start
 }
 
 func validateProvisionRequest(r Request) error {
@@ -269,12 +283,25 @@ func validateProvisionRequest(r Request) error {
 	default:
 		return errors.New("invalid backup interval")
 	}
-	if r.Seed != "" {
-		if len(r.Seed) > 64 || !regexp.MustCompile(`^[A-Za-z0-9]+$`).MatchString(r.Seed) || r.SourceWorld != "" {
-			return errors.New("invalid world seed")
+	// Exactly one world source. A request naming two is a caller bug, and picking one of
+	// them would build a server out of a world nobody chose.
+	sources := 0
+	for _, chosen := range []bool{r.Seed != "", r.SourceWorld != "", r.WorldUpload != ""} {
+		if chosen {
+			sources++
 		}
-	} else if r.SourceWorld != "" && !worldName.MatchString(r.SourceWorld) {
+	}
+	if sources > 1 {
+		return errors.New("choose one world source: a seed, a source world, or an uploaded save")
+	}
+	if r.Seed != "" && (len(r.Seed) > 64 || !worldSeed.MatchString(r.Seed)) {
+		return errors.New("invalid world seed")
+	}
+	if r.SourceWorld != "" && !worldName.MatchString(r.SourceWorld) {
 		return errors.New("invalid source world")
+	}
+	if r.WorldUpload != "" && !worldUploadID.MatchString(r.WorldUpload) {
+		return errors.New("invalid uploaded world")
 	}
 	// A profile to copy is named on its own: profiles are shared, so there is no world
 	// to qualify it with, and a server is never created from another server.
@@ -294,7 +321,7 @@ func validateWorldCreateRequest(r Request) error {
 	if !worldSeed.MatchString(r.Seed) {
 		return errors.New("invalid world seed")
 	}
-	if r.SourceWorld != "" || r.CopyFrom != "" ||
+	if r.SourceWorld != "" || r.CopyFrom != "" || r.WorldUpload != "" ||
 		r.ServerName != "" || r.Password != "" || r.Public || r.Crossplay || r.PlayerLimit != 0 ||
 		r.Preset != "" || r.BackupInterval != "" || r.BackupAge != 0 || r.BackupCount != 0 || r.Start {
 		return errors.New("unexpected world creation arguments")
@@ -400,6 +427,18 @@ func validateModRequest(r Request) error {
 		if r.Operation == "publish_profile" {
 			if !worldName.MatchString(r.Profile) {
 				return errors.New("invalid publish profile")
+			}
+			if r.Query != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" {
+				return errors.New("unexpected mod arguments")
+			}
+			return nil
+		}
+		// Profile-scoped without being a mod action, the same shape as publish_profile above:
+		// the overlay is built from the archives the world's own profile already pins, so the
+		// host needs the profile name to find them and reads no network.
+		if strings.HasPrefix(r.Operation, "admin_mode_") {
+			if !worldName.MatchString(r.Profile) {
+				return errors.New("invalid admin mode profile")
 			}
 			if r.Query != "" || r.Identifier != "" || r.Version != "" || r.Scope != "" || r.Reason != "" {
 				return errors.New("unexpected mod arguments")
@@ -706,6 +745,17 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 		if r.Start {
 			sequence = []string{"provision", "start", "health"}
 		}
+	// Entering a maintenance window: back up first, because arming loads mods that have
+	// never run server-side on this world, and end on health rather than start, because
+	// "the container came up" is not "players can join" and the operator is about to be
+	// told the window is open.
+	case "admin_mode_on":
+		sequence = []string{"backup", "stop", "admin_mode_on", "mod_deploy", "start", "health"}
+	// Leaving one takes no backup, and that is the point: this is the path that gets a world
+	// back to a state players can join, so it has the fewest steps that can refuse it. A
+	// backup here would add a failure mode to the recovery itself.
+	case "admin_mode_off":
+		sequence = []string{"stop", "admin_mode_off", "mod_deploy", "start", "health"}
 	}
 	timeout := 10 * time.Minute
 	if r.Operation == "provision" {
@@ -718,7 +768,7 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 	var output strings.Builder
 	provisioned := false
 	ready := false
-	for _, operation := range sequence {
+	for index, operation := range sequence {
 		resolved, err := safeScript(scriptDir, operations[operation])
 		if err != nil {
 			return Response{Status: "failed", Output: Sanitize(output.String()), Error: "operation unavailable", Provisioned: provisioned, Ready: ready}
@@ -738,6 +788,10 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 				r.ServerName, fmt.Sprint(r.Port), fmt.Sprint(r.Public), fmt.Sprint(r.Crossplay),
 				fmt.Sprint(r.PlayerLimit), r.Preset, r.BackupInterval, fmt.Sprint(r.BackupAge),
 				fmt.Sprint(r.BackupCount), r.Profile, r.Seed, r.SourceWorld, r.CopyFrom,
+				// The staging id, not a path. hostops/provision_valheim_server.sh
+				// joins it to the upload root it resolves from its own environment,
+				// which is where every other root in these scripts comes from.
+				r.WorldUpload,
 			)
 		case operation == "world_log":
 			args = append(args, fmt.Sprint(r.Lines), r.Query)
@@ -751,6 +805,8 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 			// The world is already args[0]; the script resolves the single catalog target and
 			// carries the previous release's artifacts forward, so no paths come from here.
 			args = append(args, r.Profile, r.ClientType, r.Notes)
+		case strings.HasPrefix(operation, "admin_mode_"):
+			args = append(args, r.Profile, strings.TrimPrefix(operation, "admin_mode_"))
 		case strings.HasPrefix(operation, "mod_"):
 			action := strings.ReplaceAll(strings.TrimPrefix(operation, "mod_"), "_", "-")
 			args = append(args, r.Profile, action)
@@ -781,7 +837,7 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 		out, err := combinedOutput(ctx, cmd)
 		output.WriteString(out)
 		if err != nil {
-			return Response{Status: "failed", Output: Sanitize(output.String()), Error: "operation failed", Provisioned: provisioned, Ready: ready}
+			return Response{Status: "failed", Output: Sanitize(output.String()), Error: stepFailure(sequence, index, r.World), Provisioned: provisioned, Ready: ready}
 		}
 		if operation == "provision" {
 			provisioned = true
@@ -807,6 +863,43 @@ func execute(parent context.Context, scriptDir, worldRoot string, allowed map[st
 		return Response{Status: "succeeded", Data: json.RawMessage(raw)}
 	}
 	return Response{Status: "succeeded", Output: Sanitize(output.String()), Provisioned: provisioned, Ready: ready}
+}
+
+// stepFailure says which step of a composed operation failed and, when that step ran after
+// a stop and before the matching start, that the world is still down.
+//
+// Every failure in this loop reported the bare string "operation failed" until 2026-08-25.
+// That is the wrong answer for any sequence that stops a world before mutating it: a deploy
+// that fails after the stop leaves the world down carrying a plugin set nobody chose, and
+// the reply said only that something, somewhere, went wrong. An operator cannot act on
+// that, and a world stopped with no message is how a maintenance window becomes an outage.
+func stepFailure(sequence []string, index int, world string) string {
+	stopped := false
+	for _, step := range sequence[:index+1] {
+		switch step {
+		case "stop":
+			stopped = true
+		case "start":
+			stopped = false
+		}
+	}
+	failure := sequence[index] + " failed"
+	if !stopped {
+		return failure
+	}
+	message := failure + "; " + world + " is STOPPED and did not restart."
+	// Whether the deployed plugin set is also wrong depends on whether this sequence was
+	// there to change it. Only then is a deploy part of the recovery.
+	for _, step := range sequence {
+		if step == "mod_deploy" {
+			return message + " Its deployed server mod set is not the one this operation intended." +
+				" Recover on the host with \"hostops/manage_mods.sh " + world + " deploy --apply\"," +
+				" then \"hostops/start_valheim_server.sh " + world + "\"" +
+				" and \"hostops/wait_valheim_server_ready.sh " + world + "\"."
+		}
+	}
+	return message + " Recover on the host with \"hostops/start_valheim_server.sh " + world + "\"," +
+		" then \"hostops/wait_valheim_server_ready.sh " + world + "\"."
 }
 
 func combinedOutput(ctx context.Context, cmd *exec.Cmd) (string, error) {

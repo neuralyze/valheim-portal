@@ -47,6 +47,7 @@ Scripts that were unsafe or dead have been removed; see Removed scripts below.
 | `hostops/pause_valheim_server.sh` | `WORLD [SERVICE]` | container lifecycle | `pause` | `docker compose pause`. |
 | `hostops/pause_valheim_servers.sh` | `-` | container lifecycle | - | Fan-out: pauses every world in `hostops/worlds.txt` in parallel. |
 | `hostops/portal_access_lists.sh` | `WORLD ADMIN_IDS PERMITTED_IDS` | `adminlist.txt`, `permittedlist.txt` | `access_apply` | Writes the generated admin and permitted lists. Each argument is a comma-separated list of SteamID64 values or `-` for empty; at most 200 entries, no duplicates. Refuses symlinked or non-regular targets, and stages every file before renaming any. |
+| `hostops/portal_admin_mode.sh` | `WORLD PROFILE {on|off|state}` | the world's `mods/admin-mode/` plugin overlay | `admin_mode_on`, `admin_mode_off`, `admin_mode_state` | Arms, disarms or reports one world's admin-mode plugin overlay: `JereKuusela-Structure_Tweaks` and `Azumatt-PerfectPlacement`, which disconnect every connected player when they are loaded server-side. Staging only - it never stops, deploys or starts anything, because the ordering that makes a maintenance window safe is composed by the agent from the scripts that already do each step. `off` refuses nothing, since it is the path that gets players back in. Execs `tools/valheim_mods.py admin-mode`. |
 | `hostops/portal_create_valheim_world.sh` | `WORLD SEED` | world save pair | `world_create` | Regenerates an existing world's save pair on a chosen seed via `tools/valheim_worldgen.py`. The world directory must already exist. |
 | `hostops/portal_delete_valheim_server.sh` | `WORLD` | whole world directory | `delete_server` | Deletes the entire world directory after verifying it is a real directory inside the world root and carries a `valheim.env`. External backups are retained. Requires `VALHEIM_ROOT`. |
 | `hostops/portal_mod_admin.sh` | `WORLD PROFILE ACTION [ARGS...]` | profile manifest, package cache, staged plugins | `mod_inventory`, `mod_search`, `mod_custom_list`, `mod_add`, `mod_remove`, `mod_enable`, `mod_disable`, `mod_custom_add`, `mod_custom_remove`, `mod_custom_enable`, `mod_custom_disable`, `mod_deploy` | The portal's only mod entry point. Validates the argument count and scope per action, then execs `tools/valheim_mods.py`. Its stderr is what the admin UI shows, so rejections name the action and what it wanted. Actions: `inventory`, `search QUERY`, `custom-list`, `add ID VERSION SCOPE`, `remove ID REASON`, `enable ID`, `disable ID`, `custom-add ID SCOPE`, `custom-remove ID`, `custom-enable ID`, `custom-disable ID`, `deploy`. |
@@ -72,7 +73,7 @@ Scripts that were unsafe or dead have been removed; see Removed scripts below.
 | tool | arguments | subcommands | mutates | purpose |
 |---|---|---|---|---|
 | `tools/test_valheim_mods.py` | standard `unittest` arguments | - | no | Unit tests for the mod controller: deploy staging, dependency resolution, manifest handling. |
-| `tools/valheim_mods.py` | `[--world WORLD] [--profile PROFILE] [--manifest PATH] SUBCOMMAND ...` | `list [--json]`, `check-updates`, `search QUERY [--json]`, `add ID [VERSION] [--client-only]`, `sync ID`, `remove ID --reason R`, `purge ID --reason R`, `exclude ID VERSION --reason R`, `disable ID`, `enable ID`, `custom-list`, `custom-add ID [--scope shared\|client-only]`, `custom-remove ID`, `custom-enable ID`, `custom-disable ID`, `update [ID] [--all] [--apply]`, `export-code`, `deploy [--apply]`, `release-status [--require-complete]`, `release-confirm PROFILE_NAME {flat\|vr} RELEASE_ID ARCHIVE`, `profile {list, create NAME, copy SOURCE NAME, remove NAME}`, `player-catalog [--state]` | profile manifest, downloaded package cache, staged plugin trees (mutating subcommands only) | The manifest-driven Valheim mod controller. Resolves Thunderstore packages and their dependencies, records every change in the profile manifest, and stages plugins for the next server start. Read-only unless the subcommand says otherwise; `update` and `deploy` need `--apply` to write. `player-catalog` is the only subcommand that names no profile: it spans the `vr` and `flat` player editions and needs `--world` for that world's installed plugin manifests. |
+| `tools/valheim_mods.py` | `[--world WORLD] [--profile PROFILE] [--manifest PATH] SUBCOMMAND ...` | `list [--json]`, `check-updates`, `search QUERY [--json]`, `add ID [VERSION] [--client-only]`, `sync ID`, `remove ID --reason R`, `purge ID --reason R`, `exclude ID VERSION --reason R`, `disable ID`, `enable ID`, `custom-list`, `custom-add ID [--scope shared\|client-only]`, `custom-remove ID`, `custom-enable ID`, `custom-disable ID`, `update [ID] [--all] [--apply]`, `export-code`, `deploy [--apply]`, `release-status [--require-complete]`, `release-confirm PROFILE_NAME {flat\|vr} RELEASE_ID ARCHIVE`, `profile {list, create NAME, copy SOURCE NAME, remove NAME}`, `player-catalog [--state]`, `admin-mode {on,off,state}` | profile manifest, downloaded package cache, staged plugin trees (mutating subcommands only) | The manifest-driven Valheim mod controller. Resolves Thunderstore packages and their dependencies, records every change in the profile manifest, and stages plugins for the next server start. Read-only unless the subcommand says otherwise; `update` and `deploy` need `--apply` to write. `player-catalog` is the only subcommand that names no profile: it spans the `vr` and `flat` player editions and needs `--world` for that world's installed plugin manifests. |
 | `tools/valheim_profile_catalog.py` | `WORLD` | - | no | Emits the world's controlled mod profiles as JSON, skipping symlinked directories and manifests that do not name the requested world. |
 | `tools/valheim_provision.py` | 14 positionals: `WORLD SERVER_NAME PORT PUBLIC CROSSPLAY PLAYER_LIMIT PRESET BACKUP_INTERVAL BACKUP_AGE BACKUP_COUNT PROFILE SEED SOURCE_WORLD COPY_FROM` | - | new world directory tree, `valheim.env`, port allocations | Transactionally creates a portal-managed world: directory layout, `valheim.env`, linking the server to the profile it runs (created empty, or copied from `COPY_FROM`, when it does not exist), and host port allocation (two UDP game ports plus status, supervisor and discord TCP ports). Reads the server password from `PORTAL_SERVER_PASSWORD`. |
 | `tools/valheim_world.py` | see subcommands | `inspect PATH`, `generate PATH NAME SEED [--templates DIR] [--force]`, `clone SOURCE DESTINATION NAME [--force]` | `.fwl` metadata files (`generate`, `clone` only) | Reads and writes Valheim `.fwl` world metadata: seed, world version, generator version. `inspect` is read-only and emits JSON. `generate` and `clone` refuse an existing destination unless `--force`, and print the path and seed they wrote. |
@@ -189,6 +190,46 @@ Every script that takes a world name validates it against
 portal agent enforces in `internal/agent/agent.go`, but the agent lives in a
 different repository: the check is repeated here so a hand run, or a future caller, is
 never the thing that makes an unvalidated name reach the filesystem.
+
+### The admin-mode maintenance window is per world, and it has to be
+
+`JereKuusela-Structure_Tweaks` and `Azumatt-PerfectPlacement` disconnect every connected
+player when they are loaded server-side. They were removed from all four servers on
+2026-08-20 for that, which also removed the admin capability they provide, so they now come
+back only for a named window on a named world.
+
+That window cannot be expressed in a profile manifest. Measured 2026-08-25, all four
+worlds - Hrafnheim, Doggerland, Storgard, Vangard - link to the same `admin` profile, and
+both server-side sources `cmd_deploy` copies from are per profile: the profile's
+`manager-cache/server/BepInEx/plugins` and its `manual-mods/`. Flipping the two packages
+to `scope: shared` in `admin/profile-manifest.json` would therefore arm every world on the
+next deploy of each, which is the fleet-wide switch the operator rejected.
+
+The per-world lever is `<world>/mods/admin-mode/`, a plugin overlay `cmd_deploy` layers
+after the profile cache and `manual-mods`, exactly as it already layers `manual-mods` after
+the cache. `portal_admin_mode.sh` builds it from the archives the world's own profile
+already pins - so arming reads no network - and does nothing else. The full ordering is
+composed by the agent from the scripts that already exist:
+
+| | steps |
+|---|---|
+| entering | `backup_valheim_world.sh` → `stop_valheim_server.sh` → `portal_admin_mode.sh WORLD PROFILE on` → `portal_mod_admin.sh WORLD PROFILE deploy` → `start_valheim_server.sh` → `wait_valheim_server_ready.sh` |
+| leaving | `stop_valheim_server.sh` → `portal_admin_mode.sh WORLD PROFILE off` → `portal_mod_admin.sh WORLD PROFILE deploy` → `start_valheim_server.sh` → `wait_valheim_server_ready.sh` |
+
+Leaving takes no backup on purpose: it is the path that gets players back in, so it carries
+the fewest steps that can refuse it. A backup there would add a failure mode to the
+recovery itself.
+
+Entering is refused outright while any player is connected, since arming would kick exactly
+the people it was opened to work around. The portal reads the count from the world's own
+`data/htdocs/status.json`, the same file liveness comes from.
+
+A window has no timer. It stays open until an operator closes it, and the fact is stored in
+the portal database rather than in memory, because a world left armed kicks every player who
+joins it and a portal restart must not turn that back into a normal-looking world. Recover a
+half-applied window by hand with `manage_mods.sh <WORLD> deploy --apply`, then
+`start_valheim_server.sh <WORLD>` and `wait_valheim_server_ready.sh <WORLD>`; that is the
+command the failure message names.
 
 ## The world root (`VALHEIM_ROOT`)
 

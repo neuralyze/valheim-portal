@@ -83,12 +83,22 @@ func gameVersionFromKeywords(keywords string) string {
 	return ""
 }
 
-// withLiveStatus replaces the stored status with what the server is actually doing.
+// withLiveStatus replaces the stored status with what the server is actually doing, and
+// marks the world if an admin-mode maintenance window is open on it.
 //
 // Only maintenance survives: it is an editorial statement ("we are working on it,
 // do not try") that no probe can infer. Every other stored value was a human's
 // guess about a running process, and the process can answer for itself.
-func (s *Server) withLiveStatus(info PublicWorld, now time.Time) PublicWorld {
+//
+// The admin-mode mark is stamped here, above the maintenance shortcut, because this is the
+// one function every world listing already passes through - the admin home, the player
+// home, one world's page and the releases JSON. A world in admin mode kicks every player
+// who joins it, and a warning that has to be pasted into four templates is a warning that
+// will be missing from the fifth. `windows` is the whole open set, read once per render.
+func (s *Server) withLiveStatus(info PublicWorld, now time.Time, windows map[string]WorldAdminMode) PublicWorld {
+	if window, open := windows[info.Name]; open {
+		info.AdminMode, info.AdminModeSince, info.AdminModeBy = true, window.Since, window.Actor
+	}
 	if info.Status == "maintenance" {
 		return info
 	}

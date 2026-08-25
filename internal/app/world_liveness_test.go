@@ -94,7 +94,7 @@ func TestLiveStatusOverridesStoredLabelExceptMaintenance(t *testing.T) {
 	// Stored "offline" on a server that is actually up: the case that locked players
 	// out of a healthy world.
 	stored := PublicWorld{Name: "Running", Status: "offline", ServerVersion: "0.220.5"}
-	live := server.withLiveStatus(stored, now)
+	live := server.withLiveStatus(stored, now, nil)
 	if live.Status != "online" {
 		t.Fatalf("a running server must read online regardless of the stored label: %q", live.Status)
 	}
@@ -104,13 +104,20 @@ func TestLiveStatusOverridesStoredLabelExceptMaintenance(t *testing.T) {
 
 	// Stored "online" on a server that is not running: the green light on a dead server.
 	stale := PublicWorld{Name: "Stopped", Status: "online", ServerVersion: "0.220.5"}
-	if got := server.withLiveStatus(stale, now).Status; got != "offline" {
+	if got := server.withLiveStatus(stale, now, nil).Status; got != "offline" {
 		t.Fatalf("a server that is not answering must read offline, got %q", got)
 	}
 
 	maintenance := PublicWorld{Name: "Running", Status: "maintenance"}
-	if got := server.withLiveStatus(maintenance, now).Status; got != "maintenance" {
+	if got := server.withLiveStatus(maintenance, now, nil).Status; got != "maintenance" {
 		t.Fatalf("maintenance is an operator announcement and must survive, got %q", got)
+	}
+
+	// An open admin-mode window is stamped above the maintenance shortcut, because a world
+	// can be both and the one that kicks players is the one an operator must not miss.
+	windows := map[string]WorldAdminMode{"Running": {World: "Running", Since: now, Actor: "operator"}}
+	if marked := server.withLiveStatus(maintenance, now, windows); !marked.AdminMode || marked.Status != "maintenance" {
+		t.Fatalf("admin mode = %t and status = %q, want the window marked and maintenance kept", marked.AdminMode, marked.Status)
 	}
 }
 

@@ -77,6 +77,16 @@ type PublicWorld struct {
 	Description   string
 	Enabled       bool
 	UpdatedAt     time.Time
+	// AdminMode is set while this world is in an admin-mode maintenance window: two mods
+	// that disconnect players are loaded server-side, so every player who joins is kicked.
+	//
+	// Not a Status value, deliberately. Status is measured from the server's own report and
+	// stays truthful - the server really is online and answering - while this says the world
+	// is unusable to players. Folding the two together would have made an operator choose
+	// between an honest liveness reading and an honest warning.
+	AdminMode      bool
+	AdminModeSince time.Time
+	AdminModeBy    string
 }
 
 // SteamIdentity is a Steam account the portal has seen or been told about.

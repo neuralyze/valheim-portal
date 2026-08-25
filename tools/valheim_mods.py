@@ -481,21 +481,29 @@ def install(root, p, ver, side):
         r = requests.get(v['download_url'], headers={'User-Agent':'r2modman/3.1.57'}, timeout=120)
         r.raise_for_status()
         archive.write_bytes(r.content)
+    extract_package(archive, cache(root) / side / 'BepInEx' / 'plugins' / p['name'], p['name'])
+
+def extract_package(archive, target, name):
+    """Unpack one Thunderstore archive into `target`, flattening its plugin prefix.
+
+    Split out of install() so the same unpacking serves a destination that is not the
+    profile's own cache: the per-world admin-mode overlay below needs exactly this and
+    must not get a second, subtly different copy of the path-safety checks.
+    """
     if not zipfile.is_zipfile(archive): raise RuntimeError(f'Invalid package archive: {archive}')
-    target = cache(root) / side / 'BepInEx' / 'plugins' / p['name']
     shutil.rmtree(target, ignore_errors=True)
     target.mkdir(parents=True)
     with zipfile.ZipFile(archive) as z:
         total = 0
         for member in z.infolist():
             raw_name = member.filename.replace('\\','/')
-            name = raw_name
-            for prefix in (f'BepInEx/plugins/{p["name"]}/', 'BepInEx/plugins/', f'plugins/{p["name"]}/', 'plugins/', f'{p["name"]}/'):
-                if name.startswith(prefix):
-                    name = name[len(prefix):]
+            entry_name = raw_name
+            for prefix in (f'BepInEx/plugins/{name}/', 'BepInEx/plugins/', f'plugins/{name}/', 'plugins/', f'{name}/'):
+                if entry_name.startswith(prefix):
+                    entry_name = entry_name[len(prefix):]
                     break
-            path = PurePosixPath(name)
-            if not name or raw_name.endswith('/'):
+            path = PurePosixPath(entry_name)
+            if not entry_name or raw_name.endswith('/'):
                 continue
             if path.is_absolute() or '..' in path.parts or member.external_attr >> 16 & 0o170000 == 0o120000:
                 raise RuntimeError(f'Unsafe package archive path: {raw_name}')
@@ -508,6 +516,35 @@ def install(root, p, ver, side):
             destination.parent.mkdir(parents=True, exist_ok=True)
             with z.open(member) as src, destination.open('wb') as dst:
                 shutil.copyfileobj(src, dst)
+
+# The two mods that disconnect every connected player when they are loaded server-side.
+# They were removed from all four servers on 2026-08-20 for exactly that, which also
+# removed the admin capability they provide. They come back only for a maintenance
+# window, armed on one named world at a time.
+ADMIN_MODE_PACKAGES = ('Azumatt-PerfectPlacement', 'JereKuusela-Structure_Tweaks')
+
+# The overlay is per world, and it has to be: measured 2026-08-25, all four worlds
+# (Hrafnheim, Doggerland, Storgard, Vangard) link to the same `admin` profile, and
+# cmd_deploy's server-side sources - manager-cache/server and manual-mods - are both
+# per profile. Anything expressed in the profile manifest therefore arms the whole
+# fleet on the next deploy of each world, which is the fleet-wide switch the operator
+# rejected. A directory under the world's own mods/ is the only per-world lever.
+ADMIN_MODE_DIR = 'admin-mode'
+
+def admin_mode_overlay(world_root):
+    return world_root / 'mods' / ADMIN_MODE_DIR
+
+def admin_mode_armed(world_root):
+    """The plugin directories this world's overlay would add, newest read each call.
+
+    The filesystem is the authority for what a deploy will copy. The portal keeps its
+    own durable record of the operator's decision; this answers the different question
+    of what is actually staged, so the two can be compared instead of assumed equal.
+    """
+    overlay = admin_mode_overlay(world_root)
+    if not overlay.is_dir():
+        return []
+    return sorted(entry.name for entry in overlay.iterdir() if entry.is_dir())
 def selected_versions(manifest):
     selected = {}
     for item in all_packages(manifest):
@@ -1178,6 +1215,17 @@ def cmd_deploy(root,m,args):
                 shutil.copytree(manual,staged/manual.name,dirs_exist_ok=True)
             elif manual.is_file() and not manual.is_symlink():
                 shutil.copy2(manual,staged/manual.name)
+        # This world's own additions, layered last for the same reason manual-mods is layered
+        # after the profile cache: it is a per-world addition to a shared definition. Empty or
+        # absent for every world that is not in an admin-mode maintenance window, and a world
+        # whose overlay is non-empty kicks every player who joins it.
+        overlay = admin_mode_overlay(world_root)
+        if overlay.is_dir():
+            for entry in overlay.iterdir():
+                if entry.is_dir() and not entry.is_symlink():
+                    shutil.copytree(entry,staged/entry.name,dirs_exist_ok=True)
+                elif entry.is_file() and not entry.is_symlink():
+                    shutil.copy2(entry,staged/entry.name)
         backup_root=world_root/'mods'/'deployment-backups'/root.name
         backup=backup_root/'server-plugins.previous'
         legacy_backup=target.with_name('plugins.previous')
@@ -1203,6 +1251,58 @@ def cmd_deploy(root,m,args):
                 entry.unlink()
     deploy_server_config(root, world_root)
     print('deployed=true')
+
+def cmd_admin_mode(root, m, args):
+    """Arm or disarm this world's admin-mode plugin overlay.
+
+    Staging only. Nothing reaches the running server until a deploy copies the overlay,
+    which is why the caller's ordering is arm-then-deploy-then-start and never arm alone.
+
+    The archives come from the profile's own package store, so this reads no network: a
+    maintenance window must not be able to fail because Thunderstore is down.
+    """
+    world_root = args.world_dir
+    overlay = admin_mode_overlay(world_root)
+    if args.admin_mode_command == 'state':
+        for name in admin_mode_armed(world_root):
+            print(f'armed={name}')
+        print('admin_mode=' + ('on' if admin_mode_armed(world_root) else 'off'))
+        return
+    require_stopped(world_root.name)
+    if args.admin_mode_command == 'off':
+        # Disarming is the recovery path - it is what gets a world back to a state players
+        # can join - so it refuses nothing. An absent overlay is the wanted end state, not
+        # an error, which also makes turning off a world that was never on a no-op.
+        shutil.rmtree(overlay, ignore_errors=True)
+        print('admin_mode=off')
+        return
+    selected = selected_versions(m)
+    staged = {}
+    for identifier in ADMIN_MODE_PACKAGES:
+        version_number = selected.get(identifier)
+        if not version_number:
+            raise RuntimeError(
+                f'{identifier} is not selected by profile {root.name}; admin mode arms the '
+                f'version the profile already pins and will not invent one'
+            )
+        name = package_install_name(identifier)
+        archive = cache(root) / 'packages' / f'{name}-{version_number}.zip'
+        if not archive.is_file():
+            raise RuntimeError(f'No archive for {identifier} {version_number} at {archive}')
+        staged[name] = archive
+    # Built whole, then moved into place: a half-populated overlay would deploy one of the
+    # two mods, which is a state no operator asked for and none would recognise.
+    overlay.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=overlay.parent) as temp:
+        build = Path(temp) / ADMIN_MODE_DIR
+        build.mkdir()
+        for name, archive in staged.items():
+            extract_package(archive, build / name, name)
+        shutil.rmtree(overlay, ignore_errors=True)
+        build.rename(overlay)
+    for name in admin_mode_armed(world_root):
+        print(f'armed={name}')
+    print('admin_mode=on')
 def cmd_profile(root, m, args):
     """Profile lifecycle, delegated to the shared store.
 
@@ -1288,6 +1388,7 @@ COMMANDS={
     'custom-enable':cmd_custom_enable, 'update':cmd_update, 'export-code':cmd_export,
     'deploy':cmd_deploy, 'profile':cmd_profile, 'release-status':cmd_release_status,
     'release-confirm':cmd_release_confirm, 'player-catalog':cmd_player_catalog,
+    'admin-mode':cmd_admin_mode,
 }
 
 # Commands that can change settings text. `deploy` is here because the overlay it
@@ -1308,7 +1409,7 @@ HISTORY_REQUIRED_COMMANDS = {'remove', 'purge'}
 # Commands that read or write one server's own directories, which a profile does not
 # name. Without --world these used to walk out of the profile path and land in the
 # wrong tree; now they refuse.
-WORLD_COMMANDS = {'remove', 'purge', 'deploy', 'release-status', 'release-confirm'}
+WORLD_COMMANDS = {'remove', 'purge', 'deploy', 'release-status', 'release-confirm', 'admin-mode'}
 
 # Commands that span the player editions rather than acting on one profile, so they resolve no
 # manifest. Forcing one would make the answer depend on which profile the caller happened to
@@ -1371,6 +1472,11 @@ def build_parser():
     player_catalog=sub.add_parser('player-catalog')
     player_catalog.add_argument('--state', action='store_true',
                                 help='Print only the fingerprint of the installed player set, reading no network.')
+    admin_mode = sub.add_parser('admin-mode')
+    admin_mode_sub = admin_mode.add_subparsers(dest='admin_mode_command', required=True)
+    admin_mode_sub.add_parser('on')
+    admin_mode_sub.add_parser('off')
+    admin_mode_sub.add_parser('state')
     return p
 
 def main():

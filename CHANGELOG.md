@@ -9,6 +9,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An admin-mode maintenance window, per world, that loads `JereKuusela-Structure_Tweaks` and
+  `Azumatt-PerfectPlacement` server-side on one named world and stays on until an operator turns
+  it off. Those two disconnect every connected player when they load server-side, which is why
+  they were pulled from all four servers on 2026-08-20; that closed the incident and also removed
+  the admin capability they provide. Per world rather than fleet-wide because the profile cannot
+  express it: measured 2026-08-25, all four worlds link to the same `admin` profile and both
+  server-side sources `cmd_deploy` reads are per profile, so `scope: shared` in the manifest would
+  arm the whole fleet on the next deploy of each. The per-world lever is a new
+  `<world>/mods/admin-mode/` plugin overlay, layered by `cmd_deploy` after the profile cache and
+  `manual-mods` exactly as `manual-mods` is layered after the cache, and built by
+  `hostops/portal_admin_mode.sh` from the archives that world's profile already pins - so arming
+  reads no network. Entering is `backup_valheim_world.sh`, `stop_valheim_server.sh`,
+  `portal_admin_mode.sh on`, `portal_mod_admin.sh deploy`, `start_valheim_server.sh`,
+  `wait_valheim_server_ready.sh`, composed in `internal/agent/agent.go` from the scripts that
+  already do each step. Leaving is the same without the backup: it is the path that gets players
+  back in, so it carries the fewest steps that can refuse it.
+- Three refusals on that window, each with a test. Entering is refused while any player is
+  connected, read from the world's own `data/htdocs/status.json` - the same file liveness comes
+  from - because arming would kick exactly the people it was opened to work around. Turning it off
+  on a world that is not in one is a no-op rather than an error, so the recovery path can never
+  itself be refused. And the window is stored in the portal database, migration 23
+  (`world_admin_mode`: world, since, actor), not in memory: a world left armed kicks every player
+  who joins it, and a portal restart during a window must not turn that back into a
+  normal-looking fleet.
+- The window, surfaced everywhere a world's status is. `withLiveStatus` in
+  `internal/app/world_liveness.go` is the one funnel every world listing already passes through -
+  the admin home, the player home, one world's page and the launcher's `/api/status` - so the mark
+  is stamped there rather than pasted into four templates, where it would be missing from the
+  fifth. The admin card carries it in the collapsed `<summary>`, which is the only part an
+  operator sees while the card is closed, and the copy states the consequence rather than the
+  label: "every player who joins is disconnected", with when the window opened, who opened it,
+  and that there is no timer.
+
+- A GPL-3.0 source offer for `ValheimVRMod.dll`, on the pages that hand it out. ValheimVR is not
+  our program and not under the AGPL, so `PORTAL_SOURCE_URL` never covered it: the portal was
+  conveying a GPL binary it compiled itself while offering the source of a Go web application.
+  The new `PORTAL_VHVR_SOURCE_URL` defaults to `https://github.com/neuralyze/vhvr-mod`, where
+  branch `neuralyze/local` is now public at `23f0ce4526cd` - seven commits on upstream `50d333d`
+  that until today existed only on this host. The offer renders on the world page and on the
+  release page of a release carrying a `flat_companion` or a `vr_runtime`, and nowhere else:
+  those two kinds are exactly the archives that must contain the DLL, enforced on the way in by
+  `ValidateFlatCompanionArtifact` and `requiredVRRuntimeFiles`, and a licence notice on a
+  download that does not contain the program is a false statement rather than caution.
+- Per-binary source anchors, because section 6 owes the source for the copy a person received and
+  a portal release number means nothing in a ValheimVR checkout. Each published DLL is tagged in
+  the fork as `shipped/valheimvrmod-<first 12 hex of its SHA-256>`, which a recipient can compute
+  from the file in their hands. First one pushed: `shipped/valheimvrmod-f879224e030c` on
+  `23f0ce4526cd`, the DLL inside `vr-runtime-2.2.5-nospawnprobe.zip` currently served as
+  `hrafnheim-vr` 2.5.111 and 2.5.36 on the other three worlds. Hashes cannot prove that tie -
+  `mcs` is not reproducible, and two compiles of one tree differ in ~77,800 of 600,064 bytes - so
+  it rests on a `Release` rebuild of that commit landing on the exact 600,064-byte size that no
+  other configuration produces, plus the `HarmonyPrepare` typeref and `LogDiagnostic` string that
+  only commits `5ea5183` and `1d6ea02` introduce.
+  One published binary is still unanchored and the page copy is written so it does not pretend
+  otherwise: the Flat companion's DLL (`3fe2ce0874f2`, 567,296 bytes) matches no commit on the
+  branch. It lacks both markers above, its size matches none of the four configurations at
+  `23f0ce4526cd`, and its embedded PDB path names a checkout directory that no longer exists. It
+  is byte-identical to a `build/latest` copy dated 2026-07-26, three weeks before the branch was
+  authored, when the changes were still uncommitted; the reflog begins 2026-08-18, so that tree
+  is not recoverable. It closes by rebuilding the companion from a commit and republishing, which
+  is a fleet action, not a code change. Recorded in `deploy/upstream-sources.json`.
 - The mods a player actually gets, listed at the bottom of each world page with a description and
   the operator's own note where one exists. The set is derived, not curated by hand: the union of
   the `vr` and `flat` profiles, so anything only the `admin` profile carries is gone by set
@@ -167,6 +228,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operators, which preserves the previous behaviour exactly.
 
 ### Fixed
+
+- A failed step in a composed host operation now says which step failed and whether the world is
+  still down. Every failure in `execute`'s loop reported the bare string `operation failed`, which
+  an operator cannot act on: a deploy that fails after the stop leaves the world down carrying a
+  plugin set nobody chose, and the reply said only that something, somewhere, went wrong. It now
+  names the step, says the world is STOPPED when the sequence had stopped it and not restarted it,
+  and names the recovery - `manage_mods.sh <WORLD> deploy --apply` then `start_valheim_server.sh`
+  and `wait_valheim_server_ready.sh` - recommending the deploy only for a sequence that had one.
+  This affects `stop`, `restart`, `restore`, `set_port`, `mod_deploy` and `delete_server` as well
+  as the new window, because it is the same hazard in all of them.
 
 - The agent's JSON payload cap no longer refuses a world's settings schema. It was 4 MiB and
   the schema is 4.5 MiB for the smallest world - 119 files, 19,937 keys - so the settings page

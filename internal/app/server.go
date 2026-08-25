@@ -67,6 +67,9 @@ var builderLabelsJS []byte
 //go:embed assets/config-manager.js
 var configManagerJS []byte
 
+//go:embed assets/new-server-world-source.js
+var newServerWorldSourceJS []byte
+
 //go:embed assets/site.css
 var siteCSS []byte
 
@@ -97,15 +100,18 @@ type Server struct {
 	// pushing gigabytes through the parser.
 	formBodyLimit   int64
 	uploadBodyLimit int64
-	restoreMu       sync.Mutex
-	restores        map[string]restoreRequest
-	worldgenMu      sync.Mutex
-	worldgens       map[string]worldgenRequest
-	provisionMu     sync.Mutex
-	provisions      map[string]provisionRequest
-	authMu          sync.Mutex
-	steamStates     map[string]steamState
-	deviceCodes     map[string]deviceGrant
+	// worldUploadBodyLimit is the ceiling on the server-creation form, which may carry a
+	// Valheim world save.
+	worldUploadBodyLimit int64
+	restoreMu            sync.Mutex
+	restores             map[string]restoreRequest
+	worldgenMu           sync.Mutex
+	worldgens            map[string]worldgenRequest
+	provisionMu          sync.Mutex
+	provisions           map[string]provisionRequest
+	authMu               sync.Mutex
+	steamStates          map[string]steamState
+	deviceCodes          map[string]deviceGrant
 }
 
 type restoreRequest struct {
@@ -123,12 +129,16 @@ type adminWorld struct {
 	Port string
 }
 type provisionRequest struct {
-	Actor     string
-	World     string
-	JoinHost  string
-	Publish   bool
-	Request   ProvisionAgentRequest
-	Packages  []installedMod
+	Actor    string
+	World    string
+	JoinHost string
+	Publish  bool
+	Request  ProvisionAgentRequest
+	Packages []installedMod
+	// Upload describes the staged save pair when the world source is an uploaded
+	// archive. Request.WorldUpload holds the staging id; this is what the review page
+	// shows so the operator confirms the world the archive actually contains.
+	Upload    worldSaveUpload
 	ExpiresAt time.Time
 }
 
@@ -198,7 +208,7 @@ func NewServer(cfg Config, store *Store, agent *AgentClient) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid PORTAL_AGENT_BRIDGE_TOKEN_FILE: %w", err)
 	}
-	s := &Server{cfg: cfg, store: store, agent: agent, csrf: []byte(strings.TrimSpace(string(secret))), adminToken: adminToken, agentBridgeToken: agentBridgeToken, trustedProxy: trustedProxy, mux: http.NewServeMux(), limiter: newRateLimiter(generalRequestsPerMinute, time.Minute), deviceLimiter: newRateLimiter(deviceTokenPollBudget, time.Minute), formBodyLimit: defaultFormBodyBytes, uploadBodyLimit: maxArtifactBodyBytes, restores: map[string]restoreRequest{}, worldgens: map[string]worldgenRequest{}, provisions: map[string]provisionRequest{}, steamStates: map[string]steamState{}, deviceCodes: map[string]deviceGrant{}}
+	s := &Server{cfg: cfg, store: store, agent: agent, csrf: []byte(strings.TrimSpace(string(secret))), adminToken: adminToken, agentBridgeToken: agentBridgeToken, trustedProxy: trustedProxy, mux: http.NewServeMux(), limiter: newRateLimiter(generalRequestsPerMinute, time.Minute), deviceLimiter: newRateLimiter(deviceTokenPollBudget, time.Minute), formBodyLimit: defaultFormBodyBytes, uploadBodyLimit: maxArtifactBodyBytes, worldUploadBodyLimit: maxWorldUploadBodyBytes, restores: map[string]restoreRequest{}, worldgens: map[string]worldgenRequest{}, provisions: map[string]provisionRequest{}, steamStates: map[string]steamState{}, deviceCodes: map[string]deviceGrant{}}
 	s.mapPublisher = s.publishWorldAnalysis
 	s.personas = s.fetchSteamPersonas
 	s.routes()
@@ -246,6 +256,12 @@ func (s *Server) routes() {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Write(configManagerJS)
+	})
+	s.mux.HandleFunc("GET /assets/new-server-world-source.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Write(newServerWorldSourceJS)
 	})
 	s.mux.HandleFunc("GET /assets/admin-dock.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
@@ -347,6 +363,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /admin/worlds/{world}/analysis.json", s.admin(s.worldAnalysisJSON))
 	s.mux.HandleFunc("POST /admin/worlds/{world}/analysis", s.admin(s.runWorldAnalysis))
 	s.mux.HandleFunc("POST /admin/worlds/{world}/builders", s.admin(s.nameBuilder))
+	// Not on the generic POST /admin/jobs runner, and it must stay off it for the same
+	// reason world_create is: the runner would dispatch it as a one-click form post,
+	// skipping the refusal that keeps a window from being opened on an occupied world.
+	s.mux.HandleFunc("POST /admin/worlds/{world}/admin-mode", s.admin(s.setWorldAdminMode))
 	s.mux.HandleFunc("GET /admin/worlds/{world}/map/manifest.json", s.admin(s.worldTerrainManifest))
 	s.mux.HandleFunc("GET /admin/worlds/{world}/map/tiles/{key}/{zoom}/{x}/{y}", s.admin(s.worldTerrainTile))
 	s.mux.HandleFunc("GET /admin/worlds/{world}/map/overlays/{source}/{zoom}/{x}/{y}", s.admin(s.worldOverlayTile))
@@ -354,7 +374,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /admin/mods/deploy", s.admin(s.deployMods))
 	s.mux.HandleFunc("POST /admin/mods/note", s.admin(s.setModPlayerNote))
 	s.mux.HandleFunc("GET /admin/servers/new", s.admin(s.newServer))
-	s.mux.HandleFunc("POST /admin/servers/review", s.admin(s.reviewServer))
+	// Guarded as an upload route: the "upload an existing world" source carries a world
+	// save, which is the one thing on this form that is not a few hundred bytes.
+	s.mux.HandleFunc("POST /admin/servers/review", s.adminWorldUpload(s.reviewServer))
 	s.mux.HandleFunc("POST /admin/servers/{id}", s.admin(s.confirmServer))
 	s.mux.HandleFunc("POST /admin/releases", s.admin(s.createRelease))
 	s.mux.HandleFunc("POST /admin/artifacts", s.adminUpload(s.uploadArtifact))
@@ -558,18 +580,28 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type safe struct {
-		World         string     `json:"world"`
-		Profile       string     `json:"profile"`
-		ClientType    string     `json:"client_type"`
-		Version       string     `json:"version"`
-		Status        string     `json:"status"`
-		JoinAddress   string     `json:"join_address,omitempty"`
-		ServerVersion string     `json:"server_version"`
-		Maintenance   bool       `json:"maintenance"`
-		PublishedAt   *time.Time `json:"published_at"`
+		World         string `json:"world"`
+		Profile       string `json:"profile"`
+		ClientType    string `json:"client_type"`
+		Version       string `json:"version"`
+		Status        string `json:"status"`
+		JoinAddress   string `json:"join_address,omitempty"`
+		ServerVersion string `json:"server_version"`
+		Maintenance   bool   `json:"maintenance"`
+		// A world in an admin-mode maintenance window kicks every player who joins it, so a
+		// listing of world status that omitted it would be describing a world nobody can use
+		// as if it were available. The launcher's own gate on Status is left alone: this is
+		// the fact, not a new rule about what a client does with it.
+		AdminMode   bool       `json:"admin_mode"`
+		PublishedAt *time.Time `json:"published_at"`
 	}
 	out := make([]safe, 0, len(rs))
 	now := time.Now()
+	windows, err := s.store.WorldAdminModes(r.Context())
+	if err != nil {
+		http.Error(w, "unavailable", 503)
+		return
+	}
 	for _, v := range rs {
 		info, err := s.store.PublicWorld(r.Context(), v.World)
 		if err != nil {
@@ -581,11 +613,11 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		// The launcher gates play on this field, so it has to be the server's own
 		// answer rather than a stored label: a stale "online" sends a player into a
 		// dead server, and a stale "offline" locks them out of a healthy one.
-		info = s.withLiveStatus(info, now)
+		info = s.withLiveStatus(info, now, windows)
 		out = append(out, safe{
 			World: v.World, Profile: v.Profile, ClientType: v.ClientType, Version: v.Version,
 			Status: info.Status, JoinAddress: info.JoinAddress, ServerVersion: info.ServerVersion,
-			Maintenance: v.Maintenance, PublishedAt: v.PublishedAt,
+			Maintenance: v.Maintenance, AdminMode: info.AdminMode, PublishedAt: v.PublishedAt,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -607,8 +639,16 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	}
 	// Each tile's dot is the server's own answer, not a label somebody last typed.
 	now := time.Now()
+	windows, err := s.store.WorldAdminModes(r.Context())
+	if err != nil {
+		s.playerError(w, r, http.StatusServiceUnavailable, errorPage{
+			Title:   "The portal is not answering",
+			Message: "Your worlds could not be loaded. Try again in a moment.",
+		})
+		return
+	}
 	for i, world := range worlds {
-		worlds[i] = s.withLiveStatus(world, now)
+		worlds[i] = s.withLiveStatus(world, now, windows)
 	}
 	rs, err := s.store.CurrentReleases(r.Context())
 	if err != nil {
@@ -658,7 +698,12 @@ func (s *Server) world(w http.ResponseWriter, r *http.Request) {
 		// probe below is the only thing that can say anything true about it.
 		info = PublicWorld{Name: world, Status: "offline", ServerVersion: "unknown"}
 	}
-	info = s.withLiveStatus(info, time.Now())
+	windows, err := s.store.WorldAdminModes(r.Context())
+	if err != nil {
+		http.Error(w, "portal configuration unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	info = s.withLiveStatus(info, time.Now(), windows)
 	admin := s.isAdmin(r)
 	cards, err := s.profileReleaseCards(r.Context(), rs, admin)
 	if err != nil {
@@ -673,6 +718,7 @@ func (s *Server) world(w http.ResponseWriter, r *http.Request) {
 		"World": info, "Profiles": cards, "Seed": seed, "IsAdmin": admin, "SourceURL": s.cfg.SourceURL,
 		"ClientUnavailable": s.clientDownloadProblem() != "",
 		"Mods":              s.playerModList(r.Context(), world),
+		"VHVR":              cardsInstallVHVR(cards), "VHVRSourceURL": s.cfg.VHVRSourceURL,
 	})
 }
 func (s *Server) worldSeed(ctx context.Context, world string) (string, bool) {
@@ -719,7 +765,10 @@ func (s *Server) release(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	render(w, releaseTemplate, map[string]any{"ID": id, "Artifacts": as})
+	render(w, releaseTemplate, map[string]any{
+		"ID": id, "Artifacts": as,
+		"VHVR": artifactsCarryVHVR(as), "VHVRSourceURL": s.cfg.VHVRSourceURL,
+	})
 }
 
 func (s *Server) manifest(w http.ResponseWriter, r *http.Request) {
@@ -738,7 +787,10 @@ func (s *Server) historyRelease(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	render(w, releaseTemplate, map[string]any{"ID": r.PathValue("id"), "Artifacts": artifacts, "History": true})
+	render(w, releaseTemplate, map[string]any{
+		"ID": r.PathValue("id"), "Artifacts": artifacts, "History": true,
+		"VHVR": artifactsCarryVHVR(artifacts), "VHVRSourceURL": s.cfg.VHVRSourceURL,
+	})
 }
 func (s *Server) historyManifest(w http.ResponseWriter, r *http.Request) {
 	s.releaseManifest(w, r, s.store.HistoricalArtifacts, true)
@@ -770,13 +822,23 @@ func (s *Server) releaseManifest(w http.ResponseWriter, r *http.Request, artifac
 	for _, artifact := range as {
 		out = append(out, item{artifact.Kind, artifact.Name, artifact.SHA256, artifact.Size})
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	// The manifest is the machine-readable half of the release page, and the launcher
+	// reads it before fetching anything. A release that carries ValheimVRMod.dll says so
+	// here too, for the same reason the page does; a release that does not carry it omits
+	// the key rather than emitting an empty one, so a reader cannot mistake absence for a
+	// misconfigured deployment.
+	body := map[string]any{
 		"release_id": id, "world": release.World, "profile": release.Profile,
 		"client_type": release.ClientType, "version": release.Version, "notes": release.Notes,
 		"published_at": release.PublishedAt, "published_by": release.PublishedBy,
 		"historical": historical, "artifacts": out,
-	})
+	}
+	if artifactsCarryVHVR(as) {
+		body["valheimvr_license"] = "GPL-3.0"
+		body["valheimvr_source"] = s.cfg.VHVRSourceURL
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(body)
 }
 func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	a, err := s.store.PublishedArtifact(r.Context(), r.PathValue("id"))
@@ -831,6 +893,17 @@ func (s *Server) serveArtifact(w http.ResponseWriter, r *http.Request, a Artifac
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", a.Name))
 	w.Header().Set("X-Checksum-SHA256", a.SHA256)
+	// Every byte of ValheimVRMod.dll this portal moves passes through here, and only two
+	// of the four routes that reach it have a page in front of them: /artifacts/{id} and
+	// /history/artifacts/{id} are clicked from the release page, but the Windows client
+	// fetches /client/companion/... and /client/runtime/... directly and a person can
+	// paste an artifact URL. GPL-3.0 section 6 wants the offer to accompany the object
+	// code, so it rides on the response that carries the code rather than only on a page
+	// somebody may never load.
+	if artifactsCarryVHVR([]Artifact{a}) {
+		w.Header().Set("X-ValheimVR-License", "GPL-3.0")
+		w.Header().Set("X-ValheimVR-Source", s.cfg.VHVRSourceURL)
+	}
 	http.ServeContent(w, r, a.Name, info.ModTime(), f)
 }
 
@@ -891,6 +964,13 @@ func (s *Server) admin(next http.HandlerFunc) http.HandlerFunc {
 // body, so the artifact ceiling never applies to a plain form POST.
 func (s *Server) adminUpload(next http.HandlerFunc) http.HandlerFunc {
 	return s.guardAdmin(next, func() int64 { return s.uploadBodyLimit })
+}
+
+// adminWorldUpload guards the server-creation form, whose "upload an existing world"
+// source carries a Valheim save. It is a separate ceiling from the release artifact one
+// so tuning either cannot silently move the other.
+func (s *Server) adminWorldUpload(next http.HandlerFunc) http.HandlerFunc {
+	return s.guardAdmin(next, func() int64 { return s.worldUploadBodyLimit })
 }
 
 func (s *Server) guardAdmin(next http.HandlerFunc, limit func() int64) http.HandlerFunc {
@@ -1000,8 +1080,13 @@ func (s *Server) adminHome(w http.ResponseWriter, r *http.Request) {
 	// Operators see the same measured state as players; the stored field only
 	// decides whether maintenance is being announced over the top of it.
 	now := time.Now()
+	windows, err := s.store.WorldAdminModes(r.Context())
+	if err != nil {
+		http.Error(w, "unavailable", 503)
+		return
+	}
 	for _, world := range worlds {
-		live := s.withLiveStatus(world, now)
+		live := s.withLiveStatus(world, now, windows)
 		adminWorlds = append(adminWorlds, adminWorld{PublicWorld: live, Port: currentJoinPort(world.JoinAddress)})
 	}
 	csrf := s.csrfCookie(w, r)
@@ -1685,7 +1770,13 @@ func allowedOperation(v string) bool {
 
 // recordableOperation is every operation the job log may record, including the
 // ones the generic runner refuses to dispatch.
-func recordableOperation(v string) bool { return v == "world_create" || allowedOperation(v) }
+func recordableOperation(v string) bool {
+	switch v {
+	case "world_create", "admin_mode_on", "admin_mode_off":
+		return true
+	}
+	return allowedOperation(v)
+}
 
 func operationPlan() string {
 	return "status → status_valheim_server.sh; logs → logs_valheim_server_snapshot.sh; backups → list_valheim_world_backups.sh; start → start_valheim_server.sh; stop → backup then stop; restart → backup, stop, then start; pause → pause_valheim_server.sh; resume → unpause_valheim_server.sh; backup → backup_valheim_world.sh; build → backup then build_valheim_server.sh; restore → explicit two-step confirmation, fresh backup, stop, then restore_valheim_world.sh; delete server → separate typed confirmation, final backup, stop, then portal_delete_valheim_server.sh; recreate world from a seed → separate typed confirmation, then portal_create_valheim_world.sh, which archives the save, regenerates on the forced seed, and reads the seed back out of the new world file; access lists → portal_access_lists.sh, generated from portal membership and applied without a restart"
@@ -1851,6 +1942,32 @@ const sourceNavigation = `<a class="portal-nav-button portal-source-link" href="
 const loginAdminNavigation = portalNavigationStyles + `<nav class="portal-account-actions" aria-label="Account">` + sourceNavigation + adminNavigation + `</nav>`
 const playerAccountNavigation = portalNavigationStyles + `<nav class="portal-account-actions" aria-label="Account">` + sourceNavigation + adminNavigation + `<form method="post" action="/logout"><button class="portal-nav-button portal-logout-button" type="submit">Log out</button></form></nav>`
 
+// vhvrSourceOffer is the GPL-3.0 source offer for ValheimVRMod.dll, and it is a
+// separate obligation from sourceNavigation above: that one discharges AGPL-3.0
+// section 13 for this portal's own code, and ValheimVR is somebody else's program
+// under a different licence that we compile from a patched checkout and convey to
+// players inside the Flat companion and the VR runtime.
+//
+// It sits in the page body rather than in the corner navigation because a mark in a
+// navigation bar cannot say which of several downloads it is about, and it renders
+// only where the DLL is actually handed out - the world page's install steps and the
+// release page's artifact list. An offer on a page nobody downloading it will see is
+// not compliance.
+//
+// The tag sentence is the correspondence half of section 6: the licence owes the
+// source for the binary a person received, not merely for the project. Naming tags by
+// the DLL's own SHA-256 means a recipient can find their revision from the file in
+// their hands, knowing nothing about our release numbering. The last sentence is not
+// filler - as written, one currently published build (the Flat companion's DLL, built
+// 2026-07-26 from a working tree that predates every commit on the branch) has no such
+// tag, so promising one unconditionally would be a false statement.
+const vhvrSourceOffer = `<section class="vhvr-source"><h2>ValheimVR source</h2>` +
+	`<p>ValheimVRMod.dll is <a href="https://github.com/brandonmousseau/vhvr-mod" rel="noopener noreferrer external" target="_blank">ValheimVR</a>, licensed GPL-3.0. ` +
+	`We compile it ourselves from patched source, and the GPL obliges us to offer you that source. ` +
+	`It is public at <a href="{{.VHVRSourceURL}}" rel="noopener noreferrer external" target="_blank">{{.VHVRSourceURL}}</a>, branch <code>neuralyze/local</code>. ` +
+	`Each published build is tagged there under <code>shipped/</code> with the SHA-256 of the ValheimVRMod.dll it produced, so you can find the revision your copy was built from. ` +
+	`If your copy's SHA-256 names no tag, ask the world owner and we will publish that revision.</p></section>`
+
 var loginPageTemplate = strings.Replace(strings.Replace(loginTemplate, `<head>`, `<head><link rel="icon" href="/favicon.ico" sizes="any"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#123728">`, 1), `<body>`, `<body>`+loginAdminNavigation, 1)
 
 var playerHomeTemplate = strings.NewReplacer(
@@ -1861,7 +1978,15 @@ var playerHomeTemplate = strings.NewReplacer(
 ).Replace(strings.Replace(
 	strings.Replace(
 		strings.Replace(
-			strings.Replace(homeTemplate, `class="status"`, `class="status status-{{.Status}}"`, 1),
+			// The tile says whether players can join, so a world that kicks everyone who
+			// tries has to say so here too. Inserted in the composition rather than in
+			// homeTemplate so the marketing copy above stays one string.
+			strings.Replace(
+				strings.Replace(homeTemplate, `class="status"`, `class="status status-{{.Status}}"`, 1),
+				`<div class="profile-types">`,
+				`{{if .AdminMode}}<p class="admin-mode-notice"><strong>Admin maintenance.</strong> {{.Name}} is being worked on and will disconnect you if you join it.</p>{{end}}<div class="profile-types">`,
+				1,
+			),
 			`<main class="shell">`,
 			`<main class="shell">`+playerAccountNavigation,
 			1,
@@ -1879,9 +2004,27 @@ const worldTemplate = `<!doctype html><html lang="en"><head><meta charset="utf-8
 
 var playerWorldTemplate = strings.Replace(
 	strings.Replace(
-		strings.Replace(worldTemplate, `<head>`, `<head><link rel="icon" href="/favicon.ico" sizes="any"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#123728">`, 1),
-		`</style>`,
-		`.profile-card .notes{color:#a6a6a6;font-style:italic}</style>`,
+		strings.Replace(
+			// The notice sits above the facts, not inside the status fact: "admin maintenance"
+			// is a different claim from a liveness reading, and a player who reads only the
+			// status would otherwise see a healthy world they are about to be thrown out of.
+			strings.Replace(
+				strings.Replace(worldTemplate, `<head>`, `<head><link rel="icon" href="/favicon.ico" sizes="any"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#123728">`, 1),
+				`<div class="facts">`,
+				`{{if .World.AdminMode}}<p class="admin-mode-notice"><strong>Admin maintenance.</strong> {{.World.Name}} is being worked on. If you join it now you will be disconnected. Nothing is wrong with your install.</p>{{end}}<div class="facts">`,
+				1,
+			),
+			`</style>`,
+			`.profile-card .notes{color:#a6a6a6;font-style:italic}`+
+				`.vhvr-source{max-width:72ch;margin:0 0 2.2rem;padding:1.25rem;border:1px solid var(--line);border-radius:.9rem;background:#ffffff0a;color:var(--muted);font-size:.92rem}`+
+				`.vhvr-source h2{margin:0 0 .5rem;color:var(--ink);font-size:1.1rem}.vhvr-source p{margin:0}.vhvr-source a{color:#a8e7bf}</style>`,
+			1,
+		),
+		// Directly after the install steps, which is where the page says what is about to be
+		// put on the player's machine. Below the mod grid it would be four screens from the
+		// button that installs the binary the offer is about.
+		`<section class="choose">`,
+		`{{if .VHVR}}`+vhvrSourceOffer+`{{end}}<section class="choose">`,
 		1,
 	),
 	`<main class="shell">`,
@@ -1890,7 +2033,7 @@ var playerWorldTemplate = strings.Replace(
 )
 
 const historyTemplate = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/favicon.ico" sizes="any"><title>{{.World}} profile history</title></head><body><h1>{{.World}} profile history</h1><p>Archived profile releases remain available for recovery of a known-good client configuration.</p>{{range .Releases}}<article><h2>{{.Profile}} · {{.Version}} · {{.ClientType}}</h2><p>{{.Notes}}</p><a href="/history/releases/{{.ID}}">Archived profile details and checksums</a></article>{{end}}</body></html>`
-const releaseTemplate = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/favicon.ico" sizes="any"><title>Verified profile release</title></head><body><h1>{{if .History}}Archived {{end}}verified profile release</h1><p>Download the immutable profile definition and verify its SHA-256 checksum before use with Valheim Profile Sync.</p><p><a href="{{if .History}}/history/releases/{{.ID}}/manifest.json{{else}}/releases/{{.ID}}/manifest.json{{end}}">Download release manifest</a></p><section><h2>Profile definition</h2><ul>{{range .Artifacts}}<li>{{.Kind}}: <a href="{{if $.History}}/history/artifacts/{{.ID}}{{else}}/artifacts/{{.ID}}{{end}}">{{.Name}}</a> <code>SHA-256 {{.SHA256}}</code></li>{{end}}</ul></section></body></html>`
+const releaseTemplate = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="/favicon.ico" sizes="any"><title>Verified profile release</title></head><body><h1>{{if .History}}Archived {{end}}verified profile release</h1><p>Download the immutable profile definition and verify its SHA-256 checksum before use with Valheim Profile Sync.</p><p><a href="{{if .History}}/history/releases/{{.ID}}/manifest.json{{else}}/releases/{{.ID}}/manifest.json{{end}}">Download release manifest</a></p><section><h2>Profile definition</h2><ul>{{range .Artifacts}}<li>{{.Kind}}: <a href="{{if $.History}}/history/artifacts/{{.ID}}{{else}}/artifacts/{{.ID}}{{end}}">{{.Name}}</a> <code>SHA-256 {{.SHA256}}</code></li>{{end}}</ul></section>{{if .VHVR}}` + vhvrSourceOffer + `{{end}}</body></html>`
 const adminTemplate = `<!doctype html>
 <html lang="en">
 <head>
@@ -1949,7 +2092,7 @@ body{font:16px system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 
 </details>
 {{range .Worlds}}{{$w := .}}<article class="server-card" id="server-{{.Name}}">
 <details class="server-card-body">
-<summary><h3 class="server-card-name">{{.Name}}</h3><span class="status-light status-{{.Status}}">{{.Status}}</span></summary>
+<summary><h3 class="server-card-name">{{.Name}}</h3><span class="status-light status-{{.Status}}">{{.Status}}</span>{{if .AdminMode}} <span class="admin-mode-badge">ADMIN MODE - PLAYERS KICKED</span>{{end}}</summary>
 <header class="server-card-head">
 <code class="server-card-address">{{.JoinAddress}}</code>
 <nav class="server-card-links" aria-label="{{.Name}} admin views">
@@ -1957,6 +2100,8 @@ body{font:16px system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 
 <a class="button-link" href="/admin/worlds/{{.Name}}/settings">Settings configuration</a>
 </nav>
 </header>
+{{if .AdminMode}}<div class="admin-mode-notice"><p><strong>{{.Name}} is in an admin-mode maintenance window.</strong> Structure Tweaks and Perfect Placement are loaded server-side, and every player who joins {{.Name}} is disconnected. Nobody can play here until this is turned off below.</p>
+<p>Open since {{.AdminModeSince.Format "2006-01-02 15:04 MST"}}{{if .AdminModeBy}} by {{.AdminModeBy}}{{end}}. There is no timer: it stays open until an operator closes it.</p></div>{{end}}
 <div class="server-card-controls">
 <form class="server-card-control" method="post" action="/admin/jobs">
 <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="world" value="{{.Name}}">
@@ -1977,6 +2122,15 @@ body{font:16px system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 
 <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="enabled" value="{{if .Enabled}}false{{else}}true{{end}}">
 <span class="server-card-control-title">Player access</span>
 <button class="{{if .Enabled}}warning{{end}}">{{if .Enabled}}Disable player access{{else}}Enable player access{{end}}</button>
+</form>
+<form class="server-card-control server-card-control-wide" method="post" action="/admin/worlds/{{.Name}}/admin-mode">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="admin_mode" value="{{if .AdminMode}}false{{else}}true{{end}}">
+<span class="server-card-control-title">Admin-mode maintenance window</span>
+{{if .AdminMode}}<p class="muted">Stops {{.Name}}, removes Structure Tweaks and Perfect Placement from its server-side set, deploys, starts it and waits until it answers. Players can join again after that. It takes no backup first, on purpose: this is the path that gets players back in, so it has the fewest steps that can refuse it.</p>
+<button class="warning">Turn off admin mode and let players back into {{.Name}}</button>
+{{else}}<p class="muted">Loads Structure Tweaks and Perfect Placement on {{.Name}} server-side. <strong>Every player who joins {{.Name}} will then be kicked</strong>, until an operator turns this off again - there is no timer. Backs up {{.Name}}, stops it, deploys, starts it and waits until it answers. Refused while anyone is connected.</p>
+<button class="danger">Back up {{.Name}} and make it admin-only: players will be kicked</button>
+{{end}}
 </form>
 <form class="server-card-control server-card-control-wide" method="post" action="/admin/worlds/{{.Name}}/description">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">

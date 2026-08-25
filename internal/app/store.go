@@ -397,6 +397,34 @@ INSERT INTO schema_migrations(version, applied_at) VALUES (22, CURRENT_TIMESTAMP
 			return err
 		}
 	}
+
+	// Which worlds are in an admin-mode maintenance window, since when, and who opened it.
+	//
+	// One row per world that is IN the window and no row otherwise, because the absence of a
+	// window is not a state anybody sets - it is the normal condition of every world. A
+	// boolean column on public_worlds would have needed a default that silently reads
+	// "normal" for a world nobody has decided about, which is the same shape of lie as a
+	// timer: it expires the operator's decision without the operator.
+	//
+	// On disk rather than in memory, and this is the whole point of the table. A world in
+	// admin mode kicks every player who joins it, so a portal restart during a window that
+	// dropped the fact would leave an operator reading a normal-looking fleet while one
+	// world disconnected everyone who tried it.
+	var adminModeSchema int
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=23)`).Scan(&adminModeSchema); err != nil {
+		return err
+	}
+	if adminModeSchema == 0 {
+		if _, err := s.db.ExecContext(ctx, `
+CREATE TABLE world_admin_mode (
+ world TEXT PRIMARY KEY,
+ since TEXT NOT NULL,
+ actor TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO schema_migrations(version, applied_at) VALUES (23, CURRENT_TIMESTAMP);`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
