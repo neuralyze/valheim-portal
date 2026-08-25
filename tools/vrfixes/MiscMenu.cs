@@ -73,15 +73,18 @@ namespace NeuralyzeVRFixes
         private static readonly List<Entry> _visibleBuf = new List<Entry>();
 
         // A group is offered only when it has something in it right now, so a non-admin never sees
-        // an "Admin >" door with nothing behind it.
+        // an "Admin >" door with nothing behind it - and, since 2026-08-25, never sees a door whose
+        // whole contents were withheld for having no backing content either.
         private static List<string> Groups()
         {
             bool admin = !NeuralyzeVRFixesPlugin.HideAdminEntries.Value || AdminCheck.IsAdmin();
+            ActionAvailability.Refresh(_entries);
             List<string> groups = _groupsBuf;
             groups.Clear();
             foreach (Entry e in _entries)
             {
                 if (e.Group.Length == 0 || groups.Contains(e.Group)) continue;
+                if (!ActionAvailability.Offer(e)) continue;
                 if (e.When == "admin" && !admin) continue;
                 if (e.When != "admin" && !MenuContext.Active(e.When)) continue;
                 groups.Add(e.Group);
@@ -161,6 +164,7 @@ namespace NeuralyzeVRFixes
             // detection and the decision to act on it are separate concerns.
             bool detected = AdminCheck.IsAdmin();
             bool admin = !NeuralyzeVRFixesPlugin.HideAdminEntries.Value || detected;
+            ActionAvailability.Refresh(_entries);
             List<Entry> visible = _visibleBuf;
             visible.Clear();
             foreach (Entry e in _entries)
@@ -169,6 +173,10 @@ namespace NeuralyzeVRFixes
                 // wrong for three releases and hiding the console from its own admin is worse than
                 // showing a button the server refuses.
                 if (e.Group != _group) continue;
+                // Availability is NOT overridable, and is checked before the admin gate: an entry
+                // whose prefab or command does not exist here cannot work for an admin either, and
+                // "it is present but does nothing" is the 2026-08-25 complaint itself.
+                if (!ActionAvailability.Offer(e)) continue;
                 if (e.When == "admin") { if (admin) visible.Add(e); continue; }
                 if (MenuContext.Active(e.When)) visible.Add(e);
             }
@@ -193,6 +201,8 @@ namespace NeuralyzeVRFixes
         internal static void Load(string spec)
         {
             _entries.Clear();
+            // Verdicts belong to the list that was measured, so a re-read of Actions discards them.
+            ActionAvailability.Reset();
             // An empty Actions string is now simply an empty ring. The built-in "Reset Height"
             // entry that used to be appended below is gone: height is re-measured without a wrist
             // entry, by the SteamVR recenter hook and by the sit transition (both in
