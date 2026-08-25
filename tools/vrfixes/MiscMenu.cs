@@ -271,28 +271,70 @@ namespace NeuralyzeVRFixes
         private static bool _open, _placedOnce;
         private static int _page;
 
-        // The wrist bar VHVR actually gives us: QuickAbstract.initialize allocates extraElements
-        // with `newarr 8` and reorderElements iterates 0..7, laying it out as two rows of four at a
-        // fixed 0.05m pitch. Used only where the real array is not in hand (label warm-up at load).
-        private const int RingSlots = 8;
+        // THE WRIST STRIP, AND HOW MUCH OF IT IS OURS.
+        //
+        // VHVR gives eight extraElements - QuickAbstract.initialize allocates them with `newarr 8`
+        // and lays them out as two rows of four at a fixed 0.05m pitch - and that is the strip shape
+        // the operator already knows, so the FOOTPRINT count stays eight. What changed on
+        // 2026-08-25 is that the eight is an array length, not a layout law: the extra-element loop
+        // in reorderElements ends `ldc.i4.8 / blt` - a literal, verified by Cecil against the
+        // shipped ValheimVRMod.dll (md5 0beed51d) - so VHVR never activates, positions or
+        // deactivates an index at or above 8. Those indices are ours alone once the array is
+        // longer, and extraElements has exactly ONE stfld in the whole assembly, in Awake, so a
+        // grown array stays grown with no per-frame work to sustain it.
+        //
+        // hoverItem and selectHoveredItem bound on extraElementCount, not on 8, so they DO reach
+        // the grown indices. That is the whole trick: the array carries ten elements, the strip
+        // shows eight footprints, and the three navigation elements share the leftmost one.
+        private const int NavSlots = 3;        // X, <, >
+        private const int ContentCells = 7;    // footprints left for doors and actions
+        private const int RingCells = ContentCells + 1;
+        private const int RingSlots = NavSlots + ContentCells;
 
-        private static bool Compact()
+        // VHVR's own pitch and row drop, taken from the formula in reorderElements. Not a taste
+        // choice: matching them is what makes our re-layout indistinguishable from the strip VHVR
+        // draws beside it.
+        private const float Pitch = 0.05f;
+        private const float RowDrop = -0.05f;
+
+        // THREE BUTTONS INSIDE ONE BUTTON'S SPACE. The pitch is a third of a slot's and the scale
+        // matches it, so the triple occupies exactly the footprint one ordinary button would.
+        //
+        // VHVR's hit test separates them for free: hoverItem takes the NEAREST extraElement whose
+        // distance to the hand is under 0.05, so three elements 0.0167 apart all qualify and the
+        // closest wins. Each therefore gets a third of a slot's catchment, which is what a
+        // third-sized button should get. Nothing had to be subdivided - the elements were always
+        // independently selectable - and the only reason this read as impossible is that
+        // reorderElements sets localPosition and never localScale, so nobody had written the scale.
+        private const float NavPitch = Pitch / 3f;
+        private const float NavScale = 1f / 3f;
+
+        // How many content footprints a page gets. ContentCells whenever the strip is the size it
+        // should be, and the navigation shares one footprint whether it draws one button or three,
+        // so a page never trades content for arrows.
+        //
+        // Derived from the LIVE array length rather than asserted, because Grow can decline - a
+        // clone that carries no QuickMenuItem leaves the strip at eight. Asserting seven then would
+        // page as though seven fitted while only five were drawn, and the two items in between would
+        // exist on no page at all: unreachable, unmentioned, and indistinguishable from a button that
+        // does nothing. NavSlots is reserved unconditionally, not `nav`, because the page count has
+        // to be decided before the arrows are known and the worst case is the one that must fit.
+        //
+        // The arrows are OMITTED on a single-page level rather than drawn inert. There is nowhere to
+        // page to, and a control that silently does nothing is the complaint this file spent
+        // 2026-08-25 answering. They cost no content space either way, so omitting them buys nothing
+        // and hides nothing - it only refuses to draw a lie. X does not move for it: X is the left
+        // third of the leftmost footprint at every depth, on every page, arrows or not.
+        private static int PerPage(int arrayLength)
         {
-            return NeuralyzeVRFixesPlugin.WristMenuCompactNav == null
-                || NeuralyzeVRFixesPlugin.WristMenuCompactNav.Value;
+            int room = arrayLength - NavSlots;
+            if (room > ContentCells) room = ContentCells;
+            return room < 1 ? 1 : room;
         }
 
-        // How many slots a page of content gets: the ring minus the navigation. Six was hard-coded
-        // for the old shape, which spent TWO whole slots on "More >" and "< Back"; the compact
-        // control spends one and buys a seventh entry per page.
-        private static int PerPage(int ringSize)
-        {
-            return Mathf.Max(1, ringSize - (Compact() ? 1 : 2));
-        }
-
-        // How many pages the level being drawn has, as of the last rebuild. The compact control's
-        // callback needs it - it must not page past the end - and the callback runs from
-        // selectHoveredItem during Update, after a rebuild in the same frame, so it is fresh.
+        // How many pages the level being drawn has, as of the last rebuild. The arrow callbacks need
+        // it - they must not page past the end - and they run from selectHoveredItem during Update,
+        // after a rebuild in the same frame, so it is fresh.
         private static int _pagesNow = 1;
         private static bool _logOpenPending;
 
@@ -313,9 +355,9 @@ namespace NeuralyzeVRFixes
             _page = Recall();
         }
 
-        // The X: "always closes the current menu level. if the menu is two levels deep, it goes back
-        // to previous menu. if it was on top level, then it closes the wrist strip menu alltogether."
-        // - the operator, 2026-08-25.
+        // THE X BUTTON: "always closes the current menu level. if the menu is two levels deep, it
+        // goes back to previous menu. if it was on top level, then it closes the wrist strip menu
+        // alltogether." - the operator, 2026-08-25.
         //
         // Level semantics, deliberately not a history stack: the level you are on is the only thing
         // it needs, so there is no way for it to walk somewhere you were five minutes ago.
@@ -337,38 +379,13 @@ namespace NeuralyzeVRFixes
         }
 
         private static bool NextPage() { return PageBy(1); }
-
-        // THREE FUNCTIONS IN ONE SLOT, chosen by where the thumb is at the instant of the press.
-        //
-        // A radial slot cannot host three independently selectable targets. VHVR's selection state
-        // is a single int: hoverItem() picks the nearest whole slot by
-        // Vector3.Distance(handTransform.position, extraElements[i].transform.position) < 0.05f and
-        // writes hoveredIndex; selectHoveredItem() then calls extraElements[hoveredIndex -
-        // elementCount].execute(), which invokes a QuickMenuItemCallback that takes NO arguments
-        // (all verified by IL against the shipped ValheimVRMod.dll). Nothing between the hover test
-        // and the callback carries WHERE in the button the hand was, and reorderElements only ever
-        // sets localPosition - never localScale - so a slot cannot be made smaller either.
-        //
-        // So the three functions share one slot's space by sharing one slot. The stick is the
-        // discriminator because this codebase already drives a menu with it: HoverMenu reads
-        // MountControls.RawRightStickY() to move its highlight and uses the same 0.4 threshold
-        // (HoverMenu.cs:314-315). Centred is CLOSE rather than a page step, so the default action of
-        // a player who does not know about the stick is the safe, reversible one.
-        private const float StickEdge = 0.4f;
-
-        private static bool ComboPressed()
-        {
-            float x = MountControls.RawRightStickX();
-            if (_pagesNow > 1 && x <= -StickEdge) return PageBy(-1);
-            if (_pagesNow > 1 && x >= StickEdge) return PageBy(1);
-            return CloseLevel();
-        }
+        private static bool PrevPage() { return PageBy(-1); }
 
         // Cached because Assign is called on every rebuild and a method-group conversion allocates a
         // delegate at each conversion site; :614 records what twenty of those a frame cost.
         private static readonly Func<bool> _actOpen = Open;
-        private static readonly Func<bool> _actCombo = ComboPressed;
         private static readonly Func<bool> _actNextPage = NextPage;
+        private static readonly Func<bool> _actPrevPage = PrevPage;
         private static readonly Func<bool> _actCloseLevel = CloseLevel;
         private static readonly Dictionary<string, Func<bool>> _doorActions = new Dictionary<string, Func<bool>>();
 
@@ -386,40 +403,32 @@ namespace NeuralyzeVRFixes
             return action;
         }
 
-        // THE LABEL IS THE ONLY AFFORDANCE. A control whose meaning depends on the thumbstick is
-        // invisible without one, so it names all three functions and the page it is on.
+        // WHAT THE X SAYS IT WILL DO. CLOSE at the top strip, BACK inside a level, because that is
+        // what the same press does there.
         //
-        // Composed so MiscLabels' greedy wrap (MiscLabels.cs:120-147; MaxChars 8, MaxLines 3) breaks
-        // it where intended:
-        //     "< X > CLOSE PG1OF2"  ->  "< X >" / "CLOSE" / "PG1OF2"
-        //     "X CLOSE"             ->  "X CLOSE"
-        // One page means no arrows at all: there is nowhere to page to, and a single slot cannot be
-        // half-disabled, so the arrows leave the label and the stick directions become inert.
-        // CLOSE at the top strip, BACK inside a group, because that is what the same press does.
-        //
-        // It reads PG1OF2 and not PG1/2 because '/' is not in that font's glyph table
-        // (MiscLabels.cs:28-74) and Build substitutes '?' for anything missing (:207) - an
-        // unrenderable character in the one label that has to teach the control would be the same
-        // invisible-control bug in a new place.
-        private static string ComboText(int depth, int page, int pages)
-        {
-            string verb = depth == 0 ? "CLOSE" : "BACK";
-            if (pages <= 1) return "X " + verb;
-            return "< X > " + verb + " PG" + (page + 1) + "OF" + pages;
-        }
+        // No "X " prefix on it, and that is a legibility decision with arithmetic behind it. These
+        // three buttons draw at a third scale, and MiscLabels sizes its pixel font from the longest
+        // line: scale = (256 - 28) / (chars * 6 - 1), capped by the line count (MiscLabels.cs:189-193).
+        // "X CLOSE" is seven characters and renders at scale 5 - 35px glyphs in a 256px texture,
+        // then shrunk to a third - while "CLOSE" renders at 7, "BACK" at 9, and the single-character
+        // "<" and ">" at the 32 cap, filling their buttons. Halving the glyph size of the one
+        // control that has to teach itself would defeat the point of labelling it at all. The "X" in
+        // the request named the function, not the character.
+        private const string NavPrev = "<";
+        private const string NavNext = ">";
 
-        private static int _comboKey = -1;
-        private static string _comboLabel = "X CLOSE";
+        private static int _closeDepth = -1;
+        private static string _closeLabel = "CLOSE";
 
-        private static string ComboLabel(int pages)
+        private static string CloseLabel()
         {
-            int key = ((pages * 64) + _page) * 4 + Depth();
-            if (key != _comboKey)
+            int depth = Depth();
+            if (depth != _closeDepth)
             {
-                _comboKey = key;
-                _comboLabel = ComboText(Depth(), _page, pages);
+                _closeDepth = depth;
+                _closeLabel = depth == 0 ? "CLOSE" : "BACK";
             }
-            return _comboLabel;
+            return _closeLabel;
         }
 
         private static int OfferedCount()
@@ -435,18 +444,16 @@ namespace NeuralyzeVRFixes
         // The one slot appended to VHVR's own strip while our menu is CLOSED. It is the door in, not
         // a navigation slot - it costs nothing while the menu is open - so it stays.
         //
-        // Under the compact navigation its count is every action the strip can still reach at any
-        // depth, which is the number the open log line reports, and the parentheses go: '(' and ')'
-        // are not in the glyph table, so "Misc (8)" was drawing as MISC ?8?. The old shape is kept
-        // byte-for-byte behind the toggle so the fallback is the entry he already knows.
+        // Its count is every action the strip can still reach at any depth, which is the number the
+        // open log line reports. No parentheses: '(' and ')' are not in the glyph table, so
+        // "Misc (8)" drew as MISC ?8?.
         private static string DoorLabel()
         {
-            bool compact = Compact();
-            int n = compact ? OfferedCount() : VisibleEntries().Count;
+            int n = OfferedCount();
             if (n != _doorCount)
             {
                 _doorCount = n;
-                _doorLabel = compact ? "Misc " + n : "Misc (" + n + ")";
+                _doorLabel = "Misc " + n;
             }
             return _doorLabel;
         }
@@ -576,63 +583,19 @@ namespace NeuralyzeVRFixes
                     warmed++;
                 }
             }
-            foreach (string fixedLabel in new string[] { "More >", "< Back", "X CLOSE", "X BACK",
-                                                         "Misc " + _entries.Count,
-                                                         "Misc (" + _entries.Count + ")" })
+            // The navigation labels are a closed set now - four strings, no page number in any of
+            // them - so the whole set is drawn here and nothing is ever rendered mid-session.
+            foreach (string fixedLabel in new string[] { "CLOSE", "BACK", NavPrev, NavNext,
+                                                         "Misc " + _entries.Count })
             {
                 MiscLabels.For(fixedLabel);
                 warmed++;
             }
-            WarmComboLabels(ref warmed);
             NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
                 + "misc menu: " + warmed + " label sprites pre-drawn at load");
 
         }
 
-        // The compact control's label carries the page number, so it needs one sprite per page per
-        // level shape. Drawn from the ACTUAL per-level item counts rather than a generous grid,
-        // because each sprite is a 256x256 RGBA texture and a grid wide enough to be safe would
-        // spend several megabytes on labels nobody sees. A count that turns out low at runtime -
-        // availability withholds an entry, a context predicate hides one - only ever shrinks a
-        // level, and the single-page shapes are pre-drawn unconditionally above.
-        private static void WarmComboLabels(ref int warmed)
-        {
-            var items = new Dictionary<string, int>();
-            var counted = new List<string>();
-            foreach (Entry e in _entries)
-            {
-                string level = e.Group.Length == 0 ? "" : (e.Sub.Length == 0 ? e.Group : e.Group + "/" + e.Sub);
-                Bump(items, level);
-                // A door is an item on its PARENT level, and it is counted once.
-                if (e.Group.Length > 0 && !counted.Contains(e.Group))
-                {
-                    counted.Add(e.Group);
-                    Bump(items, "");
-                }
-                if (e.Sub.Length > 0 && !counted.Contains(level))
-                {
-                    counted.Add(level);
-                    Bump(items, e.Group);
-                }
-            }
-            int perPage = Mathf.Max(1, RingSlots - 1);
-            foreach (KeyValuePair<string, int> level in items)
-            {
-                int pages = level.Value <= perPage ? 1 : (level.Value + perPage - 1) / perPage;
-                int depth = level.Key.Length == 0 ? 0 : 1;   // only CLOSE-vs-BACK matters to the text
-                for (int p = 0; p < pages; p++)
-                {
-                    MiscLabels.For(ComboText(depth, p, pages));
-                    warmed++;
-                }
-            }
-        }
-
-        private static void Bump(Dictionary<string, int> counts, string key)
-        {
-            int n;
-            counts[key] = counts.TryGetValue(key, out n) ? n + 1 : 1;
-        }
 
         internal static void Install(Harmony harmony)
         {
@@ -650,7 +613,15 @@ namespace NeuralyzeVRFixes
                 // extraElementCount. Appending after refreshItems returns therefore raised
                 // the count too late every single frame, so the entry was never activated.
                 // reorderElements is defined on the base class, so one patch covers both hands.
+                //
+                // And a POSTFIX as well, because the two do opposite halves of one job. The prefix
+                // decides WHAT is on the strip - it writes extraElementCount, which is the only
+                // thing reorderElements consults - and the postfix decides WHERE, because
+                // reorderElements overwrites localPosition on every slot it owns, so any layout
+                // written before it runs is thrown away. Packing the navigation triple into one
+                // footprint is therefore only expressible after the fact.
                 MethodInfo pre = typeof(MiscMenu).GetMethod("BeforeReorder", BindingFlags.Static | BindingFlags.NonPublic);
+                MethodInfo post = typeof(MiscMenu).GetMethod("AfterReorder", BindingFlags.Static | BindingFlags.NonPublic);
                 MethodInfo reorder = AccessTools.Method(qa, "reorderElements");
                 if (reorder == null)
                 {
@@ -658,9 +629,10 @@ namespace NeuralyzeVRFixes
                         + "QuickAbstract.reorderElements not found; misc menu unavailable");
                     return;
                 }
-                harmony.Patch(reorder, prefix: new HarmonyMethod(pre));
+                harmony.Patch(reorder, prefix: new HarmonyMethod(pre), postfix: new HarmonyMethod(post));
                 NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
-                    + "misc menu hooked into QuickAbstract.reorderElements");
+                    + "misc menu hooked into QuickAbstract.reorderElements (prefix populates, postfix"
+                    + " packs the navigation triple into one footprint)");
             }
             catch (Exception e)
             {
@@ -863,7 +835,6 @@ namespace NeuralyzeVRFixes
                 if (extra == null || extra.Length == 0) return;
 
                 int vhvrCount = Convert.ToInt32(_countField.GetValue(__instance));
-                int max = extra.Length;
 
                 // Measured while OPEN, when the strip is parented and positioned. Logged at load it
                 // read "524m from both hands" - a number with no meaning, which is worse than none.
@@ -874,23 +845,39 @@ namespace NeuralyzeVRFixes
                         + "misc ring " + __instance.GetType().Name + Where(__instance));
                 }
 
+                // The postfix acts only on the call its own prefix claimed, so a second hand whose
+                // prefix bailed on WantedHand cannot be laid out with this hand's numbers.
+                _layoutOwner = __instance;
+                _layoutFrame = Time.frameCount;
+
                 if (!_open)
                 {
                     // Append after VHVR's own entries and extend the count so reorderElements
                     // activates and positions it, and hoverItem can reach it.
-                    if (vhvrCount >= max) return;
+                    //
+                    // Capped at VHVR's own eight even when the array is longer: everything above
+                    // that index is positioned by us, and the closed strip is VHVR's layout, not
+                    // ours. There is nothing to gain from a ninth slot on a strip we do not own.
+                    _layoutNav = 0;
+                    int room = extra.Length < VhvrSlots ? extra.Length : VhvrSlots;
+                    if (vhvrCount >= room) return;
                     Assign(extra.GetValue(vhvrCount), DoorLabel(), _actOpen);
                     _countField.SetValue(__instance, vhvrCount + 1);
                     if (!_placedOnce)
                     {
                         _placedOnce = true;
                         NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
-                            + "misc entry appended at wrist slot " + vhvrCount + " of " + max
+                            + "misc entry appended at wrist slot " + vhvrCount + " of " + room
                             + " (VHVR used " + vhvrCount + "); it is the LAST item on that wrist strip"
                             + " - reach your other hand to it");
                     }
                     return;
                 }
+
+                // Ten elements for eight footprints, grown once. See the NavSlots comment above for
+                // why this is permanent and why VHVR will not fight it.
+                if (extra.Length < RingSlots) extra = Grow(__instance, extra);
+                int max = extra.Length;
 
                 // Page open: own the whole strip. refreshItems repopulates it every call, so
                 // closing the page self-heals without us restoring anything.
@@ -908,23 +895,31 @@ namespace NeuralyzeVRFixes
                 List<string> doors = Doors();
                 _msGroups += PhaseEnd();
 
-                bool compact = Compact();
                 int perPage = PerPage(max);
                 int total = doors.Count + entries.Count;
                 int pages = total <= perPage ? 1 : (total + perPage - 1) / perPage;
                 if (_page >= pages || _page < 0) _page = 0;
                 _pagesNow = pages;
 
-                int used = 0;
-                if (compact)
+                // THREE BUTTONS, THREE CALLBACKS, ONE FOOTPRINT. They are the first elements in the
+                // array, which is what "always lives at the left" means: the postfix packs
+                // 0..nav-1 into the leftmost footprint and gives X its left third at every depth,
+                // on every page, whether the arrows are drawn or not.
+                //
+                // Contiguous from zero on purpose. extraElementCount is the only bound hoverItem
+                // has, and it does not check whether an element is active - so an element inside the
+                // counted range that we had hidden would keep answering the nearest-wins test from
+                // wherever we left it. A hidden button that still takes presses is worse than a
+                // visible one that does nothing, so the arrows are absent from the COUNT on a
+                // single-page level, not merely switched off.
+                int nav = pages > 1 ? NavSlots : 1;
+                Assign(extra.GetValue(0), CloseLabel(), _actCloseLevel);
+                if (nav == NavSlots)
                 {
-                    // Slot 0 is the LEFT end of the top row, which is what "always lives at the
-                    // left" means here: reorderElements positions the wrist bar as two rows of four
-                    // at x = col*0.05 - (count/2)*0.05, so index 0 is always leftmost whatever the
-                    // count. Assigned before the content so it keeps that slot on every page.
-                    Assign(extra.GetValue(0), ComboLabel(pages), _actCombo);
-                    used = 1;
+                    Assign(extra.GetValue(1), NavPrev, _actPrevPage);
+                    Assign(extra.GetValue(2), NavNext, _actNextPage);
                 }
+                int used = nav;
 
                 int start = _page * perPage;
                 for (int i = start; i < total && used < max && i - start < perPage; i++)
@@ -943,23 +938,8 @@ namespace NeuralyzeVRFixes
                     used++;
                 }
 
-                if (!compact)
-                {
-                    // The pre-2026-08-25 shape, kept whole behind CompactWristNavigation: two full
-                    // slots, tapped. "< Back" closes the current LEVEL here too - that part of the
-                    // spec is not the risky half, and a fallback that cannot leave Admin/Spawn
-                    // would be worse than what it falls back from.
-                    if (start + perPage < total && used < max)
-                    {
-                        Assign(extra.GetValue(used), "More >", _actNextPage);
-                        used++;
-                    }
-                    if (used < max)
-                    {
-                        Assign(extra.GetValue(used), "< Back", _actCloseLevel);
-                        used++;
-                    }
-                }
+                _layoutNav = nav;
+                _layoutUsed = used;
 
                 // One line per open, at Message level because that is the client's log floor
                 // (BepInEx.cfg LogLevels stops at Message, so LogInfo is invisible to him), naming
@@ -971,14 +951,15 @@ namespace NeuralyzeVRFixes
                     int offered = OfferedCount();
                     NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
                         + "wrist menu open at depth " + Depth() + " (" + LevelName() + "), page "
-                        + (_page + 1) + " of " + pages + ", " + perPage + " slots per page: "
+                        + (_page + 1) + " of " + pages + ", " + perPage + " content slots per page: "
                         + doors.Count + " subgroup door(s) and " + entries.Count
                         + " action(s) on this level. Of " + _entries.Count + " configured actions "
                         + offered + " are offered and " + (_entries.Count - offered)
-                        + " withheld for absent content. Navigation: "
-                        + (compact
-                            ? "one compact slot at the left - stick left/right pages, centred closes the level"
-                            : "'More >' and '< Back'"));
+                        + " withheld for absent content. Navigation: " + nav
+                        + " small button(s) sharing the leftmost footprint - '" + CloseLabel()
+                        + "'" + (nav == NavSlots
+                            ? ", '" + NavPrev + "' previous page, '" + NavNext + "' next page"
+                            : " only; this level has one page, so the arrows are not drawn"));
                 }
 
                 _countField.SetValue(__instance, used);
@@ -994,6 +975,213 @@ namespace NeuralyzeVRFixes
                 NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
                     + "misc menu refresh failed, disabling: " + e.Message);
             }
+        }
+
+        // WHAT THE PREFIX DECIDED, HANDED TO THE POSTFIX. Same call, same frame - Harmony runs a
+        // postfix immediately after the body its prefix ran before - so this is a handoff, not
+        // state with a lifetime.
+        private static object _layoutOwner;
+        private static int _layoutFrame = -1;
+        private static int _layoutNav, _layoutUsed;
+
+        // Indices VHVR's own loops reach. initialize, reorderElements and RefreshWristQuickAction
+        // all end their extra-element loop on a literal 8 (`ldc.i4.8 / blt`, Cecil against the
+        // shipped ValheimVRMod.dll), so 8 and above are ours to activate, position and - the part
+        // that bites if it is forgotten - to DEACTIVATE.
+        private const int VhvrSlots = 8;
+
+        private static readonly Vector3 NavScaleVec = new Vector3(NavScale, NavScale, NavScale);
+        private static bool _cellsDone;
+        private static readonly Vector3[] _cells = new Vector3[RingCells];
+
+        // WHERE THE EIGHT FOOTPRINTS ARE. VHVR's own wrist formula - two rows of four at a 0.05m
+        // pitch, centred on the count - evaluated once for the FULL count and then never again.
+        //
+        // Pinned to the full eight rather than to however many a page happens to use, and that is
+        // the whole point of the method existing. VHVR re-centres its strip on extraElementCount, so
+        // a page holding two items would draw them centred, sliding the navigation triple 0.025m to
+        // the right of where it sat on a full page - the operator would be reaching for an X that
+        // moved because a page ran short. Pinning costs an empty right-hand end on a short page,
+        // which is honest: the strip starts where the strip always starts, and every button on it -
+        // navigation and content alike - has one home at every depth, on every page.
+        //
+        // Constant, therefore computed once. The first call fills it; every later call is one bool.
+        private static Vector3[] Cells()
+        {
+            if (_cellsDone) return _cells;
+            _cellsDone = true;
+            for (int c = 0; c < RingCells; c++)
+            {
+                int center = RingCells < 4 ? RingCells : 4;
+                float row = 0f;
+                int column = c;
+                if (c >= 4) { row = RowDrop; center = RingCells - 4; column = c - 4; }
+                float x = (column * Pitch) - (center / 2 * Pitch) + (center % 2 == 0 ? Pitch * 0.5f : 0f);
+                _cells[c] = new Vector3(x, row, 0f);
+            }
+            return _cells;
+        }
+
+        private static void AfterReorder(object __instance)
+        {
+            long _t = HookProfiler.Start();
+            try
+            {
+                if (_layoutFrame != Time.frameCount || !ReferenceEquals(__instance, _layoutOwner)) return;
+                Array extra = _extraField.GetValue(__instance) as Array;
+                if (extra == null) return;
+                LayOut(extra);
+            }
+            catch (Exception e)
+            {
+                NeuralyzeVRFixesPlugin.MiscMenuEnabled.Value = false;
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "misc menu layout failed, disabling: " + e.Message);
+            }
+            finally { HookProfiler.Stop(HookProfiler.Misc, _t); }
+        }
+
+        // WHERE EVERYTHING GOES, after reorderElements has had its say.
+        //
+        // It must be after: reorderElements writes localPosition on every element it owns, as the
+        // last thing refreshItems does, so a layout written earlier is overwritten in the same
+        // frame. It never writes localScale, which is why the scale survives and only the positions
+        // have to be restated.
+        //
+        // Per frame, while the menu is open: eight to ten localPosition writes, up to three
+        // localScale compares, and two activeSelf compares. reorderElements itself does nineteen
+        // localPosition writes and nineteen SetActive calls on the same objects immediately before,
+        // so this is a fraction of a cost the frame was already paying.
+        private static void LayOut(Array extra)
+        {
+            if (_layoutNav == 0)
+            {
+                // Closed. VHVR's layout stands; we only undo what only we could have done. Both
+                // loops are compare-then-write rather than write, and both are bounded by three and
+                // by two, so a closed strip costs five property reads per frame and no writes.
+                for (int i = 0; i < NavSlots && i < extra.Length; i++)
+                {
+                    Transform t = TransformOf(extra.GetValue(i));
+                    if (t != null && t.localScale.x != 1f) t.localScale = Vector3.one;
+                }
+                Stand(extra, 0);
+                return;
+            }
+
+            int content = _layoutUsed - _layoutNav;
+            Vector3[] cells = Cells();
+            Vector3 home = cells[0];
+
+            // The triple, packed. i - 1 puts X in the LEFT third, so with the arrows absent X does
+            // not slide to the middle: its place is a property of the button, not of the page count.
+            for (int i = 0; i < _layoutNav; i++)
+            {
+                Transform t = TransformOf(extra.GetValue(i));
+                if (t == null) continue;
+                t.localPosition = new Vector3(home.x + (i - 1) * NavPitch, home.y, home.z);
+                if (t.localScale.x != NavScale) t.localScale = NavScaleVec;
+            }
+
+            // Content fills the remaining footprints at full size. The scale is restated because an
+            // index that held an arrow a moment ago - the page count fell to one - would otherwise
+            // keep a third of its size.
+            for (int i = 0; i < content; i++)
+            {
+                Transform t = TransformOf(extra.GetValue(_layoutNav + i));
+                if (t == null) continue;
+                t.localPosition = cells[i + 1];
+                if (t.localScale.x != 1f) t.localScale = Vector3.one;
+            }
+
+            Stand(extra, _layoutUsed);
+        }
+
+        // The grown indices, which VHVR neither activates nor deactivates. A live element left up
+        // there after the strip shrank is a PHANTOM BUTTON: hoverItem's nearest-wins test reads
+        // transform.position and never asks whether the object is active, so it would keep taking
+        // presses at a position nothing is drawn at. This is the only place that answers for them.
+        private static void Stand(Array extra, int liveCount)
+        {
+            for (int i = VhvrSlots; i < extra.Length; i++)
+            {
+                GameObject go = GameObjectOf(extra.GetValue(i));
+                if (go == null) continue;
+                bool live = i < liveCount;
+                if (go.activeSelf != live) go.SetActive(live);
+            }
+        }
+
+        private static Transform TransformOf(object element)
+        {
+            Component c = element as Component;
+            return c == null ? null : c.transform;
+        }
+
+        private static GameObject GameObjectOf(object element)
+        {
+            Component c = element as Component;
+            return c == null ? null : c.gameObject;
+        }
+
+        // ONCE PER HAND, AND THEN NEVER AGAIN.
+        //
+        // extraElements has exactly one stfld in the whole of ValheimVRMod - in Awake - so nothing
+        // puts the eight-element array back, and the guard at the call site is a single int compare
+        // per frame thereafter. The two new elements are CLONED from one that already exists rather
+        // than built, so they carry the same three sprite layers, the same parent and the same local
+        // space; a hand-built element would have to reproduce CreateItemLayers from the outside.
+        //
+        // itemName and the callback come out of Instantiate unset - a delegate and a
+        // compiler-generated backing field are not serialized - and Assign would rebuild them
+        // regardless, since its skip test needs the slot to be in _slotAction and a new element
+        // never is.
+        private static bool _grewLogged;
+
+        private static Array Grow(object instance, Array extra)
+        {
+            Type element = extra.GetType().GetElementType();
+            Component template = extra.GetValue(0) as Component;
+            if (element == null || template == null) return extra;
+            Array grown = Array.CreateInstance(element, RingSlots);
+            Array.Copy(extra, grown, extra.Length);
+            // Clones are tracked so a failure halfway can take them all back with it. Abandoning
+            // one is not a leak that shows up as memory: the field is never assigned, so nothing
+            // ever positions or deactivates it, and an orphan sits lit on the wrist forever at
+            // whatever position it inherited. That is the phantom button again, arrived by the
+            // error path.
+            List<GameObject> made = new List<GameObject>();
+            for (int i = extra.Length; i < RingSlots; i++)
+            {
+                GameObject clone = UnityEngine.Object.Instantiate(
+                    template.gameObject, template.transform.parent, false);
+                clone.name = "NeuralyzeWristExtra" + i;
+                made.Add(clone);
+                Component slot = clone.GetComponent(element);
+                if (slot == null)
+                {
+                    foreach (GameObject dead in made) UnityEngine.Object.Destroy(dead);
+                    NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                        + "wrist strip could not be grown: a cloned element carries no "
+                        + element.Name + ", so the strip stays at " + extra.Length
+                        + " slots and a page holds " + PerPage(extra.Length)
+                        + " content buttons instead of " + ContentCells + ".");
+                    return extra;
+                }
+                grown.SetValue(slot, i);
+            }
+            _extraField.SetValue(instance, grown);
+            if (!_grewLogged)
+            {
+                _grewLogged = true;
+                NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                    + "wrist strip grown from " + extra.Length + " to " + RingSlots
+                    + " elements, once, by cloning: " + NavSlots + " navigation buttons share the"
+                    + " leftmost footprint at " + NavScale.ToString("F2") + " scale, leaving "
+                    + ContentCells + " full-size footprints for content. VHVR's own loops end on a"
+                    + " literal 8, so it never touches the new indices and never puts the short"
+                    + " array back.");
+            }
+            return grown;
         }
 
         // Keyed by the ACTION, not by its label.

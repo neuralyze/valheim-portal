@@ -148,59 +148,6 @@ namespace NeuralyzeVRFixes
             return _rawRightY;
         }
 
-        // The right stick's SIDEWAYS axis, on the same terms as RawRightStickY above: its own
-        // one-read-per-frame cache, no attachment gate, and it only reports the axis. Its caller is
-        // the wrist menu's compact navigation slot (MiscMenu.ComboPressed), which reads it at the
-        // instant of a press to decide previous page / next page / close level.
-        //
-        // The SIGN has to be undone, and that is not a detail. VHVR's GetJoyRightStickX is
-        //     combinedPitchAndYawX * VHVRConfig.TurnAxisModifier()
-        // and TurnAxisModifier()'s entire body is `invertXAxis ? -1 : 1` - verified in the shipped
-        // ValheimVRMod.dll by IL, VRControls::GetJoyRightStickX -> get_combinedPitchAndYawX ->
-        // mul VHVRConfig::TurnAxisModifier. Inverting the TURN axis is a statement about the
-        // camera, not about a menu: a thumb pushed physically left must page left either way, so
-        // multiplying by the same +-1 cancels it and this returns the raw axis, positive to the
-        // player's right. Without that, every player who inverted X would page backwards and the
-        // log would show a control that works perfectly.
-        //
-        // Reads 0.0 in build / piece-rotation mode, because GetJoyRightStickX returns 0 there.
-        // That is the safe direction: 0 is "centred", which the caller treats as close-this-level -
-        // never as a page jump nobody asked for.
-        private static int _rawXFrame = -1;
-        private static float _rawRightX;
-        private static MethodInfo _turnModifier;
-        private static bool _turnModifierResolved;
-
-        internal static float RawRightStickX()
-        {
-            if (_rawXFrame == Time.frameCount) return _rawRightX;
-            _rawXFrame = Time.frameCount;
-            _rawRightX = 0f;
-            Resolve();
-            // Resolved here rather than in Resolve() so this reader is self-contained: Resolve()
-            // logs a one-line summary about steering, and a menu concern does not belong in it.
-            if (!_turnModifierResolved)
-            {
-                _turnModifierResolved = true;
-                Type cfg = TypeCache.Get("ValheimVRMod.Utilities.VHVRConfig");
-                _turnModifier = cfg == null ? null : AccessTools.Method(cfg, "TurnAxisModifier");
-                if (_turnModifier == null)
-                    NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
-                        + "VHVRConfig.TurnAxisModifier not found; the wrist menu reads the turn axis as-is,"
-                        + " so paging is mirrored for anyone who set invertXAxis");
-            }
-            try
-            {
-                object controls = _vrControls == null ? null : _vrControls.GetValue(null, null);
-                if (controls == null || _stickX == null) return _rawRightX;
-                float x = Convert.ToSingle(_stickX.Invoke(controls, null));
-                if (_turnModifier != null) x *= Convert.ToSingle(_turnModifier.Invoke(null, null));
-                _rawRightX = x;
-            }
-            catch { }
-            return _rawRightX;
-        }
-
         // The DRIVE stick's sideways axis. Established by the calibration ride: pushing the left
         // stick down stopped the horse and showed up as apiLeft, so that channel is the rider's
         // left hand, and it is also the one the game takes speed from. One stick, both jobs.

@@ -87,7 +87,6 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<bool> HideAdminEntries;
         internal static ConfigEntry<float> SteamVrScale;
         internal static ConfigEntry<bool> MiscMenuEnabled;
-        internal static ConfigEntry<bool> WristMenuCompactNav;
         internal static ConfigEntry<string> MiscMenuActions;
         internal static ConfigEntry<string> AnchorGrip;
         internal static ConfigEntry<string> AnchorKey;
@@ -384,17 +383,6 @@ namespace NeuralyzeVRFixes
                 "for a player who IS in the server's adminlist, which hid the console from its own admin. The " +
                 "buttons only ATTEMPT a command and the server refuses a non-admin regardless, so showing them " +
                 "costs nothing. Turn this on once the log shows admin=True reliably.");
-            WristMenuCompactNav = Config.Bind("10 - Misc controls", "CompactWristNavigation", true,
-                "ON: one navigation button at the LEFT of the wrist strip does all three jobs, chosen by where the " +
-                "thumbstick is at the instant you press it - stick left = previous page, stick right = next page, " +
-                "stick centred = close this level (out of a subgroup, then out of the strip). Its label says so: " +
-                "'< X > BACK PG2OF3'. OFF: the pre-2026-08-25 navigation, two whole slots spent on 'More >' and " +
-                "'< Back', tapped. Requested as one control taking one button's space because three buttons took " +
-                "three of the eight slots the strip has; a slot cannot be subdivided, since VHVR selects by nearest " +
-                "whole slot (QuickAbstract.hoverItem) and hands the slot a callback that takes no arguments " +
-                "(QuickMenuItem.useAsQuickAction), so nothing between the hover test and the callback can carry " +
-                "WHERE in the button you were. Flip this to false if the stick direction misbehaves in the headset: " +
-                "nesting, page memory and the Spawn subgroup are unaffected, only how you drive them.");
             SteamVrScale = Config.Bind("9 - Profiling", "SteamVrSceneResolutionScale", 0f,
                 "SteamVR scene render scale. 0 leaves SteamVR alone (default). This is the ONLY resolution lever " +
                 "that works on this pipeline - XRSettings.renderViewportScale reads 0 because Valheim renders " +
