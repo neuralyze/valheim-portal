@@ -18,7 +18,7 @@ import (
 // thing that is wired correctly 48 times and forgotten once. Reading the routes out of the source
 // means a new route joins these checks by existing, not by someone remembering to add it.
 
-var routePattern = regexp.MustCompile(`HandleFunc\("(GET|POST) (/admin[^"]*)",\s*s\.(?:admin|adminUpload)\(s\.(\w+)\)`)
+var routePattern = regexp.MustCompile(`HandleFunc\("(GET|POST) (/admin[^"]*)",\s*s\.(?:admin|adminUpload|adminWorldUpload)\(s\.(\w+)\)`)
 
 type adminRoute struct {
 	method string
@@ -85,7 +85,7 @@ func TestEveryAdminRouteIsGuarded(t *testing.T) {
 				missing = append(missing, key)
 			}
 		}
-		t.Fatalf("admin routes registered without s.admin/s.adminUpload: %v", missing)
+		t.Fatalf("admin routes registered without s.admin/s.adminUpload/s.adminWorldUpload: %v", missing)
 	}
 }
 

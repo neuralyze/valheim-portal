@@ -10,6 +10,12 @@ services:
       PORTAL_ARTIFACT_ROOT: /var/lib/valheim-portal/artifacts
       PORTAL_MAP_ROOT: /var/lib/valheim-portal/maps
       PORTAL_MAP_SOURCE_ROOT: /var/lib/valheim-worlds
+      # Where "upload an existing world" stages a save pair. It is the one path the
+      # portal and the privileged agent both reach: a Valheim database runs to hundreds
+      # of megabytes and the agent socket caps a JSON payload at 32 MiB, so the bytes are
+      # handed over on disk and only the staging id crosses the socket. Must be the same
+      # directory the agent unit lists in ReadWritePaths.
+      PORTAL_WORLD_UPLOAD_ROOT: /var/lib/valheim-world-uploads
       PORTAL_CSRF_SECRET_FILE: /run/secrets/csrf-secret
       PORTAL_ADMIN_TOKEN_FILE: /run/secrets/admin-token
       PORTAL_AGENT_TOKEN_FILE: /run/secrets/agent-token
@@ -36,6 +42,10 @@ services:
       # Where the player pages offer this program's source, which is the AGPL
       # section 13 offer. Change it if you deploy modified code.
       PORTAL_SOURCE_URL: ${PORTAL_SOURCE_URL:-}
+      # Where the pages that hand out ValheimVRMod.dll offer ValheimVR's source.
+      # GPL-3.0, and a separate program from the one above. Change it if you
+      # build that DLL yourself from a tree of your own.
+      PORTAL_VHVR_SOURCE_URL: ${PORTAL_VHVR_SOURCE_URL:-}
       PORTAL_COOKIE_SECURE: "true"
       # "Confirm this sign-in": the player retypes a code only the desktop application
       # shows, so a stranger's browser session cannot authorize somebody else's app.
@@ -59,6 +69,9 @@ services:
     volumes:
       - portal-data:/var/lib/valheim-portal
       - ${VALHEIM_WORLD_ROOT:?set the Valheim world root}:/var/lib/valheim-worlds:ro
+      # Read-write, unlike the world root above: this is the only directory the portal
+      # writes host-visible bytes into, and it holds nothing but staged world uploads.
+      - ${PORTAL_WORLD_UPLOAD_DIR:?set the world upload staging directory}:/var/lib/valheim-world-uploads
       - ${PORTAL_AGENT_SOCKET_DIR:?set host socket directory}:/run/agent:ro
       - ${PORTAL_CSRF_SECRET_FILE:?set CSRF secret file}:/run/secrets/csrf-secret:ro
       - ${PORTAL_ADMIN_TOKEN_FILE:?set admin token file}:/run/secrets/admin-token:ro

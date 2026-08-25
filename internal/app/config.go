@@ -16,9 +16,14 @@ type Config struct {
 	CSRFSecretFile string
 	MapRoot        string
 	MapSourceRoot  string
-	AuthHeader     string
-	CookieSecure   bool
-	AgentSocket    string
+	// WorldUploadRoot is the spool an uploaded world save is staged in. It is the only
+	// path the portal and the privileged agent both reach: a save is far too large for
+	// the agent's 32 MiB JSON payload cap, so the bytes are handed over on disk and the
+	// agent receives only the staging id.
+	WorldUploadRoot string
+	AuthHeader      string
+	CookieSecure    bool
+	AgentSocket     string
 	// Touched when the operator sends a message or decides a verb. A systemd path unit
 	// watches it and starts one runner pass, because the portal holds no host access of
 	// its own. Empty means passes are triggered by hand.
@@ -68,6 +73,13 @@ type Config struct {
 	// carries local changes must point this at its own repository. The default
 	// is correct only for an unmodified build.
 	SourceURL string
+	// VHVRSourceURL is where the pages that hand out ValheimVRMod.dll offer that
+	// program's source. It is a second offer because it is a second program: SourceURL
+	// discharges AGPL-3.0 section 13 for the portal's own code, and says nothing about
+	// the GPL-3.0 binary we compile from a patched ValheimVR checkout and ship inside
+	// the Flat companion and the VR runtime. A player receiving that DLL is owed its
+	// corresponding source by whoever conveyed it, which is this deployment.
+	VHVRSourceURL string
 }
 
 type ProvisioningDefaults struct {
@@ -90,6 +102,7 @@ func LoadConfig() (Config, error) {
 		ArtifactRoot:     getenv("PORTAL_ARTIFACT_ROOT", "/var/lib/valheim-portal/artifacts"),
 		MapRoot:          getenv("PORTAL_MAP_ROOT", "/var/lib/valheim-portal/maps"),
 		MapSourceRoot:    getenv("PORTAL_MAP_SOURCE_ROOT", "/var/lib/valheim-worlds"),
+		WorldUploadRoot:  getenv("PORTAL_WORLD_UPLOAD_ROOT", "/var/lib/valheim-world-uploads"),
 		CSRFSecretFile:   os.Getenv("PORTAL_CSRF_SECRET_FILE"),
 		AuthHeader:       getenv("PORTAL_AUTH_HEADER", "X-Forwarded-User"),
 		CookieSecure:     getenv("PORTAL_COOKIE_SECURE", "true") != "false",
@@ -106,6 +119,7 @@ func LoadConfig() (Config, error) {
 		SteamAPIKey:      strings.TrimSpace(os.Getenv("PORTAL_STEAM_API_KEY")),
 		AdminSteamIDs:    map[string]struct{}{},
 		SourceURL:        getenv("PORTAL_SOURCE_URL", "https://github.com/neuralyze/valheim-portal"),
+		VHVRSourceURL:    getenv("PORTAL_VHVR_SOURCE_URL", "https://github.com/neuralyze/vhvr-mod"),
 		Provisioning:     provisioning,
 		AgentAutoApprove: map[string]struct{}{},
 	}
@@ -118,10 +132,17 @@ func LoadConfig() (Config, error) {
 		return Config{}, errors.New("PORTAL_AUTH_HEADER must be a single header name")
 	}
 	// A source offer pointing somewhere a browser cannot follow is worse than
-	// none: it looks discharged while telling the reader nothing.
-	if source, err := url.Parse(c.SourceURL); err != nil ||
-		(source.Scheme != "https" && source.Scheme != "http") || source.Host == "" {
-		return Config{}, errors.New("PORTAL_SOURCE_URL must be an absolute http or https URL: " + c.SourceURL)
+	// none: it looks discharged while telling the reader nothing. Both offers are
+	// checked the same way; they are separate programs under separate licences and
+	// a deployment may move either one without moving the other.
+	for _, offer := range []struct{ name, value string }{
+		{"PORTAL_SOURCE_URL", c.SourceURL},
+		{"PORTAL_VHVR_SOURCE_URL", c.VHVRSourceURL},
+	} {
+		if source, err := url.Parse(offer.value); err != nil ||
+			(source.Scheme != "https" && source.Scheme != "http") || source.Host == "" {
+			return Config{}, errors.New(offer.name + " must be an absolute http or https URL: " + offer.value)
+		}
 	}
 	// An unparseable entry is a hard error rather than a silent omission: the
 	// operator would otherwise be locked out with no indication why.
@@ -159,7 +180,7 @@ func LoadConfig() (Config, error) {
 		}
 		c.AgentAutoApprove[name] = struct{}{}
 	}
-	for _, p := range []string{c.DatabasePath, c.ArtifactRoot, c.MapRoot, c.MapSourceRoot, c.CSRFSecretFile, c.AgentTokenFile, c.ClientExecutable} {
+	for _, p := range []string{c.DatabasePath, c.ArtifactRoot, c.MapRoot, c.MapSourceRoot, c.WorldUploadRoot, c.CSRFSecretFile, c.AgentTokenFile, c.ClientExecutable} {
 		if !filepath.IsAbs(p) {
 			return Config{}, errors.New("portal paths must be absolute")
 		}

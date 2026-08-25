@@ -184,22 +184,53 @@ def write_env(stage: Path, args: argparse.Namespace, password: str, ports: dict[
     path.chmod(0o600)
 
 
+def place_save_pair(source_db: Path, source_fwl: Path, destination: Path, world: str) -> None:
+    """Copy one save pair in under a new world name.
+
+    Renaming the two files is not sufficient. A .fwl carries the world's own name in its
+    body - Hrafnheim.fwl's 50 bytes are a 46-byte package holding world version 37, the
+    length-prefixed string "Hrafnheim", the seed name "qmrbecQI2K", the seed, the UID and
+    the generator version - so a pair renamed but not rewritten describes a world whose
+    file name and internal name disagree. The name is therefore rewritten and everything
+    else in the metadata is carried across untouched: the seed, the UID and the generator
+    version are what make this the same world rather than a new one on the same map.
+    """
+    # Four distinct conditions, four distinct messages. A missing file is normally a bad
+    # export and the operator fixes it by uploading again; a symlink is a refusal for a
+    # security reason - it would make the new world's save a pointer to somewhere else on
+    # this host - and the two need different reactions.
+    for label, path in (("database", source_db), ("world metadata", source_fwl)):
+        if path.is_symlink():
+            raise RuntimeError(f"world save {label} is a symbolic link, which is never followed: {path.name}")
+        if not path.is_file():
+            raise RuntimeError(f"world save {label} is missing: {path.name}")
+    metadata = valheim_world.parse(source_fwl)
+    metadata["name"] = world
+    shutil.copy2(source_db, destination / (world + ".db"))
+    valheim_world.save(destination / (world + ".fwl"), metadata)
+
+
 def prepare_world(stage: Path, args: argparse.Namespace) -> None:
     destination = stage / "config_merged" / "worlds_local"
     destination.mkdir(parents=True)
+    if args.world_upload:
+        upload = Path(args.world_upload)
+        if not upload.is_absolute() or upload.is_symlink() or not upload.is_dir():
+            raise RuntimeError("staged world upload is unavailable")
+        # Fixed names written by the portal after it validated the archive, so there is
+        # no discovery to get wrong here and no attacker-chosen name in this path.
+        place_save_pair(upload / "world.db", upload / "world.fwl", destination, args.world)
+        return
     if args.source_world:
         if not valid_name(args.source_world):
             raise RuntimeError("invalid source world")
         source_root = (portal_paths.world_root() / args.source_world / "config_merged" / "worlds_local").resolve()
-        source_db = source_root / (args.source_world + ".db")
-        source_fwl = source_root / (args.source_world + ".fwl")
-        if not source_db.is_file() or source_db.is_symlink() or not source_fwl.is_file() or source_fwl.is_symlink():
-            raise RuntimeError("source world save pair is unavailable")
-        shutil.copy2(source_db, destination / (args.world + ".db"))
-        valheim_world.parse(source_fwl)
-        metadata = valheim_world.parse(source_fwl)
-        metadata["name"] = args.world
-        valheim_world.save(destination / (args.world + ".fwl"), metadata)
+        place_save_pair(
+            source_root / (args.source_world + ".db"),
+            source_root / (args.source_world + ".fwl"),
+            destination, args.world,
+        )
+        return
     # Seed mode deliberately leaves worlds_local empty. Valheim treats a .fwl whose .db
     # is missing as no world at all: it generates a fresh random seed and overwrites the
     # file, so a fabricated .fwl silently discards the operator's seed on first start.
@@ -248,7 +279,10 @@ def provision(args: argparse.Namespace) -> None:
         raise RuntimeError("invalid profile, preset, or backup interval")
     if not 1024 <= args.port <= 65533 or not 1 <= args.player_limit <= 100 or not 1 <= args.backup_age <= 365 or not 1 <= args.backup_count <= 1000:
         raise RuntimeError("server numeric setting is out of range")
-    if args.seed and (not valheim_world.valid_seed(args.seed) or args.source_world):
+    sources = [bool(args.seed), bool(args.source_world), bool(args.world_upload)]
+    if sum(sources) > 1:
+        raise RuntimeError("choose exactly one of a seed, a source world, or an uploaded world")
+    if args.seed and not valheim_world.valid_seed(args.seed):
         raise RuntimeError("choose exactly one seed or source world")
     worlds_root = portal_paths.world_root()
     destination = worlds_root / args.world
@@ -291,6 +325,10 @@ def provision(args: argparse.Namespace) -> None:
             os.replace(stage, destination)
         finally:
             shutil.rmtree(staging_parent, ignore_errors=True)
+    if args.world_upload:
+        # Consumed, so the copy in the spool stops existing. It is a full second copy of
+        # the world, and the portal only sweeps abandoned stagings after two hours.
+        shutil.rmtree(args.world_upload, ignore_errors=True)
     print(f"provisioned={args.world} profile={args.profile} port={args.port}")
 
 
@@ -298,7 +336,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Provision one Valheim world directory. Called by "
         "hostops/provision_valheim_server.sh, which the portal agent invokes "
-        "with these fifteen positionals in this order.",
+        "with these sixteen positionals in this order.",
         epilog="The server password is read from the PORTAL_SERVER_PASSWORD "
         "environment variable so it never appears in argv.",
     )
@@ -316,6 +354,11 @@ def main() -> int:
     parser.add_argument("seed", help="world seed to pin, or empty to let Valheim generate one; not allowed with source_world")
     parser.add_argument("source_world", help="existing world whose save pair is copied in, or empty for a new world")
     parser.add_argument("copy_from", help="existing profile to copy, or empty to link an existing profile or create an empty one")
+    parser.add_argument(
+        "world_upload",
+        help="absolute directory holding a validated world.db/world.fwl pair staged by the "
+        "portal, or empty; hostops/provision_valheim_server.sh resolves it from a staging id",
+    )
     args = parser.parse_args()
     args.public = args.public == "true"
     args.crossplay = args.crossplay == "true"

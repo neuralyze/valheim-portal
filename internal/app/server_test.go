@@ -57,7 +57,10 @@ func testServer(t *testing.T) *Server {
 		// Unset, this is joined with a world name to make a RELATIVE path, so tests wrote world data
 		// into the source tree and read each other's files.
 		MapSourceRoot: filepath.Join(dir, "worlds"), CSRFSecretFile: secret,
-		AgentTokenFile: token, AgentSocket: filepath.Join(dir, "agent.sock"), AuthHeader: "X-Forwarded-User",
+		// Same reason as MapSourceRoot above: unset, this is joined with a staging id to
+		// make a RELATIVE path, so an uploaded world would be staged inside the source tree.
+		WorldUploadRoot: filepath.Join(dir, "world-uploads"),
+		AgentTokenFile:  token, AgentSocket: filepath.Join(dir, "agent.sock"), AuthHeader: "X-Forwarded-User",
 		CookieSecure: false, TrustedProxyCIDR: "192.0.2.0/24", PublicBaseURL: "https://portal.example.test",
 		Provisioning: ProvisioningDefaults{JoinHost: "valheim.example.test", GamePort: 2456, PlayerLimit: 10, BackupInterval: "1h", BackupAge: 7, BackupCount: 168},
 	}, store, agent)

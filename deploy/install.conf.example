@@ -202,6 +202,14 @@ AGENT_ALLOWED_WORLDS=WorldOne,WorldTwo
 # repository if you carry local changes. Absolute http or https URL.
 #PORTAL_SOURCE_URL=https://github.com/neuralyze/valheim-portal
 
+# Source-code link for ValheimVR, shown on the world page and on the release
+# pages of releases carrying a Flat companion or a VR runtime -- the two
+# artifacts that contain ValheimVRMod.dll. GPL-3.0, and a separate obligation
+# from PORTAL_SOURCE_URL above: that one covers this portal's own code and says
+# nothing about somebody else's mod that we compile and hand to players. Point
+# it at the tree you build the DLL from. Absolute http or https URL.
+#PORTAL_VHVR_SOURCE_URL=https://github.com/neuralyze/vhvr-mod
+
 # System account owning the agent process and the socket the portal joins.
 #AGENT_USER=valheim-agent
 #AGENT_GROUP=valheim-agent
@@ -213,6 +221,13 @@ AGENT_ALLOWED_WORLDS=WorldOne,WorldTwo
 
 # Runtime directory holding the agent's Unix socket.
 #PORTAL_AGENT_SOCKET_DIR=/run/valheim-portal-agent
+
+# Spool for world saves uploaded through the admin site's "upload an existing
+# world" source. The installer creates it owned by the agent account with mode
+# 2770 and mounts it read-write into the portal, which joins that group. It holds
+# nothing but in-flight uploads: provisioning removes a staged pair once it has
+# copied it in, and the portal sweeps anything abandoned for two hours.
+#PORTAL_WORLD_UPLOAD_DIR=/var/lib/valheim-world-uploads
 
 # Steam Web API key, used only to show persona names beside Steam IDs in /admin.
 # Empty resolves names from the public community profile XML endpoint and

@@ -43,7 +43,9 @@ text = open(sys.argv[1], encoding="utf-8").read()
 case = re.search(r'case operation == "provision":\s*\n\s*args = append\(args,(.*?)\)\n', text, re.S)
 if not case:
     raise SystemExit('no provision argv construction in agent.go')
-fields = re.findall(r"r\.[A-Za-z]+", case.group(1))
+# \b and the capital both matter: without them "provision_valheim_server.sh" in a
+# comment inside this block counts as a field, because it contains "r.sh".
+fields = re.findall(r"\br\.[A-Z][A-Za-z]*", case.group(1))
 print(len(fields) + 1)  # +1 for the world seeded before the switch
 PY
 )

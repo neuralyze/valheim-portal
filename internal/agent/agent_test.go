@@ -388,7 +388,7 @@ func TestProvisionUsesFixedCreateStartHealthSequence(t *testing.T) {
 	t.Setenv("LOG", log)
 	t.Setenv("ROOT", root)
 	provision := []byte(`#!/bin/sh
-[ "$#" = 14 ] || exit 8
+[ "$#" = 15 ] || exit 8
 [ "$PORTAL_SERVER_PASSWORD" = "SafePass-123" ] || exit 9
 printf '%s:%s\n' "$(basename "$0")" "$*" >> "$LOG"
 mkdir "$ROOT/$1"
@@ -417,7 +417,9 @@ printf 'schema=1\n' > "$ROOT/$1/.portal-managed"
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "provision_valheim_server.sh:NewWorld Neuralyze New World 26000 true false 10 Normal 1h 7 168 default SafeSeed123  \n" +
+	// Fifteen positionals: the trailing empties are source_world, copy_from and
+	// world_upload, none of which a seeded creation uses.
+	want := "provision_valheim_server.sh:NewWorld Neuralyze New World 26000 true false 10 Normal 1h 7 168 default SafeSeed123   \n" +
 		"start_valheim_server.sh:NewWorld\nwait_valheim_server_ready.sh:NewWorld\n"
 	if string(got) != want {
 		t.Fatalf("operations = %q, want %q", got, want)
@@ -514,5 +516,90 @@ func TestResolveBackupRootUsesWorldRootAndRejectsEscape(t *testing.T) {
 	}
 	if _, err := resolveBackupRoot(escapedRoot); err == nil {
 		t.Fatal("accepted backup directory outside the configured world root")
+	}
+}
+
+// An uploaded world reaches the script as the fifteenth positional and nothing else
+// changes: the save itself never enters this path, because a Request is capped far below
+// the size of a Valheim database.
+func TestProvisionPassesTheWorldUploadStagingID(t *testing.T) {
+	root := t.TempDir()
+	scripts := filepath.Join(root, "scripts")
+	if err := os.Mkdir(scripts, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(root, "operations.log")
+	t.Setenv("LOG", log)
+	t.Setenv("ROOT", root)
+	provision := []byte(`#!/bin/sh
+[ "$#" = 15 ] || exit 8
+printf '%s:%s\n' "$(basename "$0")" "$*" >> "$LOG"
+mkdir "$ROOT/$1"
+printf 'schema=1\n' > "$ROOT/$1/.portal-managed"
+`)
+	if err := os.WriteFile(filepath.Join(scripts, "provision_valheim_server.sh"), provision, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const staging = "9f2c1ab34de5677890abcdef01234567"
+	request := Request{
+		World: "NewWorld", Operation: "provision", Port: 26000, Profile: "default",
+		ServerName: "Neuralyze New World", Password: "SafePass-123", Public: true,
+		PlayerLimit: 10, Preset: "Normal", BackupInterval: "1h", BackupAge: 7, BackupCount: 168,
+		WorldUpload: staging,
+	}
+	response := execute(context.Background(), scripts, root, map[string]struct{}{}, request)
+	if response.Status != "succeeded" || !response.Provisioned {
+		t.Fatalf("response = %#v", response)
+	}
+	got, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Four spaces: the empty seed, source_world and copy_from between the profile and
+	// the staging id, which is the fifteenth and last positional.
+	want := "provision_valheim_server.sh:NewWorld Neuralyze New World 26000 true false 10 Normal 1h 7 168 default    " + staging + "\n"
+	if string(got) != want {
+		t.Fatalf("operations = %q, want %q", got, want)
+	}
+}
+
+// The staging id is signed and validated. An id that is not the portal's own randomID()
+// alphabet must be refused before it is ever joined to a path by the host script.
+func TestWorldUploadIDIsValidatedAndSigned(t *testing.T) {
+	token := []byte("12345678901234567890123456789012")
+	allowed := map[string]struct{}{"NewWorld": {}}
+	base := Request{
+		ID: "job1", World: "NewWorld", Operation: "provision", Port: 26000, Profile: "default",
+		ServerName: "Neuralyze New World", Password: "SafePass-123", PlayerLimit: 10,
+		Preset: "Normal", BackupInterval: "1h", BackupAge: 7, BackupCount: 168,
+		Timestamp: time.Now().Unix(),
+	}
+	good := base
+	good.WorldUpload = "9f2c1ab34de5677890abcdef01234567"
+	good.Signature = Sign(token, good)
+	if err := Verify(token, allowed, good); err != nil {
+		t.Fatalf("a well-formed staging id was refused: %v", err)
+	}
+	for _, bad := range []string{"../../etc/passwd", "9F2C1AB34DE5677890ABCDEF01234567", "short", "9f2c1ab34de5677890abcdef0123456"} {
+		attempt := base
+		attempt.WorldUpload = bad
+		attempt.Signature = Sign(token, attempt)
+		if err := Verify(token, allowed, attempt); err == nil {
+			t.Fatalf("accepted staging id %q", bad)
+		}
+	}
+	// The field is part of the signed payload, so changing it after signing must not verify.
+	tampered := good
+	tampered.WorldUpload = "00000000000000000000000000000000"
+	if err := Verify(token, allowed, tampered); err == nil {
+		t.Fatal("a staging id swapped after signing was accepted")
+	}
+	// Two world sources at once is a caller bug, not a choice the agent makes for it.
+	both := base
+	both.WorldUpload = "9f2c1ab34de5677890abcdef01234567"
+	both.Seed = "SafeSeed123"
+	both.Signature = Sign(token, both)
+	if err := Verify(token, allowed, both); err == nil {
+		t.Fatal("accepted a request naming both a seed and an uploaded world")
 	}
 }

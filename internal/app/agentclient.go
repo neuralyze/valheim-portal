@@ -45,10 +45,13 @@ type agentRequest struct {
 	Seed           string `json:"seed,omitempty"`
 	SourceWorld    string `json:"source_world,omitempty"`
 	CopyFrom       string `json:"copy_from,omitempty"`
-	Start          bool   `json:"start,omitempty"`
-	Admins         string `json:"admins,omitempty"`
-	Permitted      string `json:"permitted,omitempty"`
-	Timestamp      int64  `json:"timestamp"`
+	// WorldUpload is the staging id of an uploaded save pair, never a path and never
+	// the bytes: an uploaded world routinely exceeds this socket's 32 MiB payload cap.
+	WorldUpload string `json:"world_upload,omitempty"`
+	Start       bool   `json:"start,omitempty"`
+	Admins      string `json:"admins,omitempty"`
+	Permitted   string `json:"permitted,omitempty"`
+	Timestamp   int64  `json:"timestamp"`
 	// Arguments the agent surface added. They are part of the signed payload on the agent
 	// side, so anything added here must also be added to agent.Canonical.
 	Lines            int    `json:"lines,omitempty"`
@@ -97,6 +100,7 @@ type ProvisionAgentRequest struct {
 	Seed           string
 	SourceWorld    string
 	CopyFrom       string
+	WorldUpload    string
 	Start          bool
 }
 
@@ -180,7 +184,8 @@ func (a *AgentClient) RunProvision(ctx context.Context, id, world string, reques
 		Crossplay: request.Crossplay, PlayerLimit: request.PlayerLimit, Preset: request.Preset,
 		BackupInterval: request.BackupInterval, BackupAge: request.BackupAge, BackupCount: request.BackupCount,
 		Seed: request.Seed, SourceWorld: request.SourceWorld, CopyFrom: request.CopyFrom,
-		Start: request.Start, Timestamp: time.Now().Unix(),
+		WorldUpload: request.WorldUpload,
+		Start:       request.Start, Timestamp: time.Now().Unix(),
 	})
 }
 
@@ -213,6 +218,7 @@ func (a *AgentClient) do(ctx context.Context, r agentRequest) (AgentReply, error
 		Start: r.Start, Admins: r.Admins, Permitted: r.Permitted,
 		Timestamp: r.Timestamp, Lines: r.Lines, ClientType: r.ClientType,
 		PublishedProfile: r.PublishedProfile, ReleaseID: r.ReleaseID, Archive: r.Archive, Notes: r.Notes,
+		WorldUpload: r.WorldUpload,
 	})
 	body, err := json.Marshal(r)
 	if err != nil {

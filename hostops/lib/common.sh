@@ -149,3 +149,49 @@ MESSAGE
   }
   VALHEIM_SERVER_DOCKER_DIR=$dir
 }
+
+# require_world_upload_root sets VALHEIM_WORLD_UPLOAD_ROOT to the spool the portal
+# stages an uploaded world save in, and resolves one staging id inside it into
+# VALHEIM_WORLD_UPLOAD_DIR.
+#
+# The bytes travel on disk rather than through the agent because the agent caps a
+# JSON operation payload at 32 MiB and a Valheim database is routinely far larger:
+# the four worlds on the original host range up to four megabytes today and grow
+# without bound. Only the id crosses the socket, so this is the one place that
+# turns it into a path, and the id is checked against the portal's randomID()
+# alphabet first: a caller must not be able to name a directory.
+require_world_upload_root() {
+  local id=$1
+  [[ $id =~ ^[a-f0-9]{32}$ ]] || {
+    echo "world upload id is not a 32-character hex staging id: $id" >&2
+    exit 2
+  }
+  local root=${VALHEIM_WORLD_UPLOAD_ROOT:-}
+  [[ -n $root ]] || root=${AGENT_WORLD_UPLOAD_ROOT:-}
+  [[ -n $root ]] || root=${PORTAL_WORLD_UPLOAD_ROOT:-}
+  if [[ -z $root ]]; then
+    cat >&2 <<'MESSAGE'
+VALHEIM_WORLD_UPLOAD_ROOT is not set, so an uploaded world save cannot be found.
+
+It is the directory the portal writes a staged save pair into, and it must be the
+same directory on both sides: bind-mounted read-write into the portal container
+and listed in the agent unit's ReadWritePaths. The portal calls it
+PORTAL_WORLD_UPLOAD_ROOT and defaults it to /var/lib/valheim-world-uploads.
+
+There is no default here on purpose. This path is copied into a new world's save
+directory, so guessing it would populate a server from whatever happened to be
+at the guessed location.
+MESSAGE
+    exit 78
+  fi
+  [[ $root == /* ]] || { echo "VALHEIM_WORLD_UPLOAD_ROOT must be an absolute path: $root" >&2; exit 78; }
+  [[ -d $root ]] || { echo "VALHEIM_WORLD_UPLOAD_ROOT is not a directory: $root" >&2; exit 78; }
+  VALHEIM_WORLD_UPLOAD_ROOT=$root
+  # shellcheck disable=SC2034  # read by the sourcing script, not here
+  VALHEIM_WORLD_UPLOAD_DIR="$root/$id"
+  [[ -d $VALHEIM_WORLD_UPLOAD_DIR ]] || {
+    echo "staged world upload does not exist: $VALHEIM_WORLD_UPLOAD_DIR" >&2
+    echo "A staging directory is swept after two hours; upload the archive again." >&2
+    exit 2
+  }
+}

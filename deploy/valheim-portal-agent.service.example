@@ -41,7 +41,15 @@ ProtectSystem=strict
 # helpers in the sibling tools/ directory, and the valheim-server-docker
 # checkout whose compose project those scripts drive. Nothing else on the
 # filesystem is writable.
-ReadWritePaths=PORTAL_AGENT_SOCKET_DIR VALHEIM_WORLD_ROOT
+#
+# PORTAL_WORLD_UPLOAD_ROOT is the spool the portal stages an uploaded world save
+# in. It is writable rather than read-only because provisioning deletes the
+# staged pair once it has copied it into the new world: a staged save is a
+# second full copy of the world and must not be left lying there. The same
+# directory is bind-mounted read-write into the portal container. The bytes
+# travel on disk because the agent socket caps a JSON payload at 32 MiB and a
+# Valheim database is routinely far larger; only the staging id crosses it.
+ReadWritePaths=PORTAL_AGENT_SOCKET_DIR VALHEIM_WORLD_ROOT PORTAL_WORLD_UPLOAD_ROOT
 ReadOnlyPaths=AGENT_SCRIPT_DIR AGENT_TOOLS_DIR VALHEIM_SERVER_DOCKER_DIR
 
 [Install]

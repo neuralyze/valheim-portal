@@ -9,6 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A third world source when creating a server: upload a `.zip` of an existing world's save.
+  The admin form now presents one exclusive switch - generate a new world on a random seed,
+  generate from a typed seed, copy a world already on this host, or upload one - and the fields
+  belonging to the sources you did not pick are `disabled`, so they are not submitted at all. A
+  value supplied for an unselected source is refused rather than dropped: silently ignoring a
+  typed seed hands the operator a different world than the form showed them and nothing in the
+  result records it.
+- The uploaded archive is validated before a single byte is decompressed, and each refusal names
+  what is wrong: a member with an absolute path, a `..` traversal, a symbolic link, a duplicate
+  base name, a member over 512 MiB or one declaring more than a 200:1 expansion, a `.db` with no
+  `.fwl` or the reverse, several distinct worlds in one archive (which names them), and an
+  archive holding only Valheim's own `.old` and `_backup_auto-` copies. Those game-written copies
+  are ignored rather than refused when a live pair is present - a player who zips their
+  `worlds_local` folder always ships them - and are listed on the review page, so an automatic
+  backup can never be mistaken for the live save. The whole body is capped at 512 MiB, the
+  ceiling `compose.yaml` already sizes the portal's `/tmp` tmpfs for.
+- Renaming the two files is not sufficient and the upload does not pretend otherwise. A `.fwl`
+  carries the world's own name in its body: Hrafnheim's 50 bytes are a 46-byte package holding
+  world version 37, the length-prefixed string `Hrafnheim`, the seed name `qmrbecQI2K`, the seed,
+  the UID and the generator version. Provisioning therefore rewrites the name field and carries
+  the seed, seed value, UID, world version, generator version and trailer across untouched -
+  those are what make the placed world the same world rather than a fresh one on the same map -
+  reusing the `place_save_pair` path the existing "copy a world on this host" source already
+  used. Proven by round trip: rewriting the placed file's name back reproduces the original
+  bytes exactly.
+- The save never travels over the agent socket, which caps a JSON payload at 32 MiB while a
+  Valheim database routinely exceeds it. The portal streams the archive straight off the
+  multipart spill file - `archive/zip` needs only an `io.ReaderAt`, so it is never held in memory
+  or copied a second time - writes the validated pair into a shared spool, and sends the agent a
+  32-character hex staging id. `hostops/provision_valheim_server.sh` is the one place that turns
+  that id into a path, against a root from its own environment. Provisioning deletes the staged
+  pair once it has copied it in; the portal sweeps anything abandoned after two hours.
+- An upload never replaces a world. `tools/valheim_provision.py` refuses when the world directory
+  already exists and the review step refuses when the portal already knows the name, so the files
+  are only ever placed into a directory that did not exist, before the container is created and
+  therefore before anything can be running over them. The confirmation phrase for an upload names
+  the world the archive carries as well as the server being created - `CREATE <world> FROM
+  <uploaded world>` - so a page prepared for a different archive cannot be confirmed from muscle
+  memory.
+
 - An admin-mode maintenance window, per world, that loads `JereKuusela-Structure_Tweaks` and
   `Azumatt-PerfectPlacement` server-side on one named world and stays on until an operator turns
   it off. Those two disconnect every connected player when they load server-side, which is why
@@ -228,6 +268,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operators, which preserves the previous behaviour exactly.
 
 ### Fixed
+
+- Server creation works again. `prepare_profile` has called `profile_store` since 09e88b3 on
+  2026-08-17 without the module ever being imported, in either branch of the dual-mode import
+  block, so every creation in every world mode died with `NameError: name 'profile_store' is not
+  defined`. Found on 2026-08-25 while exercising provisioning end to end, which means the fleet
+  had no working way to create a server for eight days. The pytest gate was green throughout
+  because nothing reached the line, and an import-time check would not have caught it either: an
+  undefined global in Python resolves when the statement runs, not when the file loads. Fixed in
+  its own commit with a regression test that calls `prepare_profile` and asserts on what it
+  leaves on disk.
 
 - A failed step in a composed host operation now says which step failed and whether the world is
   still down. Every failure in `execute`'s loop reported the bare string `operation failed`, which
