@@ -150,6 +150,47 @@ ignoring case, traversal, malformed archives, and oversize content.
 Neither artifact is ever placed in the dedicated-server container. The companion is a
 client payload; the server has no use for `ValheimVRMod.dll` and must not receive it.
 
+### Publish the source for the DLL you just built
+
+ValheimVR is GPL-3.0 and both artifacts contain a `ValheimVRMod.dll` we compiled, so
+handing either to a player obliges us to offer the source it was built from. Two things
+discharge that, and the second is the one that gets forgotten.
+
+The offer itself is already on the pages: the world page and the release page of any
+release carrying a `flat_companion` or `vr_runtime` link `PORTAL_VHVR_SOURCE_URL`, which
+defaults to `https://github.com/neuralyze/vhvr-mod`. Push the branch the build came from
+before publishing, or the link is a public repository that does not contain the source:
+
+```sh
+git -C "$SOURCE_ROOT" push https://github.com/neuralyze/vhvr-mod.git \
+  neuralyze/local:refs/heads/neuralyze/local
+```
+
+Then anchor the binary. The licence owes the source corresponding to the copy a person
+received, and our release numbers (`hrafnheim-vr 2.5.111`) mean nothing in a ValheimVR
+checkout, so the anchor is the DLL's own SHA-256 — which a recipient can compute from
+the file in their hands. `build-valheimvr-artifact.sh` prints it as
+`valheimvr_dll_sha256`:
+
+```sh
+git -C "$SOURCE_ROOT" push https://github.com/neuralyze/vhvr-mod.git \
+  "$(git -C "$SOURCE_ROOT" rev-parse HEAD):refs/tags/shipped/valheimvrmod-${valheimvr_dll_sha256:0:12}"
+```
+
+Do not try to match a published DLL by rebuilding and comparing hashes: `mcs` is not
+reproducible, and two compiles of one tree differ in roughly 77,800 of 600,064 bytes.
+What a rebuild can establish is size and content — a `Release` build of the right commit
+lands on the exact byte count, and strings and type references added by a given commit
+are either present or not. That is how the currently published VR runtime DLL
+(`f879224e030c`) was tied to `23f0ce4526cd`.
+
+The Flat companion published today has no such tag, and the reason is on the record in
+`deploy/upstream-sources.json` under `correspondence_gap`: its DLL was built on
+2026-07-26 from a working tree three weeks older than the first commit on the branch,
+and that tree is not in git. It closes when the companion is rebuilt from a commit and
+republished. Tag every future build at the time you build it — reconstructing which
+revision produced a binary after the fact is the work that gap is made of.
+
 ### How the Mono build was shown to match the Roslyn one
 
 The DLL that shipped before this change was built by Roslyn on the Windows host. The

@@ -179,14 +179,14 @@ func TestProfileClassificationFollowsTheManifestNotTheClientType(t *testing.T) {
 	if err != nil || !installsVR {
 		t.Fatalf("flat release carrying ValheimVR = %v, %v", installsVR, err)
 	}
-	if kind := server.profileKindOf(context.Background(), release); kind != profileDesktopVR {
-		t.Fatalf("flat release carrying ValheimVR classified as %q", kind.Title())
+	if kind, installsVHVR := server.profileKindOf(context.Background(), release); kind != profileDesktopVR || !installsVHVR {
+		t.Fatalf("flat release carrying ValheimVR classified as %q, installs = %v", kind.Title(), installsVHVR)
 	}
 
 	plain := Release{ID: "flat-without-vr", World: describedWorld, Profile: "midgard-nonvr", ClientType: "flat", Version: "1.0.0"}
 	publishProfileWithPackages(t, server, plain, []ProfilePackage{ordinaryPackage})
-	if kind := server.profileKindOf(context.Background(), plain); kind != profileDesktop {
-		t.Fatalf("flat release without ValheimVR classified as %q", kind.Title())
+	if kind, installsVHVR := server.profileKindOf(context.Background(), plain); kind != profileDesktop || installsVHVR {
+		t.Fatalf("flat release without ValheimVR classified as %q, installs = %v", kind.Title(), installsVHVR)
 	}
 }
 
@@ -206,8 +206,8 @@ func TestFlatEditionWithOnlyTheCompanionStillCountsAsVRCapable(t *testing.T) {
 		manifest.Companion = writeFlatCompanionArtifact(t, server, release)
 	})
 
-	if kind := server.profileKindOf(context.Background(), release); kind != profileDesktopVR {
-		t.Fatalf("vr-flat edition classified as %q, want Desktop VR", kind.Title())
+	if kind, installsVHVR := server.profileKindOf(context.Background(), release); kind != profileDesktopVR || !installsVHVR {
+		t.Fatalf("vr-flat edition classified as %q, installs = %v, want Desktop VR carrying ValheimVR", kind.Title(), installsVHVR)
 	}
 }
 
@@ -218,8 +218,8 @@ func TestMisbuiltVRReleaseIsNotPresentedAsAWorkingChoice(t *testing.T) {
 	describedTestWorld(t, server)
 	release := Release{ID: "vr-without-vr", World: describedWorld, Profile: "midgard-vr", ClientType: "vr", Version: "1.0.0"}
 	publishProfileWithPackages(t, server, release, []ProfilePackage{ordinaryPackage})
-	if kind := server.profileKindOf(context.Background(), release); kind != profileUnverified {
-		t.Fatalf("a VR release without ValheimVR was presented as %q", kind.Title())
+	if kind, installsVHVR := server.profileKindOf(context.Background(), release); kind != profileUnverified || installsVHVR {
+		t.Fatalf("a VR release without ValheimVR was presented as %q, installs = %v", kind.Title(), installsVHVR)
 	}
 }
 
@@ -237,8 +237,10 @@ func TestAdminEditionIsItsOwnKindAndOnlyShownToAdmins(t *testing.T) {
 		manifest.Companion = writeFlatCompanionArtifact(t, server, release)
 	})
 
-	if kind := server.profileKindOf(context.Background(), release); kind != profileAdmin {
-		t.Fatalf("admin edition classified as %q", kind.Title())
+	// The admin edition carries the companion, so it owes the GPL offer even though its
+	// kind is decided by audience and says nothing about ValheimVR either way.
+	if kind, installsVHVR := server.profileKindOf(context.Background(), release); kind != profileAdmin || !installsVHVR {
+		t.Fatalf("admin edition classified as %q, installs = %v", kind.Title(), installsVHVR)
 	}
 
 	hidden, err := server.profileReleaseCards(context.Background(), []Release{release}, false)
@@ -289,8 +291,10 @@ func TestAdminAudienceOnAHeadsetReleaseIsRefused(t *testing.T) {
 	release := Release{ID: "vr-admin", World: describedWorld, Profile: "midgard-vr", ClientType: "vr", Version: "1.0.0", Audience: "admin"}
 	publishProfileWithPackagesAudience(t, server, release, []ProfilePackage{ordinaryPackage, valheimVRPackage}, "admin")
 
-	if kind := server.profileKindOf(context.Background(), release); kind != profileUnverified {
-		t.Fatalf("admin headset release classified as %q", kind.Title())
+	// Refused as a card, but the VR fact stands on its own: the definition does carry
+	// ValheimVR, so the release still owes the source offer wherever it is handed out.
+	if kind, installsVHVR := server.profileKindOf(context.Background(), release); kind != profileUnverified || !installsVHVR {
+		t.Fatalf("admin headset release classified as %q, installs = %v", kind.Title(), installsVHVR)
 	}
 }
 

@@ -63,13 +63,19 @@ func (k profileKind) Summary() string {
 
 type profileReleaseCard struct {
 	Release
-	SyncURL     template.URL
-	GuideURL    template.URL
-	GuideName   string
-	Kind        profileKind
-	Title       string
-	Summary     string
-	Recommended bool
+	SyncURL   template.URL
+	GuideURL  template.URL
+	GuideName string
+	Kind      profileKind
+	Title     string
+	Summary   string
+	// InstallsVHVR is whether taking this card puts ValheimVRMod.dll on the player's
+	// machine. It is what makes the GPL-3.0 source offer owed, and it cannot be read off
+	// Kind: profileAdmin is decided by audience, not by the VR fact. It comes from the
+	// same definition read the classification already does, because re-deriving it would
+	// open every published profile archive a second time on a page a player loads.
+	InstallsVHVR bool
+	Recommended  bool
 }
 
 // guideAudienceFor decides which of the two guides a card points at. It keys off
@@ -101,7 +107,7 @@ func (s *Server) profileReleaseCards(ctx context.Context, releases []Release, ad
 		if err != nil {
 			return nil, err
 		}
-		kind := s.profileKindOf(ctx, release)
+		kind, installsVHVR := s.profileKindOf(ctx, release)
 		if kind == profileAdmin && !admin {
 			continue
 		}
@@ -111,6 +117,7 @@ func (s *Server) profileReleaseCards(ctx context.Context, releases []Release, ad
 			GuideURL:  template.URL("/worlds/" + template.URLQueryEscaper(release.World) + "/guide/" + audience),
 			GuideName: guideAudienceTitle(audience) + " guide",
 			Kind:      kind, Title: kind.Title(), Summary: kind.Summary(),
+			InstallsVHVR: installsVHVR,
 		})
 	}
 	slices.SortStableFunc(cards, func(a, b profileReleaseCard) int {
@@ -147,16 +154,22 @@ func kindOrder(kind profileKind) int {
 	return 4
 }
 
-// profileKindOf classifies one release. The ValheimVR fact comes from the
-// published profile definition; client_type only says whether a headset drives
-// the mod stack the definition installs. A release whose two halves disagree is
-// mis-built, and the card says so rather than picking one of them.
-func (s *Server) profileKindOf(ctx context.Context, release Release) profileKind {
+// profileKindOf classifies one release and reports whether it installs ValheimVR. The
+// ValheimVR fact comes from the published profile definition; client_type only says
+// whether a headset drives the mod stack the definition installs. A release whose two
+// halves disagree is mis-built, and the card says so rather than picking one of them.
+//
+// The VR fact is returned rather than discarded because the GPL-3.0 source offer needs
+// it and Kind cannot supply it: profileAdmin is reached on audience alone, so an admin
+// edition that carries the companion and one that does not classify identically.
+// An unreadable definition reports false - it is a release the portal could not open,
+// which is no basis for telling a player what is about to land on their machine.
+func (s *Server) profileKindOf(ctx context.Context, release Release) (profileKind, bool) {
 	definition, err := s.releaseDefinition(ctx, release)
 	if err != nil {
 		slog.Error("cannot classify a published profile",
 			"release", release.ID, "world", release.World, "profile", release.Profile, "error", err)
-		return profileUnverified
+		return profileUnverified, false
 	}
 	installsVR := definition.Companion != nil
 	for _, installed := range definition.Packages {
@@ -168,21 +181,21 @@ func (s *Server) profileKindOf(ctx context.Context, release Release) profileKind
 	case release.ClientType == "vr" && !installsVR:
 		slog.Error("VR release does not install ValheimVR",
 			"release", release.ID, "world", release.World, "profile", release.Profile)
-		return profileUnverified
+		return profileUnverified, installsVR
 	case release.ClientType == "vr" && release.Audience == "admin":
 		// An admin build for a headset is not a shape the catalog produces; treating it
 		// as an ordinary headset card would put the console in front of every VR player.
 		slog.Error("admin audience on a VR release",
 			"release", release.ID, "world", release.World, "profile", release.Profile)
-		return profileUnverified
+		return profileUnverified, installsVR
 	case release.ClientType == "vr":
-		return profileHeadset
+		return profileHeadset, installsVR
 	case release.Audience == "admin":
-		return profileAdmin
+		return profileAdmin, installsVR
 	case installsVR:
-		return profileDesktopVR
+		return profileDesktopVR, installsVR
 	}
-	return profileDesktop
+	return profileDesktop, installsVR
 }
 
 // releaseDefinition reads the immutable profile definition the player will actually
@@ -237,4 +250,36 @@ func (s *Server) releaseInstallsValheimVR(ctx context.Context, release Release) 
 		}
 	}
 	return false, nil
+}
+
+// cardsInstallVHVR and artifactsCarryVHVR decide whether a page owes the GPL-3.0 source
+// offer for ValheimVRMod.dll. They answer the same question from the two different things
+// the two surfaces have in hand: the world page holds classified profile cards, and the
+// release page holds the artifact rows whose links are the download.
+//
+// A page that hands out no ValheimVR must not carry the offer. "<world>-nonvr" strips the
+// mod, and a release of only a profile definition and the diagnostics plugin contains no
+// GPL binary at all - claiming otherwise would put a licence notice about somebody else's
+// program on a download that does not contain it.
+func cardsInstallVHVR(cards []profileReleaseCard) bool {
+	for _, card := range cards {
+		if card.InstallsVHVR {
+			return true
+		}
+	}
+	return false
+}
+
+// The two kinds are exhaustive because the portal enforces it on the way in, not because
+// anyone remembered: ValidateFlatCompanionArtifact rejects a companion without
+// BepInEx/plugins/ValheimVRMod.dll (flat_companion.go), and requiredVRRuntimeFiles makes
+// the same path mandatory in a VR runtime (vr_runtime.go). So kind alone settles it, and
+// no archive has to be reopened on a page load to find out.
+func artifactsCarryVHVR(artifacts []Artifact) bool {
+	for _, artifact := range artifacts {
+		if artifact.Kind == "flat_companion" || artifact.Kind == "vr_runtime" {
+			return true
+		}
+	}
+	return false
 }

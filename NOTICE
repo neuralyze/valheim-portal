@@ -57,6 +57,23 @@ BepInEx
   Role:      Mod loader bootstrapped into the client profile and used to load
              the map export plugin.
 
+ValheimVR (VHVR)
+  Upstream:  https://github.com/brandonmousseau/vhvr-mod
+  Our fork:  https://github.com/neuralyze/vhvr-mod, branch neuralyze/local
+  License:   GPL-3.0
+  Role:      ValheimVRMod.dll, compiled on this host from a patched checkout
+             with scripts/build-valheimvr.sh, and served to players inside
+             both the Flat companion and the VR runtime artifact.
+  Note:      This one IS distributed, unlike the components around it, so the
+             GPL-3.0 offer of corresponding source is owed and is made: the
+             world page and the release page of any release carrying a
+             flat_companion or vr_runtime link PORTAL_VHVR_SOURCE_URL, which
+             defaults to the fork above. Section 6 asks for the source of the
+             binary a person received, so each published build is tagged there
+             as shipped/valheimvrmod-<first 12 hex of the DLL's SHA-256> on the
+             commit it was built from. Not every published DLL has such a tag
+             yet; deploy/upstream-sources.json records which and why.
+
 Thunderstore packages
   Role:      Profile definitions reference mod packages such as ValheimVR,
              EpicLoot, and Backpacks by exact version and SHA-256.

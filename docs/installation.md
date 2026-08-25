@@ -166,12 +166,13 @@ is what puts the **Administration** link in front of you without your having to
 know a URL, and it changes what step 6 must configure. See
 [reaching the administration site](operations.md#reaching-the-administration-site).
 
-One more optional key belongs in the same file, and it is a licence obligation
-rather than a preference:
+Two more optional keys belong in the same file, and they are licence obligations
+rather than preferences:
 
 | Key | What it is |
 |---|---|
 | `PORTAL_SOURCE_URL` | Where the player-facing pages link for this program's source. Absolute http or https URL |
+| `PORTAL_VHVR_SOURCE_URL` | Where the pages that hand out `ValheimVRMod.dll` link for **ValheimVR's** source. Absolute http or https URL |
 
 ```
 PORTAL_SOURCE_URL=https://git.example.com/your-org/valheim-portal
@@ -185,6 +186,26 @@ upstream project, which is a truthful offer only while you run it unmodified.
 otherwise the link tells your players something false about what they are
 running. A value the browser cannot follow is refused at startup, because an
 offer that looks discharged and leads nowhere is worse than none.
+
+`PORTAL_VHVR_SOURCE_URL` is a second offer because ValheimVR is a second program.
+It is GPL-3.0, not AGPL-3.0, and it is not ours: the Flat companion and the VR
+runtime both contain a `ValheimVRMod.dll` compiled here from a patched checkout,
+and conveying that binary obliges the deployment to offer the source it was built
+from. The offer therefore renders on the world page and on the release pages of
+releases that actually carry one of those two artifacts, and nowhere else — a
+licence notice on a download that does not contain the program is a false
+statement, not caution. The default names our public fork,
+`https://github.com/neuralyze/vhvr-mod`. A deployment building its own
+`ValheimVRMod.dll` must point this at the tree it builds from; the same
+unfollowable-URL check applies.
+
+GPL-3.0 asks for the source corresponding to the binary a person received, not
+merely for the project, so each published build is tagged in that repository as
+`shipped/valheimvrmod-<first 12 hex of the DLL's SHA-256>`. The tag names the
+artifact it went into and how the correspondence was checked. Publishing a
+rebuilt `ValheimVRMod.dll` without pushing its tag leaves the offer true about
+the project and silent about the binary, which is the half of section 6 that is
+easy to miss.
 
 ## Step 5 — Install
 

@@ -22,9 +22,10 @@ func describedTestWorld(t *testing.T, server *Server) {
 	}
 }
 
-// playerPage fetches a signed-in player page, which is where a description has
-// to be visible for the feature to mean anything.
-func playerPage(t *testing.T, server *Server, target string) string {
+// playerResponse fetches a signed-in player request and hands back the whole recorder.
+// Some obligations live in headers rather than in the body - the GPL offer rides on the
+// artifact download itself, which has no body a person reads.
+func playerResponse(t *testing.T, server *Server, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(http.MethodGet, target, nil)
 	request.AddCookie(steamCookie(t, server, testSteamID))
@@ -33,7 +34,14 @@ func playerPage(t *testing.T, server *Server, target string) string {
 	if response.Code != http.StatusOK {
 		t.Fatalf("GET %s = %d: %s", target, response.Code, response.Body.String())
 	}
-	return response.Body.String()
+	return response
+}
+
+// playerPage fetches a signed-in player page, which is where a description has
+// to be visible for the feature to mean anything.
+func playerPage(t *testing.T, server *Server, target string) string {
+	t.Helper()
+	return playerResponse(t, server, target).Body.String()
 }
 
 func TestWorldDescriptionSavedByAdminAppearsOnPlayerPages(t *testing.T) {
