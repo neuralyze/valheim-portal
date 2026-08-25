@@ -286,12 +286,20 @@ namespace NeuralyzeVRFixes
                 FieldInfo nviewF = AccessTools.Field(Refs.ShipControlls, "m_nview");
                 object nview = nviewF == null ? null : nviewF.GetValue(helm);
 
+                // The ship's own user is the fifth condition and it is NOT one of the four below.
+                // Measured 2026-08-25: after a reflective StopDoodadControl the operator could not
+                // retake the helm, and this line printed all four gates PASSING eleven times in a
+                // row - znetValid, inUseDistance, not encumbered, standing on the raft - so the
+                // refusal came from somewhere it could not see. A helm that still believes it has a
+                // user refuses a new one, so print who it thinks that is.
+                object user = SteamVRProbe.Call(helm, "GetUser");
                 NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
                     + "helm refused: znetValid=" + Convert.ToString(nview == null ? null : SteamVRProbe.Call(nview, "IsValid"))
                     + " inUseDistance=" + (dist == null ? "?" : Convert.ToString(dist.Invoke(helm, new object[] { local })))
                     + " encumbered=" + (Refs.IsEncumbered == null ? "?" : Convert.ToString(Refs.IsEncumbered.Invoke(local, null)))
                     + " standingOnShip=" + (onShipReal ? ((Component)onShip).name : "NULL")
-                    + " - all four must pass");
+                    + " shipUser=" + (user == null ? "none" : Convert.ToString(user))
+                    + " - the four gates plus the ship's own user");
             }
             catch (Exception e)
             {
