@@ -155,9 +155,14 @@ var operations = map[string]string{
 	// A maintenance window that loads the two player-kicking mods on one named world.
 	// The script only stages the overlay; the stop/deploy/start/wait ordering is the
 	// sequence built in execute below, from the scripts that already do each step.
-	"admin_mode_on":    "portal_admin_mode.sh",
-	"admin_mode_off":   "portal_admin_mode.sh",
-	"admin_mode_state": "portal_admin_mode.sh",
+	//
+	// The script's third action, `state`, is deliberately NOT an operation here. It reports
+	// what is staged on disk, which the portal never needs - the portal's own record is the
+	// operator's decision, and the two are compared by hand during a recovery, which is
+	// where the failure messages send an operator. An operation with no caller is a surface
+	// to keep working for nothing.
+	"admin_mode_on":  "portal_admin_mode.sh",
+	"admin_mode_off": "portal_admin_mode.sh",
 }
 
 // Operations whose script prints JSON for the portal to parse, rather than output for an operator
