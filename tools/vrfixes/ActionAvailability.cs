@@ -159,9 +159,15 @@ namespace NeuralyzeVRFixes
 
         private static string Key(MiscMenu.Entry e) { return e.Kind + ":" + e.Value; }
 
+        // The path the OPERATOR sees, so the withheld line names the button he is looking for. Sub
+        // joined this on 2026-08-25 with the second menu level: an entry moved to Admin/Spawn/Add
+        // Horse would otherwise have been reported as 'Admin/Add Horse', which is a false statement
+        // about where the missing button was. Key() is untouched - it stays Kind:Value, because it
+        // is the dedup key for the probe and two entries running one command must be probed once.
         private static string Path(MiscMenu.Entry e)
         {
-            return e.Group.Length == 0 ? e.Label : e.Group + "/" + e.Label;
+            if (e.Group.Length == 0) return e.Label;
+            return e.Sub.Length == 0 ? e.Group + "/" + e.Label : e.Group + "/" + e.Sub + "/" + e.Label;
         }
 
         // null = available. Anything else is the sentence the log prints.

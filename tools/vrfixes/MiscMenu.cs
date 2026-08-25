@@ -26,7 +26,8 @@ namespace NeuralyzeVRFixes
         internal sealed class Entry
         {
             internal string Label;
-            internal string Group;   // "" = the top level ring
+            internal string Group;   // level 1; "" = the top level ring
+            internal string Sub;     // level 2, inside Group; "" = none
             internal string Kind;
             internal string Value;
             internal string When;    // MenuContext predicate; empty means always
@@ -68,28 +69,105 @@ namespace NeuralyzeVRFixes
         }
 
         private static readonly List<Entry> _entries = new List<Entry>();
-        private static string _group = "";
+
+        // WHERE THE MENU IS, as a path rather than a single name.
+        //
+        // This was one string, which made the menu exactly one level deep: a config label of
+        // "Admin/Spawn/Add Ward" produced a group called "Admin" holding a leaf literally named
+        // "Spawn/Add Ward". The operator asked for a Spawn subtree under Admin and for an X that
+        // "if the menu is two levels deep, it goes back to previous menu", so depth is now real.
+        //
+        // Two fields, not a List<string>, because the spec has exactly two levels and this is read
+        // on the ring rebuild path - twice a frame. Nothing here allocates.
+        private static string _l1 = "";   // level-1 group, "" = the top strip
+        private static string _l2 = "";   // level-2 subgroup, "" = none
         private static readonly List<string> _groupsBuf = new List<string>();
         private static readonly List<Entry> _visibleBuf = new List<Entry>();
 
-        // A group is offered only when it has something in it right now, so a non-admin never sees
-        // an "Admin >" door with nothing behind it - and, since 2026-08-25, never sees a door whose
-        // whole contents were withheld for having no backing content either.
-        private static List<string> Groups()
+        private static int Depth() { return _l2.Length != 0 ? 2 : (_l1.Length != 0 ? 1 : 0); }
+
+        // Called ONLY on a navigation press, never on the rebuild path: it concatenates, and this
+        // file has had three separate frame-rate incidents from putting a lookup or an allocation on
+        // that path (the last is documented at PhysicalHand, :346-349). The page the ring draws from
+        // is _page, a plain int.
+        private static string LevelKey()
         {
-            bool admin = !NeuralyzeVRFixesPlugin.HideAdminEntries.Value || AdminCheck.IsAdmin();
+            if (_l1.Length == 0) return "";
+            return _l2.Length == 0 ? _l1 : _l1 + "/" + _l2;
+        }
+
+        private static string LevelName()
+        {
+            string key = LevelKey();
+            return key.Length == 0 ? "the top strip" : key;
+        }
+
+        // WHICH PAGE EACH LEVEL WAS LEFT ON.
+        //
+        // Both entering a group and backing out of one used to reset the page to 1, so coming back
+        // out of Admin dropped him at the top of a strip he had paged away from, and going back INTO
+        // Admin made him page to Save again. Keyed by the level path, not by depth, so two sibling
+        // groups do not share one remembered page. Read and written on navigation presses only.
+        //
+        // The deliberate consequence: re-entering a group RESUMES its page, so Admin can open on
+        // page 2. That is visible rather than mysterious - the compact control's label says
+        // "PG2OF2" - and it is the annoyance he actually reported.
+        private static readonly Dictionary<string, int> _pageAt = new Dictionary<string, int>();
+
+        private static void Remember() { _pageAt[LevelKey()] = _page; }
+
+        private static int Recall()
+        {
+            int page;
+            return _pageAt.TryGetValue(LevelKey(), out page) ? page : 0;
+        }
+
+        // Admin gating, evaluated FIRST and unconditionally - see the comment in VisibleEntries.
+        // AdminCheck.IsAdmin() caches its verdict for two seconds (AdminCheck.cs:38-40), so asking
+        // it once for the doors and once for the entries costs one dictionary-free bool read.
+        private static bool AdminAllowed()
+        {
+            bool detected = AdminCheck.IsAdmin();
+            return !NeuralyzeVRFixesPlugin.HideAdminEntries.Value || detected;
+        }
+
+        private static bool Reachable(Entry e, bool admin)
+        {
+            // Availability is NOT overridable and is checked first: an entry whose prefab or command
+            // does not exist here cannot work for an admin either.
+            if (!ActionAvailability.Offer(e)) return false;
+            if (e.When == "admin") return admin;
+            return MenuContext.Active(e.When);
+        }
+
+        // The doors offered at the CURRENT level, in config order.
+        //
+        // A door is offered only when something is behind it right now, so a non-admin never sees an
+        // "Admin >" door with nothing behind it - and, since 2026-08-25, never sees a door whose
+        // whole contents were withheld for having no backing content either. Nesting made that a
+        // two-level question: "Admin >" must survive when every DIRECT Admin entry is withheld but
+        // something under Admin/Spawn is not, which is why the top-level pass looks at e.Group for
+        // every entry regardless of its Sub.
+        //
+        // Refresh is handed the WHOLE list, never the current level's subset, so the one
+        // Message-level withheld report is complete the first time it prints instead of filling in
+        // as the operator wanders into groups.
+        private static List<string> Doors()
+        {
+            bool admin = AdminAllowed();
             ActionAvailability.Refresh(_entries);
-            List<string> groups = _groupsBuf;
-            groups.Clear();
+            List<string> doors = _groupsBuf;
+            doors.Clear();
+            if (_l2.Length != 0) return doors;   // depth two is the floor; it has no doors
+            bool top = _l1.Length == 0;
             foreach (Entry e in _entries)
             {
-                if (e.Group.Length == 0 || groups.Contains(e.Group)) continue;
-                if (!ActionAvailability.Offer(e)) continue;
-                if (e.When == "admin" && !admin) continue;
-                if (e.When != "admin" && !MenuContext.Active(e.When)) continue;
-                groups.Add(e.Group);
+                string door = top ? e.Group : (e.Group == _l1 ? e.Sub : "");
+                if (door.Length == 0 || doors.Contains(door)) continue;
+                if (!Reachable(e, admin)) continue;
+                doors.Add(door);
             }
-            return groups;
+            return doors;
         }
 
         // Kinds that only make sense for an admin. Gated on ZNet.LocalPlayerIsAdminOrHost(), the
@@ -172,7 +250,7 @@ namespace NeuralyzeVRFixes
                 // "admin" is the one predicate that stays overridable, because its detection was
                 // wrong for three releases and hiding the console from its own admin is worse than
                 // showing a button the server refuses.
-                if (e.Group != _group) continue;
+                if (e.Group != _l1 || e.Sub != _l2) continue;
                 // Availability is NOT overridable, and is checked before the admin gate: an entry
                 // whose prefab or command does not exist here cannot work for an admin either, and
                 // "it is present but does nothing" is the 2026-08-25 complaint itself.
@@ -192,7 +270,186 @@ namespace NeuralyzeVRFixes
         }
         private static bool _open, _placedOnce;
         private static int _page;
-        private const int PerPage = 6;   // leaves room for Back and More in an 8-slot ring
+
+        // The wrist bar VHVR actually gives us: QuickAbstract.initialize allocates extraElements
+        // with `newarr 8` and reorderElements iterates 0..7, laying it out as two rows of four at a
+        // fixed 0.05m pitch. Used only where the real array is not in hand (label warm-up at load).
+        private const int RingSlots = 8;
+
+        private static bool Compact()
+        {
+            return NeuralyzeVRFixesPlugin.WristMenuCompactNav == null
+                || NeuralyzeVRFixesPlugin.WristMenuCompactNav.Value;
+        }
+
+        // How many slots a page of content gets: the ring minus the navigation. Six was hard-coded
+        // for the old shape, which spent TWO whole slots on "More >" and "< Back"; the compact
+        // control spends one and buys a seventh entry per page.
+        private static int PerPage(int ringSize)
+        {
+            return Mathf.Max(1, ringSize - (Compact() ? 1 : 2));
+        }
+
+        // How many pages the level being drawn has, as of the last rebuild. The compact control's
+        // callback needs it - it must not page past the end - and the callback runs from
+        // selectHoveredItem during Update, after a rebuild in the same frame, so it is fresh.
+        private static int _pagesNow = 1;
+        private static bool _logOpenPending;
+
+        private static bool Open()
+        {
+            _open = true;
+            _l1 = "";
+            _l2 = "";
+            _page = Recall();
+            _logOpenPending = true;
+            return true;
+        }
+
+        private static void Enter(string name)
+        {
+            Remember();
+            if (_l1.Length == 0) _l1 = name; else _l2 = name;
+            _page = Recall();
+        }
+
+        // The X: "always closes the current menu level. if the menu is two levels deep, it goes back
+        // to previous menu. if it was on top level, then it closes the wrist strip menu alltogether."
+        // - the operator, 2026-08-25.
+        //
+        // Level semantics, deliberately not a history stack: the level you are on is the only thing
+        // it needs, so there is no way for it to walk somewhere you were five minutes ago.
+        private static bool CloseLevel()
+        {
+            Remember();
+            if (_l2.Length != 0) _l2 = "";
+            else if (_l1.Length != 0) _l1 = "";
+            else { _open = false; return true; }
+            _page = Recall();
+            return true;
+        }
+
+        private static bool PageBy(int step)
+        {
+            int pages = _pagesNow < 1 ? 1 : _pagesNow;
+            _page = (_page + step + pages) % pages;
+            return true;
+        }
+
+        private static bool NextPage() { return PageBy(1); }
+
+        // THREE FUNCTIONS IN ONE SLOT, chosen by where the thumb is at the instant of the press.
+        //
+        // A radial slot cannot host three independently selectable targets. VHVR's selection state
+        // is a single int: hoverItem() picks the nearest whole slot by
+        // Vector3.Distance(handTransform.position, extraElements[i].transform.position) < 0.05f and
+        // writes hoveredIndex; selectHoveredItem() then calls extraElements[hoveredIndex -
+        // elementCount].execute(), which invokes a QuickMenuItemCallback that takes NO arguments
+        // (all verified by IL against the shipped ValheimVRMod.dll). Nothing between the hover test
+        // and the callback carries WHERE in the button the hand was, and reorderElements only ever
+        // sets localPosition - never localScale - so a slot cannot be made smaller either.
+        //
+        // So the three functions share one slot's space by sharing one slot. The stick is the
+        // discriminator because this codebase already drives a menu with it: HoverMenu reads
+        // MountControls.RawRightStickY() to move its highlight and uses the same 0.4 threshold
+        // (HoverMenu.cs:314-315). Centred is CLOSE rather than a page step, so the default action of
+        // a player who does not know about the stick is the safe, reversible one.
+        private const float StickEdge = 0.4f;
+
+        private static bool ComboPressed()
+        {
+            float x = MountControls.RawRightStickX();
+            if (_pagesNow > 1 && x <= -StickEdge) return PageBy(-1);
+            if (_pagesNow > 1 && x >= StickEdge) return PageBy(1);
+            return CloseLevel();
+        }
+
+        // Cached because Assign is called on every rebuild and a method-group conversion allocates a
+        // delegate at each conversion site; :614 records what twenty of those a frame cost.
+        private static readonly Func<bool> _actOpen = Open;
+        private static readonly Func<bool> _actCombo = ComboPressed;
+        private static readonly Func<bool> _actNextPage = NextPage;
+        private static readonly Func<bool> _actCloseLevel = CloseLevel;
+        private static readonly Dictionary<string, Func<bool>> _doorActions = new Dictionary<string, Func<bool>>();
+
+        // The closure captures the NAME only; which level it opens is decided at press time from the
+        // live path (Enter). It has to be that way round, because Assign caches delegates by LABEL
+        // (:617) - so a subgroup sharing a name with a top-level group would otherwise be handed a
+        // closure built for the other one.
+        private static Func<bool> DoorAction(string name)
+        {
+            Func<bool> action;
+            if (_doorActions.TryGetValue(name, out action)) return action;
+            string captured = name;
+            action = delegate { Enter(captured); return true; };
+            _doorActions[name] = action;
+            return action;
+        }
+
+        // THE LABEL IS THE ONLY AFFORDANCE. A control whose meaning depends on the thumbstick is
+        // invisible without one, so it names all three functions and the page it is on.
+        //
+        // Composed so MiscLabels' greedy wrap (MiscLabels.cs:120-147; MaxChars 8, MaxLines 3) breaks
+        // it where intended:
+        //     "< X > CLOSE PG1OF2"  ->  "< X >" / "CLOSE" / "PG1OF2"
+        //     "X CLOSE"             ->  "X CLOSE"
+        // One page means no arrows at all: there is nowhere to page to, and a single slot cannot be
+        // half-disabled, so the arrows leave the label and the stick directions become inert.
+        // CLOSE at the top strip, BACK inside a group, because that is what the same press does.
+        //
+        // It reads PG1OF2 and not PG1/2 because '/' is not in that font's glyph table
+        // (MiscLabels.cs:28-74) and Build substitutes '?' for anything missing (:207) - an
+        // unrenderable character in the one label that has to teach the control would be the same
+        // invisible-control bug in a new place.
+        private static string ComboText(int depth, int page, int pages)
+        {
+            string verb = depth == 0 ? "CLOSE" : "BACK";
+            if (pages <= 1) return "X " + verb;
+            return "< X > " + verb + " PG" + (page + 1) + "OF" + pages;
+        }
+
+        private static int _comboKey = -1;
+        private static string _comboLabel = "X CLOSE";
+
+        private static string ComboLabel(int pages)
+        {
+            int key = ((pages * 64) + _page) * 4 + Depth();
+            if (key != _comboKey)
+            {
+                _comboKey = key;
+                _comboLabel = ComboText(Depth(), _page, pages);
+            }
+            return _comboLabel;
+        }
+
+        private static int OfferedCount()
+        {
+            int offered = 0;
+            foreach (Entry e in _entries) if (ActionAvailability.Offer(e)) offered++;
+            return offered;
+        }
+
+        private static int _doorCount = -1;
+        private static string _doorLabel = "Misc";
+
+        // The one slot appended to VHVR's own strip while our menu is CLOSED. It is the door in, not
+        // a navigation slot - it costs nothing while the menu is open - so it stays.
+        //
+        // Under the compact navigation its count is every action the strip can still reach at any
+        // depth, which is the number the open log line reports, and the parentheses go: '(' and ')'
+        // are not in the glyph table, so "Misc (8)" was drawing as MISC ?8?. The old shape is kept
+        // byte-for-byte behind the toggle so the fallback is the entry he already knows.
+        private static string DoorLabel()
+        {
+            bool compact = Compact();
+            int n = compact ? OfferedCount() : VisibleEntries().Count;
+            if (n != _doorCount)
+            {
+                _doorCount = n;
+                _doorLabel = compact ? "Misc " + n : "Misc (" + n + ")";
+            }
+            return _doorLabel;
+        }
 
         internal static int Count { get { return _entries.Count; } }
 
@@ -233,14 +490,47 @@ namespace NeuralyzeVRFixes
                     when = value.Substring(whenAt + 6).Trim().ToLowerInvariant();
                     value = value.Substring(0, whenAt).Trim();
                 }
-                // "Group/Label" nests the entry one ring deeper. Eleven flat admin commands buried
-                // the six everyday entries behind a "More >" page; grouping is what a menu is for.
-                string group = "";
-                int slash = label.IndexOf('/');
-                if (slash > 0)
+                // "Group/Label" nests the entry one ring deeper and "Group/Sub/Label" two, which is
+                // what makes Admin/Spawn/Add Ward a leaf inside Spawn inside Admin. Eleven flat
+                // admin commands buried the everyday entries behind a "More >" page; grouping is
+                // what a menu is for, and nineteen of them needed a second level.
+                //
+                // Two separators is the floor, because the navigation has exactly three levels to
+                // close through. A deeper label is REFUSED and named in the log rather than
+                // flattened or truncated: both of those put the operator's button somewhere he did
+                // not ask for and say nothing about it, and a button silently somewhere else is the
+                // same class of mystery as a button that silently does nothing
+                // (ActionAvailability.cs:54-58). An empty segment - "Admin//Ward" - is refused for
+                // the same reason: it names a level with no name.
+                string group = "", sub = "";
+                if (label.IndexOf('/') >= 0)
                 {
-                    group = label.Substring(0, slash).Trim();
-                    label = label.Substring(slash + 1).Trim();
+                    string[] parts = label.Split('/');
+                    if (parts.Length > 3)
+                    {
+                        NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                            + "wrist menu REFUSED '" + item + "': a label may nest at most two levels"
+                            + " deep (Group/Sub/Label) and that one has " + (parts.Length - 1)
+                            + " separators. It was not flattened or truncated - rename it or drop a"
+                            + " level.");
+                        continue;
+                    }
+                    bool empty = false;
+                    for (int p = 0; p < parts.Length; p++)
+                    {
+                        parts[p] = parts[p].Trim();
+                        if (parts[p].Length == 0) empty = true;
+                    }
+                    if (empty)
+                    {
+                        NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                            + "wrist menu REFUSED '" + item + "': a label path has an empty segment,"
+                            + " so it names a group or a button with no name.");
+                        continue;
+                    }
+                    group = parts[0];
+                    if (parts.Length == 3) { sub = parts[1]; label = parts[2]; }
+                    else label = parts[1];
                 }
                 if (label.Length == 0 || value.Length == 0) continue;
                 if (kind != "zinput" && kind != "key" && kind != "hold" && kind != "console"
@@ -249,7 +539,7 @@ namespace NeuralyzeVRFixes
                     && kind != "mount" && kind != "sail") continue;
                 // console and cmd are admin surfaces by nature; an explicit when: still wins.
                 if (when.Length == 0 && (kind == "console" || kind == "cmd")) when = "admin";
-                _entries.Add(new Entry { Label = label, Group = group, Kind = kind, Value = value, When = when });
+                _entries.Add(new Entry { Label = label, Group = group, Sub = sub, Kind = kind, Value = value, When = when });
             }
 
             var contexts = new List<string>();
@@ -268,15 +558,80 @@ namespace NeuralyzeVRFixes
             // use. Doing it here moves that cost to the loading screen where nobody feels it.
             int warmed = 0;
             foreach (Entry e in _entries) { MiscLabels.For(e.Label); warmed++; }
-            foreach (string g in Groups()) { MiscLabels.For(g + " >"); warmed++; }
-            foreach (string extra in new string[] { "More >", "< Back", "Misc (" + _entries.Count + ")" })
+            // Doors, at whatever depth they appear. A group and a subgroup that share a name share
+            // one sprite, which is correct - the label is the same.
+            var seenDoors = new List<string>();
+            foreach (Entry e in _entries)
             {
-                MiscLabels.For(extra);
+                if (e.Group.Length > 0 && !seenDoors.Contains(e.Group))
+                {
+                    seenDoors.Add(e.Group);
+                    MiscLabels.For(e.Group + " >");
+                    warmed++;
+                }
+                if (e.Sub.Length > 0 && !seenDoors.Contains(e.Sub))
+                {
+                    seenDoors.Add(e.Sub);
+                    MiscLabels.For(e.Sub + " >");
+                    warmed++;
+                }
+            }
+            foreach (string fixedLabel in new string[] { "More >", "< Back", "X CLOSE", "X BACK",
+                                                         "Misc " + _entries.Count,
+                                                         "Misc (" + _entries.Count + ")" })
+            {
+                MiscLabels.For(fixedLabel);
                 warmed++;
             }
+            WarmComboLabels(ref warmed);
             NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
                 + "misc menu: " + warmed + " label sprites pre-drawn at load");
 
+        }
+
+        // The compact control's label carries the page number, so it needs one sprite per page per
+        // level shape. Drawn from the ACTUAL per-level item counts rather than a generous grid,
+        // because each sprite is a 256x256 RGBA texture and a grid wide enough to be safe would
+        // spend several megabytes on labels nobody sees. A count that turns out low at runtime -
+        // availability withholds an entry, a context predicate hides one - only ever shrinks a
+        // level, and the single-page shapes are pre-drawn unconditionally above.
+        private static void WarmComboLabels(ref int warmed)
+        {
+            var items = new Dictionary<string, int>();
+            var counted = new List<string>();
+            foreach (Entry e in _entries)
+            {
+                string level = e.Group.Length == 0 ? "" : (e.Sub.Length == 0 ? e.Group : e.Group + "/" + e.Sub);
+                Bump(items, level);
+                // A door is an item on its PARENT level, and it is counted once.
+                if (e.Group.Length > 0 && !counted.Contains(e.Group))
+                {
+                    counted.Add(e.Group);
+                    Bump(items, "");
+                }
+                if (e.Sub.Length > 0 && !counted.Contains(level))
+                {
+                    counted.Add(level);
+                    Bump(items, e.Group);
+                }
+            }
+            int perPage = Mathf.Max(1, RingSlots - 1);
+            foreach (KeyValuePair<string, int> level in items)
+            {
+                int pages = level.Value <= perPage ? 1 : (level.Value + perPage - 1) / perPage;
+                int depth = level.Key.Length == 0 ? 0 : 1;   // only CLOSE-vs-BACK matters to the text
+                for (int p = 0; p < pages; p++)
+                {
+                    MiscLabels.For(ComboText(depth, p, pages));
+                    warmed++;
+                }
+            }
+        }
+
+        private static void Bump(Dictionary<string, int> counts, string key)
+        {
+            int n;
+            counts[key] = counts.TryGetValue(key, out n) ? n + 1 : 1;
         }
 
         internal static void Install(Harmony harmony)
@@ -485,7 +840,7 @@ namespace NeuralyzeVRFixes
                         + "misc ring rebuild took " + ms.ToString("F1") + "ms: visibleEntries="
                         + _msVisible.ToString("F1") + " groups=" + _msGroups.ToString("F1")
                         + " assign=" + _msAssign.ToString("F1") + " labels=" + _msLabels.ToString("F1")
-                        + " open=" + _open + " group='" + _group + "'");
+                        + " open=" + _open + " level='" + LevelKey() + "'");
                 }
             }
         }
@@ -524,8 +879,7 @@ namespace NeuralyzeVRFixes
                     // Append after VHVR's own entries and extend the count so reorderElements
                     // activates and positions it, and hoverItem can reach it.
                     if (vhvrCount >= max) return;
-                    Assign(extra.GetValue(vhvrCount), "Misc (" + VisibleEntries().Count + ")",
-                        delegate { _open = true; _page = 0; _group = ""; return true; });
+                    Assign(extra.GetValue(vhvrCount), DoorLabel(), _actOpen);
                     _countField.SetValue(__instance, vhvrCount + 1);
                     if (!_placedOnce)
                     {
@@ -540,44 +894,93 @@ namespace NeuralyzeVRFixes
 
                 // Page open: own the whole strip. refreshItems repopulates it every call, so
                 // closing the page self-heals without us restoring anything.
+                //
+                // ONE ordered run per level - doors first, then entries - paged as a single list.
+                // Doors used to be appended after the entries of every page, which meant that with
+                // eight top-level entries and six content slots the "Admin >" door existed only on
+                // page 2: a door that moves depending on how full the page happens to be. First is
+                // a place. It also means the page count finally covers everything the level offers,
+                // so a level whose entries were withheld cannot leave a page with nothing on it.
                 PhaseStart();
                 List<Entry> entries = VisibleEntries();
                 _msVisible += PhaseEnd();
+                PhaseStart();
+                List<string> doors = Doors();
+                _msGroups += PhaseEnd();
+
+                bool compact = Compact();
+                int perPage = PerPage(max);
+                int total = doors.Count + entries.Count;
+                int pages = total <= perPage ? 1 : (total + perPage - 1) / perPage;
+                if (_page >= pages || _page < 0) _page = 0;
+                _pagesNow = pages;
+
                 int used = 0;
-                int start = _page * PerPage;
-                if (start >= entries.Count) { start = 0; _page = 0; }
-                for (int i = start; i < entries.Count && used < PerPage && used < max; i++)
+                if (compact)
                 {
-                    Entry e = entries[i];
-                    Assign(extra.GetValue(used), e.Label, e.Execute);
+                    // Slot 0 is the LEFT end of the top row, which is what "always lives at the
+                    // left" means here: reorderElements positions the wrist bar as two rows of four
+                    // at x = col*0.05 - (count/2)*0.05, so index 0 is always leftmost whatever the
+                    // count. Assigned before the content so it keeps that slot on every page.
+                    Assign(extra.GetValue(0), ComboLabel(pages), _actCombo);
+                    used = 1;
+                }
+
+                int start = _page * perPage;
+                for (int i = start; i < total && used < max && i - start < perPage; i++)
+                {
+                    object slot = extra.GetValue(used);
+                    if (i < doors.Count)
+                    {
+                        string name = doors[i];
+                        Assign(slot, name + " >", DoorAction(name));
+                    }
+                    else
+                    {
+                        Entry e = entries[i - doors.Count];
+                        Assign(slot, e.Label, e.Execute);
+                    }
                     used++;
                 }
-                if (_group.Length == 0)
+
+                if (!compact)
                 {
-                    PhaseStart();
-                    List<string> groupList = Groups();
-                    _msGroups += PhaseEnd();
-                    foreach (string g in groupList)
+                    // The pre-2026-08-25 shape, kept whole behind CompactWristNavigation: two full
+                    // slots, tapped. "< Back" closes the current LEVEL here too - that part of the
+                    // spec is not the risky half, and a fallback that cannot leave Admin/Spawn
+                    // would be worse than what it falls back from.
+                    if (start + perPage < total && used < max)
                     {
-                        if (used >= PerPage || used >= max) break;
-                        string open = g;
-                        Assign(extra.GetValue(used), open + " >",
-                            delegate { _group = open; _page = 0; return true; });
+                        Assign(extra.GetValue(used), "More >", _actNextPage);
+                        used++;
+                    }
+                    if (used < max)
+                    {
+                        Assign(extra.GetValue(used), "< Back", _actCloseLevel);
                         used++;
                     }
                 }
 
-                if (start + PerPage < entries.Count && used < max)
+                // One line per open, at Message level because that is the client's log floor
+                // (BepInEx.cfg LogLevels stops at Message, so LogInfo is invisible to him), naming
+                // where the menu is and what it decided to offer. A confusing menu is then
+                // diagnosable from the log he already sends instead of from another session.
+                if (_logOpenPending)
                 {
-                    Assign(extra.GetValue(used), "More >", delegate { _page++; return true; });
-                    used++;
+                    _logOpenPending = false;
+                    int offered = OfferedCount();
+                    NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                        + "wrist menu open at depth " + Depth() + " (" + LevelName() + "), page "
+                        + (_page + 1) + " of " + pages + ", " + perPage + " slots per page: "
+                        + doors.Count + " subgroup door(s) and " + entries.Count
+                        + " action(s) on this level. Of " + _entries.Count + " configured actions "
+                        + offered + " are offered and " + (_entries.Count - offered)
+                        + " withheld for absent content. Navigation: "
+                        + (compact
+                            ? "one compact slot at the left - stick left/right pages, centred closes the level"
+                            : "'More >' and '< Back'"));
                 }
-                if (used < max)
-                {
-                    Assign(extra.GetValue(used), "< Back",
-                        delegate { if (_group.Length > 0) _group = ""; else _open = false; _page = 0; return true; });
-                    used++;
-                }
+
                 _countField.SetValue(__instance, used);
                 for (int i = used; i < extra.Length; i++)
                 {
