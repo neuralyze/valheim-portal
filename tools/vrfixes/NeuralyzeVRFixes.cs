@@ -94,6 +94,7 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<bool> BoatRelativeStick;
         internal static ConfigEntry<float> ShipSpeedDeadzone;
         internal static ConfigEntry<bool> LogShieldBlocks;
+        internal static ConfigEntry<bool> RestoreShieldBlock;
 
         private void Awake()
         {
@@ -426,6 +427,19 @@ namespace NeuralyzeVRFixes
                 "discards Character.m_blocking, so 'the shield does not block' has to be read out of VHVR's own " +
                 "components rather than the game's. Logs at Message level so it survives the client's log filter.");
 
+            RestoreShieldBlock = Config.Bind("0 - Combat", "RestoreShieldBlock", true,
+                "Make shields block and parry again. ON by default because without it a shield in VR is pure "  +
+                "inventory weight: VHVR replaces vanilla blocking with its own ShieldBlock component, and upstream "  +
+                "commit 666124e6 (2026-05-08) deleted the single line that ever created it - "  +
+                "'meshFilter.gameObject.AddComponent<ShieldBlock>().itemName = ___m_leftItem;' - while removing the "  +
+                "item-name string that statement's TAIL assigned. The last release that predates that refactor, "  +
+                "v0.9.21, still contains the AddComponent in its IL; every build since, including ours, has zero. "  +
+                "This re-adds the component on the same GameObject, with the same lifetime, and changes nothing "  +
+                "else - all the code that reads it is already in the shipped mod. "  +
+                "TURN THIS OFF FIRST if blocking misbehaves: shields go back to never blocking, which is the "  +
+                "behaviour of every build since May 2026, and nothing else in the plugin depends on it. "  +
+                "Pair it with [9 - Profiling] LogShieldBlocks to see per-hit why a block did or did not land.");
+
             HideFastLinkTitle = Config.Bind("5 - Hover text", "HideFastLinkTitle", true,
                 "Hide the FastLink panel's title. FastLink scales as one piece, so enlarging the server names to " +
                 "read them in VR enlarges a title that was already the largest thing on the panel, and it covers " +
@@ -453,6 +467,9 @@ namespace NeuralyzeVRFixes
             if (ProfilePlugins.Value) Guard("pluginProfiler", delegate { PluginProfiler.Install(harmony); });
             if (ProfileInventory.Value) Guard("inventoryProfiler", delegate { InventoryProfiler.Install(harmony); });
             if (ProfileGameMethods.Value) Guard("gameMethodProfiler", delegate { GameMethodProfiler.Install(harmony); });
+            // Before the probe on purpose, so the probe's first line can already report the
+            // attach state rather than describing a world that has not been set up yet.
+            if (RestoreShieldBlock.Value) Guard("shieldBlockAttach", delegate { ShieldBlockAttach.Install(harmony); });
             if (LogShieldBlocks.Value) Guard("shieldDiagnostics", delegate { ShieldDiagnostics.Install(harmony); });
             if (MiscMenuEnabled.Value)
             {

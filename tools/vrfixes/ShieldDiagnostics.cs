@@ -43,18 +43,26 @@ namespace NeuralyzeVRFixes
     //
     // Each field below therefore answers one question the player can act on:
     //   shieldInst/weaponInst/fistInst - which of VHVR's three block components exist.
-    //     ShieldBlock has no attach site anywhere in ValheimVRMod.dll (161
-    //     AddComponent<> sites, three for WeaponBlock, one GetOrAddComponent<FistBlock>,
-    //     none for ShieldBlock), so shieldInst=no is the expected reading and the
-    //     whole reason this probe exists.
+    //     ShieldBlock had no attach site anywhere in ValheimVRMod.dll (161 AddComponent<>
+    //     sites, three for WeaponBlock, one GetOrAddComponent<FistBlock>, none for
+    //     ShieldBlock), which is what the 2026-08-25 session measured as shieldInst=no on
+    //     all forty lines. CAUSE FOUND: upstream commit 666124e6 (2026-05-08) deleted the
+    //     only attach - v0.9.21's release DLL still has it at IL_0210 of
+    //     PatchSetLeftHandEquipped - and ShieldBlockAttach.cs now restores it. So
+    //     shieldInst=yes is the expected reading, and shieldAttach reports the restoration
+    //     on the same line.
     //   vrBlocking - whether VHVR considered him blocking, computed exactly the way its
-    //     IsBlocking prefix computes it.
+    //     IsBlocking prefix computes it. shieldBlocking is the shield's own half of it.
     //   blockAttack/blocked - whether the game's own block ran, and its verdict.
     //   taken vs wouldTake - the damage he actually ate against what a successful block
     //     would have left, using the game's own armour curve.
     //   shieldDot - Dot(hit.m_dir, shieldFacing), the test ShieldBlock.setBlocking
-    //     would apply in Gesture mode (needs < -0.5), so a wrongly-held shield is
+    //     applies (Gesture needs < -0.5, Realistic < -0.25), so a wrongly-held shield is
     //     distinguishable from a shield the code never consults.
+    //   shieldBox - the block-box intersection Realistic mode ALSO requires, so a shield
+    //     aimed correctly but standing clear of the hit ray is its own diagnosis.
+    //   timerSource/parry - whose blockTimer reached the game, and whether vanilla scored
+    //     it as a parry. Not the same question as whether the shield blocked.
     //   weaponAngle/allowBlocking - the WeaponBlock path, which in Gesture mode demands
     //     a two-handed weapon (LocalWeaponWield.allowBlocking, line 419).
     internal static class ShieldDiagnostics
@@ -79,6 +87,12 @@ namespace NeuralyzeVRFixes
         private static MethodInfo _useGesture, _useRealistic, _useGrab;
         private static MethodInfo _offHandType;    // EquipScript.CurrentOffHandEquipType()
         private static PropertyInfo _mainIsRight, _leftHand, _rightHand;
+        // The remaining half of the answer: which individual test decided the shield's
+        // verdict, and whose blockTimer the game was actually handed.
+        private static MethodInfo _hitIntersects;  // Block.hitIntersectsBlockBox(HitData), protected
+        private static MethodInfo _nonDominantHasWeapon; // LocalWeaponWield.nonDominantHandHasWeapon()
+        private static MethodInfo _leftFist, _rightFist; // StaticObjects.leftFist()/rightFist()
+        private static MethodInfo _blockingWithFist;     // FistCollision.blockingWithFist()
 
         // Vanilla members. GetCurrentBlocker is `.method private hidebysig` on Humanoid
         // (assembly_valheim IL 42182), so it is unreachable by name from a subclass even
@@ -94,6 +108,8 @@ namespace NeuralyzeVRFixes
         private static string _mode, _offhand, _blocker, _components, _timers, _allow;
         private static bool _blockAttackRan, _blockAttackResult;
         private static float _blockAttackTimer;
+        private static bool _shieldBlocking;
+        private static string _shieldBox, _timerSource;
 
         internal static void Install(Harmony harmony)
         {
@@ -177,12 +193,24 @@ namespace NeuralyzeVRFixes
             {
                 _isBlocking = AccessTools.Method(block, "isBlocking");
                 _blockTimer = AccessTools.Field(block, "blockTimer");
+                // Typed lookup: Block also carries a static two-argument overload of the
+                // same name (Block.cs:200), and the instance one is what setBlocking calls.
+                _hitIntersects = AccessTools.Method(block, "hitIntersectsBlockBox", new[] { typeof(HitData) });
             }
             if (wield != null)
             {
                 _allowBlocking = AccessTools.Method(wield, "allowBlocking");
                 _weaponForward = AccessTools.Field(wield, "weaponForward");
+                _nonDominantHasWeapon = AccessTools.Method(wield, "nonDominantHandHasWeapon");
             }
+            Type statics = TypeCache.Get("ValheimVRMod.Utilities.StaticObjects");
+            Type fistCol = TypeCache.Get("ValheimVRMod.Scripts.FistCollision");
+            if (statics != null)
+            {
+                _leftFist = AccessTools.Method(statics, "leftFist");
+                _rightFist = AccessTools.Method(statics, "rightFist");
+            }
+            if (fistCol != null) _blockingWithFist = AccessTools.Method(fistCol, "blockingWithFist");
             if (cfg != null)
             {
                 _useGesture = AccessTools.Method(cfg, "UseGestureBlock");
@@ -245,10 +273,15 @@ namespace NeuralyzeVRFixes
                 // here cannot change the outcome being measured.
                 _vrBlocking = Blocking(sb) || Blocking(wb) || Blocking(fb);
                 _timers = "shieldTimer=" + Timer(sb) + " weaponTimer=" + Timer(wb) + " fistTimer=" + Timer(fb);
+                // The shield alone, separated from the OR above: with an instance present,
+                // "the shield said no" and "the weapon said yes" are different problems.
+                _shieldBlocking = Blocking(sb);
 
                 _shieldDot = ShieldDot(hit.m_dir);
                 _weaponAngle = WeaponAngle(hit.m_dir);
                 _allow = AllowBlocking(wb);
+                _shieldBox = ShieldBox(sb, hit);
+                _timerSource = TimerSource(wb);
             }
             catch (Exception e)
             {
@@ -306,10 +339,20 @@ namespace NeuralyzeVRFixes
                     + " mBlocking=" + _mBlockingWas
                     + " " + _components
                     + " shieldDot=" + Fmt(_shieldDot) + "(gestureNeeds<-0.50,realisticNeeds<-0.25)"
+                    + " shieldBox=" + _shieldBox
+                    + " shieldBlocking=" + _shieldBlocking
+                    + " shieldAttach=" + ShieldBlockAttach.Status()
                     + " weaponAngle=" + Fmt(_weaponAngle) + "(weaponPathNeeds60-120)"
                     + " allowBlocking=" + _allow
                     + " " + _timers
+                    + " timerSource=" + _timerSource
                     + " blockTimerAtBlockAttack=" + Fmt(_blockAttackTimer)
+                    // Vanilla BlockAttack's own parry test: m_blockTimer < 0.25 is a timed
+                    // block, everything else is a plain block. This is the field to read
+                    // when the question is "did that count as a parry".
+                    + " parry=" + (float.IsNaN(_blockAttackTimer)
+                        ? "n/a"
+                        : (_blockAttackTimer < 0.25f ? "YES" : "no"))
                     + (_emitted == MaxLines ? " [last line - raise LogShieldBlocks limit by restarting]" : ""));
             }
             catch (Exception e)
@@ -380,6 +423,76 @@ namespace NeuralyzeVRFixes
                 return Convert.ToString((bool)_allowBlocking.Invoke(wield, null));
             }
             catch { return "err"; }
+        }
+
+        // The second half of the Realistic-mode test. ShieldBlock.setBlocking requires
+        // Dot(hit.m_dir, shieldFacing) < -0.25 AND hitIntersectsBlockBox(hit)
+        // (ShieldBlock.cs:64); without this field, a shield held correctly but standing
+        // where the hit ray misses its mesh bounds is indistinguishable from a shield
+        // pointed the wrong way.
+        //
+        // Only asked in the mode that uses it. Gesture and GrabButton never call it
+        // (ShieldBlock.cs:58-70), and asking would CREATE the block collider those modes
+        // never build - a probe must not manufacture the state it reports. In Realistic
+        // mode VHVR's own RPC_Damage prefix has already run it this frame (our prefix is
+        // Priority.Last), so the collider exists and re-asking costs one SphereCastAll.
+        private static string ShieldBox(object shieldBlock, HitData hit)
+        {
+            try
+            {
+                if (shieldBlock == null || _hitIntersects == null) return "n/a";
+                if (!Truthy(_useRealistic)) return "unused";
+                return (bool)_hitIntersects.Invoke(shieldBlock, new object[] { hit }) ? "pass" : "FAIL";
+            }
+            catch { return "err"; }
+        }
+
+        // Which component's blockTimer PatchBlockAttack.Prefix hands the game, reproducing
+        // its own if/else chain (ShieldPatches.cs:31-44). This matters because the shield
+        // can block while a DIFFERENT component supplies the parry window: in Realistic
+        // mode allowBlocking() is true whenever the weapon-hand grip is held
+        // (LocalWeaponWield.cs:415-419), which routes the timer to WeaponBlock - and
+        // WeaponBlock.CheckParryMotion then deliberately forces its own timer to
+        // blockTimerNonParry while the shield is blocking (WeaponBlock.cs:67-75). So
+        // holding the weapon grip suppresses the shield parry, and only this field says so.
+        private static string TimerSource(object weaponBlock)
+        {
+            try
+            {
+                if (Truthy(_useGrab)) return "grabMode";
+                if (FistBlocking()) return "fist";
+                if (weaponBlock != null)
+                {
+                    bool allow = false;
+                    if (_weaponWield != null && _allowBlocking != null)
+                    {
+                        object wield = _weaponWield.GetValue(weaponBlock);
+                        if (wield != null) allow = (bool)_allowBlocking.Invoke(wield, null);
+                    }
+                    bool offhandWeapon = _nonDominantHasWeapon != null
+                        && (bool)_nonDominantHasWeapon.Invoke(null, null);
+                    if (allow || offhandWeapon) return "weapon";
+                }
+                return "shield";
+            }
+            catch { return "err"; }
+        }
+
+        private static bool FistBlocking()
+        {
+            if (_blockingWithFist == null) return false;
+            return FistBlocking(_leftFist) || FistBlocking(_rightFist);
+        }
+
+        private static bool FistBlocking(MethodInfo accessor)
+        {
+            try
+            {
+                if (accessor == null) return false;
+                object fist = accessor.Invoke(null, null);
+                return fist != null && (bool)_blockingWithFist.Invoke(fist, null);
+            }
+            catch { return false; }
         }
 
         // ShieldBlock.shieldFacing, reproduced: the offhand controller's right axis,
