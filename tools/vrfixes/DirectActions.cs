@@ -593,6 +593,27 @@ namespace NeuralyzeVRFixes
             catch (Exception e) { Warn("reset height failed: " + e.Message); return false; }
         }
 
+        // The transform the game's own gui hangs from, so the rescue sweep can exempt it. Resolved
+        // through Hud.instance rather than by name: a name lookup fails silently on any build that
+        // renames the object, and the failure mode here is destroying the player's instruments.
+        private static Transform HudRoot()
+        {
+            try
+            {
+                Type hud = TypeCache.Get("Hud");
+                object inst = hud == null ? null : Instance("Hud");
+                if (inst == null) return null;
+                FieldInfo root = AccessTools.Field(hud, "m_rootObject");
+                object value = root == null ? null : root.GetValue(inst);
+                GameObject go = value as GameObject;
+                if (go == null && value is Component) go = ((Component)value).gameObject;
+                if (go != null) return go.transform;
+                Component c = inst as Component;
+                return c == null ? null : c.transform;
+            }
+            catch { return null; }
+        }
+
         internal static bool ClosePanels()
         {
             int closed = 0;
@@ -652,10 +673,27 @@ namespace NeuralyzeVRFixes
             // than a background policy, and every name is logged so the damage is inspectable.
             try
             {
+                // The game's OWN gui is exempt, and this is not caution - it is a measured incident.
+                // On 2026-08-25 the operator reported "i cant see the direction wheel or boat speed
+                // indicators anymore in hud". Valheim parks its ship gauges under Hud (m_shipHudRoot,
+                // hidden and shown by Hud.UpdateShipHud), and Hud sits inside the screen-space IngameGui
+                // canvas - so this sweep deactivated the canvas the HUD lives in and nothing ever turned
+                // it back on. A rescue for mod windows must not take the game's instruments with it.
+                //
+                // The test is ancestor-or-self in EITHER direction: the offending canvas was an ANCESTOR
+                // of the Hud root, so checking only "is this canvas inside the Hud" would still have
+                // killed it.
+                Transform hud = HudRoot();
                 foreach (Canvas canvas in UnityEngine.Object.FindObjectsOfType<Canvas>())
                 {
                     if (canvas == null || !canvas.gameObject.activeInHierarchy) continue;
                     if (canvas.renderMode == RenderMode.WorldSpace) continue;   // VHVR handles these
+                    Transform t = canvas.transform;
+                    if (hud != null && (t == hud || t.IsChildOf(hud) || hud.IsChildOf(t)))
+                    {
+                        Log("kept screen-space canvas '" + canvas.name + "' (the game's own hud lives in it)");
+                        continue;
+                    }
                     canvas.gameObject.SetActive(false);
                     closed++;
                     Log("deactivated screen-space canvas '" + canvas.name + "' (invisible in VR)");
