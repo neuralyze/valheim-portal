@@ -263,47 +263,207 @@ namespace NeuralyzeVRFixes
             catch { return false; }
         }
 
-        // Report which of the game's gates refused a helm, immediately after an attempt.
+        // WHY A HELM ATTEMPT DID OR DID NOT TAKE, reported after the answer could have arrived.
         //
-        // ShipControlls.Interact returns false without a word, and its four conditions are the only
-        // explanation. Runs once per attempt, never per frame.
-        internal static void ExplainHelm(GameObject target)
+        // The previous version of this asked the wrong question at the wrong moment, and it printed
+        // nine lines in the operator's 2026-08-25 session (LogOutput.log:160-168) that between them
+        // said nothing true. Two defects, both settled from IL:
+        //
+        // 1. IT COULD NOT SEE SUCCESS. Taking a helm is not synchronous. ShipControlls::Interact
+        //    ends `InvokeRPC("RequestControl", GetPlayerID()); return false` (av.il:419360-419373) -
+        //    it returns FALSE on every path, including the one that worked - and the attach happens
+        //    only when the ZDO owner answers with RequestRespons, in ShipControlls
+        //    ::RPC_RequestRespons -> Player::StartDoodadControl + Character::AttachStart
+        //    (av.il:419557-419582). That is a network round trip away. This method ran in the same
+        //    frame as the Player::Interact call (NeuralyzeVRFixes.cs, the Use branch), treated
+        //    IsAttached()==false as "refused", and therefore printed "helm refused" for EVERY
+        //    attempt, successful or not. Nine lines is nine attempts, not nine refusals.
+        //
+        // 2. shipUser WAS NEVER MEASURED. It read `SteamVRProbe.Call(helm, "GetUser")`, and Call
+        //    binds with BindingFlags.Instance | Public only (NeuralyzeVRFixes.cs:956) while
+        //    ShipControlls::GetUser is `.method private` (av.il:419653). So the lookup found no
+        //    method, returned null, and the line printed the literal "none" every single time
+        //    whatever the ship believed. "shipUser=none" was a string, not a reading.
+        //
+        // What it also never looked at is the half of the decision that is not local. The four
+        // gates it did print are all of ShipControlls::Interact's own gates and they are not where
+        // a request dies quietly. The owner runs ShipControlls::RPC_RequestControl and returns
+        // WITHOUT ANSWERING AT ALL if either `m_nview.IsOwner()` or
+        // `m_ship.IsPlayerInBoat(playerID)` is false (av.il:419461-419473) - no attach, no
+        // "$msg_inuse", no message of any kind. And IsPlayerInBoat is NOT the test this printed:
+        // it walks Ship::m_players, the list the ship's trigger volume maintains in OnTriggerEnter
+        // /OnTriggerExit (av.il:418370-418483) and prunes in RefreshPlayerList for any member whose
+        // Character::GetOwner() is 0 (av.il:418345-418366), whereas GetStandingOnShip() is a
+        // ground-body test. Both can read "on the raft" while only one of them agrees.
+        //
+        // So: record the attempt, and print the verdict half a second later, by which time an
+        // answer either arrived or provably did not. HelmRequestWatch below supplies what the three
+        // ship methods actually saw.
+        private const float HelmVerdictDelay = 0.5f;
+
+        private static GameObject _helmTarget;
+        private static float _helmAt = -1f;
+        private static string _helmAtSnapshot;
+        private static int _helmSeq;
+
+        internal static void NoteHelmAttempt(GameObject target)
         {
             try
             {
                 Refs.Ensure();
                 object helm = Refs.ShipControlls == null || target == null
                     ? null : target.GetComponentInParent(Refs.ShipControlls);
-                if (helm == null) return;
+                if (helm == null) return;      // not a helm attempt; nothing to explain
 
                 object local = Refs.Local();
                 if (local == null) return;
-                if (Refs.IsAttached != null && Convert.ToBoolean(Refs.IsAttached.Invoke(local, null))) return;  // it worked
+                if (Refs.IsAttached != null && Convert.ToBoolean(Refs.IsAttached.Invoke(local, null))) return;
 
-                MethodInfo dist = AccessTools.Method(Refs.ShipControlls, "InUseDistance");
-                object onShip = Refs.GetStandingOnShip == null ? null : Refs.GetStandingOnShip.Invoke(local, null);
-                bool onShipReal = onShip != null && !onShip.Equals(null);
-                FieldInfo nviewF = AccessTools.Field(Refs.ShipControlls, "m_nview");
-                object nview = nviewF == null ? null : nviewF.GetValue(helm);
-
-                // The ship's own user is the fifth condition and it is NOT one of the four below.
-                // Measured 2026-08-25: after a reflective StopDoodadControl the operator could not
-                // retake the helm, and this line printed all four gates PASSING eleven times in a
-                // row - znetValid, inUseDistance, not encumbered, standing on the raft - so the
-                // refusal came from somewhere it could not see. A helm that still believes it has a
-                // user refuses a new one, so print who it thinks that is.
-                object user = SteamVRProbe.Call(helm, "GetUser");
-                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
-                    + "helm refused: znetValid=" + Convert.ToString(nview == null ? null : SteamVRProbe.Call(nview, "IsValid"))
-                    + " inUseDistance=" + (dist == null ? "?" : Convert.ToString(dist.Invoke(helm, new object[] { local })))
-                    + " encumbered=" + (Refs.IsEncumbered == null ? "?" : Convert.ToString(Refs.IsEncumbered.Invoke(local, null)))
-                    + " standingOnShip=" + (onShipReal ? ((Component)onShip).name : "NULL")
-                    + " shipUser=" + (user == null ? "none" : Convert.ToString(user))
-                    + " - the four gates plus the ship's own user");
+                _helmSeq++;
+                _helmTarget = target;
+                _helmAt = Time.realtimeSinceStartup;
+                _helmAtSnapshot = HelmGates(helm, local, target);
+                HelmRequestWatch.Arm(_helmSeq);
             }
             catch (Exception e)
             {
-                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "helm explain failed: " + e.Message);
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "helm note failed: " + e.Message);
+            }
+        }
+
+        // Everything that decides the attempt, read at the instant of the press.
+        private static string HelmGates(object helm, object local, GameObject target)
+        {
+            MethodInfo dist = AccessTools.Method(Refs.ShipControlls, "InUseDistance");
+            object onShip = Refs.GetStandingOnShip == null ? null : Refs.GetStandingOnShip.Invoke(local, null);
+            bool onShipReal = onShip != null && !onShip.Equals(null);
+            FieldInfo nviewF = AccessTools.Field(Refs.ShipControlls, "m_nview");
+            object nview = nviewF == null ? null : nviewF.GetValue(helm);
+
+            // The FIRST Interactable up the parent chain is the one Player::Interact will actually
+            // call (av.il:61476-61489) - not necessarily the ShipControlls we found by type. If they
+            // differ, the press went somewhere else entirely and that is the whole answer.
+            string firstInteractable = "?";
+            Type interactable = TypeCache.Get("Interactable");
+            if (interactable != null && target != null)
+            {
+                Component c = target.GetComponentInParent(interactable);
+                firstInteractable = c == null ? "NONE" : c.GetType().Name;
+            }
+
+            // Ship::IsPlayerInBoat(long) - the owner-side membership test, by explicit signature
+            // because Ship declares three overloads (ZDOID, Player, long) and only the long one is
+            // what RPC_RequestControl consults.
+            string inBoat = "?";
+            long myId = 0;
+            try
+            {
+                MethodInfo playerId = AccessTools.Method(Refs.Player, "GetPlayerID");
+                if (playerId != null) myId = Convert.ToInt64(playerId.Invoke(local, null));
+                FieldInfo shipF = AccessTools.Field(Refs.ShipControlls, "m_ship");
+                object ship = shipF == null ? null : shipF.GetValue(helm);
+                Type shipType = ship == null ? null : ship.GetType();
+                MethodInfo inBoatM = shipType == null ? null
+                    : AccessTools.Method(shipType, "IsPlayerInBoat", new Type[] { typeof(long) });
+                if (inBoatM != null && myId != 0)
+                    inBoat = Convert.ToString(inBoatM.Invoke(ship, new object[] { myId }));
+            }
+            catch { }
+
+            return "znetValid=" + Convert.ToString(nview == null ? null : SteamVRProbe.Call(nview, "IsValid"))
+                 + " nviewIsOwner=" + Convert.ToString(nview == null ? null : SteamVRProbe.Call(nview, "IsOwner"))
+                 + " inUseDistance=" + (dist == null ? "?" : Convert.ToString(dist.Invoke(helm, new object[] { local })))
+                 + " encumbered=" + (Refs.IsEncumbered == null ? "?" : Convert.ToString(Refs.IsEncumbered.Invoke(local, null)))
+                 + " standingOnShip=" + (onShipReal ? ((Component)onShip).name : "NULL")
+                 + " isPlayerInBoat=" + inBoat
+                 + " shipUser=" + HelmUser(helm)
+                 + " myPlayerID=" + myId
+                 + " inAttack=" + Flag(local, Refs.Character, "InAttack")
+                 + " inDodge=" + Flag(local, Refs.Character, "InDodge")
+                 + " hovering=" + HoveringName(local)
+                 + " target=" + (target == null ? "none" : target.name)
+                 + " firstInteractable=" + firstInteractable;
+        }
+
+        // ShipControlls::GetUser is private (av.il:419653), which is why the old line always said
+        // "none": SteamVRProbe.Call binds public instance methods only. AccessTools does not care.
+        private static string HelmUser(object helm)
+        {
+            try
+            {
+                MethodInfo getUser = AccessTools.Method(Refs.ShipControlls, "GetUser");
+                if (getUser == null) return "unreadable(GetUser missing)";
+                return Convert.ToString(getUser.Invoke(helm, null));
+            }
+            catch (Exception e) { return "unreadable(" + e.GetType().Name + ")"; }
+        }
+
+        private static string Flag(object instance, Type owner, string method)
+        {
+            try
+            {
+                MethodInfo m = owner == null ? null : AccessTools.Method(owner, method);
+                return m == null ? "?" : Convert.ToString(m.Invoke(instance, null));
+            }
+            catch { return "?"; }
+        }
+
+        // Player::m_hovering, which the ticket asked for by name. UpdateHover clears it outright for
+        // InPlaceMode, IsDead or a non-null m_doodadController (av.il:57082-57105), and otherwise
+        // FindHoverObject leaves it null when the camera ray misses, exceeds m_maxInteractDistance
+        // (5f by default) or hits nothing with a Hoverable.
+        private static string HoveringName(object local)
+        {
+            try
+            {
+                FieldInfo f = AccessTools.Field(Refs.Player, "m_hovering");
+                GameObject go = f == null ? null : f.GetValue(local) as GameObject;
+                return f == null ? "?" : (go == null ? "none" : go.name);
+            }
+            catch { return "?"; }
+        }
+
+        // Called every frame from LateUpdate. Costs one float compare when no attempt is pending.
+        internal static void Tick()
+        {
+            if (_helmAt < 0f) return;
+            if (Time.realtimeSinceStartup - _helmAt < HelmVerdictDelay) return;
+            float waited = Time.realtimeSinceStartup - _helmAt;
+            _helmAt = -1f;
+            GameObject target = _helmTarget;
+            _helmTarget = null;
+            try
+            {
+                object local = Refs.Local();
+                bool attached = local != null && Refs.IsAttached != null
+                                && Convert.ToBoolean(Refs.IsAttached.Invoke(local, null));
+                bool atHelm = AtHelm();
+                if (attached && atHelm)
+                {
+                    // Success, which the old code could never say. One line at Message level so a
+                    // session log distinguishes "it took 0.2s" from "it never came back".
+                    NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                        + "helm TAKEN #" + _helmSeq + " after " + waited.ToString("F2") + "s; "
+                        + HelmRequestWatch.Report(_helmSeq));
+                    return;
+                }
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "helm REFUSED #" + _helmSeq + " - still not steering " + waited.ToString("F2")
+                    + "s after the press, so no RequestRespons granted it. At the press: "
+                    + _helmAtSnapshot
+                    + ". Since the press: " + HelmRequestWatch.Report(_helmSeq)
+                    + ". Read it this way: reachedInteract=False means Player.Interact never called"
+                    + " ShipControlls.Interact, so look at firstInteractable, inAttack and inDodge."
+                    + " reachedInteract=True with ownerDecided=False means the request left this"
+                    + " machine and the ZDO owner never answered - RPC_RequestControl returns"
+                    + " silently when IsOwner() or Ship.IsPlayerInBoat(playerID) is false"
+                    + " (av.il:419461-419473), which is the only refusal with no message at all."
+                    + " ownerDecided=True with granted=False means a different player still holds it"
+                    + (target == null ? "" : ". Target was '" + target.name + "'"));
+            }
+            catch (Exception e)
+            {
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "helm verdict failed: " + e.Message);
             }
         }
 
@@ -1303,6 +1463,148 @@ namespace NeuralyzeVRFixes
                 + " The replacement is measured inside VHVR on a later frame, so it is not reported"
                 + " here; the next line reports the stale value that was cleared");
             DirectActions.ResetHeight();
+        }
+    }
+
+    // WHAT THE SHIP ACTUALLY DID WITH A HELM REQUEST.
+    //
+    // The one thing the operator's 2026-08-25 session could not answer: nine presses, no attach, no
+    // "$msg_inuse", nothing. Every local gate passed. The reason nothing said why is that the rest
+    // of the decision happens in three methods nobody was watching, two of which run on a different
+    // machine:
+    //
+    //   ShipControlls::Interact          (av.il:419310-419374)  here, and its only side effect is
+    //                                    InvokeRPC("RequestControl", GetPlayerID()); it returns
+    //                                    false on all six paths, so its return value is worthless.
+    //   ShipControlls::RPC_RequestControl(av.il:419455-419515)  on the ship ZDO's OWNER. Returns
+    //                                    with no answer at all if !m_nview.IsOwner() or
+    //                                    !m_ship.IsPlayerInBoat(playerID). Otherwise grants when
+    //                                    GetUser()==playerID or !HaveValidUser(), else denies.
+    //   ShipControlls::RPC_RequestRespons(av.il:419546-419590)  back here. granted -> StartDoodad-
+    //                                    Control + AttachStart. Denied -> "$msg_inuse" and nothing.
+    //
+    // Three postfixes, each firing only when a helm is actually being asked for, record which of
+    // those three stages was reached. That is the whole diagnosis:
+    //
+    //   reachedInteract=False  Player::Interact never reached the ship. Its own gates are InAttack
+    //                          and InDodge, then the first Interactable up the parent chain
+    //                          (av.il:61456-61489) - all three are printed at the press.
+    //   ownerDecided=False     the request left this machine and the owner never answered: the
+    //                          IsOwner / IsPlayerInBoat silent return. THE ONLY refusal with no
+    //                          message of any kind, and the one the four old gates could not see.
+    //   granted=False          somebody else holds the helm and the owner said so.
+    //
+    // Cost: three Harmony postfixes on methods that run when a player touches a rudder, never per
+    // frame. Nothing is patched at all if ShipControlls cannot be resolved.
+    internal static class HelmRequestWatch
+    {
+        private static int _seq = -1;
+        private static bool _reachedInteract, _ownerRan, _ownerDecided, _responded, _granted;
+        private static string _ownerDetail = "";
+
+        // Called by DirectActions.NoteHelmAttempt so each verdict reports its OWN attempt and never
+        // inherits a previous one's outcome.
+        internal static void Arm(int seq)
+        {
+            _seq = seq;
+            _reachedInteract = _ownerRan = _ownerDecided = _responded = _granted = false;
+            _ownerDetail = "";
+        }
+
+        internal static string Report(int seq)
+        {
+            if (seq != _seq) return "no ship-side record for this attempt (the watch is not installed)";
+            return "reachedInteract=" + _reachedInteract
+                 + " ownerRanHere=" + _ownerRan
+                 + " ownerDecided=" + _ownerDecided
+                 + " responded=" + _responded
+                 + " granted=" + _granted
+                 + (_ownerDetail.Length == 0 ? "" : " ownerSaw[" + _ownerDetail + "]");
+        }
+
+        internal static void Install(Harmony harmony)
+        {
+            Type sc = TypeCache.Get("ShipControlls");
+            if (sc == null)
+            {
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "ShipControlls not found; a refused helm cannot be told apart from a helm whose"
+                    + " request the ship's owner never answered");
+                return;
+            }
+            int n = 0;
+            n += Hook(harmony, sc, "Interact", "AfterInteract", false);
+            n += Hook(harmony, sc, "RPC_RequestControl", "BeforeRequestControl", true);
+            n += Hook(harmony, sc, "RPC_RequestRespons", "AfterRequestRespons", false);
+            NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                + "helm request watch armed on " + n + " of 3 ShipControlls methods");
+        }
+
+        private static int Hook(Harmony harmony, Type owner, string method, string handler, bool before)
+        {
+            MethodInfo target = AccessTools.Method(owner, method);
+            MethodInfo patch = typeof(HelmRequestWatch).GetMethod(handler, BindingFlags.Static | BindingFlags.NonPublic);
+            if (target == null || patch == null)
+            {
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "ShipControlls." + method + " not found; that stage of a helm request stays unreported");
+                return 0;
+            }
+            HarmonyMethod hm = new HarmonyMethod(patch);
+            if (before) harmony.Patch(target, prefix: hm);
+            else harmony.Patch(target, postfix: hm);
+            return 1;
+        }
+
+        private static void AfterInteract()
+        {
+            if (_seq < 0) return;
+            _reachedInteract = true;
+        }
+
+        // A PREFIX, not a postfix, and that is the whole point of it. RPC_RequestControl writes
+        // ZDO.Set(s_user, playerID) as part of granting (av.il:419483-419488), so after the body has
+        // run GetUser() and HaveValidUser() report the RESULT rather than the inputs - which would
+        // make a granted request look as though it had been refused by an occupied helm. Read before.
+        //
+        // Runs only where the ship's ZDO is owned; on any other machine this method is never called,
+        // and that silence is itself the finding (ownerRanHere=False).
+        private static void BeforeRequestControl(object __instance, long sender, long playerID)
+        {
+            if (_seq < 0) return;
+            _ownerRan = true;
+            try
+            {
+                Type sc = __instance.GetType();
+                FieldInfo nviewF = AccessTools.Field(sc, "m_nview");
+                object nview = nviewF == null ? null : nviewF.GetValue(__instance);
+                bool isOwner = nview != null && Convert.ToBoolean(SteamVRProbe.Call(nview, "IsOwner"));
+
+                FieldInfo shipF = AccessTools.Field(sc, "m_ship");
+                object ship = shipF == null ? null : shipF.GetValue(__instance);
+                MethodInfo inBoatM = ship == null ? null
+                    : AccessTools.Method(ship.GetType(), "IsPlayerInBoat", new Type[] { typeof(long) });
+                bool inBoat = inBoatM != null && Convert.ToBoolean(inBoatM.Invoke(ship, new object[] { playerID }));
+
+                MethodInfo getUser = AccessTools.Method(sc, "GetUser");
+                MethodInfo valid = AccessTools.Method(sc, "HaveValidUser");
+                string user = getUser == null ? "?" : Convert.ToString(getUser.Invoke(__instance, null));
+                string haveValid = valid == null ? "?" : Convert.ToString(valid.Invoke(__instance, null));
+
+                // The two conditions that make the body return without answering at all.
+                _ownerDecided = isOwner && inBoat;
+                _ownerDetail = "isOwner=" + isOwner + " isPlayerInBoat=" + inBoat
+                             + " userBefore=" + user + " haveValidUserBefore=" + haveValid
+                             + " requester=" + playerID + " from=" + sender;
+            }
+            catch (Exception e) { _ownerDetail = "unreadable(" + e.GetType().Name + ")"; }
+        }
+
+        private static void AfterRequestRespons(bool granted)
+        {
+            if (_seq < 0) return;
+            _responded = true;
+            _granted = granted;
         }
     }
 }

@@ -102,24 +102,74 @@ namespace NeuralyzeVRFixes
 
         // Resolved names, INCLUDING the ones that do not resolve.
         //
-        // AccessTools.TypeByName returns null by exhausting every assembly, so a name that is not
-        // present costs far more than one that is - and this list is walked on every failed attempt
-        // to read the local Steam id. Remembering the null is the whole fix.
+        // THIS IS THE 1146ms FRAME. Measured 2026-08-25 from the operator's own session
+        // (LogOutput.log:170-187, in order, all inside one frame):
+        //
+        //   170  AccessTools.Method: Could not find method for type ZNet and name GetLocalUser
+        //   171  ... and name GetLocalPlatformUser          <- Resolve(), so _getLocalUser is null
+        //   172  AccessTools.GetTypesFromAssembly: assembly AzuAntiArthriticCrafting => Reflection-
+        //        TypeLoadException ... Auga.CraftingControls:InputAmount ... 'ui_lib' (x2, with a
+        //        native Assembly.GetTypes stack each)
+        //   184  AccessTools.TypeByName: Could not find type named PrivilegeManager
+        //   185  wrist menu WITHHELD 2 of 27                <- ActionAvailability.Refresh, AFTER
+        //   187  misc ring rebuild took 1146.5ms: visibleEntries=1140.6
+        //
+        // So the second and a bit did NOT come from ActionAvailability.Refresh, which had not even
+        // run yet when it was spent, and which for this config is 27 dictionary lookups (no entry
+        // uses the '*' form, so GetPrefabNames is never called). It came from HERE: AccessTools
+        // .TypeByName exhausting every loaded assembly with Assembly.GetTypes() looking for
+        // "PrivilegeManager", which this install does not have. AdminCheck.IsAdmin() is called at
+        // MiscMenu.cs:243, inside the phase the log calls visibleEntries.
+        //
+        // Measured on this box against the operator's exact 111-plugin profile plus the game's
+        // Managed directory - 244 assemblies in the domain, 47405 types, 104 of them throwing
+        // ReflectionTypeLoadException:
+        //
+        //   AccessTools.TypeByName("PrivilegeManager")   2793.8 ms first, 591.4 ms repeated
+        //   AccessTools.TypeByName("ZSteamSocket")          5.8 ms  (a hit; stops at the assembly)
+        //   one Assembly.GetTypes() sweep of all 244       76133 ms cold, 230-250 ms warm
+        //   Assembly.GetType(name) sweep of all 244          7.6 ms first, 0.32 ms steady
+        //   Assembly.GetType(name) sweep, a hit             0.06-0.09 ms
+        //
+        // Hence this resolver. Assembly.GetType is a name lookup in one assembly's type table;
+        // GetTypes() materialises every type in it, which is what costs the second and what raises
+        // the TypeLoadExceptions at :172-183. Nothing here needs a full type list: all three names
+        // asked for below are engine or game types with an exact namespace-qualified spelling, so
+        // the cheap lookup answers the same question. TypeCache is deliberately NOT changed - its
+        // callers ask for mod types by partial name, which is what TypeByName is for.
         private static readonly Dictionary<string, Type> _typeCache = new Dictionary<string, Type>();
 
         private static Type CachedType(string name)
         {
             Type t;
             if (_typeCache.TryGetValue(name, out t)) return t;
-            t = TypeCache.Get(name);
+            t = ExactType(name);
             _typeCache[name] = t;
             if (t == null)
             {
                 NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
                     + "type '" + name + "' is not present in this modpack; remembering that so the"
-                    + " assembly scan is not repeated");
+                    + " lookup is not repeated");
             }
             return t;
+        }
+
+        // Fully-qualified name, asked of each assembly's type table rather than of its type list.
+        private static Type ExactType(string name)
+        {
+            Type t = Type.GetType(name, false);
+            if (t != null) return t;
+            Assembly[] loaded = AppDomain.CurrentDomain.GetAssemblies();
+            for (int i = 0; i < loaded.Length; i++)
+            {
+                try
+                {
+                    t = loaded[i].GetType(name, false);
+                    if (t != null) return t;
+                }
+                catch { }   // a broken assembly answers for itself only, and is skipped
+            }
+            return null;
         }
 
         private static string LocalUserIdAnySource(object znet)
@@ -169,6 +219,23 @@ namespace NeuralyzeVRFixes
                 return user.ToString();
             }
             catch { return ""; }
+        }
+
+        // FIRST resolution, deliberately not on a menu-open frame.
+        //
+        // ExactType above turns the one-off cost from 1140.6 ms into a measured 7.6 ms, but 7.6 ms
+        // is still half a 72Hz frame and the frame it used to land on was the worst one available:
+        // the operator pressing a button and watching a menu appear. Called once from LateUpdate,
+        // which is already gated on InWorld() - a local player, a ZNetScene and a Hud - so it
+        // spends that half frame on an ordinary in-world frame instead, and the admin verdict is in
+        // the log from world entry rather than from whenever the wrist strip is first opened.
+        private static bool _warmed;
+
+        internal static void Warm()
+        {
+            if (_warmed) return;
+            _warmed = true;
+            IsAdmin();
         }
 
         internal static bool IsAdmin()

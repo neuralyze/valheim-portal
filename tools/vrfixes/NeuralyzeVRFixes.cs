@@ -471,6 +471,9 @@ namespace NeuralyzeVRFixes
             // attach state rather than describing a world that has not been set up yet.
             if (RestoreShieldBlock.Value) Guard("shieldBlockAttach", delegate { ShieldBlockAttach.Install(harmony); });
             if (LogShieldBlocks.Value) Guard("shieldDiagnostics", delegate { ShieldDiagnostics.Install(harmony); });
+            // Outside the misc-menu block: the helm verdict is printed from the Use press in
+            // DirectActionInvoker, which is gated on DirectActions, not on the wrist ring.
+            Guard("helmRequestWatch", delegate { HelmRequestWatch.Install(harmony); });
             if (MiscMenuEnabled.Value)
             {
                 Guard("miscMenuLoad", delegate { MiscMenu.Load(MiscMenuActions.Value); });
@@ -565,6 +568,11 @@ namespace NeuralyzeVRFixes
         private void LateUpdate()
         {
             if (!InWorld()) return;
+            // Resolves the local user id once, here rather than on the frame the wrist menu is
+            // first opened. Measured 2026-08-25: that resolution cost the operator 1140.6 ms of a
+            // 1146.5 ms frame - see the AdminCheck.CachedType comment for the log ordering that
+            // proves it was this and not the availability probe. One bool per frame afterwards.
+            AdminCheck.Warm();
             if (HideHotbarRoot.Value && !_hotbarsDone) { _hotbarsDone = true; DeactivateHotbars(); }
             InputAudit.Tick();
             SteamVRActionWatch.Tick();
@@ -583,6 +591,10 @@ namespace NeuralyzeVRFixes
             // Both cost two cached field reads per frame off a helm and nothing else.
             ShipAnchor.Tick();
             HelmWatch.Tick();
+            // Prints the verdict of a helm attempt half a second after the press, which is the
+            // earliest moment a RequestRespons could have come back. One float compare per frame
+            // with nothing pending.
+            global::NeuralyzeVRFixes.DirectActions.Tick();
             if (SuppressKeyHints.Value || LogHoverText.Value) HoverTextSweeper.Tick();
             if (HideMinimap.Value) MinimapHider.Tick();
             if (LogJumpInput.Value) JumpInputWatch.Tick();
@@ -1373,10 +1385,12 @@ namespace NeuralyzeVRFixes
                     GameObject target = LaserTarget(p) ?? Hover(p) as GameObject;
                     if (target != null)
                     {
+                        // Armed BEFORE the invoke, not after: RPC_RequestRespons can arrive during
+                        // the invoke on a host, and a watch armed afterwards would clear the very
+                        // record it exists to read. Ordering matters here and nowhere else.
+                        DirectActions.NoteHelmAttempt(target);
                         _mInteract.Invoke(p, Args(_mInteract, target));
                         Say("INTERACT invoked on " + target.name);
-                        // Silent refusals are the expensive kind: say which gate closed.
-                        DirectActions.ExplainHelm(target);
                     }
                     else if (NeuralyzeVRFixesPlugin.TriggerAttacks.Value && _mStartAttack != null)
                     {

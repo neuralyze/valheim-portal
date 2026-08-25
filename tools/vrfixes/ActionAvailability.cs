@@ -63,6 +63,23 @@ namespace NeuralyzeVRFixes
         private static readonly Dictionary<string, string> _withheld = new Dictionary<string, string>();
         private static readonly HashSet<string> _kept = new HashSet<string>();
 
+        // HOW MUCH OF THE LIST ONE CALL MAY PROBE.
+        //
+        // Refresh is called from the menu rebuild, which is a frame the operator is watching a menu
+        // appear on, so no single call may take an unbounded amount of work. For this config the
+        // whole pass is 27 dictionary lookups and costs nothing measurable - but the '*' form asks
+        // ZNetScene.GetPrefabNames(), which builds a List<string> of every prefab on the install,
+        // and there is no upper bound on how many entries an Actions line may hold. A budget makes
+        // the worst frame a property of this constant rather than of somebody's config.
+        //
+        // Un-probed is OFFERED, which is the same fail-open rule as before: "cannot tell" must
+        // never read as "absent", so a list mid-pass shows everything it has not yet judged and
+        // entries disappear only as they are actually measured. At four per rebuild, 27 entries are
+        // warm after seven rebuilds - a tenth of a second of wrist-strip frames.
+        private const int ProbeBudget = 4;
+        private static int _next;               // index into the list being probed
+        private static bool _passReported;
+
         // The ZNetScene the verdicts were measured against. Held rather than a bool because loading
         // a different world builds a new ZNetScene with a different prefab table, and a verdict from
         // the previous world would then be asserted about content nobody has looked at.
@@ -83,6 +100,9 @@ namespace NeuralyzeVRFixes
             _withheld.Clear();
             _kept.Clear();
             _measuredAgainst = null;
+            _next = 0;
+            _passReported = false;
+            _prefabNames = null;
         }
 
         // False only for an entry measured and found to have no backing content.
@@ -91,8 +111,14 @@ namespace NeuralyzeVRFixes
             return entry == null || !_withheld.ContainsKey(Key(entry));
         }
 
-        // Probes the WHOLE list in one pass, not one group at a time, so the report is complete the
-        // first time it prints rather than filling in as the operator wanders into groups.
+        // Whether every entry has a verdict yet, so the open line can say "so far" instead of
+        // stating a partial count as if it were final.
+        internal static bool PassComplete { get { return _passReported; } }
+
+        // Probes up to ProbeBudget entries of the list, in list order, resuming where the last call
+        // stopped. It walks the WHOLE list rather than the current group so the report is complete
+        // when it prints rather than filling in as the operator wanders into groups; the budget is
+        // what keeps that from being one frame's problem.
         internal static void Refresh(List<MiscMenu.Entry> entries)
         {
             if (entries == null || entries.Count == 0) return;
@@ -106,11 +132,18 @@ namespace NeuralyzeVRFixes
                 if (scene == null || Player.m_localPlayer == null) return;
                 IDictionary commands = Commands();
                 if (commands == null || commands.Count == 0) return;
-                if (ReferenceEquals(_measuredAgainst, scene)) return;
 
-                _measuredAgainst = scene;
-                _withheld.Clear();
-                _kept.Clear();
+                if (!ReferenceEquals(_measuredAgainst, scene))
+                {
+                    // A new world: every verdict belonged to the previous prefab table.
+                    _measuredAgainst = scene;
+                    _withheld.Clear();
+                    _kept.Clear();
+                    _prefabNames = null;
+                    _next = 0;
+                    _passReported = false;
+                }
+                if (_passReported) return;
 
                 // The two game lookups are bound once, here, and the decision itself is a pure
                 // function of them (Explain). That split is not decoration: it is the only way this
@@ -120,17 +153,28 @@ namespace NeuralyzeVRFixes
                 Func<string, bool> commandExists = delegate(string verb) { return commands.Contains(verb); };
                 Func<string, bool> prefabExists = delegate(string name) { return PrefabExists(scene, name); };
 
+                int spent = 0;
+                while (_next < entries.Count && spent < ProbeBudget)
+                {
+                    MiscMenu.Entry e = entries[_next];
+                    _next++;
+                    string key = Key(e);
+                    if (_withheld.ContainsKey(key) || _kept.Contains(key)) continue;  // already judged, free
+                    spent++;
+                    string reason = Explain(e.Kind, e.Value, commandExists, prefabExists);
+                    if (reason == null) _kept.Add(key); else _withheld[key] = reason;
+                }
+                if (_next < entries.Count) return;   // more to do next rebuild
+
+                // The pass is complete, so the report is complete. Printed once per world.
+                _passReported = true;
                 List<string> gone = new List<string>();
                 foreach (MiscMenu.Entry e in entries)
                 {
                     string key = Key(e);
                     string reason;
-                    if (!_withheld.TryGetValue(key, out reason) && !_kept.Contains(key))
-                    {
-                        reason = Explain(e.Kind, e.Value, commandExists, prefabExists);
-                        if (reason == null) _kept.Add(key); else _withheld[key] = reason;
-                    }
-                    if (reason != null) gone.Add("'" + Path(e) + "' (" + key + ") - " + reason);
+                    if (_withheld.TryGetValue(key, out reason))
+                        gone.Add("'" + Path(e) + "' (" + key + ") - " + reason);
                 }
 
                 if (gone.Count == 0)
@@ -152,6 +196,9 @@ namespace NeuralyzeVRFixes
                 // unset, which offers everything, exactly as before this file existed.
                 _measuredAgainst = null;
                 _withheld.Clear();
+                _next = 0;
+                _passReported = false;
+                _prefabNames = null;
                 NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
                     + "wrist menu availability probe failed, offering every entry: " + ex.Message);
             }
@@ -202,6 +249,15 @@ namespace NeuralyzeVRFixes
             return null;
         }
 
+        // The whole prefab name table, built at most once per world.
+        //
+        // ZNetScene.GetPrefabNames() allocates a List<string> and fills it from the prefab table -
+        // thousands of names with a hundred mods loaded - and it is the one call in this file that
+        // is not a hash lookup. Without this, an Actions line with five '*' entries built that list
+        // five times inside one rebuild. Cleared with the verdicts whenever the ZNetScene changes,
+        // because a new world has a different table.
+        private static List<string> _prefabNames;
+
         private static bool PrefabExists(ZNetScene scene, string name)
         {
             // A trailing star is vanilla's "one of everything containing this word" mode, which
@@ -212,7 +268,8 @@ namespace NeuralyzeVRFixes
             {
                 string stem = name.Substring(0, name.Length - 1);
                 if (stem.Length == 0) return true;
-                List<string> names = scene.GetPrefabNames();
+                if (_prefabNames == null) _prefabNames = scene.GetPrefabNames();
+                List<string> names = _prefabNames;
                 if (names == null) return true;
                 for (int i = 0; i < names.Count; i++)
                 {

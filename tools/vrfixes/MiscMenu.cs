@@ -277,8 +277,11 @@ namespace NeuralyzeVRFixes
         // and lays them out as two rows of four at a fixed 0.05m pitch - and that is the strip shape
         // the operator already knows, so the FOOTPRINT count stays eight. What changed on
         // 2026-08-25 is that the eight is an array length, not a layout law: the extra-element loop
-        // in reorderElements ends `ldc.i4.8 / blt` - a literal, verified by Cecil against the
-        // shipped ValheimVRMod.dll (md5 0beed51d) - so VHVR never activates, positions or
+        // in reorderElements ends `ldc.i4.8 / blt` - a literal, verified by Cecil against BOTH
+        // ValheimVRMod.dll builds on this machine: md5 0beed51d, which build.sh references from the
+        // Vangard profile, and md5 69a2644f, which is the one the operator's Hrafnheim profile
+        // actually loads. Exactly one ldc.i4.8 in that method in each - so VHVR never activates,
+        // positions or
         // deactivates an index at or above 8. Those indices are ours alone once the array is
         // longer, and extraElements has exactly ONE stfld in the whole assembly, in Awake, so a
         // grown array stays grown with no per-frame work to sustain it.
@@ -633,6 +636,26 @@ namespace NeuralyzeVRFixes
                 NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
                     + "misc menu hooked into QuickAbstract.reorderElements (prefix populates, postfix"
                     + " packs the navigation triple into one footprint)");
+
+                // And hoverItem, for the highlight. Separate from the pair above because it is a
+                // separate object with a separate owner: reorderElements lays out the ELEMENTS,
+                // hoverItem moves the one shared hoveredItem sprite. See AfterHover for why the
+                // scale cannot be written from the layout postfix.
+                MethodInfo hover = AccessTools.Method(qa, "hoverItem");
+                MethodInfo afterHover = typeof(MiscMenu).GetMethod("AfterHover", BindingFlags.Static | BindingFlags.NonPublic);
+                if (hover == null)
+                {
+                    NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                        + "QuickAbstract.hoverItem not found; the navigation buttons keep VHVR's"
+                        + " full-size hover highlight");
+                }
+                else
+                {
+                    harmony.Patch(hover, postfix: new HarmonyMethod(afterHover));
+                    NeuralyzeVRFixesPlugin.Log.LogInfo(NeuralyzeVRFixesPlugin.Tag
+                        + "misc menu hooked into QuickAbstract.hoverItem (sizes the shared hover"
+                        + " highlight to the button under the finger)");
+                }
             }
             catch (Exception e)
             {
@@ -955,7 +978,11 @@ namespace NeuralyzeVRFixes
                         + doors.Count + " subgroup door(s) and " + entries.Count
                         + " action(s) on this level. Of " + _entries.Count + " configured actions "
                         + offered + " are offered and " + (_entries.Count - offered)
-                        + " withheld for absent content. Navigation: " + nav
+                        + (ActionAvailability.PassComplete
+                            ? " withheld for absent content."
+                            : " withheld so far - the availability probe is still running, four"
+                              + " entries per rebuild, and anything not yet judged is offered.")
+                        + " Navigation: " + nav
                         + " small button(s) sharing the leftmost footprint - '" + CloseLabel()
                         + "'" + (nav == NavSlots
                             ? ", '" + NavPrev + "' previous page, '" + NavNext + "' next page"
@@ -1109,6 +1136,148 @@ namespace NeuralyzeVRFixes
                 bool live = i < liveCount;
                 if (go.activeSelf != live) go.SetActive(live);
             }
+        }
+
+        // THE HIGHLIGHT, SIZED TO THE BUTTON IT IS HIGHLIGHTING.
+        //
+        // Reported 2026-08-25, after the navigation triple shipped: "better, but when you highlight
+        // the small menus, the highlight is still the full size". Correct, and nothing in LayOut
+        // above could have fixed it, because the highlight is not part of the element.
+        //
+        // Read with Mono.Cecil out of the shipped ValheimVRMod.dll (monodis asserts on that
+        // assembly), and confirmed in BOTH builds on this machine - md5 0beed51d, which build.sh
+        // references, and md5 69a2644f, which the operator's profile actually loads. IL offsets
+        // below are from 0beed51d; 69a2644f has the same calls at 0293/02A4/02D0 for the hoveredItem
+        // reads. Nothing here is compile-bound: every member is reached reflectively, and the four
+        // it needs are present in both (hoveredItem protected GameObject, hoveredIndex protected
+        // Int32, elementCount private Int32, hoverItem private void()).
+        //
+        // QuickAbstract holds `protected GameObject hoveredItem`: ONE object per menu
+        // instance, newobj'd in initialize (IL_012D) and parented to the QuickAbstract root with
+        // SetParent(transform, false) at IL_0147-0159 - a SIBLING of the elements, not a child of
+        // the hovered one, which is exactly why an element's localScale never reached it. initialize
+        // scales it once, `localScale *= 4f` at IL_015F-0179, and gives it a SpriteRenderer holding
+        // the 1x1 tex_hovered sprite. hoverItem then, every frame, writes only set_position,
+        // set_rotation and SetActive on it (IL_0271-02B2) - there is no localScale write in
+        // hoverItem, Update or reorderElements in EITHER build, checked instruction by instruction.
+        // So one write from outside holds, and nothing has to be restated per frame beyond deciding
+        // what it should be.
+        //
+        // Written from a POSTFIX on hoverItem rather than from AfterReorder: hoveredIndex is
+        // computed inside hoverItem, and Update calls reorderElements first, so reading it from the
+        // layout postfix would size this frame's highlight from last frame's hover - a visible
+        // full-size flash on the frame the finger arrives.
+        //
+        // The base scale is remembered per highlight OBJECT, not per menu, because a re-initialize
+        // makes a new GameObject with a fresh `*= 4f` applied to a fresh (1,1,1); keying on the menu
+        // would multiply our factor into a stale base. Two slots, because VHVR constructs exactly
+        // two QuickAbstract subclasses (StaticObjects.addQuickMenus: LeftHandQuickMenu and
+        // RightHandQuickMenu) and therefore exactly two highlights.
+        private static FieldInfo _hoveredItemField, _hoveredIndexField, _elementCountField;
+        private static bool _hoverResolved;
+        private static readonly GameObject[] _hlObject = new GameObject[2];
+        private static readonly Vector3[] _hlBase = new Vector3[2];
+
+        // Bound against QuickAbstract, where all three are declared, rather than against whichever
+        // subclass happened to call first - both subclasses inherit the same three fields, so a
+        // handle taken from either is the same handle, and naming the declaring type says so.
+        private static bool ResolveHover()
+        {
+            if (_hoverResolved) return _hoveredItemField != null;
+            _hoverResolved = true;
+            Type qa = TypeCache.Get("ValheimVRMod.Scripts.QuickAbstract");
+            _hoveredItemField = qa == null ? null : AccessTools.Field(qa, "hoveredItem");
+            _hoveredIndexField = qa == null ? null : AccessTools.Field(qa, "hoveredIndex");
+            _elementCountField = qa == null ? null : AccessTools.Field(qa, "elementCount");
+            if (_hoveredItemField == null || _hoveredIndexField == null || _elementCountField == null)
+            {
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "QuickAbstract hover fields not found (hoveredItem=" + (_hoveredItemField != null)
+                    + " hoveredIndex=" + (_hoveredIndexField != null)
+                    + " elementCount=" + (_elementCountField != null)
+                    + "); the navigation buttons keep VHVR's full-size highlight");
+                _hoveredItemField = null;
+                return false;
+            }
+            return true;
+        }
+
+        private static Vector3 BaseScale(GameObject highlight, Transform t)
+        {
+            for (int i = 0; i < _hlObject.Length; i++)
+                if (ReferenceEquals(_hlObject[i], highlight)) return _hlBase[i];
+            // Captured before we have ever written to this object, so it is VHVR's own 4x value.
+            for (int i = 0; i < _hlObject.Length; i++)
+            {
+                if (_hlObject[i] != null && _hlObject[i] != highlight) continue;
+                _hlObject[i] = highlight;
+                _hlBase[i] = t.localScale;
+                return _hlBase[i];
+            }
+            // Three highlights would mean VHVR grew a third menu; size it from what it has now
+            // rather than from a base we never recorded, which is worse than leaving it alone.
+            return t.localScale;
+        }
+
+        private static int _hlLogged;
+
+        private static void AfterHover(object __instance)
+        {
+            long _t = HookProfiler.Start();
+            try
+            {
+                if (!NeuralyzeVRFixesPlugin.MiscMenuEnabled.Value) return;
+                if (!ResolveHover()) return;
+
+                GameObject highlight = _hoveredItemField.GetValue(__instance) as GameObject;
+                if (highlight == null) return;
+                Transform t = highlight.transform;
+                Vector3 want = BaseScale(highlight, t);
+
+                // A third of the base only for OUR navigation elements, on the strip whose layout we
+                // own, while the page is open. Everything else - VHVR's own radial items, VHVR's own
+                // extra elements, our full-size content buttons, and the closed strip - keeps the
+                // size VHVR chose.
+                //
+                // No _layoutFrame check, unlike AfterReorder. That guard exists there because the
+                // pair is a one-frame handoff of numbers computed for that call. Here _layoutNav is
+                // a description of the strip's current state, which does not expire: QuickAbstract
+                // .Update calls reorderElements before hoverItem in the SAME Update (so the two
+                // subclasses cannot cross), and on any frame where reorderElements is skipped the
+                // strip has not changed and last frame's value is still the right one. Demanding the
+                // same frame would drop the highlight to full size on exactly those frames.
+                int index = Convert.ToInt32(_hoveredIndexField.GetValue(__instance));
+                if (index >= 0 && _layoutNav > 0 && ReferenceEquals(__instance, _layoutOwner))
+                {
+                    // hoverItem stores an extra element as elementCount + its index into
+                    // extraElements (IL_00AA-00B4), which is how a single int addresses both rings.
+                    int extraIndex = index - Convert.ToInt32(_elementCountField.GetValue(__instance));
+                    if (extraIndex >= 0 && extraIndex < _layoutNav)
+                    {
+                        want = want * NavScale;
+                        if (_hlLogged < 1)
+                        {
+                            _hlLogged++;
+                            NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                                + "wrist highlight scaled to " + NavScale.ToString("F2")
+                                + " over navigation button " + extraIndex + " of " + _layoutNav
+                                + " - QuickAbstract.hoveredItem is one shared object parented to the"
+                                + " menu root, so an element's own scale never reached it");
+                        }
+                    }
+                }
+                if (t.localScale != want) t.localScale = want;
+            }
+            catch (Exception e)
+            {
+                // The highlight is cosmetic; a failure here must not take the menu with it, so this
+                // one does NOT set MiscMenuEnabled=false. Resolution is abandoned instead, which
+                // leaves VHVR's full-size highlight - the behaviour being improved on, not a break.
+                _hoveredItemField = null;
+                NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag
+                    + "wrist highlight scaling failed, leaving VHVR's own size: " + e.Message);
+            }
+            finally { HookProfiler.Stop(HookProfiler.Misc, _t); }
         }
 
         private static Transform TransformOf(object element)
