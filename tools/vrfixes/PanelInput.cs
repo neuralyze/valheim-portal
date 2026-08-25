@@ -20,7 +20,7 @@ namespace NeuralyzeVRFixes
     // barber still stop input, because those are cases where movement genuinely conflicts.
     internal static class PanelInput
     {
-        private static MethodInfo _pieceSelection, _minimapOpen;
+        private static MethodInfo _pieceSelection, _minimapOpen, _freeFly, _mapTextInput, _barberVisible;
         private static MethodInfo _consoleVisible, _chatFocus, _chatInstance;
         private static MethodInfo _inventoryVisible, _menuVisible, _storeVisible, _textInputVisible;
         private static MethodInfo _isAttached;
@@ -74,6 +74,15 @@ namespace NeuralyzeVRFixes
             _isAttached  = character  == null ? null : AccessTools.Method(character, "IsAttached");
             _localPlayer = playerType == null ? null : AccessTools.Field(playerType, "m_localPlayer");
             _minimapOpen      = Method("Minimap", "IsOpen");
+            // PlayerController::TakeInput checks three gates the list above did not know about, and
+            // every one of them used to land as "unknown": GameCamera::InFreeFly (av.il:73006), the
+            // map's pin text field (av.il:73028) and the barber (av.il:73055). They are named now
+            // because the helm watch reports this string to the operator's log, and "unknown" is the
+            // one answer a diagnosis cannot act on - it is exactly what left the 2026-08-25 sail
+            // unexplained.
+            _freeFly       = Method("GameCamera", "InFreeFly");
+            _mapTextInput  = Method("Minimap", "InTextInput");
+            _barberVisible = Method("PlayerCustomizaton", "IsBarberGuiVisible");
             Type chat = TypeCache.Get("Chat");
             if (chat != null)
             {
@@ -93,6 +102,41 @@ namespace NeuralyzeVRFixes
         {
             if (method == null) return false;
             try { return Convert.ToBoolean(method.Invoke(null, null)); } catch { return false; }
+        }
+
+        // Which gate is holding input shut, by name.
+        //
+        // Shared with HelmWatch rather than duplicated, because a second copy of this list is how
+        // the first one fell behind PlayerController::TakeInput. The order follows that method's own
+        // order (av.il:73006-73069) so the name reported is the gate the game would have hit first;
+        // the gamepad-gated four are checked last because ZInput::IsGamepadActive() (au.il:36849-
+        // 36871) is "m_inputSource == Gamepad", which a headset does not set - VHVR forces it true
+        // only inside PlayerController::LateUpdate (ControlPatches.cs:200-235), NOT in TakeInput -
+        // so in VR those four are usually short-circuited off and are the LEAST likely answer.
+        internal static string BlockingGate()
+        {
+            Resolve();
+            return True(_freeFly) ? "freeFly"
+                 : ChatFocused() ? "chat"
+                 : True(_menuVisible) ? "menu"
+                 : True(_consoleVisible) ? "console"
+                 : True(_textInputVisible) ? "textInput"
+                 : True(_mapTextInput) ? "mapText"
+                 : True(_minimapOpen) ? "map"
+                 : True(_inventoryVisible) ? "inventory"
+                 : True(_storeVisible) ? "store"
+                 : True(_pieceSelection) ? "buildMenu"
+                 : True(_barberVisible) ? "barber"
+                 : "unknown";
+        }
+
+        // Whether the rescue below would stand down for this gate. Read by the helm watch: at a
+        // helm this is always true, and that is the difference between "a panel is shut" and "a
+        // panel is shut AND nothing will reopen it".
+        internal static bool WouldDecline(string gate)
+        {
+            Resolve();
+            return gate == "menu" || Attached();
         }
 
         private static void After(ref bool __result)
@@ -124,15 +168,7 @@ namespace NeuralyzeVRFixes
             }
             _reasonFrame = UnityEngine.Time.frameCount;
 
-            string reason = True(_consoleVisible) ? "console"
-                          : ChatFocused() ? "chat"
-                          : True(_textInputVisible) ? "textInput"
-                          : True(_inventoryVisible) ? "inventory"
-                          : True(_storeVisible) ? "store"
-                          : True(_menuVisible) ? "menu"
-                          : True(_pieceSelection) ? "buildMenu"
-                          : True(_minimapOpen) ? "map"
-                          : "unknown";
+            string reason = BlockingGate();
 
             // Two gates must stay shut, both learned from a stuck session.
             //
@@ -142,7 +178,7 @@ namespace NeuralyzeVRFixes
             // Attachment - a helm, a saddle, a chair - routes movement into the mounted controller
             // instead of the legs. Overriding that is what made a raft's rudder impossible to let go
             // of: the player was steering, and every grip kept feeding the helm.
-            bool decline = reason == "menu" || Attached();
+            bool decline = WouldDecline(reason);
 
             if (reason != _lastReason)
             {

@@ -91,6 +91,8 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<string> AnchorGrip;
         internal static ConfigEntry<string> AnchorKey;
         internal static ConfigEntry<bool> WatchHelm;
+        internal static ConfigEntry<bool> BoatRelativeStick;
+        internal static ConfigEntry<float> ShipSpeedDeadzone;
         internal static ConfigEntry<bool> LogShieldBlocks;
 
         private void Awake()
@@ -245,6 +247,25 @@ namespace NeuralyzeVRFixes
                 "The anchor hotkey to deliver, in the same form the hover menu's 'Anchor=key:LeftShift+F' entry " +
                 "uses. The anchor is a mod's, not the game's - vanilla Ship has no anchor at all - so this has to " +
                 "match that mod's own binding. BoatAdditions calls it 'Anchor Key' and ships 'F + LeftShift'.");
+
+            BoatRelativeStick = Config.Bind("12 - Mounts", "BoatRelativeStick", true,
+                "Read the left thumbstick RAW while you are steering a vehicle, instead of through VHVR's " +
+                "look-locomotion rotation. VHVR rotates that stick into the direction you are LOOKING " +
+                "(VRControls.cs:614-639), which is right on foot and wrong at a helm: the game bolts your body " +
+                "to the helm every frame, so the boat's axes are the only axes there are. Rotated, a straight " +
+                "forward push arrives as cos(head-off-heading) on the speed axis and the rest on the rudder - " +
+                "which reads exactly as \"boat seems to randomly change controls\" and, past 26 degrees off the " +
+                "heading, makes VHVR's 0.9 speed deadzone unreachable at full deflection. Only active while you " +
+                "hold a vehicle's controls; sitting in a chair is untouched.");
+
+            ShipSpeedDeadzone = Config.Bind("12 - Mounts", "ShipSpeedDeadzone", 0.5f,
+                new ConfigDescription(
+                    "How far the thumbstick must go forward or back before a vehicle changes speed, with " +
+                    "BoatRelativeStick on. VHVR uses 0.9 (ControlPatches.cs:128) to make an accidental speed " +
+                    "change hard, but 0.9 was measured UNREACHABLE in a real session because the value it gates " +
+                    "is rotated first; 0.5 is half deflection, which a thumbstick reaches deliberately and not by " +
+                    "resting. It is not allowed to be zero: a resting stick must never creep the ship.",
+                    new AcceptableValueRange<float>(0.15f, 0.95f)));
 
             WatchHelm = Config.Bind("9 - Diagnostics", "WatchHelm", true,
                 "Records one line, at Message level so it reaches the disk log, whenever something material " +
