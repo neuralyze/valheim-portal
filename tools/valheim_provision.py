@@ -13,9 +13,10 @@ import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 if __package__:
-    from . import portal_paths, valheim_world, valheim_worldgen
+    from . import portal_paths, profile_store, valheim_world, valheim_worldgen
 else:
     import portal_paths
+    import profile_store
     import valheim_world
     import valheim_worldgen
 
