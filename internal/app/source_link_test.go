@@ -158,6 +158,46 @@ func TestPagesThatHandOutValheimVROfferItsSource(t *testing.T) {
 	}
 }
 
+// An offer is a statement of fact, and this one had two false ones: "each published
+// build is tagged" and an unconditional promise to publish any missing revision. A
+// census of every published artifact on 2026-08-26 found seven distinct
+// ValheimVRMod.dll files and exactly one shipped/ tag, and the Flat companion's DLL
+// (3fe2ce08) corresponds to no commit that exists - it carries string literals that
+// enter the history at 1d6ea02 while lacking the HarmonyPrepare typeref from 5ea5183,
+// an ancestor of 1d6ea02, so no commit can hold both states.
+//
+// This test guards the shape rather than the prose: an offer may not claim every build
+// is tagged, and while a published build has no corresponding source it must say so
+// where the recipient reads it. The failure mode is silent and comfortable - wording
+// that reads as discharged - so it gets a test rather than a reviewer's memory.
+func TestTheOfferDoesNotClaimEveryBuildHasCorrespondingSource(t *testing.T) {
+	server := testServer(t)
+	server.cfg.VHVRSourceURL = "https://git.example.invalid/neuralyze/vhvr-fork"
+	threeProfileWorld(t, server)
+
+	body := playerPage(t, server, "/releases/vr")
+	// Control: this is the page that carries the offer at all.
+	if !strings.Contains(body, server.cfg.VHVRSourceURL) {
+		t.Fatalf("the release page does not carry the ValheimVR offer: %s", body)
+	}
+	for _, claim := range []string{
+		"Each published build is tagged",
+		"we will publish that revision",
+	} {
+		if strings.Contains(body, claim) {
+			t.Fatalf("the offer makes a claim that is false for 6 of 7 published builds: %q", claim)
+		}
+	}
+	// The disclosure has to name the binaries, because a recipient identifies their copy
+	// by its SHA-256 and by nothing else we publish. Both builds fail the same way: each
+	// holds part of commit 1d6ea02 without the rest of it, so neither can be any commit.
+	for _, lost := range []string{"3fe2ce08", "c2519916"} {
+		if !strings.Contains(body, lost) {
+			t.Fatalf("the offer does not disclose published build %s, whose source is lost: %s", lost, body)
+		}
+	}
+}
+
 // The pages are only half the surface. Four routes move the actual bytes -
 // /artifacts/{id}, /history/artifacts/{id}, /client/companion/... and
 // /client/runtime/... - and the last two are fetched by the Windows launcher with no

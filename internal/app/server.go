@@ -1954,19 +1954,55 @@ const playerAccountNavigation = portalNavigationStyles + `<nav class="portal-acc
 // release page's artifact list. An offer on a page nobody downloading it will see is
 // not compliance.
 //
-// The tag sentence is the correspondence half of section 6: the licence owes the
-// source for the binary a person received, not merely for the project. Naming tags by
-// the DLL's own SHA-256 means a recipient can find their revision from the file in
-// their hands, knowing nothing about our release numbering. The last sentence is not
-// filler - as written, one currently published build (the Flat companion's DLL, built
-// 2026-07-26 from a working tree that predates every commit on the branch) has no such
-// tag, so promising one unconditionally would be a false statement.
+// The correspondence sentences are the section 6 half: the licence owes the source for
+// the binary a person received, not merely for the project. Naming tags by the DLL's own
+// SHA-256 lets a recipient find their revision from the file in their hands, knowing
+// nothing about our release numbering.
+//
+// They are worded per binary because a census of every published artifact on 2026-08-26
+// found seven distinct ValheimVRMod.dll files across 1793 zips, and exactly one carries a
+// shipped/ tag. So the previous wording - "each published build is tagged", followed by an
+// unconditional "we will publish that revision" - was false twice over, and false in the
+// direction that matters: it read as discharged.
+//
+// Three of the seven need saying out loud:
+//
+//   - 99fc2ca9 (534016 bytes, 5 releases) is upstream's own v0.9.21 release binary,
+//     unmodified. The zip we redistribute is byte-identical to upstream's published asset
+//     (sha256 df456997), and its embedded pdb path is the upstream maintainer's machine,
+//     not ours. We compiled nothing, so its source is upstream's tag, not our fork - which
+//     is why the first sentence no longer claims we build every copy.
+//   - 3fe2ce08 (567296 bytes, 147 releases, the Flat companion) corresponds to no commit
+//     that exists and cannot be made to. It carries the two "Non-VR companion mode" string
+//     literals that enter the recorded history only at 1d6ea02, yet lacks the HarmonyPrepare
+//     typeref added by 5ea5183 - an ancestor of 1d6ea02 - and lacks 1d6ea02's own
+//     LogDiagnostic. No commit can hold a descendant's strings without its ancestor's.
+//   - c2519916 (597504 bytes, 2 releases, an earlier Flat companion) fails the same way
+//     from the other side: it has HarmonyPrepare and the same non-VR literals, but still
+//     no LogDiagnostic, which 1d6ea02 adds in the very commit those literals arrive in.
+//
+// Both are builds of intermediate working trees that were never committed, and the cause
+// is visible in the branch itself: the seven commits were authored on 2026-08-18 by
+// grouping finished changes into themed commits, not by replaying how the tree actually
+// evolved, so the order the code was written in (non-VR branch by 07-26, HarmonyPrepare and
+// LogDiagnostic by 07-28) is not the order it was committed in. Builds taken from the tree
+// in between therefore fall between the commits, and no commit reproduces them. 3fe2ce08's
+// pdb path names /media/big4/.../Vangard-Redesign/..., a directory that no longer exists;
+// the tree is in no commit, no stash, no dangling object, and no copy of that source
+// survives anywhere on this host. Promising to publish those revisions was a promise we
+// cannot keep, and saying nothing would leave 149 releases pointing a player at source
+// that does not describe their binary.
+//
+// Naming the failing builds here is the point: the offer is where a recipient looks, so an
+// offer that cannot be met has to say so there rather than in a repository note.
 const vhvrSourceOffer = `<section class="vhvr-source"><h2>ValheimVR source</h2>` +
 	`<p>ValheimVRMod.dll is <a href="https://github.com/brandonmousseau/vhvr-mod" rel="noopener noreferrer external" target="_blank">ValheimVR</a>, licensed GPL-3.0. ` +
-	`We compile it ourselves from patched source, and the GPL obliges us to offer you that source. ` +
-	`It is public at <a href="{{.VHVRSourceURL}}" rel="noopener noreferrer external" target="_blank">{{.VHVRSourceURL}}</a>, branch <code>neuralyze/local</code>. ` +
-	`Each published build is tagged there under <code>shipped/</code> with the SHA-256 of the ValheimVRMod.dll it produced, so you can find the revision your copy was built from. ` +
-	`If your copy's SHA-256 names no tag, ask the world owner and we will publish that revision.</p></section>`
+	`Some downloads carry upstream's own release binary unchanged, and for those the source is upstream's repository at the matching release tag. ` +
+	`The copies we compile ourselves come from our fork, public at <a href="{{.VHVRSourceURL}}" rel="noopener noreferrer external" target="_blank">{{.VHVRSourceURL}}</a>, branch <code>neuralyze/local</code>. ` +
+	`Where we can identify the build, it is tagged there under <code>shipped/</code> with the SHA-256 of the ValheimVRMod.dll it produced, so you can find your revision from the file in your hands. ` +
+	`Two published builds have no such tag and cannot be given one: the Flat companion's ValheimVRMod.dll with SHA-256 beginning <code>3fe2ce08</code>, and an earlier Flat companion's beginning <code>c2519916</code>. ` +
+	`Both were compiled from working trees that were never committed and no longer exist, so we cannot name a revision that corresponds to them, and we are not going to point you at one that does not describe your copy. ` +
+	`If your copy's SHA-256 names no tag, ask the world owner: where the revision survives we will publish it, and where it does not we will replace the binary with one whose source we can name.</p></section>`
 
 var loginPageTemplate = strings.Replace(strings.Replace(loginTemplate, `<head>`, `<head><link rel="icon" href="/favicon.ico" sizes="any"><link rel="manifest" href="/site.webmanifest"><meta name="theme-color" content="#123728">`, 1), `<body>`, `<body>`+loginAdminNavigation, 1)
 

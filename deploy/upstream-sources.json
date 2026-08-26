@@ -14,7 +14,58 @@
       "local_changes": "Branch neuralyze/local: seven commits rebased onto upstream 50d333d, no longer an uncommitted tree. Three are offered upstream - the non-VR HarmonyPrepare guards and the csproj SkipReleasePackaging condition as PR #704, the stray using Microsoft.SqlServer.Server removal as PR #706; one is the BodyPose workaround behind issue #705; the rest are startup-stage reporting, name-based tracker role resolution, and the Mono/Linux compilation fixes. The mod is built from this branch on this host with scripts/build-valheimvr.sh. Rebase onto a new upstream tip to carry the patches forward. Untracked beside it: build/ (reference assemblies, plus a bepinex/ copy the build reads) and four vhvr-0.9.21*.zip archives, none of them source.",
       "published_fork": "https://github.com/neuralyze/vhvr-mod",
       "published_note": "GPL-3.0 source offer. Branch neuralyze/local pushed to the fork 2026-08-25 at 23f0ce4526cd and publicly reachable; the portal links it from the world page and from the release pages of releases carrying a flat_companion or vr_runtime (PORTAL_VHVR_SOURCE_URL). Correspondence is anchored per binary, not per release version, because release versions are the portal's and mean nothing upstream: each published ValheimVRMod.dll gets a tag shipped/valheimvrmod-<first 12 hex of its sha256> on the commit it was built from. Pushed so far: shipped/valheimvrmod-f879224e030c -> 23f0ce4526cd, the DLL inside vr-runtime-2.2.5-nospawnprobe.zip served as hrafnheim-vr 2.5.111 and doggerland/storgard/vangard-vr 2.5.36. mcs is not reproducible - two compiles of one tree differ in ~77800 of 600064 bytes - so a build is matched by size plus source markers, not by hash.",
-      "correspondence_gap": "The published Flat companion companion-normalised.zip carries ValheimVRMod.dll sha256 3fe2ce0874f2, 567296 bytes, and NO commit on neuralyze/local can produce it: it lacks the HarmonyPrepare typeref added by 5ea5183 and the LogDiagnostic string added by 1d6ea02, its size matches none of the four configurations at 23f0ce4 (600064 / 600576 / 632320 / 632320), and its embedded pdb path names /media/big4/projects/game/valheim/Vangard-Redesign/... , a checkout directory that no longer exists. It is byte-identical to build/latest/ValheimVRMod.dll dated 2026-07-26, three weeks before the branch was authored, when the changes were still an uncommitted tree; the reflog starts 2026-08-18, so that tree is not recoverable. Closing this needs a rebuild from a commit on the branch and a republish of the Flat companion, then its shipped/ tag. Until then the offer is truthful about the project and cannot name the revision for that one binary."
+      "correspondence_gap": "Audited 2026-08-26 by hashing ValheimVRMod.dll inside all 1793 published zips under the artifact root. Seven distinct binaries are published and exactly one carries a shipped/ tag, so the previous claim that every published build is tagged was wrong about six of them; the offer text on the pages has been corrected to say what is true per binary. Two of the seven can never be given a tag: 3fe2ce08 (the Flat companion, 147 releases) and c2519916 (an earlier Flat companion, 2 releases). Each holds part of commit 1d6ea02 without the rest of it - both carry the two \"Non-VR companion mode\" literals that enter the history only at 1d6ea02, 3fe2ce08 lacks the HarmonyPrepare typeref added by 5ea5183 (an ancestor of 1d6ea02) and c2519916 has it, but neither has 1d6ea02's own LogDiagnostic - and no commit can hold a descendant's strings without its ancestor's, nor half of a single commit. The cause is that the seven commits were authored on 2026-08-18 by grouping finished changes into themed commits rather than replaying how the tree evolved: the non-VR branch was written by 07-26 and HarmonyPrepare and LogDiagnostic by 07-28, but they were committed in the opposite order, so builds taken from the tree in between fall between the commits. Correcting an earlier note: the reflog does not start 2026-08-18, it starts 2026-07-26 04:15:44 with the clone of upstream at a10f24fc - 43 minutes before 3fe2ce08 was compiled - and it still does not help, because the intermediate tree was never committed. Searched and not found: no commit, no stash, no dangling object (the four dangling blobs are the vhvr-0.9.21*.zip archives), and no second copy of the source - a find for ValheimVRMod.cs across every mounted big drive returns exactly one checkout. Closing those two therefore needs a rebuild from a commit on the branch and a republish, which is a deliberate publish decision and not a repo change; until then the offer names both binaries and says we cannot name their revision, which is the honest state rather than a discharged-looking one.",
+      "published_binaries": [
+        {
+          "sha256_prefix": "f879224e030c",
+          "size": 600064,
+          "releases": 72,
+          "corresponds_to": "neuralyze/local 23f0ce4526cd, tagged shipped/valheimvrmod-f879224e030c",
+          "evidence": "Built with scripts/build-valheimvr.sh (mcs) from the branch tip; carries HarmonyPrepare, LogDiagnostic and the non-VR literals, and embeds no pdb path, which is how an mcs build differs from the retired MSBuild path. This is the DLL in vr-runtime-2.2.5-nospawnprobe.zip, including the live hrafnheim-vr 2.5.120."
+        },
+        {
+          "sha256_prefix": "99fc2ca91a2d",
+          "size": 534016,
+          "releases": 5,
+          "corresponds_to": "upstream tag v0.9.21 (c91696fd12d9) - not our fork, we compiled nothing",
+          "evidence": "vhvr-0.9.21.zip beside the checkout is byte-identical to upstream's own release asset (sha256 df4569977a80, 6813388 bytes, downloaded and compared 2026-08-26) and the DLL inside it hashes to 99fc2ca9. Its embedded pdb path is C:\\Users\\hxlio\\Source\\Repos\\vhvr-mod\\..., the upstream maintainer's machine. Redistribution of an unmodified upstream binary, so the source is upstream's."
+        },
+        {
+          "sha256_prefix": "298a0bc3ab68",
+          "size": 566784,
+          "releases": 254,
+          "corresponds_to": "unknown, consistent with upstream a10f24fc6099 but unproven; untagged",
+          "evidence": "Our build: pdb path /media/big4/.../Vangard-Redesign/mods/custom/ValheimVR-latest/ValheimVRMod/obj/Release/net46. No fork markers and no non-VR branch, and every string literal in it is accounted for by a10f24fc's source (the 53 that do not match verbatim are PE version-resource fields and source literals split across lines). Not provable either way here: the original compiler was MSBuild on a host that is gone, and our mcs cannot build that tree against our own reference assemblies without 58f4330, which itself adds string literals. Do not tag it on this evidence."
+        },
+        {
+          "sha256_prefix": "3fe2ce0874f2",
+          "size": 567296,
+          "releases": 147,
+          "corresponds_to": "no commit that exists, and none can be made to correspond",
+          "evidence": "Carries 1d6ea02's two non-VR literals, lacks 5ea5183's HarmonyPrepare typeref (its ancestor) and lacks 1d6ea02's LogDiagnostic; controls HarmonyPatch, LogInfo and VHVRConfig are all present, so the absences are real. Same vanished Vangard-Redesign pdb path as 298a0bc3, and its literal set is exactly 298a0bc3's plus those two strings - which are compiled in every configuration, not gated by NONVRMODE, so this is a different source state and not a different build config. This is the Flat companion in companion-normalised.zip."
+        },
+        {
+          "sha256_prefix": "c25199169735",
+          "size": 597504,
+          "releases": 2,
+          "corresponds_to": "no commit that exists, and none can be made to correspond",
+          "evidence": "Has HarmonyPrepare and 1d6ea02's non-VR literals but not 1d6ea02's LogDiagnostic, so it is half of one commit. Releases hrafnheim-flat 2.1.3 and 2.1.4, still reachable through the history routes."
+        },
+        {
+          "sha256_prefix": "b38b81733bfc",
+          "size": 569344,
+          "releases": 2,
+          "corresponds_to": "unknown, consistent with a commit at or after 1d6ea02; untagged",
+          "evidence": "All three fork markers present. pdb path /src/ValheimVRMod/obj/Release/net46, a container build rather than either known host path. Published as vhvr-0.9.21-diag.zip and vhvr-0.9.21-no-base-assetbundle.zip; the 0.9.21 in those names is ours, not upstream's."
+        },
+        {
+          "sha256_prefix": "823dbb4fdd67",
+          "size": 566272,
+          "releases": 2,
+          "corresponds_to": "unknown, consistent with a commit at or after 1d6ea02; untagged",
+          "evidence": "All three fork markers present, no embedded pdb path. Published as vhvr-0.9.21-safe.zip."
+        }
+      ]
     },
     {
       "id": "valheim-server-docker",
