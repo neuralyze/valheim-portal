@@ -424,6 +424,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reading "we handle the mods" would speak for whichever operator deployed the
   build, not for this project. The README masthead carries the same line, and the
   landing-page screenshot was regenerated to match.
+- The VR sections of the player guide were re-derived from the shipped plugin sources and the
+  shipped client config rather than from an earlier revision, and eight claims were corrected.
+  The parry instruction was actively wrong: it told players to swing the weapon while blocking,
+  which is the weapon-block rule, when a shield parry is a shove of the shield hand and the
+  weapon-hand grip silently prevents one by routing the block timer to `WeaponBlock`, which zeroes
+  its own parry while a shield is blocking. The guide now documents restored shield blocking and
+  what `BlockingType = Realistic` asks of a player, the non-sticky two-handed release, the rebuilt
+  wrist navigation - `CLOSE`/`BACK` and `<`/`>` sharing the leftmost footprint, the `Admin/Spawn`
+  second level, and entries withheld for absent content - the left-grip anchor and which hulls
+  carry an anchor fitting, boat-relative steering, and map zoom no longer dodging. Three stale
+  claims went with them: the boat throttle is the **left** stick and the hover highlight the
+  right, so there is no collision at a helm; the large map does have a zoom gesture; and
+  MagicRevamp's unsummon key is `[Not Synced with Server]`, so this profile's `Keypad2` is what
+  fires and the wrist strip's **Unsummon** - which sends the mod's `Left Shift` + `F` default -
+  does not unsummon anything.
 
 ## [0.1.0] - 2026-08-02
 

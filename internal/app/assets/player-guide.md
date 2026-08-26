@@ -502,20 +502,25 @@ MagicRevamp adds a spellbook, elemental essences and summons.
 | Key | Action | Mod |
 | --- | --- | --- |
 | `G` | Cycle to the next spell in your inventory | MagicRevamp (shipped) |
-| `Left Shift` + `F` | Unsummon your summons | MagicRevamp (shipped) |
+| `Keypad2` | Unsummon your summons | MagicRevamp (shipped) |
 
-Both of these are `[Synced with Server]`, so the server's values are what fire and a client config
-still reading `Keypad1`/`Keypad2` is simply stale. Both are shared: `G` is also EpicLoot's ability 1,
-PerfectPlacement's perpendicular rotation copy and, for admins, AdminQoL's prefab inspector, and
-`Left Shift` + `F` is also BoatAdditions' anchor. See the conflicts block.
+The two behave differently and it matters. Cycle Spell is `[Synced with Server]`, so the server's
+value is what fires and a client config still reading `Keypad1` is not consulted. The unsummon key is
+`[Not Synced with Server]`: nothing corrects it on connect, and the value in your own file is the one
+that fires. This profile ships `Keypad2` for it, which is **not** the mod's own `Left Shift` + `F`
+default. `G` is shared — it is also EpicLoot's ability 1, PerfectPlacement's perpendicular rotation
+copy and, for admins, AdminQoL's prefab inspector. See the conflicts block.
 
 <!-- guide:vr -->
 
-Both spell keys are behind the **Misc** entry on the left wrist menu, as **Cycle Spell** and
-**Unsummon**, so spells are fully reachable in VR — hold the left-hand menu button and work the strip
-as described in [The wrist menus](#the-wrist-menus). Cycling a spell pulses `G`, so it also fires
-EpicLoot ability 1, and rotates the build ghost if you are holding a hammer. Unsummoning pulses
-`Left Shift` + `F`, which also raises or drops the anchor if you are pointing at a rudder.
+**Cycle Spell** is behind the **Misc** entry on the left wrist menu — hold the left-hand menu button
+and work the strip as described in [The wrist menus](#the-wrist-menus). It pulses `G`, so it also
+fires EpicLoot ability 1 and rotates the build ghost if you are holding a hammer.
+
+**Unsummoning has no VR route.** There is an **Unsummon** entry on the same strip, but it pulses
+`Left Shift` + `F`, which is the mod's default and not this profile's key — so it does not unsummon
+anything. What it does do is raise or drop the anchor if you are pointing at a rudder. Nothing on any
+menu sends `Keypad2`.
 
 <!-- /guide:vr -->
 
@@ -607,10 +612,48 @@ rather than downward.
 then **pull the string back by hand** to cock it, before every shot. Only the rear hand tilts the
 weapon, so aim with the hand nearest you.
 
-**Blocking and parrying.** Blocking is gestural, but "raise the shield" is not enough: hold the shield
-— or a two-handed weapon — **across the line of the blow**, its face perpendicular to the attack. Then
-**swing while blocking** to parry. That is how the block-power and stamina-return bonuses below are
-earned. You cannot two-hand a weapon and carry a shield at the same time on this profile.
+**Blocking with a shield.** Shields block and parry again here. They did neither for months — a shield
+in VR was inventory weight and nothing else — so if you gave up on them, pick one back up.
+
+Blocking is a gesture and "raise the shield" is not it. This profile uses the mod's **Realistic**
+blocking, which asks two things of you at once:
+
+1. The shield has to be **where the blow lands** — genuinely between you and whatever is hitting you,
+   not held up somewhere nearby.
+2. Its **face has to be turned towards the attacker**. You have some latitude here, more than the
+   older Gesture mode gave, but a shield held edge-on to the blow is not blocking.
+
+Holding a shield passively while something hits you does nothing at all. Get it into the path of the
+blow and the block registers with the shield's **own** block power and stamina cost, exactly as it
+would on a flatscreen — so a better shield is still a better shield.
+
+You get told, on every hit. A disc appears at the point of impact, sized to how much slack the blow
+allows: **blue-grey** means a block registered, **orange** means you were inside the parry window,
+**green** means you were dodge-invincible and it did not matter. The shield hand also buzzes, and a
+long buzz rather than a short one means the block came in on time.
+
+**Parrying is a shove, with the shield hand.** Not a swing of the weapon. As the blow comes in, push
+the **shield** hand quickly towards it: about 1.5 m/s, a short deliberate jab rather than a wave. That
+opens a window of roughly **half a second** — the game's own parry window is a quarter of a second,
+and this blocking mode deliberately runs the clock at half speed to make it fair in a headset — and a
+hit that lands inside it is a parry, which staggers the attacker.
+
+Two things close that window early, and one of them is invisible:
+
+- **Letting the shield hand come to rest.** The window ends the moment the hand stops moving. Shove
+  and follow through.
+- **Squeezing the grip on your weapon hand.** This is the one that catches people. That grip hands the
+  block timing over to the weapon, and the weapon deliberately stands its own parry down while a
+  shield is blocking — so you get a plain block, never a parry, and nothing on screen explains why.
+  Keep the weapon-hand grip open while you parry with the shield.
+
+**Blocking with a weapon.** A weapon blocks too, and there it works the other way round: it blocks
+only while you **do** squeeze the grip on your weapon hand, and only when the weapon is actually in
+the path of the blow. Move it across the incoming blow as it lands to parry with it — this is the case
+where "swing while blocking" is the right instruction. Two-handing a weapon while carrying a shield is
+switched off on this profile, so a two-handed weapon always blocks for itself; but a one-handed weapon
+and a shield are held together all the time, and that is precisely when the weapon-hand grip is the
+thing standing between you and a shield parry.
 
 There is no bow zoom key and no cancel key — you simply lower the bow. The quiver-bar modifier is a
 hold and has no VR route, so change arrow types from your inventory. VHModpackFix exists to supply a
@@ -848,13 +891,39 @@ helm.
 
 <!-- guide:vr -->
 
-Point the right laser at the ship and hold the **right grip**: the Ship hover menu carries **Sail
-Faster**, **Sail Slower**, **Release Helm** and **Anchor**, in that order, and the right thumbstick
-moves the highlight — see [The contextual hover menu](#the-contextual-hover-menu). Sail Faster and
-Sail Slower are also behind the left wrist menu's **Misc** entry while you are at the helm. One thing
-to expect at the helm: that same right thumbstick is the ship's throttle, so with the hover list open
-a push both moves the highlight and steps the sail. Steering is gestured rather than keyed, so sailing
-is one of the better-covered systems in VR.
+**Steering.** Take the helm and drive the boat with the physical **left** thumbstick: forward and back
+past about half deflection steps the sail up and down, left and right work the rudder. The stick is
+read **boat-relative** — it answers to the boat's heading and not to where your head is pointing. That
+is a change worth knowing about, because it used to be rotated into your line of sight while your body
+stayed bolted to the helm, so once you looked more than about a quarter-turn off the heading the sail
+would not change at all and the controls felt as though they were sliding around under you. Look
+wherever you like now; forward is the bow.
+
+**The rest of the boat is on the hover ring.** Point the right laser at the ship and hold the **right
+grip**: the Ship menu carries **Sail Faster**, **Sail Slower**, **Release Helm** and **Anchor**, in
+that order, and the **right** thumbstick moves the highlight — see
+[The contextual hover menu](#the-contextual-hover-menu). The two sticks have separate jobs, so working
+that list at the helm does not touch the sail. Sail Faster and Sail Slower are no longer on the wrist
+strip; this is where they live.
+
+**Anchoring without letting go of the helm.** Squeeze the **left grip** once while you are sitting at
+a helm and the boat drops or raises its anchor — the same thing the hover ring's **Anchor** entry
+does, without having to look away and open a list. It fires on the squeeze, not while held, and never
+when you are not steering; if the hover list is up, or you have both grips squeezed, it stands aside.
+
+That anchor is not the game's own — vanilla Valheim has no anchor at all. It comes from Boat
+Additions, which fits one to the vanilla **raft**, **karve** and **longship** (Ashlands longship
+included) and to every hull it adds of its own: **Canoe**, **Drakker**, **Knarr**, **Kvalsund**,
+**Large Raft**, **Outrigger Karve**, **Outrigger Skeid** and **Snekkja**. What the grip reaches from
+the seat is a boat's own anchor fitting, which is a modded hull's; on a vanilla hull the anchor lives
+on the rudder's own prompt instead, so if the grip does nothing, point the right laser at the rudder
+and use the hover ring's **Anchor** entry.
+
+**Taking the helm works again.** A boat could drop a VR player off its own list of who is
+aboard while they were still standing on it, and after that the rudder refused to be taken — silently,
+with no message of any kind — and the boat's speed and rudder were zeroed as well. That is fixed: the
+list is repaired on the helm press, so taking the rudder works again after standing up and sitting
+back down.
 
 <!-- /guide:vr -->
 
@@ -932,8 +1001,14 @@ out of reach.
 
 **Where the map is.** Your minimap is on your **right wrist**, and it fades out unless you are looking
 at it — it has not gone, turn your wrist over. The full map has a VR route too: the **map** icon on
-the strip that the left wrist button raises presses `M` for you. There is no zoom entry on any menu,
-so you get whatever zoom level the map opens at. See [The wrist menus](#the-wrist-menus).
+the strip that the left wrist button raises presses `M` for you. See
+[The wrist menus](#the-wrist-menus).
+
+**Zooming it.** Hold the **right grip** and push the **right thumbstick** up or down with the full
+map open. There is no zoom entry on any menu and there does not need to be — VHVR reads that gesture
+itself. **Reading the map no longer rolls you.** A dodge sits on the same stick, so zooming out used
+to throw you into a dodge roll every time; while the full map is up, or while a hover list is up, a
+dodge is now refused outright.
 
 <!-- /guide:vr -->
 
@@ -1058,18 +1133,23 @@ Read from the live VHVR config, value by value, with what each one means for you
 - **Sneak is controller-only.** Physically crouching does **nothing** here — duck as low as you like
   and you are not sneaking. Use the crouch button. The roomscale sneak-height setting is inert as a
   result, so do not spend time tuning it.
-- **Dominant hand right**, and two-handed weapons use polearm-sticky wield: your hands stay where you
-  put them on the shaft.
-- **Blocking is gestural, and it is not "raise the shield".** Hold the shield, or the two-handed
-  weapon, **across the line of the incoming blow** so its face is perpendicular to the attack, and
-  **swing while blocking** to parry. Details and the shield restriction are in
-  [section 5](#5-combat-magic-and-abilities).
+- **Dominant hand right**, and two-handed wield is **non-sticky**: a weapon is two-handed only while
+  **both** grips are squeezed, and letting go of either one drops it straight back to one hand. That
+  is a change. It used to be sticky for battleaxes, polearms and spears, which meant your hands
+  stayed where you put them on the shaft — and meant a battleaxe could not be released without a
+  four-step gesture with both hands almost touching. Releasing is now simply letting go. The cost is
+  that a spear no longer stays two-handed on its own either.
+- **Blocking works, and it is not "raise the shield".** Shields block and parry again on this
+  profile; for months they did neither. The shield has to be **in the path of the blow**, and the
+  parry is a shove of the **shield** hand, not a swing of the weapon. Both procedures, and the one
+  thing that silently prevents a parry, are in [section 5](#5-combat-magic-and-abilities).
 - **Momentum scales attack damage; it does not gate it.** A swing that lands while your target is
   still in hit-cooldown is not discarded — it lands for less, scaled by how much momentum the swing
   carried and how much cooldown was left. Follow through with committed swings; rapid taps do very
   little.
 - **A swing has to reach 1.5 m/s** to count as an attack, which is half the mod's own default. You do
-  not need to flail — deliberate swings register.
+  not need to flail — deliberate swings register. A battleaxe, sledge or polearm asks half again as
+  much, so heavy weapons want a committed swing rather than a flick.
 - **Bows** are two-handed with full draw restriction and accuracy that ignores draw length, with an
   arrow prediction graphic. **Crossbows are cocked by hand** before each shot. Both procedures, and
   spear throwing and holstering, are in [section 5](#5-combat-magic-and-abilities).
@@ -1129,25 +1209,52 @@ a hurry belongs on it.
 
 **The strips.** Hold the **left** button and a strip appears over your other wrist carrying your
 Forsaken Power (if you have chosen one), **sit**, **map**, **recentre**, **chat**, and last of all
-**Misc**, which is the profile's own. Touch an icon with the hand that is holding the button and
-release. Hold the **right** button instead and its strip carries four more item slots, taken from the
+**Misc**, which is the profile's own. Its label carries a number, which is how many mod actions the
+strip can still reach here. Touch an icon with the hand that is holding the button and release.
+Hold the **right** button instead and its strip carries four more item slots, taken from the
 right-hand end of your inventory's second row.
 
-**Misc** is the door to every mod action that has no VR binding at all. Selecting it replaces the
-strip with the list below, six at a time, with `More >` for the next six and `< Back` to leave:
+**Misc** is the door to every mod action that has no VR binding at all. Selecting it takes over the
+strip: seven of the eight footprints carry the level you are on, and the leftmost footprint carries
+the navigation.
+
+**Three small buttons where one used to be.** The leftmost footprint is divided in three, and each
+third is a real button with its own third of the catchment, so you touch them the same way you touch
+anything else on the strip:
+
+- **`CLOSE`** on the left. It closes **one level at a time**. At the top of the Misc list it reads
+  `CLOSE` and shuts the menu; inside a group it reads `BACK` and takes you out to the level above.
+  Two levels deep, that is two presses to leave.
+- **`<`** and **`>`** for the previous and next page, wrapping round at each end. They are only drawn
+  when the level you are on has more than one page — a single-page level shows `CLOSE` alone rather
+  than two arrows with nowhere to go. Each level remembers the page you left it on, so coming back
+  out of a group puts you where you were.
+
+Groups are listed first on a level, marked with a trailing `>`, and the actions follow. Below is what
+ships today. Anything whose mod is not installed here is **not** in the list at all — the strip
+withholds an entry whose command or prefab does not exist on this install rather than showing you a
+button that would do nothing. `Add Horse` and `Add Saddle` are hidden for exactly that reason: they
+spawn OdinHorse content and OdinHorse is not installed.
 
 | Entry | What it does |
 | --- | --- |
-| Close Panel | Escape hatch — deactivates adopted canvases, hides the main menu, pulses Escape |
 | Release Mount | Dismount |
-| Sail Faster / Sail Slower | Only shown while at the helm |
+| Close Panel | Escape hatch — deactivates adopted canvases, hides the main menu, pulses Escape |
 | Identity | `F4` — IdentityCrisis's transformation UI |
 | Cycle Spell | `G` — also EpicLoot ability 1 and PerfectPlacement's perpendicular rotation copy |
-| Unsummon | `Left Shift` + `F` — also BoatAdditions' anchor |
+| Unsummon | `Left Shift` + `F` — BoatAdditions' anchor chord. It does **not** unsummon on this profile; see [Controls a VR player cannot reach](#controls-a-vr-player-cannot-reach) |
 | Hip Lantern | `Keypad3` |
 | Cycle Power | `F8` — also aborts PerfectPlacement's Advanced Editing Mode and toggles PlantEasily |
 | Reset Power | `F9` — clears the Forsaken Power cooldown |
-| Admin/… | A group door. Admin console, admin panel and a set of spawn and cheat commands, hidden from non-admins |
+| Admin > | A group door: the admin console, the admin panel, and god / fly / ghost / no-cost / heal / kill-all / debug / save |
+| Admin > Spawn > | A second level inside Admin, holding the give-and-spawn commands — a cheat sword, a hip lantern, a ward, a ship, a chest, and 50 wood or stone |
+
+The admin group is shown to everybody on this profile. Pressing one of its buttons only *attempts*
+the command and the server refuses a non-admin, so nothing is hidden and nothing is granted.
+
+**Sail Faster and Sail Slower are no longer here.** They were removed from the wrist strip; they live
+on the ship hover ring instead, where you are already pointing at the boat you mean. See
+[The contextual hover menu](#the-contextual-hover-menu).
 
 **One trap.** The right-hand button is the same physical button as the laser's right-click, which the
 build menu uses. With a hammer equipped you have to hold it about a third of a second before the menu
@@ -1199,11 +1306,12 @@ The list repeats itself while you hold, and its last line says the same thing:
 Two things to know. **Check `Modifier` before you blame the gesture.** It is a real setting with three
 values — `RightGrip`, `LeftGrip`, `LeftTrigger` — and whichever hand it names is the hand you hold. If
 your own `neuralyze.vrfixes.cfg` still reads `Modifier = LeftGrip` from an older release, the *left*
-grip opens your menu until that line is changed. And **at a ship's helm the thumbstick is also the
-throttle**, so with the list open a push both moves the highlight and steps the sail.
+grip opens your menu until that line is changed. And **the hand that steers is not the hand that
+chooses**, so the list can be worked at a helm without touching the sail: a boat and a mount are both
+driven by the physical **left** thumbstick, and the highlight moves on the **right** one.
 
-Mounts are steered by the physical **left** thumbstick (`HorseStick = VhvrRight`, again an empirical
-name), pushing forward to go and left/right to turn, so your head stays free.
+Mounts are steered by that left thumbstick, pushing forward to go and left or right to turn, so your
+head stays free.
 
 The VR fixes config also carries a Companions HUD placement setting (`RightWrist`), but the
 Companions mod is not installed on this profile, so that setting does nothing.
@@ -1226,7 +1334,10 @@ This is the honest list.
 - **The AdminQoL panel** is a screen-space canvas. It can be converted to world space on request via
   the wrist entry, but it is not opened by its own hotkey path in VR.
 - **Terrain-tool radius and hardness** (`Left Alt`/`Left Control` + scroll) have no VR route.
-- **Map zoom.** The map opens from the wrist strip, but no zoom entry ships on any menu.
+- **Unsummoning your summons.** The wrist strip's **Unsummon** sends `Left Shift` + `F`, which is not
+  this profile's unsummon key — MagicRevamp is set to `Keypad2` here, and that setting is not
+  server-synced, so `Keypad2` is what fires. Nothing on any menu sends it. What the wrist entry does
+  do is raise or drop the anchor if you happen to be pointing at a rudder.
 - **The horse hover group is dead.** It references `Keypad6`, `B` and `R` for a mod (OdinHorse) that
   is no longer installed. Those three options will appear if you point at a tameable named horse and
   do nothing.
@@ -1253,15 +1364,18 @@ players can press these keys and type these commands; the server refuses them.
 
 <!-- guide:vr -->
 
-**From a headset.** The **Misc** entry on the left wrist menu carries an **Admin/…** group with the
-admin console, the admin panel and a set of spawn and cheat commands; it is hidden from non-admins.
-See [The wrist menus](#the-wrist-menus) for how to work one. The AdminQoL panel is a screen-space
-canvas: it can be converted to world space from that same menu, but it is not opened by its own hotkey
-path in VR. Typing console commands still needs a physical keyboard you cannot see. Take particular
-care with Infinity Hammer below: its arrow-key and `PageUp`/`PageDown` nudges are the same keys VHVR
-uses to reposition your head camera, so a VR admin holding a hammer moves the ghost and their own
-viewpoint at once. Map teleport is a chord and cannot be pulsed either. Everything else in this
-appendix is console work and reads the same in both editions of this guide.
+**From a headset.** The **Misc** entry on the left wrist menu carries an **Admin >** group with the
+admin console, the admin panel and the god / fly / ghost / no-cost / heal / kill-all / debug / save
+commands, and a **Spawn >** group inside it with the give-and-spawn commands. It is shown to
+everybody: pressing a button only attempts the command, and the server refuses a non-admin, so
+nothing is hidden and nothing is granted. See [The wrist menus](#the-wrist-menus) for how to work one.
+The AdminQoL panel is a screen-space canvas: it can be converted to world space from that same menu,
+but it is not opened by its own hotkey path in VR. Typing console commands still needs a physical
+keyboard you cannot see. Take particular care with Infinity Hammer below: its arrow-key and
+`PageUp`/`PageDown` nudges are the same keys VHVR uses to reposition your head camera, so a VR admin
+holding a hammer moves the ghost and their own viewpoint at once. Map teleport is a chord and cannot
+be pulsed either. Everything else in this appendix is console work and reads the same in both
+editions of this guide.
 
 <!-- /guide:vr -->
 
@@ -1335,8 +1449,10 @@ This is the tool for moving something that is already built.
 `KeypadEnter`. Nothing is dropped and nothing has to be emptied first. It works the same way on
 other containers, on crafting stations and on smelters.
 
-`Keypad1` also cycles spells (MagicRevamp) and `Keypad3` also toggles the hip lantern (HipLantern).
-Both of those are shipped values, so expect the side effects.
+`Keypad3` also toggles the hip lantern (HipLantern), which is a shipped value, so expect the side
+effect. The client config also holds `Keypad1` for MagicRevamp's cycle-spell key, but that setting is
+`[Synced with Server]` and the server's value is what fires, so whether `Keypad1` cycles a spell here
+is decided on the server and not by this file.
 
 ### Structure Tweaks
 
@@ -1423,6 +1539,7 @@ nothing without a headset.
 | `J` | EpicLoot ability slot 3 | EpicLoot | shipped |
 | `Keypad0` | Freeze the placement position | Infinity Hammer | documented default |
 | `Keypad1` | Enter Advanced Editing Mode — **admin** | PerfectPlacement | shipped |
+| `Keypad2` | Unsummon your summons | MagicRevamp | shipped |
 | `Keypad3` | Copy the selected object's rotation (ABM / AEM) | PerfectPlacement | shipped |
 | `Keypad3` | Toggle the equipped hip lantern | HipLantern | shipped |
 | `Keypad4` | Toggle your permission on a ward | WardIsLove | shipped |
@@ -1481,7 +1598,6 @@ nothing without a headset.
 | `Left Shift` + `E` | Alternate interact | Valheim | vanilla default |
 | `Left Shift` + `E` | Open the Tag Connected Portals dialog | TagConnectedPortals | default |
 | `Left Shift` + `F` | Raise or drop the anchor, mouse over the rudder | BoatAdditions | default |
-| `Left Shift` + `F` | Unsummon your summons | MagicRevamp | shipped |
 | `Left Shift` + `PageUp` | Toggle the crafting Recipe UI | AAA_Crafting | shipped |
 | `Left Shift` + `Period` | Pause automatic storing | AzuAutoStore | shipped |
 | `Left Shift` + `W` | Repair every piece in a radius | RuinsMaker | default |
@@ -1552,7 +1668,7 @@ keys only and excluding vanilla bindings.
 | `Left Alt` + `Z` | AzuExtendedPlayerInventory (quick slot 1), RequipMe (manual re-equip) | Using quick slot 1 also triggers a re-equip |
 | `Arrow keys` | Infinity Hammer (precise placement), PlantEasily (planting grid), ValheimVRMod (VR head reposition) | Three-way |
 | `PageUp` / `PageDown` | Infinity Hammer (precise placement), ValheimVRMod (VR head reposition) | Two-way. Not three-way — see the SkToolbox note below |
-| `Left Shift` + `F` | BoatAdditions (raise / drop anchor), MagicRevamp (unsummon) | Both server-forced. The ship hover menu's **Anchor** and the wrist strip's **Unsummon** are the same keystroke |
+| `Left Shift` + `F` | BoatAdditions (raise / drop anchor) | Server-forced, and BoatAdditions alone: this profile moved MagicRevamp's unsummon off it to `Keypad2`. The ship hover menu's **Anchor** and the wrist strip's **Unsummon** both send this chord, so both of them work the anchor and neither unsummons |
 | `Left Shift` (hold) | AzuCraftyBoxes, BowsBeforeHoes, VikingsDoSwim, Wearable Trophies, PlantEasily, Smoothbrain Farming, HarpoonExtended | Seven mods. All are context-scoped, so they rarely bite, but sprinting is `Left Shift` too |
 | `Left Control` (hold) | AAA_Crafting, VikingsDoSwim, Wearable Trophies, ZenRedecorate, Smoothbrain Farming, Infinity Hammer | Six mods, plus vanilla crouch |
 | `Left Alt` (hold) | PerfectPlacement (rotate Y and grid align), ZenWorldSettings, ZenRaids, RuinsMaker, Infinity Hammer | Five mods, plus vanilla dodge |
@@ -1566,7 +1682,7 @@ keys only and excluding vanilla bindings.
 
 | Named collision | Current status |
 | --- | --- |
-| `Keypad0` = PerfectPlacement *Enter Advanced Editing Mode* **and** Infinity Hammer *freeze placement* | **Resolved.** PerfectPlacement's Enter Advanced Editing Mode moved to `Keypad1` in profile 2.2.23. `Keypad0` is now Infinity Hammer alone. The collision moved with it: `Keypad1` is now shared with MagicRevamp's cycle-spell key |
+| `Keypad0` = PerfectPlacement *Enter Advanced Editing Mode* **and** Infinity Hammer *freeze placement* | **Resolved.** PerfectPlacement's Enter Advanced Editing Mode moved to `Keypad1` in profile 2.2.23. `Keypad0` is now Infinity Hammer alone. Whether the collision moved with it is not settled: the client config holds `Keypad1` for MagicRevamp's cycle-spell key, but that key is `[Synced with Server]`, so the server's value is what fires |
 | `Keypad7` = PerfectPlacement *Copy Object Rotation* **and** Infinity Hammer *undo* | **Resolved.** PerfectPlacement's Copy Object Rotation moved to `Keypad3` in profile 2.2.23. `Keypad7` is now Infinity Hammer alone. The collision moved with it: `Keypad3` is now shared with HipLantern's toggle key |
 | `PageUp` / `PageDown` / arrow keys / `Home` = Infinity Hammer **and** SkToolbox **and** VHVR | **Partly wrong, and reduced.** SkToolbox is **not installed** on this profile, so it claims nothing. `PageUp`/`PageDown` and the arrow keys are a two-way collision between Infinity Hammer and VHVR. The arrow keys are a genuine three-way collision, but the third claimant is PlantEasily, not SkToolbox. `Home` is VHVR alone and has no collision at all |
 
@@ -1596,9 +1712,11 @@ A config file existing is never proof a mod is installed. Check
   `Azumatt.WardIsLove.cfg` still reads `WardHotKey = G`, and its `ForsakenPowersPlusRemastered` and
   `MagicRevamp` configs still hold the pre-move values. The shipped client-config values quoted in
   this guide (`Keypad4`, `F8`, `G`) are what a player gets after the next sync. If your ward key is
-  `G` or `F4`, or **Cycle Spell** does nothing, run the launcher again. The spell and power keys are
-  `[Synced with Server]` and so are corrected on connect regardless; the ward key is not, so only a
-  sync moves it.
+  `G` or `F4`, or **Cycle Spell** does nothing, run the launcher again. The cycle-spell and power keys
+  are `[Synced with Server]` and so are corrected on connect regardless; the ward key is not, so only
+  a sync moves it. MagicRevamp's **unsummon** key is a separate case: it is `[Not Synced with Server]`,
+  so no connect corrects it and the value in your own file is the one that fires. This profile ships
+  `Keypad2` for it.
 
 <!-- guide:vr -->
 
