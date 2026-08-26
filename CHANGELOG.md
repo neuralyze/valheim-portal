@@ -165,14 +165,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chain resolves only 95 of 113 files. Applying the rest needs the server-side write and a world
   restart, which does not exist yet.
 
-- A shield-block probe behind [9 - Profiling] LogShieldBlocks, default off. Shields do not block
-  in VR and the cause is in VHVR: its ShieldBlock component is never attached to anything, so
-  ShieldBlock.instance is null for the whole session - 161 AddComponent sites in the installed
-  ValheimVRMod.dll, four attach a Block subclass, none of them ShieldBlock. With Gesture blocking
-  and TwoHandedWithShield false a shield also forces the weapon single-handed, closing the weapon
-  path, and a shield in hand closes the fist path, so Humanoid.IsBlocking() is false for every hit
-  and vanilla BlockAttack never runs. The probe exists because that claim - upstream shipping dead
-  shield-block code - is unusual enough to be worth falsifying before anyone changes a profile.
+- Shields block and parry again in VR, behind [0 - Combat] RestoreShieldBlock, default on. The
+  cause was upstream and not ours: commit 666124e6 "Migrate to cache weapon collision using item
+  hash instead of object name" (2026-05-08) dropped the injected item-name string, and the only
+  thing reading it in the shield case was the TAIL of
+  `meshFilter.gameObject.AddComponent<ShieldBlock>().itemName = ___m_leftItem;`, so the whole
+  statement went and took the component's only attach site with it. `itemName` was write-only, so
+  nothing warned. Measured from both directions in the binaries: v0.9.21 (2026-03-01, before the
+  refactor) still has that AddComponent at IL_0210 of PatchSetLeftHandEquipped followed by
+  `stfld itemName`, and the ValheimVRMod.dll this profile loads has ZERO ShieldBlock attach sites
+  among 161 AddComponent calls, against three for WeaponBlock and one for FistBlock. Master is
+  still broken - compare 50d333d..master is "identical", ahead_by 0 - so there was nothing newer
+  to take. Restored from our side with a postfix on VisEquipment.SetLeftHandEquipped that attaches
+  ShieldBlock to the same MeshFilter GameObject the v0.9.21 IL used, with the same lifetime; every
+  consumer is already in the shipped mod and needed no change. Confirmed in the headset on
+  2026-08-26: shields block, and the attacker is staggered, which is vanilla's perfect block. The
+  per-hit probe that found the cause is gone with the same confirmation, so [9 - Profiling]
+  LogShieldBlocks no longer exists - clients that already carry the key can ignore it.
 
 - An anchor toggle on the left grip while seated at a helm, so dropping anchor no longer means
   opening the hover ring. It pulses the same LeftShift+F chord the ring's Anchor entry uses and

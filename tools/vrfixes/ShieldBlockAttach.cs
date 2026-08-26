@@ -45,8 +45,9 @@ namespace NeuralyzeVRFixes
     //     * The ValheimVRMod.dll this profile actually loads - our own fork build, proven
     //       ours by the "[DIAG] " literal our LogUtils.LogDiagnostic added - has ZERO
     //       AddComponent sites for ShieldBlock among 161, while WeaponBlock has three and
-    //       FistBlock one. That is exactly the operator's log: shieldInst=no beside
-    //       weaponInst=yes and fistInst=yes.
+    //       FistBlock one. That is exactly what the 2026-08-25 session logged on all forty
+    //       hits: no shield component in existence, beside a weapon one and a fist one that
+    //       were both there.
     //
     //   Master is still broken today (compare 50d333d..master is "identical", ahead_by 0),
     //   so there is no newer upstream commit to take and nothing to wait for. The tuning
@@ -71,6 +72,11 @@ namespace NeuralyzeVRFixes
     // shield's blockTimer, :205 calls setBlocking(hit), and WeaponBlock.cs:67-75 stands
     // down its own parry "when using shield to block" - arbitration that has also been
     // dead for as long as the instance has been missing.
+    //
+    // CONFIRMED IN THE HEADSET on 2026-08-26: shields block, and the operator saw the
+    // attacker staggered, which is vanilla's perfect-block on a timed block. That
+    // confirmation is what retired the per-hit shield probe this fix was measured with
+    // (bead vhp-wix); nothing here depended on it, and nothing here reports to it.
     internal static class ShieldBlockAttach
     {
         // How long a shield equipped before VR finished attaching stays eligible. Reached
@@ -104,7 +110,6 @@ namespace NeuralyzeVRFixes
         private static int _pendingFrames;
 
         private static int _attachCount, _reassertCount;
-        private static string _lastSkip = "none";
         private static readonly HashSet<string> _skipsLogged = new HashSet<string>();
 
         internal static void Install(Harmony harmony)
@@ -166,27 +171,6 @@ namespace NeuralyzeVRFixes
             }
         }
 
-        // One short field for the per-hit diagnostic line, so a missing instance is
-        // explained on the same line that reports it rather than needing a second run.
-        internal static string Status()
-        {
-            if (!_installed) return "off";
-            if (_dead) return "dead:" + _lastSkip;
-            return "n=" + _attachCount
-                + (_reassertCount > 0 ? " repoint=" + _reassertCount : "")
-                + (_pendingHost != null ? " waiting" : "")
-                + (_attachCount == 0 ? " skip=" + _lastSkip : "");
-        }
-
-        // Whether a shield component is live RIGHT NOW, for callers that must not act before it
-        // exists. Deliberately not derived from Status()'s text: a caller branching on a string
-        // built for humans breaks the moment that wording changes, and the wording has already
-        // changed once. Reads the same counters Status() reports.
-        internal static bool Attached()
-        {
-            return _installed && !_dead && _attachCount > 0 && _pendingHost == null;
-        }
-
         private static MethodInfo Self(string name)
         {
             return typeof(ShieldBlockAttach).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic);
@@ -203,9 +187,9 @@ namespace NeuralyzeVRFixes
             {
                 _useVrControls = AccessTools.Method(cfg, "UseVrControls");
                 _nonVrPlayer = AccessTools.Method(cfg, "NonVrPlayer");
-                // Resolved here rather than borrowed from ShieldDiagnostics: the two
-                // features are independently toggled, and this one must name the mode in
-                // its own attach line even when the per-hit probe is off.
+                // Read here rather than at each use: the mode decides which test a shield
+                // has to pass, so the attach line has to name it, and this is the only
+                // place that asks.
                 _useGesture = AccessTools.Method(cfg, "UseGestureBlock");
                 _useRealistic = AccessTools.Method(cfg, "UseRealisticBlock");
                 _useGrab = AccessTools.Method(cfg, "UseGrabButtonBlock");
@@ -395,7 +379,6 @@ namespace NeuralyzeVRFixes
         // distinct cause rather than per equip.
         private static void Skip(string reason)
         {
-            _lastSkip = reason;
             if (!_skipsLogged.Add(reason)) return;
             NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
                 + "SHIELD block NOT attached: " + reason
@@ -405,7 +388,6 @@ namespace NeuralyzeVRFixes
         private static void Die(string why)
         {
             _dead = true;
-            _lastSkip = why;
             NeuralyzeVRFixesPlugin.Log.LogWarning(NeuralyzeVRFixesPlugin.Tag + "SHIELD block attach " + why);
             ProbeHealth.Announce("ShieldBlockAttach", false, why);
         }

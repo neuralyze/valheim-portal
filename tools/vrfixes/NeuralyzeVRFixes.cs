@@ -94,7 +94,6 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<bool> BoatRelativeStick;
         internal static ConfigEntry<float> ShipSpeedDeadzone;
         internal static ConfigEntry<bool> RepairShipRoster;
-        internal static ConfigEntry<bool> LogShieldBlocks;
         internal static ConfigEntry<bool> RestoreShieldBlock;
 
         private void Awake()
@@ -434,15 +433,6 @@ namespace NeuralyzeVRFixes
                 "processor time that mod update loops did not account for, which is where 111 mods' patches on game " +
                 "methods live. Off for players; on to find out what owns a frame.");
 
-            LogShieldBlocks = Config.Bind("9 - Profiling", "LogShieldBlocks", false,
-                "Log one line per hit you take, naming whether the game considered you blocking, whether its own " +
-                "BlockAttack ran, the damage taken against what a successful block would have left, and the shield " +
-                "and weapon orientations against the thresholds VHVR tests. Off by default - a player who is not " +
-                "diagnosing blocking does not want a line per hit. Exists because VHVR replaces vanilla blocking " +
-                "outright: its prefix on Humanoid.IsBlocking returns ShieldBlock/WeaponBlock/FistBlock state and " +
-                "discards Character.m_blocking, so 'the shield does not block' has to be read out of VHVR's own " +
-                "components rather than the game's. Logs at Message level so it survives the client's log filter.");
-
             RestoreShieldBlock = Config.Bind("0 - Combat", "RestoreShieldBlock", true,
                 "Make shields block and parry again. ON by default because without it a shield in VR is pure "  +
                 "inventory weight: VHVR replaces vanilla blocking with its own ShieldBlock component, and upstream "  +
@@ -454,7 +444,8 @@ namespace NeuralyzeVRFixes
                 "else - all the code that reads it is already in the shipped mod. "  +
                 "TURN THIS OFF FIRST if blocking misbehaves: shields go back to never blocking, which is the "  +
                 "behaviour of every build since May 2026, and nothing else in the plugin depends on it. "  +
-                "Pair it with [9 - Profiling] LogShieldBlocks to see per-hit why a block did or did not land.");
+                "Confirmed in the headset on 2026-08-26: shields block, and a timed block staggers the "  +
+                "attacker, which is vanilla's parry.");
 
             HideFastLinkTitle = Config.Bind("5 - Hover text", "HideFastLinkTitle", true,
                 "Hide the FastLink panel's title. FastLink scales as one piece, so enlarging the server names to " +
@@ -483,10 +474,10 @@ namespace NeuralyzeVRFixes
             if (ProfilePlugins.Value) Guard("pluginProfiler", delegate { PluginProfiler.Install(harmony); });
             if (ProfileInventory.Value) Guard("inventoryProfiler", delegate { InventoryProfiler.Install(harmony); });
             if (ProfileGameMethods.Value) Guard("gameMethodProfiler", delegate { GameMethodProfiler.Install(harmony); });
-            // Before the probe on purpose, so the probe's first line can already report the
-            // attach state rather than describing a world that has not been set up yet.
+            // The fix, not a measurement: without it a shield in VR never blocks at all. The
+            // per-hit shield probe that proved the cause lived here until 2026-08-26 and was
+            // removed once the headset confirmed blocking and parry - see CHANGELOG.
             if (RestoreShieldBlock.Value) Guard("shieldBlockAttach", delegate { ShieldBlockAttach.Install(harmony); });
-            if (LogShieldBlocks.Value) Guard("shieldDiagnostics", delegate { ShieldDiagnostics.Install(harmony); });
             // BEFORE helmRequestWatch, so that when both prefixes land on RPC_RequestControl the
             // repair is already registered at Priority.First and the watch reports the state the
             // vanilla body will really see rather than the one the repair was about to correct.
