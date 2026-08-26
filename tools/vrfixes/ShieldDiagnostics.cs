@@ -104,6 +104,9 @@ namespace NeuralyzeVRFixes
         // One hit's snapshot, taken in the prefix and reported in the postfix.
         private static bool _pending;
         private static float _hpBefore, _damage, _blockable, _blockPower, _shieldDot, _weaponAngle;
+        // Hits that arrived before a shield component existed. Counted, and reported at 1 and
+        // 25, so the probe going quiet is never unexplained.
+        private static int _skippedPreAttach;
         private static bool _hitBlockable, _vrBlocking, _mBlockingWas;
         private static string _mode, _offhand, _blocker, _components, _timers, _allow;
         private static bool _blockAttackRan, _blockAttackResult;
@@ -315,15 +318,30 @@ namespace NeuralyzeVRFixes
                 Player p = Player.m_localPlayer;
                 if (p == null || __instance != (Character)p) return;
                 if (_emitted >= MaxLines) return;
-                // The budget is spent only on a hit this probe can actually say anything about.
-                // Measured 2026-08-26: all 40 lines of a session were consumed by dmg=0.0 events
-                // BEFORE the shield was equipped - the attach line appears at log line 107, one
-                // line AFTER "hit 40/40" - so the probe reported shieldInst=no forty times about
-                // moments when no shield existed, and had nothing left for the hits that mattered.
-                // Two conditions, both required: there must be blockable damage, and the component
-                // whose decision this probe exists to report must exist. Anything else is not a
-                // shield hit and must not cost a slot.
-                if (_blockable <= 0f || !ShieldBlockAttach.Attached()) return;
+                // Spend a slot only once a shield component exists. Measured 2026-08-26: all 40
+                // slots of a session were consumed by dmg=0.0 events BEFORE the shield was
+                // equipped - the attach line landed one log line AFTER "hit 40/40" - so the probe
+                // described forty moments in which no shield existed and had nothing left for the
+                // hits it was built for.
+                //
+                // A first attempt at this ALSO required blockable damage above zero, and that
+                // suppressed every line of the next session with no trace of why, because this
+                // return says nothing. Attachment is the condition that was actually being wasted;
+                // a blockable=0 hit AFTER the attach is still evidence, so it is logged. The skip
+                // is now counted and reported rather than silent - a probe that can go quiet for a
+                // reason it will not state is worse than no probe.
+                if (!ShieldBlockAttach.Attached())
+                {
+                    _skippedPreAttach++;
+                    if (_skippedPreAttach == 1 || _skippedPreAttach == 25)
+                    {
+                        NeuralyzeVRFixesPlugin.Log.LogMessage(NeuralyzeVRFixesPlugin.Tag
+                            + "SHIELD probe skipped " + _skippedPreAttach + " hit(s) with no shield"
+                            + " component attached - shieldAttach=" + ShieldBlockAttach.Status()
+                            + ". These do not spend the " + MaxLines + "-line budget.");
+                    }
+                    return;
+                }
                 _emitted++;
 
                 float taken = _hpBefore - p.GetHealth();
