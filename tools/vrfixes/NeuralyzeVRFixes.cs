@@ -493,7 +493,15 @@ namespace NeuralyzeVRFixes
             Guard("shipRoster", delegate { ShipRoster.Install(harmony); });
             // Outside the misc-menu block: the helm verdict is printed from the Use press in
             // DirectActionInvoker, which is gated on DirectActions, not on the wrist ring.
-            Guard("helmRequestWatch", delegate { HelmRequestWatch.Install(harmony); });
+            //
+            // Gated on WatchHelm from 2026-08-26. This is PURE DIAGNOSIS - three patches on the
+            // rudder request path whose only product is the "helm REFUSED/TAKEN" line - and it was
+            // installed unconditionally, so switching the helm watch off still left it patched. The
+            // roster repair above is NOT gated by this: that one is the fix, not the measurement.
+            if (WatchHelm != null && WatchHelm.Value)
+            {
+                Guard("helmRequestWatch", delegate { HelmRequestWatch.Install(harmony); });
+            }
             if (MiscMenuEnabled.Value)
             {
                 Guard("miscMenuLoad", delegate { MiscMenu.Load(MiscMenuActions.Value); });
