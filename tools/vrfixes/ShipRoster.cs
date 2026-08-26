@@ -52,8 +52,9 @@ namespace NeuralyzeVRFixes
     // longer contains him. That is exactly the log above, and it is why every one of nineteen
     // attempts read the same: nothing in the game repairs the offset.
     //
-    // THIS IS ALSO THE 2026-08-25 DEAD RUDDER. Ship::FixedUpdate reads
-    // `if (m_players.Count == 0) { m_speed = Stop; m_rudderValue = 0f; }` every physics step
+    // THIS IS ALSO THE 2026-08-25 DEAD RUDDER. Ship::CustomFixedUpdate - Ship implements
+    // IMonoUpdater, so this is its physics step (av.il:416010-416012) - reads
+    // `if (m_players.Count == 0) { m_speed = Stop; m_rudderValue = 0f; }`
     // (av.il:416633-416643), and hands HaveControllingPlayer() to UpdateRudder
     // (av.il:416603-416615), where HaveControllingPlayer is `m_players.Count != 0 &&
     // m_shipControlls.HaveValidUser()` (av.il:418715-418722) and HaveValidUser is itself
@@ -100,7 +101,7 @@ namespace NeuralyzeVRFixes
     // so a single Add makes the same call proceed to its own occupancy check.
     //
     // It has to be a persistent Add and not a borrow-for-the-duration: as shown above,
-    // Ship::FixedUpdate re-reads m_players.Count every physics step and zeroes speed and rudder
+    // Ship::CustomFixedUpdate re-reads m_players.Count every physics step and zeroes speed and rudder
     // when it is empty (av.il:416633-416643). An entry that vanished when the prefix returned would
     // grant the helm and then hold it dead, which is worse than refusing it.
     //
