@@ -93,6 +93,7 @@ namespace NeuralyzeVRFixes
         internal static ConfigEntry<bool> WatchHelm;
         internal static ConfigEntry<bool> BoatRelativeStick;
         internal static ConfigEntry<float> ShipSpeedDeadzone;
+        internal static ConfigEntry<bool> RepairShipRoster;
         internal static ConfigEntry<bool> LogShieldBlocks;
         internal static ConfigEntry<bool> RestoreShieldBlock;
 
@@ -267,6 +268,21 @@ namespace NeuralyzeVRFixes
                     "is rotated first; 0.5 is half deflection, which a thumbstick reaches deliberately and not by " +
                     "resting. It is not allowed to be zero: a resting stick must never creep the ship.",
                     new AcceptableValueRange<float>(0.15f, 0.95f)));
+
+            RepairShipRoster = Config.Bind("12 - Mounts", "RepairShipRoster", true,
+                "Put yourself back on a boat's player roster when it has lost you, so the helm answers again. " +
+                "Ship keeps two records of who is aboard and only one of them saturates: Ship.m_players is a " +
+                "list, and removing somebody who is not in it is a no-op, while Character.InNumShipVolumes is a " +
+                "counter that walks straight past zero. One unpaired trigger callback therefore leaves " +
+                "GetStandingOnShip() naming the raft under your feet forever while the list no longer holds you " +
+                "- and ShipControlls.RPC_RequestControl returns WITHOUT ANSWERING AT ALL when that list disagrees " +
+                "(av.il:419467-419473), which is a dead rudder and total silence. The same empty list also zeroes " +
+                "m_rudderValue every physics step (av.il:416633-416643). This adds one list entry, on a helm " +
+                "press, only for YOUR character, only when the list is provably wrong, and only when the ground " +
+                "body under your feet is that hull AND your position is geometrically inside one of its trigger " +
+                "volumes - so it can never hand you a helm you are not standing on. It never writes the helm's " +
+                "user, so a boat somebody else is steering still refuses you with $msg_inuse. Turn it off to go " +
+                "back to the silent refusal.");
 
             WatchHelm = Config.Bind("9 - Diagnostics", "WatchHelm", true,
                 "Records one line, at Message level so it reaches the disk log, whenever something material " +
@@ -471,6 +487,10 @@ namespace NeuralyzeVRFixes
             // attach state rather than describing a world that has not been set up yet.
             if (RestoreShieldBlock.Value) Guard("shieldBlockAttach", delegate { ShieldBlockAttach.Install(harmony); });
             if (LogShieldBlocks.Value) Guard("shieldDiagnostics", delegate { ShieldDiagnostics.Install(harmony); });
+            // BEFORE helmRequestWatch, so that when both prefixes land on RPC_RequestControl the
+            // repair is already registered at Priority.First and the watch reports the state the
+            // vanilla body will really see rather than the one the repair was about to correct.
+            Guard("shipRoster", delegate { ShipRoster.Install(harmony); });
             // Outside the misc-menu block: the helm verdict is printed from the Use press in
             // DirectActionInvoker, which is gated on DirectActions, not on the wrist ring.
             Guard("helmRequestWatch", delegate { HelmRequestWatch.Install(harmony); });

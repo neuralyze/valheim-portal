@@ -1017,7 +1017,6 @@ namespace NeuralyzeVRFixes
         // that bites if it is forgotten - to DEACTIVATE.
         private const int VhvrSlots = 8;
 
-        private static readonly Vector3 NavScaleVec = new Vector3(NavScale, NavScale, NavScale);
         private static bool _cellsDone;
         private static readonly Vector3[] _cells = new Vector3[RingCells];
 
@@ -1054,6 +1053,11 @@ namespace NeuralyzeVRFixes
             long _t = HookProfiler.Start();
             try
             {
+                // FIRST, AND OUTSIDE THE OWNERSHIP CHECK BELOW. This is the "the frame VHVR reuses
+                // it" restore path, and it is the only one that survives us stopping: every other
+                // restore lives inside LayOut, which never runs once the prefix stops claiming
+                // frames. See ReleaseIfAbandoned for the list of ways that happens.
+                ReleaseIfAbandoned();
                 if (_layoutFrame != Time.frameCount || !ReferenceEquals(__instance, _layoutOwner)) return;
                 Array extra = _extraField.GetValue(__instance) as Array;
                 if (extra == null) return;
@@ -1076,21 +1080,20 @@ namespace NeuralyzeVRFixes
         // have to be restated.
         //
         // Per frame, while the menu is open: eight to ten localPosition writes, up to three
-        // localScale compares, and two activeSelf compares. reorderElements itself does nineteen
-        // localPosition writes and nineteen SetActive calls on the same objects immediately before,
-        // so this is a fraction of a cost the frame was already paying.
+        // localScale compares on the navigation triple, six more across the scale cache to find
+        // anything that stopped being ours, and two activeSelf compares. reorderElements itself
+        // does nineteen localPosition writes and nineteen SetActive calls on the same objects
+        // immediately before, so this is a fraction of a cost the frame was already paying. Closed,
+        // it is six null checks and no writes.
         private static void LayOut(Array extra)
         {
             if (_layoutNav == 0)
             {
-                // Closed. VHVR's layout stands; we only undo what only we could have done. Both
-                // loops are compare-then-write rather than write, and both are bounded by three and
-                // by two, so a closed strip costs five property reads per frame and no writes.
-                for (int i = 0; i < NavSlots && i < extra.Length; i++)
-                {
-                    Transform t = TransformOf(extra.GetValue(i));
-                    if (t != null && t.localScale.x != 1f) t.localScale = Vector3.one;
-                }
+                // Closed. Hand every element we ever scaled back at the size we found it, and
+                // forget it. Iterating the CACHE rather than indices 0..NavSlots-1 is deliberate:
+                // the cache is the record of what we touched, and it cannot miss an element that
+                // has since fallen out of the navigation range.
+                ReleaseAllExcept(0);
                 Stand(extra, 0);
                 return;
             }
@@ -1101,26 +1104,150 @@ namespace NeuralyzeVRFixes
 
             // The triple, packed. i - 1 puts X in the LEFT third, so with the arrows absent X does
             // not slide to the middle: its place is a property of the button, not of the page count.
+            // Each one is also remembered in _navNow, so the release pass below can be told which
+            // elements are still ours without walking the array a second time per cache slot.
+            int navNow = 0;
             for (int i = 0; i < _layoutNav; i++)
             {
                 Transform t = TransformOf(extra.GetValue(i));
                 if (t == null) continue;
                 t.localPosition = new Vector3(home.x + (i - 1) * NavPitch, home.y, home.z);
-                if (t.localScale.x != NavScale) t.localScale = NavScaleVec;
+                // base * NavScale, never a bare NavScale. What the element's own scale IS is VHVR's
+                // business - see NavBase - and a third of it is the only thing this button asked
+                // for.
+                Vector3 want = NavBase(t) * NavScale;
+                if (t.localScale != want) t.localScale = want;
+                _navNow[navNow++] = t;
             }
 
-            // Content fills the remaining footprints at full size. The scale is restated because an
-            // index that held an arrow a moment ago - the page count fell to one - would otherwise
-            // keep a third of its size.
+            // Content fills the remaining footprints. Positions only: the scale of an index that
+            // held an arrow a moment ago - the page count fell to one, or a level change shortened
+            // the navigation run - is put back by the release pass below, from the value we
+            // recorded, rather than by asserting a number here. Asserting one was the leak: writing
+            // Vector3.one to an element we had never touched substitutes our guess about VHVR's
+            // element scale for VHVR's own, on every frame the page is open, for every content
+            // slot.
             for (int i = 0; i < content; i++)
             {
                 Transform t = TransformOf(extra.GetValue(_layoutNav + i));
                 if (t == null) continue;
                 t.localPosition = cells[i + 1];
-                if (t.localScale.x != 1f) t.localScale = Vector3.one;
             }
 
+            // Everything we have ever scaled that is NOT one of the current navigation buttons goes
+            // back now. This is the page-change and level-change restore, and it also covers the
+            // case neither loop above reaches: nav falling from three to one on a level with a
+            // single page and no content at all, which leaves indices 1 and 2 outside both bounds.
+            ReleaseAllExcept(navNow);
+
             Stand(extra, _layoutUsed);
+        }
+
+        // WHAT WE OVERWROTE, SO IT CAN BE PUT BACK.
+        //
+        // Reported 2026-08-26: "when the additional misc wrist menu is first opened, the icons
+        // inside the small menu buttons suddenly scales smaller... then when i close the misc menu
+        // and look at the regular wrist menu items, the icons inside them are also scaled down by
+        // 1/2 or so." The shrink was leaking, and it leaked because this code wrote absolute
+        // numbers in both directions: NavScale going in, and a hard-coded Vector3.one coming back
+        // out. Neither is ours to assert. The elements belong to VHVR - QuickAbstract.initialize
+        // news up MAX_EXTRA_ELEMENTS of them and parents them to the wrist (QuickAbstract.cs
+        // :289-295) - and it reuses them for its own quick-action items the moment our page is not
+        // showing. So the only correct restore value is the one that was there before we wrote,
+        // and the only way to have it is to have kept it.
+        //
+        // This mirrors the hover highlight's discipline below exactly, for the same reason: keyed on
+        // the OBJECT and captured on first sight, before we have ever written to it. Keying on the
+        // index or on the menu would fold our own factor into the base as soon as anything replaced
+        // the object - and two things do. initialize can run again and hand out fresh GameObjects,
+        // and Grow clones extra.GetValue(0) - which is the X button, an element we scale - to build
+        // indices 8 and 9 (MiscMenu.cs Grow, `Instantiate(template.gameObject, ...)`), so a clone
+        // is born carrying whatever scale index 0 had at that instant. A destroyed GameObject
+        // compares equal to null in Unity, which is how a stale slot is noticed and reclaimed.
+        //
+        // Six slots: NavSlots for each of the two QuickAbstract subclasses VHVR constructs
+        // (LeftHandQuickMenu and RightHandQuickMenu). Only one hand is ever ours, but MenuHand is a
+        // config value and a linear scan of six on at most three elements per frame is not worth
+        // being clever about.
+        private static readonly Transform[] _navObject = new Transform[NavSlots * 2];
+        private static readonly Vector3[] _navBase = new Vector3[NavSlots * 2];
+        // This frame's navigation buttons, filled by LayOut's own loop. A handoff within one call,
+        // exactly like _layoutNav/_layoutUsed above, so it needs no lifetime of its own.
+        private static readonly Transform[] _navNow = new Transform[NavSlots];
+
+        private static Vector3 NavBase(Transform t)
+        {
+            for (int i = 0; i < _navObject.Length; i++)
+                if (ReferenceEquals(_navObject[i], t)) return _navBase[i];
+            for (int i = 0; i < _navObject.Length; i++)
+            {
+                // == null rather than ReferenceEquals(null): a slot whose element was destroyed by
+                // a re-initialize reads null through Unity's operator and is free again.
+                if (_navObject[i] != null) continue;
+                _navObject[i] = t;
+                // Captured before we have ever written to this object, so it is VHVR's own value.
+                _navBase[i] = t.localScale;
+                return _navBase[i];
+            }
+            // More than two menus' worth of navigation buttons would mean VHVR grew a third
+            // QuickAbstract. Size from what it has now rather than from a base we never recorded,
+            // which is wrong once instead of wrong forever.
+            return t.localScale;
+        }
+
+        // Put back and forget, for every recorded element except the first `navCount` entries of
+        // _navNow - the navigation buttons LayOut just wrote this frame. Zero means none of them
+        // are ours any more, which is the closed strip.
+        private static void ReleaseAllExcept(int navCount)
+        {
+            for (int i = 0; i < _navObject.Length; i++)
+            {
+                Transform t = _navObject[i];
+                if (t == null) { _navObject[i] = null; continue; }
+                bool stillOurs = false;
+                for (int n = 0; n < navCount; n++)
+                {
+                    if (!ReferenceEquals(_navNow[n], t)) continue;
+                    stillOurs = true;
+                    break;
+                }
+                if (stillOurs) continue;
+                if (t.localScale != _navBase[i]) t.localScale = _navBase[i];
+                _navObject[i] = null;
+            }
+        }
+
+        // THE ONE RESTORE THAT DOES NOT DEPEND ON US STILL RUNNING.
+        //
+        // Every path above lives inside LayOut, and LayOut is only reached when the prefix claimed
+        // the current frame. It stops claiming frames, permanently, on four paths that are not
+        // errors we can catch at the write site: MiscMenuEnabled flipped false by either catch
+        // block (the prefix's and the postfix's own), _entries.Count falling to zero, Resolve
+        // failing, and an extraElements array that reads null or empty. On any of them the strip
+        // goes straight back to being VHVR's, with our third still written on three of its
+        // elements - which is precisely the "regular wrist menu items scaled down" half of the
+        // report.
+        //
+        // So the postfix - which stays patched regardless of any of the above - checks one int
+        // before anything that can throw. More than one frame without a layout means nobody is
+        // coming back for these elements. One frame of slack, not zero, because reorderElements
+        // fires for BOTH hands every frame in an arbitrary order: the hand that is not ours running
+        // first would otherwise restore our buttons in the middle of the frame that is about to
+        // re-scale them.
+        //
+        // _layoutNav is zeroed with them, because it is the same fact. AfterHover reads it to
+        // decide whether the shared hoveredItem should be a third the size, and a stale nonzero
+        // would keep shrinking the highlight over an element that is VHVR's again.
+        private static void ReleaseIfAbandoned()
+        {
+            if (Time.frameCount - _layoutFrame <= 1) return;
+            _layoutNav = 0;
+            for (int i = 0; i < _navObject.Length; i++)
+            {
+                Transform t = _navObject[i];
+                if (t != null && t.localScale != _navBase[i]) t.localScale = _navBase[i];
+                _navObject[i] = null;
+            }
         }
 
         // The grown indices, which VHVR neither activates nor deactivates. A live element left up
@@ -1324,6 +1451,14 @@ namespace NeuralyzeVRFixes
                 GameObject clone = UnityEngine.Object.Instantiate(
                     template.gameObject, template.transform.parent, false);
                 clone.name = "NeuralyzeWristExtra" + i;
+                // The template is extra.GetValue(0) - the X button, an element THIS class scales to
+                // a third - and Instantiate copies the source transform's localScale. A clone born
+                // while our factor was on the template would carry it into a full-size content
+                // footprint for the rest of the session, because nothing writes a content element's
+                // scale any more (see LayOut). So the clone is given the recorded base outright.
+                // NavBase captures on first sight, and at this point in the first open nothing has
+                // written to index 0 yet, so the value it records is VHVR's own.
+                clone.transform.localScale = NavBase(template.transform);
                 made.Add(clone);
                 Component slot = clone.GetComponent(element);
                 if (slot == null)
