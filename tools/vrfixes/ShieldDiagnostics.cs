@@ -315,6 +315,15 @@ namespace NeuralyzeVRFixes
                 Player p = Player.m_localPlayer;
                 if (p == null || __instance != (Character)p) return;
                 if (_emitted >= MaxLines) return;
+                // The budget is spent only on a hit this probe can actually say anything about.
+                // Measured 2026-08-26: all 40 lines of a session were consumed by dmg=0.0 events
+                // BEFORE the shield was equipped - the attach line appears at log line 107, one
+                // line AFTER "hit 40/40" - so the probe reported shieldInst=no forty times about
+                // moments when no shield existed, and had nothing left for the hits that mattered.
+                // Two conditions, both required: there must be blockable damage, and the component
+                // whose decision this probe exists to report must exist. Anything else is not a
+                // shield hit and must not cost a slot.
+                if (_blockable <= 0f || !ShieldBlockAttach.Attached()) return;
                 _emitted++;
 
                 float taken = _hpBefore - p.GetHealth();

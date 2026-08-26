@@ -178,6 +178,15 @@ namespace NeuralyzeVRFixes
                 + (_attachCount == 0 ? " skip=" + _lastSkip : "");
         }
 
+        // Whether a shield component is live RIGHT NOW, for callers that must not act before it
+        // exists. Deliberately not derived from Status()'s text: a caller branching on a string
+        // built for humans breaks the moment that wording changes, and the wording has already
+        // changed once. Reads the same counters Status() reports.
+        internal static bool Attached()
+        {
+            return _installed && !_dead && _attachCount > 0 && _pendingHost == null;
+        }
+
         private static MethodInfo Self(string name)
         {
             return typeof(ShieldBlockAttach).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic);
