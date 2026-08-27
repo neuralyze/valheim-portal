@@ -2052,15 +2052,17 @@ var playerWorldTemplate = strings.Replace(
 			),
 			`</style>`,
 			`.profile-card .notes{color:#a6a6a6;font-style:italic}`+
-				`.vhvr-source{max-width:72ch;margin:0 0 2.2rem;padding:1.25rem;border:1px solid var(--line);border-radius:.9rem;background:#ffffff0a;color:var(--muted);font-size:.92rem}`+
+				`.vhvr-source{max-width:72ch;margin:2.2rem 0;padding:1.25rem;border:1px solid var(--line);border-radius:.9rem;background:#ffffff0a;color:var(--muted);font-size:.92rem}`+
 				`.vhvr-source h2{margin:0 0 .5rem;color:var(--ink);font-size:1.1rem}.vhvr-source p{margin:0}.vhvr-source a{color:#a8e7bf}</style>`,
 			1,
 		),
-		// Directly after the install steps, which is where the page says what is about to be
-		// put on the player's machine. Below the mod grid it would be four screens from the
-		// button that installs the binary the offer is about.
-		`<section class="choose">`,
-		`{{if .VHVR}}`+vhvrSourceOffer+`{{end}}<section class="choose">`,
+		// Last element on the page, below the mod grid. The operator asked for the bottom on
+		// 2026-08-26; before that it sat directly above the install steps so it was beside the
+		// button that installs the binary. GPL-3.0 section 6 is satisfied by the offer being on
+		// the surface that conveys the code, which this page still is - and the download itself
+		// carries X-ValheimVR-Source regardless of where any page puts it.
+		`</section></main>`,
+		`</section>{{if .VHVR}}`+vhvrSourceOffer+`{{end}}</main>`,
 		1,
 	),
 	`<main class="shell">`,
