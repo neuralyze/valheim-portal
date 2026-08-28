@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -413,12 +414,16 @@ func readExplorationReport(path string) (*explorationUpload, error) {
 	return report, nil
 }
 
-// explorationPins is every saved pin every player reported, with whose it is. Type is Valheim's own
+// explorationPins is every distinct pin the players reported, with whose it is. Type is Valheim's own
 // Minimap.PinType ordinal (assembly_valheim.dll: Icon0=0, Icon1=1, Icon2=2, Icon3=3, Death=4, Bed=5,
 // Icon4=6, Shout=7, None=8, Boss=9, Player=10, RandomEvent=11, Ping=12, EventArea=13, Hildir1..3=
 // 14..16) and it is carried through as the number so the map can draw a bed as a bed. TypeName is
 // what the client wrote alongside it, which for the vanilla marker icons is "icon0".."icon4".
 type explorationPins struct {
+	// PlayerID is the one character that reported this pin, and 0 when several did. Zero is not a
+	// gap here: it is this codebase's existing "nobody in particular" id, so builderColour and
+	// builderName - on both sides, Go and world-map.js - already render a shared pin neutrally
+	// instead of painting five people's crypt in one person's colour and claiming they found it.
 	PlayerID int64   `json:"player_id"`
 	Name     string  `json:"name"`
 	Type     int     `json:"type"`
@@ -426,10 +431,102 @@ type explorationPins struct {
 	X        float64 `json:"x"`
 	Z        float64 `json:"z"`
 	Crossed  bool    `json:"crossed_off"`
+	// Contributors is every character that reported this pin, ascending. It is the attribution the
+	// legend, the per-character filter and the map readout all work from, so collapsing a cluster
+	// costs nobody their credit for it.
+	Contributors []int64 `json:"contributors,omitempty"`
 }
 
-// reportedPins reads the pin files for a world. A player's pins are the part of the map they made
-// themselves, so they are shown as they were written - names included, unchanged.
+// pinPlace is what makes two reported pins the same pin: the same marker, with the same text, at the
+// same spot, in the same state. Crossed is part of it deliberately - see collapseReportedPins.
+type pinPlace struct {
+	Type    int
+	X       float64
+	Z       float64
+	Name    string
+	Crossed bool
+}
+
+// collapseReportedPins folds pins that describe one place into one pin.
+//
+// Measured on Hrafnheim, 2026-08-28: the four uploaded pin files carry 97 pins over 42 distinct
+// places - 55 pins (57%) removable, 27 clusters holding duplicates, 26 of those spanning more than
+// one character. The cause is SurplusTradingCo-SullysAutoPinner 1.4.0, which generates a pin per
+// character for the same world object, so "Crypt" x5 and "Shipwreck Chest" x5 are five clients
+// describing one crypt, not five crypts. Some characters also duplicate a pin against themselves.
+// The canvas already collapsed a character's duplicates against themselves; what nothing did was
+// collapse across characters, which is where 26 of the 27 clusters are.
+//
+// Grouping is exact, with no distance tolerance: grouping that same data at 1 m, 5 m, 10 m and 20 m
+// gave identical results, which proves the copies sit on byte-identical coordinates. A tolerance
+// would therefore buy nothing here and would start merging pins two players genuinely placed a few
+// metres apart.
+//
+// Crossed is in the key, so a pin one player struck off never merges with the same pin another still
+// has live: crossing off is a statement about that player's own map, and the two states draw
+// differently. Such a place shows as two pins on one spot - one struck, one live - which is the
+// truth about it rather than a vote.
+func collapseReportedPins(pins []explorationPins) []explorationPins {
+	if len(pins) == 0 {
+		return nil
+	}
+	collapsed := make([]explorationPins, 0, len(pins))
+	at := make(map[pinPlace]int, len(pins))
+	for _, pin := range pins {
+		place := pinPlace{Type: pin.Type, X: pin.X, Z: pin.Z, Name: pin.Name, Crossed: pin.Crossed}
+		index, seen := at[place]
+		if !seen {
+			pin.Contributors = []int64{pin.PlayerID}
+			at[place] = len(collapsed)
+			collapsed = append(collapsed, pin)
+			continue
+		}
+		cluster := &collapsed[index]
+		if !slices.Contains(cluster.Contributors, pin.PlayerID) {
+			cluster.Contributors = append(cluster.Contributors, pin.PlayerID)
+		}
+	}
+	for index := range collapsed {
+		// Ascending so the attribution reads the same on every page load rather than following
+		// whichever file os.ReadDir handed over first.
+		slices.Sort(collapsed[index].Contributors)
+		if len(collapsed[index].Contributors) > 1 {
+			collapsed[index].PlayerID = 0
+		}
+	}
+	return collapsed
+}
+
+// placers is every character to attribute a pin to. A pin built by hand rather than read off disk
+// carries no Contributors, and there its single PlayerID is the whole answer.
+func (p explorationPins) placers() []int64 {
+	if len(p.Contributors) == 0 {
+		return []int64{p.PlayerID}
+	}
+	return p.Contributors
+}
+
+// pinsPlacedBy is one character's own markers. It has to ask Contributors rather than PlayerID: after
+// collapsing, a pin several characters reported carries no single id at all, and matching on PlayerID
+// alone would empty the per-character maps of every pin the auto-pinner gave more than one of them.
+func pinsPlacedBy(pins []explorationPins, player int64) []explorationPins {
+	kept := make([]explorationPins, 0, len(pins))
+	for _, pin := range pins {
+		if !slices.Contains(pin.placers(), player) {
+			continue
+		}
+		// Their map, their colour: this view holds nothing but this character's pins, so here the
+		// pin really does have one placer and the canvas may say so.
+		pin.PlayerID = player
+		pin.Contributors = []int64{player}
+		kept = append(kept, pin)
+	}
+	return kept
+}
+
+// reportedPins reads the pin files for a world, one pin per distinct place. A player's pins are the
+// part of the map they made themselves, so names are shown as they were written; what is not carried
+// through is the same marker arriving once per character (see collapseReportedPins).
 func (s *Server) reportedPins(world string) []explorationPins {
 	if !validWorld(world) {
 		return nil
@@ -460,5 +557,5 @@ func (s *Server) reportedPins(world string) []explorationPins {
 			all = append(all, pin)
 		}
 	}
-	return all
+	return collapseReportedPins(all)
 }

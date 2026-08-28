@@ -60,6 +60,16 @@
   const BUILDER_COLOURS = [
     '#6f9ad6', '#71c492', '#d9a514', '#c46f9a', '#7ad6cf', '#d6a06f', '#a58fd6', '#8fd66f'
   ];
+  // The colour of a pin nobody in particular placed. Deliberately not one of the builder colours:
+  // a marker several characters reported must not read as any one of them. Same grey as Go's
+  // builderColour(0), the id this codebase already uses for "nobody in particular".
+  const SHARED_PIN_COLOUR = '#9aa8a0';
+
+  // Every character that reported a pin. One the server collapsed carries the whole list; one nobody
+  // else duplicated carries just its own id, and 0 stands for "no single placer".
+  function placersOf(pin) {
+    return Array.isArray(pin.contributors) && pin.contributors.length ? pin.contributors : [pin.player_id || 0];
+  }
 
   function builderStyle(creator) {
     return (window.__builderStyles || {})[String(creator)] || null;
@@ -1711,9 +1721,14 @@
     const bounds = visibleBounds(40);
     const labelBoxes = [];
     const showNames = state.scale >= 0.12;
-    // Two pins can sit on exactly the same spot: the operator's own upload holds "Shipwreck Chest"
-    // twice at (340.4, 1110.8). Deduping would throw away a fact, and drawing one on top of the
-    // other hides it, so identical pins are drawn once and counted in the label instead.
+    // Pins describing one place are folded by the server before they get here (operator asked for
+    // it on 2026-08-28). Measured on Hrafnheim that day: 4 uploaded files, 97 pins over 42 distinct
+    // places, 55 of them (57%) removable, because SullysAutoPinner 1.4.0 generates a pin per
+    // character per world object; grouping at 1 m and at 20 m gave identical results, so the copies
+    // sit on byte-identical coordinates. 26 of the 27 duplicate clusters spanned more than one
+    // character - which this grouping, keyed on player_id, could never see. It stays because what it
+    // does see is still right: identical pins from one character are drawn once and counted in the
+    // label rather than hidden under each other.
     const grouped = new Map();
     for (const pin of pins) {
       const key = [pin.player_id, pin.x, pin.z, pin.type, pin.name, pin.crossed_off ? 1 : 0].join('|');
@@ -1724,7 +1739,11 @@
     for (const { pin, count } of grouped.values()) {
       if (pin.x < bounds.minX || pin.x > bounds.maxX || pin.z < bounds.minZ || pin.z > bounds.maxZ) continue;
       const [pixelX, pixelY] = screen(pin.x, pin.z);
-      const colour = builderColour(pin.player_id);
+      const placers = placersOf(pin);
+      // A pin several characters reported has no single placer, so it is not painted in one of their
+      // colours: that would assert that person found it. The neutral hue plus the ×N label says what
+      // is true - one place, this many people who marked it.
+      const colour = placers.length > 1 ? SHARED_PIN_COLOUR : builderColour(placers[0]);
       context.save();
       context.translate(pixelX, pixelY);
       context.globalAlpha = pin.crossed_off ? 0.5 : 0.95;
@@ -1744,7 +1763,8 @@
         context.stroke();
       }
       context.restore();
-      const label = count > 1 ? `${pin.name || 'pin'} ×${count}` : pin.name;
+      const reported = Math.max(count, placers.length);
+      const label = reported > 1 ? `${pin.name || 'pin'} ×${reported}` : pin.name;
       if (showNames && label) {
         drawBuilderLabel(label, pixelX, pixelY - radius - 2, colour, labelBoxes);
       }
@@ -1923,7 +1943,9 @@
     if (selection.kind === 'player pin') {
       lines.push(`kind: ${data.type_name || 'unknown'}`);
       lines.push(`crossed off: ${data.crossed_off ? 'yes' : 'no'}`);
-      lines.push(`placed by: ${builderName(data.player_id || 0)}`);
+      // A collapsed pin names everybody who reported it: the fold across characters is the reason
+      // the map shows one marker, so the readout is where the attribution has to reappear in full.
+      lines.push(`placed by: ${placersOf(data).map(builderName).join(', ')}`);
     }
     if (data.creator !== undefined || data.aggregate) {
       // Naming the builder is the point of the colour: over terrain, at map scale, a hue alone does

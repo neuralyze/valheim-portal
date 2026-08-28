@@ -270,11 +270,18 @@ func (s *Server) pinLegend(ctx context.Context, world string, pins []exploration
 		labels = map[int64]string{}
 	}
 	reported := s.reportedPlayerNames(world)
+	// Every contributor of a pin, not just the id stamped on it: after collapsing, a pin five
+	// characters reported carries no single id, and counting PlayerID alone would have dropped four
+	// of the five rows on Hrafnheim, where 26 of 27 duplicate clusters span more than one character
+	// (measured 2026-08-28). Pins is therefore how many distinct places a character marked, which is
+	// also the honest number now that the same crypt reported five times is one place.
 	counts, struck := map[int64]int{}, map[int64]int{}
 	for _, pin := range pins {
-		counts[pin.PlayerID]++
-		if pin.Crossed {
-			struck[pin.PlayerID]++
+		for _, player := range pin.placers() {
+			counts[player]++
+			if pin.Crossed {
+				struck[player]++
+			}
 		}
 	}
 	owners := make([]pagePinOwner, 0, len(counts))

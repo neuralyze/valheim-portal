@@ -187,13 +187,7 @@ func (s *Server) playerWorldMap(w http.ResponseWriter, r *http.Request) {
 		// everybody's on the shared map, matching what playerAnalysisJSON hands the canvas.
 		pins := s.reportedPins(world)
 		if player != 0 {
-			kept := make([]explorationPins, 0, len(pins))
-			for _, pin := range pins {
-				if pin.PlayerID == player {
-					kept = append(kept, pin)
-				}
-			}
-			pins = kept
+			pins = pinsPlacedBy(pins, player)
 		}
 		page.PinOwners = s.pinLegend(r.Context(), world, pins, styles)
 		page.LabelsJSON = encodeStyles(styles)
@@ -235,13 +229,7 @@ func (s *Server) playerAnalysisJSON(w http.ResponseWriter, r *http.Request) {
 		} else {
 			mask = nil
 		}
-		kept := make([]explorationPins, 0, len(pins))
-		for _, pin := range pins {
-			if pin.PlayerID == player {
-				kept = append(kept, pin)
-			}
-		}
-		pins = kept
+		pins = pinsPlacedBy(pins, player)
 	}
 	if r.URL.Query().Get("summary") == "1" {
 		// The renderer asks for the light version once it holds the terrain manifest. The zone list

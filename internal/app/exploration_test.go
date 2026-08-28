@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -435,8 +437,9 @@ func TestAdminAnalysisPayloadCarriesPinsWithTheirValheimType(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Pins) != 6 {
-		t.Fatalf("admin payload carried %d pins, want 6", len(payload.Pins))
+	// Five, not six: the file holds "Shipwreck Chest" twice on one spot, and one place is one pin.
+	if len(payload.Pins) != 5 {
+		t.Fatalf("admin payload carried %d pins, want 5", len(payload.Pins))
 	}
 	types := map[int]int{}
 	for _, pin := range payload.Pins {
@@ -445,23 +448,27 @@ func TestAdminAnalysisPayloadCarriesPinsWithTheirValheimType(t *testing.T) {
 			t.Errorf("pin %q lost its placer: player_id=%d", pin.Name, pin.PlayerID)
 		}
 	}
-	// Icon3 x3, Icon0 x2, Icon1 x1: the ordinal is what picks the glyph, so it has to survive the
+	// Icon3 x2, Icon0 x2, Icon1 x1: the ordinal is what picks the glyph, so it has to survive the
 	// round trip rather than being flattened to the "icon3" string beside it.
-	for ordinal, want := range map[int]int{3: 3, 0: 2, 1: 1} {
+	for ordinal, want := range map[int]int{3: 2, 0: 2, 1: 1} {
 		if types[ordinal] != want {
 			t.Errorf("pin type %d appeared %d times, want %d", ordinal, types[ordinal], want)
 		}
 	}
-	// The duplicate is carried through, not deduplicated: two markers on one spot is a fact about
-	// what the player did, and the canvas counts them into one label instead of dropping one.
-	duplicates := 0
+	// The duplicate is folded now rather than carried: the auto-pinner writes the same marker once
+	// per character, which on Hrafnheim turned 42 places into 97 pins (measured 2026-08-28). Only
+	// this character reported it, so the fold leaves their id on it rather than blanking it.
+	shipwrecks := 0
 	for _, pin := range payload.Pins {
 		if pin.Name == "Shipwreck Chest" && pin.X == 340.4 && pin.Z == 1110.8 {
-			duplicates++
+			shipwrecks++
+			if !slices.Equal(pin.Contributors, []int64{-322254472}) {
+				t.Errorf("collapsed pin contributors = %v, want the single character that reported it", pin.Contributors)
+			}
 		}
 	}
-	if duplicates != 2 {
-		t.Errorf("the duplicate Shipwreck Chest pin arrived %d time(s), want 2", duplicates)
+	if shipwrecks != 1 {
+		t.Errorf("the duplicated Shipwreck Chest pin arrived %d time(s), want 1", shipwrecks)
 	}
 }
 
@@ -477,8 +484,8 @@ func TestPinLegendAttributesEachContributorLikeABuilder(t *testing.T) {
 		t.Fatalf("pin owners = %d, want 1", len(owners))
 	}
 	owner := owners[0]
-	if owner.PlayerID != -322254472 || owner.Pins != 6 || owner.Struck != 1 {
-		t.Fatalf("owner row = %+v, want the 6 pins with 1 crossed off", owner)
+	if owner.PlayerID != -322254472 || owner.Pins != 5 || owner.Struck != 1 {
+		t.Fatalf("owner row = %+v, want the 5 places with 1 crossed off", owner)
 	}
 	if owner.Colour != builderColour(-322254472) {
 		t.Errorf("pin colour %q is not the builder colour %q for the same character", owner.Colour, builderColour(-322254472))
@@ -507,5 +514,151 @@ func TestPinLegendAttributesEachContributorLikeABuilder(t *testing.T) {
 	named := server.pinLegend(t.Context(), world, server.reportedPins(world), map[string]map[string]string{})
 	if len(named) != 1 || named[0].Label != "westar" || !named[0].Named || !named[0].Reported {
 		t.Fatalf("named row = %+v, want westar reported by the server", named)
+	}
+}
+
+// writePinsFile puts one character's pins file in the world's exploration directory. Before
+// 2026-08-28 every test here had a single contributor, which is exactly why the cross-character
+// duplication went unnoticed: 26 of the 27 duplicate clusters on Hrafnheim span more than one
+// character, and no one-file fixture can show that.
+func writePinsFile(t *testing.T, server *Server, world, steamID string, playerID int64, pins string) {
+	t.Helper()
+	directory := server.explorationRoot(world)
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := fmt.Sprintf(`{"schema":1,"world":%q,"player_id":%d,"written":"2026-08-28T00:51:15Z","pins":[%s]}`,
+		world, playerID, pins)
+	name := fmt.Sprintf("%s-%d.pins.json", steamID, playerID)
+	if err := os.WriteFile(filepath.Join(directory, name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const crypt = `{"name":"Crypt","type":3,"type_name":"icon3","x":122,"z":502.9,"crossed_off":false,"owner_id":0}`
+
+// Three characters reporting one crypt is one crypt. This is the live shape of the defect: on
+// Hrafnheim, 2026-08-28, SullysAutoPinner 1.4.0 had turned 42 distinct places into 97 pins across
+// four characters, "Crypt" x5 among them.
+func TestPinsSeveralCharactersReportedCollapseToOnePlace(t *testing.T) {
+	server := testServer(t)
+	world := "Midgard"
+	// The third character reports it twice, the way a client that saved twice does.
+	writePinsFile(t, server, world, "76561197987967077", -322254472, crypt)
+	writePinsFile(t, server, world, "76561198047602320", -266353786, crypt)
+	writePinsFile(t, server, world, "76561198199236117", 308095166, crypt+","+crypt+
+		`,{"name":"Crypt","type":3,"type_name":"icon3","x":0.6,"z":778.4,"crossed_off":false,"owner_id":0}`)
+	pins := server.reportedPins(world)
+	// Two places: the shared crypt, and the one only the third character found. The second is the
+	// control - collapsing must not reach pins that merely share a type and a name.
+	if len(pins) != 2 {
+		t.Fatalf("reported pins = %d, want 2 places: %+v", len(pins), pins)
+	}
+	var shared explorationPins
+	for _, pin := range pins {
+		if pin.X == 122 && pin.Z == 502.9 {
+			shared = pin
+		}
+	}
+	if !slices.Equal(shared.Contributors, []int64{-322254472, -266353786, 308095166}) {
+		t.Errorf("shared crypt contributors = %v, want all three characters ascending", shared.Contributors)
+	}
+	// No single placer, so no single id: a pin painted in one contributor's colour would assert that
+	// person found it.
+	if shared.PlayerID != 0 {
+		t.Errorf("shared crypt player_id = %d, want 0 for a pin with no single placer", shared.PlayerID)
+	}
+	// Each of them has this pin on their own map, which is what the per-character view filters on.
+	for _, player := range []int64{-322254472, -266353786, 308095166} {
+		own := pinsPlacedBy(pins, player)
+		if len(own) == 0 {
+			t.Errorf("character %d lost the crypt they reported", player)
+			continue
+		}
+		if own[0].PlayerID != player {
+			t.Errorf("character %d sees their own pin stamped %d", player, own[0].PlayerID)
+		}
+	}
+}
+
+// Collapsing must not cost anybody their legend row. Attribution is the whole reason the pins layer
+// exists: an operator reads it to see who has been where.
+func TestCollapsedPinsStillAttributeEveryContributor(t *testing.T) {
+	server := testServer(t)
+	world := "Midgard"
+	writePinsFile(t, server, world, "76561197987967077", -322254472, crypt)
+	writePinsFile(t, server, world, "76561198047602320", -266353786, crypt)
+	styles := map[string]map[string]string{}
+	pins := server.reportedPins(world)
+	// One pin on the map, two contributors in the legend: that pairing is the whole requirement.
+	if len(pins) != 1 {
+		t.Fatalf("reported pins = %d, want the one place both characters marked: %+v", len(pins), pins)
+	}
+	owners := server.pinLegend(t.Context(), world, pins, styles)
+	if len(owners) != 2 {
+		t.Fatalf("pin owners = %d, want a row for each contributor: %+v", len(owners), owners)
+	}
+	for _, owner := range owners {
+		if owner.Pins != 1 {
+			t.Errorf("owner %d shows %d pins, want the 1 place they marked", owner.PlayerID, owner.Pins)
+		}
+		if styles[strconv.FormatInt(owner.PlayerID, 10)] == nil {
+			t.Errorf("contributor %d never reached the canvas fold, so their name cannot be drawn", owner.PlayerID)
+		}
+	}
+}
+
+// One character duplicating a pin against themselves is the same defect with one contributor: the
+// operator's own upload holds "Shipwreck Chest" twice on one spot.
+func TestOneCharactersOwnDuplicateCollapses(t *testing.T) {
+	server := testServer(t)
+	world := "Midgard"
+	writePinsFile(t, server, world, "76561197987967077", -322254472, crypt+","+crypt)
+	pins := server.reportedPins(world)
+	if len(pins) != 1 {
+		t.Fatalf("reported pins = %d, want 1: %+v", len(pins), pins)
+	}
+	// One contributor, so the pin keeps their id and their colour: there is nothing shared about it.
+	if pins[0].PlayerID != -322254472 || !slices.Equal(pins[0].Contributors, []int64{-322254472}) {
+		t.Errorf("collapsed pin = %+v, want the one character that reported it twice", pins[0])
+	}
+}
+
+// Crossing a pin off is a statement about that player's own map, so it is part of what makes two
+// pins the same pin. A place one player has finished with and another has not is two pins, drawn
+// differently, rather than a vote decided in the portal.
+func TestACrossedOffPinNeverMergesWithALiveOne(t *testing.T) {
+	server := testServer(t)
+	world := "Midgard"
+	writePinsFile(t, server, world, "76561197987967077", -322254472, crypt)
+	writePinsFile(t, server, world, "76561198047602320", -266353786,
+		`{"name":"Crypt","type":3,"type_name":"icon3","x":122,"z":502.9,"crossed_off":true,"owner_id":0}`)
+	pins := server.reportedPins(world)
+	if len(pins) != 2 {
+		t.Fatalf("reported pins = %d, want the struck one and the live one: %+v", len(pins), pins)
+	}
+	for _, pin := range pins {
+		want := int64(-322254472)
+		if pin.Crossed {
+			want = -266353786
+		}
+		if !slices.Equal(pin.Contributors, []int64{want}) {
+			t.Errorf("pin crossed=%v attributed to %v, want just %d", pin.Crossed, pin.Contributors, want)
+		}
+	}
+}
+
+// The control the fold has to pass: two markers of the same type and the same name at different
+// coordinates are two different things a player found. Nothing here is allowed to merge them, which
+// is also why there is no distance tolerance - grouping the live data at 1 m and at 20 m gave
+// identical results, so a tolerance would only ever cost information.
+func TestTwoPinsAtDifferentPlacesBothSurvive(t *testing.T) {
+	server := testServer(t)
+	world := "Midgard"
+	writePinsFile(t, server, world, "76561197987967077", -322254472, crypt+
+		`,{"name":"Crypt","type":3,"type_name":"icon3","x":123,"z":502.9,"crossed_off":false,"owner_id":0}`)
+	pins := server.reportedPins(world)
+	if len(pins) != 2 {
+		t.Fatalf("reported pins = %d, want both crypts: %+v", len(pins), pins)
 	}
 }
