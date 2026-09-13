@@ -118,9 +118,10 @@ namespace Neuralyze.EverybodyShim
         public static void Initialize()
         {
             Log.LogInfo(string.Format(
-                "EverybodyShim loaded: {0} appended-optional forwards, {1} return-type forwards. "
-                + "Everything else is delegated to Valheim10Compatibility.",
-                AppendedOptionalForwards.Table.Length, ReturnTypeWidenedForwards.Table.Length));
+                "EverybodyShim loaded: {0} appended-optional forwards, {1} return-type forwards, "
+                + "{2} delegated-return forwards. Everything else is delegated to Valheim10Compatibility.",
+                AppendedOptionalForwards.Table.Length, ReturnTypeWidenedForwards.Table.Length,
+                DelegatedReturnForwards.Table.Length));
         }
 
         public static void Patch(AssemblyDefinition assembly)
@@ -135,6 +136,10 @@ namespace Neuralyze.EverybodyShim
             int widened = ReturnTypeWidenedForwards.Apply(assembly, Log);
             Log.LogInfo(string.Format("{0} of {1} return-type forwards emitted.",
                 widened, ReturnTypeWidenedForwards.Table.Length));
+
+            int delegated = DelegatedReturnForwards.Apply(assembly, Log);
+            Log.LogInfo(string.Format("{0} of {1} delegated-return forwards emitted.",
+                delegated, DelegatedReturnForwards.Table.Length));
         }
     }
 }
