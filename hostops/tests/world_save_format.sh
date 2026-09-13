@@ -197,4 +197,73 @@ while read -r directory; do
 		fail "restore staged inside worlds_local: $directory"
 done <"$TAR_C_LOG"
 
+# --- a save this user cannot open is refused, and leaves no archive ------------------
+# Valheim 1.0 leaves the world directory without an execute bit (measured on Ulfsland
+# 2026-09-12: drw-rw-r--, and `sudo -u valheim-agent head -c 8 .../_main.2.fwl2` denied
+# while `ls` of the same directory succeeded). tar streams as it goes, so before the
+# readability gate this produced a 122-byte archive holding only the directory entry and
+# left it in the inventory as the newest backup for that world.
+#
+# Root is exempt from the permission bits entirely, so these two cases can only be
+# observed as an unprivileged user.
+if [[ $(id -u) -ne 0 ]]; then
+	make_directory_world Bifrost Bifrost
+	bifrost_dir="$root/Bifrost/config_merged/worlds_local"
+	chmod 0664 "$bifrost_dir/Bifrost"
+
+	# Nobody but the owner or root may repair a mode, and in production the owner is the
+	# container user while the caller is the agent. A chmod shim that fails is how that
+	# asymmetry is reproduced without a second account.
+	deny="$tmp/deny"
+	mkdir -p "$deny"
+	printf '#!/usr/bin/env bash\nexit 1\n' >"$deny/chmod"
+	chmod 0755 "$deny/chmod"
+	if PATH="$deny:$PATH" bash "$backup" Bifrost denied >"$tmp/out" 2>"$tmp/err"; then
+		fail "unreadable save: backup succeeded"
+	fi
+	grep -q 'cannot read the world save' "$tmp/err" ||
+		fail "unreadable save: expected a named refusal, got: $(cat "$tmp/err")"
+	grep -q 'chmod a+X' "$tmp/err" ||
+		fail "unreadable save: the refusal does not name the repair: $(cat "$tmp/err")"
+	[[ -z $(find "$root/world_backups" -name 'world-Bifrost-denied-*' -print -quit) ]] ||
+		fail "unreadable save: a stub archive was left in the inventory"
+
+	# The same world, with the repair permitted: it is applied and the backup completes.
+	archive=$(run_backup Bifrost repaired)
+	grep -q 'repaired traversal' "$tmp/err" ||
+		fail "repairable save: the repair was not reported: $(cat "$tmp/err")"
+	[[ $(stat -c %A "$bifrost_dir/Bifrost") == drwx* ]] ||
+		fail "repairable save: the execute bit was not restored: $(stat -c %A "$bifrost_dir/Bifrost")"
+	members "$archive" | grep -qx 'Bifrost/_main.1.fwl2' ||
+		fail "repairable save: the archive is missing the world metadata"
+fi
+
+# --- a tar that fails mid-stream leaves no archive behind ----------------------------
+# The readability gate catches the known cause; this covers every other one (a save being
+# rewritten underneath us, a full disk). A truncated archive in the inventory is worse
+# than no archive, because list, analysis and restore would all treat it as a backup.
+broken="$tmp/broken"
+mkdir -p "$broken"
+cat >"$broken/tar" <<'SHIM'
+#!/usr/bin/env bash
+# Write a stub at whatever -f names, then fail, which is what GNU tar does when it
+# cannot read a member it has already opened the archive for.
+previous=''
+for argument in "$@"; do
+	if [[ $previous == -f ]]; then
+		printf 'PARTIAL' >"$argument"
+	fi
+	previous=$argument
+done
+exit 2
+SHIM
+chmod 0755 "$broken/tar"
+if PATH="$broken:$PATH" bash "$backup" Vangard torn >"$tmp/out" 2>"$tmp/err"; then
+	fail "torn archive: backup reported success"
+fi
+grep -q 'partial archive was removed' "$tmp/err" ||
+	fail "torn archive: expected the cleanup message, got: $(cat "$tmp/err")"
+[[ -z $(find "$root/world_backups" -name 'world-Vangard-torn-*' -print -quit) ]] ||
+	fail "torn archive: the partial archive was left in the inventory"
+
 echo "PASS: backup and restore handle both Valheim world save formats"

@@ -274,3 +274,78 @@ world_save_stage_dir() {
   local world=$1
   mktemp -d "$VALHEIM_ROOT/$world/config_merged/.portal-restore.XXXXXX"
 }
+
+# require_readable_world_save proves this user can actually OPEN the save
+# resolve_world_save just found, repairs the one condition that is repairable,
+# and otherwise explains the refusal. Call it with the worlds_local path, after
+# resolve_world_save.
+#
+# Measured on Ulfsland 2026-09-12, as the real service user:
+#
+#   sudo -u valheim-agent ls worlds_local/Ulfsland        -> lists five files
+#   sudo -u valheim-agent head -c 8 .../_main.2.fwl2      -> Permission denied
+#
+# The world directory is mode drw-rw-r--. It has no execute bit, and without
+# execute nothing inside a directory can be opened or even stat'ed, though
+# readdir still works -- which is why the names list and every open fails. The
+# ACL makes it worse in a way that is invisible without getfacl: worlds_local
+# carries a correct default ACL, so the world directory really does inherit
+# "user:valheim-agent:rwx", but the mode also sets "mask::rw-" and the mask
+# clamps every named entry. getfacl prints it outright:
+#
+#   user:valheim-agent:rwx  #effective:rw-
+#
+# So the inherited ACL was never the problem. Without this gate the failure is
+# far worse than a refusal: tar streams as it goes, so it created the archive,
+# failed on all five members and left a 122-byte tgz holding nothing but the
+# directory entry sitting in the backup inventory, where it is the NEWEST
+# archive for that world and would be picked as the restore source.
+#
+# The repair (any execute bit, which also lifts the ACL mask) is attempted, not
+# assumed: only the owner or root may change a mode, the world directory is
+# owned by the container user, and the agent is not it. So an operator or root
+# run heals the world and proceeds, and an agent run refuses and says exactly
+# what to run. A chmod here that could only ever fail for the caller that
+# matters would be a fix-shaped change, not a fix.
+require_readable_world_save() {
+  local world_dir=$1
+  local target="$world_dir/${WORLD_SAVE_MEMBERS[0]}"
+  if world_save_is_readable "$world_dir"; then
+    return 0
+  fi
+  if chmod a+X -- "$target" 2>/dev/null && world_save_is_readable "$world_dir"; then
+    echo "repaired traversal on $target, which Valheim 1.0 left without an execute bit" >&2
+    return 0
+  fi
+  echo "cannot read the world save at $target" >&2
+  echo "It is mode $(stat -c %A -- "$target" 2>/dev/null || echo unknown) and this user is $(id -un)." >&2
+  echo "A directory with no execute bit cannot be opened into, and its mode also sets an" >&2
+  echo "ACL mask that clamps the inherited user:valheim-agent:rwx entry to rw-." >&2
+  echo "Repair it as the owner or as root, then retry:  chmod a+X $target" >&2
+  return 1
+}
+
+# world_save_is_readable is the probe behind require_readable_world_save: it
+# opens what would actually be archived rather than trusting the mode bits,
+# because the mode alone does not tell you what an ACL mask did to it.
+world_save_is_readable() {
+  local world_dir=$1 member probe found=1
+  if [[ $WORLD_SAVE_FORMAT == directory ]]; then
+    # The *.fwl2 files are the same ones resolve_world_save detected the format
+    # by, so a readable one means the directory is traversable and the save can
+    # be streamed. The glob itself proves nothing: matching names needs only
+    # read on the directory, which is exactly the permission that is present.
+    for probe in "$world_dir/${WORLD_SAVE_MEMBERS[0]}"/*.fwl2; do
+      if [[ -f $probe && -r $probe ]]; then
+        found=0
+      fi
+    done
+    return "$found"
+  fi
+  for member in "${WORLD_SAVE_MEMBERS[@]}"; do
+    if ! [[ -f "$world_dir/$member" && -r "$world_dir/$member" ]]; then
+      return 1
+    fi
+  done
+  return 0
+}

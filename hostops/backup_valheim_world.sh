@@ -24,6 +24,11 @@ if ! resolve_world_save "$WORLD_DIR" "$WORLD_NAME"; then
 	echo "or a 0.220 pair $WORLD_NAME.db plus $WORLD_NAME.fwl (either casing)." >&2
 	exit 2
 fi
+# Proven readable BEFORE an archive file exists. tar streams as it goes, so a save
+# this user cannot open leaves a stub in the inventory -- measured as the real
+# service user on 2026-09-12, 122 bytes holding only the directory entry -- and
+# that stub is then the NEWEST archive for the world.
+require_readable_world_save "$WORLD_DIR" || exit 2
 
 echo "Backing up Valheim world $WORLD_NAME ($WORLD_SAVE_FORMAT format, save name $WORLD_SAVE_STEM)"
 
@@ -38,5 +43,12 @@ ARCHIVE="$VALHEIM_BACKUP_ROOT/world-$WORLD_NAME-$BACKUP_NAME-$(date +%Y-%m-%d_%H
 # in _main.<N>.db2 is what picks the newest save set, so nothing is renamed or
 # flattened. Naming only the world directory also leaves the game's own
 # <World>_backup_auto-* copies out of the archive, matching the pair behaviour.
-tar czf "$ARCHIVE" -C "$WORLD_DIR" "${WORLD_SAVE_MEMBERS[@]}"
+if ! tar czf "$ARCHIVE" -C "$WORLD_DIR" "${WORLD_SAVE_MEMBERS[@]}"; then
+	# Belt and braces behind the readability gate: anything else tar trips over
+	# mid-stream (a save being rewritten under us, a full disk) must not leave a
+	# truncated archive that list, analysis and restore would treat as a backup.
+	rm -f -- "$ARCHIVE"
+	echo "archiving $WORLD_NAME failed; the partial archive was removed" >&2
+	exit 2
+fi
 echo "$ARCHIVE"
