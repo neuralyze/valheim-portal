@@ -133,6 +133,13 @@ namespace Neuralyze.EverybodyShim
                     emitted, AppendedOptionalForwards.Table.Length));
             }
 
+            // A separate table from the one above, with a stricter entry bar: the game
+            // declares no default for these parameters, so each row carries a proof that
+            // one constant restates the pre-1.0 behaviour. See AppendedRequiredForwards.
+            int required = AppendedRequiredForwards.Apply(assembly, Log);
+            Log.LogInfo(string.Format("{0} of {1} appended-required forwards emitted.",
+                required, AppendedRequiredForwards.Table.Length));
+
             int widened = ReturnTypeWidenedForwards.Apply(assembly, Log);
             Log.LogInfo(string.Format("{0} of {1} return-type forwards emitted.",
                 widened, ReturnTypeWidenedForwards.Table.Length));
