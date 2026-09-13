@@ -161,24 +161,21 @@ namespace Neuralyze.EverybodyShim
 
     internal static class AppendedOptionalForwards
     {
-        internal static readonly ForwardSpec[] Table =
-        {
-            new ForwardSpec("Character", "Message",
-                "MessageHud/MessageType", "System.String", "System.Int32", "UnityEngine.Sprite"),
-
-            new ForwardSpec("SEMan", "AddStatusEffect",
-                "System.Int32", "System.Boolean", "System.Int32", "System.Single"),
-
-            new ForwardSpec("SEMan", "AddStatusEffect",
-                "StatusEffect", "System.Boolean", "System.Int32", "System.Single"),
-
-            new ForwardSpec("Inventory", "AddItem",
-                "ItemDrop/ItemData", "System.Int32", "System.Int32", "System.Int32"),
-
-            new ForwardSpec("EffectList", "Create",
-                "UnityEngine.Vector3", "UnityEngine.Quaternion", "UnityEngine.Transform",
-                "System.Single", "System.Int32"),
-        };
+        // EMPTY BY DECISION, not by oversight. Character.Message,
+        // SEMan.AddStatusEffect (both overloads), Inventory.AddItem and
+        // EffectList.Create all lived here until 2026-09-13 and are all now
+        // bridged by Wubarrk-Valheim10Compatibility, which additionally
+        // detours AccessTools so by-name patches survive the extra overload.
+        // Ours did not, and measured worse for it: with our Character.Message
+        // forward beside theirs, AzuAreaRepair.PlayerRepairTranspiler died at
+        // PatchAll on an ambiguous by-name lookup that their hook had just
+        // fixed (75 error lines), against 41 with ours cut back.
+        //
+        // The emitter below is kept deliberately. The appended-optional shape
+        // is how Valheim breaks mods at every content patch, and when the next
+        // one lands this is a table row rather than new code - with the prefix
+        // rule and the refusals already proven.
+        internal static readonly ForwardSpec[] Table = { };
 
         /// Emits every admissible forward. Returns the number emitted.
         internal static int Apply(AssemblyDefinition assembly, ManualLogSource log)
