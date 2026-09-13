@@ -203,17 +203,8 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 				return false, err
 			}
 		}
-		if err := repairLoadTimeProfilerPatcher(root); err != nil {
-			return false, fmt.Errorf("repair LoadTimeProfiler patcher: %w", err)
-		}
-		if err := hoistPackagePatchers(root); err != nil {
-			return false, fmt.Errorf("hoist package patchers: %w", err)
-		}
-		if err := installEverybodyShim(root); err != nil {
-			return false, fmt.Errorf("install the EverybodyShim preloader patcher: %w", err)
-		}
-		if err := removeRetiredDragonRiders(root); err != nil {
-			return false, fmt.Errorf("remove retired DragonRiders package: %w", err)
+		if err := repairProfilePatchers(root); err != nil {
+			return false, err
 		}
 		gameDir, gameErr := validateSteamValheimDirectory(syncer.GameDir)
 		if request.ClientType == clientVR && gameErr != nil {
@@ -421,6 +412,16 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 	}
 	report(syncer.Progress, progressUpdate{Stage: "Activating profile", Detail: "Keeping your previous profile available for recovery.", Percent: 85})
 	if err := activateGeneration(root, next, newState); err != nil {
+		return false, err
+	}
+	// The freshly activated tree has never had these applied: the generation was built
+	// from the manifest, so its BepInEx/patchers holds only what a package happened to
+	// place there. Until 2026-09-13 these four ran ONLY in the already-up-to-date branch
+	// above, which meant every real install shipped without them - a player who synced a
+	// NEW release lost the EverybodyShim patcher and took 1,490
+	// "MissingMethodException: Vector2i .ZDO.GetSector()" in one session, while the
+	// same player on an unchanged release was fine. Both paths must repair the tree.
+	if err := repairProfilePatchers(root); err != nil {
 		return false, err
 	}
 	gameDir, gameErr := validateSteamValheimDirectory(syncer.GameDir)
@@ -856,6 +857,29 @@ func packageMetadataPath(name string) bool {
 	default:
 		return false
 	}
+}
+
+// repairProfilePatchers puts the active tree's preloader patchers where BepInEx runs them
+// and removes a package that is no longer shipped.
+//
+// One helper called from BOTH sync paths, because having the steps inline in only one was
+// the bug: they lived in the already-up-to-date branch, so an unchanged release was
+// repaired and a NEW release was not. Anything that must be true of an installed profile
+// belongs here, not beside one of the two returns.
+func repairProfilePatchers(root string) error {
+	if err := repairLoadTimeProfilerPatcher(root); err != nil {
+		return fmt.Errorf("repair LoadTimeProfiler patcher: %w", err)
+	}
+	if err := hoistPackagePatchers(root); err != nil {
+		return fmt.Errorf("hoist package patchers: %w", err)
+	}
+	if err := installEverybodyShim(root); err != nil {
+		return fmt.Errorf("install the EverybodyShim preloader patcher: %w", err)
+	}
+	if err := removeRetiredDragonRiders(root); err != nil {
+		return fmt.Errorf("remove retired DragonRiders package: %w", err)
+	}
+	return nil
 }
 
 func packageRuntimePath(name string) bool {

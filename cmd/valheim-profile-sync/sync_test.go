@@ -851,3 +851,41 @@ func TestInstallEverybodyShimPlacesThePatcherAndRepairsADivergentCopy(t *testing
 		t.Fatalf("repaired copy = %d bytes, want %d", len(repaired), len(placed))
 	}
 }
+
+func TestRepairProfilePatchersIsWhatBothSyncPathsCall(t *testing.T) {
+	// The steps in here used to be inline in the already-up-to-date branch only, so a
+	// player who synced an UNCHANGED release got a repaired tree and a player who synced
+	// a NEW one did not - and lost the EverybodyShim patcher, taking 1,490
+	// "MissingMethodException: Vector2i .ZDO.GetSector()" in a single session. Assert the
+	// helper does the whole job on a tree that has never been touched, the shape a freshly
+	// activated generation arrives in.
+	root := t.TempDir()
+	plugins := filepath.Join(root, "active", "BepInEx", "plugins")
+	shipped := filepath.Join(plugins, "Wubarrk-Valheim10Compatibility", "patchers")
+	if err := os.MkdirAll(shipped, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(shipped, "Valheim10Compatibility.Patcher.dll"), []byte("compat"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repairProfilePatchers(root); err != nil {
+		t.Fatal(err)
+	}
+
+	patchers := filepath.Join(root, "active", "BepInEx", "patchers")
+	for name, want := range map[string]string{
+		"Valheim10Compatibility.Patcher.dll": "compat",
+	} {
+		got, err := os.ReadFile(filepath.Join(patchers, name))
+		if err != nil || string(got) != want {
+			t.Fatalf("hoisted %s = %q, %v", name, got, err)
+		}
+	}
+	// The shim is embedded rather than shipped by a package, so it must appear even though
+	// nothing in the tree provided it.
+	shim, err := os.ReadFile(filepath.Join(patchers, "EverybodyShim.dll"))
+	if err != nil || len(shim) == 0 {
+		t.Fatalf("EverybodyShim.dll not installed: %d bytes, %v", len(shim), err)
+	}
+}
