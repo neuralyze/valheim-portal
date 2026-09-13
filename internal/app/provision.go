@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/neuralyze/valheim-portal/internal/agent"
 )
 
 var serverNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._:-]{2,79}$`)
@@ -42,7 +44,10 @@ type newServerPage struct {
 	Worlds    []PublicWorld
 	Profiles  []profileCatalogChoice
 	Defaults  ProvisioningDefaults
-	CSRF      string
+	// Presets is the agent's own accepted list, not a copy of it. A hand-written copy is how
+	// the form came to offer values the agent refuses.
+	Presets []string
+	CSRF    string
 }
 
 type serverReviewPage struct {
@@ -110,7 +115,8 @@ func (s *Server) newServer(w http.ResponseWriter, r *http.Request) {
 	}
 	render(w, newServerTemplate, newServerPage{
 		Worlds: worlds, Profiles: profiles, Suggested: suggested,
-		LinksRead: linkage.Read, Defaults: s.cfg.Provisioning, CSRF: s.csrfCookie(w, r),
+		LinksRead: linkage.Read, Defaults: s.cfg.Provisioning, Presets: agent.GameplayPresets,
+		CSRF: s.csrfCookie(w, r),
 	})
 }
 
@@ -145,6 +151,14 @@ func (s *Server) reviewServer(w http.ResponseWriter, r *http.Request) {
 	if !validWorld(world) || !validWorld(profile) || !serverNamePattern.MatchString(serverName) || !serverPasswordPattern.MatchString(password) ||
 		!ok || !playersOK || !ageOK || !countOK || !validJoinHost(joinHost) {
 		http.Error(w, "invalid server identity, password, address, or numeric setting", http.StatusBadRequest)
+		return
+	}
+	// Checked here, against the agent's own list, because the review page is the last point at
+	// which the operator can still fix it. Forwarding an unaccepted preset produced a refusal
+	// three layers down, after a job row had already been written for a request that could never
+	// succeed.
+	if !agent.AcceptedPreset(preset) {
+		http.Error(w, "gameplay preset must be one of: "+strings.Join(agent.GameplayPresets, ", "), http.StatusBadRequest)
 		return
 	}
 	if _, err := s.store.PublicWorld(r.Context(), world); err == nil {
@@ -361,8 +375,25 @@ func (s *Server) confirmServer(w http.ResponseWriter, r *http.Request) {
 	}
 	reply, err := s.agent.RunProvision(r.Context(), jobID, pending.World, pending.Request)
 	if err != nil {
-		_ = s.store.FinishJob(r.Context(), jobID, "failed", "agent request failed", actor)
-		http.Error(w, "provisioning agent unavailable", http.StatusBadGateway)
+		// Say what the agent said. "agent request failed" was the entire job detail behind a
+		// 502 on 2026-09-12, for a refusal whose body already read {"error":"invalid gameplay
+		// preset"} - so the job history named neither the field nor the reason, and the operator
+		// was told the agent was down when it was working exactly as designed.
+		message := "server creation failed: " + err.Error()
+		status := http.StatusBadGateway
+		var refusal *AgentRefusal
+		if errors.As(err, &refusal) {
+			// A refused request is not an unavailable agent: the arguments are wrong and only
+			// the operator can change them.
+			reason := refusal.Reason
+			if reason == "" {
+				reason = fmt.Sprintf("no reason given, HTTP %d", refusal.Status)
+			}
+			message = "the provisioning agent refused this request: " + reason
+			status = http.StatusBadRequest
+		}
+		_ = s.store.FinishJob(r.Context(), jobID, "failed", message, actor)
+		http.Error(w, message, status)
 		return
 	}
 	_ = s.store.FinishJob(r.Context(), jobID, reply.Status, reply.Output, actor)
@@ -404,7 +435,7 @@ const newServerTemplate = `<!doctype html><html lang="en"><head><meta charset="u
 <label data-world-mode="import"><input type="radio" name="world_mode" value="import"> Copy a world already on this host <select name="source_world" disabled><option value="">Select source</option>{{range .Worlds}}<option value="{{.Name}}">{{.Name}}</option>{{end}}</select></label>
 <label data-world-mode="upload"><input type="radio" name="world_mode" value="upload"> Upload an existing world <input type="file" name="world_archive" accept=".zip,application/zip" disabled></label>
 <small>The upload is one <code>.zip</code> holding a single world's <code>&lt;Name&gt;.db</code> and <code>&lt;Name&gt;.fwl</code> pair, up to 512 MiB. Valheim's own <code>.old</code> and <code>_backup_auto-</code> copies may be in the archive; they are listed on the next page and never used as the live save. The world name inside the <code>.fwl</code> is rewritten to this server's slug, preserving the seed, UID and generator version.</small>
-<label>Gameplay preset <select name="preset"><option>Normal</option><option>Casual</option><option>Easy</option><option>Hard</option><option>Hardcore</option><option>Immersive</option><option>Hammer</option></select></label></fieldset>
+<label>Gameplay preset <select name="preset" required>{{range .Presets}}<option value="{{.}}">{{.}}</option>{{end}}</select></label></fieldset>
 <fieldset><legend>Network and gameplay</legend><label>Public join hostname <input name="join_host" required value="{{.Defaults.JoinHost}}"></label><label>Game base port <input type="number" name="port" value="{{.Defaults.GamePort}}" min="1024" max="65533" required></label><label>Player limit <input type="number" name="player_limit" value="{{.Defaults.PlayerLimit}}" min="1" max="100" required></label><small>Limits other than vanilla 10 install and pin the server-only MaxPlayerCount dependency.</small><label><input type="checkbox" name="public" value="true" checked> List in Valheim's server browser</label><label><input type="checkbox" name="crossplay" value="true"> Enable crossplay / PlayFab relay</label></fieldset>
 <fieldset><legend>Mods</legend><label>Profile this server runs <input name="profile" list="server-profiles" value="{{if .Suggested}}{{.Suggested}}{{else}}default{{end}}" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,79}"></label><p>Name a profile that already exists and this server runs it. Name a new one and it is created, empty or copied from the profile selected below. {{if .LinksRead}}The counts below are how many servers already run each profile: a profile no server runs is normally an edition source, not a server's mod set.{{else}}The portal could not read which profiles the existing servers run, so the counts below are unavailable.{{end}}</p><datalist id="server-profiles">{{range .Profiles}}<option value="{{.Profile}}" label="{{.Packages}} packages · {{if .Servers}}{{.Servers}} server(s){{else}}no servers{{end}}"></option>{{end}}</datalist><label>Copy from profile <select name="template"><option value="">Empty profile</option>{{range .Profiles}}<option value="{{.Profile}}">{{.Name}} ({{.Packages}} Thunderstore, {{.CustomPackages}} custom, {{.DisabledPackages}} disabled, {{if .Servers}}{{.Servers}} server(s){{else}}no servers{{end}})</option>{{end}}</select></label></fieldset>
 <fieldset><legend>Backups and launch</legend><label>Backup schedule <select name="backup_interval"><option value="30m"{{if eq .Defaults.BackupInterval "30m"}} selected{{end}}>Every 30 minutes</option><option value="1h"{{if eq .Defaults.BackupInterval "1h"}} selected{{end}}>Hourly</option><option value="6h"{{if eq .Defaults.BackupInterval "6h"}} selected{{end}}>Every 6 hours</option><option value="daily"{{if eq .Defaults.BackupInterval "daily"}} selected{{end}}>Daily</option></select></label><label>Retention age in days <input type="number" name="backup_age" value="{{.Defaults.BackupAge}}" min="1" max="365" required></label><label>Maximum backup count <input type="number" name="backup_count" value="{{.Defaults.BackupCount}}" min="1" max="1000" required></label><label><input type="checkbox" name="start" value="true"> Start after transactional creation and wait for readiness</label><label><input type="checkbox" name="publish" value="true"> Publish on the player site after readiness succeeds</label></fieldset><button>Review exact plan</button></form>

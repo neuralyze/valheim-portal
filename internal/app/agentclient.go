@@ -204,6 +204,23 @@ func (a *AgentClient) RunAccessState(ctx context.Context, id, world string) (Age
 	return a.do(ctx, agentRequest{ID: id, World: world, Operation: "access_state", Timestamp: time.Now().Unix()})
 }
 
+// AgentRefusal is the agent answering "no" with its own reason, as opposed to the agent not
+// answering at all. The distinction is the whole point: confirmServer reported every failure as
+// "provisioning agent unavailable" with a job detail of "agent request failed", so a 403 whose
+// body said {"error":"invalid gameplay preset"} reached the operator as an outage. The reason was
+// already decoded here and then dropped.
+type AgentRefusal struct {
+	Status int
+	Reason string
+}
+
+func (e *AgentRefusal) Error() string {
+	if e.Reason != "" {
+		return fmt.Sprintf("agent refused the request: %s", e.Reason)
+	}
+	return fmt.Sprintf("agent refused the request with status %d", e.Status)
+}
+
 func (a *AgentClient) do(ctx context.Context, r agentRequest) (AgentReply, error) {
 	// Signed with the agent's own canonical form rather than a copy of it. This used to be a
 	// duplicated field list, which meant every new argument had to be added in two places and
@@ -260,10 +277,7 @@ func (a *AgentClient) do(ctx context.Context, r agentRequest) (AgentReply, error
 		return AgentReply{}, fmt.Errorf("agent answered %d with a non-JSON body: %s", resp.StatusCode, text)
 	}
 	if resp.StatusCode != http.StatusOK {
-		if result.Error != "" {
-			return result, fmt.Errorf("agent refused the request: %s", result.Error)
-		}
-		return result, fmt.Errorf("agent refused the request with status %d", resp.StatusCode)
+		return result, &AgentRefusal{Status: resp.StatusCode, Reason: result.Error}
 	}
 	return result, nil
 }

@@ -271,6 +271,24 @@ func provisionFieldsEmpty(r Request) bool {
 		r.Seed == "" && r.SourceWorld == "" && r.CopyFrom == "" && r.WorldUpload == "" && !r.Start
 }
 
+// GameplayPresets is every preset this agent accepts, in the order a form should offer them.
+// Exported because the portal's new-server wizard renders the choices: when the two lists were
+// written out separately the form could offer - and reviewServer forward - a value this agent
+// refuses, which is what turned one Ulfsland creation on 2026-09-12 into a 403 "invalid gameplay
+// preset". The agent stays the authority; the form is now derived from it.
+var GameplayPresets = []string{"Normal", "Casual", "Easy", "Hard", "Hardcore", "Immersive", "Hammer"}
+
+// AcceptedPreset reports whether a preset is one the agent will accept. Callers use it to refuse
+// early, in a message that names the field, rather than sending a request that cannot succeed.
+func AcceptedPreset(preset string) bool {
+	for _, accepted := range GameplayPresets {
+		if preset == accepted {
+			return true
+		}
+	}
+	return false
+}
+
 func validateProvisionRequest(r Request) error {
 	if !serverDisplayName.MatchString(r.ServerName) || !serverPassword.MatchString(r.Password) || !worldName.MatchString(r.Profile) {
 		return errors.New("invalid server identity")
@@ -278,9 +296,7 @@ func validateProvisionRequest(r Request) error {
 	if r.PlayerLimit < 1 || r.PlayerLimit > 100 || r.BackupAge < 1 || r.BackupAge > 365 || r.BackupCount < 1 || r.BackupCount > 1000 {
 		return errors.New("invalid server limits")
 	}
-	switch r.Preset {
-	case "Normal", "Casual", "Easy", "Hard", "Hardcore", "Immersive", "Hammer":
-	default:
+	if !AcceptedPreset(r.Preset) {
 		return errors.New("invalid gameplay preset")
 	}
 	switch r.BackupInterval {

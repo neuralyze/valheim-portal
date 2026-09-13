@@ -371,6 +371,235 @@ class DependencyConflictTest(unittest.TestCase):
         )
 
 
+class ServerCacheConsistencyTest(unittest.TestCase):
+    """`update` and `sync` must leave the cache the deploy validates, not the cache the
+    Thunderstore categories describe.
+
+    Measured on profile ulfsland-dn 2026-09-12: 38 of its 96 shared packages carry no
+    'Server-side' category, all 38 have a server copy, and `update --all --apply` refreshed only
+    the client one. The next `manage_mods.sh Ulfsland deploy --apply` then refused with "Cached
+    server package does not match profile manifest: Advize-PlantEasily expected 2.2.0, found
+    PlantEasily 2.1.1", and `sync Advize-PlantEasily` answered synced=Advize-PlantEasily while
+    changing nothing.
+    """
+
+    # PlantEasily is the package the deploy actually named; its real categories are
+    # ['Client-side', 'Deep North Update', 'Mods'] - no 'Server-side' anywhere.
+    registry = {
+        "Advize-PlantEasily": {
+            "full_name": "Advize-PlantEasily",
+            "name": "PlantEasily",
+            "categories": ["Client-side", "Deep North Update", "Mods"],
+            "versions": [
+                {"version_number": "2.1.1", "dependencies": []},
+                {"version_number": "2.2.0", "dependencies": []},
+            ],
+        },
+        "MSchmoecker-VNEI": {
+            "full_name": "MSchmoecker-VNEI",
+            "name": "VNEI",
+            "categories": ["Client-side", "Mods"],
+            "versions": [
+                {"version_number": "0.10.0", "dependencies": []},
+                {"version_number": "0.11.0", "dependencies": []},
+            ],
+        },
+    }
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.manifest_path = self.root / "profile-manifest.json"
+        original = valheim_mods.index
+        valheim_mods.index = lambda: self.registry
+        self.addCleanup(setattr, valheim_mods, "index", original)
+
+    def stage_archive(self, identifier, filename_version, content_version):
+        """Write manager-cache/packages/<Name>-<filename_version>.zip.
+
+        The two versions are separate arguments because install() reuses an archive whenever the
+        FILENAME matches, so an archive whose contents disagree with its name is the shape that
+        turned a stale extraction into a reported success.
+        """
+        package = self.registry[identifier]
+        archive = valheim_mods.archive_path(self.root, package, filename_version)
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(archive, "w") as bundle:
+            bundle.writestr("manifest.json", json.dumps({
+                "name": package["name"], "version_number": content_version,
+            }))
+            bundle.writestr(f"{package['name']}.dll", content_version)
+        return archive
+
+    def plugin_dir(self, side, identifier):
+        """The literal path cmd_deploy copies from, spelled out rather than taken from the
+        module under test: a helper renamed in valheim_mods.py must not be able to turn this
+        test green or red for a reason that has nothing to do with the cache's contents.
+        """
+        return self.root / "manager-cache" / side / "BepInEx" / "plugins" / self.registry[identifier]["name"]
+
+    def stage_cached(self, side, identifier, version_number):
+        package = self.registry[identifier]
+        plugin = self.plugin_dir(side, identifier)
+        plugin.mkdir(parents=True, exist_ok=True)
+        (plugin / "manifest.json").write_text(json.dumps({
+            "name": package["name"], "version_number": version_number,
+        }))
+        (plugin / f"{package['name']}.dll").write_text(version_number)
+        return plugin
+
+    def cached_version(self, side, identifier):
+        """None both when the copy is absent and when it carries no manifest.json, because the
+        deploy cannot tell those apart either: neither one is a version it can accept.
+        """
+        metadata = self.plugin_dir(side, identifier) / "manifest.json"
+        if not metadata.is_file():
+            return None
+        return json.loads(metadata.read_text())["version_number"]
+
+    def write_manifest(self, packages, client_only=()):
+        manifest = {
+            "world_name": "TestWorld",
+            "packages": list(packages),
+            "client_only_packages": list(client_only),
+        }
+        self.manifest_path.write_text(json.dumps(manifest))
+        return manifest
+
+    def test_update_refreshes_the_server_copy_of_an_untagged_shared_package(self):
+        manifest = self.write_manifest(
+            [{"identifier": "Advize-PlantEasily", "version": "2.1.1", "scope": "shared"}],
+            [{"identifier": "MSchmoecker-VNEI", "version": "0.10.0", "scope": "client-only"}],
+        )
+        self.stage_cached("client", "Advize-PlantEasily", "2.1.1")
+        self.stage_cached("server", "Advize-PlantEasily", "2.1.1")
+        self.stage_cached("client", "MSchmoecker-VNEI", "0.10.0")
+        self.stage_archive("Advize-PlantEasily", "2.2.0", "2.2.0")
+        self.stage_archive("MSchmoecker-VNEI", "0.11.0", "0.11.0")
+
+        valheim_mods.cmd_update(self.root, manifest, SimpleNamespace(
+            all=True, identifier=None, apply=True, manifest=self.manifest_path))
+
+        self.assertEqual(self.cached_version("server", "Advize-PlantEasily"), "2.2.0")
+        self.assertEqual(self.cached_version("client", "Advize-PlantEasily"), "2.2.0")
+        valheim_mods.validate_server_cache(self.root, valheim_mods.load(self.manifest_path))
+        # The control: a client-only package has no business on the server, and an update must
+        # not be what puts it there.
+        self.assertEqual(self.cached_version("client", "MSchmoecker-VNEI"), "0.11.0")
+        self.assertIsNone(self.cached_version("server", "MSchmoecker-VNEI"))
+
+    def test_sync_corrects_a_server_copy_the_deploy_would_reject(self):
+        manifest = self.write_manifest(
+            [{"identifier": "Advize-PlantEasily", "version": "2.2.0", "scope": "shared"}])
+        self.stage_cached("client", "Advize-PlantEasily", "2.2.0")
+        self.stage_cached("server", "Advize-PlantEasily", "2.1.1")
+        self.stage_archive("Advize-PlantEasily", "2.2.0", "2.2.0")
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            valheim_mods.cmd_sync(self.root, manifest, SimpleNamespace(
+                identifier="Advize-PlantEasily", manifest=self.manifest_path))
+
+        self.assertEqual(self.cached_version("server", "Advize-PlantEasily"), "2.2.0")
+        self.assertIn("version=2.2.0", output.getvalue())
+        valheim_mods.validate_server_cache(self.root, manifest)
+
+    def test_sync_refuses_when_the_archive_carries_an_older_build(self):
+        manifest = self.write_manifest(
+            [{"identifier": "Advize-PlantEasily", "version": "2.2.0", "scope": "shared"}])
+        self.stage_cached("server", "Advize-PlantEasily", "2.1.1")
+        self.stage_archive("Advize-PlantEasily", "2.2.0", "2.1.1")
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(RuntimeError, "expected 2.2.0, found PlantEasily 2.1.1"):
+                valheim_mods.cmd_sync(self.root, manifest, SimpleNamespace(
+                    identifier="Advize-PlantEasily", manifest=self.manifest_path))
+        self.assertNotIn("synced=", output.getvalue())
+
+    def test_update_repairs_a_server_copy_whose_version_cannot_be_read(self):
+        """Several of the 41 stale copies had no manifest.json at all, so nothing could say which
+        build was extracted. An unreadable version is a mismatch to repair, never a pass: the
+        deploy refuses on it, and the refusal is what update is supposed to prevent.
+        """
+        manifest = self.write_manifest(
+            [{"identifier": "Advize-PlantEasily", "version": "2.1.1", "scope": "shared"}])
+        stale = self.stage_cached("server", "Advize-PlantEasily", "2.1.1")
+        (stale / "manifest.json").unlink()
+        self.stage_archive("Advize-PlantEasily", "2.2.0", "2.2.0")
+
+        with self.assertRaisesRegex(RuntimeError, "has no manifest"):
+            valheim_mods.validate_server_cache(self.root, manifest)
+
+        valheim_mods.cmd_update(self.root, manifest, SimpleNamespace(
+            all=True, identifier=None, apply=True, manifest=self.manifest_path))
+
+        self.assertEqual(self.cached_version("server", "Advize-PlantEasily"), "2.2.0")
+        valheim_mods.validate_server_cache(self.root, valheim_mods.load(self.manifest_path))
+
+
+class EnableKeepsPinnedDependenciesTest(unittest.TestCase):
+    """`enable` must resolve against the versions the profile already pins.
+
+    Reported and measured on ulfsland-dn 2026-09-12: five enables rewrote the cached
+    BepInExPack_Valheim from the pinned 5.4.2350 down to the 5.4.2202 named in a dependency
+    string, and the next `deploy --apply` refused with "Cached server package does not match
+    profile manifest: expected 5.4.2350, found BepInExPack_Valheim 5.4.2202". cmd_enable was
+    passing an empty `set()` where every other caller passes selected_versions(manifest).
+    """
+
+    registry = {
+        "denikson-BepInExPack_Valheim": {
+            "full_name": "denikson-BepInExPack_Valheim",
+            "name": "BepInExPack_Valheim",
+            "categories": [],
+            "versions": [
+                {"version_number": "5.4.2202", "dependencies": []},
+                {"version_number": "5.4.2350", "dependencies": []},
+            ],
+        },
+        "GoldenJude-Judes_Equipment": {
+            "full_name": "GoldenJude-Judes_Equipment",
+            "name": "Judes_Equipment",
+            "categories": ["Gear"],
+            "versions": [{
+                "version_number": "1.4.0",
+                "dependencies": ["denikson-BepInExPack_Valheim-5.4.2202"],
+            }],
+        },
+    }
+
+    def test_enable_does_not_downgrade_a_pinned_dependency(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        manifest_path = root / "profile-manifest.json"
+        manifest = {
+            "world_name": "TestWorld",
+            "packages": [{"identifier": "denikson-BepInExPack_Valheim", "version": "5.4.2350", "scope": "shared"}],
+            "client_only_packages": [],
+            "disabled_packages": [{"identifier": "GoldenJude-Judes_Equipment", "version": "1.4.0", "scope": "shared"}],
+        }
+        manifest_path.write_text(json.dumps(manifest))
+        installs = []
+        original_index, original_install = valheim_mods.index, valheim_mods.install
+        valheim_mods.index = lambda: self.registry
+        valheim_mods.install = lambda *args: installs.append((args[1]["full_name"], args[2], args[3]))
+        self.addCleanup(setattr, valheim_mods, "index", original_index)
+        self.addCleanup(setattr, valheim_mods, "install", original_install)
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            valheim_mods.cmd_enable(root, manifest, SimpleNamespace(
+                identifier="GoldenJude-Judes_Equipment", manifest=manifest_path))
+
+        self.assertNotIn(("denikson-BepInExPack_Valheim", "5.4.2202", "client"), installs)
+        self.assertNotIn(("denikson-BepInExPack_Valheim", "5.4.2202", "server"), installs)
+        self.assertEqual(
+            [item for item in valheim_mods.load(manifest_path)["packages"]
+             if item["identifier"] == "denikson-BepInExPack_Valheim"],
+            [{"identifier": "denikson-BepInExPack_Valheim", "version": "5.4.2350", "scope": "shared"}],
+        )
+
+
 class DispatchTest(unittest.TestCase):
     def subparser_names(self):
         parser = valheim_mods.build_parser()

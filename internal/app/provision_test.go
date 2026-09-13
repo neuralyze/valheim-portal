@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/neuralyze/valheim-portal/internal/agent"
 	"github.com/neuralyze/valheim-portal/internal/worldintel"
 )
 
@@ -218,6 +219,139 @@ func TestFirstPortalStartGeneratesDeferredWorldMap(t *testing.T) {
 	snapshots, err := server.store.LatestWorldAnalyses(t.Context(), "DeferredMap", 1)
 	if err != nil || len(snapshots) != 1 || snapshots[0].Seed != "DeferredSeed" {
 		t.Fatalf("deferred map snapshot = %#v, err=%v", snapshots, err)
+	}
+}
+
+// newServerWizardCredentials renders the wizard once and returns the CSRF token, the cookie it
+// set, and the page body, because every step below needs all three.
+func newServerWizardCredentials(t *testing.T, server *Server) (string, *http.Cookie, string) {
+	t.Helper()
+	request := adminTestRequest(http.MethodGet, "/admin/servers/new", nil)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("new server page = %d: %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	match := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindStringSubmatch(body)
+	cookies := response.Result().Cookies()
+	if len(match) != 2 || len(cookies) == 0 {
+		t.Fatal("server wizard did not issue CSRF credentials")
+	}
+	return match[1], cookies[0], body
+}
+
+// The wizard must not offer a preset the agent refuses. An empty option reached
+// validateProvisionRequest on 2026-09-12 and came back as 403 "invalid gameplay preset",
+// which the portal reported as a 502 with a job detail of "agent request failed".
+func TestNewServerFormOffersOnlyPresetsTheAgentAccepts(t *testing.T) {
+	server := testServer(t)
+	_, _, body := newServerWizardCredentials(t, server)
+	selectMatch := regexp.MustCompile(`<select name="preset"[^>]*>(.*?)</select>`).FindStringSubmatch(body)
+	if len(selectMatch) != 2 {
+		t.Fatal("wizard rendered no preset select")
+	}
+	var offered []string
+	for _, option := range regexp.MustCompile(`<option value="([^"]*)"`).FindAllStringSubmatch(selectMatch[1], -1) {
+		offered = append(offered, option[1])
+	}
+	if len(offered) != len(agent.GameplayPresets) {
+		t.Fatalf("preset options = %q, want %q", offered, agent.GameplayPresets)
+	}
+	for index, value := range offered {
+		if !agent.AcceptedPreset(value) || value != agent.GameplayPresets[index] {
+			t.Fatalf("preset option %d = %q, which the agent does not accept; agent accepts %q", index, value, agent.GameplayPresets)
+		}
+	}
+}
+
+// And a preset that did not come from that select is refused where the operator can still fix
+// it, naming the field, instead of becoming a queued job and an agent refusal.
+func TestReviewRefusesAPresetTheAgentWouldNotAccept(t *testing.T) {
+	server := testServer(t)
+	csrf, cookie, _ := newServerWizardCredentials(t, server)
+	form := newServerForm(csrf)
+	form.Set("preset", "")
+	request := adminTestRequest(http.MethodPost, "/admin/servers/review", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("review with an empty preset = %d: %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "gameplay preset") {
+		t.Fatalf("refusal did not name the field: %s", response.Body.String())
+	}
+}
+
+// A refused provision must reach the operator and the job history as the agent's own reason.
+func TestProvisionFailureSurfacesTheAgentsReason(t *testing.T) {
+	server := testServer(t)
+	serveMockAgent(t, server, func(w http.ResponseWriter, r *http.Request) {
+		var request agentRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if request.Operation != "provision" {
+			_ = json.NewEncoder(w).Encode(AgentReply{Status: "succeeded"})
+			return
+		}
+		// Byte for byte what internal/agent answers a request it refuses: status 403 and the
+		// reason in the JSON body.
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(AgentReply{Status: "failed", Error: "invalid gameplay preset"})
+	})
+	csrf, cookie, _ := newServerWizardCredentials(t, server)
+	form := newServerForm(csrf)
+	request := adminTestRequest(http.MethodPost, "/admin/servers/review", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("server review = %d: %s", response.Code, response.Body.String())
+	}
+	idMatch := regexp.MustCompile(`/admin/servers/([a-f0-9]+)`).FindStringSubmatch(response.Body.String())
+	if len(idMatch) != 2 {
+		t.Fatal("review did not contain a creation request ID")
+	}
+	confirm := url.Values{"csrf": {csrf}, "confirmation": {"CREATE PortalTestWorld"}}
+	confirmRequest := adminTestRequest(http.MethodPost, "/admin/servers/"+idMatch[1], strings.NewReader(confirm.Encode()))
+	confirmRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	confirmRequest.AddCookie(cookie)
+	confirmResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(confirmResponse, confirmRequest)
+	if confirmResponse.Code != http.StatusBadRequest {
+		t.Fatalf("refused creation = %d, want 400: %s", confirmResponse.Code, confirmResponse.Body.String())
+	}
+	if !strings.Contains(confirmResponse.Body.String(), "invalid gameplay preset") {
+		t.Fatalf("operator message did not carry the agent's reason: %s", confirmResponse.Body.String())
+	}
+	jobs, err := server.store.RecentJobs(t.Context(), 5)
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("jobs = %#v, err=%v", jobs, err)
+	}
+	if jobs[0].Status != "failed" || !strings.Contains(jobs[0].Detail, "invalid gameplay preset") {
+		t.Fatalf("job detail = %q, want the agent's reason", jobs[0].Detail)
+	}
+	if strings.Contains(jobs[0].Detail, "SafePass-123") {
+		t.Fatal("job history stored the server password")
+	}
+	if _, err := server.store.PublicWorld(t.Context(), "PortalTestWorld"); err == nil {
+		t.Fatal("a refused creation produced a world record")
+	}
+}
+
+func newServerForm(csrf string) url.Values {
+	return url.Values{
+		"csrf": {csrf}, "world": {"PortalTestWorld"}, "server_name": {"Neuralyze Portal Test"},
+		"password": {"SafePass-123"}, "password_confirm": {"SafePass-123"}, "port": {"26000"},
+		"player_limit": {"10"}, "backup_age": {"7"}, "backup_count": {"168"}, "profile": {"default"},
+		"preset": {"Normal"}, "backup_interval": {"1h"}, "join_host": {"valheim.example.test"},
+		"world_mode": {"random"},
 	}
 }
 

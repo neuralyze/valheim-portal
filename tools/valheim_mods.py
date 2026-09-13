@@ -473,6 +473,49 @@ def require_stopped(world):
     if result.returncode == 0 and result.stdout.strip() == 'true': raise RuntimeError(f'{world} is running; stop it before deploy --apply')
 def cache(root): return root / 'manager-cache'
 def archive_path(root, p, ver): return cache(root) / 'packages' / f"{p['name']}-{ver}.zip"
+def cached_plugin(root, side, install_name):
+    return cache(root) / side / 'BepInEx' / 'plugins' / install_name
+
+def install_sides(root, install_name, server_required):
+    """Every cache side an install has to write, so the deploy's own check stays true.
+
+    'client' always. 'server' when the profile wants a server copy at all, AND - the half that
+    was missing - whenever one is already there, because validate_server_cache() below fails the
+    deploy on ANY server plugin directory whose manifest.json disagrees with the selected
+    version. Keying the server install off the Thunderstore 'Server-side' category instead left
+    38 of the 96 shared packages on profile ulfsland-dn out of the refresh on 2026-09-12 - none
+    of them carries that category, all of them have a server copy - and the next
+    `manage_mods.sh Ulfsland deploy --apply` refused with "Cached server package does not match
+    profile manifest: Advize-PlantEasily expected 2.2.0, found PlantEasily 2.1.1". The category
+    still decides whether a package that has NO server copy gets one; it is not allowed to decide
+    whether an existing copy is kept current.
+
+    `install_name` is the package's own `name`, which is the directory install() writes and is
+    NOT always the identifier's suffix: three Thunderstore owners (LVH-IT, sinai-dev) have a
+    hyphen in the account name.
+    """
+    sides = ['client']
+    if server_required or cached_plugin(root, 'server', install_name).is_dir():
+        sides.append('server')
+    return sides
+
+def assert_cached_version(side, plugin, identifier, expected):
+    """Refuse a cached copy that is not the selected build. `plugin.name` is the install name,
+    which is what both callers already resolved: validate_server_cache() from the identifier and
+    install() from the package's own `name`. Those two differ for the three Thunderstore owners
+    whose account name contains a hyphen (LVH-IT, sinai-dev), so deriving the name here a third
+    time would compare against a directory neither caller wrote.
+    """
+    metadata_path = plugin / 'manifest.json'
+    if not metadata_path.is_file():
+        raise RuntimeError(f'Cached {side} package has no manifest: {plugin}')
+    metadata = load(metadata_path)
+    if metadata.get('name') != plugin.name or metadata.get('version_number') != expected:
+        raise RuntimeError(
+            f'Cached {side} package does not match profile manifest: {identifier} '
+            f'expected {expected}, found {metadata.get("name")} {metadata.get("version_number")}'
+        )
+
 def install(root, p, ver, side):
     archive = archive_path(root, p, ver); archive.parent.mkdir(parents=True, exist_ok=True)
     if not archive.is_file():
@@ -481,7 +524,13 @@ def install(root, p, ver, side):
         r = requests.get(v['download_url'], headers={'User-Agent':'r2modman/3.1.57'}, timeout=120)
         r.raise_for_status()
         archive.write_bytes(r.content)
-    extract_package(archive, cache(root) / side / 'BepInEx' / 'plugins' / p['name'], p['name'])
+    target = cached_plugin(root, side, p['name'])
+    extract_package(archive, target, p['name'])
+    # Read back what was actually written. The archive is reused from manager-cache/packages
+    # whenever the name matches, so an archive whose CONTENTS are an older build than its
+    # filename claims used to be extracted and reported as a success - which is how `sync`
+    # printed synced=<id> while leaving the previous version on disk on 2026-09-12.
+    assert_cached_version(side, target, p['full_name'], ver)
 
 def extract_package(archive, target, name):
     """Unpack one Thunderstore archive into `target`, flattening its plugin prefix.
@@ -593,11 +642,13 @@ def ensure_dependencies(root, registry, package, version_number, scope, selected
     selected = dict(selected or {})
     ordered = []
     resolve_dependencies(registry, package, version_number, selected, set(), ordered)
+    # The parent's categories, not each dependency's: a shared server-side mod needs its
+    # dependencies on the server too, and BepInExPack_Valheim - which every one of them needs -
+    # carries no 'Server-side' category of its own.
     server_required = scope == 'shared' and 'Server-side' in package.get('categories', [])
     for dependency, dependency_version in ordered:
-        install(root, dependency, dependency_version, 'client')
-        if server_required:
-            install(root, dependency, dependency_version, 'server')
+        for side in install_sides(root, dependency['name'], server_required):
+            install(root, dependency, dependency_version, side)
     return [
         {'identifier': dependency['full_name'], 'version': dependency_version, 'scope': scope}
         for dependency, dependency_version in ordered
@@ -937,8 +988,17 @@ def cmd_sync(root, m, args):
         raise RuntimeError(f'Not present: {args.identifier}')
     registry=index()
     package=registry[item['identifier']]
-    ensure_dependencies(root, registry, package, item['version'], item.get('scope', 'client-only'), selected_versions(m))
-    print(f'synced={args.identifier}')
+    scope=item.get('scope', 'client-only')
+    ensure_dependencies(root, registry, package, item['version'], scope, selected_versions(m))
+    # Read every cache side back before claiming success. `sync` is the documented recovery for a
+    # cache that disagrees with the manifest, and on 2026-09-12 it printed synced=<identifier>
+    # while the server copy it was run to repair stayed at the older version - so the deploy that
+    # sent the operator here refused again, with the same message, from a command that had just
+    # reported success.
+    sides=install_sides(root, package['name'], scope == 'shared' and 'Server-side' in package.get('categories', []))
+    for side in sides:
+        assert_cached_version(side, cached_plugin(root, side, package['name']), item['identifier'], item['version'])
+    print(f'synced={args.identifier} version={item["version"]} sides={",".join(sides)}')
 def write_removal_record(path, identifier, reason, started_at, state, cutover=None, failure=None):
     record = {
         'identifier': identifier,
@@ -1042,7 +1102,14 @@ def cmd_enable(root, m, args):
     package = registry.get(args.identifier)
     if not package:
         raise RuntimeError(f'Unknown package: {args.identifier}')
-    added = ensure_dependencies(root, registry, package, found['version'], found.get('scope', 'client-only'), set())
+    # Seeded with what the profile already pins, exactly as `add` and `sync` do. Passing an empty
+    # set here meant resolve_dependencies saw no pins at all, so a dependency string naming an
+    # older build won: five enables on ulfsland-dn 2026-09-12 rewrote the cached
+    # BepInExPack_Valheim from the pinned 5.4.2350 down to 5.4.2202, and the next
+    # `deploy --apply` refused with "Cached server package does not match profile manifest".
+    # Enabling a package that genuinely needs a NEWER build now raises the dependency conflict
+    # instead of silently downgrading the profile.
+    added = ensure_dependencies(root, registry, package, found['version'], found.get('scope', 'client-only'), selected_versions(m))
     m['disabled_packages'] = [item for item in disabled_packages(m) if item['identifier'] != args.identifier]
     ids = {item['identifier'] for item in all_packages(m)}
     for item in added:
@@ -1115,8 +1182,10 @@ def cmd_update(root,m,args):
         for item,new in changes: print(f"{item['identifier']} {item['version']} -> {new}")
         print(f'updates={len(changes)}; rerun with --apply to record them'); return
     for item,new in changes:
-        item['version']=new; p=reg[item['identifier']]; install(root,p,new,'client')
-        if item.get('scope')=='shared' and 'Server-side' in p.get('categories',[]): install(root,p,new,'server')
+        p=reg[item['identifier']]
+        for side in install_sides(root, p['name'], item.get('scope')=='shared' and 'Server-side' in p.get('categories',[])):
+            install(root,p,new,side)
+        item['version']=new
     save(args.manifest,m); print(f'updated={len(changes)}')
 def cmd_export(root,m,args):
     script=root/'export_profile_code.py'
@@ -1124,21 +1193,10 @@ def cmd_export(root,m,args):
         raise RuntimeError(f'Profile code exporter is not bundled with this checkout; expected {script}')
     subprocess.run([sys.executable,str(script)],check=True)
 def validate_server_cache(root, manifest):
-    server_plugins = cache(root) / 'server' / 'BepInEx' / 'plugins'
     for item in all_packages(manifest):
-        plugin = server_plugins / package_install_name(item['identifier'])
-        if not plugin.is_dir():
-            continue
-        metadata_path = plugin / 'manifest.json'
-        if not metadata_path.is_file():
-            raise RuntimeError(f'Cached server package has no manifest: {plugin}')
-        metadata = load(metadata_path)
-        expected_name = package_install_name(item['identifier'])
-        if metadata.get('name') != expected_name or metadata.get('version_number') != item['version']:
-            raise RuntimeError(
-                f'Cached server package does not match profile manifest: {item["identifier"]} '
-                f'expected {item["version"]}, found {metadata.get("name")} {metadata.get("version_number")}'
-            )
+        plugin = cached_plugin(root, 'server', package_install_name(item['identifier']))
+        if plugin.is_dir():
+            assert_cached_version('server', plugin, item['identifier'], item['version'])
 
 SERVER_CONFIG_DIR = 'server-config'
 OVERRIDE_DIR = 'overrides'
