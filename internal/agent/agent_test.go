@@ -496,6 +496,42 @@ func TestWorldCatalogReturnsOnlyValidatedAllowedDirectories(t *testing.T) {
 	}
 }
 
+func TestWorldCatalogReportsTheHostPortPlayersConnectTo(t *testing.T) {
+	// Ulfsland was catalogued correctly only by accident: provisioning had written its
+	// host port into SERVER_PORT as well, which is the same mistake that left its
+	// published mapping aimed at an unbound container port. With SERVER_PORT holding the
+	// container-side 2456 that every world shares, the host half of
+	// CONTAINER_VALHEIM_PORT is the only thing that names a joinable address.
+	root := t.TempDir()
+	worlds := map[string]string{
+		"Published": "SERVER_PORT='2456'\nCONTAINER_VALHEIM_PORT='2469-2470'\n",
+		"Legacy":    "SERVER_PORT='26000'\n",
+	}
+	for name, env := range worlds {
+		if err := os.Mkdir(filepath.Join(root, name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, name, "valheim.env"), []byte(env), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	response := execute(context.Background(), root, root, map[string]struct{}{
+		"Published": {}, "Legacy": {},
+	}, Request{Operation: "world_catalog"})
+	if response.Status != "succeeded" {
+		t.Fatalf("response = %#v", response)
+	}
+	var catalog []worldCatalogEntry
+	if err := json.Unmarshal(response.Data, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	// Name-ordered, so Legacy precedes Published.
+	if len(catalog) != 2 || catalog[0].Name != "Legacy" || catalog[0].Port != 26000 ||
+		catalog[1].Name != "Published" || catalog[1].Port != 2469 {
+		t.Fatalf("catalog = %#v", catalog)
+	}
+}
+
 func TestResolveBackupRootUsesWorldRootAndRejectsEscape(t *testing.T) {
 	root := t.TempDir()
 	expected := filepath.Join(root, "world_backups")

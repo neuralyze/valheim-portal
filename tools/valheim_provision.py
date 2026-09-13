@@ -28,6 +28,10 @@ DISPLAY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._:-]{2,79}$")
 PASSWORD_RE = re.compile(r"^[A-Za-z0-9!@#$%^&*._+?-]{5,64}$")
 INTERVALS = {"30m": "*/30 * * * *", "1h": "5 * * * *", "6h": "5 */6 * * *", "daily": "5 5 * * *"}
 PRESETS = {"Normal", "Casual", "Easy", "Hard", "Hardcore", "Immersive", "Hammer"}
+# The container side of the udp mapping, hardcoded in the compose file as
+# "${CONTAINER_VALHEIM_PORT:-2456-2457}:2456-2457/udp". Every world's game binds this
+# port INSIDE its container; only the host half varies per world.
+CONTAINER_GAME_PORT = 2456
 
 
 def valid_name(value: str) -> bool:
@@ -166,7 +170,17 @@ def write_env(stage: Path, args: argparse.Namespace, password: str, ports: dict[
     world_path = portal_paths.world_root() / args.world
     values = {
         "ENV_FILE": "valheim.env", "WORLD_NAME": args.world, "SERVER_NAME": args.server_name,
-        "SERVER_PASS": password, "STEAMCMD_ARGS": "validate -beta public", "SERVER_PORT": str(args.port),
+        "SERVER_PASS": password, "STEAMCMD_ARGS": "validate -beta public",
+        # SERVER_PORT is the port the GAME BINDS INSIDE the container, and the compose
+        # file hardcodes the container side of the mapping as 2456-2457/udp. Writing the
+        # requested host port here moved the bind to a port nothing publishes: Ulfsland
+        # was provisioned on 2469, bound 2469/2470 internally, and its published
+        # 2469->2456 / 2470->2457 mapping therefore pointed at ports with no listener.
+        # Measured 2026-09-13 - the server logged 'listening on UDP query port 2470'
+        # while docker published 2457, and an A2S query to the host port timed out. The
+        # host side is CONTAINER_VALHEIM_PORT below; this one stays at the container
+        # default, which is what all four pre-existing worlds run.
+        "SERVER_PORT": str(CONTAINER_GAME_PORT),
         "SERVER_PUBLIC": "1" if args.public else "0", "CROSSPLAY": "true" if args.crossplay else "false",
         "SERVER_ARGS": "-preset " + args.preset, "BEPINEX": "true", "DISCORD_BOT": "0",
         # Two host ports, matching the container's 2456-2457/udp pair. Docker

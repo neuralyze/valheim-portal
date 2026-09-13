@@ -85,6 +85,14 @@ minimum `WORLD_NAME`, `SERVER_NAME`, `SERVER_PASS`, `SERVER_PORT`,
 writes a complete one when the creation wizard provisions a world; an imported world
 needs one written by hand. The agent refuses any world without it.
 
+The two port variables are not interchangeable and mixing them up silently breaks
+joining. `SERVER_PORT` is the port the game binds **inside** the container and stays at
+`2456` for every world, because the compose file pins the container half of the mapping
+to `2456-2457/udp`. `CONTAINER_VALHEIM_PORT` is the **host** range, unique per world,
+and its first number is the port a player connects to. A world provisioned with its host
+port in `SERVER_PORT` starts, logs `Zonesystem Awake` and looks healthy while its
+published ports point at container ports with no listener.
+
 **`STATUS_HTTP=true`.** Required for the portal to report world status at all. See
 [operations.md](operations.md#world-status).
 

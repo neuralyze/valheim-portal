@@ -1080,13 +1080,31 @@ func worldCatalog(parent context.Context, worldRoot string, allowed map[string]s
 		if err != nil || !info.IsDir() {
 			continue
 		}
+		// The port a PLAYER connects to is the host side of the mapping, which is the
+		// first number in CONTAINER_VALHEIM_PORT. SERVER_PORT is the container-side bind
+		// and the compose file pins that half to 2456-2457 for every world, so reading
+		// SERVER_PORT here reported the wrong address: Hrafnheim publishes host 2457-2458
+		// and was catalogued as 2456. It only looked right on Ulfsland because that world
+		// had been provisioned with the host port written into SERVER_PORT as well, which
+		// is the very defect that left its published ports pointing at an unbound socket.
+		// SERVER_PORT stays as the fallback so a world whose env predates
+		// CONTAINER_VALHEIM_PORT still resolves to something.
 		port := 2456
-		if value := envSetting(filepath.Join(worldPath, "valheim.env"), "SERVER_PORT"); value != "" {
-			parsed, parseErr := strconv.Atoi(value)
-			if parseErr != nil || parsed < 1024 || parsed > 65533 {
-				continue
+		envPath := filepath.Join(worldPath, "valheim.env")
+		published := envSetting(envPath, "CONTAINER_VALHEIM_PORT")
+		if first, _, found := strings.Cut(published, "-"); found || published != "" {
+			if parsed, parseErr := strconv.Atoi(strings.TrimSpace(first)); parseErr == nil && parsed >= 1024 && parsed <= 65533 {
+				port = parsed
 			}
-			port = parsed
+		}
+		if port == 2456 {
+			if value := envSetting(envPath, "SERVER_PORT"); value != "" {
+				parsed, parseErr := strconv.Atoi(value)
+				if parseErr != nil || parsed < 1024 || parsed > 65533 {
+					continue
+				}
+				port = parsed
+			}
 		}
 		status := "offline"
 		ctx, cancel := context.WithTimeout(parent, 5*time.Second)
