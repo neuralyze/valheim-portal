@@ -278,6 +278,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Building a world's map tiles no longer kills the portal container. `maptiles.Build` held both
+  12288x12288 map sources decoded in full plus a `float32` height and a 12-byte biome colour for
+  every one of the 151 million pixels, and measured 6.73 GiB peak RSS on Ulfsland's real sources
+  against the 1 GiB `mem_limit` `compose.yaml` sets. The kernel killed the portal mid-request
+  twice on 2026-09-12 - `Memory cgroup out of memory: Killed process 1619955 (valheim-portal)
+  total-vm:5093196kB, anon-rss:1010756kB`, with `dockerd` recording `exitCode=137
+  restartCount=2` - leaving the analysis job row stuck at `queued`. `docker inspect` run after
+  the restart policy had already replaced the container reported `ExitCode 0` and
+  `OOMKilled false`, which describes the new instance and not the one that died; that is what
+  made this look like a graceful 354s timeout when 354s was only how long the work took.
+  The renderer now reads PNG scanlines incrementally and fills each zoom level's tile band from
+  a single streaming pass, so its live set scales with the width of the map rather than its
+  area: 150 MiB peak, faster than before, and all 770 tiles plus the manifest byte-identical to
+  the previous renderer. Only Ulfsland could hit this, because the four older worlds already
+  have terrain manifests on disk and take the reuse path that skips `Build` entirely.
+
 - Server creation works again. `prepare_profile` has called `profile_store` since 09e88b3 on
   2026-08-17 without the module ever being imported, in either branch of the dual-mode import
   block, so every creation in every world mode died with `NameError: name 'profile_store' is not
