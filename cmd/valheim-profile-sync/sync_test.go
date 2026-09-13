@@ -821,3 +821,33 @@ func TestValidateCompanionDefinitionRejectsPublishedArtifactMismatch(t *testing.
 		t.Fatal("accepted companion metadata for a different published artifact")
 	}
 }
+
+func TestInstallEverybodyShimPlacesThePatcherAndRepairsADivergentCopy(t *testing.T) {
+	// A 1.0 client without this patcher throws "MissingMethodException: Method not found:
+	// Vector2i .ZDO.GetSector()" out of Minimap.Update and quits mid-join, because the
+	// community patcher declines return-type-only bridges.
+	root := t.TempDir()
+	if err := installEverybodyShim(root); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "active", "BepInEx", "patchers", "EverybodyShim.dll")
+	placed, err := os.ReadFile(target)
+	if err != nil || len(placed) == 0 {
+		t.Fatalf("shim not placed: %d bytes, %v", len(placed), err)
+	}
+	// A profile rebuild that wipes patchers, or a truncated copy, must repair itself
+	// rather than leave a client that cannot join.
+	if err := os.WriteFile(target, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := installEverybodyShim(root); err != nil {
+		t.Fatal(err)
+	}
+	repaired, err := os.ReadFile(target)
+	if err != nil || string(repaired) == "stale" {
+		t.Fatalf("divergent copy was not replaced: %d bytes, %v", len(repaired), err)
+	}
+	if len(repaired) != len(placed) {
+		t.Fatalf("repaired copy = %d bytes, want %d", len(repaired), len(placed))
+	}
+}

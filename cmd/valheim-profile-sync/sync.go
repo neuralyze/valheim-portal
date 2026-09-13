@@ -209,6 +209,9 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 		if err := hoistPackagePatchers(root); err != nil {
 			return false, fmt.Errorf("hoist package patchers: %w", err)
 		}
+		if err := installEverybodyShim(root); err != nil {
+			return false, fmt.Errorf("install the EverybodyShim preloader patcher: %w", err)
+		}
 		if err := removeRetiredDragonRiders(root); err != nil {
 			return false, fmt.Errorf("remove retired DragonRiders package: %w", err)
 		}
