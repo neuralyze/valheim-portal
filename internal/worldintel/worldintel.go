@@ -25,7 +25,7 @@ import (
 const (
 	SchemaVersion                = 1
 	MinWorldVersion              = 31
-	MaxWorldVersion              = 37
+	MaxWorldVersion              = 41
 	maxObjects                   = 2_000_000
 	maxPropertyItems             = 32_767
 	maxBlob                      = 64 << 20
@@ -34,6 +34,32 @@ const (
 	constructionClusterCell      = 128
 	maxConstructionCoverageCells = 2_048
 	maxConstructionClusters      = 1_024
+)
+
+// Valheim 1.0.12 (save version 41) replaced the single <World>.db with a <World>/ directory. Two
+// version thresholds separate the two record layouts, both read out of the 1.0.12 server assembly
+// rather than guessed (monodis of
+// Ulfsland/data/server/valheim_server_Data/Managed/assembly_valheim.dll):
+//
+//   - ZDO::Load IL_0000 computes `version >= 40` once and uses it twice: at IL_0091 it reads and
+//     throws away a Vector2s - the ZDO's own sector index, 4 bytes - only below 40, and at IL_00e4
+//     it picks ReadVector3 (12 bytes) below 40 versus ReadSmallRotation (2 or 4) at or above it.
+//     So a version-40+ ZDO record is 8 to 12 bytes shorter than the same object was at 37.
+//   - ZoneSystem::LoadOld IL_00f3 reads a location's prefab as a string below 40 and as a bare
+//     int32 stable hash at or above it.
+//
+// legacyMaxWorldVersion is the last version that shipped as one monolithic .db file, so it is what
+// ParseDB accepts; 40 and 41 only ever appear inside a 1.0 world directory, which ParseSave10 reads.
+const (
+	worldVersionCompactZDO = 40
+	legacyMaxWorldVersion  = 39
+)
+
+// ZDO.ExtraDataFlags bits that are not property maps. 256 is Persistent and 512 is Distant; bits 10
+// and 11 carry ObjectType. These two are the ones that change how long the record is.
+const (
+	flagRotation      = 4096
+	flagSmallPosition = 8192
 )
 
 type Vec2 struct {
@@ -140,6 +166,10 @@ type Health struct {
 	Findings           []string `json:"findings"`
 	UnknownPrefabs     int      `json:"unknown_prefabs"`
 	InvalidCoordinates int      `json:"invalid_coordinates"`
+	// UnresolvedLocations only ever rises on a 1.0 world: the old format wrote a location's prefab
+	// name as a string, so there was nothing to resolve. Carries omitempty so an old-format
+	// snapshot serialises exactly as it did before.
+	UnresolvedLocations int `json:"unresolved_locations,omitempty"`
 }
 type Summary struct {
 	Objects        int `json:"objects"`
@@ -252,6 +282,40 @@ func (r *reader) vec3() (Vec3, error) {
 	z, e := r.f32()
 	return Vec3{x, y, z}, e
 }
+
+// position reads a ZDO's position. Flag bit 13 means Valheim wrote it as a Vector2s - two int16
+// with y implied zero - instead of a Vector3, which is four bytes rather than twelve
+// (Utils::SmallPosition on the write side, ZDO::Load IL_0091 on the read side).
+//
+// The bit is honoured at every version, deliberately without a version gate, because the 1.0.12
+// assembly is what reads a version-37 save today and its ZDO::Load tests bit 13 before it tests
+// the version. Nothing in the four old worlds on this host exercises it: the flag needs y to be
+// exactly 0 and x/z to be whole numbers inside int16, and y is terrain height.
+func (r *reader) position(flags uint16) (Vec3, error) {
+	if flags&flagSmallPosition == 0 {
+		return r.vec3()
+	}
+	x, e := r.i16()
+	if e != nil {
+		return Vec3{}, e
+	}
+	z, e := r.i16()
+	return Vec3{X: float32(x), Z: float32(z)}, e
+}
+
+// skipSmallRotation consumes the quantised rotation 1.0 writes in place of a Vector3. Per
+// ZPackage::ReadSmallRotation, the first uint16 carries bit 15 when only the Y angle was stored, and
+// otherwise it is the high half of a 32-bit triple of 10-bit angles, so the record is two bytes or
+// four. Measured on Ulfsland: the two rotated ZDOs in 00_00__0_1.chunk hold 0x8198 and 0x82a6,
+// both with bit 15 set, i.e. the two-byte form for Y = 204 and 339 degrees.
+func (r *reader) skipSmallRotation() error {
+	packed, e := r.u16()
+	if e != nil || packed&0x8000 != 0 {
+		return e
+	}
+	_, e = r.u16()
+	return e
+}
 func (r *reader) skip(n int64) error {
 	if n < 0 || n > maxBlob {
 		return errors.New("invalid length")
@@ -305,7 +369,12 @@ func StableHash(s string) int32 {
 	return h1 + h2*1566083941
 }
 
-var tokenRE = regexp.MustCompile(`[A-Za-z][A-Za-z0-9_$.:+-]{2,119}`)
+// tokenRE matches an identifier that could be a prefab name. The optional leading underscore is
+// there for Valheim's internal prefabs - _ZoneCtrl, _TerrainCompiler, _NetScene. Without it the
+// match started at the first letter and cataloged "ZoneCtrl", which is not a prefab and hashes to
+// something no save contains, so all 81 _ZoneCtrl objects in a fresh 1.0 world counted as unknown
+// prefabs and raised a health finding about a purely internal object.
+var tokenRE = regexp.MustCompile(`_?[A-Za-z][A-Za-z0-9_$.:+-]{2,119}`)
 
 func CatalogFromFiles(paths ...string) map[int32]string {
 	out := knownCatalog()
@@ -316,10 +385,23 @@ func CatalogFromFiles(paths ...string) map[int32]string {
 		if files >= 20_000 || scanned >= maxCatalogBytes || info.Size() <= 0 || info.Size() > 256<<20 {
 			return
 		}
-		switch strings.ToLower(filepath.Ext(path)) {
-		case ".dll", ".assets", ".json", ".cfg", ".yml", ".yaml", ".txt":
+		base := strings.ToLower(filepath.Base(path))
+		switch {
+		// SoftRef's two manifests have no extension at all, and 1.0 needs them: Valheim 1.0 moved
+		// much of its prefab and location naming into SoftReferenceableAssets bundles under
+		// StreamingAssets/SoftRef, and the manifests are the only plain-text index of them.
+		// This is the difference between a usable 1.0 map and an unlabelled one. Measured on
+		// Ulfsland: resources.assets plus assembly_valheim.dll give 384,755 entries and name 275 of
+		// its 12,228 location instances across 5 distinct prefabs; adding these two manifests gives
+		// 437,939 entries and names all 12,228 across 177 prefabs, and takes unresolved object
+		// prefab hashes from 81 to 0.
+		case base == "manifest", base == "manifest_extended":
 		default:
-			return
+			switch strings.ToLower(filepath.Ext(path)) {
+			case ".dll", ".assets", ".json", ".cfg", ".yml", ".yaml", ".txt":
+			default:
+				return
+			}
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -327,14 +409,36 @@ func CatalogFromFiles(paths ...string) map[int32]string {
 		}
 		files++
 		scanned += int64(len(data))
+		register := func(s string) {
+			if strings.Contains(s, "::") || strings.Contains(s, "System.") {
+				return
+			}
+			if h := StableHash(s); out[h] == "" {
+				out[h] = s
+			}
+		}
 		for _, raw := range tokenRE.FindAll(data, -1) {
 			s := string(raw)
-			if strings.Contains(s, "::") || strings.Contains(s, "System.") {
-				continue
+			register(s)
+			// Register the underscore-stripped form too, so widening tokenRE can only add
+			// resolutions: without the leading underscore this is the name the old pattern would
+			// have cataloged, and dropping it could silently un-name a prefab that resolves today.
+			if s[0] == '_' && len(s) > 4 {
+				register(s[1:])
 			}
-			h := StableHash(s)
-			if _, ok := out[h]; !ok {
-				out[h] = s
+			// A SoftRef manifest names assets by path - "path in bundle:
+			// Assets/Systems/_ZoneCtrl.prefab" - and a prefab's name is that file's stem. The dot
+			// is inside tokenRE's character class, so without this the token is "_ZoneCtrl.prefab"
+			// and the prefab hash never resolves. Measured: manifest_extended holds 5,839 .prefab
+			// paths and 821 .asset paths.
+			for _, ending := range [...]string{".prefab", ".asset"} {
+				if strings.HasSuffix(s, ending) && len(s) > len(ending)+2 {
+					stem := s[:len(s)-len(ending)]
+					register(stem)
+					if stem[0] == '_' && len(stem) > 4 {
+						register(stem[1:])
+					}
+				}
 			}
 		}
 	}
@@ -372,6 +476,14 @@ func knownCatalog() map[int32]string {
 	return m
 }
 
+// AnalyzeArchive reads one world backup, in either of the two shapes hostops/backup_valheim_world.sh
+// produces. A 0.220 backup holds exactly two members, <stem>.db and <stem>.fwl. A 1.0.12 backup
+// holds the world directory instead - <stem>/_main.N.fwl2, .db2, .chunks, .ok and the per-chunk
+// files - because that is what worlds_local/<stem> now is.
+//
+// The shape is decided by what is in the archive, never by a version guess: the 1.0 branch is taken
+// only when a member is a _main.N.fwl2, an ending that did not exist before 1.0. The old branch is
+// left exactly as strict as it was, because the four 0.220 worlds on this host are the rollback path.
 func AnalyzeArchive(path, world string, catalog map[int32]string) (Snapshot, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -391,6 +503,9 @@ func AnalyzeArchive(path, world string, catalog map[int32]string) (Snapshot, err
 	tr := tar.NewReader(gz)
 	var db []byte
 	var fwl []byte
+	// Members of a 1.0 world directory, by basename, which is how the directory itself keys them
+	// and how the .chunks index names the chunk files.
+	directory := map[string][]byte{}
 	for {
 		hdr, e := tr.Next()
 		if e == io.EOF {
@@ -403,32 +518,71 @@ func AnalyzeArchive(path, world string, catalog map[int32]string) (Snapshot, err
 		if hdr.Typeflag != tar.TypeReg || hdr.Size < 0 || hdr.Size > maxArchiveMember {
 			continue
 		}
+		var member []byte
 		switch {
 		case strings.HasSuffix(base, ".db"):
 			db, err = io.ReadAll(io.LimitReader(tr, maxArchiveMember+1))
 		case strings.HasSuffix(base, ".fwl"):
 			fwl, err = io.ReadAll(io.LimitReader(tr, 1<<20))
+		case strings.HasSuffix(base, endingDB2), strings.HasSuffix(base, endingChunk):
+			member, err = io.ReadAll(io.LimitReader(tr, maxArchiveMember+1))
+		case strings.HasSuffix(base, endingFWL2), strings.HasSuffix(base, endingChunks), strings.HasSuffix(base, endingOK):
+			member, err = io.ReadAll(io.LimitReader(tr, 1<<20))
 		default:
 			continue
+		}
+		if member != nil {
+			if len(member) > maxArchiveMember {
+				return Snapshot{}, errors.New("database too large")
+			}
+			directory[base] = member
 		}
 		if err != nil {
 			return Snapshot{}, err
 		}
 	}
-	if len(db) == 0 || len(fwl) == 0 {
-		return Snapshot{}, errors.New("backup must contain one db/fwl pair")
+	source := Source{Backup: filepath.Base(path), SHA256: hex.EncodeToString(h.Sum(nil)), ModifiedAt: info.ModTime().UTC()}
+	var s Snapshot
+	var fwlBytes []byte
+	switch {
+	case IsWorldDirectory(directory):
+		save, err := CollectSave10(directory)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		if s, err = ParseSave10(save, catalog); err != nil {
+			return Snapshot{}, err
+		}
+		fwlBytes = save.FWL2
+		// DBBytes is the whole world database, which in 1.0 is the db2 plus its index plus every
+		// chunk file the index named - not just the db2, or the number would understate a big
+		// world by however much of it lives in chunks.
+		source.DBBytes = int64(len(save.DB2) + len(save.Index))
+		for _, chunk := range save.Chunks {
+			source.DBBytes += int64(len(chunk))
+		}
+	default:
+		if len(db) == 0 || len(fwl) == 0 {
+			return Snapshot{}, errors.New("backup must contain one db/fwl pair or one 1.0 world directory")
+		}
+		if len(db) > maxArchiveMember {
+			return Snapshot{}, errors.New("database too large")
+		}
+		if s, err = ParseDB(bytes.NewReader(db), catalog); err != nil {
+			return Snapshot{}, err
+		}
+		fwlBytes = fwl
+		source.DBBytes = int64(len(db))
 	}
-	if len(db) > maxArchiveMember {
-		return Snapshot{}, errors.New("database too large")
-	}
-	s, err := ParseDB(bytes.NewReader(db), catalog)
-	if err != nil {
-		return Snapshot{}, err
-	}
+	source.FWLBytes = int64(len(fwlBytes))
 	s.Schema = SchemaVersion
 	s.World = world
-	s.Seed = parseFWLSeed(fwl)
-	s.Source = Source{Backup: filepath.Base(path), SHA256: hex.EncodeToString(h.Sum(nil)), DBBytes: int64(len(db)), FWLBytes: int64(len(fwl)), ModifiedAt: info.ModTime().UTC()}
+	// parseFWLSeed reads an .fwl2 unchanged: measured byte for byte, the 1.0 header is the same
+	// container - int32 declared length, int32 world version, then the name and the seed name as
+	// 7-bit-prefixed strings. Hrafnheim's .fwl is 2e000000 25000000 09"Hrafnheim" 0a"qmrbecQI2K",
+	// Ulfsland's .fwl2 is 8c000000 29000000 08"Ulfsland" 0a"8JiFcknsJd"; only the trailer differs.
+	s.Seed = parseFWLSeed(fwlBytes)
+	s.Source = source
 	s.WorldAgeDays = s.NetTime / 86400
 	finalize(&s)
 	return s, nil
@@ -440,8 +594,11 @@ func ParseDB(src io.Reader, catalog map[int32]string) (Snapshot, error) {
 	if e != nil {
 		return Snapshot{}, e
 	}
-	if version < MinWorldVersion || version > MaxWorldVersion {
-		return Snapshot{}, fmt.Errorf("unsupported world version %d (supported %d-%d)", version, MinWorldVersion, MaxWorldVersion)
+	// ParseDB reads the monolithic <World>.db only. A version-40-or-later save is a directory and
+	// its ZDOs are not in this file at all, so accepting one here would parse the ZoneSystem block
+	// as objects; ParseSave10 is the entry point for those.
+	if version < MinWorldVersion || version > legacyMaxWorldVersion {
+		return Snapshot{}, fmt.Errorf("unsupported world version %d (supported %d-%d)", version, MinWorldVersion, legacyMaxWorldVersion)
 	}
 	net, e := r.f64()
 	if e != nil {
@@ -463,51 +620,7 @@ func ParseDB(src io.Reader, catalog map[int32]string) (Snapshot, error) {
 		if e != nil {
 			return Snapshot{}, fmt.Errorf("ZDO %d at byte %d: %w", id, r.n, e)
 		}
-		semanticCategory(&o, vals)
-		if encoded, ok := vals.s[StableHash("items")]; ok && encoded != "" {
-			raw, err := base64.StdEncoding.DecodeString(encoded)
-			if err != nil {
-				o.InventoryWarning = "invalid inventory base64"
-			} else if inventory, err := parseInventory(raw); err != nil {
-				o.InventoryWarning = err.Error()
-			} else {
-				o.Inventory = inventory
-			}
-		} else if raw, ok := vals.b[StableHash("items")]; ok && len(raw.data) > 0 {
-			inventory, err := parseInventory(raw.data)
-			if err != nil {
-				o.InventoryWarning = err.Error()
-			} else {
-				o.Inventory = inventory
-			}
-		}
-		if o.Inventory != nil {
-			s.Summary.InventoryObjects++
-			s.Summary.InventoryStacks += len(o.Inventory.Items)
-			for _, item := range o.Inventory.Items {
-				s.Summary.InventoryItems += int64(item.Stack)
-			}
-		}
-		if vals.i[StableHash("tamed")] != 0 {
-			s.Summary.TamedCreatures++
-		}
-		if vals.s[StableHash("TamedName")] != "" {
-			s.Summary.NamedCreatures++
-		}
-		if o.Persistent {
-			s.Summary.Persistent++
-		}
-		s.Summary.Categories[o.Category]++
-		if o.PrefabHash != 0 && o.Prefab == "" {
-			s.Health.UnknownPrefabs++
-		}
-		if !validPos(o.Position) {
-			s.Health.InvalidCoordinates++
-		}
-		if retain(o, vals) {
-			o.Properties = properties(vals, catalog)
-			s.Objects = append(s.Objects, o)
-		}
+		s.absorbObject(o, vals, catalog)
 	}
 	zones, e := r.i32()
 	if e != nil || zones < 0 || zones > 2_000_000 {
@@ -571,18 +684,72 @@ func ParseDB(src io.Reader, catalog map[int32]string) (Snapshot, error) {
 	return s, nil
 }
 
+// absorbObject folds one parsed ZDO into the snapshot: semantic classification, inventory decode,
+// the counters, and the retain decision. Both save formats call it, so a 1.0 world and a 0.220 world
+// are classified by exactly the same code - which is the point, because the vehicle and category
+// classifiers were verified against Hrafnheim's 1,780,660-entry catalog and must not fork.
+func (s *Snapshot) absorbObject(o Object, vals valueMaps, catalog map[int32]string) {
+	semanticCategory(&o, vals)
+	if encoded, ok := vals.s[StableHash("items")]; ok && encoded != "" {
+		raw, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			o.InventoryWarning = "invalid inventory base64"
+		} else if inventory, err := parseInventory(raw); err != nil {
+			o.InventoryWarning = err.Error()
+		} else {
+			o.Inventory = inventory
+		}
+	} else if raw, ok := vals.b[StableHash("items")]; ok && len(raw.data) > 0 {
+		inventory, err := parseInventory(raw.data)
+		if err != nil {
+			o.InventoryWarning = err.Error()
+		} else {
+			o.Inventory = inventory
+		}
+	}
+	if o.Inventory != nil {
+		s.Summary.InventoryObjects++
+		s.Summary.InventoryStacks += len(o.Inventory.Items)
+		for _, item := range o.Inventory.Items {
+			s.Summary.InventoryItems += int64(item.Stack)
+		}
+	}
+	if vals.i[StableHash("tamed")] != 0 {
+		s.Summary.TamedCreatures++
+	}
+	if vals.s[StableHash("TamedName")] != "" {
+		s.Summary.NamedCreatures++
+	}
+	if o.Persistent {
+		s.Summary.Persistent++
+	}
+	s.Summary.Categories[o.Category]++
+	if o.PrefabHash != 0 && o.Prefab == "" {
+		s.Health.UnknownPrefabs++
+	}
+	if !validPos(o.Position) {
+		s.Health.InvalidCoordinates++
+	}
+	if retain(o, vals) {
+		o.Properties = properties(vals, catalog)
+		s.Objects = append(s.Objects, o)
+	}
+}
+
 func readObject(r *reader, version int32, catalog map[int32]string, id uint32) (Object, valueMaps, error) {
 	flags, e := r.u16()
 	if e != nil {
 		return Object{}, valueMaps{}, e
 	}
-	if _, e = r.i16(); e != nil {
-		return Object{}, valueMaps{}, e
+	// The ZDO's own sector index, which 1.0 dropped because the chunk file name now carries the
+	// zone (ChunkSaveMapping::GetChunkFilename). Measured on Ulfsland's 00_00__0_1.chunk: 83
+	// records in 1498 bytes, which only closes as 81*18 + 2*20 once these four bytes are gone.
+	if version < worldVersionCompactZDO {
+		if e = r.skip(4); e != nil {
+			return Object{}, valueMaps{}, e
+		}
 	}
-	if _, e = r.i16(); e != nil {
-		return Object{}, valueMaps{}, e
-	}
-	p, e := r.vec3()
+	p, e := r.position(flags)
 	if e != nil {
 		return Object{}, valueMaps{}, e
 	}
@@ -592,8 +759,13 @@ func readObject(r *reader, version int32, catalog map[int32]string, id uint32) (
 	}
 	o := Object{ID: id, PrefabHash: ph, Prefab: catalog[ph], Position: p, Persistent: flags&256 != 0, Distant: flags&512 != 0, Type: uint8(flags >> 10 & 3)}
 	o.Category = category(o.Prefab)
-	if flags&4096 != 0 {
-		if e = r.skip(12); e != nil {
+	if flags&flagRotation != 0 {
+		if version < worldVersionCompactZDO {
+			e = r.skip(12)
+		} else {
+			e = r.skipSmallRotation()
+		}
+		if e != nil {
 			return o, valueMaps{}, e
 		}
 	}

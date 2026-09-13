@@ -1008,11 +1008,23 @@ func analyzeWorldBackup(worldRoot, world string) (worldintel.Snapshot, error) {
 	if err != nil || !within(worldRoot, worldPath) {
 		return worldintel.Snapshot{}, errors.New("world unavailable")
 	}
-	// resources.assets and assembly_valheim.dll carry every vanilla prefab name, so they are listed
-	// first and are never subject to the plugin budget below: without them nothing resolves at all.
+	// resources.assets and assembly_valheim.dll carry the vanilla prefab names that are still
+	// compiled in, so they are listed first and are never subject to the plugin budget below.
+	//
+	// The two SoftRef manifests are what Valheim 1.0 made necessary: 1.0 moved much of its prefab
+	// and location naming into SoftReferenceableAssets bundles under StreamingAssets/SoftRef, and
+	// these manifests are the only plain-text index of them. This matters far more on a 1.0 world
+	// than on a 0.220 one, because 1.0 stores a location by prefab hash where 0.220 stored its
+	// name, so without a catalog entry a 1.0 location has no name at all. Measured on Ulfsland:
+	// resources.assets plus the assembly give 384,755 catalog entries and name 275 of its 12,228
+	// location instances; adding the two manifests gives 437,939 entries and names all 12,228, and
+	// takes unresolved object prefab hashes on that world from 81 to 0. The two files are 200 KB and
+	// 3.3 MB, so they cost nothing against the 1 GiB CatalogFromFiles will scan.
 	catalogPaths := []string{
 		filepath.Join(worldPath, "data/server/valheim_server_Data/resources.assets"),
 		filepath.Join(worldPath, "data/server/valheim_server_Data/Managed/assembly_valheim.dll"),
+		filepath.Join(worldPath, "data/server/valheim_server_Data/StreamingAssets/SoftRef/manifest"),
+		filepath.Join(worldPath, "data/server/valheim_server_Data/StreamingAssets/SoftRef/manifest_extended"),
 	}
 	// The two plugin roots are mirrors of each other - measured on Hrafnheim, 118 DLLs each, 236
 	// listings for 118 distinct mods - and the walk reads every file it lists. The old flat cap of 130

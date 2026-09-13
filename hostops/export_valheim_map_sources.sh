@@ -82,19 +82,52 @@ for entry in valheim_server.x86_64 valheim_server_Data UnityPlayer.so linux64 do
     fi
 done
 
+# Stage the world the exporter will render. Valheim 1.0.12 replaced worlds_local/<World>.db plus
+# <World>.fwl with a worlds_local/<World>/ directory, so a 1.0 backup carries no .db and no .fwl at
+# all and the old two-member extraction failed with "backup does not contain one <World> world
+# save". Both shapes are staged here, and the shape is decided by what the archive holds rather than
+# by a version guess: only 1.0 has a .fwl2. The whole archive is extracted because a world backup
+# holds exactly one world and a 1.0 directory has no fixed member list - the save generation number
+# and the per-chunk file names both vary.
 archive="$work/archive"
 mkdir -p "$archive"
-tar -xzf "$backup" -C "$archive" --wildcards --no-anchored \
-    "$WORLD_NAME.fwl" "$WORLD_NAME.db"
+tar -xzf "$backup" -C "$archive"
+# Real 1.0 world directories on this host carry mode 0664 - rw-rw-r-- on a DIRECTORY, with no
+# execute bit - because valheim-server-docker's ensure_permissions applied a file mode to them on
+# every container start. tar restores that mode faithfully, and the result is a directory its own
+# owner cannot traverse: extracting the Ulfsland backup and copying it out of the archive failed
+# with "cp: cannot stat .../_main.2.db2: Permission denied". The staging tree is this script's own
+# throwaway, so the execute bit is put back before anything reads it; u+rwX only adds it to
+# directories.
+chmod -R u+rwX -- "$archive"
 shopt -s globstar
-fwl=("$archive"/**/"$WORLD_NAME.fwl")
-db=("$archive"/**/"$WORLD_NAME.db")
-if ((${#fwl[@]} != 1 || ${#db[@]} != 1)); then
-    echo "backup does not contain one $WORLD_NAME world save" >&2
-    exit 1
+metadata=("$archive"/**/*.fwl2)
+if ((${#metadata[@]} > 0)); then
+    # The directory holding the .fwl2 IS the world. It is staged under $WORLD_NAME because that is
+    # the name the server is launched with, and the backup's own stem may differ in case.
+    #
+    # Every .fwl2 has to share one parent: a world directory holds one save generation per world,
+    # so two parents means two worlds and there is no right answer about which to render. The
+    # extraction deliberately lands outside worlds_local and only the finished directory is placed
+    # in it, because a 1.0 server hangs in the start scene on a directory there it cannot read.
+    world_dir=$(dirname "${metadata[0]}")
+    for candidate in "${metadata[@]:1}"; do
+        if [[ $(dirname "$candidate") != "$world_dir" ]]; then
+            echo "backup holds more than one world directory" >&2
+            exit 1
+        fi
+    done
+    cp -r -- "$world_dir" "$saves/worlds_local/$WORLD_NAME"
+else
+    fwl=("$archive"/**/"$WORLD_NAME.fwl")
+    db=("$archive"/**/"$WORLD_NAME.db")
+    if ((${#fwl[@]} != 1 || ${#db[@]} != 1)); then
+        echo "backup does not contain one $WORLD_NAME world save" >&2
+        exit 1
+    fi
+    cp -- "${fwl[0]}" "$saves/worlds_local/$WORLD_NAME.fwl"
+    cp -- "${db[0]}" "$saves/worlds_local/$WORLD_NAME.db"
 fi
-cp -- "${fwl[0]}" "$saves/worlds_local/$WORLD_NAME.fwl"
-cp -- "${db[0]}" "$saves/worlds_local/$WORLD_NAME.db"
 
 port=$((30000 + RANDOM % 25000))
 log="$work/server.log"
