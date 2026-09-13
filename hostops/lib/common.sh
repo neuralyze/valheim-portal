@@ -317,6 +317,29 @@ require_readable_world_save() {
     echo "repaired traversal on $target, which Valheim 1.0 left without an execute bit" >&2
     return 0
   fi
+  # Two different faults reach here and they need different repairs: the world
+  # directory not opening (the 1.0 + ACL-mask case the chmod above targets), or
+  # the directory opening fine while the .db2 holding the world will not. Naming
+  # the execute bit for the second one sends the operator to a chmod that cannot
+  # help, so say which one it actually is.
+  local unreadable_db2='' probe
+  if [[ $WORLD_SAVE_FORMAT == directory && -x $target ]]; then
+    for probe in "$target"/*.db2; do
+      if [[ -f $probe && ! -r $probe ]]; then
+        unreadable_db2=$probe
+        break
+      fi
+    done
+  fi
+  if [[ -n $unreadable_db2 ]]; then
+    echo "cannot read the world data at $unreadable_db2" >&2
+    echo "It is mode $(stat -c %A -- "$unreadable_db2" 2>/dev/null || echo unknown), owned by" >&2
+    echo "$(stat -c '%U:%G' -- "$unreadable_db2" 2>/dev/null || echo unknown), and this user is $(id -un)." >&2
+    echo "The directory opens; the save file itself does not, so archiving it would stream a" >&2
+    echo "backup that cannot be restored. Repair it as the owner or as root, then retry:" >&2
+    echo "  chmod u+r $unreadable_db2" >&2
+    return 1
+  fi
   echo "cannot read the world save at $target" >&2
   echo "It is mode $(stat -c %A -- "$target" 2>/dev/null || echo unknown) and this user is $(id -un)." >&2
   echo "A directory with no execute bit cannot be opened into, and its mode also sets an" >&2
@@ -340,7 +363,24 @@ world_save_is_readable() {
         found=0
       fi
     done
-    return "$found"
+    [[ $found == 0 ]] || return "$found"
+    # A readable .fwl2 proves traversal, NOT that the world data itself opens:
+    # measured 2026-09-13 with _main.1.db2 at mode 000 and the .fwl2 readable,
+    # this probe passed and only tar's mid-stream failure stopped the stub. The
+    # .db2 holds the world; if any exist, at least one must open, so the gate
+    # fails before an archive file exists rather than relying on the cleanup.
+    local db2 saw_db2=0
+    for db2 in "$world_dir/${WORLD_SAVE_MEMBERS[0]}"/*.db2; do
+      [[ -f $db2 ]] || continue
+      saw_db2=1
+      if [[ -r $db2 ]]; then
+        return 0
+      fi
+    done
+    # A .db2 that exists and will not open is the fault. No .db2 at all is not:
+    # a world can be mid creation, and traversal is already proven above.
+    [[ $saw_db2 == 1 ]] && return 1
+    return 0
   fi
   for member in "${WORLD_SAVE_MEMBERS[@]}"; do
     if ! [[ -f "$world_dir/$member" && -r "$world_dir/$member" ]]; then
