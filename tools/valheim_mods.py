@@ -1307,6 +1307,21 @@ def cmd_deploy(root,m,args):
             if backup.exists() and not target.exists():
                 backup.rename(target)
             raise
+    # Hoist package-shipped preloader patchers. A Thunderstore package that carries one puts it
+    # at <Package>/patchers/*.dll, and BepInEx only runs patchers from BepInEx/patchers - one
+    # left under plugins/ is inert, silently. valheim-profile-sync already does this hoist for
+    # clients; the server side had no equivalent, so on 2026-09-12 both Valheim10Compatibility's
+    # patcher and ServersideQoL's had to be moved by hand after installing them through the
+    # tooling, and any later deploy would have disarmed them again without saying so. That
+    # matters more than it sounds: a game-assembly signature can only be fixed by a preloader
+    # patch, so an inert patcher means mods that loaded yesterday stop loading today.
+    patchers = world_root/'config_merged'/'bepinex'/'patchers'
+    patchers.mkdir(parents=True, exist_ok=True)
+    for shipped in sorted(target.glob('*/patchers/*.dll')):
+        placed = patchers/shipped.name
+        if not placed.is_file() or shipped.stat().st_mtime > placed.stat().st_mtime:
+            shutil.copy2(shipped, placed)
+            print(f'patcher_hoisted={shipped.parent.parent.name}/{shipped.name}')
     if runtime_plugins.is_dir():
         for entry in runtime_plugins.iterdir():
             if entry.is_dir() and not entry.is_symlink():
