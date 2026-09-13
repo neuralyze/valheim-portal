@@ -161,9 +161,36 @@ namespace Neuralyze.EverybodyShim
 
     internal static class AppendedOptionalForwards
     {
-        // EMPTY BY DECISION, not by oversight. Character.Message,
-        // SEMan.AddStatusEffect (both overloads), Inventory.AddItem and
-        // EffectList.Create all lived here until 2026-09-13 and are all now
+        // ONE ROW, added 2026-09-13 for exactly the reason the note below predicted.
+        //
+        // PlayerProfile.IncrementStat is the appended-optional shape in its purest form:
+        //   1.0.12:  instance void IncrementStat(PlayerStatType stat,
+        //                                        [opt] float32 amount, [opt] bool cheated)
+        //   arities: total=[3] required=[1]
+        // Both appended parameters carry the GAME'S OWN .param defaults, so the forward
+        // restates Valheim's declared behaviour rather than inventing anything - the
+        // distinction that separates this table from AppendedRequiredForwards.
+        //
+        // Why it matters: a player's own log showed 898 occurrences of
+        //   MissingMethodException: Method not found: void .PlayerProfile.IncrementStat(PlayerStatType,single)
+        // across 39 SECONDS in-world. Stat increments run on a hot path, so every step
+        // and every swing threw. EpicLoot and LongshipUpgrades call the two-parameter
+        // form; Smoothbrain-Farming did too and has since been dropped.
+        //
+        // Wubarrk-Valheim10Compatibility does NOT bridge it: its client log names only
+        // its two BLOCKED return-type refusals, its own literals cover
+        // Game.SavePlayerProfile and PlayerProfile.GetCharacterFolderPath, and the 898
+        // runtime exceptions settle the question whatever its table says.
+        //
+        // The second bar - the one the SpawnItem reversal added - is met: NO installed mod
+        // resolves this method by name. Swept all 115 deployed DLLs for a UTF-16
+        // "IncrementStat" literal and found zero, the ASCII hits being metadata names
+        // rather than reflection strings. So the extra overload cannot break a by-name
+        // lookup the way our Character.Message forward once did.
+        //
+        // The rest of this table stays EMPTY BY DECISION, not by oversight.
+        // Character.Message, SEMan.AddStatusEffect (both overloads), Inventory.AddItem
+        // and EffectList.Create all lived here until 2026-09-13 and are all now
         // bridged by Wubarrk-Valheim10Compatibility, which additionally
         // detours AccessTools so by-name patches survive the extra overload.
         // Ours did not, and measured worse for it: with our Character.Message
@@ -175,7 +202,11 @@ namespace Neuralyze.EverybodyShim
         // is how Valheim breaks mods at every content patch, and when the next
         // one lands this is a table row rather than new code - with the prefix
         // rule and the refusals already proven.
-        internal static readonly ForwardSpec[] Table = { };
+        internal static readonly ForwardSpec[] Table =
+        {
+            new ForwardSpec("PlayerProfile", "IncrementStat",
+                new[] { "PlayerStatType", "System.Single" }),
+        };
 
         /// Emits every admissible forward. Returns the number emitted.
         internal static int Apply(AssemblyDefinition assembly, ManualLogSource log)
