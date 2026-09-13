@@ -83,13 +83,30 @@ namespace Neuralyze.EverybodyShim
 
     internal static class AppendedRequiredForwards
     {
-        internal static readonly RequiredForwardSpec[] Table =
-        {
-            new RequiredForwardSpec(
-                "CookingStation", "SpawnItem",
-                new[] { "System.String", "System.Int32", "UnityEngine.Vector3" },
-                new object[] { false }),
-        };
+        // EMPTY BY MEASUREMENT. The CookingStation.SpawnItem row above was written,
+        // built and booted on Ulfsland 2026-09-13, and it made things WORSE: 13 error
+        // lines became 21.
+        //
+        //   [Error  :  HarmonyX] Failed to patch void CookingStation::RPC_RemoveDoneItem
+        //   AmbiguousMatchException: Ambiguous match found.
+        //   Rethrow as TypeInitializationException: The type initializer for
+        //     'PatchCookingStationItemMultiplier' threw an exception.
+        //
+        // The proven constant was not the problem - `false` does restate the old
+        // behaviour, and that proof still stands below. The problem is the SECOND
+        // OVERLOAD. CreatureLevelAndLootControl resolves SpawnItem BY NAME, so emitting a
+        // 3-parameter sibling turned one match into two and killed the patch class that
+        // was going to consume the forward. The mod we were trying to repair is the mod
+        // the repair broke.
+        //
+        // This is the same failure AppendedOptionalForwards records for
+        // Character.Message: by-name lookups do not survive an added overload unless
+        // something detours AccessTools, which Wubarrk-Valheim10Compatibility does and
+        // this patcher does not. Any row admitted here must therefore clear a SECOND bar
+        // beyond a proven constant: no mod may resolve the method by name. Check with
+        //   monodis --memberref <mod>.dll | grep -i AccessTools
+        // and by booting, because only the boot counts.
+        internal static readonly RequiredForwardSpec[] Table = { };
 
         internal static int Apply(AssemblyDefinition assembly, ManualLogSource log)
         {
