@@ -73,9 +73,20 @@ mcs -nostdlib -target:library -out:"$runtime/BepInEx/plugins/MapSourceExporter.d
     "$SOURCE_FILE"
 
 ln -s "$SERVER_ROOT/BepInEx/core" "$runtime/BepInEx/core"
-if [[ -d "$SERVER_ROOT/BepInEx/patchers" ]]; then
-    ln -s "$SERVER_ROOT/BepInEx/patchers" "$runtime/BepInEx/patchers"
-fi
+# The world's patchers are deliberately NOT linked. This runtime loads exactly one plugin,
+# the exporter, and a BepInEx preloader patcher rewrites the game assembly to reference its
+# own plugin's types - which are not here. On 2026-09-13 Ulfsland's tree gained
+# ServersideQoL.Patchers.dll and every export wedged in the start scene until its 30m
+# timeout:
+#   TypeLoadException: Could not load type of field 'ZNetPeer:<ServersideQoLPeer>k__BackingField'
+#     due to: Could not load file or assembly 'ServersideQoL, Version=2.0.7.0'
+#     at ZNet..cctor ()
+#   Rethrow as TypeInitializationException: The type initializer for 'ZNet' threw an exception.
+#     at Heightmap.ApplySettings () / Heightmap.Awake ()
+# ZNet's static constructor never completes, so the world never loads and biome.png is never
+# written. Nothing the export needs comes from a patcher: the map is vanilla terrain from the
+# seed, and EverybodyShim - the only patcher this repo ships - exists to let MODS compiled
+# against 0.220 run on 1.0.12, and no mod is loaded here.
 for entry in valheim_server.x86_64 valheim_server_Data UnityPlayer.so linux64 doorstop_libs steamclient.so libsteamwebrtc.so steam_appid.txt; do
     if [[ -e "$SERVER_ROOT/$entry" ]]; then
         ln -s "$SERVER_ROOT/$entry" "$runtime/$entry"
