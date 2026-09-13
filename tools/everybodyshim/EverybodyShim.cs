@@ -157,9 +157,10 @@ namespace Neuralyze.EverybodyShim
 
         public static void Initialize()
         {
-            Log.LogInfo("EverybodyShim loaded: de-literalize ZRoutedRpc.Everybody, plus "
-                + AppendedOptionalForwards.Table.Length
-                + " forwarding overloads for methods that gained an appended optional parameter.");
+            Log.LogInfo(string.Format(
+                "EverybodyShim loaded: de-literalize ZRoutedRpc.Everybody, {0} appended-optional forwards, "
+                + "{1} return-type forwards.",
+                AppendedOptionalForwards.Table.Length, ReturnTypeWidenedForwards.Table.Length));
         }
 
         public static void Patch(AssemblyDefinition assembly)
@@ -167,8 +168,12 @@ namespace Neuralyze.EverybodyShim
             DeLiteralizeEverybody(assembly);
 
             int emitted = AppendedOptionalForwards.Apply(assembly, Log);
-            Log.LogInfo(string.Format("{0} of {1} forwarding overloads emitted.",
+            Log.LogInfo(string.Format("{0} of {1} appended-optional forwards emitted.",
                 emitted, AppendedOptionalForwards.Table.Length));
+
+            int widened = ReturnTypeWidenedForwards.Apply(assembly, Log);
+            Log.LogInfo(string.Format("{0} of {1} return-type forwards emitted.",
+                widened, ReturnTypeWidenedForwards.Table.Length));
         }
 
         private static void DeLiteralizeEverybody(AssemblyDefinition assembly)

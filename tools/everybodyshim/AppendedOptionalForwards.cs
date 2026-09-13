@@ -112,6 +112,19 @@
 // SetRightItem / SetLeftBackItem / SetRightBackItem / SetShoulderItem,
 // CookingStation.SpawnItem. Also not admitted: ZDOMan.FindSectorObjects, where
 // the arity was REDUCED rather than appended to.
+//
+// Also NOT admitted: Terminal/ConsoleCommand..ctor, which looks class-B-shaped
+// in the log but is not. The mod wants 12 parameters:
+//   (string, string, Terminal/ConsoleEvent, bool, bool, bool, bool, bool,
+//    Terminal/ConsoleOptionsFetcher, bool, bool, bool)
+// 1.0.12 declares 13, and the new one - `[opt] bool hideBehindDevCommands`,
+// .param [9] = bool(false) - was INSERTED at position 9, ahead of
+// optionsFetcher, not appended. The old list is therefore not a prefix of the
+// new one: old parameter 9 is ConsoleOptionsFetcher where new parameter 9 is a
+// bool. This emitter's prefix rule refuses it automatically, which is the
+// right outcome - a mid-list insertion is a THIRD defect shape needing its own
+// proof that the positional remapping is unique, and it has not been done.
+// (It is also a constructor, which this emitter does not synthesize at all.)
 
 using System;
 using System.Collections.Generic;
