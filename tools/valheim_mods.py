@@ -642,10 +642,16 @@ def ensure_dependencies(root, registry, package, version_number, scope, selected
     selected = dict(selected or {})
     ordered = []
     resolve_dependencies(registry, package, version_number, selected, set(), ordered)
-    # The parent's categories, not each dependency's: a shared server-side mod needs its
-    # dependencies on the server too, and BepInExPack_Valheim - which every one of them needs -
-    # carries no 'Server-side' category of its own.
-    server_required = scope == 'shared' and 'Server-side' in package.get('categories', [])
+    # The profile's scope decides, not Thunderstore's categories. `scope == 'shared'` is the
+    # operator saying this package is deployed to the server, and cmd_deploy already copies
+    # manager-cache/server into the world for exactly those packages - so a shared package
+    # without a server copy is an inconsistency the deploy will later refuse. Keying this off
+    # the 'Server-side' category instead silently produced that state: measured 2026-09-12,
+    # ChangosOF-DropCleaner is scoped shared but Thunderstore categorises it Client-side, so
+    # enabling it installed only the client copy and it had to be placed server-side by hand
+    # before `manage_mods.sh Ulfsland deploy --apply` would ship it. The category cannot be
+    # trusted for this: it is upstream metadata about intent, not a statement about our profile.
+    server_required = scope == 'shared'
     for dependency, dependency_version in ordered:
         for side in install_sides(root, dependency['name'], server_required):
             install(root, dependency, dependency_version, side)
@@ -995,7 +1001,7 @@ def cmd_sync(root, m, args):
     # while the server copy it was run to repair stayed at the older version - so the deploy that
     # sent the operator here refused again, with the same message, from a command that had just
     # reported success.
-    sides=install_sides(root, package['name'], scope == 'shared' and 'Server-side' in package.get('categories', []))
+    sides=install_sides(root, package['name'], scope == 'shared')
     for side in sides:
         assert_cached_version(side, cached_plugin(root, side, package['name']), item['identifier'], item['version'])
     print(f'synced={args.identifier} version={item["version"]} sides={",".join(sides)}')
@@ -1183,7 +1189,7 @@ def cmd_update(root,m,args):
         print(f'updates={len(changes)}; rerun with --apply to record them'); return
     for item,new in changes:
         p=reg[item['identifier']]
-        for side in install_sides(root, p['name'], item.get('scope')=='shared' and 'Server-side' in p.get('categories',[])):
+        for side in install_sides(root, p['name'], item.get('scope')=='shared'):
             install(root,p,new,side)
         item['version']=new
     save(args.manifest,m); print(f'updated={len(changes)}')
