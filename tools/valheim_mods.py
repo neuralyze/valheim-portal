@@ -1217,6 +1217,34 @@ def server_config_source(root):
     source = root / SERVER_CONFIG_DIR
     return source if source.is_dir() and any(source.rglob('*.cfg')) else None
 
+def copy_into_place(source, destination):
+    """shutil.copy2 for a destination this user may not own.
+
+    copy2 writes the content and then calls copystat, whose os.utime raises
+    PermissionError (EPERM) on a file owned by someone else. The content is
+    already written by then, so the exception aborts a deployment that has
+    half happened -- measured 2026-08-26, when POST /admin/mods/deploy returned
+    409 for all four worlds and left a partial config set behind a world the job
+    had already stopped. The root CLI never saw it because root may set any
+    file's times. Live configs here are glichez:glichez while the API runs as
+    valheim-agent, so this is the normal case for the API, not an edge one.
+
+    Content and mode are what a deployment needs. Timestamps are cosmetic with
+    one exception worth knowing: the patcher hoist compares mtimes to decide
+    whether to re-copy, so when utime is refused it re-copies and re-prints
+    patcher_hoisted on each deploy. That is noise, not breakage.
+    """
+    shutil.copyfile(source, destination)
+    for apply_metadata in (shutil.copymode, _copy_times):
+        try:
+            apply_metadata(source, destination)
+        except PermissionError:
+            pass
+
+def _copy_times(source, destination):
+    info = os.stat(source)
+    os.utime(destination, ns=(info.st_atime_ns, info.st_mtime_ns))
+
 def deploy_server_config(root, world_root):
     """Place the profile's server settings, with this server's overrides applied.
 
@@ -1250,7 +1278,7 @@ def deploy_server_config(root, world_root):
                 (backup / relative).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(live, backup / relative)
             live.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(entry, live)
+            copy_into_place(entry, live)
     print(f'server_config={len(list(source.rglob("*.cfg")))} files')
     for entry in touched:
         print(f'server_config_override={entry}')
@@ -1320,7 +1348,7 @@ def cmd_deploy(root,m,args):
     for shipped in sorted(target.glob('*/patchers/*.dll')):
         placed = patchers/shipped.name
         if not placed.is_file() or shipped.stat().st_mtime > placed.stat().st_mtime:
-            shutil.copy2(shipped, placed)
+            copy_into_place(shipped, placed)
             print(f'patcher_hoisted={shipped.parent.parent.name}/{shipped.name}')
     if runtime_plugins.is_dir():
         for entry in runtime_plugins.iterdir():

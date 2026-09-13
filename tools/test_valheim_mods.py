@@ -11,6 +11,7 @@ import sys
 import tempfile
 import zipfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1019,3 +1020,58 @@ class PlayerCatalogTest(unittest.TestCase):
         manifest.write_bytes(b"\xef\xbb\xbf" + manifest.read_bytes())
 
         self.assertEqual(list(valheim_mods.player_package_versions(self.store)), ["Advize-PlantEasily"])
+
+
+class CopyIntoPlaceTest(unittest.TestCase):
+    """Placing a file the deploying user does not own.
+
+    POST /admin/mods/deploy returned 409 for all four worlds on 2026-08-26
+    because shutil.copy2 writes the content and only then calls copystat, whose
+    os.utime raises EPERM on someone else's file. The content was already
+    written, so a metadata refusal aborted a deployment that had half happened,
+    behind a world the job had already stopped.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.source = Path(self.temp.name) / "profile.cfg"
+        self.source.write_text("value = 1\n", encoding="utf-8")
+        self.destination = Path(self.temp.name) / "live.cfg"
+        self.destination.write_text("value = 0\n", encoding="utf-8")
+
+    def refuse(self, name):
+        """Make one metadata call behave as it does on a file owned by another user."""
+
+        def deny(*_args, **_kwargs):
+            raise PermissionError(1, "Operation not permitted")
+
+        patched = unittest.mock.patch(name, deny)
+        patched.start()
+        self.addCleanup(patched.stop)
+
+    def test_a_refused_timestamp_still_places_the_content(self):
+        self.refuse("os.utime")
+
+        valheim_mods.copy_into_place(self.source, self.destination)
+
+        self.assertEqual(self.destination.read_text(encoding="utf-8"), "value = 1\n")
+
+    def test_a_refused_mode_still_places_the_content(self):
+        self.refuse("shutil.copymode")
+
+        valheim_mods.copy_into_place(self.source, self.destination)
+
+        self.assertEqual(self.destination.read_text(encoding="utf-8"), "value = 1\n")
+
+    def test_a_missing_source_still_fails(self):
+        """Tolerating metadata must not tolerate the copy itself failing."""
+        with self.assertRaises(FileNotFoundError):
+            valheim_mods.copy_into_place(self.source.with_name("absent.cfg"), self.destination)
+
+    def test_the_timestamp_is_carried_when_it_is_permitted(self):
+        os.utime(self.source, ns=(1_000_000_000_000_000_000, 1_000_000_000_000_000_000))
+
+        valheim_mods.copy_into_place(self.source, self.destination)
+
+        self.assertEqual(self.destination.stat().st_mtime_ns, self.source.stat().st_mtime_ns)
