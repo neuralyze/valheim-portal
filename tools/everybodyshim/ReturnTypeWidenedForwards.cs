@@ -120,6 +120,17 @@ namespace Neuralyze.EverybodyShim
         internal static readonly WidenedReturnSpec[] Table =
         {
             new WidenedReturnSpec("ZDO", "GetSector", "Vector2i"),
+
+            // Same shape as GetSector and blocked by Valheim10Compatibility for
+            // the same stated reason. 1.0.12 declares exactly one overload,
+            //   default valuetype [assembly_utils]Vector2s GetZone(UnityEngine.Vector3 point)
+            // and it is STATIC, which is the first time the emitter's static
+            // path is used. 9 deployed mods reference it: CreatureLevelAndLoot-
+            // Control, EpicLoot, More_World_Locations_AIO, Server_devcommands,
+            // ServersideQoL, Serverside_Simulations, Upgrade_World, ValheimRcon,
+            // World_Edit_Commands.
+            new WidenedReturnSpec("ZoneSystem", "GetZone", "Vector2i",
+                "UnityEngine.Vector3"),
         };
 
         /// Value-preserving conversions only. Keyed "from->to" on Cecil
