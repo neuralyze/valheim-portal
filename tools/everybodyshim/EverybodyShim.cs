@@ -115,6 +115,24 @@
 // and with Preloader.DumpAssemblies=true the assembly it actually loaded
 // disassembles to ".field public static int64 Everybody" plus a generated
 // .cctor of "ldc.i8 0x0; stsfld int64 ZRoutedRpc::Everybody; ret".
+//
+// Adding the forwarding overloads of AppendedOptionalForwards.cs to the same
+// server, same window, took the modded boot the rest of the way:
+//
+//   const fix only:  17668 error lines; 8756 Character.Message and 8756
+//                    SEMan.AddStatusEffect MissingMethodExceptions, one pair
+//                    per frame from "Activating first scene!" onward; the
+//                    server never left the start scene.
+//   + forwards:      260 error lines; both floods zero.
+//   + forwards, with shudnal-HarpoonExtended disabled:
+//                    "isModded: True", "Zonesystem Awake", "Zonesystem Start",
+//                    "DungeonDB Start", "ZRpc timeout set to 30s" - a fully
+//                    loaded modded world for the first time on 1.0.12.
+//
+// HarpoonExtended was the last blocker and is not shimmable: its own Postfix
+// on ObjectDB.Awake/CopyOtherDB throws NullReferenceException inside
+// FejdStartup.SetupObjectDB, which aborts the path that starts the world. It
+// needs fixing or replacing, not patching around.
 
 using System;
 using System.Collections.Generic;
@@ -139,15 +157,26 @@ namespace Neuralyze.EverybodyShim
 
         public static void Initialize()
         {
-            Log.LogInfo("EverybodyShim loaded: will de-literalize ZRoutedRpc.Everybody in assembly_valheim.");
+            Log.LogInfo("EverybodyShim loaded: de-literalize ZRoutedRpc.Everybody, plus "
+                + AppendedOptionalForwards.Table.Length
+                + " forwarding overloads for methods that gained an appended optional parameter.");
         }
 
         public static void Patch(AssemblyDefinition assembly)
         {
+            DeLiteralizeEverybody(assembly);
+
+            int emitted = AppendedOptionalForwards.Apply(assembly, Log);
+            Log.LogInfo(string.Format("{0} of {1} forwarding overloads emitted.",
+                emitted, AppendedOptionalForwards.Table.Length));
+        }
+
+        private static void DeLiteralizeEverybody(AssemblyDefinition assembly)
+        {
             TypeDefinition type = assembly.MainModule.GetType(TargetType);
             if (type == null)
             {
-                Log.LogWarning("Type " + TargetType + " not found; assembly left untouched.");
+                Log.LogWarning("Type " + TargetType + " not found; field left untouched.");
                 return;
             }
 
@@ -163,7 +192,7 @@ namespace Neuralyze.EverybodyShim
 
             if (field == null)
             {
-                Log.LogWarning(TargetType + "." + TargetField + " not found; assembly left untouched.");
+                Log.LogWarning(TargetType + "." + TargetField + " not found; field left untouched.");
                 return;
             }
 

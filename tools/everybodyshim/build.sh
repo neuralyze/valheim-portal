@@ -48,10 +48,13 @@ for name in Mono.Cecil.dll BepInEx.dll; do
     refs+=("-r:$bepinex_core/$name")
 done
 
+sources=()
+for cs in "$here"/*.cs; do sources+=("$cs"); done
+
 # -nostdlib: the game ships its own mscorlib, and letting Mono's corlib in as
 # well makes every core type ambiguous (CS0433/CS1685).
 mcs -nostdlib -target:library -langversion:latest -nologo -optimize+ \
-    -out:"$out" "${refs[@]}" "$here/EverybodyShim.cs"
+    -out:"$out" "${refs[@]}" "${sources[@]}"
 
 [[ -f $out ]] || { echo "build produced no assembly" >&2; exit 1; }
 printf 'built %s (%s bytes)\n' "$out" "$(stat -c %s "$out")"
