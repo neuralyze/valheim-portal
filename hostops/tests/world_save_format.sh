@@ -168,6 +168,49 @@ bash "$restore" Ulfsland "$(basename "$archive")" >"$tmp/out" 2>"$tmp/err" ||
 [[ -s "$world_dir/Ulfsland/_main.1.fwl2" ]] ||
 	fail "restore into an empty directory produced no metadata file"
 
+# --- an archive that stores the world directory untraversable is installed usable ---
+# tar records and restores a directory's mode faithfully, and --no-same-permissions
+# cannot help: a umask only clears bits, it can never add the missing execute bit. Every
+# 1.0 archive taken on this host before valheim-server-docker 3f73689 therefore carries
+# its world directory at 0664, because ensure_permissions applied the FILE mode to what
+# are now directories. Restoring one unchanged would install a world the SERVER itself
+# cannot read: measured 2026-09-12 inside the live container as the actual server user,
+# `docker exec -u valheim ... head -c 4 .../Ulfsland/_main.2.fwl2` was denied on a
+# drw-rw-r-- directory owned by that very user, while `ls` of it succeeded and the same
+# probe as root succeeded. That is the start-scene hang: the game enumerates the world,
+# cannot open it, and WorldGenerator stays null with no log line naming the cause.
+if [[ $(id -u) -ne 0 ]]; then
+	make_directory_world Jotunheim Jotunheim
+	jotun_dir="$root/Jotunheim/config_merged/worlds_local"
+	jotun_archive=$(run_backup Jotunheim traversable)
+	# Rebuild the archive with the directory member stored 0664, which is what every 1.0
+	# archive taken on this host before the fork fix actually holds. --mode applies the
+	# stored mode without touching the tree, which matters: tar itself could not read the
+	# save if the live directory were chmod'ed untraversable first.
+	(cd "$jotun_dir" && tar czf "$root/world_backups/world-Jotunheim-untraversable-2026-01-01_00-00-00.tgz" \
+		--mode=0664 Jotunheim)
+	tar -tvzf "$root/world_backups/world-Jotunheim-untraversable-2026-01-01_00-00-00.tgz" |
+		grep -q '^drw-rw-r-- .*Jotunheim/$' ||
+		fail "untraversable archive: the fixture does not store the directory at 0664"
+	rm -rf -- "$jotun_dir/Jotunheim"
+
+	bash "$restore" Jotunheim world-Jotunheim-untraversable-2026-01-01_00-00-00.tgz \
+		>"$tmp/out" 2>"$tmp/err" ||
+		fail "untraversable archive: restore exited $? -- $(cat "$tmp/err")"
+	# Asserted by actually OPENING a file inside the directory, which is the only probe
+	# that tells the truth. A 0664 directory still lists, because enumerating names needs
+	# only read, and every check run with privilege succeeds regardless - that pair of
+	# facts is why this hid from everyone until it was probed as the server's own user.
+	head -c 4 -- "$jotun_dir/Jotunheim/_main.1.fwl2" >/dev/null 2>&1 ||
+		fail "untraversable archive: the restored world cannot be read, mode $(stat -c %A "$jotun_dir/Jotunheim")"
+	[[ $(stat -c %A "$jotun_dir/Jotunheim") == drwx* ]] ||
+		fail "untraversable archive: restored world is not traversable: $(stat -c %A "$jotun_dir/Jotunheim")"
+	# And the good archive of the same world still restores, so the normalisation is not
+	# hiding a detection failure.
+	bash "$restore" Jotunheim "$(basename "$jotun_archive")" >"$tmp/out" 2>"$tmp/err" ||
+		fail "untraversable archive: the traversable archive stopped restoring -- $(cat "$tmp/err")"
+fi
+
 # --- the staging directory is never created inside worlds_local --------------------
 # Asserted on the interface rather than by racing the script: a tar shim records every
 # -C directory the restore extracts into, which is the staging path it chose. This is
