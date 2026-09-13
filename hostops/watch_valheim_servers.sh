@@ -45,6 +45,29 @@ age_of() {  # seconds since mtime, or empty when absent
     printf '%s' "$(( $(date +%s) - mtime ))"
 }
 
+# newest_save_age answers the same question age_of does, for a Valheim 1.0 world.
+#
+# 1.0.12 stores the save as the directory worlds_local/<World>/ and has no <World>.db at
+# all, so the pair lookup below returned nothing and this loop SKIPPED the world as "save
+# not present yet" - the wedge check that exists because Hrafnheim went quiet on
+# 2026-08-06 had silently stopped covering upgraded worlds. Measured on Ulfsland
+# 2026-09-12: each autosave writes a whole new generation into that directory and drops
+# the previous one (generation 1 at 20:03, generation 2 at 20:33), so the directory's own
+# mtime moves with every save.
+#
+# The directory itself is included in the scan rather than only its files: the game left
+# it mode drw-rw-r-- at 20:33, and without the execute bit nothing inside a directory can
+# be stat'ed, so `find -type f` in there silently matches nothing. On that same directory
+# the directory mtime read 1789263187.49 against a newest file of 1789263187.46, so it is
+# never staler than its contents either.
+newest_save_age() {
+    local dir=$1 newest
+    [[ -d $dir ]] || return 0
+    newest=$(find "$dir" -maxdepth 1 -printf '%T@\n' 2>/dev/null | sort -rn | head -n 1)
+    [[ -n $newest ]] || return 0
+    printf '%s' "$(( $(date +%s) - ${newest%.*} ))"
+}
+
 restart_world() {
     local world=$1
     local marker="$state_dir/$world.last-restart" last now
@@ -71,10 +94,13 @@ restart_world() {
 while read -r container; do
     [[ -n $container ]] || continue
     world=${container#valheim-server-}
-    save="$worlds_root/$world/config_merged/worlds_local/$world.db"
+    worlds_local="$worlds_root/$world/config_merged/worlds_local"
     output="$log_root/$world.log"
 
-    save_age=$(age_of "$save")
+    save_age=$(age_of "$worlds_local/$world.db")
+    # The pair first, so nothing changes for the four worlds still on 0.220.x, then the
+    # 1.0 directory. Both are live on this host at once.
+    [[ -n $save_age ]] || save_age=$(newest_save_age "$worlds_local/$world")
     log_age=$(age_of "$output")
 
     # An absent save or log is not evidence of a wedge - a freshly created world

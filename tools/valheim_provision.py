@@ -210,6 +210,53 @@ def place_save_pair(source_db: Path, source_fwl: Path, destination: Path, world:
     valheim_world.save(destination / (world + ".fwl"), metadata)
 
 
+def place_save_directory(source: Path, destination: Path, world: str) -> None:
+    """Copy one Valheim 1.0 world directory in under a new world name.
+
+    Valheim 1.0.12 (network version 40) stores a world as worlds_local/<World>/ holding
+    _main.<N>.fwl2, _main.<N>.db2, _main.<N>.chunks, _main.<N>.ok and one .chunk per
+    saved zone, instead of the <World>.db/<World>.fwl pair place_save_pair handles.
+
+    The same argument applies: renaming is not sufficient, because the world's own name
+    lives inside the metadata. Measured on Ulfsland 2026-09-12, _main.<N>.fwl2 is the
+    same container format as the old .fwl -- int32 declared length, int32 world version
+    (41 for 1.0.12, already inside valheim_world.parse's 20..100 guard), the
+    7-bit-prefixed world name, the seed name, the int32 seed, the int64 uid, the int32
+    generator version, then a trailer -- so parse/save read and rewrite it unchanged, and
+    save(parse(f)) reproduced both the 53-byte _main.0.fwl2 and the 144-byte
+    _main.1.fwl2 byte for byte. Nothing else in the save carries the name: "Ulfsland"
+    and its seed name "8JiFcknsJd" each occur zero times in the 145402-byte
+    _main.1.db2 and zero times in 00_00__0_1.chunk, so the metadata file is the only
+    place a rename has to reach.
+
+    Every *.fwl2 in the directory is rewritten, not just the newest generation: the game
+    keeps older generations beside the current one and picks by generation number, so a
+    single rewritten file would leave the world named inconsistently depending on which
+    generation the server chose to load.
+    """
+    if source.is_symlink() or not source.is_dir():
+        raise RuntimeError(f"world save directory is missing: {source.name}")
+    metadata_files = sorted(source.glob("*.fwl2"))
+    if not metadata_files:
+        raise RuntimeError(f"world save directory holds no .fwl2 metadata: {source.name}")
+    target = destination / world
+    target.mkdir(parents=True)
+    for entry in sorted(source.iterdir()):
+        # A symlink is refused for the same reason place_save_pair refuses one: it would
+        # make the new world's save a pointer to somewhere else on this host. Anything
+        # that is neither a regular file nor a symlink has no business in a save.
+        if entry.is_symlink():
+            raise RuntimeError(f"world save member is a symbolic link, which is never followed: {entry.name}")
+        if not entry.is_file():
+            raise RuntimeError(f"world save member is not a regular file: {entry.name}")
+        shutil.copy2(entry, target / entry.name)
+    for entry in metadata_files:
+        placed = target / entry.name
+        metadata = valheim_world.parse(placed)
+        metadata["name"] = world
+        valheim_world.save(placed, metadata)
+
+
 def prepare_world(stage: Path, args: argparse.Namespace) -> None:
     destination = stage / "config_merged" / "worlds_local"
     destination.mkdir(parents=True)
@@ -219,12 +266,30 @@ def prepare_world(stage: Path, args: argparse.Namespace) -> None:
             raise RuntimeError("staged world upload is unavailable")
         # Fixed names written by the portal after it validated the archive, so there is
         # no discovery to get wrong here and no attacker-chosen name in this path.
+        #
+        # A Valheim 1.0 world cannot arrive here yet, and not because of this branch:
+        # internal/app/world_upload.go requires the zip to hold exactly one matching
+        # .db/.fwl pair and stages it under these two fixed names, so a 1.0 export --
+        # which is a directory of _main.<N>.fwl2/_main.<N>.db2/.chunk files and contains
+        # no .db or .fwl at all -- is refused during upload review with "world archive
+        # has no matching .db and .fwl pair". Teaching the uploader the directory shape
+        # is a change to that Go validator and to what it stages; this function copies
+        # whatever it is handed and needs nothing until the staged shape changes.
         place_save_pair(upload / "world.db", upload / "world.fwl", destination, args.world)
         return
     if args.source_world:
         if not valid_name(args.source_world):
             raise RuntimeError("invalid source world")
         source_root = (portal_paths.world_root() / args.source_world / "config_merged" / "worlds_local").resolve()
+        # Positive detection, matching hostops/lib/common.sh: a 1.0 source is a directory
+        # that holds a *.fwl2. "Not a pair" must not imply 1.0 here either -- a source
+        # world with no save at all has to reach place_save_pair and get that function's
+        # named "world save database is missing" error, rather than being copied as an
+        # empty directory that Valheim would silently replace with a fresh random world.
+        source_directory = source_root / args.source_world
+        if source_directory.is_dir() and any(source_directory.glob("*.fwl2")):
+            place_save_directory(source_directory, destination, args.world)
+            return
         place_save_pair(
             source_root / (args.source_world + ".db"),
             source_root / (args.source_world + ".fwl"),

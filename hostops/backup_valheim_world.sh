@@ -15,15 +15,28 @@ BACKUP_NAME=${2:-backup}
 
 require_valheim_root
 WORLD_DIR="$VALHEIM_ROOT/$WORLD_NAME/config_merged/worlds_local"
-SAVE_STEM="${WORLD_NAME,,}"
-if [[ -f "$WORLD_DIR/$WORLD_NAME.db" && -f "$WORLD_DIR/$WORLD_NAME.fwl" ]]; then
-	SAVE_STEM="$WORLD_NAME"
+# resolve_world_save, not a hardcoded pair: Ulfsland runs 1.0.12 and stores its
+# save as the directory worlds_local/Ulfsland/, while the other four worlds are
+# still 0.220.x <World>.db/<World>.fwl pairs. See hostops/lib/common.sh.
+if ! resolve_world_save "$WORLD_DIR" "$WORLD_NAME"; then
+	echo "no Valheim world save found for $WORLD_NAME in $WORLD_DIR" >&2
+	echo "Expected either a 1.0 world directory $WORLD_NAME/ holding a *.fwl2 file," >&2
+	echo "or a 0.220 pair $WORLD_NAME.db plus $WORLD_NAME.fwl (either casing)." >&2
+	exit 2
 fi
 
-echo "Backing up Valheim world $WORLD_NAME"
+echo "Backing up Valheim world $WORLD_NAME ($WORLD_SAVE_FORMAT format, save name $WORLD_SAVE_STEM)"
 
 mkdir -p "$VALHEIM_BACKUP_ROOT"
-cd "$WORLD_DIR"
-tar czf \
-	"$VALHEIM_BACKUP_ROOT/world-$WORLD_NAME-$BACKUP_NAME-$(date +%Y-%m-%d_%H-%M-%S).tgz" \
-	"$SAVE_STEM.db" "$SAVE_STEM.fwl"
+ARCHIVE="$VALHEIM_BACKUP_ROOT/world-$WORLD_NAME-$BACKUP_NAME-$(date +%Y-%m-%d_%H-%M-%S).tgz"
+# -C instead of the cd this script used to do, so the members stay relative to
+# worlds_local either way. The pair archive is therefore byte-shape identical to
+# every archive already in the inventory -- exactly two members, "<stem>.db"
+# then "<stem>.fwl" -- which restore_valheim_world.sh and the world-analysis
+# reader both still depend on. A 1.0 archive is the single directory member
+# "<stem>/" plus its contents at their original basenames: the generation number
+# in _main.<N>.db2 is what picks the newest save set, so nothing is renamed or
+# flattened. Naming only the world directory also leaves the game's own
+# <World>_backup_auto-* copies out of the archive, matching the pair behaviour.
+tar czf "$ARCHIVE" -C "$WORLD_DIR" "${WORLD_SAVE_MEMBERS[@]}"
+echo "$ARCHIVE"

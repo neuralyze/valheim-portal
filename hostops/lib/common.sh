@@ -195,3 +195,82 @@ MESSAGE
     exit 2
   }
 }
+
+# resolve_world_save detects which of the two save layouts one world uses and
+# sets WORLD_SAVE_FORMAT ("directory" or "pair"), WORLD_SAVE_STEM (the name the
+# save carries on disk, which is not always the world's own casing) and
+# WORLD_SAVE_MEMBERS (the tar members, relative to worlds_local, that are the
+# save). It returns 1 when the world has no save at all.
+#
+# Valheim 1.0.12 (network version 40, released 2026-09-09) replaced the
+# worlds_local/<World>.db + worlds_local/<World>.fwl pair with a DIRECTORY
+# worlds_local/<World>/ holding one generation of files per save. Measured on
+# Ulfsland 2026-09-12 while it ran 1.0.12:
+#
+#   Ulfsland/_main.1.fwl2    144 bytes   world metadata
+#   Ulfsland/_main.1.db2     145402      the world database
+#   Ulfsland/_main.1.chunks  21
+#   Ulfsland/_main.1.ok      4           int32 41, the world version
+#   Ulfsland/00_00__0_1.chunk 1504       one file per saved zone
+#
+# Before this, backup_valheim_world.sh handed tar the pair names unconditionally
+# and died with "tar: ulfsland.db: Cannot stat: No such file or directory",
+# which is what made POST /admin/worlds/Ulfsland/analysis answer 409 with job
+# detail "initial backup failed". The other four worlds on this host are still
+# 0.220.x pairs and are the rollback path, so the layout is detected per world
+# and never assumed, and the pair branch is left exactly as it was.
+#
+# Both sides of the test are positive, deliberately. "Not a pair" must not imply
+# 1.0, and "is a directory" must not imply 1.0 either: worlds_local also holds
+# the game's own rolling backups, which under 1.0 are directories
+# (Ulfsland_backup_auto-20260912-200308/, measured) and under 0.220.x are
+# <World>_backup_auto-*.db files. So 1.0 requires <stem>/ to exist AND to hold a
+# *.fwl2, and the pair requires both files to exist. A world matching neither is
+# reported to the caller rather than left to surface as a raw tar failure.
+# shellcheck disable=SC2034  # the three WORLD_SAVE_* results are read by the sourcing script
+resolve_world_save() {
+  local world_dir=$1 world=$2 stem
+  for stem in "$world" "${world,,}"; do
+    if [[ -d "$world_dir/$stem" ]] && compgen -G "$world_dir/$stem/*.fwl2" >/dev/null; then
+      WORLD_SAVE_FORMAT=directory
+      WORLD_SAVE_STEM=$stem
+      WORLD_SAVE_MEMBERS=("$stem")
+      return 0
+    fi
+  done
+  # The world's own casing wins over the lowercase form, which is the order
+  # backup_valheim_world.sh has used since it was written: the server writes the
+  # save under whichever casing WORLD_NAME carried, and the worlds created
+  # before the portal existed are lowercase.
+  for stem in "$world" "${world,,}"; do
+    if [[ -f "$world_dir/$stem.db" && -f "$world_dir/$stem.fwl" ]]; then
+      WORLD_SAVE_FORMAT=pair
+      WORLD_SAVE_STEM=$stem
+      WORLD_SAVE_MEMBERS=("$stem.db" "$stem.fwl")
+      return 0
+    fi
+  done
+  return 1
+}
+
+# world_save_stage_dir prints a private staging directory for one world, created
+# under <world>/config_merged and never under config_merged/worlds_local.
+#
+# It is a separate helper only so the reason survives: on 2026-09-12 a directory
+# that was not a valid world, parked inside worlds_local as
+# "Ulfsland.halfcreated-192409", left the 1.0 server hanging in the start scene
+# forever. Chainloader finished, the log repeated "Waiting for server to listen
+# on UDP query port 2470" and "NullReferenceException: The WorldGenerator
+# instance was null at Heightmap.OnEnable", and "Zonesystem Awake" never
+# appeared; moving the directory out of worlds_local fixed it immediately. No
+# log line named the cause, and the exact trigger is still unproven -- the game
+# writes its own Ulfsland_backup_auto-*/ directories in there with the same
+# incomplete contents -- so the rule here is the cheap one that holds under
+# every candidate explanation: the portal puts nothing in worlds_local except a
+# world. config_merged is the container's CONFIG_DIR, is the same filesystem as
+# worlds_local so a rename into place stays atomic, and is not scanned for
+# worlds.
+world_save_stage_dir() {
+  local world=$1
+  mktemp -d "$VALHEIM_ROOT/$world/config_merged/.portal-restore.XXXXXX"
+}

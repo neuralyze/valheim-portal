@@ -61,7 +61,9 @@ printf 'x\n' >"$tmp/other.fwl"
 if bash "$restore" "$WORLD" "world-$WORLD-foreign-2026-01-01_00-00-00.tgz" >"$tmp/out" 2>"$tmp/err"; then
   fail "restore accepted an archive holding a foreign save pair"
 fi
-grep -q 'does not contain the selected world save pair' "$tmp/err" ||
-  fail "expected save-pair rejection, got: $(cat "$tmp/err")"
+# The refusal now covers both save formats, so it no longer says "pair"; what matters
+# is that it is the members check that refused and not some earlier guard.
+grep -q 'does not contain the selected world save' "$tmp/err" ||
+  fail "expected save-members rejection, got: $(cat "$tmp/err")"
 
 echo "PASS: restore_valheim_world.sh round-trip"

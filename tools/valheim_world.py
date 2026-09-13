@@ -128,12 +128,19 @@ def save(path: Path, metadata: dict) -> None:
 def versions_from_templates(root: Path | None) -> tuple[int, int]:
     best = (DEFAULT_WORLD_VERSION, DEFAULT_GENERATOR_VERSION)
     if root and root.is_dir():
-        for candidate in root.glob("*/config_merged/worlds_local/*.fwl"):
-            try:
-                metadata = parse(candidate)
-                best = max(best, (metadata["world_version"], metadata["generator_version"]))
-            except (OSError, UnicodeDecodeError, ValueError, struct.error):
-                continue
+        # Two globs, because Valheim 1.0.12 moved the metadata: a 0.220.x world is
+        # worlds_local/<World>.fwl, a 1.0 world is worlds_local/<World>/_main.<N>.fwl2.
+        # The container format did not change -- an Ulfsland _main.1.fwl2 parses here
+        # unchanged and reports world version 41 -- so a fleet that has upgraded would
+        # otherwise keep handing out the 0.220 default and understate the version by
+        # five.
+        for pattern in ("*/config_merged/worlds_local/*.fwl", "*/config_merged/worlds_local/*/*.fwl2"):
+            for candidate in root.glob(pattern):
+                try:
+                    metadata = parse(candidate)
+                    best = max(best, (metadata["world_version"], metadata["generator_version"]))
+                except (OSError, UnicodeDecodeError, ValueError, struct.error):
+                    continue
     return best
 
 
