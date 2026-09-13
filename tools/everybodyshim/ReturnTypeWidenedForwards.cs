@@ -129,6 +129,23 @@ namespace Neuralyze.EverybodyShim
             // Control, EpicLoot, More_World_Locations_AIO, Server_devcommands,
             // ServersideQoL, Serverside_Simulations, Upgrade_World, ValheimRcon,
             // World_Edit_Commands.
+            //
+            // UNEXERCISED AT BOOT - do not read the numbers beside this row as
+            // proof it fixed anything. Unlike GetSector, which was throwing
+            // 6813 times a boot before it was bridged, GetZone threw ZERO
+            // MissingMethodExceptions in the before run. The 44 -> 41 error
+            // lines that came with adding it are only Valheim10Compatibility's
+            // "BLOCKED ZoneSystem.GetZone" warning disappearing once this
+            // injects the overload their guard then finds present. Those nine
+            // mods call GetZone from console commands and gameplay events, not
+            // from startup, so a headless boot cannot reach the callsite.
+            //
+            // Kept anyway, deliberately: the references are real and measured,
+            // the binding is probe-proven (static path, exit 115 patched vs
+            // MissingMethodException stock), and the measured ambiguity cost is
+            // zero across two boots. What it prevents is a MissingMethod-
+            // Exception firing mid-session out of a command - the kind of fault
+            // nobody connects to a game update three weeks later.
             new WidenedReturnSpec("ZoneSystem", "GetZone", "Vector2i",
                 "UnityEngine.Vector3"),
         };
