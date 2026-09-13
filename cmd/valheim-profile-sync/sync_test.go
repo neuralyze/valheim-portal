@@ -508,6 +508,82 @@ func TestRepairLoadTimeProfilerPatcherMigratesLegacyPluginLayout(t *testing.T) {
 	}
 }
 
+func TestHoistPackagePatchersPlacesEveryPatcherWhereBepInExRunsThem(t *testing.T) {
+	// A client handshook with the server and then exchanged nothing - "Connections 1
+	// sent:0 recv:0" - because Valheim10Compatibility's patcher stayed under plugins,
+	// where BepInEx never loads it. Only LoadTimeProfiler was ever hoisted, by name.
+	root := t.TempDir()
+	plugins := filepath.Join(root, "active", "BepInEx", "plugins")
+	files := map[string]string{
+		"Wubarrk-Valheim10Compatibility/patchers/Valheim10Compatibility.Patcher.dll": "compat-patcher",
+		"Wubarrk-Valheim10Compatibility/Valheim10Compatibility.dll":                  "compat-plugin",
+		"ArgusMagnus-ServersideQoL/patchers/ServersideQoL.Patchers.dll":              "qol-patcher",
+		"Advize-PlantEverything/PlantEverything.dll":                                 "ordinary-plugin",
+	}
+	for name, body := range files {
+		path := filepath.Join(plugins, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := hoistPackagePatchers(root); err != nil {
+		t.Fatal(err)
+	}
+
+	patchers := filepath.Join(root, "active", "BepInEx", "patchers")
+	for name, want := range map[string]string{
+		"Valheim10Compatibility.Patcher.dll": "compat-patcher",
+		"ServersideQoL.Patchers.dll":         "qol-patcher",
+	} {
+		got, err := os.ReadFile(filepath.Join(patchers, name))
+		if err != nil || string(got) != want {
+			t.Fatalf("hoisted %s = %q, %v", name, got, err)
+		}
+	}
+	// These packages ship a plugin as well, so unlike LoadTimeProfiler the plugin must
+	// survive: removing it would disable the mod the patcher exists to serve.
+	if got, err := os.ReadFile(filepath.Join(plugins, "Wubarrk-Valheim10Compatibility", "Valheim10Compatibility.dll")); err != nil || string(got) != "compat-plugin" {
+		t.Fatalf("plugin beside the patcher was disturbed: %q, %v", got, err)
+	}
+	if entries, err := os.ReadDir(patchers); err != nil || len(entries) != 2 {
+		t.Fatalf("patchers directory holds %d entries, want the two patchers: %v", len(entries), err)
+	}
+}
+
+func TestHoistPackagePatchersReplacesAStalePatcherAndIsIdempotent(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "active", "BepInEx", "plugins", "Wubarrk-Valheim10Compatibility", "patchers", "Valheim10Compatibility.Patcher.dll")
+	target := filepath.Join(root, "active", "BepInEx", "patchers", "Valheim10Compatibility.Patcher.dll")
+	for path, body := range map[string]string{source: "1.4.0", target: "1.3.0-stale"} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for pass := 0; pass < 2; pass++ {
+		if err := hoistPackagePatchers(root); err != nil {
+			t.Fatalf("pass %d: %v", pass, err)
+		}
+		got, err := os.ReadFile(target)
+		if err != nil || string(got) != "1.4.0" {
+			t.Fatalf("pass %d: patcher = %q, %v", pass, got, err)
+		}
+	}
+}
+
+func TestHoistPackagePatchersToleratesNoPluginsDirectory(t *testing.T) {
+	if err := hoistPackagePatchers(t.TempDir()); err != nil {
+		t.Fatalf("a profile with nothing installed must not fail: %v", err)
+	}
+}
+
 func TestRemoveRetiredDragonRidersRemovesOnlyItsManagedDirectory(t *testing.T) {
 	root := t.TempDir()
 	retired := filepath.Join(root, "active", "BepInEx", "plugins", "Yggdrah-DragonRiders", "DragonRiders.dll")

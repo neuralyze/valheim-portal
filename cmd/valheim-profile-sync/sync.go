@@ -206,6 +206,9 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 		if err := repairLoadTimeProfilerPatcher(root); err != nil {
 			return false, fmt.Errorf("repair LoadTimeProfiler patcher: %w", err)
 		}
+		if err := hoistPackagePatchers(root); err != nil {
+			return false, fmt.Errorf("hoist package patchers: %w", err)
+		}
 		if err := removeRetiredDragonRiders(root); err != nil {
 			return false, fmt.Errorf("remove retired DragonRiders package: %w", err)
 		}
@@ -881,6 +884,69 @@ func repairLoadTimeProfilerPatcher(root string) error {
 		return err
 	}
 	return os.RemoveAll(pluginRoot)
+}
+
+// hoistPackagePatchers moves every managed package's preloader patchers to where BepInEx
+// actually runs them.
+//
+// A Thunderstore package carries its patcher at <Package>/patchers/*.dll, and BepInEx only
+// loads patchers from BepInEx/patchers. One left under plugins is INERT AND SILENT, which
+// is the worst shape a failure can take: nothing logs, and the mod that needed it simply
+// does not work. repairLoadTimeProfilerPatcher above handles exactly one package by name,
+// so every other patcher we ship has been landing in the wrong place.
+//
+// Measured 2026-09-13: a client on Valheim 1.0 handshook with Ulfsland and then exchanged
+// nothing - "Connections 1 ZDOS:17517 sent:0 recv:0" - because Valheim10Compatibility's
+// patcher never ran client-side. That patcher restores ZRoutedRpc.Everybody, which 1.0
+// turned into a const, and its adapter answers the server's peer handshake. Without it the
+// client has neither, and the join spins forever with no error on either side.
+//
+// Unlike LoadTimeProfiler, these packages ship a plugin AND a patcher, so the plugin
+// directory is left alone: only the patcher is copied out. The managed profile is the
+// source of truth, so a stale patcher at the destination is replaced rather than reported -
+// the alternative is refusing to sync over a file the profile itself installed earlier.
+func hoistPackagePatchers(root string) error {
+	pluginRoot := filepath.Join(root, "active", "BepInEx", "plugins")
+	packages, err := os.ReadDir(pluginRoot)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	destination := filepath.Join(root, "active", "BepInEx", "patchers")
+	for _, pkg := range packages {
+		if !pkg.IsDir() {
+			continue
+		}
+		source := filepath.Join(pluginRoot, pkg.Name(), "patchers")
+		entries, err := os.ReadDir(source)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".dll") {
+				continue
+			}
+			from := filepath.Join(source, entry.Name())
+			to := filepath.Join(destination, entry.Name())
+			same, err := sameFileContents(from, to)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			if same {
+				continue
+			}
+			if err := os.MkdirAll(destination, 0o755); err != nil {
+				return err
+			}
+			if err := copyFileAtomically(from, to); err != nil {
+				return fmt.Errorf("hoist %s from %s: %w", entry.Name(), pkg.Name(), err)
+			}
+		}
+	}
+	return nil
 }
 
 func removeRetiredDragonRiders(root string) error {
