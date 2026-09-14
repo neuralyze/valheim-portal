@@ -60,7 +60,10 @@ grep -q 'release-confirm' "$tmp/err" ||
 # 2. Cleared cutover, no service argument (how portal/internal/agent/agent.go calls it).
 run_start 0 "$WORLD"
 [[ $rc -eq 0 ]] || fail "cleared cutover: expected exit 0, got $rc -- $(cat "$tmp/err")"
-want="compose --project-name ${WORLD,,} --env-file $tmp/valheim/$WORLD/valheim.env up -d"
+# --build is load-bearing, not cosmetic: each world has its own `<world>-valheim`
+# image and a bare `up -d` reuses a stale one, which on 2026-09-13 booted Hrafnheim
+# with an empty BepInEx/patchers and 5,925 MissingMethodException. Keep it asserted.
+want="compose --project-name ${WORLD,,} --env-file $tmp/valheim/$WORLD/valheim.env up -d --build"
 got=$(cat "$DOCKER_LOG")
 [[ $got == "$want" ]] || fail "cleared cutover: docker argv = '$got', want '$want'"
 

@@ -28,7 +28,17 @@ fi
 
 cd "$VALHEIM_SERVER_DOCKER_DIR"
 
+# --build, not a bare `up -d`. Each world has its own image (`<world>-valheim`),
+# built from this directory, and `up -d` reuses whatever image already exists. So a
+# fix committed to `common` reaches only the worlds whose image happens to get
+# rebuilt, and silently misses the rest. That failed in production on 2026-09-13:
+# the patcher-sync block in `common` (which copies BepInEx/patchers into the game
+# directory, without which every preloader patch is inert) was three weeks newer
+# than Hrafnheim's image, so the world booted with an empty patchers directory and
+# logged 5,925 MissingMethodException for Character.Message - the exact fault the
+# shim exists to bridge. Rebuilding dropped it to zero. Docker layer-caches the
+# build, so an unchanged context costs about a second.
 docker compose \
 	--project-name "$VALHEIM_PROJECT_NAME" \
 	--env-file "$VALHEIM_ENV_FILE" \
-	up -d "${VALHEIM_SERVICE[@]}"
+	up -d --build "${VALHEIM_SERVICE[@]}"
