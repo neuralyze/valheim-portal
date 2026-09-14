@@ -128,12 +128,29 @@ skills:
     crops: [Farming]                    # vanilla Farming, which ImpactfulSkills reads
     meat_and_hide: []                   # no skill; flat at the world resource rate
 
+  # Names the generator DROPS from every template, with the reason, so that a
+  # later reader does not "fix" the omission.
+  omit:
+    WoodCutting: >-
+      Inert, and DOUBLY so. (1) Lumberjacking prefixes CheatRaiseSkill with
+      RemoveWoodcuttingFromSkillFunctions, which rewrites the literal "Woodcutting"
+      to "Woodcutting " (trailing space) so it matches nothing. (2) Even if a
+      differently-cased name slipped past that guard into the vanilla loop,
+      Lumberjacking also prefixes Skills.GetSkill with ReturnDummyWoodcuttingSkill,
+      so the raise lands on a throwaway object and is discarded -- IsSkillValid
+      (WoodCutting) is false and the level is permanently 0. ImpactfulSkills'
+      WoodCuttingLootFactor = 3 is therefore dead code. Wood yield comes from
+      Lumberjacking alone. Emitting it wastes a line and misleads the next reader
+      into thinking wood is covered twice.
+
   # Can CharacterTemplate.yml's `skills:` map actually REACH these? It applies
-  # them with Skills.CheatRaiseSkill(name, value). MEASURED here from the IL of
-  # assembly_valheim.dll and of the deployed Smoothbrain plugins (monodis).
+  # them with Skills.CheatRaiseSkill(name, value). Established twice,
+  # independently: from the IL of assembly_valheim.dll and the deployed Smoothbrain
+  # plugins (monodis, this task), and from the live SkillManager registries and
+  # Harmony patch chain on a booted server (YieldDesign). The two agree.
   reachability:
     answer: >-
-      YES, all of them, by plain name, case-insensitively. Two different
+      YES, all five, by plain name, case-insensitively. Not partial. Two different
       mechanisms carry it, and the distinction matters if the mod set changes.
     vanilla_path: >-
       MEASURED. Skills::.cctor sets `s_allSkills = Enum.GetValues(typeof(SkillType))`
@@ -141,35 +158,60 @@ skills:
       `SkillType.ToString().ToLower()` against `name.ToLower()`. So unaided it can
       only ever reach a member of the vanilla enum; it skips SkillType 0 and 999,
       the literal name "all" raises everything, and the write is `m_level += value`
-      clamped to 0..100 -- an ADD, which equals a set on a brand-new character.
+      clamped to 0..100 -- an ADD, which equals a set on a brand-new character but
+      would STACK on a re-application. Skills.GetSkill creates the entry on demand
+      via GetSkillDef (which SkillManager postfixes), so a never-used custom skill
+      can go straight from absent to n.
     custom_path: >-
-      MEASURED. SkillManager (ILRepacked into each Smoothbrain plugin) Harmony-
-      PREFIXES Skills.CheatRaiseSkill with Patch_Skills_CheatRaiseskill. The prefix
-      walks SkillManager's own registry, compares each skill's `internalSkillName`
-      with String.Equals(..., StringComparison.OrdinalIgnoreCase), and on a match
-      raises it and returns false so the vanilla loop never runs. This is why
-      Mining / Foraging / Lumberjacking work despite not being in the enum: their
-      SkillType is (SkillType)englishName.GetStableHashCode().
+      MEASURED. SkillManager, ILRepacked separately into each Smoothbrain plugin,
+      Harmony-PREFIXES Skills.CheatRaiseSkill with Patch_Skills_CheatRaiseskill. The
+      prefix walks its own registry, compares each skill's `internalSkillName` with
+      String.Equals(a, b, StringComparison.CurrentCultureIgnoreCase) -- the IL
+      operand is ldc.i4.1, which is CurrentCultureIgnoreCase, NOT Ordinal -- and on
+      a match raises the skill and returns false to consume the call; otherwise it
+      returns true and the chain continues. Because each mod carries its own copy
+      there are three independent prefixes, each matching only its own skill, so
+      there is no ordering hazard. Live patch chain on CheatRaiseSkill, MEASURED:
+      Jotunn's SkillManager patch (inert here), then the three
+      org.bepinex.helpers.skillmanager prefixes from Foraging / Lumberjacking /
+      Mining, plus Lumberjacking's own RemoveWoodcuttingFromSkillFunctions.Prefix.
+    skill_ids: >-
+      MEASURED from the live registries. SkillType is
+      (SkillType)englishName.GetStableHashCode(), so none of these is an enum
+      member and the prefix is the ONLY route to them:
+      Mining = 1408976878, Foraging = 47719919, Lumberjacking = 1363793286.
     exact_string_form: >-
       `internalSkillName`, which is Regex.Replace(englishName, "[^a-zA-Z]", "_").
       MEASURED english names: Mining registers "Mining", Foraging registers
-      "Foraging", Lumberjacking registers "Lumberjacking" -- all pure alpha, so the
-      internal name equals the display name and the plain literal works. Matching is
-      case-insensitive. A skill whose display name contained a space or digit would
-      need the underscored form, which is why this is written down.
+      "Foraging", Lumberjacking registers "Lumberjacking" -- all pure alpha, so
+      internal == display == what you type, and no mangling applies. Matching is
+      case-insensitive, but the templates use the exact casing above anyway. A skill
+      whose display name contained a space or a digit would need the underscored
+      form, which is why this is written down rather than assumed.
+    applied_client_side: >-
+      MEASURED. The template is applied on the CLIENT, in
+      ServerCharacters.ClientSide.InitializePlayerFromTemplate.Postfix ->
+      Player.m_localPlayer.GetSkills().CheatRaiseSkill(key, value, true). So the
+      three Smoothbrain mods must reach the client for the custom lines to land.
+      They do: all four are `scope: shared` in the ulfsland-dn manifest, verified
+      identical under both ServerCharacters 1.4.16 and 1.4.17.
     blacksmithing: >-
       BlacksmithingExpanded is a SkillManager skill too (SkillManager is ILRepacked
       into it) so the same prefix applies, but its english-name literal is behind a
       wrapper ctor and was not read directly. That "Blacksmithing" is the registered
       name is INFERRED. It is not a yield driver, so nothing economic rests on it.
+    not_reachable: >-
+      ImpactfulSkills does NOT use SkillManager and does NOT patch CheatRaiseSkill,
+      so its own non-vanilla skills (Hauling, Voyager) cannot be set from a template
+      at all. Neither drives yield, so no preset asks for them.
     precedence_trap: >-
-      The SkillManager prefix runs BEFORE the vanilla loop and returns false on a
-      match, so a custom skill whose internalSkillName collides with a vanilla name
-      WINS and the vanilla skill of that name is never raised. This is live history,
-      not theory: Smoothbrain-Farming registered "Farming" and would have captured
-      the name. It was removed during tonight's 1.0 migration, so today "Farming"
-      falls through to the vanilla skill. Re-adding it would silently re-capture the
-      name and change what every template's `Farming:` line means.
+      A prefix that matches consumes the call, so a custom skill whose
+      internalSkillName collides with a vanilla name WINS and the vanilla skill of
+      that name is never raised. This is live history, not theory: Smoothbrain-Farming
+      registered "Farming" and would have captured it. It was removed during
+      tonight's 1.0 migration, so today "Farming" falls through to the vanilla
+      skill. Re-adding it would silently re-capture the name and change what every
+      template's `Farming:` line means.
   resolved:
     Farming: >-
       RESOLVED, and the earlier note was wrong in one detail. MEASURED from the

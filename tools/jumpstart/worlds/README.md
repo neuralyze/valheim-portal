@@ -171,10 +171,10 @@ fix this in the template; the only channels that can express quality are RCON
   registered by name rather than members of the vanilla enum (MEASURED by
   `YieldDesign`). Ore and stone need Smoothbrain `Mining` **and** vanilla
   `Pickaxes`; wood needs Smoothbrain `Lumberjacking` alone; berries need
-  `Foraging` **and** ImpactfulSkills' `Farming`; crops need ImpactfulSkills'
-  `Farming` alone; meat and hide are flat and skill-independent. All nine
-  templates carry all five, except `pre-eikthyr`, which has `Mining` and
-  `Pickaxes` at 0 on purpose: tier 1 has no pickaxe at all.
+  `Foraging` **and** `Farming`; crops need `Farming` alone; meat and hide are
+  flat and skill-independent. All nine templates carry all five, except
+  `pre-eikthyr`, which has `Mining` and `Pickaxes` at 0 on purpose: tier 1 has no
+  pickaxe at all.
 
   Vanilla `WoodCutting` is **omitted from every template on purpose** and the
   omission is stated in each header so nobody adds it back. Smoothbrain
@@ -184,10 +184,71 @@ fix this in the template; the only channels that can express quality are RCON
   in `world.yaml` `skills.omit` with its reason, because inertness is a property
   of the deployed mod set, not of a tier.
 
-  Unresolved: `Farming` is both a vanilla 1.0 skill (id 15) and ImpactfulSkills'
-  custom skill (SkillType 106), and only the custom one moves yield. Which one
-  `CheatRaiseSkill("Farming", v)` resolves to on this load order has not been
-  verified. Flagged in every template header.
+#### Can the template reach the custom skills? Yes — measured, not assumed
+
+This decides whether the skill half of every preset does anything at all, so it
+was established **twice, independently**: from the IL (`monodis` over
+`assembly_valheim.dll` and the deployed plugins) and from the live SkillManager
+registries and Harmony patch chain on a booted server. The two agree.
+
+* **Vanilla path.** `Skills::.cctor` sets
+  `s_allSkills = Enum.GetValues(typeof(SkillType))` into an `initonly` static, and
+  `CheatRaiseSkill` walks that array comparing `SkillType.ToString().ToLower()`
+  to the name. Unaided it can therefore reach **only** members of the vanilla
+  enum. It skips `SkillType` 0 and 999, the literal name `all` raises everything,
+  and the write is `m_level += value` clamped to 0..100 — an **add**, which on a
+  brand-new character is the same as a set but would **stack** if the template
+  were ever applied twice. `Skills.GetSkill` creates the entry on demand through
+  `GetSkillDef` (which SkillManager postfixes), so a never-used custom skill can
+  go straight from absent to *n*.
+* **Custom path.** Each Smoothbrain plugin ILRepacks its **own** copy of
+  SkillManager, which Harmony-**prefixes** `Skills.CheatRaiseSkill` with
+  `Patch_Skills_CheatRaiseskill`. The prefix walks its own registry, matches each
+  skill's `internalSkillName` with `StringComparison.CurrentCultureIgnoreCase`
+  (the IL operand is `ldc.i4.1`, which is `CurrentCultureIgnoreCase`, **not**
+  Ordinal), raises it and returns `false` to consume the call; otherwise it
+  returns `true` and the chain continues. Because each mod carries its own copy
+  there are three independent prefixes, each matching only its own skill, so
+  there is **no ordering hazard**. That is how `Mining`, `Foraging` and
+  `Lumberjacking` work despite their `SkillType` being
+  `(SkillType)englishName.GetStableHashCode()` — not enum members, so the prefix
+  is the only possible route. Measured ids: `Mining` = 1408976878, `Foraging` =
+  47719919, `Lumberjacking` = 1363793286.
+* **The exact literal is `internalSkillName`**, which is
+  `Regex.Replace(englishName, "[^a-zA-Z]", "_")`. The registered english names are
+  literally `Mining`, `Foraging` and `Lumberjacking` — all pure alpha — so
+  internal == display == what you type, and no mangling applies. Matching is
+  case-insensitive; the templates use the registered casing anyway. A skill whose
+  display name held a space or a digit would need the underscored form, which is
+  why this is written down rather than assumed. `BlacksmithingExpanded` is a
+  SkillManager skill too, so the same prefix applies; that its registered name is
+  `Blacksmithing` is INFERRED, and it is not a yield driver so nothing economic
+  rests on it.
+* **It happens client-side.** The template is applied in
+  `ServerCharacters.ClientSide.InitializePlayerFromTemplate.Postfix`, which calls
+  `Player.m_localPlayer.GetSkills().CheatRaiseSkill(key, value, true)`. So the
+  three Smoothbrain mods have to reach the **client** for the custom lines to
+  land. They do — all four are `scope: shared` in the `ulfsland-dn` manifest,
+  verified identical under ServerCharacters 1.4.16 and 1.4.17.
+* **Precedence trap.** A matching prefix consumes the call, so a custom skill
+  whose `internalSkillName` collides with a vanilla name captures it and the
+  vanilla skill is never raised. This is history, not theory:
+  `Smoothbrain-Farming` registered `Farming` and did exactly that until it was
+  removed in tonight's 1.0 migration. Re-adding it would silently change what
+  every template's `Farming:` line means.
+* **`Farming` is resolved.** MEASURED from the `Skills/SkillType` enum in this
+  build, vanilla `Farming` is `0x6a` = **106**, and there is **no id 15 at all** —
+  so the "SkillType 106" once attributed to ImpactfulSkills *is* vanilla Farming
+  under 1.0 numbering, and the "id 15" figure was pre-1.0.
+  `ImpactfulSkills.dll` contains no reference to SkillManager, registers no custom
+  skill, and reads `GetSkillLevel(0x6a)` — vanilla Farming. There is exactly one
+  `Farming` and the templates reach it. From the same enum: `Pickaxes` = 12,
+  `WoodCutting` = 13.
+* **What is *not* reachable.** ImpactfulSkills neither uses SkillManager nor
+  patches `CheatRaiseSkill`, so its own non-vanilla skills (`Hauling`, `Voyager`)
+  cannot be set from a template at all. Neither drives yield, so no preset asks
+  for them.
+
 * **The spawn list has an off-by-one.** Selection is
   `Random.Range(0, spawn.Count - 1)`, whose upper bound is exclusive, so with N
   entries only indices `0..N-2` are ever chosen. `placements.yaml` lists real
