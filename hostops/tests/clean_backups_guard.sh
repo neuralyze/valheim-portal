@@ -82,5 +82,35 @@ bash "$CLEAN" --dry-run 30 >"$tmp/out" 2>"$tmp/err" || fail "--dry-run failed: $
 grep -q 'would delete 2 backup(s)' "$tmp/out" || fail "--dry-run did not report: $(cat "$tmp/out")"
 [[ $(count_backups) -eq 3 ]] || fail "--dry-run deleted backups"
 
+# 7. Anything in world_backups that is not one of this inventory's own archives is
+#    left alone, however old its contents are. A dry run over the live inventory on
+#    2026-09-14 listed rescue copies of a corrupt world and of three saves damaged
+#    during that night's migration -- parked in world_backups by an operator hours
+#    earlier, prunable because find matched their CONTENT mtime -- plus the portal
+#    database snapshots. A scheduled run, where --delete is the default, would have
+#    deleted the last copy of all of them.
+seed_backups
+mkdir -p "$backups/rescue-20260914T000000Z/Vangard"
+: >"$backups/rescue-20260914T000000Z/Vangard/Vangard.db.old"
+: >"$backups/rescue-20260914T000000Z/Vangard/Vangard.fwl.old"
+: >"$backups/portal-sqlite-predeploy-20260803T004331Z.sqlite"
+: >"$backups/Doggerland-preRestoreProof.chunk"
+touch -d '400 days ago' "$backups/rescue-20260914T000000Z/Vangard"/* \
+  "$backups/portal-sqlite-predeploy-20260803T004331Z.sqlite" \
+  "$backups/Doggerland-preRestoreProof.chunk"
+bash "$CLEAN" 30 >"$tmp/out" 2>"$tmp/err" || fail "prune with parked copies failed: $(cat "$tmp/err")"
+grep -q 'deleted 2 backup(s)' "$tmp/out" ||
+  fail "prune did not stop at the inventory's own archives: $(cat "$tmp/out")"
+for kept in \
+  "$backups/rescue-20260914T000000Z/Vangard/Vangard.db.old" \
+  "$backups/rescue-20260914T000000Z/Vangard/Vangard.fwl.old" \
+  "$backups/portal-sqlite-predeploy-20260803T004331Z.sqlite" \
+  "$backups/Doggerland-preRestoreProof.chunk"; do
+  [[ -e $kept ]] || fail "prune deleted a parked copy it does not own: ${kept#"$backups/"}"
+done
+rm -rf -- "$backups/rescue-20260914T000000Z" \
+  "$backups/portal-sqlite-predeploy-20260803T004331Z.sqlite" \
+  "$backups/Doggerland-preRestoreProof.chunk"
+
 [[ $failures -eq 0 ]] || { echo "$failures clean_backups.sh check(s) failed" >&2; exit 1; }
 echo "PASS: clean_backups.sh argument and dry-run guards"

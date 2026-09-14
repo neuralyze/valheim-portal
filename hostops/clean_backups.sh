@@ -65,7 +65,28 @@ require_valheim_root
 	exit 0
 }
 
-mapfile -t -d '' stale < <(find "$VALHEIM_BACKUP_ROOT" -type f -mtime +"$days_old" -print0)
+# Only this directory's own archives, and only at its top level. find used to walk the
+# whole tree for any -type f, and a dry run over the live inventory on 2026-09-14
+# listed for deletion:
+#
+#   world_backups/vangard-corrupt-aug6-20260914T034513Z/Vangard.db
+#   world_backups/damaged-20260914T025702Z/Vangard/Vangard.db.old
+#   world_backups/portal-sqlite-predeploy-20260803T004331Z.sqlite
+#
+# -- rescue copies of a corrupt world and of three saves damaged during that night's
+# 1.0.12 migration, parked in world_backups hours earlier by an operator, plus portal
+# database snapshots. They qualified on their CONTENT mtime, which is the age of the
+# world data inside them and not the age of the rescue, so a directory parked that
+# same night was already 39 days "old" and a single scheduled non-interactive run
+# (where --delete is the default) would have taken the last copy of it.
+#
+# Pruning exists to bound the archive inventory, and the inventory is exactly the
+# world-*.tgz files backup_valheim_world.sh writes, list_valheim_world_backups.sh
+# lists and restore_valheim_world.sh accepts. Anything else a human put in here is
+# somebody's last copy of something.
+mapfile -t -d '' stale < <(
+	find "$VALHEIM_BACKUP_ROOT" -maxdepth 1 -type f -name 'world-*.tgz' -mtime +"$days_old" -print0
+)
 
 if ((${#stale[@]} == 0)); then
 	echo "no backups older than $days_old days in $VALHEIM_BACKUP_ROOT"

@@ -1473,11 +1473,13 @@ existing save. Destructive. All console; no keys.
 
 ### SkToolbox
 
-**Not installed on this profile.** A `com.Skrip.SkToolbox.cfg` file remains in the server config
-directory from an earlier profile, but no SkToolbox plugin is present on either the server or the
-client. Its `PageUp`/`PageDown`/arrow-key menu navigation therefore does not exist here, and the
-three-way collision on those keys that older notes describe is now a two-way collision between
-Infinity Hammer and VHVR.
+**Not installed on this profile**, and as of 2026-09-13 its leftover config is gone too: the
+`com.Skrip.SkToolbox.cfg` that used to sit in the server config directory was swept off
+Doggerland, Storgard and Vangard along with 56 other configs whose plugins are not deployed.
+No SkToolbox plugin is present on either the server or the client. Its
+`PageUp`/`PageDown`/arrow-key menu navigation therefore does not exist here, and the three-way
+collision on those keys that older notes describe is now a two-way collision between Infinity
+Hammer and VHVR.
 
 ### Other admin tooling present
 
@@ -1696,13 +1698,19 @@ are listed so you do not go looking for behaviour that cannot happen.
 | `R`, `T`, `B` (held while interacting with a horse) | OdinHorse | Mod removed on 13 August; only its config survives |
 | `Keypad6` | The VR hover menu's *Horse Wait Here* option | Points at OdinHorse, which is not installed |
 | `G`, `H` (mass tame commands) | AllTameable | Not installed; config is a leftover |
-| `PageUp` / `PageDown` / arrows (menu navigation) | SkToolbox | Not installed; config is a leftover on the server |
+| `PageUp` / `PageDown` / arrows (menu navigation) | SkToolbox | Not installed; its leftover server config was swept on 13 September |
 
-The config directory holds files for other removed mods too, and none of them have any effect:
-`Azumatt.DeathPinRemoval.cfg`, `com.profmags.companions.cfg` (the VR fixes Companions HUD setting
-points at this), `Azumatt.BetterWards.cfg` (superseded by WardIsLove), `kg.ItemDrawers.cfg`,
-`Yggdrah.BetterRiding.cfg`, `Yggdrah.DragonRiders.cfg`, `xyz.alcan.comfortcalc.cfg` — that last one
-is the exception: `comfortcalc` is ComfortTweaks' own plugin GUID, so its `F6` key is live.
+The config directory holds files for other removed mods too, and none of them have any effect.
+Three are still there: `Azumatt.BetterWards.cfg` (superseded by WardIsLove), `kg.ItemDrawers.cfg`,
+and `xyz.alcan.comfortcalc.cfg` — that last one is the exception: `comfortcalc` is ComfortTweaks'
+own plugin GUID, so its `F6` key is live.
+
+Four others named here until 2026-09-13 are gone from Doggerland, Storgard and Vangard, swept with
+53 more whose plugins are not deployed: `Azumatt.DeathPinRemoval.cfg`, `com.profmags.companions.cfg`
+(the VR fixes Companions HUD setting pointed at this), `Yggdrah.BetterRiding.cfg` and
+`Yggdrah.DragonRiders.cfg`. They survive under
+`world_backups/config_backups/20260913-stale-sweep/` rather than being deleted. Hrafnheim and
+Ulfsland were not part of that sweep, so a file may still be present there.
 A config file existing is never proof a mod is installed. Check
 `active/BepInEx/plugins` for the directory.
 

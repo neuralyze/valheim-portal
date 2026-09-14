@@ -119,4 +119,52 @@ else
 		exit 2
 	fi
 fi
+
+# One world, one save in worlds_local. Rolling a world back ACROSS the 1.0 migration
+# is the whole reason the inventory still holds pre-migration archives, and until now
+# restore installed the archive and left the OTHER format's save sitting next to it.
+# Measured in a sandbox under VALHEIM_ROOT on 2026-09-14, restoring a pre-migration
+# pair over a migrated 1.0 world:
+#
+#   restoring world=TestWorld format=pair save=TestWorld
+#   restored world=TestWorld backup=world-TestWorld-predn-2026-09-12_21-12-17.tgz
+#   $ ls worlds_local -> TestWorld  TestWorld.db  TestWorld.fwl
+#   resolve_world_save -> WORLD_SAVE_FORMAT=directory
+#   backup_valheim_world.sh TestWorld -> archived TestWorld/
+#
+# Exit 0, "restored", and the rollback was invisible to every other script: the
+# toolchain still resolved the 1.0 directory, and the next backup archived the very
+# save the operator had just rolled back FROM, cementing it as the newest archive.
+# Which save the SERVER loads when both are present was never established, and this
+# is deliberately not the place to find out.
+#
+# Both casings, because resolve_world_save accepts either and the worlds created
+# before the portal existed are lowercase. Retired saves go into the staging
+# directory the EXIT trap removes, which is where the directory branch above already
+# puts the save it replaces, and the caller is required to have taken a fresh backup
+# before calling this at all.
+#
+# A retirement that cannot complete is fatal even though the restored save is already
+# installed: "restored" while a second save of the same world is still present is the
+# silent-no-op this block exists to prevent, so it has to be loud. It needs only write
+# permission on worlds_local, which this run just used to install into it.
+for other in "$world" "${world,,}"; do
+	if [[ $format == directory ]]; then
+		superseded=("$world_dir/$other.db" "$world_dir/$other.fwl")
+	else
+		superseded=("$world_dir/$other")
+	fi
+	for leftover in "${superseded[@]}"; do
+		[[ -e $leftover ]] || continue
+		name=${leftover##*/}
+		if ! mv -- "$leftover" "$stage/.retired-$name"; then
+			echo "the restored save is installed, but the superseded $name could not be" >&2
+			echo "moved out of $world_dir. Two saves of $world are present and the next" >&2
+			echo "server start would pick one of them unpredictably. Remove it and retry:" >&2
+			echo "  rm -rf $leftover" >&2
+			exit 2
+		fi
+		echo "retired superseded save $name"
+	done
+done
 echo "restored world=$world backup=$backup_name"

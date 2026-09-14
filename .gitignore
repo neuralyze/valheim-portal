@@ -19,6 +19,14 @@
 /seed-release
 /valheim-profile-sync.exe
 
+# The Linux ELF counterparts, committed by accident in cc1e57f at ~9 MB and
+# ~15 MB. Nothing reads them from the repository root - every build and release
+# path goes through `go run ./cmd/<name>` or builds to an explicit -o path - but
+# a plain `go build` in the root overwrites them, so they showed as modified and
+# invited 30 MB of churn per commit; two agents committed exactly that.
+/profile-definition-builder
+/valheim-profile-sync
+
 # Operator data: the live release targets are host-specific. Ship the .example.
 release-targets.json
 

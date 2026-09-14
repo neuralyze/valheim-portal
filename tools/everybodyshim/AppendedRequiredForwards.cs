@@ -103,9 +103,30 @@ namespace Neuralyze.EverybodyShim
         // Character.Message: by-name lookups do not survive an added overload unless
         // something detours AccessTools, which Wubarrk-Valheim10Compatibility does and
         // this patcher does not. Any row admitted here must therefore clear a SECOND bar
-        // beyond a proven constant: no mod may resolve the method by name. Check with
-        //   monodis --memberref <mod>.dll | grep -i AccessTools
-        // and by booting, because only the boot counts.
+        // beyond a proven constant: no installed mod may resolve the method BY NAME.
+        //
+        // How to check that, corrected 2026-09-13. `monodis --memberref | grep AccessTools`
+        // was prescribed here first and does NOT answer the question: it says only that a
+        // mod links AccessTools at all, which nearly every mod does, and says nothing
+        // about WHICH name it passes. The method name is a string, so sweep for the
+        // string - as a UTF-16 literal, because that is how the CLI stores #US entries.
+        // ASCII `strings` finds the metadata name in any assembly that merely calls the
+        // method and produces false positives:
+        //
+        //   for d in <world>/config_merged/bepinex/plugins/**/*.dll; do
+        //       strings -a -el "$d" | grep -qx '<MethodName>' && echo "HIT $d"
+        //   done
+        //
+        // The sweep is POSITIVE-CONTROLLED, which is what makes a zero-hit result
+        // meaningful rather than merely quiet. Re-run over the 113 DLLs deployed under
+        // Ulfsland's plugins tree on 2026-09-13, `SpawnItem` hits exactly one mod -
+        // CreatureLevelControl.dll, the mod this reversal broke - while IncrementStat,
+        // GetSector, GetZone, GetPortals and GetPortalList, the five names the shipped
+        // tables forward, hit no mod at all. The only carriers of those five are
+        // EverybodyShim.dll and Valheim10Compatibility.Patcher.dll, which are the
+        // emitters naming their own targets, not consumers looking anything up.
+        //
+        // Then boot, because only the boot counts.
         internal static readonly RequiredForwardSpec[] Table = { };
 
         internal static int Apply(AssemblyDefinition assembly, ManualLogSource log)
