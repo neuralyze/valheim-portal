@@ -1,0 +1,730 @@
+# Ulfsland world network -- the INSTALLATION SET per progression tier.
+#
+# Versioned DATA ONLY. tools/jumpstart/network/catalogue.py reads this file;
+# nothing in here is executed, and nothing in here is placed automatically.
+#
+# WHY THIS FILE EXISTS
+#   tools/jumpstart/worlds/<World>/<preset>/placements.yaml gives each preset ONE
+#   base (plus, in three cases, a hub and a harbour). The operator asked for a
+#   lived-in world: a SET of installations per tier, a portal graph linking them,
+#   and roads between them. This file is the set; portal_graph.yaml is the graph;
+#   router.py builds the roads.
+#
+# ACCUMULATION
+#   `first_tier` is the tier at which an installation FIRST exists. The set for a
+#   tier is the union of every installation whose first_tier <= that tier, because
+#   a later preset represents a world that has been lived in longer, not a world
+#   that replaced its farm. catalogue.py derives the per-tier set from first_tier;
+#   do not hand-maintain per-tier lists.
+#   `retires_at` is for the rare installation a later tier genuinely abandons
+#   (none today) -- it is honoured by catalogue.py so the concept exists rather
+#   than being reinvented later.
+#
+# COMPOSITION
+#   composition: blueprint  -- stamped from tools/jumpstart/library/. Referenced by
+#                              manifest `name` + `sha256` ONLY. No body is vendored:
+#                              the corpus came from valheimians.com, whose terms
+#                              expressly forbid redistribution, and this repo is
+#                              published. materialise.py resolves bodies locally.
+#   composition: prefabs    -- built from vanilla prefabs with a parametric layout.
+#                              MEASURED 2026-09-14 against
+#                              tools/jumpstart/library/data/library_manifest.json
+#                              (176 rows): the corpus contains ZERO farm, ZERO
+#                              animal-pen and ZERO kiln-yard blueprints. The only
+#                              stable (PuP_stable.blueprint) and the only warehouse
+#                              (ragnar-warehouse.blueprint) are 0-byte files. So the
+#                              farms, pens and kiln yards the operator asked for
+#                              cannot come from the library and are composed from
+#                              prefabs instead. This is strictly better for them:
+#                              parametric, licence-free, and the only form the RCON
+#                              `spawn` route can actually place.
+#
+# STATION LEVELS
+#   Station level = 1 + attached extension pieces, so a level is a BUILD
+#   requirement, not a station name. Extension prefab names below are MEASURED
+#   present in tools/jumpstart/blueprints/data/piece_prefabs.json (the vanilla
+#   bundle token dump): piece_workbench_ext1..4, forge_ext1..6,
+#   blackforge_ext1..5, magetable_ext1..4, piece_artisan_ext1,
+#   cauldron_ext1_spice / ext3_butchertable / ext4_pots / ext5_mortarandpestle /
+#   ext6_rollingpins / ext7_smoker, AncientUpgradeStation.
+#
+# FARMING FACTS -- all MEASURED 2026-09-14 from the live effective config
+# /media/big4/projects/game/valheim/Ulfsland/config_merged/bepinex/advize.PlantEverything.cfg
+#   EnableCropOverrides   = true
+#   CropGrowTimeMin       = 1600  (the file's own declared default is 4000)
+#   CropGrowTimeMax       = 2000  (declared default 5000)        -> exactly 2.50x faster
+#   EnforceBiomesVanilla  = true  -> VANILLA CROPS STAY BIOME-LOCKED. The mod relaxes
+#                                    biomes only for MODDED plantables (EnforceBiomes=false).
+#                                    So "which crop belongs where" is a hard constraint,
+#                                    not a preference.
+#   CropsRequireCultivation = true -> a plot needs hoe-cultivated ground (a terrain op)
+#   CropsRequireSunlight    = true -> a plot needs open sky: no roof
+#   PlantsRequireShielding  = true -> plants in hostile biomes need shielding
+#   CropGrowRadius          = 0.5  -> 1.0 m crop pitch is safe; 0.5 m is not
+#   Raspberry/Blueberry/Cloudberry/Lingonberry bushes are plantable at 5 berries each,
+#   respawn 300 -> 100 min (3.00x faster)
+#
+#   The sunlight/shielding pair is CONTRADICTORY for Mountain, Ashlands and Deep
+#   North, and what satisfies "shielding" in 1.0.12 was NOT determined here. So
+#   there is deliberately NO hostile-biome CROP plot in this model. Cold-tier
+#   "farms" are forestry and berry yards instead, which need neither.
+#
+# CULTIVATOR GATE -- MEASURED: `Cultivator` appears in exactly one preset kit,
+#   pre-elder (tools/jumpstart/presets/pre-elder.yaml:77). Nothing can be planted
+#   before it, so the first farm is pre-elder and pre-eikthyr correctly has none.
+
+schema_version: 1
+world: Ulfsland
+seed: Pirate68
+owner: WorldNetwork
+
+tiers:
+  1: pre-eikthyr
+  2: pre-elder
+  3: pre-bonemass
+  4: pre-moder
+  5: pre-yagluth
+  6: pre-queen
+  7: pre-fader
+  8: pre-kall
+  9: deepnorth-sandbox
+
+# Crop -> biome. The crop column is MEASURED (prefab names present in the vanilla
+# bundle dump). The biome column is INFERRED from vanilla Plant biome masks; it was
+# NOT read out of the asset bundles, so treat it as the operator-correctable part.
+# It matters because EnforceBiomesVanilla is true.
+crop_biomes:
+  Meadows: [sapling_carrot, sapling_seedcarrot, sapling_turnip, sapling_seedturnip, sapling_onion, sapling_seedonion]
+  BlackForest: [sapling_carrot, sapling_seedcarrot, sapling_turnip, sapling_seedturnip, sapling_onion, sapling_seedonion]
+  Plains: [sapling_barley, sapling_flax, sapling_carrot, sapling_turnip, sapling_onion]
+  Mistlands: [sapling_magecap, sapling_jotunpuffs]
+  # No Swamp / Mountain / AshLands / DeepNorth row on purpose: Swamp has no
+  # plantable vanilla crop, and the other three hit the sunlight/shielding
+  # contradiction above.
+
+installations:
+
+# ---------------------------------------------------------------- tier 1 --------
+- id: meadows-starter-hall
+  role: home_base
+  first_tier: 1
+  composition: blueprint
+  blueprint: {name: small_long_house.blueprint, sha256: ed8f8daf21c5fbc0c990dd9973f342a7c1df2a9686b26a90a674a3b51cbbe03d}
+  biome: Meadows
+  requirement: {biome: Meadows, footprint_m: 60, max_flat_m: 3.0, min_biome_purity: 0.85, coastal: false, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 3, extensions: [piece_workbench_ext1, piece_workbench_ext2]}, {prefab: fire_pit, level: 1}, {prefab: bed, level: 1}, {prefab: piece_cartographytable, level: 1}]
+  portal: false
+  is_spawn_home: true
+  purpose: >-
+    The tier's main base and the tier's spawn. pre-eikthyr has no metal, no
+    pickaxe and no cultivator, so this is a hall and a bed and nothing more --
+    which is the point: "reset to zero" is a preset too.
+  justification: >-
+    Already the solved home base for this preset, so adopting it rather than
+    choosing a second one keeps one base per tier and one owner per file.
+
+- id: starter-jetty
+  role: boathouse
+  first_tier: 1
+  composition: prefabs
+  layout: jetty_small
+  biome: Meadows
+  requirement: {biome: Meadows, footprint_m: 24, max_flat_m: 2.5, coastal: true, max_shore_dist_m: 12, location_clearance_m: 40}
+  stations: [{prefab: piece_workbench, level: 1}]
+  portal: false
+  purpose: >-
+    A raft/karve berth and a repair workbench at the water's edge, so tier 1 can
+    leave the starting peninsula at all.
+  justification: >-
+    dock.blueprint is 2036 pieces and 42x29 m -- an absurd tier-1 harbour, and it
+    is already claimed as `early-dock` at pre-elder. A jetty is 40-odd prefabs of
+    wood_floor and wood_pole, which is what tier 1 could actually build.
+
+- id: waypoint-shelter
+  role: waypoint
+  first_tier: 1
+  repeatable: true
+  composition: blueprint
+  blueprint: {name: PiNoKi_SmallHut.blueprint, sha256: de78f253530fbf10ebc88f92f557187ab2dd234e3982d73cc28d2a976a0b085a}
+  biome: any
+  requirement: {biome: any, footprint_m: 16, max_flat_m: 2.0, location_clearance_m: 30}
+  stations: [{prefab: bed, level: 1}, {prefab: fire_pit, level: 1}]
+  portal: false
+  purpose: >-
+    The repeatable roadside module: a bed, a fire and a roof, dropped every
+    waypoint_spacing_m along every route so a long road is survivable.
+  justification: >-
+    48 pieces, 10x9x3 m, 8 prefabs, PLACES_CLEAN -- the smallest habitable stamp
+    in the corpus and, per the library manifest, the ONLY redistributable one.
+    Stamping it twenty times costs less than one mid-size base.
+
+# ---------------------------------------------------------------- tier 2 --------
+- id: blackforest-walled-base
+  role: home_base
+  first_tier: 2
+  composition: blueprint
+  blueprint: {name: fox-0123456.blueprint, sha256: d60ae0e4f99243dad3c03017e3bc9082f6fd51ebe54350e7e29cf9879ca44d35}
+  biome: BlackForest
+  requirement: {biome: BlackForest, footprint_m: 56, max_flat_m: 3.0, min_biome_purity: 0.85, coastal: false, location_clearance_m: 60, near: GDKing, within_m: 1200}
+  stations: [{prefab: piece_workbench, level: 4, extensions: [piece_workbench_ext1, piece_workbench_ext2, piece_workbench_ext3]}, {prefab: forge, level: 1}, {prefab: hearth, level: 1}]
+  portal: true
+  portal_pieces: 3
+  is_spawn_home: true
+  purpose: The tier's main base and spawn; first metal working.
+  justification: Already solved for this preset.
+
+- id: early-dock
+  role: boathouse
+  first_tier: 2
+  composition: blueprint
+  blueprint: {name: dock.blueprint, sha256: 4157326c69a0157df45f96bbcf1c56c6e85fd81e66020006171cdb9ef79de9b9}
+  biome: Meadows
+  requirement: {biome: Meadows, footprint_m: 52, max_flat_m: 3.0, coastal: true, max_shore_dist_m: 20, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 2, extensions: [piece_workbench_ext1]}, {prefab: piece_chest_wood, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: >-
+    The real harbour: karve and longship berths plus a warehouse, and the sea end
+    of the road network.
+  justification: >-
+    Already solved for this preset. Pirate68's distinguishing feature is a
+    walkable land corridor north, but the rest of the map is still reached by sea,
+    so one proper harbour early earns its 2036 pieces.
+
+- id: meadows-farm
+  role: farm
+  first_tier: 2
+  composition: prefabs
+  layout: crop_plot
+  biome: Meadows
+  crops: [sapling_carrot, sapling_turnip, sapling_onion]
+  berries: [RaspberryBush, BlueberryBush]
+  requirement: {biome: Meadows, footprint_m: 40, max_flat_m: 1.5, min_biome_purity: 0.9, coastal: false, location_clearance_m: 40}
+  stations: [{prefab: piece_workbench, level: 1}, {prefab: piece_chest_wood, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: >-
+    The staple plot: carrots, turnips and onions on cultivated Meadows ground,
+    with berry rows on the margin.
+  justification: >-
+    First tier that can farm at all (the Cultivator arrives at pre-elder). Worth
+    far more than vanilla here: MEASURED 2.50x crop growth and 3.00x berry
+    respawn. Meadows because EnforceBiomesVanilla is true and Meadows is the
+    biome all three staples accept. max_flat_m is 1.5 rather than the usual 3.0
+    because a crop plot is a flat hoe pad, not a building pad.
+
+- id: kiln-yard
+  role: production
+  subrole: charcoal
+  first_tier: 2
+  composition: prefabs
+  layout: kiln_yard
+  biome: BlackForest
+  requirement: {biome: BlackForest, footprint_m: 32, max_flat_m: 2.0, min_biome_purity: 0.8, coastal: false, location_clearance_m: 40}
+  stations: [{prefab: charcoal_kiln, level: 1}, {prefab: smelter, level: 1}, {prefab: piece_workbench, level: 1}, {prefab: piece_chest_wood, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: >-
+    Charcoal and copper/tin smelting, sited in the wood and the ore rather than at
+    the base, so ore moves once.
+  justification: >-
+    No kiln-yard blueprint exists in the corpus (MEASURED), so this is prefab-
+    composed: 4 charcoal_kiln + 4 smelter + a workbench + chests, walled with
+    wood_fence. Black Forest because that is where both the wood and the copper
+    are. teleportall is ON, so the smelted bars can portal home -- the ore does
+    not have to.
+
+- id: apiary
+  role: production
+  subrole: apiary
+  first_tier: 2
+  composition: prefabs
+  layout: apiary
+  biome: Meadows
+  requirement: {biome: Meadows, footprint_m: 20, max_flat_m: 2.0, coastal: false, location_clearance_m: 30}
+  stations: [{prefab: piece_beehive, level: 1}]
+  portal: false
+  purpose: Honey for meads and for the cauldron chain.
+  justification: >-
+    piece_beehive first appears in pre-elder's station list and the preset already
+    hands out 3 QueenBee, so the hives are placeable exactly here and not before.
+    Attached to meadows-farm rather than given its own road spur.
+
+- id: boar-pen
+  role: animals
+  subrole: boar
+  first_tier: 2
+  composition: prefabs
+  layout: animal_pen
+  biome: Meadows
+  animals: [Boar]
+  requirement: {biome: Meadows, footprint_m: 28, max_flat_m: 1.5, coastal: false, location_clearance_m: 30}
+  stations: [{prefab: piece_workbench, level: 1}]
+  portal: false
+  purpose: Tamed boar for leather and meat; the breeding pair that feeds every later tier.
+  justification: >-
+    Boar are the only tier-2-tameable animal and a pen is fence plus gate plus a
+    workbench to keep it repaired. PuP_stable.blueprint is 0 bytes (MEASURED), so
+    this is prefab-composed: wood_fence ring, darkwood_gate, feeding trough of
+    chests. Sited next to the farm because the farm grows the feed.
+
+# ---------------------------------------------------------------- tier 3 --------
+- id: iron-era-workshop
+  role: home_base
+  first_tier: 3
+  composition: blueprint
+  blueprint: {name: BjOrN_blueprint001.blueprint, sha256: 020d4a2a64a8e7953ea54b5aea6c3e72fd1f554a39ae34dd9a62d5e20e364690}
+  biome: Swamp
+  requirement: {biome: Swamp, footprint_m: 80, max_flat_m: 3.5, min_biome_purity: 0.7, coastal: false, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 5, extensions: [piece_workbench_ext1, piece_workbench_ext2, piece_workbench_ext3, piece_workbench_ext4]}, {prefab: forge, level: 2, extensions: [forge_ext1]}, {prefab: piece_stonecutter, level: 1}]
+  portal: true
+  portal_pieces: 1
+  is_spawn_home: true
+  purpose: The tier's main base and spawn; iron and stone working.
+  justification: Already solved for this preset. Verdict is PLACES_WITH_GAPS -- expect to patch pieces by hand.
+
+- id: swamp-forward-camp
+  role: waypoint
+  subrole: forward_camp
+  first_tier: 3
+  composition: blueprint
+  blueprint: {name: creator-looney-swamp-starter-home.blueprint, sha256: 6421f91354f582b48879b36794680e74e54b4b874dfc6e2182dae80044c09d39}
+  biome: Swamp
+  requirement: {biome: Swamp, footprint_m: 24, max_flat_m: 2.5, coastal: false, location_clearance_m: 40}
+  stations: [{prefab: bed, level: 1}, {prefab: piece_workbench, level: 1}, {prefab: piece_chest_wood, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: A dry bed and a portal inside crypt country, so an iron run is not a round trip.
+  justification: >-
+    218 pieces, 17x15 m, PLACES_CLEAN, and the manifest's own fit line names it
+    "Swamp / pre-bonemass forward camp". Raised floors matter in a biome whose
+    measured heights straddle the water datum (27.46..33.84 on Pirate68).
+
+- id: central-portal-hub
+  role: portal_hub
+  first_tier: 3
+  composition: blueprint
+  blueprint: {name: salty-dick-portal-hub-final.blueprint, sha256: 7afcc658f10ee7333152ddec9c625499e909fe5081da61fe9800f553ae642af3}
+  biome: Meadows
+  requirement: {biome: Meadows, footprint_m: 40, max_flat_m: 2.5, min_biome_purity: 0.8, coastal: false, location_clearance_m: 60, near: StartTemple, within_m: 900}
+  stations: [{prefab: piece_workbench, level: 1}, {prefab: piece_chest_wood, level: 1}]
+  portal: true
+  portal_pieces: 7
+  purpose: >-
+    The hub of the portal graph: one portal per spoke, all in one room, sited near
+    spawn so it is the first thing a returning player walks into.
+  justification: >-
+    The blueprint already carries 8 portals in 28x28 m (MEASURED), which is exactly
+    the hub-and-spoke arity the graph needs at mid tiers, and teleportall is ON here
+    so a hub is worth far more than in vanilla. Tier 3 because portal_wood first
+    appears at pre-elder but tier 2 has only three things worth linking; by tier 3
+    there are eight.
+
+- id: refinery-yard
+  role: production
+  subrole: smelting
+  first_tier: 3
+  composition: blueprint
+  blueprint: {name: halvar-master-refinery.blueprint, sha256: a9c75a2d4b20ef99d5329c6e744bc4fd0662c55cc904d940b5b0d2a9a3248024}
+  biome: BlackForest
+  requirement: {biome: BlackForest, footprint_m: 32, max_flat_m: 2.5, min_biome_purity: 0.8, coastal: false, location_clearance_m: 40}
+  stations: [{prefab: smelter, level: 1}, {prefab: charcoal_kiln, level: 1}, {prefab: forge, level: 2, extensions: [forge_ext1]}, {prefab: piece_stonecutter, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: 'The industrial-scale smelting yard the kiln-yard grows into: 20 stations in 22x24 m.'
+  justification: >-
+    917 pieces, module kind, PLACES_CLEAN, and the manifest fit line is "ore
+    country -- Black Forest copper or Mountain silver", i.e. the same stamp serves
+    this and the mountain furnace camp. Reusing one module twice is cheaper to
+    verify than two modules once.
+
+# ---------------------------------------------------------------- tier 4 --------
+- id: mountain-outpost
+  role: home_base
+  first_tier: 4
+  composition: blueprint
+  blueprint: {name: jaik-mistvale-keep.blueprint, sha256: 7379cb5afc27e6e1f6951acdadfdf7dba782012ee0e25afd2228b55410fc3af0}
+  biome: Mountain
+  requirement: {biome: Mountain, footprint_m: 40, max_flat_m: 4.0, min_biome_purity: 0.8, coastal: false, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 5, extensions: [piece_workbench_ext1, piece_workbench_ext2, piece_workbench_ext3, piece_workbench_ext4]}, {prefab: forge, level: 3, extensions: [forge_ext1, forge_ext2]}, {prefab: piece_spinningwheel, level: 1}]
+  portal: true
+  portal_pieces: 1
+  is_spawn_home: true
+  purpose: The tier's main base and spawn.
+  justification: Already solved for this preset.
+
+- id: mountain-furnace-camp
+  role: mountain_furnace_camp
+  first_tier: 4
+  composition: blueprint
+  blueprint: {name: halvar-master-refinery.blueprint, sha256: a9c75a2d4b20ef99d5329c6e744bc4fd0662c55cc904d940b5b0d2a9a3248024}
+  companion_blueprint: {name: god-2.blueprint, sha256: b2b84fc6d0d3a6c72784ec0c1fb6ed76602c492c5ea25b3165fe66af3a32028a}
+  biome: Mountain
+  requirement: {biome: Mountain, footprint_m: 32, max_flat_m: 4.0, min_biome_purity: 0.75, coastal: false, location_clearance_m: 60, min_altitude_m: 60}
+  stations: [{prefab: smelter, level: 1}, {prefab: charcoal_kiln, level: 1}, {prefab: forge, level: 3, extensions: [forge_ext1, forge_ext2]}, {prefab: piece_workbench, level: 2, extensions: [piece_workbench_ext1]}, {prefab: piece_chest_wood, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: >-
+    The forward camp the operator named: silver and obsidian country needs a
+    smelter, a kiln, a forge and a bed above the snow line, because silver ore is
+    heavy and the walk down is long. The watchtower companion (god-2, 702 pieces,
+    9x10x22 m) is the signal fire and the drake lookout.
+  justification: >-
+    First tier with Mountain access, so first tier this can exist. Reuses
+    halvar-master-refinery -- the manifest fit line explicitly covers "Mountain
+    silver". min_altitude_m 60 keeps it in real snow rather than on a Mountain-
+    biome foothill. NOTE: the level-4 Black Forge upgrade item
+    AncientUpgradeStation is a MOUNTAIN CAVE item, so this camp is also the staging
+    post for the Deep North Intricate Key chain four tiers later -- which is the
+    argument for putting a portal here and roading it properly.
+
+- id: mountain-portal-shrine
+  role: portal_hub
+  first_tier: 4
+  composition: blueprint
+  blueprint: {name: Portal14.vbuild, sha256: c34a06144a4967bffd849802111a5528211faf240f4b2b462bc1494a64e45f9a}
+  biome: Mountain
+  requirement: {biome: Mountain, footprint_m: 12, max_flat_m: 3.0, coastal: false, location_clearance_m: 30, min_altitude_m: 45}
+  stations: []
+  portal: true
+  portal_pieces: 3
+  purpose: >-
+    The mountain cluster's own hub, at the road junction where the spur to
+    mountain-furnace-camp leaves the main line.
+  justification: >-
+    Forced by arithmetic, not by taste: at tier 4 the graph has 9 portal-bearing
+    installations and one 8-portal hub, so portals.py reports an overflow. A second
+    hub is the fix and the mountain is where it belongs, because the mountain
+    cluster (outpost, furnace camp, wolf pen) is the far end of the longest road.
+    161 pieces, 4x5 m, "stone arch gateway with stair ... hillside road" -- and
+    MEASURED it contains 0 portal pieces, so every portal here is hand-placed.
+
+- id: wolf-pen
+  role: animals
+  subrole: wolf
+  first_tier: 4
+  composition: prefabs
+  layout: animal_pen
+  biome: Mountain
+  animals: [Wolf]
+  requirement: {biome: Mountain, footprint_m: 28, max_flat_m: 2.0, coastal: false, location_clearance_m: 30, min_altitude_m: 45}
+  stations: [{prefab: piece_workbench, level: 1}]
+  portal: false
+  purpose: Tamed wolves for pelts, fangs and escorts.
+  justification: >-
+    Wolves are the first tier-4 tameable and taming needs a pen in the biome they
+    spawn in, so the pen is on the mountain, not at the base. Prefab-composed
+    (stone walls rather than wood: a wolf breaks wood_fence).
+
+# ---------------------------------------------------------------- tier 5 --------
+- id: plains-farm-base
+  role: home_base
+  first_tier: 5
+  composition: blueprint
+  blueprint: {name: cozy_house.blueprint, sha256: 2e61bf0d2586b89003945c0f662dd9be6c2aee3665ea0b40530defec6be76e7b}
+  biome: Plains
+  requirement: {biome: Plains, footprint_m: 60, max_flat_m: 3.0, min_biome_purity: 0.8, coastal: false, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 5, extensions: [piece_workbench_ext1, piece_workbench_ext2, piece_workbench_ext3, piece_workbench_ext4]}, {prefab: forge, level: 4, extensions: [forge_ext1, forge_ext2, forge_ext3]}, {prefab: piece_artisanstation, level: 1}]
+  portal: true
+  portal_pieces: 1
+  is_spawn_home: true
+  purpose: The tier's main base and spawn.
+  justification: Already solved for this preset.
+
+- id: plains-farm
+  role: farm
+  first_tier: 5
+  composition: prefabs
+  layout: crop_plot
+  biome: Plains
+  crops: [sapling_barley, sapling_flax, sapling_carrot, sapling_turnip, sapling_onion]
+  requirement: {biome: Plains, footprint_m: 56, max_flat_m: 1.5, min_biome_purity: 0.95, coastal: false, location_clearance_m: 40}
+  stations: [{prefab: piece_workbench, level: 1}, {prefab: piece_chest_blackmetal, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: >-
+    Barley and flax -- bread, and linen for every later armour. The single most
+    load-bearing farm in the whole progression.
+  justification: >-
+    Barley and flax are PLAINS-ONLY and EnforceBiomesVanilla is true (MEASURED),
+    so there is no alternative biome for this plot and min_biome_purity is 0.95
+    rather than 0.9: a fuling-village edge that reclassifies half the plot costs
+    the whole crop. Needs a real palisade -- see defence-ring.
+
+- id: bakery-mill
+  role: production
+  subrole: milling
+  first_tier: 5
+  composition: prefabs
+  layout: mill_yard
+  biome: Plains
+  requirement: {biome: Plains, footprint_m: 28, max_flat_m: 2.0, coastal: false, location_clearance_m: 30}
+  stations: [{prefab: windmill, level: 1}, {prefab: piece_oven, level: 1}, {prefab: piece_spinningwheel, level: 1}, {prefab: piece_cauldron, level: 3, extensions: [cauldron_ext1_spice, cauldron_ext3_butchertable]}]
+  portal: false
+  purpose: Turn barley into flour and bread, and flax into linen thread, next to the field that grew them.
+  justification: >-
+    windmill, piece_oven and piece_spinningwheel all first appear in pre-yagluth's
+    station list (MEASURED), so tier 5 is exactly when this becomes placeable.
+    Attached to plains-farm; no separate road spur.
+
+- id: plains-portal-shrine
+  role: portal_hub
+  first_tier: 5
+  composition: blueprint
+  blueprint: {name: Hong_Marble_Telepyramid.blueprint, sha256: 7e0f7dbfb7a0d3a821a7ea726b1e88c400852a3dac1246dc1bf70f41c3369b17}
+  biome: Plains
+  requirement: {biome: Plains, footprint_m: 28, max_flat_m: 2.5, min_biome_purity: 0.85, coastal: false, location_clearance_m: 40}
+  stations: []
+  portal: true
+  portal_pieces: 5
+  purpose: The Plains cluster's hub, beside plains-farm and the blast-furnace yard.
+  justification: >-
+    Also forced by arithmetic: tier 5 adds six installations and would put twelve
+    spokes on two hubs. 396 pieces in 19.8x19.8 m, PLACES_CLEAN, and the manifest
+    calls it "THE roadside portal shrine pattern -- one portal, small footprint,
+    stamp everywhere". NOTE A DISCREPANCY: that curated role line says "1 portal",
+    but the MEASURED portal count in web_roles.json is 0. The measurement wins --
+    treat every portal in this shrine as hand-placed and do not trust the prose.
+
+- id: lox-pen
+  role: animals
+  subrole: lox
+  first_tier: 5
+  composition: prefabs
+  layout: animal_pen
+  biome: Plains
+  animals: [Lox]
+  requirement: {biome: Plains, footprint_m: 40, max_flat_m: 2.0, coastal: false, location_clearance_m: 40}
+  stations: [{prefab: piece_workbench, level: 1}]
+  portal: false
+  purpose: Tamed lox for meat, pelts and as the only rideable mount in the chain.
+  justification: >-
+    Lox tame on cloudberries, which are Plains, so the pen is in the Plains beside
+    the farm that supplies them. Needs stone walls at 40 m: a lox walks through
+    wood.
+
+- id: blast-furnace-yard
+  role: production
+  subrole: smelting
+  first_tier: 5
+  composition: blueprint
+  blueprint: {name: forge.blueprint, sha256: 9e535f87511097bd8ee4c2d9747cedb84c74a152caf47244bbb0c8298d9aa852}
+  biome: Plains
+  requirement: {biome: Plains, footprint_m: 40, max_flat_m: 3.0, min_biome_purity: 0.8, coastal: false, location_clearance_m: 60}
+  stations: [{prefab: blastfurnace, level: 1}, {prefab: smelter, level: 1}, {prefab: charcoal_kiln, level: 1}, {prefab: forge, level: 4, extensions: [forge_ext1, forge_ext2, forge_ext3]}, {prefab: piece_artisanstation, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: 'Black metal and flametal-era refining: 18 stations behind a wall.'
+  justification: >-
+    blastfurnace first appears at pre-yagluth and needs piece_artisanstation to
+    exist first, which also arrives at pre-yagluth. forge.blueprint (2968 pieces,
+    31x26 m, "walled forge yard ... ore-country smelting yard") is the corpus's
+    only walled production setpiece that is PLACES_CLEAN.
+
+# ---------------------------------------------------------------- tier 6 --------
+- id: mistlands-blackforge-base
+  role: home_base
+  first_tier: 6
+  composition: blueprint
+  blueprint: {name: PuP_black_house_full.blueprint, sha256: 0cdcee665b7e8f95d14d89850644e819b90ac0fe8f337ba6f085121292b98322}
+  biome: Mistlands
+  requirement: {biome: Mistlands, footprint_m: 80, max_flat_m: 4.0, min_biome_purity: 0.8, coastal: false, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 5, extensions: [piece_workbench_ext1, piece_workbench_ext2, piece_workbench_ext3, piece_workbench_ext4]}, {prefab: forge, level: 5, extensions: [forge_ext1, forge_ext2, forge_ext3, forge_ext4]}, {prefab: blackforge, level: 2, extensions: [blackforge_ext1]}, {prefab: piece_magetable, level: 1}, {prefab: eitrrefinery, level: 1}]
+  portal: true
+  portal_pieces: 1
+  is_spawn_home: true
+  purpose: The tier's main base and spawn; black forge and eitr.
+  justification: Already solved for this preset.
+
+- id: mistlands-mushroom-plot
+  role: farm
+  first_tier: 6
+  composition: prefabs
+  layout: crop_plot
+  biome: Mistlands
+  crops: [sapling_magecap, sapling_jotunpuffs]
+  requirement: {biome: Mistlands, footprint_m: 32, max_flat_m: 2.0, min_biome_purity: 0.9, coastal: false, location_clearance_m: 40}
+  stations: [{prefab: piece_workbench, level: 1}, {prefab: eitrrefinery, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: Magecap and jotun puffs -- the eitr supply, which is the whole tier-6 economy.
+  justification: >-
+    Both are Mistlands-locked and EnforceBiomesVanilla is true. Mistlands is not a
+    "hostile" biome for shielding purposes, so unlike Mountain/Ashlands/Deep North
+    this plot is legal under CropsRequireSunlight. Pairs an eitr refinery on site so
+    the refined eitr, not the raw caps, goes through the portal.
+
+- id: secondary-portal-pyramid
+  role: portal_hub
+  first_tier: 6
+  composition: blueprint
+  blueprint: {name: nurr-portalpyramid02.blueprint, sha256: 11ac09baa9ccf5e66cea9e9a49d89279509bd3fde1d08ca898afa2b552b55aac}
+  biome: Mistlands
+  requirement: {biome: Mistlands, footprint_m: 44, max_flat_m: 3.0, min_biome_purity: 0.75, coastal: false, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 1}]
+  portal: true
+  portal_pieces: 5
+  purpose: >-
+    The second hub. By tier 6 the graph has more than eight spokes, and a single
+    hub would need a portal per spoke in one room; two hubs linked by a trunk edge
+    keep each hub at eight.
+  justification: >-
+    796 pieces, 8 portals, 33x33 m, PLACES_CLEAN. Sited in the Mistlands because
+    that is the far half of the map and the trunk edge across it is the expensive
+    one to walk.
+
+# ---------------------------------------------------------------- tier 7 --------
+- id: ashlands-forward-base
+  role: home_base
+  first_tier: 7
+  composition: blueprint
+  blueprint: {name: deardly-casa-drly.blueprint, sha256: 215e53145d53ed09bb240aa99d67f714360a9d502bb2842dbaeb2a57a4eb5f70}
+  biome: AshLands
+  requirement: {biome: AshLands, footprint_m: 40, max_flat_m: 4.0, min_biome_purity: 0.8, coastal: false, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 5, extensions: [piece_workbench_ext1, piece_workbench_ext2, piece_workbench_ext3, piece_workbench_ext4]}, {prefab: forge, level: 6, extensions: [forge_ext1, forge_ext2, forge_ext3, forge_ext4, forge_ext5]}, {prefab: blackforge, level: 3, extensions: [blackforge_ext1, blackforge_ext2]}, {prefab: piece_magetable, level: 2, extensions: [magetable_ext1]}]
+  portal: true
+  portal_pieces: 1
+  is_spawn_home: true
+  purpose: The tier's main base and spawn.
+  justification: Already solved for this preset.
+
+- id: ashlands-landing
+  role: boathouse
+  first_tier: 7
+  composition: blueprint
+  blueprint: {name: s-ren-dockhouse.blueprint, sha256: 1b221bf6ffe257b4e079e9b63bd98e32cce6170dba254c23507d53d4048574c3}
+  biome: AshLands
+  requirement: {biome: AshLands, footprint_m: 48, max_flat_m: 3.5, coastal: true, max_shore_dist_m: 24, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 2, extensions: [piece_workbench_ext1]}, {prefab: piece_chest_blackmetal, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: >-
+    The Ashlands beachhead: 4-6 longship berths and a signal fire, because the
+    Ashlands crossing is the one leg of the chain that is genuinely a sea voyage.
+  justification: >-
+    1225 pieces, 36x43 m, berths 4-6 longships, PLACES_CLEAN. The author's note
+    says any biome but Plains, so AshLands is in scope. The signal fire is not
+    decoration here -- it is how you find the beachhead again in ash haze.
+
+# ---------------------------------------------------------------- tier 8 --------
+- id: deepnorth-landing-camp
+  role: home_base
+  first_tier: 8
+  composition: blueprint
+  blueprint: {name: wagon-camp.blueprint, sha256: a3affe60acfffa35a745b313a51f6e1b10ecd65d3e2cd7040353392a294e7547}
+  biome: DeepNorth
+  requirement: {biome: DeepNorth, footprint_m: 20, max_flat_m: 3.0, min_biome_purity: 0.8, coastal: true, max_shore_dist_m: 40, location_clearance_m: 40}
+  stations: [{prefab: bed, level: 1}, {prefab: piece_workbench, level: 5, extensions: [piece_workbench_ext1, piece_workbench_ext2, piece_workbench_ext3, piece_workbench_ext4]}, {prefab: blackforge, level: 4, extensions: [blackforge_ext1, blackforge_ext2, blackforge_ext3]}]
+  requires_items: [AncientUpgradeStation]
+  portal: true
+  portal_pieces: 1
+  is_spawn_home: true
+  purpose: >-
+    The tier's main base and spawn: the beach camp you actually land at, with the
+    level-4 Black Forge that the Intricate Key chain needs.
+  justification: >-
+    Already solved for this preset (with deepnorth-landing-portal). Black Forge
+    level 4 requires AncientUpgradeStation, which is a MOUNTAIN CAVE item -- so the
+    portal edge from here back to mountain-furnace-camp is load-bearing, not
+    decorative.
+
+- id: deepnorth-landing-portal
+  role: portal_hub
+  first_tier: 8
+  composition: blueprint
+  blueprint: {name: Portal13.vbuild, sha256: 30a255fa85b2083d50b9787d9d118361f4ba0e01995c486349e9865ca4852528}
+  biome: DeepNorth
+  requirement: {biome: DeepNorth, footprint_m: 12, max_flat_m: 2.5, coastal: true, max_shore_dist_m: 60, location_clearance_m: 30}
+  stations: []
+  portal: true
+  portal_pieces: 3
+  purpose: The Deep North end of the trunk, split out of the camp so the camp can burn without cutting the link.
+  justification: >-
+    Already solved for this preset. 133 pieces, 4x7 m -- a portal shack, which is
+    all a terminus needs. Two portals: one trunk edge home, one spur to
+    deepnorth-forestry.
+
+- id: deepnorth-forestry
+  role: farm
+  subrole: forestry
+  first_tier: 8
+  composition: prefabs
+  layout: sapling_yard
+  biome: DeepNorth
+  crops: [FirTree_Sapling, PineTree_Sapling, Birch_Sapling]
+  requirement: {biome: DeepNorth, footprint_m: 48, max_flat_m: 2.5, min_biome_purity: 0.85, coastal: false, location_clearance_m: 40}
+  stations: [{prefab: charcoal_kiln, level: 1}, {prefab: piece_workbench, level: 1}]
+  portal: true
+  portal_pieces: 1
+  purpose: >-
+    A planted stand of fir, pine and birch feeding charcoal kilns on site. The Deep
+    North's binding shortage is WOOD, not ore.
+  justification: >-
+    Deliberately NOT a crop plot: CropsRequireSunlight and PlantsRequireShielding
+    are both true (MEASURED) and what satisfies shielding in 1.0.12 was not
+    determined, so a Deep North crop plot is unproven. Saplings dodge the question
+    entirely -- PlantEverything's sapling overrides are enabled
+    (EnableMiscFlora=true, ModdedSaplingGrowthTime=3000) and trees have no
+    shielding requirement. Charcoal on site because hauling wood is what costs.
+
+# ---------------------------------------------------------------- tier 9 --------
+- id: complete-station-hub
+  role: home_base
+  first_tier: 9
+  composition: blueprint
+  blueprint: {name: Ultimate_OutPost.blueprint, sha256: 2f984f3b649bcac1ee3e83cd704791b5080aefd9b57ac3c3d0c20be739bad33c}
+  biome: Meadows
+  requirement: {biome: Meadows, footprint_m: 68, max_flat_m: 3.5, min_biome_purity: 0.85, coastal: false, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 5, extensions: [piece_workbench_ext1, piece_workbench_ext2, piece_workbench_ext3, piece_workbench_ext4]}, {prefab: forge, level: 7, extensions: [forge_ext1, forge_ext2, forge_ext3, forge_ext4, forge_ext5, forge_ext6]}, {prefab: blackforge, level: 6, extensions: [blackforge_ext1, blackforge_ext2, blackforge_ext3, blackforge_ext4, blackforge_ext5]}, {prefab: piece_magetable, level: 3, extensions: [magetable_ext1, magetable_ext2]}, {prefab: piece_cauldron, level: 4, extensions: [cauldron_ext1_spice, cauldron_ext3_butchertable, cauldron_ext4_pots]}]
+  portal: true
+  portal_pieces: 1
+  is_spawn_home: true
+  purpose: 'The sandbox''s everything-base and spawn: every station at its maximum level.'
+  justification: >-
+    Already solved for this preset. 54 stations and 450 wall pieces in 53x49 m --
+    the only stamp in the corpus that can carry the full level ladder.
+
+- id: sandbox-portal-hub
+  role: portal_hub
+  first_tier: 9
+  composition: blueprint
+  blueprint: {name: god-portaaoo.blueprint, sha256: e249c441d846199c05c6bdba5c74213c4aeedb30a8c94d5622a777f01bc3e154}
+  biome: Meadows
+  requirement: {biome: Meadows, footprint_m: 44, max_flat_m: 3.0, coastal: false, location_clearance_m: 60}
+  stations: []
+  portal: true
+  portal_pieces: 3
+  purpose: 'The sandbox''s gate: a monumental stone gatehouse carrying the trunk portals.'
+  justification: Already solved for this preset.
+
+- id: sandbox-harbour
+  role: boathouse
+  first_tier: 9
+  composition: blueprint
+  blueprint: {name: dock.blueprint, sha256: 4157326c69a0157df45f96bbcf1c56c6e85fd81e66020006171cdb9ef79de9b9}
+  biome: Meadows
+  requirement: {biome: Meadows, footprint_m: 52, max_flat_m: 3.0, coastal: true, max_shore_dist_m: 20, location_clearance_m: 60}
+  stations: [{prefab: piece_workbench, level: 2, extensions: [piece_workbench_ext1]}]
+  portal: true
+  portal_pieces: 1
+  purpose: The sandbox harbour.
+  justification: Already solved for this preset.
+
+# ------------------------------------------------------- cross-tier defence -----
+- id: defence-ring
+  role: defence
+  first_tier: 5
+  repeatable: true
+  composition: blueprint
+  blueprint: {name: god-o.blueprint, sha256: 32d0e66701e599c64749dde931d9cbc02b2f79d2b50fcf4df7e8beb71223521e}
+  biome: any
+  requirement: {biome: any, footprint_m: 12, max_flat_m: 2.0, location_clearance_m: 20}
+  stations: [{prefab: piece_workbench, level: 1}]
+  portal: false
+  purpose: >-
+    A stone gate arch at the road entrance of any installation from tier 5 up, so
+    the road has a gate rather than a hole in a palisade.
+  justification: >-
+    194 pieces, 7x5x10 m, "palisade gateway; road choke point". Tier 5 because that
+    is when raids start arriving with things that ignore wood, and when plains-farm
+    becomes the most valuable undefended object in the world.

@@ -1,0 +1,297 @@
+# Road, bridge and portal-graph policy for the Ulfsland world network.
+#
+# Versioned DATA ONLY. tools/jumpstart/network/router.py, plan.py and portals.py
+# read this file. Every number below is either MEASURED with the provenance
+# recorded next to it, or a CHOSEN engineering budget justified against something
+# measured. Nothing here is folklore.
+
+schema_version: 1
+
+# ---------------------------------------------------------------- datum ---------
+water:
+  # The single most dangerous number in this whole tree. Valheim's water plane is
+  # y = 30.0 in WorldGenerator.GetHeight units, ABSOLUTE, not relative. A solver
+  # that used 0.0 put 10 of 13 placements under the sea.
+  #
+  # Do not restate the constant here as a literal used by code: router.py imports
+  # tools/jumpstart/blueprints/site_finder.WATER_LEVEL so there is exactly one
+  # definition in the tree. The value below is documentation and is asserted
+  # against that import at load time.
+  level_m: 30.0
+  source: tools/jumpstart/blueprints/site_finder.py WATER_LEVEL (and worlds/derive.py SEA_LEVEL_M)
+
+  # FREEBOARD, not "above water". site_finder.DEFAULT_FREEBOARD = 1.0 is the game's
+  # own land threshold (every land location type on Pirate68 floors at 30.50..31.11
+  # because ZoneSystem places land locations with minAltitude 1). A road wants more
+  # than the bare minimum, because a road at +1.0 m floods the moment anyone hoes
+  # next to it.
+  road_freeboard_m: 1.5
+  # What a waypoint shelter, a junction or a spawn doorstep needs. Matches the
+  # margin SpawnOnLand's probe requires at the written integer coordinate.
+  structure_freeboard_m: 2.0
+
+# ---------------------------------------------------------------- grade ---------
+grade:
+  # MEASURED 2026-09-14 on Pirate68, river-inclusive, 1 m lattice, via
+  # tools/jumpstart/blueprints/run_patchscan.sh over 8 ZoneSystem-placed settlement
+  # locations (StoneHouse3 x3, StoneHouse4 x2, Greydwarf_camp1 x3). Absolute 1 m
+  # rise/run within a 20 m radius of each placement:
+  #
+  #   location                median   p90     p99     max     h-delta(20m)
+  #   StoneHouse3  (526,249)   0.180   0.487   1.884   2.201     8.82
+  #   StoneHouse4  (381,-459)  0.155   0.359   0.557   0.717     6.35
+  #   StoneHouse3  (-748,-14)  0.186   0.430   0.604   0.805     8.86
+  #   StoneHouse3  (-498,570)  0.177   0.388   0.589   0.761    11.25
+  #   StoneHouse4  (279,791)   0.168   0.417   0.591   0.742     7.04
+  #   Greydwarf_camp1 (13,-886) 0.155  0.360   0.529   0.665     5.23
+  #   Greydwarf_camp1 (-636,953) 0.140 0.349   0.526   0.715     5.30
+  #   Greydwarf_camp1 (-1150,143) 0.181 0.415  0.594   0.762     9.76
+  #
+  # So the ground the GAME ITSELF chose to put a settlement on has a median grade
+  # of 0.17 m/m and a p90 of 0.35..0.49 m/m. That is the measured meaning of
+  # "settled ground" on this seed, and it is what the road budget is set against.
+  #
+  # max_road: a carriageway a CART can be pulled along. 0.30 m/m is flatter than
+  # 90% of the ground the game considers settleable, so a road at this budget reads
+  # as built rather than as a goat track, and the whole reason to road a farm to a
+  # smelting yard is to move ore and crops by cart rather than by pocket.
+  max_road: 0.30
+  # max_spur: the final climb to a mountain furnace camp, switchbacked. FOOT AND
+  # PACK ONLY -- a cart will jam. Sits at roughly the measured p95 of settled
+  # ground, i.e. the steepest the game itself tolerates next to a building.
+  max_spur: 0.45
+  # Above this, refuse. 1.0 m/m is 45 degrees. The harness's own impassability
+  # threshold, used by worlds/derive.py's metre-by-metre walk check, is 1.5 m/m; a
+  # router that emitted anything between 1.0 and 1.5 would be emitting a cliff that
+  # merely happens to be climbable.
+  impassable: 1.0
+  # Cost multiplier applied to the excess grade between max_road and impassable.
+  # This is cut-and-fill: a metre of road at twice the budget grade costs as much
+  # as earthworks_weight metres of flat road, which is what makes A* prefer to
+  # contour round a knoll instead of over it.
+  earthworks_weight: 8.0
+
+# ---------------------------------------------------------------- bridges -------
+bridge:
+  # A metre of bridge costs bridge_cost_per_m metres of road. Deliberately high:
+  # it is what makes A* seek the NARROWS rather than the shortest line. With
+  # abutment_cost 40 and cost_per_m 6, a 20 m crossing prices at 2*40 + 20*6 = 200
+  # and a 200 m crossing at 2*40 + 200*6 = 1280, so the router walks up to a
+  # kilometre out of its way to find a 20 m gap -- which is what a road builder does.
+  cost_per_m: 6.0
+  abutment_cost: 40.0
+  # Extra cost per metre of water DEPTH below the datum, because a pier has to reach
+  # the bed. Forbid water deeper than max_depth_m outright: nothing in the library
+  # has piers that long.
+  depth_weight: 1.5
+  # PIER limit: the deepest water a pier can reach the bed of, and therefore the
+  # deepest water a multi-span crossing may sit in. Used when CHOOSING a bridge.
+  max_depth_m: 12.0
+  # SEARCH limit: the deepest water A* may consider at all. Deliberately larger than
+  # the pier limit, because a router that refuses to look at deep water reports
+  # "all lattice nodes exhausted" instead of "this crossing is 150 m of 20 m-deep
+  # water and nothing in the library spans it". The first is a dead end; the second
+  # is an answer the operator can act on. Ocean cells on Pirate68 clamp at <= 4.00 m
+  # absolute, i.e. about 26 m below the datum, so 30 covers the whole world.
+  max_search_depth_m: 30.0
+  # Clear land either side of the abutment before the deck starts.
+  abutment_margin_m: 2.0
+  # Multi-span: piers at <= verified single span, only where depth allows.
+  allow_multispan: true
+  # Reject a crossing whose span exceeds the longest verified blueprint and cannot
+  # be piered. The router reports it as a blocker instead of emitting a bridge that
+  # does not reach -- a 12 m bridge over a 40 m river is the bug this guards.
+  max_total_span_m: 300.0
+
+  # The span ladder, from tools/jumpstart/library/data/library_manifest.json.
+  # `span_m` is the horizontal extent the deck can actually cross, derived from
+  # footprint_xzy by a rule rather than by eye:
+  #   aspect = long_horizontal / short_horizontal
+  #   aspect >= 2.0  -> the deck clearly runs along the long axis; span = long axis.
+  #   aspect <  2.0  -> the deck's orientation inside a near-square bounding box is
+  #                     NOT determinable from the manifest, so the entry is marked
+  #                     unverified and excluded from automatic selection.
+  # Cross-checked against tools/jumpstart/blueprints/data/inventory.json where that
+  # file covers the same file (5 of 12 bridges); footprints agree exactly.
+  blueprints:
+  - name: speeds-bridge2.blueprint
+    span_m: 25.9
+    width_m: 4.0
+    pieces: 63
+    distinct_prefabs: 3
+    aspect: 6.48
+    verdict: PLACES_CLEAN
+    discarded_rows: 0
+    verified_span: true
+    note: >-
+      The workhorse. 63 pieces and 3 prefabs for a 26 m single span -- the cheapest
+      real crossing in the corpus and the one to stamp repeatedly with piers.
+  - name: long-bridge.blueprint
+    span_m: 89.3
+    width_m: 41.6
+    pieces: 814
+    distinct_prefabs: 14
+    aspect: 2.15
+    verdict: PLACES_CLEAN
+    discarded_rows: 0
+    verified_span: true
+    note: Ashwood long bridge. The only verified span above 26 m. Ashlands/Deep North tier material.
+  - name: bridge.vbuild
+    span_m: 39.4
+    width_m: 57.5
+    pieces: 873
+    aspect: 1.46
+    verdict: PLACES_CLEAN
+    discarded_rows: 0
+    verified_span: false
+    note: >-
+      Timber trestle, 39x58 m bounding box. Near-square, so which axis the deck runs
+      along is unknown from the manifest; span_m is the CONSERVATIVE smaller extent.
+      Excluded from automatic selection.
+  - name: salty-dick-bridge-curved-final.blueprint
+    span_m: 33.5
+    width_m: 64.3
+    pieces: 1242
+    aspect: 1.92
+    verdict: PLACES_CLEAN
+    discarded_rows: null
+    verified_span: false
+    note: >-
+      Curved bridge; the curve is exactly why the bounding box does not give the
+      span. Not in inventory.json, so discarded_rows is unknown. Manual use only.
+  - name: god-ponte-plus.blueprint
+    span_m: 27.1
+    width_m: 7.9
+    pieces: 883
+    aspect: 3.43
+    verdict: PLACES_CLEAN
+    discarded_rows: 2
+    verified_span: false
+    note: >-
+      Stone-and-iron, 27 m, and the aspect ratio is clean -- but inventory.json
+      reports discarded_rows 2 and an unknown #Terrain section, so what places is not
+      what the manifest measured. Excluded until the body is re-parsed.
+  - name: brokkr-broken-bridge-2-short.blueprint
+    span_m: 57.1
+    width_m: 13.9
+    pieces: 1407
+    aspect: 4.11
+    verdict: PLACES_WITH_GAPS
+    discarded_rows: null
+    verified_span: false
+    note: 57 m and a clean aspect, but PLACES_WITH_GAPS -- a bridge with missing pieces is a hole.
+
+# ---------------------------------------------------------------- roadway -------
+roadway:
+  width_m: 4.0
+  # Routing lattice pitch. 2 m matches Valheim's 2x2 m floor pieces and halves the
+  # A* node count against a 1 m lattice with no loss of fidelity at 4 m width.
+  lattice_step_m: 2.0
+  # Douglas-Peucker tolerance when turning the lattice path into straight segments.
+  # 1.5 m keeps the road following contours while still emitting long straight runs.
+  simplify_tolerance_m: 1.5
+
+  # THE COST MODEL, and the reason the recommendation is terrain rather than pieces.
+  #
+  # MEASURED 2026-09-14 by parsing three real fleet worlds with
+  # internal/worldintel.ParseDB (read-only copies of backups):
+  #   Vangard    34,871 persistent objects (32,704 construction) across 3,880 zones
+  #   Storgard   75,547 persistent objects (72,326 construction) across 5,852 zones
+  #   Hrafnheim   1,366 persistent objects (   794 construction) across   798 zones
+  # In all three, the count of TerrainModifier is 0, _TerrainCompiler is 0,
+  # piece_pavedroad is 0 and piece_path is 0 -- across 111,784 objects and 10,530
+  # generated zones, with 105,824 construction pieces between them, and zero terrain
+  # objects. Storgard's 732 distinct prefabs contain no terrain-, paved-, path-,
+  # road-, dirt- or cultivate-named entry at all.
+  #
+  # CONCLUSION (MEASURED): hoe work -- levelling, paving, pathing, cultivating --
+  # costs ZERO persistent ZDOs. The deltas live in the zone's own heightmap and paint
+  # data, which is a fixed per-zone cost whether you edit one square metre or all
+  # 4,096 of them. Pieces cost one ZDO each.
+  #
+  # CONSEQUENCE (INFERRED from the same measurement): piece_pavedroad has no
+  # persistent ZNetView, so `spawn piece_pavedroad ...` over RCON cannot pave. Road
+  # terrain work is ADMIN-SEAT ONLY -- which is the operator's hard rule anyway.
+  #
+  # So: the road is TERRAIN. Pieces appear only where terrain cannot do the job --
+  # over water, and as the markers that make the corridor read as a road from a
+  # distance.
+  surface: terrain
+  # Hoe stamp spacing along the centreline. piece_pavedroad paints a ~2 m radius, so
+  # 4 m spacing gives a continuous 4 m ribbon with overlap at the joins.
+  pave_spacing_m: 4.0
+  pave_prefab: piece_pavedroad
+  zdo_per_pave_stamp: 0
+
+  # Markers. These DO cost a ZDO each and they are the whole visual budget.
+  marker_spacing_m: 40.0
+  marker_prefab: wood_pole
+  # Every third marker is a torch instead, so the road is navigable at night.
+  marker_light_prefab: piece_groundtorch_wood
+  marker_light_every: 3
+  # Paved DECK, as pieces, only at bridge abutments and road junctions.
+  deck_prefab: stone_floor_2x2
+  deck_piece_area_m2: 4.0
+  junction_deck_radius_m: 4.0
+  # Waypoint shelters along a route.
+  waypoint_spacing_m: 400.0
+
+# ------------------------------------------------------- location avoidance -----
+avoid:
+  # Roads must not plough through Haldor's camp or a crypt entrance. ZoneSystem
+  # location instances come from the tools/seedscan LocScan dump (12,301 instances
+  # on Pirate68), which carries name/prefab/biome/x/y/z but NOT the location's own
+  # exterior radius. So the radii below are CHOSEN per class, anchored on the one
+  # number already in use in this tree: placements.yaml requirement.location_clearance_m
+  # is 60 for every base-sized placement, so 60 is the established "do not build
+  # near a location" distance and the hard classes inherit it.
+  default_radius_m: 24.0
+  hard: true            # inside a hard-class radius is forbidden, not merely costly
+  soft_penalty: 6.0     # cost multiplier at the centre of a soft-class disc, tapering to 1 at its edge
+  classes:
+  - radius_m: 60.0
+    hard: true
+    match: [StartTemple, Vendor_BlackForest, Hildir_camp, BogWitch_Camp, Eikthyrnir, GDKing, Bonemass, Dragonqueen, GoblinKing, Mistlands_DvergrBossEntrance1, FaderLocation, Hildir_cave, Hildir_plainsfortress]
+    note: Bosses, traders and the start temple. Never route through these; the operator will notice.
+  - radius_m: 40.0
+    hard: true
+    match_prefix: [Crypt, SunkenCrypt, TrollCave, MountainCave, GoblinCamp, Mistlands_DvergrTownEntrance, Mistlands_DvergrBoss, MountainGrave, Grave, TarPit, CharredFortress, Ashlands_Fortress]
+    note: Dungeon and camp entrances. A road through a crypt door is a spawn funnel.
+  - radius_m: 24.0
+    hard: false
+    match_prefix: [Ruin, StoneHouse, Greydwarf_camp, Dolmen, ShipSetting, shipsetting, Runestone, StoneTower, Mistlands_Harbour, Mistlands_Lighthouse, Mistlands_Viaduct, DrakeNest, VoltureNest, Shipwreck]
+    note: Ruins and flavour. Costly to cross, not forbidden -- a road PAST a ruin is good level design.
+
+# ---------------------------------------------------------------- portals -------
+portals:
+  # tiered_hub: every portal-bearing installation gets one portal and one tag
+  # pairing it to a hub; hubs are linked to each other by trunk edges, whose shape
+  # portals.py picks adaptively (see clique_max_hubs). Chosen over:
+  #   - flat hub-and-spoke: ONE hub would need a portal per spoke in one room --
+  #     20 at tier 9, more than any blueprint in the corpus carries -- and every
+  #     journey in the world funnels through one building.
+  #   - ring: 2 portals per node and a worst case of N/2 hops, which is worse than
+  #     a hub for every pair that is not adjacent.
+  #   - tiered_hub: regional hubs of <= 8 portals each. 3 hops worst case up to 4
+  #     hubs, 4 hops beyond, 1 portal per spoke, and it maps onto the hub
+  #     blueprints the corpus actually has (salty-dick-portal-hub-final and
+  #     nurr-portalpyramid02, 8 portals each, MEASURED).
+  topology: tiered_hub
+  # Vanilla portals are PAIRWISE BY TAG: a tag with two portals is a working pair,
+  # a tag with three is a coin toss. So an N-spoke hub needs N portals AT THE HUB,
+  # one per spoke, and the hub is where the piece count actually lands.
+  #
+  # teleportall is ON in this world (-modifier Portals Casual), MEASURED in the
+  # world modifiers, so there is no metal restriction to design around and no reason
+  # to keep a "metal road" parallel to the portal graph.
+  max_spokes_per_hub: 8
+  # Above this many hubs the trunk switches from a clique (3 hops worst case,
+  # H-1 trunk portals at EVERY hub) to a star of hubs around the earliest one
+  # (4 hops worst case, H-1 trunk portals at the primary and 1 at each secondary).
+  # MEASURED against this model: a clique at 6 hubs leaves 3 spoke slots per hub,
+  # i.e. 18 slots for tier 9's 20 spokes, so the clique stops fitting at 5 hubs.
+  clique_max_hubs: 4
+  tag_prefix: uls
+  portal_prefab: portal_wood
+  # A portal piece is one ZDO. A tag is a string on the piece, not an object.
+  zdo_per_portal: 1

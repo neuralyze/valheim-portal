@@ -1,0 +1,180 @@
+{
+ "schema_version": 1,
+ "world": "Ulfsland",
+ "seed": "Pirate68",
+ "owner": "WorldNetwork",
+ "generated_by": "tools/jumpstart/network/cli.py tiers",
+ "problems": [],
+ "tiers": [
+  {
+   "tier": 1,
+   "preset": "pre-eikthyr",
+   "installations": 3,
+   "new_this_tier": [
+    "starter-jetty",
+    "meadows-starter-hall",
+    "waypoint-shelter"
+   ],
+   "pieces": 1539,
+   "home_base": "meadows-starter-hall",
+   "portal_nodes": 0,
+   "portal_hubs": 0,
+   "portal_edges": 0,
+   "portal_max_hops": 0,
+   "portal_pieces": 0,
+   "portal_pieces_to_place_by_hand": 0
+  },
+  {
+   "tier": 2,
+   "preset": "pre-elder",
+   "installations": 9,
+   "new_this_tier": [
+    "boar-pen",
+    "early-dock",
+    "meadows-farm",
+    "blackforest-walled-base",
+    "apiary",
+    "kiln-yard"
+   ],
+   "pieces": 5194,
+   "home_base": "blackforest-walled-base",
+   "portal_nodes": 4,
+   "portal_hubs": 1,
+   "portal_edges": 3,
+   "portal_max_hops": 2,
+   "portal_pieces": 6,
+   "portal_pieces_to_place_by_hand": 3
+  },
+  {
+   "tier": 3,
+   "preset": "pre-bonemass",
+   "installations": 13,
+   "new_this_tier": [
+    "iron-era-workshop",
+    "central-portal-hub",
+    "refinery-yard",
+    "swamp-forward-camp"
+   ],
+   "pieces": 9290,
+   "home_base": "iron-era-workshop",
+   "portal_nodes": 8,
+   "portal_hubs": 1,
+   "portal_edges": 7,
+   "portal_max_hops": 2,
+   "portal_pieces": 14,
+   "portal_pieces_to_place_by_hand": 5
+  },
+  {
+   "tier": 4,
+   "preset": "pre-moder",
+   "installations": 17,
+   "new_this_tier": [
+    "wolf-pen",
+    "mountain-outpost",
+    "mountain-furnace-camp",
+    "mountain-portal-shrine"
+   ],
+   "pieces": 14608,
+   "home_base": "mountain-outpost",
+   "portal_nodes": 11,
+   "portal_hubs": 2,
+   "portal_edges": 10,
+   "portal_max_hops": 3,
+   "portal_pieces": 20,
+   "portal_pieces_to_place_by_hand": 9
+  },
+  {
+   "tier": 5,
+   "preset": "pre-yagluth",
+   "installations": 24,
+   "new_this_tier": [
+    "lox-pen",
+    "defence-ring",
+    "plains-farm",
+    "plains-farm-base",
+    "plains-portal-shrine",
+    "bakery-mill",
+    "blast-furnace-yard"
+   ],
+   "pieces": 24521,
+   "home_base": "plains-farm-base",
+   "portal_nodes": 15,
+   "portal_hubs": 3,
+   "portal_edges": 15,
+   "portal_max_hops": 3,
+   "portal_pieces": 30,
+   "portal_pieces_to_place_by_hand": 19
+  },
+  {
+   "tier": 6,
+   "preset": "pre-queen",
+   "installations": 27,
+   "new_this_tier": [
+    "mistlands-mushroom-plot",
+    "mistlands-blackforge-base",
+    "secondary-portal-pyramid"
+   ],
+   "pieces": 31814,
+   "home_base": "mistlands-blackforge-base",
+   "portal_nodes": 18,
+   "portal_hubs": 4,
+   "portal_edges": 20,
+   "portal_max_hops": 3,
+   "portal_pieces": 40,
+   "portal_pieces_to_place_by_hand": 24
+  },
+  {
+   "tier": 7,
+   "preset": "pre-fader",
+   "installations": 29,
+   "new_this_tier": [
+    "ashlands-landing",
+    "ashlands-forward-base"
+   ],
+   "pieces": 33717,
+   "home_base": "ashlands-forward-base",
+   "portal_nodes": 20,
+   "portal_hubs": 4,
+   "portal_edges": 22,
+   "portal_max_hops": 3,
+   "portal_pieces": 44,
+   "portal_pieces_to_place_by_hand": 26
+  },
+  {
+   "tier": 8,
+   "preset": "pre-kall",
+   "installations": 32,
+   "new_this_tier": [
+    "deepnorth-forestry",
+    "deepnorth-landing-camp",
+    "deepnorth-landing-portal"
+   ],
+   "pieces": 34121,
+   "home_base": "deepnorth-landing-camp",
+   "portal_nodes": 23,
+   "portal_hubs": 5,
+   "portal_edges": 22,
+   "portal_max_hops": 4,
+   "portal_pieces": 44,
+   "portal_pieces_to_place_by_hand": 28
+  },
+  {
+   "tier": 9,
+   "preset": "deepnorth-sandbox",
+   "installations": 35,
+   "new_this_tier": [
+    "sandbox-harbour",
+    "complete-station-hub",
+    "sandbox-portal-hub"
+   ],
+   "pieces": 40173,
+   "home_base": "complete-station-hub",
+   "portal_nodes": 26,
+   "portal_hubs": 6,
+   "portal_edges": 25,
+   "portal_max_hops": 4,
+   "portal_pieces": 50,
+   "portal_pieces_to_place_by_hand": 33
+  }
+ ]
+}

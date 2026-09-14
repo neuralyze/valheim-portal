@@ -1,0 +1,7497 @@
+{
+ "schema_version": 1,
+ "world": "Ulfsland",
+ "seed": "Pirate68",
+ "owner": "WorldNetwork",
+ "generated_by": "tools/jumpstart/network/cli.py network",
+ "tier": 4,
+ "preset": "pre-moder",
+ "catalogue_problems": [],
+ "installations": [
+  {
+   "id": "starter-jetty",
+   "role": "boathouse",
+   "first_tier": 1,
+   "repeatable": false,
+   "composition": "prefabs",
+   "layout": "jetty_small",
+   "biome": "Meadows",
+   "requirement": {
+    "biome": "Meadows",
+    "footprint_m": 24,
+    "max_flat_m": 2.5,
+    "coastal": true,
+    "max_shore_dist_m": 12,
+    "location_clearance_m": 40
+   },
+   "stations": [
+    {
+     "prefab": "piece_workbench",
+     "level": 1
+    }
+   ],
+   "portal": false,
+   "portal_pieces": 0,
+   "is_spawn_home": false,
+   "piece_estimate": 47,
+   "purpose": "A raft/karve berth and a repair workbench at the water's edge, so tier 1 can leave the starting peninsula at all.",
+   "justification": "dock.blueprint is 2036 pieces and 42x29 m -- an absurd tier-1 harbour, and it is already claimed as `early-dock` at pre-elder. A jetty is 40-odd prefabs of wood_floor and wood_pole, which is what tier 1 could actually build."
+  },
+  {
+   "id": "meadows-starter-hall",
+   "role": "home_base",
+   "first_tier": 1,
+   "repeatable": false,
+   "composition": "blueprint",
+   "biome": "Meadows",
+   "requirement": {
+    "biome": "Meadows",
+    "footprint_m": 60,
+    "max_flat_m": 3.0,
+    "min_biome_purity": 0.85,
+    "coastal": false,
+    "location_clearance_m": 60
+   },
+   "stations": [
+    {
+     "prefab": "piece_workbench",
+     "level": 3,
+     "extensions": [
+      "piece_workbench_ext1",
+      "piece_workbench_ext2"
+     ]
+    },
+    {
+     "prefab": "fire_pit",
+     "level": 1
+    },
+    {
+     "prefab": "bed",
+     "level": 1
+    },
+    {
+     "prefab": "piece_cartographytable",
+     "level": 1
+    }
+   ],
+   "portal": false,
+   "portal_pieces": 0,
+   "is_spawn_home": true,
+   "piece_estimate": 1444,
+   "purpose": "The tier's main base and the tier's spawn. pre-eikthyr has no metal, no pickaxe and no cultivator, so this is a hall and a bed and nothing more -- which is the point: \"reset to zero\" is a preset too.",
+   "justification": "Already the solved home base for this preset, so adopting it rather than choosing a second one keeps one base per tier and one owner per file.",
+   "blueprint": {
+    "name": "small_long_house.blueprint",
+    "sha256": "ed8f8daf21c5fbc0c990dd9973f342a7c1df2a9686b26a90a674a3b51cbbe03d",
+    "pieces": 1444,
+    "footprint_xzy_m": [
+     50.2,
+     33.6,
+     15.0
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "setpiece",
+    "creator": "\u041f\u0438\u043f\u043a\u0438\u043d",
+    "licence": "none stated",
+    "body": "reference"
+   }
+  },
+  {
+   "id": "waypoint-shelter",
+   "role": "waypoint",
+   "first_tier": 1,
+   "repeatable": true,
+   "composition": "blueprint",
+   "biome": "any",
+   "requirement": {
+    "biome": "any",
+    "footprint_m": 16,
+    "max_flat_m": 2.0,
+    "location_clearance_m": 30
+   },
+   "stations": [
+    {
+     "prefab": "bed",
+     "level": 1
+    },
+    {
+     "prefab": "fire_pit",
+     "level": 1
+    }
+   ],
+   "portal": false,
+   "portal_pieces": 0,
+   "is_spawn_home": false,
+   "piece_estimate": 48,
+   "purpose": "The repeatable roadside module: a bed, a fire and a roof, dropped every waypoint_spacing_m along every route so a long road is survivable.",
+   "justification": "48 pieces, 10x9x3 m, 8 prefabs, PLACES_CLEAN -- the smallest habitable stamp in the corpus and, per the library manifest, the ONLY redistributable one. Stamping it twenty times costs less than one mid-size base.",
+   "blueprint": {
+    "name": "PiNoKi_SmallHut.blueprint",
+    "sha256": "de78f253530fbf10ebc88f92f557187ab2dd234e3982d73cc28d2a976a0b085a",
+    "pieces": 48,
+    "footprint_xzy_m": [
+     9.7,
+     8.6,
+     3.0
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "module",
+    "creator": "PiNoKi",
+    "licence": "MIT",
+    "body": "committed"
+   }
+  },
+  {
+   "id": "boar-pen",
+   "role": "animals",
+   "subrole": "boar",
+   "first_tier": 2,
+   "repeatable": false,
+   "composition": "prefabs",
+   "layout": "animal_pen",
+   "biome": "Meadows",
+   "requirement": {
+    "biome": "Meadows",
+    "footprint_m": 28,
+    "max_flat_m": 1.5,
+    "coastal": false,
+    "location_clearance_m": 30
+   },
+   "stations": [
+    {
+     "prefab": "piece_workbench",
+     "level": 1
+    }
+   ],
+   "portal": false,
+   "portal_pieces": 0,
+   "is_spawn_home": false,
+   "animals": [
+    "Boar"
+   ],
+   "piece_estimate": 61,
+   "purpose": "Tamed boar for leather and meat; the breeding pair that feeds every later tier.",
+   "justification": "Boar are the only tier-2-tameable animal and a pen is fence plus gate plus a workbench to keep it repaired. PuP_stable.blueprint is 0 bytes (MEASURED), so this is prefab-composed: wood_fence ring, darkwood_gate, feeding trough of chests. Sited next to the farm because the farm grows the feed."
+  },
+  {
+   "id": "early-dock",
+   "role": "boathouse",
+   "first_tier": 2,
+   "repeatable": false,
+   "composition": "blueprint",
+   "biome": "Meadows",
+   "requirement": {
+    "biome": "Meadows",
+    "footprint_m": 52,
+    "max_flat_m": 3.0,
+    "coastal": true,
+    "max_shore_dist_m": 20,
+    "location_clearance_m": 60
+   },
+   "stations": [
+    {
+     "prefab": "piece_workbench",
+     "level": 2,
+     "extensions": [
+      "piece_workbench_ext1"
+     ]
+    },
+    {
+     "prefab": "piece_chest_wood",
+     "level": 1
+    }
+   ],
+   "portal": true,
+   "portal_pieces": 1,
+   "is_spawn_home": false,
+   "piece_estimate": 2037,
+   "purpose": "The real harbour: karve and longship berths plus a warehouse, and the sea end of the road network.",
+   "justification": "Already solved for this preset. Pirate68's distinguishing feature is a walkable land corridor north, but the rest of the map is still reached by sea, so one proper harbour early earns its 2036 pieces.",
+   "blueprint": {
+    "name": "dock.blueprint",
+    "sha256": "4157326c69a0157df45f96bbcf1c56c6e85fd81e66020006171cdb9ef79de9b9",
+    "pieces": 2036,
+    "footprint_xzy_m": [
+     42.2,
+     29.0,
+     23.5
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "setpiece",
+    "creator": "Olivanderr",
+    "licence": "none stated",
+    "body": "reference"
+   }
+  },
+  {
+   "id": "meadows-farm",
+   "role": "farm",
+   "first_tier": 2,
+   "repeatable": false,
+   "composition": "prefabs",
+   "layout": "crop_plot",
+   "biome": "Meadows",
+   "requirement": {
+    "biome": "Meadows",
+    "footprint_m": 40,
+    "max_flat_m": 1.5,
+    "min_biome_purity": 0.9,
+    "coastal": false,
+    "location_clearance_m": 40
+   },
+   "stations": [
+    {
+     "prefab": "piece_workbench",
+     "level": 1
+    },
+    {
+     "prefab": "piece_chest_wood",
+     "level": 1
+    }
+   ],
+   "portal": true,
+   "portal_pieces": 1,
+   "is_spawn_home": false,
+   "crops": [
+    "sapling_carrot",
+    "sapling_turnip",
+    "sapling_onion"
+   ],
+   "berries": [
+    "RaspberryBush",
+    "BlueberryBush"
+   ],
+   "piece_estimate": 229,
+   "purpose": "The staple plot: carrots, turnips and onions on cultivated Meadows ground, with berry rows on the margin.",
+   "justification": "First tier that can farm at all (the Cultivator arrives at pre-elder). Worth far more than vanilla here: MEASURED 2.50x crop growth and 3.00x berry respawn. Meadows because EnforceBiomesVanilla is true and Meadows is the biome all three staples accept. max_flat_m is 1.5 rather than the usual 3.0 because a crop plot is a flat hoe pad, not a building pad."
+  },
+  {
+   "id": "blackforest-walled-base",
+   "role": "home_base",
+   "first_tier": 2,
+   "repeatable": false,
+   "composition": "blueprint",
+   "biome": "BlackForest",
+   "requirement": {
+    "biome": "BlackForest",
+    "footprint_m": 56,
+    "max_flat_m": 3.0,
+    "min_biome_purity": 0.85,
+    "coastal": false,
+    "location_clearance_m": 60,
+    "near": "GDKing",
+    "within_m": 1200
+   },
+   "stations": [
+    {
+     "prefab": "piece_workbench",
+     "level": 4,
+     "extensions": [
+      "piece_workbench_ext1",
+      "piece_workbench_ext2",
+      "piece_workbench_ext3"
+     ]
+    },
+    {
+     "prefab": "forge",
+     "level": 1
+    },
+    {
+     "prefab": "hearth",
+     "level": 1
+    }
+   ],
+   "portal": true,
+   "portal_pieces": 3,
+   "is_spawn_home": true,
+   "piece_estimate": 1232,
+   "purpose": "The tier's main base and spawn; first metal working.",
+   "justification": "Already solved for this preset.",
+   "blueprint": {
+    "name": "fox-0123456.blueprint",
+    "sha256": "d60ae0e4f99243dad3c03017e3bc9082f6fd51ebe54350e7e29cf9879ca44d35",
+    "pieces": 1229,
+    "footprint_xzy_m": [
+     47.4,
+     38.6,
+     12.0
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "setpiece",
+    "creator": "Fox-",
+    "licence": "none stated",
+    "body": "reference"
+   }
+  },
+  {
+   "id": "apiary",
+   "role": "production",
+   "subrole": "apiary",
+   "first_tier": 2,
+   "repeatable": false,
+   "composition": "prefabs",
+   "layout": "apiary",
+   "biome": "Meadows",
+   "requirement": {
+    "biome": "Meadows",
+    "footprint_m": 20,
+    "max_flat_m": 2.0,
+    "coastal": false,
+    "location_clearance_m": 30
+   },
+   "stations": [
+    {
+     "prefab": "piece_beehive",
+     "level": 1
+    }
+   ],
+   "portal": false,
+   "portal_pieces": 0,
+   "is_spawn_home": false,
+   "piece_estimate": 13,
+   "purpose": "Honey for meads and for the cauldron chain.",
+   "justification": "piece_beehive first appears in pre-elder's station list and the preset already hands out 3 QueenBee, so the hives are placeable exactly here and not before. Attached to meadows-farm rather than given its own road spur."
+  },
+  {
+   "id": "kiln-yard",
+   "role": "production",
+   "subrole": "charcoal",
+   "first_tier": 2,
+   "repeatable": false,
+   "composition": "prefabs",
+   "layout": "kiln_yard",
+   "biome": "BlackForest",
+   "requirement": {
+    "biome": "BlackForest",
+    "footprint_m": 32,
+    "max_flat_m": 2.0,
+    "min_biome_purity": 0.8,
+    "coastal": false,
+    "location_clearance_m": 40
+   },
+   "stations": [
+    {
+     "prefab": "charcoal_kiln",
+     "level": 1
+    },
+    {
+     "prefab": "smelter",
+     "level": 1
+    },
+    {
+     "prefab": "piece_workbench",
+     "level": 1
+    },
+    {
+     "prefab": "piece_chest_wood",
+     "level": 1
+    }
+   ],
+   "portal": true,
+   "portal_pieces": 1,
+   "is_spawn_home": false,
+   "piece_estimate": 83,
+   "purpose": "Charcoal and copper/tin smelting, sited in the wood and the ore rather than at the base, so ore moves once.",
+   "justification": "No kiln-yard blueprint exists in the corpus (MEASURED), so this is prefab- composed: 4 charcoal_kiln + 4 smelter + a workbench + chests, walled with wood_fence. Black Forest because that is where both the wood and the copper are. teleportall is ON, so the smelted bars can portal home -- the ore does not have to."
+  },
+  {
+   "id": "iron-era-workshop",
+   "role": "home_base",
+   "first_tier": 3,
+   "repeatable": false,
+   "composition": "blueprint",
+   "biome": "Swamp",
+   "requirement": {
+    "biome": "Swamp",
+    "footprint_m": 80,
+    "max_flat_m": 3.5,
+    "min_biome_purity": 0.7,
+    "coastal": false,
+    "location_clearance_m": 60
+   },
+   "stations": [
+    {
+     "prefab": "piece_workbench",
+     "level": 5,
+     "extensions": [
+      "piece_workbench_ext1",
+      "piece_workbench_ext2",
+      "piece_workbench_ext3",
+      "piece_workbench_ext4"
+     ]
+    },
+    {
+     "prefab": "forge",
+     "level": 2,
+     "extensions": [
+      "forge_ext1"
+     ]
+    },
+    {
+     "prefab": "piece_stonecutter",
+     "level": 1
+    }
+   ],
+   "portal": true,
+   "portal_pieces": 1,
+   "is_spawn_home": true,
+   "piece_estimate": 1909,
+   "purpose": "The tier's main base and spawn; iron and stone working.",
+   "justification": "Already solved for this preset. Verdict is PLACES_WITH_GAPS -- expect to patch pieces by hand.",
+   "blueprint": {
+    "name": "BjOrN_blueprint001.blueprint",
+    "sha256": "020d4a2a64a8e7953ea54b5aea6c3e72fd1f554a39ae34dd9a62d5e20e364690",
+    "pieces": 1908,
+    "footprint_xzy_m": [
+     65.5,
+     66.0,
+     16.8
+    ],
+    "verdict": "PLACES_WITH_GAPS",
+    "kind": "setpiece",
+    "creator": "BjOrN",
+    "licence": "none stated",
+    "body": "reference"
+   }
+  },
+  {
+   "id": "central-portal-hub",
+   "role": "portal_hub",
+   "first_tier": 3,
+   "repeatable": false,
+   "composition": "blueprint",
+   "biome": "Meadows",
+   "requirement": {
+    "biome": "Meadows",
+    "footprint_m": 40,
+    "max_flat_m": 2.5,
+    "min_biome_purity": 0.8,
+    "coastal": false,
+    "location_clearance_m": 60,
+    "near": "StartTemple",
+    "within_m": 900
+   },
+   "stations": [
+    {
+     "prefab": "piece_workbench",
+     "level": 1
+    },
+    {
+     "prefab": "piece_chest_wood",
+     "level": 1
+    }
+   ],
+   "portal": true,
+   "portal_pieces": 7,
+   "is_spawn_home": false,
+   "piece_estimate": 1050,
+   "purpose": "The hub of the portal graph: one portal per spoke, all in one room, sited near spawn so it is the first thing a returning player walks into.",
+   "justification": "The blueprint already carries 8 portals in 28x28 m (MEASURED), which is exactly the hub-and-spoke arity the graph needs at mid tiers, and teleportall is ON here so a hub is worth far more than in vanilla. Tier 3 because portal_wood first appears at pre-elder but tier 2 has only three things worth linking; by tier 3 there are eight.",
+   "blueprint": {
+    "name": "salty-dick-portal-hub-final.blueprint",
+    "sha256": "7afcc658f10ee7333152ddec9c625499e909fe5081da61fe9800f553ae642af3",
+    "pieces": 1043,
+    "footprint_xzy_m": [
+     28.2,
+     28.1,
+     15.0
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "setpiece",
+    "creator": "Salty Dick",
+    "licence": "none stated",
+    "body": "reference"
+   }
+  },
+  {
+   "id": "refinery-yard",
+   "role": "production",
+   "subrole": "smelting",
+   "first_tier": 3,
+   "repeatable": false,
+   "composition": "blueprint",
+   "biome": "BlackForest",
+   "requirement": {
+    "biome": "BlackForest",
+    "footprint_m": 32,
+    "max_flat_m": 2.5,
+    "min_biome_purity": 0.8,
+    "coastal": false,
+    "location_clearance_m": 40
+   },
+   "stations": [
+    {
+     "prefab": "smelter",
+     "level": 1
+    },
+    {
+     "prefab": "charcoal_kiln",
+     "level": 1
+    },
+    {
+     "prefab": "forge",
+     "level": 2,
+     "extensions": [
+      "forge_ext1"
+     ]
+    },
+    {
+     "prefab": "piece_stonecutter",
+     "level": 1
+    }
+   ],
+   "portal": true,
+   "portal_pieces": 1,
+   "is_spawn_home": false,
+   "piece_estimate": 918,
+   "purpose": "The industrial-scale smelting yard the kiln-yard grows into: 20 stations in 22x24 m.",
+   "justification": "917 pieces, module kind, PLACES_CLEAN, and the manifest fit line is \"ore country -- Black Forest copper or Mountain silver\", i.e. the same stamp serves this and the mountain furnace camp. Reusing one module twice is cheaper to verify than two modules once.",
+   "blueprint": {
+    "name": "halvar-master-refinery.blueprint",
+    "sha256": "a9c75a2d4b20ef99d5329c6e744bc4fd0662c55cc904d940b5b0d2a9a3248024",
+    "pieces": 917,
+    "footprint_xzy_m": [
+     22.3,
+     23.9,
+     10.6
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "module",
+    "creator": "Halvar",
+    "licence": "none stated",
+    "body": "reference"
+   }
+  },
+  {
+   "id": "swamp-forward-camp",
+   "role": "waypoint",
+   "subrole": "forward_camp",
+   "first_tier": 3,
+   "repeatable": false,
+   "composition": "blueprint",
+   "biome": "Swamp",
+   "requirement": {
+    "biome": "Swamp",
+    "footprint_m": 24,
+    "max_flat_m": 2.5,
+    "coastal": false,
+    "location_clearance_m": 40
+   },
+   "stations": [
+    {
+     "prefab": "bed",
+     "level": 1
+    },
+    {
+     "prefab": "piece_workbench",
+     "level": 1
+    },
+    {
+     "prefab": "piece_chest_wood",
+     "level": 1
+    }
+   ],
+   "portal": true,
+   "portal_pieces": 1,
+   "is_spawn_home": false,
+   "piece_estimate": 219,
+   "purpose": "A dry bed and a portal inside crypt country, so an iron run is not a round trip.",
+   "justification": "218 pieces, 17x15 m, PLACES_CLEAN, and the manifest's own fit line names it \"Swamp / pre-bonemass forward camp\". Raised floors matter in a biome whose measured heights straddle the water datum (27.46..33.84 on Pirate68).",
+   "blueprint": {
+    "name": "creator-looney-swamp-starter-home.blueprint",
+    "sha256": "6421f91354f582b48879b36794680e74e54b4b874dfc6e2182dae80044c09d39",
+    "pieces": 218,
+    "footprint_xzy_m": [
+     16.7,
+     15.3,
+     15.0
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "module",
+    "creator": "Creator",
+    "licence": "none stated",
+    "body": "reference"
+   }
+  },
+  {
+   "id": "wolf-pen",
+   "role": "animals",
+   "subrole": "wolf",
+   "first_tier": 4,
+   "repeatable": false,
+   "composition": "prefabs",
+   "layout": "animal_pen",
+   "biome": "Mountain",
+   "requirement": {
+    "biome": "Mountain",
+    "footprint_m": 28,
+    "max_flat_m": 2.0,
+    "coastal": false,
+    "location_clearance_m": 30,
+    "min_altitude_m": 45
+   },
+   "stations": [
+    {
+     "prefab": "piece_workbench",
+     "level": 1
+    }
+   ],
+   "portal": false,
+   "portal_pieces": 0,
+   "is_spawn_home": false,
+   "animals": [
+    "Wolf"
+   ],
+   "piece_estimate": 61,
+   "purpose": "Tamed wolves for pelts, fangs and escorts.",
+   "justification": "Wolves are the first tier-4 tameable and taming needs a pen in the biome they spawn in, so the pen is on the mountain, not at the base. Prefab-composed (stone walls rather than wood: a wolf breaks wood_fence)."
+  },
+  {
+   "id": "mountain-outpost",
+   "role": "home_base",
+   "first_tier": 4,
+   "repeatable": false,
+   "composition": "blueprint",
+   "biome": "Mountain",
+   "requirement": {
+    "biome": "Mountain",
+    "footprint_m": 40,
+    "max_flat_m": 4.0,
+    "min_biome_purity": 0.8,
+    "coastal": false,
+    "location_clearance_m": 60
+   },
+   "stations": [
+    {
+     "prefab": "piece_workbench",
+     "level": 5,
+     "extensions": [
+      "piece_workbench_ext1",
+      "piece_workbench_ext2",
+      "piece_workbench_ext3",
+      "piece_workbench_ext4"
+     ]
+    },
+    {
+     "prefab": "forge",
+     "level": 3,
+     "extensions": [
+      "forge_ext1",
+      "forge_ext2"
+     ]
+    },
+    {
+     "prefab": "piece_spinningwheel",
+     "level": 1
+    }
+   ],
+   "portal": true,
+   "portal_pieces": 1,
+   "is_spawn_home": true,
+   "piece_estimate": 3473,
+   "purpose": "The tier's main base and spawn.",
+   "justification": "Already solved for this preset.",
+   "blueprint": {
+    "name": "jaik-mistvale-keep.blueprint",
+    "sha256": "7379cb5afc27e6e1f6951acdadfdf7dba782012ee0e25afd2228b55410fc3af0",
+    "pieces": 3472,
+    "footprint_xzy_m": [
+     27.9,
+     26.8,
+     48.0
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "setpiece",
+    "creator": "Jaik",
+    "licence": "none stated",
+    "body": "reference"
+   }
+  },
+  {
+   "id": "mountain-furnace-camp",
+   "role": "mountain_furnace_camp",
+   "first_tier": 4,
+   "repeatable": false,
+   "composition": "blueprint",
+   "biome": "Mountain",
+   "requirement": {
+    "biome": "Mountain",
+    "footprint_m": 32,
+    "max_flat_m": 4.0,
+    "min_biome_purity": 0.75,
+    "coastal": false,
+    "location_clearance_m": 60,
+    "min_altitude_m": 60
+   },
+   "stations": [
+    {
+     "prefab": "smelter",
+     "level": 1
+    },
+    {
+     "prefab": "charcoal_kiln",
+     "level": 1
+    },
+    {
+     "prefab": "forge",
+     "level": 3,
+     "extensions": [
+      "forge_ext1",
+      "forge_ext2"
+     ]
+    },
+    {
+     "prefab": "piece_workbench",
+     "level": 2,
+     "extensions": [
+      "piece_workbench_ext1"
+     ]
+    },
+    {
+     "prefab": "piece_chest_wood",
+     "level": 1
+    }
+   ],
+   "portal": true,
+   "portal_pieces": 1,
+   "is_spawn_home": false,
+   "piece_estimate": 1620,
+   "purpose": "The forward camp the operator named: silver and obsidian country needs a smelter, a kiln, a forge and a bed above the snow line, because silver ore is heavy and the walk down is long. The watchtower companion (god-2, 702 pieces, 9x10x22 m) is the signal fire and the drake lookout.",
+   "justification": "First tier with Mountain access, so first tier this can exist. Reuses halvar-master-refinery -- the manifest fit line explicitly covers \"Mountain silver\". min_altitude_m 60 keeps it in real snow rather than on a Mountain- biome foothill. NOTE: the level-4 Black Forge upgrade item AncientUpgradeStation is a MOUNTAIN CAVE item, so this camp is also the staging post for the Deep North Intricate Key chain four tiers later -- which is the argument for putting a portal here and roading it properly.",
+   "blueprint": {
+    "name": "halvar-master-refinery.blueprint",
+    "sha256": "a9c75a2d4b20ef99d5329c6e744bc4fd0662c55cc904d940b5b0d2a9a3248024",
+    "pieces": 917,
+    "footprint_xzy_m": [
+     22.3,
+     23.9,
+     10.6
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "module",
+    "creator": "Halvar",
+    "licence": "none stated",
+    "body": "reference"
+   },
+   "companion_blueprint": {
+    "name": "god-2.blueprint",
+    "sha256": "b2b84fc6d0d3a6c72784ec0c1fb6ed76602c492c5ea25b3165fe66af3a32028a",
+    "pieces": 702,
+    "footprint_xzy_m": [
+     9.4,
+     9.7,
+     21.5
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "module",
+    "creator": "God",
+    "licence": "none stated",
+    "body": "reference"
+   }
+  },
+  {
+   "id": "mountain-portal-shrine",
+   "role": "portal_hub",
+   "first_tier": 4,
+   "repeatable": false,
+   "composition": "blueprint",
+   "biome": "Mountain",
+   "requirement": {
+    "biome": "Mountain",
+    "footprint_m": 12,
+    "max_flat_m": 3.0,
+    "coastal": false,
+    "location_clearance_m": 30,
+    "min_altitude_m": 45
+   },
+   "portal": true,
+   "portal_pieces": 3,
+   "is_spawn_home": false,
+   "piece_estimate": 164,
+   "purpose": "The mountain cluster's own hub, at the road junction where the spur to mountain-furnace-camp leaves the main line.",
+   "justification": "Forced by arithmetic, not by taste: at tier 4 the graph has 9 portal-bearing installations and one 8-portal hub, so portals.py reports an overflow. A second hub is the fix and the mountain is where it belongs, because the mountain cluster (outpost, furnace camp, wolf pen) is the far end of the longest road. 161 pieces, 4x5 m, \"stone arch gateway with stair ... hillside road\" -- and MEASURED it contains 0 portal pieces, so every portal here is hand-placed.",
+   "blueprint": {
+    "name": "Portal14.vbuild",
+    "sha256": "c34a06144a4967bffd849802111a5528211faf240f4b2b462bc1494a64e45f9a",
+    "pieces": 161,
+    "footprint_xzy_m": [
+     3.6,
+     5.3,
+     5.1
+    ],
+    "verdict": "PLACES_CLEAN",
+    "kind": "module",
+    "creator": "",
+    "licence": "none stated",
+    "body": "reference"
+   }
+  }
+ ],
+ "portal_graph": {
+  "tier": 4,
+  "preset": "pre-moder",
+  "topology": "tiered_hub",
+  "assignment_mode": "hub-era-by-tier",
+  "hub_mesh": "clique",
+  "node_count": 11,
+  "hub_count": 2,
+  "edge_count": 10,
+  "max_hops": 3,
+  "portal_pieces_total": 20,
+  "portal_pieces_to_place": 9,
+  "zdo_cost": 20,
+  "nodes": [
+   {
+    "id": "central-portal-hub",
+    "role": "portal_hub",
+    "kind": "hub",
+    "first_tier": 3,
+    "blueprint": "salty-dick-portal-hub-final.blueprint",
+    "portal_pieces_needed": 8,
+    "portal_pieces_in_blueprint": 8,
+    "portal_pieces_to_place": 0
+   },
+   {
+    "id": "mountain-portal-shrine",
+    "role": "portal_hub",
+    "kind": "hub",
+    "first_tier": 4,
+    "blueprint": "Portal14.vbuild",
+    "portal_pieces_needed": 3,
+    "portal_pieces_in_blueprint": 0,
+    "portal_pieces_to_place": 3
+   },
+   {
+    "id": "blackforest-walled-base",
+    "role": "home_base",
+    "kind": "spoke",
+    "first_tier": 2,
+    "blueprint": "fox-0123456.blueprint",
+    "portal_pieces_needed": 1,
+    "portal_pieces_in_blueprint": 4,
+    "portal_pieces_to_place": 0
+   },
+   {
+    "id": "early-dock",
+    "role": "boathouse",
+    "kind": "spoke",
+    "first_tier": 2,
+    "blueprint": "dock.blueprint",
+    "portal_pieces_needed": 1,
+    "portal_pieces_in_blueprint": 0,
+    "portal_pieces_to_place": 1
+   },
+   {
+    "id": "iron-era-workshop",
+    "role": "home_base",
+    "kind": "spoke",
+    "first_tier": 3,
+    "blueprint": "BjOrN_blueprint001.blueprint",
+    "portal_pieces_needed": 1,
+    "portal_pieces_in_blueprint": 1,
+    "portal_pieces_to_place": 0
+   },
+   {
+    "id": "kiln-yard",
+    "role": "production",
+    "kind": "spoke",
+    "first_tier": 2,
+    "blueprint": null,
+    "portal_pieces_needed": 1,
+    "portal_pieces_in_blueprint": 0,
+    "portal_pieces_to_place": 1
+   },
+   {
+    "id": "meadows-farm",
+    "role": "farm",
+    "kind": "spoke",
+    "first_tier": 2,
+    "blueprint": null,
+    "portal_pieces_needed": 1,
+    "portal_pieces_in_blueprint": 0,
+    "portal_pieces_to_place": 1
+   },
+   {
+    "id": "mountain-furnace-camp",
+    "role": "mountain_furnace_camp",
+    "kind": "spoke",
+    "first_tier": 4,
+    "blueprint": "halvar-master-refinery.blueprint",
+    "portal_pieces_needed": 1,
+    "portal_pieces_in_blueprint": 0,
+    "portal_pieces_to_place": 1
+   },
+   {
+    "id": "mountain-outpost",
+    "role": "home_base",
+    "kind": "spoke",
+    "first_tier": 4,
+    "blueprint": "jaik-mistvale-keep.blueprint",
+    "portal_pieces_needed": 1,
+    "portal_pieces_in_blueprint": 1,
+    "portal_pieces_to_place": 0
+   },
+   {
+    "id": "refinery-yard",
+    "role": "production",
+    "kind": "spoke",
+    "first_tier": 3,
+    "blueprint": "halvar-master-refinery.blueprint",
+    "portal_pieces_needed": 1,
+    "portal_pieces_in_blueprint": 0,
+    "portal_pieces_to_place": 1
+   },
+   {
+    "id": "swamp-forward-camp",
+    "role": "waypoint",
+    "kind": "spoke",
+    "first_tier": 3,
+    "blueprint": "creator-looney-swamp-starter-home.blueprint",
+    "portal_pieces_needed": 1,
+    "portal_pieces_in_blueprint": 0,
+    "portal_pieces_to_place": 1
+   }
+  ],
+  "edges": [
+   {
+    "a": "central-portal-hub",
+    "b": "mountain-portal-shrine",
+    "tag": "uls-trunk-centhub-mounshrine",
+    "kind": "trunk",
+    "first_tier": 4
+   },
+   {
+    "a": "central-portal-hub",
+    "b": "early-dock",
+    "tag": "uls-earldock",
+    "kind": "spoke",
+    "first_tier": 3
+   },
+   {
+    "a": "central-portal-hub",
+    "b": "meadows-farm",
+    "tag": "uls-meadfarm",
+    "kind": "spoke",
+    "first_tier": 3
+   },
+   {
+    "a": "central-portal-hub",
+    "b": "blackforest-walled-base",
+    "tag": "uls-blacbase",
+    "kind": "spoke",
+    "first_tier": 3
+   },
+   {
+    "a": "central-portal-hub",
+    "b": "kiln-yard",
+    "tag": "uls-kilnyard",
+    "kind": "spoke",
+    "first_tier": 3
+   },
+   {
+    "a": "central-portal-hub",
+    "b": "iron-era-workshop",
+    "tag": "uls-ironworksh",
+    "kind": "spoke",
+    "first_tier": 3
+   },
+   {
+    "a": "central-portal-hub",
+    "b": "refinery-yard",
+    "tag": "uls-refiyard",
+    "kind": "spoke",
+    "first_tier": 3
+   },
+   {
+    "a": "central-portal-hub",
+    "b": "swamp-forward-camp",
+    "tag": "uls-swamcamp",
+    "kind": "spoke",
+    "first_tier": 3
+   },
+   {
+    "a": "mountain-portal-shrine",
+    "b": "mountain-outpost",
+    "tag": "uls-mounoutpos",
+    "kind": "spoke",
+    "first_tier": 4
+   },
+   {
+    "a": "mountain-portal-shrine",
+    "b": "mountain-furnace-camp",
+    "tag": "uls-mouncamp",
+    "kind": "spoke",
+    "first_tier": 4
+   }
+  ],
+  "warnings": [],
+  "shortfalls": [
+   "mountain-portal-shrine: needs 3 portal piece(s), blueprint Portal14.vbuild contains 0 (MEASURED) -- place 3 more portal_wood by hand",
+   "early-dock: needs 1 portal piece(s), blueprint dock.blueprint contains 0 (MEASURED) -- place 1 more portal_wood by hand",
+   "kiln-yard: needs 1 portal piece(s), blueprint (prefab-composed) contains 0 (MEASURED) -- place 1 more portal_wood by hand",
+   "meadows-farm: needs 1 portal piece(s), blueprint (prefab-composed) contains 0 (MEASURED) -- place 1 more portal_wood by hand",
+   "mountain-furnace-camp: needs 1 portal piece(s), blueprint halvar-master-refinery.blueprint contains 0 (MEASURED) -- place 1 more portal_wood by hand",
+   "refinery-yard: needs 1 portal piece(s), blueprint halvar-master-refinery.blueprint contains 0 (MEASURED) -- place 1 more portal_wood by hand",
+   "swamp-forward-camp: needs 1 portal piece(s), blueprint creator-looney-swamp-starter-home.blueprint contains 0 (MEASURED) -- place 1 more portal_wood by hand"
+  ]
+ },
+ "portal_declared_vs_graph": [],
+ "policy": {
+  "water": {
+   "level_m": 30.0,
+   "source": "tools/jumpstart/blueprints/site_finder.py WATER_LEVEL (and worlds/derive.py SEA_LEVEL_M)",
+   "road_freeboard_m": 1.5,
+   "structure_freeboard_m": 2.0
+  },
+  "grade": {
+   "max_road": 0.3,
+   "max_spur": 0.45,
+   "impassable": 1.0,
+   "earthworks_weight": 8.0
+  },
+  "roadway": {
+   "width_m": 4.0,
+   "lattice_step_m": 2.0,
+   "simplify_tolerance_m": 1.5,
+   "surface": "terrain",
+   "pave_spacing_m": 4.0,
+   "pave_prefab": "piece_pavedroad",
+   "zdo_per_pave_stamp": 0,
+   "marker_spacing_m": 40.0,
+   "marker_prefab": "wood_pole",
+   "marker_light_prefab": "piece_groundtorch_wood",
+   "marker_light_every": 3,
+   "deck_prefab": "stone_floor_2x2",
+   "deck_piece_area_m2": 4.0,
+   "junction_deck_radius_m": 4.0,
+   "waypoint_spacing_m": 400.0
+  },
+  "portals": {
+   "topology": "tiered_hub",
+   "max_spokes_per_hub": 8,
+   "clique_max_hubs": 4,
+   "tag_prefix": "uls",
+   "portal_prefab": "portal_wood",
+   "zdo_per_portal": 1
+  }
+ },
+ "chain": {
+  "world": "Ulfsland",
+  "seed": "Pirate68",
+  "corridor": {
+   "x0": -1080,
+   "z0": -300,
+   "shape": [
+    1200,
+    1600
+   ],
+   "coverage": 1.0,
+   "sampler": "tools/jumpstart/blueprints/run_patchscan.sh (river-inclusive, Pregenerate on)",
+   "water_datum_m": 30.0,
+   "samples": 1920000
+  },
+  "zonesystem_locations_loaded": 12301,
+  "sites": {
+   "meadows-farm": {
+    "id": "meadows-farm",
+    "x": -166,
+    "y": 46.01,
+    "z": 83,
+    "biome": "Meadows",
+    "freeboard_m": 16.01,
+    "pad_m": 40,
+    "grade_p90": 0.293,
+    "grade_max": 0.585,
+    "biome_purity": 1.0,
+    "water_dist_m": 130.5,
+    "ocean_dist_m": 681.4,
+    "score": 0.413,
+    "evidence": {
+     "sampler": "run_patchscan.sh, river-inclusive, step 1.0 m, integer-exact",
+     "water_datum_m": 30.0,
+     "pad_buildable_fraction": 1.0,
+     "pad_lowest_buildable_height_m": 44.65,
+     "pad_lowest_height_m": 44.65,
+     "pad_highest_height_m": 48.59,
+     "candidates_considered": 557810
+    }
+   },
+   "early-dock": {
+    "id": "early-dock",
+    "x": -936,
+    "y": 35.63,
+    "z": -37,
+    "biome": "BlackForest",
+    "freeboard_m": 5.63,
+    "pad_m": 28,
+    "grade_p90": 0.553,
+    "grade_max": 0.779,
+    "biome_purity": 1.0,
+    "water_dist_m": 13.9,
+    "ocean_dist_m": 55.9,
+    "score": 0.5567,
+    "evidence": {
+     "sampler": "run_patchscan.sh, river-inclusive, step 1.0 m, integer-exact",
+     "water_datum_m": 30.0,
+     "pad_buildable_fraction": 0.885,
+     "pad_lowest_buildable_height_m": 31.51,
+     "pad_lowest_height_m": 28.27,
+     "pad_highest_height_m": 41.86,
+     "candidates_considered": 1291
+    }
+   },
+   "mountain-furnace-camp": {
+    "id": "mountain-furnace-camp",
+    "x": -782,
+    "y": 87.22,
+    "z": 81,
+    "biome": "Mountain",
+    "freeboard_m": 57.22,
+    "pad_m": 32,
+    "grade_p90": 0.344,
+    "grade_max": 0.614,
+    "biome_purity": 1.0,
+    "water_dist_m": 178.1,
+    "ocean_dist_m": 248.9,
+    "score": 0.3753,
+    "evidence": {
+     "sampler": "run_patchscan.sh, river-inclusive, step 1.0 m, integer-exact",
+     "water_datum_m": 30.0,
+     "pad_buildable_fraction": 1.0,
+     "pad_lowest_buildable_height_m": 86.31,
+     "pad_lowest_height_m": 86.31,
+     "pad_highest_height_m": 90.25,
+     "candidates_considered": 107211
+    }
+   }
+  },
+  "doorsteps": {
+   "meadows-farm": {
+    "x": -161,
+    "y": 47,
+    "z": 79,
+    "freeboard_m": 16.6,
+    "preset": "pre-elder",
+    "for_placement": "pre-elder#meadows-farm",
+    "installation": "meadows-farm",
+    "source": "network-router",
+    "units": "Valheim world metres, WorldGenerator.GetHeight frame; water datum 30.0",
+    "status": "preferred candidate; NOT consumed by worlds/derive.py as of 2026-09-14",
+    "consumer_note": "SpawnOnLand's 1 m probe is authoritative and may refuse this point.",
+    "approach": {
+     "ok": true,
+     "length_m": 13.6,
+     "min_freeboard_m": 16.38,
+     "max_step_m": 0.36,
+     "dry_to_footprint_edge": true
+    },
+    "approach_yaw_deg": 306.9,
+    "approach_yaw_note": "router-only; do NOT feed to a spawn template",
+    "clearance_m": 6.0
+   },
+   "early-dock": {
+    "x": -930,
+    "y": 37,
+    "z": -36,
+    "freeboard_m": 7.35,
+    "preset": "pre-elder",
+    "for_placement": "pre-elder#early-dock",
+    "installation": "early-dock",
+    "source": "network-router",
+    "units": "Valheim world metres, WorldGenerator.GetHeight frame; water datum 30.0",
+    "status": "preferred candidate; NOT consumed by worlds/derive.py as of 2026-09-14",
+    "consumer_note": "SpawnOnLand's 1 m probe is authoritative and may refuse this point.",
+    "approach": {
+     "ok": true,
+     "length_m": 15.0,
+     "min_freeboard_m": 7.33,
+     "max_step_m": 0.57,
+     "dry_to_footprint_edge": true
+    },
+    "approach_yaw_deg": 256.0,
+    "approach_yaw_note": "router-only; do NOT feed to a spawn template",
+    "clearance_m": 6.0
+   },
+   "mountain-furnace-camp": {
+    "x": -784,
+    "y": 88,
+    "z": 75,
+    "freeboard_m": 57.62,
+    "preset": "pre-moder",
+    "for_placement": "pre-moder#mountain-furnace-camp",
+    "installation": "mountain-furnace-camp",
+    "source": "network-router",
+    "units": "Valheim world metres, WorldGenerator.GetHeight frame; water datum 30.0",
+    "status": "preferred candidate; NOT consumed by worlds/derive.py as of 2026-09-14",
+    "consumer_note": "SpawnOnLand's 1 m probe is authoritative and may refuse this point.",
+    "approach": {
+     "ok": true,
+     "length_m": 5.6,
+     "min_freeboard_m": 57.62,
+     "max_step_m": 0.4,
+     "dry_to_footprint_edge": true
+    },
+    "approach_yaw_deg": 21.8,
+    "approach_yaw_note": "router-only; do NOT feed to a spawn template",
+    "clearance_m": 6.0
+   }
+  },
+  "routes": [
+   {
+    "from": "meadows-farm",
+    "to": "early-dock",
+    "length_m": 973.3,
+    "land_m": 956.8,
+    "water_m": 16.5,
+    "straight_m": 779.3,
+    "detour": 1.249,
+    "grade_limit": 0.3,
+    "max_grade": 0.559,
+    "min_freeboard_m": 1.51,
+    "over_budget_m": 35.7,
+    "cut_fill_vertical_m": 1.4,
+    "node_count": 312,
+    "segment_count": 48,
+    "crossings": [
+     {
+      "start": [
+       -310,
+       -64
+      ],
+      "end": [
+       -326,
+       -66
+      ],
+      "span_m": 16.12,
+      "max_depth_m": 2.69,
+      "freeboard_start_m": 2.06,
+      "freeboard_end_m": 1.51,
+      "blueprint": "speeds-bridge2.blueprint",
+      "blueprint_span_m": 25.9,
+      "spans": 1,
+      "pier_positions": [],
+      "problem": null
+     }
+    ],
+    "lattice_nodes_explored": 67983,
+    "audit": [],
+    "notes": [
+     "lattice step 2 m, 67983 nodes explored",
+     "location avoidance: 238 ZoneSystem instances intersect this corridor"
+    ],
+    "polyline": [
+     [
+      -166,
+      46.03,
+      82
+     ],
+     [
+      -162,
+      46.47,
+      80
+     ],
+     [
+      -158,
+      46.81,
+      78
+     ],
+     [
+      -156,
+      46.63,
+      74
+     ],
+     [
+      -158,
+      46.78,
+      70
+     ],
+     [
+      -160,
+      46.88,
+      66
+     ],
+     [
+      -162,
+      46.8,
+      64
+     ],
+     [
+      -164,
+      47.24,
+      62
+     ],
+     [
+      -166,
+      47.92,
+      60
+     ],
+     [
+      -170,
+      47.83,
+      58
+     ],
+     [
+      -174,
+      48.23,
+      56
+     ],
+     [
+      -176,
+      48.13,
+      56
+     ],
+     [
+      -178,
+      48.12,
+      56
+     ],
+     [
+      -182,
+      47.57,
+      54
+     ],
+     [
+      -186,
+      48.14,
+      52
+     ],
+     [
+      -190,
+      49.02,
+      50
+     ],
+     [
+      -194,
+      49.7,
+      48
+     ],
+     [
+      -198,
+      49.71,
+      46
+     ],
+     [
+      -202,
+      50.29,
+      44
+     ],
+     [
+      -206,
+      51.1,
+      42
+     ],
+     [
+      -210,
+      51.86,
+      40
+     ],
+     [
+      -214,
+      52.98,
+      38
+     ],
+     [
+      -218,
+      53.57,
+      36
+     ],
+     [
+      -222,
+      54.44,
+      34
+     ],
+     [
+      -224,
+      55.15,
+      32
+     ],
+     [
+      -226,
+      55.64,
+      30
+     ],
+     [
+      -228,
+      56.98,
+      26
+     ],
+     [
+      -230,
+      57.81,
+      24
+     ],
+     [
+      -232,
+      58.54,
+      22
+     ],
+     [
+      -234,
+      59.3,
+      20
+     ],
+     [
+      -236,
+      59.5,
+      18
+     ],
+     [
+      -238,
+      58.68,
+      16
+     ],
+     [
+      -240,
+      58.66,
+      14
+     ],
+     [
+      -242,
+      58.46,
+      12
+     ],
+     [
+      -244,
+      58.12,
+      10
+     ],
+     [
+      -248,
+      56.99,
+      8
+     ],
+     [
+      -252,
+      55.83,
+      6
+     ],
+     [
+      -254,
+      55.01,
+      2
+     ],
+     [
+      -256,
+      54.33,
+      0
+     ],
+     [
+      -260,
+      53.31,
+      -2
+     ],
+     [
+      -264,
+      51.98,
+      -4
+     ],
+     [
+      -268,
+      51.36,
+      -6
+     ],
+     [
+      -270,
+      50.71,
+      -8
+     ],
+     [
+      -272,
+      50.01,
+      -10
+     ],
+     [
+      -274,
+      49.29,
+      -12
+     ],
+     [
+      -278,
+      48.03,
+      -14
+     ],
+     [
+      -280,
+      47.3,
+      -16
+     ],
+     [
+      -282,
+      46.7,
+      -18
+     ],
+     [
+      -284,
+      46.13,
+      -20
+     ],
+     [
+      -286,
+      45.28,
+      -22
+     ],
+     [
+      -288,
+      44.54,
+      -24
+     ],
+     [
+      -290,
+      43.34,
+      -28
+     ],
+     [
+      -290,
+      42.8,
+      -30
+     ],
+     [
+      -292,
+      41.54,
+      -34
+     ],
+     [
+      -296,
+      40.29,
+      -36
+     ],
+     [
+      -298,
+      39.94,
+      -38
+     ],
+     [
+      -298,
+      39.39,
+      -36
+     ],
+     [
+      -300,
+      38.55,
+      -38
+     ],
+     [
+      -302,
+      37.65,
+      -42
+     ],
+     [
+      -302,
+      37.11,
+      -44
+     ],
+     [
+      -304,
+      35.73,
+      -48
+     ],
+     [
+      -306,
+      35.04,
+      -52
+     ],
+     [
+      -308,
+      33.75,
+      -56
+     ],
+     [
+      -308,
+      33.13,
+      -58
+     ],
+     [
+      -308,
+      33.31,
+      -60
+     ],
+     [
+      -310,
+      32.06,
+      -64
+     ],
+     [
+      -312,
+      30.15,
+      -64
+     ],
+     [
+      -314,
+      28.87,
+      -64
+     ],
+     [
+      -316,
+      27.89,
+      -64
+     ],
+     [
+      -318,
+      27.31,
+      -64
+     ],
+     [
+      -320,
+      27.72,
+      -64
+     ],
+     [
+      -324,
+      29.56,
+      -66
+     ],
+     [
+      -326,
+      31.51,
+      -66
+     ],
+     [
+      -328,
+      32.62,
+      -70
+     ],
+     [
+      -328,
+      33.25,
+      -72
+     ],
+     [
+      -328,
+      33.88,
+      -74
+     ],
+     [
+      -328,
+      33.83,
+      -76
+     ],
+     [
+      -328,
+      33.88,
+      -78
+     ],
+     [
+      -328,
+      33.64,
+      -80
+     ],
+     [
+      -328,
+      33.79,
+      -82
+     ],
+     [
+      -330,
+      34.49,
+      -86
+     ],
+     [
+      -330,
+      34.81,
+      -88
+     ],
+     [
+      -332,
+      36.02,
+      -92
+     ],
+     [
+      -332,
+      36.35,
+      -94
+     ],
+     [
+      -334,
+      37.64,
+      -98
+     ],
+     [
+      -336,
+      38.93,
+      -102
+     ],
+     [
+      -336,
+      39.25,
+      -104
+     ],
+     [
+      -336,
+      39.53,
+      -106
+     ],
+     [
+      -338,
+      40.81,
+      -110
+     ],
+     [
+      -342,
+      42.14,
+      -112
+     ],
+     [
+      -346,
+      43.11,
+      -114
+     ],
+     [
+      -348,
+      43.78,
+      -116
+     ],
+     [
+      -350,
+      44.5,
+      -118
+     ],
+     [
+      -352,
+      45.28,
+      -122
+     ],
+     [
+      -356,
+      46.63,
+      -124
+     ],
+     [
+      -358,
+      47.25,
+      -126
+     ],
+     [
+      -360,
+      48.51,
+      -130
+     ],
+     [
+      -362,
+      49.18,
+      -132
+     ],
+     [
+      -364,
+      50.57,
+      -136
+     ],
+     [
+      -366,
+      51.94,
+      -140
+     ],
+     [
+      -368,
+      52.69,
+      -142
+     ],
+     [
+      -370,
+      53.42,
+      -144
+     ],
+     [
+      -374,
+      54.29,
+      -146
+     ],
+     [
+      -378,
+      54.64,
+      -148
+     ],
+     [
+      -382,
+      54.69,
+      -150
+     ],
+     [
+      -384,
+      54.67,
+      -150
+     ],
+     [
+      -386,
+      54.9,
+      -150
+     ],
+     [
+      -388,
+      54.76,
+      -150
+     ],
+     [
+      -390,
+      54.98,
+      -150
+     ],
+     [
+      -392,
+      55.4,
+      -150
+     ],
+     [
+      -394,
+      55.51,
+      -150
+     ],
+     [
+      -396,
+      55.52,
+      -150
+     ],
+     [
+      -398,
+      55.03,
+      -150
+     ],
+     [
+      -400,
+      55.1,
+      -150
+     ],
+     [
+      -402,
+      55.37,
+      -150
+     ],
+     [
+      -404,
+      55.3,
+      -150
+     ],
+     [
+      -408,
+      54.67,
+      -152
+     ],
+     [
+      -412,
+      54.55,
+      -154
+     ],
+     [
+      -416,
+      53.25,
+      -156
+     ],
+     [
+      -418,
+      52.78,
+      -156
+     ],
+     [
+      -420,
+      52.81,
+      -156
+     ],
+     [
+      -424,
+      52.17,
+      -158
+     ],
+     [
+      -426,
+      51.79,
+      -158
+     ],
+     [
+      -428,
+      51.4,
+      -158
+     ],
+     [
+      -430,
+      51.18,
+      -158
+     ],
+     [
+      -434,
+      51.75,
+      -160
+     ],
+     [
+      -438,
+      50.9,
+      -162
+     ],
+     [
+      -440,
+      50.43,
+      -162
+     ],
+     [
+      -442,
+      50.0,
+      -162
+     ],
+     [
+      -444,
+      49.86,
+      -162
+     ],
+     [
+      -446,
+      49.64,
+      -162
+     ],
+     [
+      -448,
+      50.22,
+      -162
+     ],
+     [
+      -450,
+      50.78,
+      -162
+     ],
+     [
+      -452,
+      51.01,
+      -162
+     ],
+     [
+      -456,
+      50.22,
+      -164
+     ],
+     [
+      -460,
+      49.11,
+      -166
+     ],
+     [
+      -464,
+      48.43,
+      -168
+     ],
+     [
+      -468,
+      47.11,
+      -170
+     ],
+     [
+      -470,
+      46.73,
+      -170
+     ],
+     [
+      -472,
+      46.67,
+      -170
+     ],
+     [
+      -474,
+      47.01,
+      -170
+     ],
+     [
+      -476,
+      47.49,
+      -170
+     ],
+     [
+      -478,
+      47.52,
+      -170
+     ],
+     [
+      -480,
+      47.61,
+      -170
+     ],
+     [
+      -482,
+      47.45,
+      -170
+     ],
+     [
+      -484,
+      47.13,
+      -170
+     ],
+     [
+      -486,
+      47.31,
+      -170
+     ],
+     [
+      -488,
+      47.3,
+      -170
+     ],
+     [
+      -490,
+      47.58,
+      -170
+     ],
+     [
+      -494,
+      47.53,
+      -168
+     ],
+     [
+      -496,
+      47.04,
+      -168
+     ],
+     [
+      -498,
+      46.55,
+      -168
+     ],
+     [
+      -500,
+      46.06,
+      -168
+     ],
+     [
+      -502,
+      46.3,
+      -168
+     ],
+     [
+      -504,
+      46.43,
+      -168
+     ],
+     [
+      -506,
+      46.46,
+      -168
+     ],
+     [
+      -508,
+      46.6,
+      -168
+     ],
+     [
+      -510,
+      46.62,
+      -168
+     ],
+     [
+      -512,
+      46.81,
+      -168
+     ],
+     [
+      -514,
+      46.81,
+      -168
+     ],
+     [
+      -516,
+      46.58,
+      -168
+     ],
+     [
+      -518,
+      46.6,
+      -168
+     ],
+     [
+      -520,
+      46.64,
+      -168
+     ],
+     [
+      -524,
+      47.82,
+      -166
+     ],
+     [
+      -528,
+      48.89,
+      -168
+     ],
+     [
+      -530,
+      49.33,
+      -168
+     ],
+     [
+      -532,
+      48.99,
+      -168
+     ],
+     [
+      -534,
+      49.14,
+      -168
+     ],
+     [
+      -536,
+      49.53,
+      -168
+     ],
+     [
+      -538,
+      50.0,
+      -168
+     ],
+     [
+      -540,
+      50.21,
+      -168
+     ],
+     [
+      -542,
+      49.71,
+      -168
+     ],
+     [
+      -544,
+      49.28,
+      -168
+     ],
+     [
+      -546,
+      48.76,
+      -168
+     ],
+     [
+      -548,
+      48.6,
+      -168
+     ],
+     [
+      -552,
+      48.02,
+      -170
+     ],
+     [
+      -554,
+      47.78,
+      -170
+     ],
+     [
+      -556,
+      47.57,
+      -170
+     ],
+     [
+      -558,
+      47.31,
+      -170
+     ],
+     [
+      -560,
+      47.31,
+      -170
+     ],
+     [
+      -562,
+      47.03,
+      -170
+     ],
+     [
+      -564,
+      47.25,
+      -170
+     ],
+     [
+      -566,
+      47.3,
+      -170
+     ],
+     [
+      -568,
+      47.34,
+      -170
+     ],
+     [
+      -570,
+      47.53,
+      -170
+     ],
+     [
+      -572,
+      47.61,
+      -170
+     ],
+     [
+      -574,
+      47.71,
+      -170
+     ],
+     [
+      -576,
+      47.88,
+      -170
+     ],
+     [
+      -578,
+      47.84,
+      -170
+     ],
+     [
+      -580,
+      47.64,
+      -170
+     ],
+     [
+      -582,
+      47.7,
+      -170
+     ],
+     [
+      -584,
+      48.17,
+      -170
+     ],
+     [
+      -586,
+      48.19,
+      -170
+     ],
+     [
+      -588,
+      48.61,
+      -170
+     ],
+     [
+      -590,
+      48.77,
+      -170
+     ],
+     [
+      -592,
+      48.83,
+      -170
+     ],
+     [
+      -594,
+      48.4,
+      -170
+     ],
+     [
+      -596,
+      47.92,
+      -170
+     ],
+     [
+      -598,
+      47.82,
+      -170
+     ],
+     [
+      -600,
+      47.64,
+      -170
+     ],
+     [
+      -602,
+      47.66,
+      -170
+     ],
+     [
+      -606,
+      46.58,
+      -172
+     ],
+     [
+      -610,
+      45.44,
+      -174
+     ],
+     [
+      -614,
+      44.62,
+      -176
+     ],
+     [
+      -618,
+      44.44,
+      -178
+     ],
+     [
+      -622,
+      44.23,
+      -180
+     ],
+     [
+      -626,
+      43.33,
+      -182
+     ],
+     [
+      -628,
+      45.83,
+      -186
+     ],
+     [
+      -632,
+      46.8,
+      -184
+     ],
+     [
+      -634,
+      47.06,
+      -184
+     ],
+     [
+      -636,
+      47.59,
+      -184
+     ],
+     [
+      -638,
+      47.76,
+      -184
+     ],
+     [
+      -640,
+      48.3,
+      -184
+     ],
+     [
+      -642,
+      47.95,
+      -184
+     ],
+     [
+      -644,
+      48.09,
+      -184
+     ],
+     [
+      -646,
+      47.97,
+      -184
+     ],
+     [
+      -648,
+      47.95,
+      -184
+     ],
+     [
+      -652,
+      48.27,
+      -182
+     ],
+     [
+      -656,
+      48.76,
+      -180
+     ],
+     [
+      -658,
+      48.51,
+      -180
+     ],
+     [
+      -660,
+      48.34,
+      -180
+     ],
+     [
+      -664,
+      49.25,
+      -178
+     ],
+     [
+      -666,
+      48.77,
+      -178
+     ],
+     [
+      -670,
+      47.86,
+      -176
+     ],
+     [
+      -674,
+      49.2,
+      -174
+     ],
+     [
+      -676,
+      49.8,
+      -174
+     ],
+     [
+      -680,
+      50.9,
+      -172
+     ],
+     [
+      -684,
+      50.58,
+      -170
+     ],
+     [
+      -688,
+      51.61,
+      -168
+     ],
+     [
+      -692,
+      52.29,
+      -166
+     ],
+     [
+      -694,
+      52.99,
+      -164
+     ],
+     [
+      -696,
+      53.45,
+      -162
+     ],
+     [
+      -698,
+      54.07,
+      -160
+     ],
+     [
+      -702,
+      54.88,
+      -158
+     ],
+     [
+      -706,
+      54.11,
+      -156
+     ],
+     [
+      -708,
+      53.56,
+      -154
+     ],
+     [
+      -710,
+      53.2,
+      -152
+     ],
+     [
+      -712,
+      53.44,
+      -150
+     ],
+     [
+      -716,
+      54.34,
+      -148
+     ],
+     [
+      -718,
+      55.09,
+      -146
+     ],
+     [
+      -720,
+      55.28,
+      -144
+     ],
+     [
+      -722,
+      55.05,
+      -142
+     ],
+     [
+      -724,
+      54.33,
+      -140
+     ],
+     [
+      -726,
+      53.97,
+      -138
+     ],
+     [
+      -728,
+      53.77,
+      -136
+     ],
+     [
+      -730,
+      54.27,
+      -134
+     ],
+     [
+      -732,
+      54.0,
+      -132
+     ],
+     [
+      -734,
+      53.58,
+      -130
+     ],
+     [
+      -736,
+      54.02,
+      -128
+     ],
+     [
+      -738,
+      54.68,
+      -126
+     ],
+     [
+      -740,
+      55.48,
+      -124
+     ],
+     [
+      -744,
+      54.76,
+      -122
+     ],
+     [
+      -748,
+      54.56,
+      -120
+     ],
+     [
+      -752,
+      55.39,
+      -118
+     ],
+     [
+      -756,
+      55.65,
+      -116
+     ],
+     [
+      -760,
+      55.94,
+      -114
+     ],
+     [
+      -762,
+      56.03,
+      -114
+     ],
+     [
+      -764,
+      56.26,
+      -114
+     ],
+     [
+      -766,
+      56.43,
+      -114
+     ],
+     [
+      -768,
+      56.74,
+      -114
+     ],
+     [
+      -770,
+      56.8,
+      -114
+     ],
+     [
+      -772,
+      57.09,
+      -114
+     ],
+     [
+      -774,
+      57.62,
+      -114
+     ],
+     [
+      -778,
+      58.69,
+      -112
+     ],
+     [
+      -782,
+      58.24,
+      -110
+     ],
+     [
+      -786,
+      58.64,
+      -108
+     ],
+     [
+      -790,
+      58.76,
+      -106
+     ],
+     [
+      -794,
+      59.54,
+      -104
+     ],
+     [
+      -798,
+      60.73,
+      -102
+     ],
+     [
+      -802,
+      60.86,
+      -100
+     ],
+     [
+      -806,
+      59.76,
+      -98
+     ],
+     [
+      -810,
+      58.64,
+      -96
+     ],
+     [
+      -814,
+      58.82,
+      -94
+     ],
+     [
+      -818,
+      58.03,
+      -92
+     ],
+     [
+      -822,
+      58.13,
+      -90
+     ],
+     [
+      -826,
+      57.34,
+      -88
+     ],
+     [
+      -830,
+      56.33,
+      -86
+     ],
+     [
+      -834,
+      55.82,
+      -84
+     ],
+     [
+      -836,
+      55.53,
+      -84
+     ],
+     [
+      -838,
+      55.13,
+      -84
+     ],
+     [
+      -840,
+      54.97,
+      -84
+     ],
+     [
+      -844,
+      54.27,
+      -82
+     ],
+     [
+      -846,
+      53.81,
+      -82
+     ],
+     [
+      -850,
+      53.14,
+      -80
+     ],
+     [
+      -854,
+      52.34,
+      -78
+     ],
+     [
+      -856,
+      52.24,
+      -78
+     ],
+     [
+      -858,
+      52.25,
+      -78
+     ],
+     [
+      -860,
+      52.09,
+      -78
+     ],
+     [
+      -864,
+      51.37,
+      -76
+     ],
+     [
+      -868,
+      50.19,
+      -74
+     ],
+     [
+      -872,
+      49.11,
+      -72
+     ],
+     [
+      -876,
+      48.96,
+      -70
+     ],
+     [
+      -878,
+      48.47,
+      -68
+     ],
+     [
+      -880,
+      47.62,
+      -66
+     ],
+     [
+      -884,
+      47.15,
+      -64
+     ],
+     [
+      -888,
+      46.6,
+      -62
+     ],
+     [
+      -892,
+      45.73,
+      -60
+     ],
+     [
+      -896,
+      45.09,
+      -58
+     ],
+     [
+      -900,
+      45.22,
+      -56
+     ],
+     [
+      -904,
+      44.38,
+      -54
+     ],
+     [
+      -904,
+      44.16,
+      -52
+     ],
+     [
+      -906,
+      43.19,
+      -48
+     ],
+     [
+      -908,
+      42.46,
+      -46
+     ],
+     [
+      -912,
+      41.77,
+      -44
+     ],
+     [
+      -914,
+      40.96,
+      -42
+     ],
+     [
+      -916,
+      40.29,
+      -40
+     ],
+     [
+      -920,
+      39.45,
+      -38
+     ],
+     [
+      -924,
+      38.19,
+      -36
+     ],
+     [
+      -926,
+      37.69,
+      -36
+     ],
+     [
+      -930,
+      36.66,
+      -38
+     ],
+     [
+      -934,
+      36.14,
+      -40
+     ],
+     [
+      -936,
+      35.55,
+      -38
+     ]
+    ]
+   },
+   {
+    "from": "early-dock",
+    "to": "mountain-furnace-camp",
+    "length_m": 205.4,
+    "land_m": 205.4,
+    "water_m": 0.0,
+    "straight_m": 194.0,
+    "detour": 1.059,
+    "grade_limit": 0.45,
+    "max_grade": 0.465,
+    "min_freeboard_m": 5.55,
+    "over_budget_m": 16.2,
+    "cut_fill_vertical_m": 0.1,
+    "node_count": 60,
+    "segment_count": 9,
+    "crossings": [],
+    "lattice_nodes_explored": 1668,
+    "audit": [],
+    "notes": [
+     "lattice step 2 m, 1668 nodes explored",
+     "location avoidance: 238 ZoneSystem instances intersect this corridor"
+    ],
+    "polyline": [
+     [
+      -936,
+      35.55,
+      -38
+     ],
+     [
+      -932,
+      37.42,
+      -36
+     ],
+     [
+      -928,
+      37.96,
+      -34
+     ],
+     [
+      -926,
+      38.27,
+      -34
+     ],
+     [
+      -922,
+      39.85,
+      -32
+     ],
+     [
+      -918,
+      41.85,
+      -30
+     ],
+     [
+      -914,
+      42.19,
+      -28
+     ],
+     [
+      -910,
+      43.52,
+      -26
+     ],
+     [
+      -906,
+      45.35,
+      -24
+     ],
+     [
+      -904,
+      46.15,
+      -24
+     ],
+     [
+      -900,
+      47.9,
+      -22
+     ],
+     [
+      -898,
+      49.22,
+      -20
+     ],
+     [
+      -896,
+      50.38,
+      -18
+     ],
+     [
+      -892,
+      52.24,
+      -16
+     ],
+     [
+      -888,
+      54.25,
+      -14
+     ],
+     [
+      -884,
+      55.63,
+      -12
+     ],
+     [
+      -880,
+      57.46,
+      -10
+     ],
+     [
+      -876,
+      59.25,
+      -8
+     ],
+     [
+      -874,
+      60.44,
+      -6
+     ],
+     [
+      -870,
+      62.46,
+      -4
+     ],
+     [
+      -868,
+      63.58,
+      -2
+     ],
+     [
+      -866,
+      64.75,
+      0
+     ],
+     [
+      -864,
+      65.79,
+      2
+     ],
+     [
+      -862,
+      67.7,
+      6
+     ],
+     [
+      -860,
+      69.71,
+      10
+     ],
+     [
+      -858,
+      71.35,
+      14
+     ],
+     [
+      -856,
+      73.42,
+      18
+     ],
+     [
+      -856,
+      74.21,
+      20
+     ],
+     [
+      -854,
+      75.7,
+      24
+     ],
+     [
+      -852,
+      76.52,
+      26
+     ],
+     [
+      -850,
+      77.42,
+      30
+     ],
+     [
+      -848,
+      79.24,
+      34
+     ],
+     [
+      -846,
+      80.5,
+      36
+     ],
+     [
+      -844,
+      82.37,
+      40
+     ],
+     [
+      -840,
+      83.66,
+      42
+     ],
+     [
+      -836,
+      83.07,
+      44
+     ],
+     [
+      -832,
+      83.69,
+      46
+     ],
+     [
+      -830,
+      83.96,
+      46
+     ],
+     [
+      -828,
+      84.57,
+      46
+     ],
+     [
+      -826,
+      84.42,
+      46
+     ],
+     [
+      -824,
+      84.18,
+      46
+     ],
+     [
+      -822,
+      84.11,
+      46
+     ],
+     [
+      -820,
+      83.96,
+      46
+     ],
+     [
+      -818,
+      84.08,
+      46
+     ],
+     [
+      -816,
+      83.61,
+      46
+     ],
+     [
+      -812,
+      85.62,
+      48
+     ],
+     [
+      -810,
+      86.14,
+      50
+     ],
+     [
+      -808,
+      87.21,
+      52
+     ],
+     [
+      -804,
+      88.53,
+      54
+     ],
+     [
+      -802,
+      89.17,
+      56
+     ],
+     [
+      -800,
+      88.69,
+      58
+     ],
+     [
+      -798,
+      88.4,
+      60
+     ],
+     [
+      -796,
+      88.8,
+      62
+     ],
+     [
+      -794,
+      88.89,
+      64
+     ],
+     [
+      -792,
+      88.36,
+      66
+     ],
+     [
+      -790,
+      88.36,
+      68
+     ],
+     [
+      -788,
+      88.97,
+      72
+     ],
+     [
+      -786,
+      88.2,
+      74
+     ],
+     [
+      -784,
+      87.44,
+      76
+     ],
+     [
+      -782,
+      87.21,
+      80
+     ]
+    ]
+   }
+  ],
+  "plans": [
+   {
+    "from": "meadows-farm",
+    "to": "early-dock",
+    "surface": "terrain",
+    "zdo_cost": 210,
+    "by_channel": {
+     "terrain": {
+      "items": 240,
+      "zdo": 0
+     },
+     "piece": {
+      "items": 51,
+      "zdo": 51
+     },
+     "blueprint": {
+      "items": 3,
+      "zdo": 159
+     }
+    },
+    "rcon_placeable": 27,
+    "blockers": [],
+    "notes": [
+     "carriageway 4 m wide, 957 m of it on land: 240 hoe stamps at 4 m, 0 ZDOs (MEASURED across 3 worlds)",
+     "earthworks: 36 m of carriageway is steeper than the 0.3 budget, needing about 1 vertical metres of cut and fill",
+     "TERRAIN WORK IS ADMIN-CLIENT-SEAT ONLY. piece_pavedroad leaves no ZDO (0 occurrences in 111,784 objects across three worlds), so RCON `spawn` cannot place it. The RCON plan below covers markers, decks and piers only."
+    ],
+    "items": [
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -166.0,
+      "y": 46.03,
+      "z": 82.0,
+      "yaw": 116.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -162.4,
+      "y": 46.42,
+      "z": 80.2,
+      "yaw": 116.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -158.8,
+      "y": 46.74,
+      "z": 78.4,
+      "yaw": 116.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -156.6,
+      "y": 46.69,
+      "z": 75.3,
+      "yaw": 153.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -157.2,
+      "y": 46.72,
+      "z": 71.7,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -158.9,
+      "y": 46.83,
+      "z": 68.1,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -161.2,
+      "y": 46.83,
+      "z": 64.8,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -164.0,
+      "y": 47.24,
+      "z": 62.0,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -167.0,
+      "y": 47.9,
+      "z": 59.5,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -170.6,
+      "y": 47.89,
+      "z": 57.7,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -174.2,
+      "y": 48.22,
+      "z": 56.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -178.2,
+      "y": 48.09,
+      "z": 55.9,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -181.8,
+      "y": 47.6,
+      "z": 54.1,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -185.3,
+      "y": 48.05,
+      "z": 52.3,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -188.9,
+      "y": 48.78,
+      "z": 50.5,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -192.5,
+      "y": 49.44,
+      "z": 48.8,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -196.1,
+      "y": 49.71,
+      "z": 47.0,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -199.7,
+      "y": 49.95,
+      "z": 45.2,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -203.2,
+      "y": 50.54,
+      "z": 43.4,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -206.8,
+      "y": 51.25,
+      "z": 41.6,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -210.4,
+      "y": 51.97,
+      "z": 39.8,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -214.0,
+      "y": 52.97,
+      "z": 38.0,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -217.5,
+      "y": 53.5,
+      "z": 36.2,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -221.1,
+      "y": 54.25,
+      "z": 34.4,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -224.1,
+      "y": 55.19,
+      "z": 31.9,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -226.6,
+      "y": 56.05,
+      "z": 28.8,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -228.6,
+      "y": 57.24,
+      "z": 25.4,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -231.5,
+      "y": 58.34,
+      "z": 22.5,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -234.3,
+      "y": 59.33,
+      "z": 19.7,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -237.1,
+      "y": 59.04,
+      "z": 16.9,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -239.9,
+      "y": 58.66,
+      "z": 14.1,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -242.8,
+      "y": 58.33,
+      "z": 11.2,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -246.0,
+      "y": 57.55,
+      "z": 9.0,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -249.6,
+      "y": 56.52,
+      "z": 7.2,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -252.6,
+      "y": 55.59,
+      "z": 4.8,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -254.6,
+      "y": 54.81,
+      "z": 1.4,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -257.8,
+      "y": 53.87,
+      "z": -0.9,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -261.4,
+      "y": 52.85,
+      "z": -2.7,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -265.0,
+      "y": 51.83,
+      "z": -4.5,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -268.4,
+      "y": 51.23,
+      "z": -6.4,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -271.3,
+      "y": 50.27,
+      "z": -9.3,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -274.1,
+      "y": 49.26,
+      "z": -12.1,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -277.7,
+      "y": 48.13,
+      "z": -13.8,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -280.6,
+      "y": 47.13,
+      "z": -16.6,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -283.4,
+      "y": 46.3,
+      "z": -19.4,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -286.2,
+      "y": 45.19,
+      "z": -22.2,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -288.7,
+      "y": 44.14,
+      "z": -25.3,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -290.0,
+      "y": 43.06,
+      "z": -29.0,
+      "yaw": 180.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -291.4,
+      "y": 41.95,
+      "z": -32.7,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -294.3,
+      "y": 40.83,
+      "z": -35.1,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -297.5,
+      "y": 40.03,
+      "z": -37.5,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -298.9,
+      "y": 39.02,
+      "z": -36.9,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -301.1,
+      "y": 38.06,
+      "z": -40.2,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -302.0,
+      "y": 37.12,
+      "z": -44.0,
+      "yaw": 180.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -303.8,
+      "y": 35.89,
+      "z": -47.5,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -305.6,
+      "y": 35.19,
+      "z": -51.1,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -307.3,
+      "y": 34.17,
+      "z": -54.7,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -308.0,
+      "y": 33.18,
+      "z": -58.5,
+      "yaw": 180.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -309.1,
+      "y": 32.6,
+      "z": -62.3,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -326.0,
+      "y": 31.51,
+      "z": -66.0,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -327.8,
+      "y": 32.5,
+      "z": -69.6,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -328.0,
+      "y": 33.73,
+      "z": -73.5,
+      "yaw": 180.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -328.0,
+      "y": 33.87,
+      "z": -77.5,
+      "yaw": 180.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -328.0,
+      "y": 33.75,
+      "z": -81.5,
+      "yaw": 180.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -329.6,
+      "y": 34.34,
+      "z": -85.2,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -330.5,
+      "y": 35.1,
+      "z": -88.9,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -332.0,
+      "y": 36.12,
+      "z": -92.6,
+      "yaw": 180.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -333.2,
+      "y": 37.09,
+      "z": -96.3,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -334.9,
+      "y": 38.25,
+      "z": -99.9,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -336.0,
+      "y": 39.19,
+      "z": -103.6,
+      "yaw": 180.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -336.7,
+      "y": 40.0,
+      "z": -107.5,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -339.0,
+      "y": 41.16,
+      "z": -110.5,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -342.6,
+      "y": 42.29,
+      "z": -112.3,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -346.2,
+      "y": 43.16,
+      "z": -114.2,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -349.0,
+      "y": 44.14,
+      "z": -117.0,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -351.1,
+      "y": 44.95,
+      "z": -120.3,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -353.9,
+      "y": 45.91,
+      "z": -122.9,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -357.1,
+      "y": 46.99,
+      "z": -125.1,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -359.2,
+      "y": 48.04,
+      "z": -128.5,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -361.6,
+      "y": 49.06,
+      "z": -131.6,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -363.6,
+      "y": 50.26,
+      "z": -135.1,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -365.4,
+      "y": 51.5,
+      "z": -138.7,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -367.8,
+      "y": 52.61,
+      "z": -141.8,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -370.8,
+      "y": 53.6,
+      "z": -144.4,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -374.4,
+      "y": 54.32,
+      "z": -146.2,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -378.0,
+      "y": 54.64,
+      "z": -148.0,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -381.5,
+      "y": 54.68,
+      "z": -149.8,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -385.5,
+      "y": 54.84,
+      "z": -150.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -389.5,
+      "y": 54.92,
+      "z": -150.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -393.5,
+      "y": 55.48,
+      "z": -150.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -397.5,
+      "y": 55.16,
+      "z": -150.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -401.5,
+      "y": 55.3,
+      "z": -150.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -405.3,
+      "y": 55.09,
+      "z": -150.7,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -408.9,
+      "y": 54.64,
+      "z": -152.4,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -412.5,
+      "y": 54.4,
+      "z": -154.2,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -416.1,
+      "y": 53.23,
+      "z": -156.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -420.1,
+      "y": 52.81,
+      "z": -156.0,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -423.6,
+      "y": 52.23,
+      "z": -157.8,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -427.6,
+      "y": 51.48,
+      "z": -158.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -431.4,
+      "y": 51.38,
+      "z": -158.7,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -435.0,
+      "y": 51.54,
+      "z": -160.5,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -438.6,
+      "y": 50.75,
+      "z": -162.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -442.6,
+      "y": 49.95,
+      "z": -162.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -446.6,
+      "y": 49.83,
+      "z": -162.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -450.6,
+      "y": 50.85,
+      "z": -162.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -454.4,
+      "y": 50.54,
+      "z": -163.2,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -457.9,
+      "y": 49.68,
+      "z": -165.0,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -461.5,
+      "y": 48.85,
+      "z": -166.8,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -465.1,
+      "y": 48.07,
+      "z": -168.5,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -468.8,
+      "y": 46.97,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -472.8,
+      "y": 46.8,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -476.8,
+      "y": 47.5,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -480.8,
+      "y": 47.55,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -484.8,
+      "y": 47.19,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -488.8,
+      "y": 47.41,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -492.5,
+      "y": 47.55,
+      "z": -168.8,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -496.3,
+      "y": 46.97,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -500.3,
+      "y": 46.09,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -504.3,
+      "y": 46.43,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -508.3,
+      "y": 46.6,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -512.3,
+      "y": 46.81,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -516.3,
+      "y": 46.58,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -520.3,
+      "y": 46.71,
+      "z": -167.9,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -523.8,
+      "y": 47.77,
+      "z": -166.1,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -527.4,
+      "y": 48.73,
+      "z": -167.7,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -531.3,
+      "y": 49.1,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -535.3,
+      "y": 49.4,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -539.3,
+      "y": 50.14,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -543.3,
+      "y": 49.42,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -547.3,
+      "y": 48.65,
+      "z": -168.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -551.0,
+      "y": 48.17,
+      "z": -169.5,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -554.9,
+      "y": 47.69,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -558.9,
+      "y": 47.31,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -562.9,
+      "y": 47.13,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -566.9,
+      "y": 47.32,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -570.9,
+      "y": 47.57,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -574.9,
+      "y": 47.78,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -578.9,
+      "y": 47.75,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -582.9,
+      "y": 47.9,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -586.9,
+      "y": 48.37,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -590.9,
+      "y": 48.8,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -594.9,
+      "y": 48.19,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -598.9,
+      "y": 47.74,
+      "z": -170.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -602.8,
+      "y": 47.45,
+      "z": -170.4,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -606.4,
+      "y": 46.48,
+      "z": -172.2,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -609.9,
+      "y": 45.46,
+      "z": -174.0,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -613.5,
+      "y": 44.72,
+      "z": -175.8,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -617.1,
+      "y": 44.48,
+      "z": -177.5,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -620.7,
+      "y": 44.3,
+      "z": -179.3,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -624.2,
+      "y": 43.73,
+      "z": -181.1,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -626.9,
+      "y": 44.46,
+      "z": -183.8,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -629.4,
+      "y": 46.17,
+      "z": -185.3,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -633.1,
+      "y": 46.94,
+      "z": -184.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -637.1,
+      "y": 47.68,
+      "z": -184.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -641.1,
+      "y": 48.11,
+      "z": -184.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -645.1,
+      "y": 48.03,
+      "z": -184.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -649.0,
+      "y": 48.03,
+      "z": -183.5,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -652.6,
+      "y": 48.33,
+      "z": -181.7,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -656.1,
+      "y": 48.74,
+      "z": -180.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -660.1,
+      "y": 48.37,
+      "z": -179.9,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -663.7,
+      "y": 49.18,
+      "z": -178.1,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -667.5,
+      "y": 48.43,
+      "z": -177.3,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -671.1,
+      "y": 48.22,
+      "z": -175.5,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -674.7,
+      "y": 49.42,
+      "z": -174.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -678.4,
+      "y": 50.47,
+      "z": -172.8,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -682.0,
+      "y": 50.74,
+      "z": -171.0,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -685.6,
+      "y": 50.99,
+      "z": -169.2,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -689.2,
+      "y": 51.81,
+      "z": -167.4,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -692.6,
+      "y": 52.49,
+      "z": -165.4,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -695.4,
+      "y": 53.31,
+      "z": -162.6,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -698.3,
+      "y": 54.13,
+      "z": -159.8,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -701.9,
+      "y": 54.86,
+      "z": -158.1,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -705.5,
+      "y": 54.22,
+      "z": -156.3,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -708.4,
+      "y": 53.48,
+      "z": -153.6,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -711.2,
+      "y": 53.35,
+      "z": -150.8,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -714.6,
+      "y": 54.03,
+      "z": -148.7,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -717.7,
+      "y": 54.99,
+      "z": -146.3,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -720.6,
+      "y": 55.21,
+      "z": -143.4,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -723.4,
+      "y": 54.55,
+      "z": -140.6,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -726.2,
+      "y": 53.95,
+      "z": -137.8,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -729.0,
+      "y": 54.03,
+      "z": -135.0,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -731.9,
+      "y": 54.02,
+      "z": -132.1,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -734.7,
+      "y": 53.73,
+      "z": -129.3,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -737.5,
+      "y": 54.53,
+      "z": -126.5,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -740.5,
+      "y": 55.4,
+      "z": -123.8,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -744.0,
+      "y": 54.76,
+      "z": -122.0,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -747.6,
+      "y": 54.58,
+      "z": -120.2,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -751.2,
+      "y": 55.23,
+      "z": -118.4,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -754.8,
+      "y": 55.57,
+      "z": -116.6,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -758.3,
+      "y": 55.82,
+      "z": -114.8,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -762.2,
+      "y": 56.04,
+      "z": -114.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -766.2,
+      "y": 56.45,
+      "z": -114.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -770.2,
+      "y": 56.82,
+      "z": -114.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -774.1,
+      "y": 57.66,
+      "z": -113.9,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -777.7,
+      "y": 58.61,
+      "z": -112.1,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -781.3,
+      "y": 58.32,
+      "z": -110.4,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -784.9,
+      "y": 58.53,
+      "z": -108.6,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -788.4,
+      "y": 58.72,
+      "z": -106.8,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -792.0,
+      "y": 59.15,
+      "z": -105.0,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -795.6,
+      "y": 60.01,
+      "z": -103.2,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -799.2,
+      "y": 60.77,
+      "z": -101.4,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -802.8,
+      "y": 60.65,
+      "z": -99.6,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -806.3,
+      "y": 59.66,
+      "z": -97.8,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -809.9,
+      "y": 58.66,
+      "z": -96.0,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -813.5,
+      "y": 58.8,
+      "z": -94.3,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -817.1,
+      "y": 58.22,
+      "z": -92.5,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -820.6,
+      "y": 58.09,
+      "z": -90.7,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -824.2,
+      "y": 57.69,
+      "z": -88.9,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -827.8,
+      "y": 56.88,
+      "z": -87.1,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -831.4,
+      "y": 56.15,
+      "z": -85.3,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -835.1,
+      "y": 55.66,
+      "z": -84.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -839.1,
+      "y": 55.05,
+      "z": -84.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -842.7,
+      "y": 54.49,
+      "z": -82.6,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -846.5,
+      "y": 53.72,
+      "z": -81.7,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -850.1,
+      "y": 53.11,
+      "z": -79.9,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -853.7,
+      "y": 52.4,
+      "z": -78.2,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -857.7,
+      "y": 52.25,
+      "z": -78.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -861.5,
+      "y": 51.83,
+      "z": -77.3,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -865.1,
+      "y": 51.06,
+      "z": -75.5,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -868.6,
+      "y": 50.02,
+      "z": -73.7,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -872.2,
+      "y": 49.1,
+      "z": -71.9,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -875.8,
+      "y": 48.96,
+      "z": -70.1,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -878.7,
+      "y": 48.19,
+      "z": -67.3,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -881.9,
+      "y": 47.4,
+      "z": -65.1,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -885.5,
+      "y": 46.95,
+      "z": -63.3,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -889.0,
+      "y": 46.38,
+      "z": -61.5,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -892.6,
+      "y": 45.63,
+      "z": -59.7,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -896.2,
+      "y": 45.09,
+      "z": -57.9,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -899.8,
+      "y": 45.21,
+      "z": -56.1,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -903.4,
+      "y": 44.52,
+      "z": -54.3,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -904.6,
+      "y": 43.88,
+      "z": -50.9,
+      "yaw": 333.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -906.6,
+      "y": 42.99,
+      "z": -47.4,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -909.8,
+      "y": 42.16,
+      "z": -45.1,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -913.1,
+      "y": 41.34,
+      "z": -42.9,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -915.9,
+      "y": 40.32,
+      "z": -40.1,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -919.4,
+      "y": 39.57,
+      "z": -38.3,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -923.0,
+      "y": 38.5,
+      "z": -36.5,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -926.8,
+      "y": 37.48,
+      "z": -36.4,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -930.4,
+      "y": 36.61,
+      "z": -38.2,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -934.0,
+      "y": 36.15,
+      "z": -40.0,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -167.3,
+      "y": 46.16,
+      "z": 79.3,
+      "yaw": 116.6,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -174.2,
+      "y": 47.95,
+      "z": 53.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker_light",
+      "prefab": "piece_groundtorch_wood",
+      "x": -211.7,
+      "y": 51.28,
+      "z": 42.5,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -237.8,
+      "y": 59.89,
+      "z": 11.9,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -273.4,
+      "y": 49.38,
+      "z": -7.1,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker_light",
+      "prefab": "piece_groundtorch_wood",
+      "x": -295.4,
+      "y": 41.78,
+      "z": -39.6,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -328.7,
+      "y": 34.79,
+      "z": -64.7,
+      "yaw": 206.6,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -333.0,
+      "y": 37.86,
+      "z": -103.6,
+      "yaw": 180.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker_light",
+      "prefab": "piece_groundtorch_wood",
+      "x": -363.8,
+      "y": 50.48,
+      "z": -129.5,
+      "yaw": 225.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -393.5,
+      "y": 54.61,
+      "z": -153.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -432.8,
+      "y": 51.58,
+      "z": -156.0,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker_light",
+      "prefab": "piece_groundtorch_wood",
+      "x": -468.8,
+      "y": 46.39,
+      "z": -173.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -508.3,
+      "y": 46.2,
+      "z": -165.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -547.3,
+      "y": 48.01,
+      "z": -171.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker_light",
+      "prefab": "piece_groundtorch_wood",
+      "x": -586.9,
+      "y": 49.67,
+      "z": -167.0,
+      "yaw": 270.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -622.9,
+      "y": 42.62,
+      "z": -183.8,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -658.8,
+      "y": 43.38,
+      "z": -177.3,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker_light",
+      "prefab": "piece_groundtorch_wood",
+      "x": -697.5,
+      "y": 54.41,
+      "z": -164.7,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -724.1,
+      "y": 54.17,
+      "z": -135.7,
+      "yaw": 315.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -759.7,
+      "y": 55.24,
+      "z": -117.5,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker_light",
+      "prefab": "piece_groundtorch_wood",
+      "x": -794.3,
+      "y": 60.72,
+      "z": -100.5,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -832.7,
+      "y": 55.91,
+      "z": -88.0,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -867.3,
+      "y": 51.83,
+      "z": -71.0,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker_light",
+      "prefab": "piece_groundtorch_wood",
+      "x": -904.7,
+      "y": 43.01,
+      "z": -57.0,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -935.3,
+      "y": 36.12,
+      "z": -37.3,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "blueprint",
+      "kind": "bridge",
+      "prefab": "speeds-bridge2.blueprint",
+      "x": -318.0,
+      "y": 32.06,
+      "z": -65.0,
+      "yaw": 262.9,
+      "count": 1,
+      "zdo": 63,
+      "note": "span 16.1 m over 2.7 m of water; blueprint reaches 25.9 m x 1; abutment freeboard 2.06 / 1.51 m"
+     },
+     {
+      "channel": "piece",
+      "kind": "abutment_deck",
+      "prefab": "stone_floor_2x2",
+      "x": -310,
+      "y": 32.06,
+      "z": -64,
+      "yaw": 262.9,
+      "count": 13,
+      "zdo": 13,
+      "radius_m": 4.0,
+      "note": "13 x stone_floor_2x2 paving the abutment apron"
+     },
+     {
+      "channel": "piece",
+      "kind": "abutment_deck",
+      "prefab": "stone_floor_2x2",
+      "x": -326,
+      "y": 31.51,
+      "z": -66,
+      "yaw": 262.9,
+      "count": 13,
+      "zdo": 13,
+      "radius_m": 4.0,
+      "note": "13 x stone_floor_2x2 paving the abutment apron"
+     },
+     {
+      "channel": "blueprint",
+      "kind": "waypoint",
+      "prefab": "PiNoKi_SmallHut.blueprint",
+      "x": -424.5,
+      "y": 54.97,
+      "z": -147.1,
+      "yaw": 243.4,
+      "count": 1,
+      "zdo": 48,
+      "note": "48 pieces; the only redistributable stamp in the corpus"
+     },
+     {
+      "channel": "blueprint",
+      "kind": "waypoint",
+      "prefab": "PiNoKi_SmallHut.blueprint",
+      "x": -781.5,
+      "y": 60.4,
+      "z": -99.1,
+      "yaw": 296.6,
+      "count": 1,
+      "zdo": 48,
+      "note": "48 pieces; the only redistributable stamp in the corpus"
+     }
+    ]
+   },
+   {
+    "from": "early-dock",
+    "to": "mountain-furnace-camp",
+    "surface": "terrain",
+    "zdo_cost": 6,
+    "by_channel": {
+     "terrain": {
+      "items": 52,
+      "zdo": 0
+     },
+     "piece": {
+      "items": 6,
+      "zdo": 6
+     }
+    },
+    "rcon_placeable": 6,
+    "blockers": [],
+    "notes": [
+     "carriageway 4 m wide, 205 m of it on land: 52 hoe stamps at 4 m, 0 ZDOs (MEASURED across 3 worlds)",
+     "earthworks: 16 m of carriageway is steeper than the 0.45 budget, needing about 0 vertical metres of cut and fill",
+     "TERRAIN WORK IS ADMIN-CLIENT-SEAT ONLY. piece_pavedroad leaves no ZDO (0 occurrences in 111,784 objects across three worlds), so RCON `spawn` cannot place it. The RCON plan below covers markers, decks and piers only."
+    ],
+    "items": [
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -936.0,
+      "y": 35.55,
+      "z": -38.0,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -932.4,
+      "y": 37.23,
+      "z": -36.2,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -928.8,
+      "y": 37.85,
+      "z": -34.4,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -925.1,
+      "y": 38.65,
+      "z": -33.5,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -921.5,
+      "y": 40.11,
+      "z": -31.7,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -917.9,
+      "y": 41.86,
+      "z": -30.0,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -914.3,
+      "y": 42.16,
+      "z": -28.2,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -910.7,
+      "y": 43.27,
+      "z": -26.4,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -907.2,
+      "y": 44.81,
+      "z": -24.6,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -903.4,
+      "y": 46.42,
+      "z": -23.7,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -899.8,
+      "y": 48.0,
+      "z": -21.8,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -897.0,
+      "y": 49.79,
+      "z": -19.0,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -893.7,
+      "y": 51.45,
+      "z": -16.9,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -890.1,
+      "y": 53.18,
+      "z": -15.1,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -886.5,
+      "y": 54.75,
+      "z": -13.3,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -883.0,
+      "y": 56.1,
+      "z": -11.5,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -879.4,
+      "y": 57.73,
+      "z": -9.7,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -875.9,
+      "y": 59.34,
+      "z": -7.9,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -872.8,
+      "y": 61.07,
+      "z": -5.4,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -869.4,
+      "y": 62.82,
+      "z": -3.4,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -866.5,
+      "y": 64.44,
+      "z": -0.5,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -863.8,
+      "y": 65.97,
+      "z": 2.4,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -862.0,
+      "y": 67.68,
+      "z": 6.0,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -860.2,
+      "y": 69.47,
+      "z": 9.5,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -858.4,
+      "y": 70.98,
+      "z": 13.1,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -856.7,
+      "y": 72.74,
+      "z": 16.7,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -855.8,
+      "y": 74.38,
+      "z": 20.5,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -854.0,
+      "y": 75.71,
+      "z": 24.0,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -851.4,
+      "y": 76.77,
+      "z": 27.1,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -849.7,
+      "y": 77.73,
+      "z": 30.7,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -847.8,
+      "y": 79.37,
+      "z": 34.2,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -845.3,
+      "y": 81.11,
+      "z": 37.3,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -843.1,
+      "y": 82.65,
+      "z": 40.4,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -839.5,
+      "y": 83.59,
+      "z": 42.2,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -836.0,
+      "y": 83.08,
+      "z": 44.0,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -832.4,
+      "y": 83.63,
+      "z": 45.8,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -828.4,
+      "y": 84.44,
+      "z": 46.0,
+      "yaw": 90.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -824.4,
+      "y": 84.23,
+      "z": 46.0,
+      "yaw": 90.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -820.4,
+      "y": 83.99,
+      "z": 46.0,
+      "yaw": 90.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -816.4,
+      "y": 83.71,
+      "z": 46.0,
+      "yaw": 90.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -812.8,
+      "y": 85.21,
+      "z": 47.6,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -809.8,
+      "y": 86.24,
+      "z": 50.2,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -806.7,
+      "y": 87.64,
+      "z": 52.6,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -803.3,
+      "y": 88.75,
+      "z": 54.7,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -800.5,
+      "y": 88.81,
+      "z": 57.5,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -797.7,
+      "y": 88.46,
+      "z": 60.3,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -794.8,
+      "y": 88.85,
+      "z": 63.2,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -792.0,
+      "y": 88.36,
+      "z": 66.0,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -789.5,
+      "y": 88.52,
+      "z": 69.0,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -787.5,
+      "y": 88.78,
+      "z": 72.5,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -784.7,
+      "y": 87.7,
+      "z": 75.3,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "terrain",
+      "kind": "pave",
+      "prefab": "piece_pavedroad",
+      "x": -782.6,
+      "y": 87.28,
+      "z": 78.7,
+      "yaw": 26.6,
+      "count": 1,
+      "zdo": 0,
+      "radius_m": 2.0,
+      "note": "hoe stamp: level to the centreline, then paved road. 0 ZDOs (MEASURED)."
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -934.7,
+      "y": 35.47,
+      "z": -40.7,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -902.0,
+      "y": 46.96,
+      "z": -19.7,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker_light",
+      "prefab": "piece_groundtorch_wood",
+      "x": -864.4,
+      "y": 64.44,
+      "z": -2.7,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -849.9,
+      "y": 78.44,
+      "z": 36.3,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker",
+      "prefab": "wood_pole",
+      "x": -811.5,
+      "y": 82.42,
+      "z": 44.9,
+      "yaw": 63.4,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     },
+     {
+      "channel": "piece",
+      "kind": "marker_light",
+      "prefab": "piece_groundtorch_wood",
+      "x": -786.8,
+      "y": 87.76,
+      "z": 77.4,
+      "yaw": 45.0,
+      "count": 1,
+      "zdo": 1,
+      "note": "roadside marker; RCON-spawnable"
+     }
+    ]
+   }
+  ],
+  "paved_alternative": [
+   {
+    "prefab": "stone_floor_2x2",
+    "pieces": 956,
+    "zdo_cost": 956,
+    "pieces_per_m": 1.0,
+    "verdict": "956 ZDOs for 957 m of road. For comparison the whole of Hrafnheim is 1,366 persistent objects and Vangard is 34,871 (MEASURED), so paving this one road outright is a real fraction of a world's object budget and buys nothing a hoed ribbon does not."
+   },
+   {
+    "prefab": "stone_floor_2x2",
+    "pieces": 206,
+    "zdo_cost": 206,
+    "pieces_per_m": 1.0,
+    "verdict": "206 ZDOs for 205 m of road. For comparison the whole of Hrafnheim is 1,366 persistent objects and Vangard is 34,871 (MEASURED), so paving this one road outright is a real fraction of a world's object budget and buys nothing a hoed ribbon does not."
+   }
+  ],
+  "totals": {
+   "legs": [
+    "meadows-farm -> early-dock",
+    "early-dock -> mountain-furnace-camp"
+   ],
+   "zdo_cost": 216,
+   "by_channel": {
+    "terrain": {
+     "items": 292,
+     "zdo": 0
+    },
+    "piece": {
+     "items": 57,
+     "zdo": 57
+    },
+    "blueprint": {
+     "items": 3,
+     "zdo": 159
+    }
+   },
+   "rcon_placeable": 33,
+   "blockers": []
+  }
+ }
+}

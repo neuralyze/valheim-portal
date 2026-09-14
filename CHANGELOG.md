@@ -295,6 +295,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A jumpstart character no longer wakes up in the sea, and the two halves of the system that let
+  it happen are now wired together. `tools/jumpstart/worlds/derive.py` copied the template's
+  `spawn:` block verbatim out of `placements.yaml`'s `spawn_points:`, which the placement solver
+  writes as a naive footprint-and-yaw offset with no terrain test at all, and nothing ever
+  compared the shipped coordinate against the placement it was derived from. Measured on
+  Ulfsland/`Pirate68`: the live template shipped `{x: -2187, y: 33, z: 2100}`, derived from a
+  site that had since been re-solved 4.5 km away, on terrain of 26.74 - 3.26 m BELOW Valheim's
+  water plane - and the operator swam. The coordinate the solver offered instead sampled 25.82,
+  4.2 m under, so regenerating from it would have made the bug worse. `derive.py spawn` now
+  chooses the coordinate itself: it probes Valheim's own `WorldGenerator` at 1 m through
+  `run_patchscan.sh` with full pregeneration (so rivers and lakes are in the heights, which the
+  8 m seedscan grid cannot see - it reports 30.17 at that same spawn), samples the INTEGER
+  coordinate that actually gets written rather than a cell centre half a metre away, and accepts
+  a point only if it clears the water plane by 2 m, holds 0.5 m of freeboard across a 4 m disc,
+  sits 6-120 m outside the blueprint's yaw-rotated footprint, and is joined to that footprint by
+  a metre-by-metre walk that never touches water and never steps more than 1.5 m. No provable
+  point means `spawn: []` and a recorded refusal, never a least-bad wet guess. The evidence lands
+  in a new generated `<preset>/spawn.yaml`, and `derive.py check` re-checks every point against
+  the CURRENT `solved` blocks with no server and no grid: when a re-solve moves a base it names
+  the preset, the spawn, where the base is now, how far it moved and the command to regenerate,
+  and it HOLDS the template rather than publishing it. All 13 Ulfsland placements now have a
+  spawn verified at +3.50 m to +78.85 m of freeboard, each re-confirmed by a second independent
+  generator boot agreeing to 0.005 m.
+- Sea level in `WorldGenerator.GetHeight` units is 30, not 0, and it is now written down where it
+  is used. `site_finder.WATER_LEVEL` was 0.0 - the ocean-FLOOR clamp mistaken for the surface -
+  which made `water_dist_m` measure the distance to 30-m-deep water and let 10 of 13 solved base
+  sites sit below the waterline while recording a pass. Three independent measurements are
+  recorded at `derive.SEA_LEVEL_M`: Swamp heights span 27.46..33.84 around a 29.84 median, Ocean
+  cells clamp at 4.00 (= 0.02 x 200, `GetBiome`'s ocean threshold, i.e. the floor), and in the
+  12,301-instance `ZoneSystem` dump every land location type floors at 30.50..31.11 because
+  Valheim places land locations 1 m above the water while `ShipWreck01..04` sit at 29.0..30.9.
+
 - A location a MOD places is named on the map again. Valheim 1.0 stores a location instance by
   prefab hash where 0.220 stored its name, so the map can only label what the prefab catalog can
   answer, and the catalog collected `*.dll` from the plugin roots plus the game's own two SoftRef
