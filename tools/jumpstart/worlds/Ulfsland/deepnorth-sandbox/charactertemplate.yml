@@ -9,7 +9,7 @@
 # REQUIRES ServerCharacters 1.4.17 or newer. 1.4.16 must NOT be
 # installed: it hard-fails on Valheim 1.0.12 and ServerSync rejects it against a
 # 1.4.17 server.
-# STATUS: STAGED_NOT_LIVE -- see world.yaml servercharacters.status_note.
+# STATUS: LIVE -- see world.yaml servercharacters.status_note.
 #
 # Install: copy this file to
 #   profiles/ulfsland-dn/manual-mods/ServerCharacters/CharacterTemplate.yml
@@ -153,9 +153,17 @@ items:
 # 32 of 32 inventory slots used.
 # Summed across buckets (the preset lists these twice, and `items` is a map): CapeDeepNorth, FrostCore, GrapplingHook, MeadFrostResist, SealHide
 spawn:
-  - {x: -784, y: 19, z: -668}
-  - {x: -100, y: 15, z: -405}
-  - {x: -1400, y: 12, z: -818}
-  - {x: -1400, y: 12, z: -818}
+  - {x: 768, y: 37, z: 1146}
+  - {x: 700, y: 36, z: -55}
+  - {x: -262, y: 39, z: 203}
+  - {x: -262, y: 39, z: 203}
 # Last entry is a deliberate duplicate: selection is Random.Range(0, count - 1),
 # whose upper bound is exclusive, so without it the real last point is dead.
+# MEASURED against Valheim's own generator at 1 m, water plane y=30:
+#   (768, 37, 1146)  ground 35.49 = +5.49 m over water, 6.6 m outside complete-station-hub's footprint (31.1 m from its centre),
+#     dry across a 4 m disc (min +4.31 m) and dry every metre of the 6.6 m walk to it.
+#   (700, 36, -55)  ground 34.1 = +4.1 m over water, 13.9 m outside sandbox-harbour's footprint (39.3 m from its centre),
+#     dry across a 4 m disc (min +2.72 m) and dry every metre of the 13.9 m walk to it.
+#   (-262, 39, 203)  ground 37.09 = +7.09 m over water, 6.0 m outside sandbox-portal-hub's footprint (12.0 m from its centre),
+#     dry across a 4 m disc (min +5.47 m) and dry every metre of the 6.0 m walk to it.
+# Evidence: spawn.yaml. Re-verify: derive.py spawn Ulfsland

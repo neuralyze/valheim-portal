@@ -5,7 +5,7 @@
   "format": "blueprint",
   "bytes": 3177629,
   "name": "citadel",
-  "creator": "\u041f\u0438\u043f\u043a\u0438\u043d",
+  "creator": "Пипкин",
   "description": "\"\"",
   "category": "Blueprints",
   "coordinates": "",
@@ -77,7 +77,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "citadel.blueprint",
@@ -85,7 +88,7 @@
   "format": "blueprint",
   "bytes": 3177629,
   "name": "citadel",
-  "creator": "\u041f\u0438\u043f\u043a\u0438\u043d",
+  "creator": "Пипкин",
   "description": "\"\"",
   "category": "Blueprints",
   "coordinates": "",
@@ -157,7 +160,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "vcastle.blueprint",
@@ -165,7 +171,7 @@
   "format": "blueprint",
   "bytes": 2666376,
   "name": "vcastle",
-  "creator": "\u041f\u0438\u043f\u043a\u0438\u043d",
+  "creator": "Пипкин",
   "description": "\"\"",
   "category": "Blueprints",
   "coordinates": "",
@@ -297,7 +303,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_megaCastle.blueprint",
@@ -501,7 +510,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "meadhall.blueprint",
@@ -723,7 +735,10 @@
   "missing_pieces": 2,
   "missing_pct": 0.01,
   "mod_pieces": 0,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "gold_castle.blueprint",
@@ -731,7 +746,7 @@
   "format": "blueprint",
   "bytes": 1764543,
   "name": "gold_castle",
-  "creator": "\u041f\u0438\u043f\u043a\u0438\u043d",
+  "creator": "Пипкин",
   "description": "\"\"",
   "category": "Blueprints",
   "coordinates": "",
@@ -817,7 +832,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "gold_castle.blueprint",
@@ -825,7 +843,7 @@
   "format": "blueprint",
   "bytes": 1764543,
   "name": "gold_castle",
-  "creator": "\u041f\u0438\u043f\u043a\u0438\u043d",
+  "creator": "Пипкин",
   "description": "\"\"",
   "category": "Blueprints",
   "coordinates": "",
@@ -911,7 +929,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "berserkers-keep.vbuild",
@@ -1003,7 +1024,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "berserkers-keep.vbuild",
@@ -1095,7 +1119,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "fortress.blueprint",
@@ -1235,7 +1262,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-shadowstone-fortress.blueprint",
@@ -1248,8 +1278,8 @@
   "category": "Blueprints",
   "coordinates": "",
   "center_piece": "",
-  "pieces": 8284,
-  "distinct_prefabs": 87,
+  "pieces": 8283,
+  "distinct_prefabs": 86,
   "footprint_xzy": [
    135.8,
    129.4,
@@ -1259,7 +1289,6 @@
   "terrain_height_rows": 0,
   "terrain_paint_rows": 0,
   "prefab_counts": {
-   "square": 1,
    "Pickable_Branch": 30,
    "Pickable_Stone": 111,
    "Pickable_Flint": 5,
@@ -1365,7 +1394,12 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 1,
+  "unknown_sections": [
+   "#Terrain"
+  ],
+  "legacy_terrain_format": false
  },
  {
   "file": "arty-dragontavern.blueprint",
@@ -1461,7 +1495,10 @@
   "missing_pieces": 7,
   "missing_pct": 0.1,
   "mod_pieces": 7,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_black_house_full.blueprint",
@@ -1619,7 +1656,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "cozy_house.blueprint",
@@ -1627,7 +1667,7 @@
   "format": "blueprint",
   "bytes": 546483,
   "name": "cozy_house",
-  "creator": "\u041f\u0438\u043f\u043a\u0438\u043d",
+  "creator": "Пипкин",
   "description": "\"\"",
   "category": "Blueprints",
   "coordinates": "",
@@ -1760,7 +1800,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "cozy_house.blueprint",
@@ -1768,7 +1811,7 @@
   "format": "blueprint",
   "bytes": 546483,
   "name": "cozy_house",
-  "creator": "\u041f\u0438\u043f\u043a\u0438\u043d",
+  "creator": "Пипкин",
   "description": "\"\"",
   "category": "Blueprints",
   "coordinates": "",
@@ -1901,7 +1944,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "magic-tower.blueprint",
@@ -1958,15 +2004,18 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "15643-Valheimian.blueprint",
   "path": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/15643-Valheimian.blueprint",
   "format": "blueprint",
   "bytes": 676527,
-  "name": "\u041d\u043e\u043a\u0441\u0442\u0435\u043b\u043b",
-  "creator": "\u0410\u0437\u0443\u0440\u0430 \u0422\u0438\u0440\u0430\u044d\u0446\u0443",
+  "name": "Нокстелл",
+  "creator": "Азура Тираэцу",
   "description": "\"\"",
   "category": "RAIZEN",
   "coordinates": "",
@@ -1978,7 +2027,7 @@
    60.3,
    10102.5
   ],
-  "snap_points": 9,
+  "snap_points": 7,
   "terrain_height_rows": 0,
   "terrain_paint_rows": 0,
   "prefab_counts": {
@@ -2190,7 +2239,12 @@
   "missing_pieces": 31,
   "missing_pct": 0.54,
   "mod_pieces": 0,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 2,
+  "unknown_sections": [
+   "#Terrain"
+  ],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_black_house_light.blueprint",
@@ -2326,7 +2380,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_capitoliy.blueprint",
@@ -2422,7 +2479,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "arty-magetower.blueprint",
@@ -2525,7 +2585,10 @@
   "missing_pieces": 18,
   "missing_pct": 0.36,
   "mod_pieces": 13,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "arty-magetower.blueprint",
@@ -2628,7 +2691,10 @@
   "missing_pieces": 18,
   "missing_pct": 0.36,
   "mod_pieces": 13,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "shop.blueprint",
@@ -2861,7 +2927,10 @@
   "missing_pieces": 25,
   "missing_pct": 0.61,
   "mod_pieces": 0,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_Minicastle.blueprint",
@@ -2977,7 +3046,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "skybound.blueprint",
@@ -3109,7 +3181,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "jaik-mistvale-keep.blueprint",
@@ -3221,7 +3296,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "jaik-mistvale-keep.blueprint",
@@ -3333,7 +3411,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "you-died-ocean-base.blueprint",
@@ -3509,7 +3590,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-test.blueprint",
@@ -3575,7 +3659,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_Minicastle.blueprint",
@@ -3688,7 +3775,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "forge.blueprint",
@@ -3813,7 +3903,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "forge (copy 1).blueprint",
@@ -3938,7 +4031,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "forge.blueprint",
@@ -4063,7 +4159,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-house33.blueprint",
@@ -4076,18 +4175,17 @@
   "category": "Blueprints",
   "coordinates": "",
   "center_piece": "",
-  "pieces": 2950,
-  "distinct_prefabs": 81,
+  "pieces": 2949,
+  "distinct_prefabs": 80,
   "footprint_xzy": [
    29.7,
-   47.2,
+   29.1,
    18.0
   ],
   "snap_points": 0,
   "terrain_height_rows": 0,
   "terrain_paint_rows": 0,
   "prefab_counts": {
-   "square": 1,
    "wood_stair": 16,
    "stone_wall_2x1": 74,
    "stone_floor_2x2": 14,
@@ -4181,7 +4279,12 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 1,
+  "unknown_sections": [
+   "#Terrain"
+  ],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-house33.blueprint",
@@ -4194,18 +4297,17 @@
   "category": "Blueprints",
   "coordinates": "",
   "center_piece": "",
-  "pieces": 2950,
-  "distinct_prefabs": 81,
+  "pieces": 2949,
+  "distinct_prefabs": 80,
   "footprint_xzy": [
    29.7,
-   47.2,
+   29.1,
    18.0
   ],
   "snap_points": 0,
   "terrain_height_rows": 0,
   "terrain_paint_rows": 0,
   "prefab_counts": {
-   "square": 1,
    "wood_stair": 16,
    "stone_wall_2x1": 74,
    "stone_floor_2x2": 14,
@@ -4299,7 +4401,12 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 1,
+  "unknown_sections": [
+   "#Terrain"
+  ],
+  "legacy_terrain_format": false
  },
  {
   "file": "Black_Viking_forteca_starting_base.blueprint",
@@ -4384,7 +4491,10 @@
   "missing_pieces": 21,
   "missing_pct": 0.8,
   "mod_pieces": 1,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_mag-tower.blueprint",
@@ -4446,21 +4556,24 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "14464-Valheimian.blueprint",
   "path": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/14464-Valheimian.blueprint",
   "format": "blueprint",
   "bytes": 339266,
-  "name": "\u0414\u041e\u041c \u0414\u0412\u0415\u0420\u0413\u041e\u0412",
-  "creator": "\u0422\u043e\u0440\u043a\u0435\u043b\u044c",
+  "name": "ДОМ ДВЕРГОВ",
+  "creator": "Торкель",
   "description": "\"\"",
   "category": "Blueprints",
   "coordinates": "",
   "center_piece": "",
-  "pieces": 2330,
-  "distinct_prefabs": 101,
+  "pieces": 2329,
+  "distinct_prefabs": 100,
   "footprint_xzy": [
    37.0,
    37.5,
@@ -4470,7 +4583,6 @@
   "terrain_height_rows": 0,
   "terrain_paint_rows": 0,
   "prefab_counts": {
-   "circle": 1,
    "TreasureChest_mountaincave": 488,
    "Rock_4": 6,
    "vines": 222,
@@ -4589,7 +4701,12 @@
   "missing_pieces": 2,
   "missing_pct": 0.09,
   "mod_pieces": 0,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 1,
+  "unknown_sections": [
+   "#Terrain"
+  ],
+  "legacy_terrain_format": false
  },
  {
   "file": "gnome_house.blueprint",
@@ -4602,8 +4719,8 @@
   "category": "Blueprints",
   "coordinates": "",
   "center_piece": "",
-  "pieces": 2330,
-  "distinct_prefabs": 101,
+  "pieces": 2329,
+  "distinct_prefabs": 100,
   "footprint_xzy": [
    37.0,
    37.5,
@@ -4613,7 +4730,6 @@
   "terrain_height_rows": 0,
   "terrain_paint_rows": 0,
   "prefab_counts": {
-   "circle": 1,
    "TreasureChest_mountaincave": 488,
    "Rock_4": 6,
    "vines": 222,
@@ -4732,7 +4848,12 @@
   "missing_pieces": 2,
   "missing_pct": 0.09,
   "mod_pieces": 0,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 1,
+  "unknown_sections": [
+   "#Terrain"
+  ],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_Capitol.blueprint",
@@ -4803,7 +4924,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-portaaoo.blueprint",
@@ -4868,7 +4992,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "dock.blueprint",
@@ -4954,7 +5081,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "dock.blueprint",
@@ -5040,7 +5170,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "BjOrN_blueprint001.blueprint",
@@ -5142,7 +5275,10 @@
   "missing_pieces": 1,
   "missing_pct": 0.05,
   "mod_pieces": 1,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "BjOrN_blueprint001.blueprint",
@@ -5244,7 +5380,10 @@
   "missing_pieces": 1,
   "missing_pct": 0.05,
   "mod_pieces": 1,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "deardly-casa-drly.blueprint",
@@ -5253,7 +5392,7 @@
   "bytes": 218734,
   "name": "Casa DRLY",
   "creator": "Deardly",
-  "description": "\"Deardly Build\u00b4s\"",
+  "description": "\"Deardly Build´s\"",
   "category": "Deardly",
   "coordinates": "",
   "center_piece": "",
@@ -5410,7 +5549,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "deardly-casa-drly.blueprint",
@@ -5419,7 +5561,7 @@
   "bytes": 218734,
   "name": "Casa DRLY",
   "creator": "Deardly",
-  "description": "\"Deardly Build\u00b4s\"",
+  "description": "\"Deardly Build´s\"",
   "category": "Deardly",
   "coordinates": "",
   "center_piece": "",
@@ -5576,7 +5718,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Ultimate_OutPost.blueprint",
@@ -5713,7 +5858,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-3.blueprint",
@@ -5771,7 +5919,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "small_long_house.blueprint",
@@ -5779,7 +5930,7 @@
   "format": "blueprint",
   "bytes": 131305,
   "name": "small_long_house",
-  "creator": "\u041f\u0438\u043f\u043a\u0438\u043d",
+  "creator": "Пипкин",
   "description": "\"\"",
   "category": "Blueprints",
   "coordinates": "",
@@ -5857,7 +6008,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "drake-lighthouse.blueprint",
@@ -5918,7 +6072,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "drake-lighthouse.blueprint",
@@ -5979,7 +6136,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "fox-0123456.blueprint",
@@ -6080,7 +6240,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "fox-0123456.blueprint",
@@ -6181,7 +6344,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "s-ren-dockhouse.blueprint",
@@ -6189,7 +6355,7 @@
   "format": "blueprint",
   "bytes": 101856,
   "name": "Dockhouse",
-  "creator": "S\u00f6ren",
+  "creator": "Sören",
   "description": "\"Dock with Signal Fire.\\n4-6 Big Ships.\\nNo Plains-Material used.\"",
   "category": "Blueprints",
   "coordinates": "",
@@ -6265,7 +6431,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "smallstarthome.blueprint",
@@ -6273,7 +6442,7 @@
   "format": "blueprint",
   "bytes": 78468,
   "name": "SmallStartHomeFinal",
-  "creator": "\u0425\u0435\u043b\u044c\u0441",
+  "creator": "Хельс",
   "description": "\"\"",
   "category": "Blueprints",
   "coordinates": "",
@@ -6399,7 +6568,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_Bone-dragon.blueprint",
@@ -6469,7 +6641,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "halvar-master-refinery.blueprint",
@@ -6557,7 +6732,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-ponte-plus.blueprint",
@@ -6577,7 +6755,7 @@
    27.1,
    19.0
   ],
-  "snap_points": 4,
+  "snap_points": 2,
   "terrain_height_rows": 0,
   "terrain_paint_rows": 0,
   "prefab_counts": {
@@ -6602,7 +6780,12 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 2,
+  "unknown_sections": [
+   "#Terrain"
+  ],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-ponte-plus.blueprint",
@@ -6622,7 +6805,7 @@
    27.1,
    19.0
   ],
-  "snap_points": 4,
+  "snap_points": 2,
   "terrain_height_rows": 0,
   "terrain_paint_rows": 0,
   "prefab_counts": {
@@ -6647,7 +6830,12 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 2,
+  "unknown_sections": [
+   "#Terrain"
+  ],
+  "legacy_terrain_format": false
  },
  {
   "file": "salty-dick-cottage-final.blueprint",
@@ -6735,7 +6923,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "bridge.vbuild",
@@ -6790,7 +6981,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-22.blueprint",
@@ -6851,7 +7045,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "long-bridge.blueprint",
@@ -6902,7 +7099,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "long-bridge.blueprint",
@@ -6953,7 +7153,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-2.blueprint",
@@ -7012,7 +7215,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "altar.blueprint",
@@ -7076,7 +7282,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "altar.blueprint",
@@ -7140,7 +7349,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house13.blueprint",
@@ -7208,7 +7420,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "aodi-skardvakt-the-black-tower.blueprint",
@@ -7217,22 +7432,21 @@
   "bytes": 36861,
   "name": "Skardvakt - The Black Tower",
   "creator": "Aodi",
-  "description": "\"Skardvakt \u2014 The Black Watchtower\\nby Aodi\\n\\nCut from black marble and crowned with fire, Skardvakt rises like a forgotten sentinel over the land. Its circular tower, rimmed with sharpened spires, stands as both warning and monument\u2014daring the night to come closer.\\n\\nA bonfire burns at its peak, casting light across the treetops and shadows down the walls. Beneath the flame, the structure offers no comfort\u2014only presence, silence, and the suggestion that someone\u2014or something\u2014once stood watch here.\\n\\nWhether used as a signal tower, landmark, or quiet dare to the gods, Skardvakt endures.\\n\\nStand tall. Burn bright. Aodi passed through here.\"",
+  "description": "\"Skardvakt — The Black Watchtower\\nby Aodi\\n\\nCut from black marble and crowned with fire, Skardvakt rises like a forgotten sentinel over the land. Its circular tower, rimmed with sharpened spires, stands as both warning and monument—daring the night to come closer.\\n\\nA bonfire burns at its peak, casting light across the treetops and shadows down the walls. Beneath the flame, the structure offers no comfort—only presence, silence, and the suggestion that someone—or something—once stood watch here.\\n\\nWhether used as a signal tower, landmark, or quiet dare to the gods, Skardvakt endures.\\n\\nStand tall. Burn bright. Aodi passed through here.\"",
   "category": "Blueprints",
   "coordinates": "",
   "center_piece": "",
-  "pieces": 366,
-  "distinct_prefabs": 8,
+  "pieces": 358,
+  "distinct_prefabs": 7,
   "footprint_xzy": [
    9.3,
    9.3,
-   13.5
+   10.5
   ],
   "snap_points": 0,
   "terrain_height_rows": 0,
   "terrain_paint_rows": 0,
   "prefab_counts": {
-   "circle": 8,
    "blackmarble_1x1": 267,
    "wood_beam_1": 1,
    "wood_beam": 1,
@@ -7253,7 +7467,12 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 8,
+  "unknown_sections": [
+   "#Terrain"
+  ],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_forge1.blueprint",
@@ -7322,7 +7541,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house2.blueprint",
@@ -7382,7 +7604,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house5.blueprint",
@@ -7452,7 +7677,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house11.blueprint",
@@ -7519,7 +7747,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_marketmarket.blueprint",
@@ -7590,7 +7821,10 @@
   "missing_pieces": 1,
   "missing_pct": 0.39,
   "mod_pieces": 0,
-  "verdict": "PLACES_WITH_GAPS"
+  "verdict": "PLACES_WITH_GAPS",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house1.blueprint",
@@ -7653,7 +7887,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house6.blueprint",
@@ -7718,7 +7955,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house10.blueprint",
@@ -7781,7 +8021,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "creator-looney-swamp-starter-home.blueprint",
@@ -7857,7 +8100,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "creator-looney-swamp-starter-home.blueprint",
@@ -7933,7 +8179,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house12.blueprint",
@@ -7995,7 +8244,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house3.blueprint",
@@ -8055,7 +8307,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "hiccup-simplewoodbeambridge.blueprint",
@@ -8105,7 +8360,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "hiccup-simplewoodbeambridge.blueprint",
@@ -8155,7 +8413,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "god-o.blueprint",
@@ -8199,7 +8460,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house4.blueprint",
@@ -8260,7 +8524,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house9.blueprint",
@@ -8317,7 +8584,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Portal14.vbuild",
@@ -8366,7 +8636,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Portal14.vbuild",
@@ -8415,7 +8688,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "wagon-camp.blueprint",
@@ -8487,7 +8763,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house8.blueprint",
@@ -8547,7 +8826,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_house7.blueprint",
@@ -8604,7 +8886,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Portal13.vbuild",
@@ -8652,7 +8937,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Portal13.vbuild",
@@ -8700,7 +8988,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Portal11.vbuild",
@@ -8746,7 +9037,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Portal11.vbuild",
@@ -8792,7 +9086,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Portal15.vbuild",
@@ -8838,7 +9135,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Portal15.vbuild",
@@ -8884,7 +9184,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Portal12.vbuild",
@@ -8928,7 +9231,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "Portal12.vbuild",
@@ -8972,7 +9278,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "speeds-bridge2.blueprint",
@@ -9012,7 +9321,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "PLACES_CLEAN"
+  "verdict": "PLACES_CLEAN",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_Owl-tree_house.blueprint",
@@ -9048,7 +9360,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_rampart1.blueprint",
@@ -9084,7 +9399,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_stable.blueprint",
@@ -9120,7 +9438,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "PuP_tavern.blueprint",
@@ -9156,7 +9477,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "SerpentShip.blueprint",
@@ -9192,7 +9516,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "SerpentShip_Empty.blueprint",
@@ -9228,7 +9555,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "ragnar-warehouse.blueprint",
@@ -9264,7 +9594,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "s-ren-dockhouse.blueprint",
@@ -9300,7 +9633,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "salty-dick-cottage-final.blueprint",
@@ -9336,7 +9672,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "salty-dick-mordach-castle-final.blueprint",
@@ -9372,7 +9711,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "salty-dick-tower-test.blueprint",
@@ -9408,7 +9750,10 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  },
  {
   "file": "serpent.blueprint",
@@ -9444,6 +9789,9 @@
   "missing_pieces": 0,
   "missing_pct": 0.0,
   "mod_pieces": 0,
-  "verdict": "EMPTY"
+  "verdict": "EMPTY",
+  "discarded_rows": 0,
+  "unknown_sections": [],
+  "legacy_terrain_format": false
  }
 ]

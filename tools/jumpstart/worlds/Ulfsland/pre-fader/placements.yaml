@@ -6,10 +6,24 @@ owner: BlueprintHunt
 rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
   calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
   seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
-coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
-  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
-  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
-  exactly onto y.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGenerator.GetHeight` units.
+  Valheim''s WATER PLANE IS y = 30, not 0 -- these heights are absolute, not relative to the surface.
+  MEASURED on Pirate68: Ocean cells clamp at max 4.00 (the ocean floor, ~26 m down), Swamp spans 27.46..33.84
+  straddling 30, and every land location type in the ZoneSystem dump floors at 30.50..31.11 because Valheim
+  places land locations with minAltitude 1. `freeboard_m` in each solved block is the metres the footprint''s
+  LOWEST cell clears y=30 by, measured on a 1 m river-inclusive sample; negative means part of the pad
+  is under water. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is
+  dropped exactly onto y.'
+constraint_note: 'Constraints come in two classes and the solver treats them differently. HARD -- biome,
+  min_biome_purity, min_height_m (freeboard over the WHOLE footprint above the y=30 water plane), location_clearance_m,
+  coastal/coastal_within_m, within_m, and require_overland when declared -- are things no amount of building
+  fixes, so a site failing one is rejected and the miss is recorded in `violations` with a `remedy` saying
+  what would work instead. COSTED -- max_flat_m -- is terrain work: every placement here sets `flatten_required:
+  true` and is placed from the ulfsland-admin seat with Infinity Hammer and World Edit Commands, both
+  of which level ground. So max_flat_m is the tolerance that defines a CHEAP site, not a gate, and `flatten_cost`
+  reports the bill (cut/fill in cubic metres, mean metres moved per square metre, worst single cut and
+  fill) at the resolution named in its resolution_m. Requiring natural flatness rejected 8 of 13 placements
+  on Pirate68 for ground a hoe fixes.'
 resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
   Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
   all of them.
@@ -37,25 +51,80 @@ placements:
     within_m: 2000
   rotation:
     units: euler_degrees_yxz
-    yaw: 180
+    yaw: 90
     pitch: 0
     roll: 0
-    facing: shielded face toward the Ashlands interior, open face to the sea approach
+    facing: 'shielded face toward the Ashlands interior, open face to the sea approach. yaw 90, corrected
+      from the inherited 180: MEASURED bearing from the solved site to the anchor is 100 deg, so the old
+      yaw was 80 deg off and the building faced nothing it claims to.'
   flatten_required: true
   note: Grausten, ashwood and flametal forward base with black forge, eitr refinery, galdr table and artisan.
     Ashlands is hostile ground - this is a beachhead, not a home.
   solved:
     seed: Pirate68
-    x: 716.0
-    y: 11.8
-    z: -8284.0
-    flat_spread_m: 0.29
+    x: -4577.5
+    y: 38.18
+    z: -8218.5
+    freeboard_m: 2.0
+    flat_spread_m: 6.18
+    flat_resolution_m: 1.0
+    y_centre_m: 32.46
     biome_purity: 1.0
-    water_dist_m: 734.3
-    anchor: FaderLocation @ (-1024.0,48.3,-8768.0)
-    anchor_dist_m: 1806.0
-    nearest_location_m: 312.0
-    relaxation: exact
+    water_dist_m: 152.8
+    anchor: FaderLocation @ (-4032.0,39.2,-8320.0)
+    anchor_dist_m: 555.0
+    near_biome_dist_m: 0.0
+    footprint_orientation: 50.0 m along x by 50.0 m along z
+    nearest_location_m: 96.0
+    score: -0.048
+    scores:
+      flat: -0.765
+      anchor: 0.723
+      clearance: 0.595
+      purity: 1.0
+      water: 0.0
+      reach: 0.0
+    overland_from_spawn: false
+    satisfies_requirement: true
+    flatten_cost:
+      target_y: 33.51
+      cut_m3: 2456.9
+      fill_m3: 1095.8
+      moved_m3: 3552.7
+      mean_move_m: 1.366
+      rms_m: 1.765
+      max_cut_m: 4.67
+      max_fill_m: 1.51
+      resolution_m: 1.0
+      estimated: false
+    flat_spread_coarse_m: 6.36
+    flat_p5_p95_m: 5.22
+    refined_moved_m: 5.7
+    route_from_spawn:
+      reachable: false
+      straight_m: 9378.9
+      reason: different landmass -- needs a boat
+    route_to_anchor:
+      reachable: true
+      straight_m: 554.9
+      path_m: 615.8
+      detour: 1.11
+    flatten_floor:
+      chosen_spread_m: 6.18
+      pool_best_1m_spread_m: 6.18
+      candidates_measured_at_1m: 1
+      biome_coarse_floor_m: 5.52
+      verdict: 'at the floor of what was measured: the flattest of 1 candidates refined at 1 m, so the
+        earthwork is the character of this biome, footprint and radius rather than a poor pick'
+      note: biome_coarse_floor_m is a grid-aligned LOWER bound over every anchor instance and both footprint
+        orientations, not an achievable spread; compare the bill against pool_best_1m_spread_m.
+    facing_check:
+      faces: anchor
+      declared_yaw: 90.0
+      bearing_to_anchor: 100.5
+      error_deg: 10.5
+      best_cardinal_yaw: 90
+      verdict: declared yaw points at the anchor within 45 deg
   containers:
     by_prefab:
       piece_chest_blackmetal: 45
@@ -69,17 +138,92 @@ placements:
   solved_alternatives:
     TPTc3AIvfH:
       seed: TPTc3AIvfH
-      x: 1004.0
-      y: 8.07
-      z: -10004.0
-      flat_spread_m: 0.23
+      x: 3799.5
+      y: 30.63
+      z: -9051.5
+      freeboard_m: -0.58
+      flat_spread_m: 1.21
+      flat_resolution_m: 1.0
+      y_centre_m: 29.62
       biome_purity: 1.0
-      water_dist_m: 232.0
-      anchor: FaderLocation @ (1216.0,37.0,-8384.0)
-      anchor_dist_m: 1634.0
-      nearest_location_m: 348.0
-      relaxation: exact
-spawn_points:
-- - 716
-  - 13
-  - -8315
+      water_dist_m: 0.0
+      anchor: FaderLocation @ (3712.0,35.0,-9280.0)
+      anchor_dist_m: 245.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 50.0 m along x by 50.0 m along z
+      nearest_location_m: 102.0
+      score: 0.65
+      scores:
+        flat: 0.654
+        anchor: 0.959
+        clearance: 0.698
+        purity: 1.0
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: false
+      flatten_cost:
+        target_y: 29.68
+        cut_m3: 366.1
+        fill_m3: 120.7
+        moved_m3: 486.7
+        mean_move_m: 0.187
+        rms_m: 0.268
+        max_cut_m: 0.95
+        max_fill_m: 0.26
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 1.15
+      flat_p5_p95_m: 0.79
+      refined_moved_m: 3.5
+      violations:
+      - constraint: min_height_m
+        required: 1.0
+        actual: -0.58
+        over_by: 1.58
+      route_from_spawn:
+        reachable: false
+        straight_m: 9864.7
+        reason: different landmass -- needs a boat
+      route_to_anchor:
+        reachable: false
+        straight_m: 244.7
+        reason: different landmass -- needs a boat
+      relaxed:
+        opened:
+          min_height_m:
+            declared: 1.0
+            applied: -1.02
+            why: no dry footprint of this size exists in this seed
+          within_m:
+            declared: 2000.0
+            applied: 6000.0
+          min_biome_purity:
+            declared: 0.7
+            applied: 0.525
+        why: no site in this seed satisfies the requirement as declared; the search was widened into these
+          bounds and the site recorded is the one that misses the DECLARED requirement by the fewest metres.
+          `violations` states the remaining miss exactly.
+      freeboard_ceiling_m:
+        best_available_m: -0.52
+        dry_footprints_in_seed: 0
+        note: highest footprint-minimum freeboard this seed offers under every other declared constraint,
+          over every anchor instance, measured on the coarse grid. dry_footprints_in_seed is how many
+          grid-aligned footprints clear min_height_m at all. Zero means no dry pad of this size exists
+          here and the negative freeboard recorded above is forced, not chosen -- the base needs foundations
+          or a smaller footprint_m.
+      facing_check:
+        faces: anchor
+        declared_yaw: 90.0
+        bearing_to_anchor: 201.0
+        error_deg: 111.0
+        best_cardinal_yaw: 180
+        verdict: declared yaw is 111 deg off the anchor; bearing is 201
+      remedy:
+        largest_workable_footprint_m: 24
+        blueprint_hint: a blueprint whose footprint fits 24 m square satisfies every hard constraint here;
+          see tools/jumpstart/library/
+        min_height_m_needed: -0.57
+        foundations_note: 'the driest footprint this seed offers here is -0.52 m relative to the water
+          plane, so the pad is partly submerged wherever it goes: declare min_height_m at or below that
+          and build on foundations, or pick a smaller footprint_m'

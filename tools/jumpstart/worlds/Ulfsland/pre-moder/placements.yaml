@@ -6,10 +6,24 @@ owner: BlueprintHunt
 rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
   calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
   seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
-coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
-  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
-  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
-  exactly onto y.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGenerator.GetHeight` units.
+  Valheim''s WATER PLANE IS y = 30, not 0 -- these heights are absolute, not relative to the surface.
+  MEASURED on Pirate68: Ocean cells clamp at max 4.00 (the ocean floor, ~26 m down), Swamp spans 27.46..33.84
+  straddling 30, and every land location type in the ZoneSystem dump floors at 30.50..31.11 because Valheim
+  places land locations with minAltitude 1. `freeboard_m` in each solved block is the metres the footprint''s
+  LOWEST cell clears y=30 by, measured on a 1 m river-inclusive sample; negative means part of the pad
+  is under water. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is
+  dropped exactly onto y.'
+constraint_note: 'Constraints come in two classes and the solver treats them differently. HARD -- biome,
+  min_biome_purity, min_height_m (freeboard over the WHOLE footprint above the y=30 water plane), location_clearance_m,
+  coastal/coastal_within_m, within_m, and require_overland when declared -- are things no amount of building
+  fixes, so a site failing one is rejected and the miss is recorded in `violations` with a `remedy` saying
+  what would work instead. COSTED -- max_flat_m -- is terrain work: every placement here sets `flatten_required:
+  true` and is placed from the ulfsland-admin seat with Infinity Hammer and World Edit Commands, both
+  of which level ground. So max_flat_m is the tolerance that defines a CHEAP site, not a gate, and `flatten_cost`
+  reports the bill (cut/fill in cubic metres, mean metres moved per square metre, worst single cut and
+  fill) at the resolution named in its resolution_m. Requiring natural flatness rejected 8 of 13 placements
+  on Pirate68 for ground a hoe fixes.'
 resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
   Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
   all of them.
@@ -47,16 +61,261 @@ placements:
     Mountain sites are rarely flat - expect real hoe work.
   solved:
     seed: Pirate68
-    x: 1932.0
-    y: 127.92
-    z: -3068.0
-    flat_spread_m: 4.67
+    x: -7.5
+    y: 111.5
+    z: 3939.5
+    freeboard_m: 75.33
+    flat_spread_m: 6.17
+    flat_resolution_m: 1.0
+    y_centre_m: 111.08
     biome_purity: 1.0
-    water_dist_m: 249.9
-    anchor: Dragonqueen @ (1270.0,275.9,-2488.2)
-    anchor_dist_m: 880.0
-    nearest_location_m: 76.0
-    relaxation: max_flat x1.5, within x1.5
+    water_dist_m: 134.1
+    anchor: Dragonqueen @ (-137.5,203.5,3702.7)
+    anchor_dist_m: 270.0
+    near_biome_dist_m: 0.0
+    footprint_orientation: 40.0 m along x by 40.0 m along z
+    nearest_location_m: 178.0
+    score: 0.261
+    scores:
+      flat: -0.543
+      anchor: 0.775
+      clearance: 1.0
+      purity: 1.0
+      water: 0.0
+      reach: 1.0
+    overland_from_spawn: true
+    satisfies_requirement: true
+    flatten_cost:
+      target_y: 109.47
+      cut_m3: 679.0
+      fill_m3: 1102.4
+      moved_m3: 1781.4
+      mean_move_m: 1.06
+      rms_m: 1.309
+      max_cut_m: 2.03
+      max_fill_m: 4.14
+      resolution_m: 1.0
+      estimated: false
+    flat_spread_coarse_m: 4.36
+    flat_p5_p95_m: 4.06
+    refined_moved_m: 4.5
+    route_from_spawn:
+      reachable: true
+      straight_m: 3936.6
+      path_m: 4280.6
+      detour: 1.087
+    route_to_anchor:
+      reachable: true
+      straight_m: 270.1
+      path_m: 309.0
+      detour: 1.144
+    flatten_floor:
+      chosen_spread_m: 6.17
+      pool_best_1m_spread_m: 6.17
+      candidates_measured_at_1m: 64
+      biome_coarse_floor_m: 4.36
+      verdict: 'at the floor of what was measured: the flattest of 64 candidates refined at 1 m, so the
+        earthwork is the character of this biome, footprint and radius rather than a poor pick'
+      note: biome_coarse_floor_m is a grid-aligned LOWER bound over every anchor instance and both footprint
+        orientations, not an achievable spread; compare the bill against pool_best_1m_spread_m.
+    facing_check:
+      faces: anchor
+      declared_yaw: 180.0
+      bearing_to_anchor: 208.8
+      error_deg: 28.8
+      best_cardinal_yaw: 180
+      verdict: declared yaw points at the anchor within 45 deg
+    shortlist:
+    - x: -12.5
+      y: 117.8
+      z: 3857.5
+      freeboard_m: 80.56
+      flat_spread_m: 7.24
+      flat_resolution_m: 1.0
+      y_centre_m: 112.81
+      biome_purity: 1.0
+      water_dist_m: 207.7
+      anchor: Dragonqueen @ (-137.5,203.5,3702.7)
+      anchor_dist_m: 199.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 40.0 m along x by 40.0 m along z
+      nearest_location_m: 112.0
+      score: 0.136
+      scores:
+        flat: -0.809
+        anchor: 0.834
+        clearance: 0.863
+        purity: 1.0
+        water: 0.0
+        reach: 1.0
+      overland_from_spawn: true
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 113.46
+        cut_m3: 1401.3
+        fill_m3: 1109.9
+        moved_m3: 2511.2
+        mean_move_m: 1.494
+        rms_m: 1.733
+        max_cut_m: 4.34
+        max_fill_m: 2.9
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 5.22
+      flat_p5_p95_m: 5.1
+      refined_moved_m: 10.1
+    - x: -232.5
+      y: 119.98
+      z: 4604.5
+      freeboard_m: 82.78
+      flat_spread_m: 7.2
+      flat_resolution_m: 1.0
+      y_centre_m: 115.38
+      biome_purity: 1.0
+      water_dist_m: 215.0
+      anchor: Dragonqueen @ (-137.5,203.5,3702.7)
+      anchor_dist_m: 907.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 40.0 m along x by 40.0 m along z
+      nearest_location_m: 180.0
+      score: 0.039
+      scores:
+        flat: -0.8
+        anchor: 0.244
+        clearance: 1.0
+        purity: 1.0
+        water: 0.0
+        reach: 1.0
+      overland_from_spawn: true
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 115.26
+        cut_m3: 1249.3
+        fill_m3: 538.0
+        moved_m3: 1787.3
+        mean_move_m: 1.063
+        rms_m: 1.455
+        max_cut_m: 4.72
+        max_fill_m: 2.48
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 5.36
+      flat_p5_p95_m: 4.52
+      refined_moved_m: 3.5
+    - x: 1945.5
+      y: 128.35
+      z: -3065.5
+      freeboard_m: 90.77
+      flat_spread_m: 7.58
+      flat_resolution_m: 1.0
+      y_centre_m: 124.81
+      biome_purity: 1.0
+      water_dist_m: 153.9
+      anchor: Dragonqueen @ (1270.0,275.9,-2488.2)
+      anchor_dist_m: 889.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 40.0 m along x by 40.0 m along z
+      nearest_location_m: 90.0
+      score: -0.212
+      scores:
+        flat: -0.895
+        anchor: 0.26
+        clearance: 0.496
+        purity: 1.0
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 124.94
+        cut_m3: 734.4
+        fill_m3: 962.8
+        moved_m3: 1697.2
+        mean_move_m: 1.01
+        rms_m: 1.334
+        max_cut_m: 3.41
+        max_fill_m: 4.17
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 5.38
+      flat_p5_p95_m: 4.73
+      refined_moved_m: 3.5
+    - x: -198.5
+      y: 105.03
+      z: 4706.5
+      freeboard_m: 65.35
+      flat_spread_m: 9.68
+      flat_resolution_m: 1.0
+      y_centre_m: 100.74
+      biome_purity: 1.0
+      water_dist_m: 164.1
+      anchor: Dragonqueen @ (-137.5,203.5,3702.7)
+      anchor_dist_m: 1006.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 40.0 m along x by 40.0 m along z
+      nearest_location_m: 138.0
+      score: -0.256
+      scores:
+        flat: -1.42
+        anchor: 0.162
+        clearance: 1.0
+        purity: 1.0
+        water: 0.0
+        reach: 1.0
+      overland_from_spawn: true
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 99.8
+        cut_m3: 1106.0
+        fill_m3: 1068.6
+        moved_m3: 2174.6
+        mean_move_m: 1.294
+        rms_m: 1.673
+        max_cut_m: 5.23
+        max_fill_m: 4.45
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 6.19
+      flat_p5_p95_m: 5.85
+      refined_moved_m: 2.9
+    - x: 934.5
+      y: 119.83
+      z: -2139.5
+      freeboard_m: 80.94
+      flat_spread_m: 8.89
+      flat_resolution_m: 1.0
+      y_centre_m: 118.55
+      biome_purity: 1.0
+      water_dist_m: 205.1
+      anchor: Dragonqueen @ (1270.0,275.9,-2488.2)
+      anchor_dist_m: 484.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 40.0 m along x by 40.0 m along z
+      nearest_location_m: 103.0
+      score: -0.264
+      scores:
+        flat: -1.221
+        anchor: 0.597
+        clearance: 0.715
+        purity: 1.0
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 117.23
+        cut_m3: 877.4
+        fill_m3: 1290.2
+        moved_m3: 2167.6
+        mean_move_m: 1.289
+        rms_m: 1.691
+        max_cut_m: 2.59
+        max_fill_m: 6.29
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 5.54
+      flat_p5_p95_m: 5.54
+      refined_moved_m: 2.5
   containers:
     by_prefab:
       piece_chest_wood: 7
@@ -67,17 +326,257 @@ placements:
   solved_alternatives:
     TPTc3AIvfH:
       seed: TPTc3AIvfH
-      x: -620.0
-      y: 126.43
-      z: -972.0
-      flat_spread_m: 4.98
+      x: -4351.5
+      y: 108.99
+      z: -1872.5
+      freeboard_m: 73.56
+      flat_spread_m: 5.43
+      flat_resolution_m: 1.0
+      y_centre_m: 106.73
       biome_purity: 1.0
-      water_dist_m: 508.5
-      anchor: Dragonqueen @ (-397.9,235.0,-2165.9)
-      anchor_dist_m: 1214.0
-      nearest_location_m: 112.0
-      relaxation: max_flat x1.5, within x1.5
-spawn_points:
-- - 1932
-  - 129
-  - -3094
+      water_dist_m: 208.6
+      anchor: Dragonqueen @ (-4548.6,305.5,-1274.5)
+      anchor_dist_m: 630.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 40.0 m along x by 40.0 m along z
+      nearest_location_m: 143.0
+      score: 0.134
+      scores:
+        flat: -0.358
+        anchor: 0.475
+        clearance: 1.0
+        purity: 1.0
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 106.4
+        cut_m3: 599.3
+        fill_m3: 708.0
+        moved_m3: 1307.3
+        mean_move_m: 0.778
+        rms_m: 0.982
+        max_cut_m: 2.59
+        max_fill_m: 2.84
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 4.19
+      flat_p5_p95_m: 3.39
+      refined_moved_m: 4.9
+      route_from_spawn:
+        reachable: false
+        straight_m: 4616.3
+        reason: different landmass -- needs a boat
+      route_to_anchor:
+        reachable: true
+        straight_m: 629.7
+        path_m: 700.8
+        detour: 1.113
+      flatten_floor:
+        chosen_spread_m: 5.43
+        pool_best_1m_spread_m: 5.43
+        candidates_measured_at_1m: 64
+        biome_coarse_floor_m: 3.68
+        verdict: 'at the floor of what was measured: the flattest of 64 candidates refined at 1 m, so
+          the earthwork is the character of this biome, footprint and radius rather than a poor pick'
+        note: biome_coarse_floor_m is a grid-aligned LOWER bound over every anchor instance and both footprint
+          orientations, not an achievable spread; compare the bill against pool_best_1m_spread_m.
+      facing_check:
+        faces: anchor
+        declared_yaw: 180.0
+        bearing_to_anchor: 341.8
+        error_deg: 161.8
+        best_cardinal_yaw: 0
+        verdict: declared yaw is 162 deg off the anchor; bearing is 342
+      shortlist:
+      - x: -4221.5
+        y: 106.11
+        z: -1550.5
+        freeboard_m: 67.05
+        flat_spread_m: 9.05
+        flat_resolution_m: 1.0
+        y_centre_m: 104.42
+        biome_purity: 1.0
+        water_dist_m: 329.8
+        anchor: Dragonqueen @ (-4548.6,305.5,-1274.5)
+        anchor_dist_m: 428.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 40.0 m along x by 40.0 m along z
+        nearest_location_m: 103.0
+        score: -0.274
+        scores:
+          flat: -1.263
+          anchor: 0.643
+          clearance: 0.715
+          purity: 1.0
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 102.86
+          cut_m3: 1024.9
+          fill_m3: 1446.7
+          moved_m3: 2471.6
+          mean_move_m: 1.47
+          rms_m: 1.798
+          max_cut_m: 3.25
+          max_fill_m: 5.8
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 6.09
+        flat_p5_p95_m: 5.64
+        refined_moved_m: 2.9
+      - x: -4270.5
+        y: 128.1
+        z: -1899.5
+        freeboard_m: 88.36
+        flat_spread_m: 9.74
+        flat_resolution_m: 1.0
+        y_centre_m: 121.85
+        biome_purity: 1.0
+        water_dist_m: 164.7
+        anchor: Dragonqueen @ (-4548.6,305.5,-1274.5)
+        anchor_dist_m: 684.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 40.0 m along x by 40.0 m along z
+        nearest_location_m: 172.0
+        score: -0.359
+        scores:
+          flat: -1.434
+          anchor: 0.43
+          clearance: 1.0
+          purity: 1.0
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 123.45
+          cut_m3: 1306.5
+          fill_m3: 1456.7
+          moved_m3: 2763.3
+          mean_move_m: 1.644
+          rms_m: 2.006
+          max_cut_m: 4.65
+          max_fill_m: 5.08
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 7.67
+        flat_p5_p95_m: 6.64
+        refined_moved_m: 8.9
+      - x: -381.5
+        y: 123.74
+        z: -1651.5
+        freeboard_m: 82.69
+        flat_spread_m: 11.04
+        flat_resolution_m: 1.0
+        y_centre_m: 121.18
+        biome_purity: 1.0
+        water_dist_m: 328.9
+        anchor: Dragonqueen @ (-397.9,235.0,-2165.9)
+        anchor_dist_m: 515.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 40.0 m along x by 40.0 m along z
+        nearest_location_m: 89.0
+        score: -0.39
+        scores:
+          flat: -1.761
+          anchor: 0.571
+          clearance: 0.484
+          purity: 1.0
+          water: 0.0
+          reach: 1.0
+        overland_from_spawn: true
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 120.04
+          cut_m3: 1380.7
+          fill_m3: 2447.9
+          moved_m3: 3828.5
+          mean_move_m: 2.278
+          rms_m: 2.89
+          max_cut_m: 3.7
+          max_fill_m: 7.35
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 9.65
+        flat_p5_p95_m: 8.93
+        refined_moved_m: 1.6
+      - x: -4358.5
+        y: 108.22
+        z: -1940.5
+        freeboard_m: 67.75
+        flat_spread_m: 10.48
+        flat_resolution_m: 1.0
+        y_centre_m: 103.7
+        biome_purity: 1.0
+        water_dist_m: 158.4
+        anchor: Dragonqueen @ (-4548.6,305.5,-1274.5)
+        anchor_dist_m: 693.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 40.0 m along x by 40.0 m along z
+        nearest_location_m: 150.0
+        score: -0.444
+        scores:
+          flat: -1.619
+          anchor: 0.423
+          clearance: 1.0
+          purity: 1.0
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 103.19
+          cut_m3: 1318.7
+          fill_m3: 1842.3
+          moved_m3: 3161.1
+          mean_move_m: 1.88
+          rms_m: 2.315
+          max_cut_m: 5.03
+          max_fill_m: 5.44
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 11.25
+        flat_p5_p95_m: 7.37
+        refined_moved_m: 15.7
+      - x: -626.5
+        y: 129.93
+        z: -988.5
+        freeboard_m: 88.62
+        flat_spread_m: 11.31
+        flat_resolution_m: 1.0
+        y_centre_m: 125.72
+        biome_purity: 1.0
+        water_dist_m: 124.2
+        anchor: Dragonqueen @ (-397.9,235.0,-2165.9)
+        anchor_dist_m: 1199.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 40.0 m along x by 40.0 m along z
+        nearest_location_m: 116.0
+        score: -0.48
+        scores:
+          flat: -1.826
+          anchor: 0.0
+          clearance: 0.928
+          purity: 1.0
+          water: 0.0
+          reach: 1.0
+        overland_from_spawn: true
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 124.24
+          cut_m3: 2331.3
+          fill_m3: 1595.2
+          moved_m3: 3926.5
+          mean_move_m: 2.336
+          rms_m: 2.761
+          max_cut_m: 5.68
+          max_fill_m: 5.62
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 10.28
+        flat_p5_p95_m: 8.69
+        refined_moved_m: 6.5

@@ -6,10 +6,24 @@ owner: BlueprintHunt
 rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
   calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
   seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
-coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
-  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
-  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
-  exactly onto y.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGenerator.GetHeight` units.
+  Valheim''s WATER PLANE IS y = 30, not 0 -- these heights are absolute, not relative to the surface.
+  MEASURED on Pirate68: Ocean cells clamp at max 4.00 (the ocean floor, ~26 m down), Swamp spans 27.46..33.84
+  straddling 30, and every land location type in the ZoneSystem dump floors at 30.50..31.11 because Valheim
+  places land locations with minAltitude 1. `freeboard_m` in each solved block is the metres the footprint''s
+  LOWEST cell clears y=30 by, measured on a 1 m river-inclusive sample; negative means part of the pad
+  is under water. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is
+  dropped exactly onto y.'
+constraint_note: 'Constraints come in two classes and the solver treats them differently. HARD -- biome,
+  min_biome_purity, min_height_m (freeboard over the WHOLE footprint above the y=30 water plane), location_clearance_m,
+  coastal/coastal_within_m, within_m, and require_overland when declared -- are things no amount of building
+  fixes, so a site failing one is rejected and the miss is recorded in `violations` with a `remedy` saying
+  what would work instead. COSTED -- max_flat_m -- is terrain work: every placement here sets `flatten_required:
+  true` and is placed from the ulfsland-admin seat with Infinity Hammer and World Edit Commands, both
+  of which level ground. So max_flat_m is the tolerance that defines a CHEAP site, not a gate, and `flatten_cost`
+  reports the bill (cut/fill in cubic metres, mean metres moved per square metre, worst single cut and
+  fill) at the resolution named in its resolution_m. Requiring natural flatness rejected 8 of 13 placements
+  on Pirate68 for ground a hoe fixes.'
 resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
   Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
   all of them.
@@ -32,9 +46,16 @@ placements:
     min_biome_purity: 0.6
     coastal: false
     location_clearance_m: 60
-    feature: Mistlands ground solid enough for a black-marble build, Queen entrance as anchor
+    feature: Mistlands ground solid enough for a black-marble build, Queen entrance as anchor. footprint_xz_m
+      is the building's real rectangle (40.6 x 72.5 m) rather than an 80 m square, and it is not a waterside
+      trick - MEASURED, the square model reports a coarse flat floor of 25.06 m over 1474 hard-feasible
+      cells while the real rectangle reports 13.49 m over 8188. Mistlands is rugged, but 22946 m3 was
+      the square model's fault, not the biome's.
     near: Mistlands_DvergrBossEntrance1
     within_m: 1800
+    footprint_xz_m:
+    - 40.6
+    - 72.5
   rotation:
     units: euler_degrees_yxz
     yaw: 180
@@ -47,16 +68,260 @@ placements:
     the whole build - check the site is not on a ridge.'
   solved:
     seed: Pirate68
-    x: 5664.0
-    y: 11.48
-    z: -6344.0
-    flat_spread_m: 6.51
+    x: 5523.3
+    y: 77.5
+    z: -5631.7
+    freeboard_m: 25.41
+    flat_spread_m: 22.09
+    flat_resolution_m: 1.0
+    y_centre_m: 66.52
     biome_purity: 1.0
-    water_dist_m: 131.2
-    anchor: Mistlands_DvergrBossEntrance1 @ (6336.0,34.0,-2816.0)
-    anchor_dist_m: 3591.0
-    nearest_location_m: 174.0
-    relaxation: max_flat x2.0, within x2.0
+    water_dist_m: 112.3
+    anchor: Mistlands_DvergrBossEntrance1 @ (5504.0,47.0,-5824.0)
+    anchor_dist_m: 193.0
+    near_biome_dist_m: 0.0
+    footprint_orientation: 40.6 m along x by 72.5 m along z
+    nearest_location_m: 107.0
+    score: -1.683
+    scores:
+      flat: -4.524
+      anchor: 0.893
+      clearance: 0.782
+      purity: 1.0
+      water: 0.0
+      reach: 0.0
+    overland_from_spawn: false
+    satisfies_requirement: true
+    flatten_cost:
+      target_y: 61.95
+      cut_m3: 13511.2
+      fill_m3: 8038.8
+      moved_m3: 21549.9
+      mean_move_m: 3.285
+      rms_m: 4.24
+      max_cut_m: 15.55
+      max_fill_m: 6.54
+      resolution_m: 1.0
+      estimated: false
+    flat_spread_coarse_m: 16.01
+    flat_p5_p95_m: 13.24
+    refined_moved_m: 13.8
+    route_from_spawn:
+      reachable: false
+      straight_m: 7935.9
+      reason: different landmass -- needs a boat
+    route_to_anchor:
+      reachable: true
+      straight_m: 193.3
+      path_m: 192.0
+      detour: 0.993
+    flatten_floor:
+      chosen_spread_m: 22.09
+      pool_best_1m_spread_m: 22.09
+      candidates_measured_at_1m: 64
+      biome_coarse_floor_m: 13.49
+      verdict: 'at the floor of what was measured: the flattest of 64 candidates refined at 1 m, so the
+        earthwork is the character of this biome, footprint and radius rather than a poor pick'
+      note: biome_coarse_floor_m is a grid-aligned LOWER bound over every anchor instance and both footprint
+        orientations, not an achievable spread; compare the bill against pool_best_1m_spread_m.
+    facing_check:
+      faces: anchor
+      declared_yaw: 180.0
+      bearing_to_anchor: 185.7
+      error_deg: 5.7
+      best_cardinal_yaw: 180
+      verdict: declared yaw points at the anchor within 45 deg
+    shortlist:
+    - x: 5651.3
+      y: 89.0
+      z: -5687.7
+      freeboard_m: 34.41
+      flat_spread_m: 24.59
+      flat_resolution_m: 1.0
+      y_centre_m: 78.03
+      biome_purity: 0.624
+      water_dist_m: 216.1
+      anchor: Mistlands_DvergrBossEntrance1 @ (5504.0,47.0,-5824.0)
+      anchor_dist_m: 201.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 72.5 m along x by 40.6 m along z
+      nearest_location_m: 102.0
+      score: -2.051
+      scores:
+        flat: -5.147
+        anchor: 0.889
+        clearance: 0.694
+        purity: 0.059
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 73.72
+        cut_m3: 13154.7
+        fill_m3: 9640.6
+        moved_m3: 22795.3
+        mean_move_m: 3.474
+        rms_m: 4.592
+        max_cut_m: 15.28
+        max_fill_m: 9.31
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 17.14
+      flat_p5_p95_m: 16.66
+      refined_moved_m: 8.2
+    - x: 6627.3
+      y: 58.0
+      z: -3479.7
+      freeboard_m: 1.89
+      flat_spread_m: 26.11
+      flat_resolution_m: 1.0
+      y_centre_m: 36.96
+      biome_purity: 1.0
+      water_dist_m: 58.2
+      anchor: Mistlands_DvergrBossEntrance1 @ (6336.0,34.0,-2816.0)
+      anchor_dist_m: 725.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 72.5 m along x by 40.6 m along z
+      nearest_location_m: 103.0
+      score: -2.202
+      scores:
+        flat: -5.526
+        anchor: 0.597
+        clearance: 0.716
+        purity: 1.0
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 39.48
+        cut_m3: 13887.7
+        fill_m3: 9693.8
+        moved_m3: 23581.4
+        mean_move_m: 3.594
+        rms_m: 4.645
+        max_cut_m: 18.52
+        max_fill_m: 7.59
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 23.06
+      flat_p5_p95_m: 14.1
+      refined_moved_m: 8.5
+    - x: 6061.3
+      y: 94.5
+      z: -3942.7
+      freeboard_m: 36.0
+      flat_spread_m: 28.5
+      flat_resolution_m: 1.0
+      y_centre_m: 71.05
+      biome_purity: 0.945
+      water_dist_m: 224.1
+      anchor: Mistlands_DvergrBossEntrance1 @ (6336.0,34.0,-2816.0)
+      anchor_dist_m: 1160.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 40.6 m along x by 72.5 m along z
+      nearest_location_m: 128.0
+      score: -2.496
+      scores:
+        flat: -6.125
+        anchor: 0.356
+        clearance: 1.0
+        purity: 0.863
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 77.53
+        cut_m3: 18898.1
+        fill_m3: 17149.8
+        moved_m3: 36047.9
+        mean_move_m: 5.494
+        rms_m: 6.487
+        max_cut_m: 16.97
+        max_fill_m: 11.53
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 25.92
+      flat_p5_p95_m: 20.61
+      refined_moved_m: 9.7
+    - x: 2184.3
+      y: 71.58
+      z: 6575.3
+      freeboard_m: 13.01
+      flat_spread_m: 28.58
+      flat_resolution_m: 1.0
+      y_centre_m: 58.5
+      biome_purity: 1.0
+      water_dist_m: 56.0
+      anchor: Mistlands_DvergrBossEntrance1 @ (1536.0,35.0,7232.0)
+      anchor_dist_m: 923.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 40.6 m along x by 72.5 m along z
+      nearest_location_m: 105.0
+      score: -2.497
+      scores:
+        flat: -6.144
+        anchor: 0.487
+        clearance: 0.753
+        purity: 1.0
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 56.94
+        cut_m3: 19254.6
+        fill_m3: 17383.3
+        moved_m3: 36637.8
+        mean_move_m: 5.584
+        rms_m: 6.644
+        max_cut_m: 14.64
+        max_fill_m: 13.94
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 22.09
+      flat_p5_p95_m: 20.97
+      refined_moved_m: 12.2
+    - x: 5964.3
+      y: 100.5
+      z: -3814.7
+      freeboard_m: 41.45
+      flat_spread_m: 29.05
+      flat_resolution_m: 1.0
+      y_centre_m: 78.9
+      biome_purity: 1.0
+      water_dist_m: 313.6
+      anchor: Mistlands_DvergrBossEntrance1 @ (6336.0,34.0,-2816.0)
+      anchor_dist_m: 1066.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 40.6 m along x by 72.5 m along z
+      nearest_location_m: 104.0
+      score: -2.568
+      scores:
+        flat: -6.262
+        anchor: 0.408
+        clearance: 0.734
+        purity: 1.0
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 80.04
+        cut_m3: 22110.4
+        fill_m3: 12007.4
+        moved_m3: 34117.8
+        mean_move_m: 5.2
+        rms_m: 6.731
+        max_cut_m: 20.46
+        max_fill_m: 8.59
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 16.03
+      flat_p5_p95_m: 21.47
+      refined_moved_m: 10.7
   containers:
     by_prefab:
       piece_chest_blackmetal: 21
@@ -67,17 +332,257 @@ placements:
   solved_alternatives:
     TPTc3AIvfH:
       seed: TPTc3AIvfH
-      x: 1696.0
-      y: 8.95
-      z: 7680.0
-      flat_spread_m: 6.5
-      biome_purity: 1.0
-      water_dist_m: 277.7
-      anchor: Mistlands_DvergrBossEntrance1 @ (1728.0,44.9,6272.0)
-      anchor_dist_m: 1408.0
-      nearest_location_m: 308.0
-      relaxation: max_flat x2.0, within x2.0
-spawn_points:
-- - 5664
-  - 13
-  - -6390
+      x: 6176.3
+      y: 103.5
+      z: -575.7
+      freeboard_m: 50.23
+      flat_spread_m: 23.27
+      flat_resolution_m: 1.0
+      y_centre_m: 81.2
+      biome_purity: 0.667
+      water_dist_m: 224.1
+      anchor: Mistlands_DvergrBossEntrance1 @ (7360.0,34.5,-1536.0)
+      anchor_dist_m: 1524.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 72.5 m along x by 40.6 m along z
+      nearest_location_m: 114.0
+      score: -2.016
+      scores:
+        flat: -4.817
+        anchor: 0.153
+        clearance: 0.902
+        purity: 0.166
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 87.86
+        cut_m3: 15813.7
+        fill_m3: 12448.1
+        moved_m3: 28261.8
+        mean_move_m: 4.308
+        rms_m: 5.148
+        max_cut_m: 15.64
+        max_fill_m: 7.63
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 18.01
+      flat_p5_p95_m: 16.1
+      refined_moved_m: 12.5
+      route_from_spawn:
+        reachable: false
+        straight_m: 6332.7
+        reason: different landmass -- needs a boat
+      route_to_anchor:
+        reachable: true
+        straight_m: 1524.2
+        path_m: 1848.6
+        detour: 1.213
+      flatten_floor:
+        chosen_spread_m: 23.27
+        pool_best_1m_spread_m: 23.27
+        candidates_measured_at_1m: 64
+        biome_coarse_floor_m: 13.16
+        verdict: 'at the floor of what was measured: the flattest of 64 candidates refined at 1 m, so
+          the earthwork is the character of this biome, footprint and radius rather than a poor pick'
+        note: biome_coarse_floor_m is a grid-aligned LOWER bound over every anchor instance and both footprint
+          orientations, not an achievable spread; compare the bill against pool_best_1m_spread_m.
+      facing_check:
+        faces: anchor
+        declared_yaw: 180.0
+        bearing_to_anchor: 129.1
+        error_deg: 50.9
+        best_cardinal_yaw: 90
+        verdict: declared yaw is 51 deg off the anchor; bearing is 129
+      shortlist:
+      - x: -7800.7
+        y: 99.44
+        z: 9.3
+        freeboard_m: 45.86
+        flat_spread_m: 23.58
+        flat_resolution_m: 1.0
+        y_centre_m: 95.14
+        biome_purity: 0.6
+        water_dist_m: 184.7
+        anchor: Mistlands_DvergrBossEntrance1 @ (-6784.0,41.0,-1280.0)
+        anchor_dist_m: 1642.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 40.6 m along x by 72.5 m along z
+        nearest_location_m: 103.0
+        score: -2.099
+        scores:
+          flat: -4.894
+          anchor: 0.088
+          clearance: 0.713
+          purity: 0.0
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 90.45
+          cut_m3: 13469.1
+          fill_m3: 21437.1
+          moved_m3: 34906.3
+          mean_move_m: 5.32
+          rms_m: 6.355
+          max_cut_m: 8.99
+          max_fill_m: 14.59
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 24.18
+        flat_p5_p95_m: 19.52
+        refined_moved_m: 4.3
+      - x: -6784.7
+        y: 62.0
+        z: -1157.7
+        freeboard_m: 4.69
+        flat_spread_m: 27.31
+        flat_resolution_m: 1.0
+        y_centre_m: 54.5
+        biome_purity: 1.0
+        water_dist_m: 89.4
+        anchor: Mistlands_DvergrBossEntrance1 @ (-6784.0,41.0,-1280.0)
+        anchor_dist_m: 122.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 40.6 m along x by 72.5 m along z
+        nearest_location_m: 102.0
+        score: -2.273
+        scores:
+          flat: -5.828
+          anchor: 0.932
+          clearance: 0.695
+          purity: 1.0
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 49.82
+          cut_m3: 10283.7
+          fill_m3: 13290.3
+          moved_m3: 23574.0
+          mean_move_m: 3.593
+          rms_m: 4.619
+          max_cut_m: 12.18
+          max_fill_m: 15.13
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 18.55
+        flat_p5_p95_m: 15.96
+        refined_moved_m: 5.0
+      - x: -6620.7
+        y: 73.0
+        z: 10.3
+        freeboard_m: 16.4
+        flat_spread_m: 26.6
+        flat_resolution_m: 1.0
+        y_centre_m: 59.4
+        biome_purity: 0.736
+        water_dist_m: 136.9
+        anchor: Mistlands_DvergrBossEntrance1 @ (-6784.0,41.0,-1280.0)
+        anchor_dist_m: 1301.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 40.6 m along x by 72.5 m along z
+        nearest_location_m: 102.0
+        score: -2.376
+        scores:
+          flat: -5.651
+          anchor: 0.277
+          clearance: 0.7
+          purity: 0.34
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 52.13
+          cut_m3: 18314.9
+          fill_m3: 5050.4
+          moved_m3: 23365.3
+          mean_move_m: 3.561
+          rms_m: 5.411
+          max_cut_m: 20.87
+          max_fill_m: 5.74
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 18.73
+        flat_p5_p95_m: 15.72
+        refined_moved_m: 6.3
+      - x: 7432.3
+        y: 87.32
+        z: -1639.7
+        freeboard_m: 26.98
+        flat_spread_m: 30.33
+        flat_resolution_m: 1.0
+        y_centre_m: 73.48
+        biome_purity: 0.988
+        water_dist_m: 126.5
+        anchor: Mistlands_DvergrBossEntrance1 @ (7360.0,34.5,-1536.0)
+        anchor_dist_m: 126.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 40.6 m along x by 72.5 m along z
+        nearest_location_m: 116.0
+        score: -2.587
+        scores:
+          flat: -6.584
+          anchor: 0.93
+          clearance: 0.937
+          purity: 0.969
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 73.06
+          cut_m3: 14232.5
+          fill_m3: 15699.7
+          moved_m3: 29932.2
+          mean_move_m: 4.562
+          rms_m: 5.807
+          max_cut_m: 14.26
+          max_fill_m: 16.07
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 19.01
+        flat_p5_p95_m: 19.92
+        refined_moved_m: 16.5
+      - x: -7700.7
+        y: 69.74
+        z: 2656.3
+        freeboard_m: 10.55
+        flat_spread_m: 29.19
+        flat_resolution_m: 1.0
+        y_centre_m: 61.5
+        biome_purity: 0.81
+        water_dist_m: 86.5
+        anchor: Mistlands_DvergrBossEntrance1 @ (-8512.0,43.3,3264.0)
+        anchor_dist_m: 1014.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 40.6 m along x by 72.5 m along z
+        nearest_location_m: 118.0
+        score: -2.589
+        scores:
+          flat: -6.297
+          anchor: 0.437
+          clearance: 0.96
+          purity: 0.525
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 54.0
+          cut_m3: 19340.4
+          fill_m3: 17070.9
+          moved_m3: 36411.3
+          mean_move_m: 5.55
+          rms_m: 6.649
+          max_cut_m: 15.74
+          max_fill_m: 13.45
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 24.57
+        flat_p5_p95_m: 22.32
+        refined_moved_m: 8.2

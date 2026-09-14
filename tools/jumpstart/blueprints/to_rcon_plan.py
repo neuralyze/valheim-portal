@@ -57,6 +57,7 @@ spawned object, so batching with `-count` is a bad idea.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 from pathlib import Path
@@ -68,7 +69,11 @@ from inventory import (  # noqa: E402  (local module, path set above)
     FORAGE_RE,
     LOOT_RE,
     SPAWN_RE,
+    LegacyTerrainFormat,
     _f,
+    header_section,
+    load_evidence,
+    resolve,
 )
 
 RAD = 180.0 / math.pi
@@ -224,20 +229,23 @@ def read_objects(path: Path) -> list[Obj]:
             )
         return out
 
-    section = "#pieces"
+    # Sections come from inventory.header_section, which mirrors Infinity
+    # Hammer's own state machine. Anything not under `#Pieces` is not an object,
+    # and this converter's whole output is `spawn` commands aimed at a live
+    # server -- a converter that can emit `spawn circle` is a converter that will
+    # eventually be run.
+    section: str | None = "#pieces"
     for row in text.splitlines():
         if not row:
             continue
-        low = row.lower()
-        if low.startswith("#"):
-            if low.startswith("#pieces"):
-                section = "#pieces"
-            elif low.startswith("#snappoints"):
-                section = "#snappoints"
-            elif low.startswith("#terrainheight:"):
-                section = "#terrain"
-            elif low.startswith("#terrainpaint:"):
-                section = "#terrain"
+        if row.startswith("#"):
+            try:
+                section, _key = header_section(row, section)
+            except LegacyTerrainFormat as exc:
+                raise LegacyTerrainFormat(
+                    f"{path}: {exc}. Infinity Hammer refuses this file outright; "
+                    f"re-save it with a current version."
+                ) from None
             continue
         if section != "#pieces":
             continue
@@ -304,6 +312,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     ap.add_argument(
+        "--evidence",
+        default=str(HERE / "data" / "prefab_evidence.json"),
+        help="resolved prefab evidence used to reject unspawnable names",
+    )
+    ap.add_argument(
+        "--allow-missing-prefabs",
+        action="store_true",
+        help="emit spawns even for prefabs the evidence cannot resolve",
+    )
+    ap.add_argument(
         "--verify",
         action="store_true",
         help="check the quaternion -> euler -> quaternion round trip on every object",
@@ -333,6 +351,33 @@ def main(argv: list[str] | None = None) -> int:
             dropped["forage"] += 1
             continue
         kept.append(o)
+
+    # Every name that survives the drop filters becomes a literal `spawn <name>`
+    # against a live server, so check the names against the bundle-derived
+    # evidence before emitting anything. A MISSING prefab is a command the game
+    # will reject; an unknown one is a name nobody has ever confirmed exists.
+    if not args.allow_missing_prefabs:
+        ev = Path(args.evidence)
+        if not ev.exists():
+            print(f"{ev}: no prefab evidence; pass --allow-missing-prefabs to skip the check",
+                  file=sys.stderr)
+            return 2
+        resolution = json.loads(ev.read_text("utf-8"))["resolution"]
+        bad: dict[str, str] = {}
+        for o in kept:
+            verdict = resolution.get(o.prefab)
+            if verdict is None:
+                bad[o.prefab] = "not in the evidence file"
+            elif verdict == "MISSING":
+                bad[o.prefab] = "MISSING from every bundle and deployed mod"
+        if bad:
+            print(f"{path}: refusing to emit a plan; {len(bad)} prefab(s) cannot be spawned:",
+                  file=sys.stderr)
+            for name, why in sorted(bad.items()):
+                print(f"  {name}: {why}", file=sys.stderr)
+            print("  drop them with --drop-prefab, or override with "
+                  "--allow-missing-prefabs", file=sys.stderr)
+            return 2
 
     yq = yaw_quat(args.rotate) if args.rotate else None
     ox, oy, oz = args.at

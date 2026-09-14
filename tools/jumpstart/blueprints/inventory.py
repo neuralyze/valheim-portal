@@ -40,6 +40,13 @@ File format, MEASURED from ``InfinityHammer.dll`` 1.83.0
     A ``,`` anywhere in a piece row is rewritten to ``.`` before splitting, so
     decimal-comma locales parse.  Floats are invariant-culture ``0.###``.
 
+    Sections are a state machine, and the rule that matters is what happens to
+    an UNRECOGNISED header: the section becomes None and every row after it is
+    discarded until the next recognised header. See ``header_section``. A header
+    of length 1, or with whitespace at index 1, is a comment and the section
+    survives it. ``#Height:`` / ``#Paint:`` are recognised and then REJECTED --
+    Infinity Hammer refuses the whole file.
+
 Usage:
     python3 inventory.py <dir-or-file> [...] [--evidence data/piece_prefabs.json]
                         [--json out.json] [--prune-evidence data/prefab_evidence.json]
@@ -55,6 +62,15 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
+# Every header literal below is MEASURED from the DEPLOYED
+# Infinity_Hammer/InfinityHammer.dll user-string heap (`monodis --userstrings`),
+# not inferred from documentation. The reader's lowercased set is exactly:
+#   "#"  "#name:"  "#creator:"  "#description:"  "#category:"  "#center:"
+#   "#coordinates:"  "#rotation:"  "#pieces"  "#height:"  "#paint:"
+# plus "#SnapPoints" / "#TerrainHeight:" / "#TerrainPaint:" compared
+# case-insensitively. There is NO "#objects" literal anywhere in the assembly,
+# which is why it is not a section here: an `#Objects` header is unknown, and an
+# unknown header discards what follows it.
 HEADER_KEYS = (
     "name",
     "creator",
@@ -64,7 +80,49 @@ HEADER_KEYS = (
     "coordinates",
     "rotation",
 )
-SECTIONS = {"#pieces", "#snappoints", "#terrainheight:", "#terrainpaint:", "#objects"}
+SECTIONS = ("#pieces", "#snappoints", "#terrainheight:", "#terrainpaint:")
+# Recognised, then rejected outright: InfinityHammer throws "Legacy #Height/#Paint
+# terrain format is no longer supported. Re-save the blueprint with a newer
+# Infinity Hammer version." A file carrying these does not place at all.
+LEGACY_SECTIONS = ("#height:", "#paint:")
+
+
+class LegacyTerrainFormat(ValueError):
+    """The blueprint uses the #Height/#Paint sections Infinity Hammer rejects."""
+
+
+def header_section(row: str, current: str | None) -> tuple[str | None, str | None]:
+    """Infinity Hammer's section state machine for one `#` row.
+
+    Returns `(section, metadata_key)`. MEASURED from `GetPlanBuild`: the machine
+    is five-state (None / Pieces / SnapPoints / TerrainHeight / TerrainPaint) and
+    starts at Pieces, so a headerless file is all pieces.
+
+    The part that matters, and that this code used to get wrong: an UNRECOGNISED
+    header whose second character is not whitespace sets the section to None and
+    every row after it is discarded until the next recognised header. Keeping the
+    previous section instead reads PlanBuild's `#Terrain` block -- rows shaped
+    `shape;x;y;z;radius;rotation;smooth;` -- as pieces named `circle` and
+    `square`, and the bundle-token viability check cannot catch that because both
+    words genuinely occur as tokens in the game's asset bundles. Downstream that
+    becomes `spawn circle` against a live server.
+
+    A header of length 1, or with whitespace at index 1, is a comment: the
+    section survives it.
+    """
+    low = row.lower()
+    if len(row) == 1 or row[1].isspace():
+        return current, None
+    for key in HEADER_KEYS:
+        if low.startswith("#" + key + ":"):
+            return current, key
+    for name in SECTIONS:
+        if low.startswith(name):
+            return name, None
+    for name in LEGACY_SECTIONS:
+        if low.startswith(name):
+            raise LegacyTerrainFormat(row.strip())
+    return None, None
 
 
 class Piece:
@@ -122,28 +180,30 @@ def parse_blueprint(path: Path) -> dict:
             )
         return _finish(path, meta, pieces, snap_points, terrain_height, terrain_paint, "vbuild")
 
-    section = "#pieces"  # a headerless .blueprint is all pieces
+    section: str | None = "#pieces"  # a headerless .blueprint is all pieces
+    discarded = 0
+    unknown: list[str] = []
+    legacy = False
     for row in rows:
         if not row:
             continue
-        low = row.lower()
-        if low.startswith("#"):
-            matched = False
-            for key in HEADER_KEYS:
-                if low.startswith("#" + key + ":"):
-                    meta[key] = row[len(key) + 2 :].strip()
-                    matched = True
-                    break
-            if matched:
+        if row.startswith("#"):
+            try:
+                section, key = header_section(row, section)
+            except LegacyTerrainFormat:
+                legacy = True
+                section = None
                 continue
-            for name in SECTIONS:
-                if low.startswith(name):
-                    section = name
-                    matched = True
-                    break
-            if matched:
-                continue
-            continue  # unknown header row -- ignore, as Infinity Hammer does
+            if key is not None:
+                meta[key] = row[len(key) + 2 :].strip()
+            elif section is None:
+                unknown.append(row.split(":", 1)[0].strip())
+            continue
+        if section is None:
+            # inside an unknown section: Infinity Hammer throws these rows away,
+            # so counting them as pieces would invent content that never places
+            discarded += 1
+            continue
         if section == "#snappoints":
             snap_points += 1
             continue
@@ -167,10 +227,32 @@ def parse_blueprint(path: Path) -> dict:
                 (_f(parts, 10, 1.0), _f(parts, 11, 1.0), _f(parts, 12, 1.0)),
             )
         )
-    return _finish(path, meta, pieces, snap_points, terrain_height, terrain_paint, "blueprint")
+    return _finish(
+        path,
+        meta,
+        pieces,
+        snap_points,
+        terrain_height,
+        terrain_paint,
+        "blueprint",
+        discarded_rows=discarded,
+        unknown_sections=unknown,
+        legacy_terrain=legacy,
+    )
 
 
-def _finish(path, meta, pieces, snap_points, terrain_height, terrain_paint, fmt) -> dict:
+def _finish(
+    path,
+    meta,
+    pieces,
+    snap_points,
+    terrain_height,
+    terrain_paint,
+    fmt,
+    discarded_rows: int = 0,
+    unknown_sections: list | None = None,
+    legacy_terrain: bool = False,
+) -> dict:
     if pieces:
         xs = [p.x for p in pieces]
         ys = [p.y for p in pieces]
@@ -203,6 +285,14 @@ def _finish(path, meta, pieces, snap_points, terrain_height, terrain_paint, fmt)
         "terrain_height_rows": terrain_height,
         "terrain_paint_rows": terrain_paint,
         "prefab_counts": counts,
+        # rows Infinity Hammer throws away because they sit under a header it
+        # does not recognise. Non-zero means the file carries a section written
+        # by some other tool -- PlanBuild's `#Terrain` is the common case -- and
+        # those rows are NOT pieces however much they look like them.
+        "discarded_rows": discarded_rows,
+        "unknown_sections": sorted(set(unknown_sections or ())),
+        # the file does not load AT ALL in Infinity Hammer 1.83.0
+        "legacy_terrain_format": legacy_terrain,
     }
 
 

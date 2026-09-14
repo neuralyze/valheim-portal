@@ -6,10 +6,24 @@ owner: BlueprintHunt
 rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
   calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
   seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
-coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
-  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
-  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
-  exactly onto y.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGenerator.GetHeight` units.
+  Valheim''s WATER PLANE IS y = 30, not 0 -- these heights are absolute, not relative to the surface.
+  MEASURED on Pirate68: Ocean cells clamp at max 4.00 (the ocean floor, ~26 m down), Swamp spans 27.46..33.84
+  straddling 30, and every land location type in the ZoneSystem dump floors at 30.50..31.11 because Valheim
+  places land locations with minAltitude 1. `freeboard_m` in each solved block is the metres the footprint''s
+  LOWEST cell clears y=30 by, measured on a 1 m river-inclusive sample; negative means part of the pad
+  is under water. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is
+  dropped exactly onto y.'
+constraint_note: 'Constraints come in two classes and the solver treats them differently. HARD -- biome,
+  min_biome_purity, min_height_m (freeboard over the WHOLE footprint above the y=30 water plane), location_clearance_m,
+  coastal/coastal_within_m, within_m, and require_overland when declared -- are things no amount of building
+  fixes, so a site failing one is rejected and the miss is recorded in `violations` with a `remedy` saying
+  what would work instead. COSTED -- max_flat_m -- is terrain work: every placement here sets `flatten_required:
+  true` and is placed from the ulfsland-admin seat with Infinity Hammer and World Edit Commands, both
+  of which level ground. So max_flat_m is the tolerance that defines a CHEAP site, not a gate, and `flatten_cost`
+  reports the bill (cut/fill in cubic metres, mean metres moved per square metre, worst single cut and
+  fill) at the resolution named in its resolution_m. Requiring natural flatness rejected 8 of 13 placements
+  on Pirate68 for ground a hoe fixes.'
 resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
   Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
   all of them.
@@ -46,16 +60,259 @@ placements:
     workbench and a portal. Exactly the pre-Elder station set.
   solved:
     seed: Pirate68
-    x: 2132.0
-    y: 27.11
-    z: 868.0
-    flat_spread_m: 2.65
-    biome_purity: 1.0
-    water_dist_m: 168.0
-    anchor: GDKing @ (1606.1,58.4,1093.5)
-    anchor_dist_m: 572.0
-    nearest_location_m: 105.0
-    relaxation: exact
+    x: -3045.5
+    y: 43.75
+    z: -4101.5
+    freeboard_m: 3.3
+    flat_spread_m: 10.45
+    flat_resolution_m: 1.0
+    y_centre_m: 38.41
+    biome_purity: 0.974
+    water_dist_m: 48.0
+    anchor: GDKing @ (-3653.3,39.0,-5125.1)
+    anchor_dist_m: 1190.0
+    near_biome_dist_m: 0.0
+    footprint_orientation: 56.0 m along x by 56.0 m along z
+    nearest_location_m: 103.0
+    score: -0.964
+    scores:
+      flat: -2.483
+      anchor: 0.008
+      clearance: 0.715
+      purity: 0.828
+      water: 0.0
+      reach: 0.0
+    overland_from_spawn: false
+    satisfies_requirement: true
+    flatten_cost:
+      target_y: 37.47
+      cut_m3: 3520.1
+      fill_m3: 2266.2
+      moved_m3: 5786.4
+      mean_move_m: 1.781
+      rms_m: 2.222
+      max_cut_m: 6.28
+      max_fill_m: 4.17
+      resolution_m: 1.0
+      estimated: false
+    flat_spread_coarse_m: 8.35
+    flat_p5_p95_m: 7.04
+    refined_moved_m: 2.1
+    route_from_spawn:
+      reachable: false
+      straight_m: 5072.9
+      reason: different landmass -- needs a boat
+    route_to_anchor:
+      reachable: false
+      straight_m: 1190.5
+      reason: different landmass -- needs a boat
+    flatten_floor:
+      chosen_spread_m: 10.45
+      pool_best_1m_spread_m: 10.45
+      candidates_measured_at_1m: 39
+      biome_coarse_floor_m: 8.35
+      verdict: 'at the floor of what was measured: the flattest of 39 candidates refined at 1 m, so the
+        earthwork is the character of this biome, footprint and radius rather than a poor pick'
+      note: biome_coarse_floor_m is a grid-aligned LOWER bound over every anchor instance and both footprint
+        orientations, not an achievable spread; compare the bill against pool_best_1m_spread_m.
+    facing_check:
+      faces: anchor
+      declared_yaw: 180.0
+      bearing_to_anchor: 210.7
+      error_deg: 30.7
+      best_cardinal_yaw: 180
+      verdict: declared yaw points at the anchor within 45 deg
+    shortlist:
+    - x: 2258.5
+      y: 43.29
+      z: 952.5
+      freeboard_m: 1.01
+      flat_spread_m: 12.28
+      flat_resolution_m: 1.0
+      y_centre_m: 39.94
+      biome_purity: 1.0
+      water_dist_m: 40.8
+      anchor: GDKing @ (1606.1,58.4,1093.5)
+      anchor_dist_m: 667.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 56.0 m along x by 56.0 m along z
+      nearest_location_m: 118.0
+      score: -1.108
+      scores:
+        flat: -3.094
+        anchor: 0.444
+        clearance: 0.966
+        purity: 1.0
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 38.03
+        cut_m3: 3243.5
+        fill_m3: 4476.1
+        moved_m3: 7719.7
+        mean_move_m: 2.376
+        rms_m: 2.861
+        max_cut_m: 5.27
+        max_fill_m: 7.02
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 10.86
+      flat_p5_p95_m: 9.12
+      refined_moved_m: 3.8
+    - x: 1416.5
+      y: 46.55
+      z: 1339.5
+      freeboard_m: 2.21
+      flat_spread_m: 14.33
+      flat_resolution_m: 1.0
+      y_centre_m: 40.3
+      biome_purity: 1.0
+      water_dist_m: 48.0
+      anchor: GDKing @ (1606.1,58.4,1093.5)
+      anchor_dist_m: 311.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 56.0 m along x by 56.0 m along z
+      nearest_location_m: 100.0
+      score: -1.242
+      scores:
+        flat: -3.777
+        anchor: 0.741
+        clearance: 0.663
+        purity: 0.998
+        water: 0.0
+        reach: 1.0
+      overland_from_spawn: true
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 38.83
+        cut_m3: 5707.4
+        fill_m3: 4607.8
+        moved_m3: 10315.2
+        mean_move_m: 3.175
+        rms_m: 3.649
+        max_cut_m: 7.71
+        max_fill_m: 6.62
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 13.18
+      flat_p5_p95_m: 11.31
+      refined_moved_m: 8.3
+    - x: -814.5
+      y: 44.92
+      z: -5599.5
+      freeboard_m: 1.27
+      flat_spread_m: 13.64
+      flat_resolution_m: 1.0
+      y_centre_m: 39.38
+      biome_purity: 0.977
+      water_dist_m: 43.1
+      anchor: GDKing @ (-571.1,47.9,-6083.6)
+      anchor_dist_m: 542.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 56.0 m along x by 56.0 m along z
+      nearest_location_m: 106.0
+      score: -1.326
+      scores:
+        flat: -3.548
+        anchor: 0.548
+        clearance: 0.771
+        purity: 0.848
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 38.62
+        cut_m3: 2772.0
+        fill_m3: 4308.4
+        moved_m3: 7080.4
+        mean_move_m: 2.179
+        rms_m: 2.772
+        max_cut_m: 6.29
+        max_fill_m: 7.35
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 10.77
+      flat_p5_p95_m: 9.17
+      refined_moved_m: 6.5
+    - x: 642.5
+      y: 76.65
+      z: 1583.5
+      freeboard_m: 28.42
+      flat_spread_m: 18.23
+      flat_resolution_m: 1.0
+      y_centre_m: 65.56
+      biome_purity: 1.0
+      water_dist_m: 128.2
+      anchor: GDKing @ (1606.1,58.4,1093.5)
+      anchor_dist_m: 1081.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 56.0 m along x by 56.0 m along z
+      nearest_location_m: 100.0
+      score: -1.954
+      scores:
+        flat: -5.076
+        anchor: 0.099
+        clearance: 0.667
+        purity: 1.0
+        water: 0.0
+        reach: 1.0
+      overland_from_spawn: true
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 65.59
+        cut_m3: 5039.6
+        fill_m3: 3905.5
+        moved_m3: 8945.1
+        mean_move_m: 2.753
+        rms_m: 3.547
+        max_cut_m: 11.06
+        max_fill_m: 7.17
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 15.0
+      flat_p5_p95_m: 12.24
+      refined_moved_m: 3.8
+    - x: 2093.5
+      y: 83.5
+      z: 5798.5
+      freeboard_m: 33.09
+      flat_spread_m: 20.41
+      flat_resolution_m: 1.0
+      y_centre_m: 73.34
+      biome_purity: 0.852
+      water_dist_m: 170.1
+      anchor: GDKing @ (2885.7,33.6,5369.1)
+      anchor_dist_m: 901.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 56.0 m along x by 56.0 m along z
+      nearest_location_m: 100.0
+      score: -2.481
+      scores:
+        flat: -5.803
+        anchor: 0.249
+        clearance: 0.664
+        purity: 0.013
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 72.95
+        cut_m3: 8290.5
+        fill_m3: 6859.0
+        moved_m3: 15149.5
+        mean_move_m: 4.663
+        rms_m: 5.38
+        max_cut_m: 10.55
+        max_fill_m: 9.85
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 17.44
+      flat_p5_p95_m: 16.01
+      refined_moved_m: 8.5
   containers:
     by_prefab:
       piece_chest_wood: 30
@@ -65,16 +322,259 @@ placements:
   solved_alternatives:
     TPTc3AIvfH:
       seed: TPTc3AIvfH
-      x: -2108.0
-      y: 10.38
-      z: 1036.0
-      flat_spread_m: 2.54
+      x: -1636.5
+      y: 44.33
+      z: 1692.5
+      freeboard_m: 1.52
+      flat_spread_m: 12.81
+      flat_resolution_m: 1.0
+      y_centre_m: 38.67
       biome_purity: 1.0
-      water_dist_m: 200.0
+      water_dist_m: 43.1
       anchor: GDKing @ (-890.5,40.7,775.0)
-      anchor_dist_m: 1245.0
-      nearest_location_m: 246.0
-      relaxation: max_flat x1.5, within x1.5
+      anchor_dist_m: 1183.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 56.0 m along x by 56.0 m along z
+      nearest_location_m: 100.0
+      score: -1.309
+      scores:
+        flat: -3.269
+        anchor: 0.015
+        clearance: 0.663
+        purity: 1.0
+        water: 0.0
+        reach: 0.0
+      overland_from_spawn: false
+      satisfies_requirement: true
+      flatten_cost:
+        target_y: 37.86
+        cut_m3: 3656.7
+        fill_m3: 3974.9
+        moved_m3: 7631.6
+        mean_move_m: 2.349
+        rms_m: 2.819
+        max_cut_m: 6.47
+        max_fill_m: 6.34
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 11.56
+      flat_p5_p95_m: 9.28
+      refined_moved_m: 7.5
+      route_from_spawn:
+        reachable: false
+        straight_m: 2268.1
+        reason: different landmass -- needs a boat
+      route_to_anchor:
+        reachable: false
+        straight_m: 1182.5
+        reason: different landmass -- needs a boat
+      flatten_floor:
+        chosen_spread_m: 12.81
+        pool_best_1m_spread_m: 12.81
+        candidates_measured_at_1m: 27
+        biome_coarse_floor_m: 11.15
+        verdict: 'at the floor of what was measured: the flattest of 27 candidates refined at 1 m, so
+          the earthwork is the character of this biome, footprint and radius rather than a poor pick'
+        note: biome_coarse_floor_m is a grid-aligned LOWER bound over every anchor instance and both footprint
+          orientations, not an achievable spread; compare the bill against pool_best_1m_spread_m.
+      facing_check:
+        faces: anchor
+        declared_yaw: 180.0
+        bearing_to_anchor: 140.9
+        error_deg: 39.1
+        best_cardinal_yaw: 180
+        verdict: declared yaw points at the anchor within 45 deg
+      shortlist:
+      - x: -5675.5
+        y: 66.55
+        z: 195.5
+        freeboard_m: 22.52
+        flat_spread_m: 14.02
+        flat_resolution_m: 1.0
+        y_centre_m: 64.26
+        biome_purity: 0.973
+        water_dist_m: 139.7
+        anchor: GDKing @ (-5115.0,35.4,-761.5)
+        anchor_dist_m: 1109.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 56.0 m along x by 56.0 m along z
+        nearest_location_m: 100.0
+        score: -1.493
+        scores:
+          flat: -3.674
+          anchor: 0.076
+          clearance: 0.667
+          purity: 0.817
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 60.83
+          cut_m3: 3924.5
+          fill_m3: 5618.1
+          moved_m3: 9542.6
+          mean_move_m: 2.937
+          rms_m: 3.435
+          max_cut_m: 5.72
+          max_fill_m: 8.3
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 13.29
+        flat_p5_p95_m: 10.33
+        refined_moved_m: 0.7
+      - x: -4769.5
+        y: 83.21
+        z: -1034.5
+        freeboard_m: 36.73
+        flat_spread_m: 16.48
+        flat_resolution_m: 1.0
+        y_centre_m: 70.98
+        biome_purity: 1.0
+        water_dist_m: 120.0
+        anchor: GDKing @ (-5115.0,35.4,-761.5)
+        anchor_dist_m: 440.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 56.0 m along x by 56.0 m along z
+        nearest_location_m: 103.0
+        score: -1.73
+        scores:
+          flat: -4.494
+          anchor: 0.633
+          clearance: 0.711
+          purity: 1.0
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 74.7
+          cut_m3: 5560.6
+          fill_m3: 5127.8
+          moved_m3: 10688.4
+          mean_move_m: 3.29
+          rms_m: 3.904
+          max_cut_m: 8.51
+          max_fill_m: 7.97
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 14.45
+        flat_p5_p95_m: 12.13
+        refined_moved_m: 2.9
+      - x: -4044.5
+        y: 51.97
+        z: -6927.5
+        freeboard_m: 1.73
+        flat_spread_m: 20.24
+        flat_resolution_m: 1.0
+        y_centre_m: 44.62
+        biome_purity: 0.895
+        water_dist_m: 40.0
+        anchor: GDKing @ (-3653.2,71.2,-5950.9)
+        anchor_dist_m: 1052.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 56.0 m along x by 56.0 m along z
+        nearest_location_m: 100.0
+        score: -2.457
+        scores:
+          flat: -5.746
+          anchor: 0.123
+          clearance: 0.663
+          purity: 0.3
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 41.44
+          cut_m3: 7603.0
+          fill_m3: 7303.7
+          moved_m3: 14906.8
+          mean_move_m: 4.588
+          rms_m: 5.185
+          max_cut_m: 10.52
+          max_fill_m: 9.72
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 17.09
+        flat_p5_p95_m: 15.36
+        refined_moved_m: 4.5
+      - x: -1447.5
+        y: 69.75
+        z: 1760.5
+        freeboard_m: 17.39
+        flat_spread_m: 22.36
+        flat_resolution_m: 1.0
+        y_centre_m: 55.08
+        biome_purity: 1.0
+        water_dist_m: 66.0
+        anchor: GDKing @ (-890.5,40.7,775.0)
+        anchor_dist_m: 1132.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 56.0 m along x by 56.0 m along z
+        nearest_location_m: 100.0
+        score: -2.733
+        scores:
+          flat: -6.454
+          anchor: 0.057
+          clearance: 0.666
+          purity: 1.0
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 56.61
+          cut_m3: 8692.4
+          fill_m3: 6848.8
+          moved_m3: 15541.2
+          mean_move_m: 4.783
+          rms_m: 5.662
+          max_cut_m: 13.14
+          max_fill_m: 9.22
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 20.0
+        flat_p5_p95_m: 18.27
+        refined_moved_m: 12.3
+      - x: -1381.5
+        y: 78.7
+        z: 1835.5
+        freeboard_m: 24.07
+        flat_spread_m: 24.63
+        flat_resolution_m: 1.0
+        y_centre_m: 69.63
+        biome_purity: 1.0
+        water_dist_m: 80.0
+        anchor: GDKing @ (-890.5,40.7,775.0)
+        anchor_dist_m: 1169.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 56.0 m along x by 56.0 m along z
+        nearest_location_m: 127.0
+        score: -3.039
+        scores:
+          flat: -7.209
+          anchor: 0.026
+          clearance: 1.0
+          purity: 1.0
+          water: 0.0
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: true
+        flatten_cost:
+          target_y: 69.96
+          cut_m3: 6279.9
+          fill_m3: 10240.2
+          moved_m3: 16520.1
+          mean_move_m: 5.085
+          rms_m: 6.324
+          max_cut_m: 8.74
+          max_fill_m: 15.88
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 21.83
+        flat_p5_p95_m: 20.34
+        refined_moved_m: 8.6
 - id: early-dock
   blueprint: dock.blueprint
   sha256: 4157326c69a0157df45f96bbcf1c56c6e85fd81e66020006171cdb9ef79de9b9
@@ -93,29 +593,117 @@ placements:
     min_biome_purity: 0.6
     coastal: true
     location_clearance_m: 60
-    feature: coastal Meadows on the world sea, karve draught at the jetty head
+    feature: 'coastal Meadows on the world sea, karve draught at the jetty head. WATERSIDE BAND. Freeboard
+      here is a BAND, not a floor: expressed as a floor alone, min_height_m plus coastal_within_m reads
+      as ''high ground near the sea'', which on a real coastline means a CLIFFTOP - MEASURED, that cost
+      this placement a 43.5 m spread and a 23419 m3 levelling bill for something you walk a boat up to.
+      max_height_m 3.0 keeps the pad a shore rather than a headland, max_grade_pct 10 keeps it a gentle
+      beach rather than a steep bank (grade is spread / long side, so one number means the same for a
+      32 m jetty and a 48 m harbour), and min_height_m 0.5 still keeps the lowest corner out of the water.
+      footprint_xz_m is the building''s real rectangle (42.2 x 29.0 m) rather than a square: MEASURED,
+      a 48x48 m square finds 0 qualifying shelves within 1400 m at ANY radius out to 6 km while the real
+      42x29 m rectangle finds 2, because a shoreline is a line and its orientation matters. min_height_m
+      is -2.0, NOT positive, and that is deliberate: dock.blueprint is a harbour WITH A JETTY, and a jetty''s
+      waterward end is supposed to be over water. So the band straddles the waterline - the pad''s lowest
+      corner may sit 2 m under, while max_height_m 3.0 keeps its highest ground off the cliff. MEASURED
+      feasible pads at grade 10%: 0 at min_height 0.5, 0 at 0.0, 0 at -1.0, 10 at -2.0. The spawn is derived
+      6 m OUTSIDE the footprint and is verified dry separately by derive.py, so a submerged jetty foot
+      does not put a character in the water.'
     near: StartTemple
     within_m: 900
+    min_height_m: -2.0
+    max_height_m: 3.0
+    max_grade_pct: 10
+    footprint_xz_m:
+    - 42.2
+    - 29.0
   rotation:
     units: euler_degrees_yxz
-    yaw: 0
+    yaw: 90
     pitch: 0
     roll: 0
-    facing: jetty runs out into open water
+    facing: 'jetty runs out into open water. yaw 90, corrected from the inherited 0: MEASURED fraction
+      of a 400 m ray landing in open water by yaw is {0: 0.2, 90: 0.96, 180: 0.96, 270: 0.04}, so the
+      old yaw faced 20% of it.'
   flatten_required: true
-  note: Harbour. Placed at pre-elder because a karve is the first boat worth a dock.
+  note: 'Harbour. Placed at pre-elder because a karve is the first boat worth a dock. APPROACH CAVEAT,
+    from SpawnOnLand''s measurement: this pad and pre-elder/early-dock share the tightest approach in
+    the tree. Their spawn (700, 36, -55) has a dry walk whose lowest ground is +0.81 m against a 0.5 m
+    floor - centimetres, where every other spawn has metres - and that verdict is measured on PRE-LEVELLING
+    terrain while 1797 m3 of earthwork is planned right there. Nobody models post-levelling ground, so
+    re-probe this approach with derive.py spawn AFTER the pad is cut rather than assuming the margin survives
+    it.'
   solved:
     seed: Pirate68
-    x: -840.0
-    y: 10.32
-    z: -872.0
-    flat_spread_m: 2.7
+    x: 675.4
+    y: 32.63
+    z: -85.6
+    freeboard_m: -1.79
+    flat_spread_m: 4.42
+    flat_resolution_m: 1.0
+    y_centre_m: 29.34
     biome_purity: 1.0
-    water_dist_m: 99.0
+    water_dist_m: 0.0
     anchor: StartTemple @ (-64.7,75.0,3.3)
-    anchor_dist_m: 1169.0
-    nearest_location_m: 419.0
-    relaxation: max_flat x1.5, within x1.5
+    anchor_dist_m: 745.0
+    near_biome_dist_m: 0.0
+    footprint_orientation: 29.0 m along x by 42.2 m along z
+    nearest_location_m: 88.0
+    score: 0.152
+    scores:
+      flat: -0.767
+      anchor: 0.172
+      clearance: 0.47
+      purity: 1.0
+      water: 1.0
+      reach: 1.0
+    overland_from_spawn: true
+    satisfies_requirement: true
+    flatten_cost:
+      target_y: 30.01
+      cut_m3: 1076.2
+      fill_m3: 721.1
+      moved_m3: 1797.3
+      mean_move_m: 0.749
+      rms_m: 0.92
+      max_cut_m: 2.62
+      max_fill_m: 1.8
+      resolution_m: 1.0
+      estimated: false
+    flat_spread_coarse_m: 3.01
+    flat_p5_p95_m: 2.94
+    refined_moved_m: 9.8
+    route_from_spawn:
+      reachable: true
+      straight_m: 745.4
+      path_m: 807.8
+      detour: 1.084
+    route_to_anchor:
+      reachable: true
+      straight_m: 745.4
+      path_m: 807.8
+      detour: 1.084
+    flatten_floor:
+      chosen_spread_m: 4.42
+      pool_best_1m_spread_m: 4.42
+      candidates_measured_at_1m: 1
+      biome_coarse_floor_m: 3.01
+      verdict: 'at the floor of what was measured: the flattest of 1 candidates refined at 1 m, so the
+        earthwork is the character of this biome, footprint and radius rather than a poor pick'
+      note: biome_coarse_floor_m is a grid-aligned LOWER bound over every anchor instance and both footprint
+        orientations, not an achievable spread; compare the bill against pool_best_1m_spread_m.
+    facing_check:
+      faces: open water
+      declared_yaw: 90.0
+      declared_yaw_biome_fraction: 0.96
+      by_cardinal_yaw:
+        0: 0.2
+        90: 0.96
+        180: 0.96
+        270: 0.04
+      best_cardinal_yaw: 90
+      reach_m: 400.0
+      verdict: declared yaw points at the biome it claims to serve
   containers:
     by_prefab:
       piece_chest: 6
@@ -126,20 +714,204 @@ placements:
   solved_alternatives:
     TPTc3AIvfH:
       seed: TPTc3AIvfH
-      x: 136.0
-      y: 16.21
-      z: -968.0
-      flat_spread_m: 2.07
+      x: 429.4
+      y: 31.64
+      z: 655.4
+      freeboard_m: -3.51
+      flat_spread_m: 5.15
+      flat_resolution_m: 1.0
+      y_centre_m: 28.82
       biome_purity: 1.0
-      water_dist_m: 86.2
+      water_dist_m: 0.0
       anchor: StartTemple @ (-130.5,34.0,-3.4)
-      anchor_dist_m: 1001.0
-      nearest_location_m: 273.0
-      relaxation: max_flat x1.5, within x1.5
-spawn_points:
-- - 2132
-  - 29
-  - 834
-- - -840
-  - 12
-  - -842
+      anchor_dist_m: 865.0
+      near_biome_dist_m: 0.0
+      footprint_orientation: 42.2 m along x by 29.0 m along z
+      nearest_location_m: 102.0
+      score: 0.177
+      scores:
+        flat: -1.062
+        anchor: 0.68
+        clearance: 0.692
+        purity: 1.0
+        water: 1.0
+        reach: 1.0
+      overland_from_spawn: true
+      satisfies_requirement: false
+      flatten_cost:
+        target_y: 28.41
+        cut_m3: 1314.0
+        fill_m3: 887.5
+        moved_m3: 2201.5
+        mean_move_m: 0.917
+        rms_m: 1.164
+        max_cut_m: 3.23
+        max_fill_m: 1.92
+        resolution_m: 1.0
+        estimated: false
+      flat_spread_coarse_m: 4.21
+      flat_p5_p95_m: 3.9
+      refined_moved_m: 7.4
+      violations:
+      - constraint: min_height_m
+        required: -2.0
+        actual: -3.51
+        over_by: 1.51
+      - constraint: max_grade_pct
+        required: 5.0
+        actual: 5.15
+        over_by: 0.15
+      route_from_spawn:
+        reachable: true
+        straight_m: 864.6
+        path_m: 1087.1
+        detour: 1.257
+      route_to_anchor:
+        reachable: true
+        straight_m: 864.6
+        path_m: 1087.1
+        detour: 1.257
+      relaxed:
+        opened:
+          min_height_m:
+            declared: -2.0
+            applied: -2.833
+            why: no dry footprint of this size exists in this seed
+          within_m:
+            declared: 900.0
+            applied: 2700.0
+          coastal_within_m:
+            declared: 120.0
+            applied: 360.0
+          min_biome_purity:
+            declared: 0.6
+            applied: 0.45
+        why: no site in this seed satisfies the requirement as declared; the search was widened into these
+          bounds and the site recorded is the one that misses the DECLARED requirement by the fewest metres.
+          `violations` states the remaining miss exactly.
+      freeboard_ceiling_m:
+        best_available_m: -2.33
+        dry_footprints_in_seed: 0
+        note: highest footprint-minimum freeboard this seed offers under every other declared constraint,
+          over every anchor instance, measured on the coarse grid. dry_footprints_in_seed is how many
+          grid-aligned footprints clear min_height_m at all. Zero means no dry pad of this size exists
+          here and the negative freeboard recorded above is forced, not chosen -- the base needs foundations
+          or a smaller footprint_m.
+      facing_check:
+        faces: open water
+        declared_yaw: 90.0
+        declared_yaw_biome_fraction: 0.46
+        by_cardinal_yaw:
+          0: 0.46
+          90: 0.46
+          180: 0.06
+          270: 1.0
+        best_cardinal_yaw: 270
+        reach_m: 400.0
+        verdict: declared yaw does NOT face open water; yaw 270 does
+      remedy:
+        within_m_needed: 4500
+        within_m_factor: 5.0
+        min_height_m_needed: -2.38
+        foundations_note: 'the driest footprint this seed offers here is -2.33 m relative to the water
+          plane, so the pad is partly submerged wherever it goes: declare min_height_m at or below that
+          and build on foundations, or pick a smaller footprint_m'
+      shortlist:
+      - x: -2311.6
+        y: 47.62
+        z: 295.4
+        freeboard_m: -1.34
+        flat_spread_m: 18.96
+        flat_resolution_m: 1.0
+        y_centre_m: 29.24
+        biome_purity: 1.0
+        water_dist_m: 8.0
+        anchor: StartTemple @ (-130.5,34.0,-3.4)
+        anchor_dist_m: 2202.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 29.0 m along x by 42.2 m along z
+        nearest_location_m: 100.0
+        score: -2.01
+        scores:
+          flat: -6.584
+          anchor: 0.185
+          clearance: 0.666
+          purity: 1.0
+          water: 0.978
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: false
+        flatten_cost:
+          target_y: 31.82
+          cut_m3: 4871.7
+          fill_m3: 1298.9
+          moved_m3: 6170.6
+          mean_move_m: 2.57
+          rms_m: 4.354
+          max_cut_m: 15.81
+          max_fill_m: 3.15
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 4.11
+        flat_p5_p95_m: 13.73
+        refined_moved_m: 17.7
+        violations:
+        - constraint: within_m
+          required: 900.0
+          actual: 2201.5
+          over_by: 1301.5
+        - constraint: max_grade_pct
+          required: 5.0
+          actual: 18.96
+          over_by: 13.96
+      - x: -1916.6
+        y: 33.97
+        z: -1511.6
+        freeboard_m: -2.98
+        flat_spread_m: 6.95
+        flat_resolution_m: 1.0
+        y_centre_m: 30.74
+        biome_purity: 1.0
+        water_dist_m: 8.0
+        anchor: StartTemple @ (-130.5,34.0,-3.4)
+        anchor_dist_m: 2338.0
+        near_biome_dist_m: 0.0
+        footprint_orientation: 29.0 m along x by 42.2 m along z
+        nearest_location_m: 86.0
+        score: -0.366
+        scores:
+          flat: -1.781
+          anchor: 0.134
+          clearance: 0.439
+          purity: 1.0
+          water: 0.978
+          reach: 0.0
+        overland_from_spawn: false
+        satisfies_requirement: false
+        flatten_cost:
+          target_y: 29.65
+          cut_m3: 1964.7
+          fill_m3: 1043.6
+          moved_m3: 3008.3
+          mean_move_m: 1.253
+          rms_m: 1.546
+          max_cut_m: 4.31
+          max_fill_m: 2.64
+          resolution_m: 1.0
+          estimated: false
+        flat_spread_coarse_m: 4.12
+        flat_p5_p95_m: 4.61
+        refined_moved_m: 14.4
+        violations:
+        - constraint: within_m
+          required: 900.0
+          actual: 2337.71
+          over_by: 1437.71
+        - constraint: min_height_m
+          required: -2.0
+          actual: -2.98
+          over_by: 0.98
+        - constraint: max_grade_pct
+          required: 5.0
+          actual: 6.95
+          over_by: 1.95
