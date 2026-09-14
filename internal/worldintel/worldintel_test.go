@@ -233,16 +233,23 @@ func TestRetainKeepsVehiclesAndSemanticCategoryDoesNotDemoteALoadedHull(t *testi
 		t.Fatal("dropped a vehicle: a boat classified correctly but never reached the snapshot")
 	}
 	// A loaded Karve holds an "items" map exactly like a chest, and the container rule used to
-	// relabel it, so a boat was drawn as a chest even once it classified as a hull.
+	// relabel it, so a boat was drawn as a chest even once it classified as a hull. The fixture
+	// carries the "rudder" float Ship::UpdateControlls writes on every physics tick, because that
+	// is the evidence a real persisted boat has and it is what the classifier now leads on - a hull
+	// NAME alone no longer makes something a boat, or Valheim's generated shipwreck_karve_bow props
+	// would be boats.
 	loaded := Object{Category: category("Karve")}
-	values := valueMaps{s: map[int32]string{StableHash("items"): "AAAA"}}
-	semanticCategory(&loaded, values)
+	values := valueMaps{
+		s: map[int32]string{StableHash("items"): "AAAA"},
+		f: map[int32]float32{StableHash("rudder"): 0},
+	}
+	semanticCategory(&loaded, values, nil)
 	if loaded.Category != "vehicle" {
 		t.Fatalf("a Karve carrying cargo was relabelled %q, want vehicle", loaded.Category)
 	}
 	// The same rule must still catch an actual chest, which is what makes the case above meaningful.
 	chest := Object{Category: category("unnamed_thing")}
-	semanticCategory(&chest, values)
+	semanticCategory(&chest, valueMaps{s: map[int32]string{StableHash("items"): "AAAA"}}, nil)
 	if chest.Category != "container" {
 		t.Fatalf("an object carrying cargo was classified %q, want container", chest.Category)
 	}
@@ -256,6 +263,10 @@ func TestConstructionCoverageIsBoundedCompleteAndDeterministic(t *testing.T) {
 			objects = append(objects, Object{
 				ID:       uint32(index + 1),
 				Category: "construction",
+				// A builder id, because only player-placed pieces reach the coverage layer now:
+				// pieces with creator 0 are what a generated crypt is made of, and drawing those
+				// as "player construction" is the defect this split changed.
+				Creator: 4242,
 				Position: Vec3{
 					X: float32(-16_000 + (index%50)*64),
 					Y: 40,
@@ -358,23 +369,56 @@ func TestConstructionCoverageExtendsSnapshotJSONCompatibly(t *testing.T) {
 	}
 }
 
-// Two people building in one valley must be two clusters, or colouring them by builder means nothing
-// and the map cannot answer "who built that".
-func TestClustersSeparatePerBuilder(t *testing.T) {
+// Two people extending the same building have built ONE structure, and the map has to say so while
+// still answering "who built that". Clustering used to be keyed per builder, which drew two
+// overlapping circles on the same roof; it is now spatial, and the shared structure carries the
+// majority builder plus the number of people who worked on it.
+func TestSharedStructureIsOneClusterNamingItsMajorityBuilder(t *testing.T) {
 	points := []constructionPoint{}
 	for i := range 6 {
 		points = append(points, constructionPoint{Position: Vec3{X: float32(10 + i), Z: 10}, Creator: 111})
+	}
+	for i := range 9 {
 		points = append(points, constructionPoint{Position: Vec3{X: float32(10 + i), Z: 12}, Creator: 222})
+	}
+
+	clusters := aggregateConstructionClusters(points)
+
+	if len(clusters) != 1 {
+		t.Fatalf("two builders two metres apart produced %d structures, want 1: %+v", len(clusters), clusters)
+	}
+	if clusters[0].Pieces != 15 {
+		t.Fatalf("structure holds %d pieces, want 15", clusters[0].Pieces)
+	}
+	if clusters[0].Builders != 2 {
+		t.Fatalf("structure reports %d builders, want 2", clusters[0].Builders)
+	}
+	if clusters[0].Creator != 222 {
+		t.Fatalf("structure names builder %d, want 222 - the one that placed 9 of the 15 pieces", clusters[0].Creator)
+	}
+}
+
+// The other half of the same contract: two people building in different valleys are two structures,
+// each named for whoever built it. Without this the test above would pass on a classifier that
+// merged the whole world into one cluster.
+func TestDistantBuildersAreSeparateStructures(t *testing.T) {
+	points := []constructionPoint{}
+	for i := range 6 {
+		points = append(points, constructionPoint{Position: Vec3{X: float32(10 + i), Z: 10}, Creator: 111})
+		points = append(points, constructionPoint{Position: Vec3{X: float32(600 + i), Z: 900}, Creator: 222})
 	}
 
 	clusters := aggregateConstructionClusters(points)
 
 	creators := map[int64]int{}
 	for _, cluster := range clusters {
+		if cluster.Builders != 1 {
+			t.Errorf("structure at (%.0f, %.0f) reports %d builders, want 1", cluster.Center.X, cluster.Center.Z, cluster.Builders)
+		}
 		creators[cluster.Creator] += cluster.Pieces
 	}
-	if len(creators) != 2 {
-		t.Fatalf("clusters carry %d creators, want 2: %+v", len(creators), clusters)
+	if len(clusters) != 2 {
+		t.Fatalf("two distant builders produced %d structures, want 2: %+v", len(clusters), clusters)
 	}
 	for creator, pieces := range creators {
 		if pieces != 6 {
@@ -495,5 +539,166 @@ func TestCoarseningKeepsTheMajorityBuilder(t *testing.T) {
 	}
 	if total != len(points) {
 		t.Errorf("coarsening lost pieces: %d of %d", total, len(points))
+	}
+}
+
+// Valheim's generated shipwrecks are static props called shipwreck_karve_bow, _stern, _sternpost and
+// _dragonhead, and the hull-name heuristic matches every one of them on "karve". Measured on
+// Vangard, 25 of the 36 objects the name rule called vehicles were wreck parts, so the boats layer
+// was three quarters scenery. A wreck has no vehicle component key and no builder; a real boat has
+// at least one of the two, and the classifier must lead on that.
+func TestOnlyComponentEvidenceOrABuilderMakesAVehicle(t *testing.T) {
+	for _, testCase := range []struct {
+		label   string
+		prefab  string
+		values  valueMaps
+		catalog map[int32]string
+		want    string
+	}{
+		{
+			label:  "a generated shipwreck prop is scenery, not a boat",
+			prefab: "shipwreck_karve_bow",
+			want:   "world",
+		},
+		{
+			label:  "a Ship writes ZDOVars.s_rudder every physics tick",
+			prefab: "Karve",
+			values: valueMaps{f: map[int32]float32{StableHash("rudder"): 0.25}},
+			want:   "vehicle",
+		},
+		{
+			label:  "a Ship also writes ZDOVars.s_forward",
+			prefab: "Raft",
+			values: valueMaps{i: map[int32]int32{StableHash("forward"): 1}},
+			want:   "vehicle",
+		},
+		{
+			label:  "Vagon keys its attach state under ZDOVars.s_attachJointHash",
+			prefab: "Cart",
+			values: valueMaps{i: map[int32]int32{StableHash("attachJoint"): 0}},
+			want:   "vehicle",
+		},
+		{
+			// The whole point of classifying on the component rather than the name: Vangard holds
+			// mod vehicles whose prefab hash the catalog cannot even resolve, and they are found.
+			label:  "a mod vehicle with no resolvable name is still a vehicle",
+			prefab: "",
+			values: valueMaps{f: map[int32]float32{StableHash("rudder"): 0}},
+			want:   "vehicle",
+		},
+		{
+			label:  "a hull somebody placed but never sailed is admitted on the builder",
+			prefab: "Raft",
+			values: valueMaps{l: map[int32]int64{StableHash("creator"): 4242}},
+			want:   "vehicle",
+		},
+		{
+			// Measured on Ulfsland: the Cart at (-2312, 63, 1918) has no builder and none of the
+			// component keys, because Vagon only writes attachJoint once somebody attaches it. The
+			// game files it under Assets/GameElements/Cart/, and that is what saves it.
+			label:   "a never-used cart is admitted on the game's own asset taxonomy",
+			prefab:  "Cart",
+			catalog: map[int32]string{StableHash("vehicle:Cart"): "vehicle:Cart"},
+			want:    "vehicle",
+		},
+		{
+			// The taxonomy must not rescue the wreck: the game files those props under
+			// Assets/world/Props/ShipwreckKarve/, so no marker is registered for them.
+			label:   "the taxonomy does not admit a wreck that shares a hull noun",
+			prefab:  "shipwreck_karve_bow",
+			catalog: map[int32]string{StableHash("vehicle:Cart"): "vehicle:Cart"},
+			want:    "world",
+		},
+	} {
+		object := Object{Prefab: testCase.prefab, Category: category(testCase.prefab)}
+		semanticCategory(&object, testCase.values, testCase.catalog)
+		if object.Category != testCase.want {
+			t.Errorf("%s: %q classified %q, want %q", testCase.label, testCase.prefab, object.Category, testCase.want)
+		}
+	}
+}
+
+// Generated location pieces are what a crypt, a ruin and a village are made of, and Valheim stamps
+// no builder on them. Clustering them as "player construction" put bases in valleys nobody had
+// visited; the location pins already mark those places.
+func TestOnlyPlayerPlacedPiecesBecomeStructures(t *testing.T) {
+	snapshot := Snapshot{Summary: Summary{Categories: map[string]int{}}}
+	for index := range 40 {
+		// A generated ruin: construction-shaped, no builder.
+		snapshot.Objects = append(snapshot.Objects, Object{
+			ID: uint32(index + 1), Category: "construction",
+			Position: Vec3{X: float32(100 + index%5), Y: 30, Z: float32(100 + index/5)},
+		})
+	}
+	for index := range 12 {
+		snapshot.Objects = append(snapshot.Objects, Object{
+			ID: uint32(index + 100), Category: "construction", Creator: 777,
+			Position: Vec3{X: float32(-500 + index%4), Y: 30, Z: float32(-500 + index/4)},
+		})
+	}
+	finalize(&snapshot)
+
+	if snapshot.Summary.GeneratedPieces != 40 {
+		t.Fatalf("generated pieces = %d, want 40", snapshot.Summary.GeneratedPieces)
+	}
+	if snapshot.Summary.PlayerPieces != 12 {
+		t.Fatalf("player pieces = %d, want 12", snapshot.Summary.PlayerPieces)
+	}
+	if len(snapshot.Clusters) != 1 {
+		t.Fatalf("structures = %d, want 1 - only the player's: %+v", len(snapshot.Clusters), snapshot.Clusters)
+	}
+	if snapshot.Clusters[0].Creator != 777 || snapshot.Clusters[0].Pieces != 12 {
+		t.Fatalf("structure = %+v, want 12 pieces by builder 777", snapshot.Clusters[0])
+	}
+	if snapshot.Clusters[0].Center.X > -400 {
+		t.Fatalf("the one structure is centred at x=%v, which is the generated ruin's ground, not the player's",
+			snapshot.Clusters[0].Center.X)
+	}
+	if snapshot.ConstructionCoverage.TotalPieces != 12 {
+		t.Fatalf("coverage totals %d pieces, want 12", snapshot.ConstructionCoverage.TotalPieces)
+	}
+	// A structure's footprint is what the map draws its outline from, so it has to be the real
+	// extent and not a circle's bounding box.
+	bounds := snapshot.Clusters[0].Bounds
+	if bounds[0] != -500 || bounds[1] != -500 || bounds[2] != -497 || bounds[3] != -498 {
+		t.Fatalf("footprint = %v, want [-500 -500 -497 -498] for a 4x3 block of pieces", bounds)
+	}
+}
+
+// A boat drawn without a heading is a dot, and the quantised rotation has two wire forms. Getting
+// the packed form's bit field wrong would leave every rotated-in-three-axes object pointing the
+// wrong way, which is invisible until somebody checks a boat against the game.
+func TestSmallRotationDecodesBothWireForms(t *testing.T) {
+	// Y-only: ZPackage::WriteSmallRotation stores (y*2) | 0x8000 as a single int16. The two rotated
+	// ZDOs in Ulfsland's 00_00__0_1.chunk hold 0x8198 and 0x82a6.
+	for _, testCase := range []struct {
+		packed uint16
+		want   float32
+	}{
+		{0x8198, 204},
+		{0x82a6, 339},
+		{0x8000, 0},
+	} {
+		r := &reader{r: bytes.NewReader([]byte{byte(testCase.packed), byte(testCase.packed >> 8)})}
+		got, err := r.smallRotation()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != testCase.want {
+			t.Errorf("Y-only rotation %#04x decoded %v degrees, want %v", testCase.packed, got, testCase.want)
+		}
+	}
+	// All three: packed = x | y<<10 | z<<20 in half-degrees, written as the high uint16 then the low
+	// one. 30 degrees of pitch, 150 of yaw, 200 of roll.
+	const halfX, halfY, halfZ = 60, 300, 400
+	packed := uint32(halfX) | uint32(halfY)<<10 | uint32(halfZ)<<20
+	high, low := uint16(packed>>16), uint16(packed)
+	r := &reader{r: bytes.NewReader([]byte{byte(high), byte(high >> 8), byte(low), byte(low >> 8)})}
+	got, err := r.smallRotation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 150 {
+		t.Fatalf("packed rotation decoded %v degrees of yaw, want 150 - the Y field is bits 10..19", got)
 	}
 }

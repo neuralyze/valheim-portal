@@ -152,3 +152,82 @@ func TestBuildOverlayPyramidPublishesAndReusesSourceHash(t *testing.T) {
 		t.Fatalf("published overlay missing: info=%v err=%v", info, err)
 	}
 }
+
+// The three new layers have to reach the tile the ground is actually on. A terrain-modification zone
+// is 64 m wide and its record carries only its CENTRE, so a zone whose centre is just outside a tile
+// still paints road inside it; a structure is an extent, not a point, so a 175 m village belongs to
+// every tile it touches; and a boat must survive the overview aggregation that rolls containers into
+// markers, because there are 36 boats in a 451,451-object world and each one is somebody's.
+func TestSelectOverlayCarriesTerrainZonesStructureFootprintsAndIndividualVehicles(t *testing.T) {
+	// Zoom 5 on this pyramid is 12288 px across 24 tiles, so one tile is 512 px of a 20,000 m
+	// world: 833.33 m. Tile (12, 12) therefore spans x and z from 0 to 833.33.
+	closeLevel := Level{Zoom: 5, Width: 12288, Height: 12288, TilesWide: 24, TilesHigh: 24}
+	bounds, ok := BoundsForTile(closeLevel, 12, 12)
+	if !ok {
+		t.Fatal("tile rejected")
+	}
+	if bounds.MinX != 0 || bounds.MinZ != 0 {
+		t.Fatalf("tile (12,12) starts at (%v, %v), want the origin", bounds.MinX, bounds.MinZ)
+	}
+	snapshot := worldintel.Snapshot{
+		World: "Midgard", Source: worldintel.Source{SHA256: "analysis-hash"},
+		Clusters: []worldintel.Cluster{
+			// Centre far off the tile, footprint overlapping it: the old circle-around-the-centre
+			// test dropped this and the map lost the half of the village that was on screen.
+			{ID: 1, Center: worldintel.Vec3{X: -400, Z: 400}, Radius: 600, Pieces: 4842,
+				Bounds: [4]float32{-900, 100, 200, 700}},
+			{ID: 2, Center: worldintel.Vec3{X: 5000, Z: 5000}, Radius: 10, Pieces: 30,
+				Bounds: [4]float32{4990, 4990, 5010, 5010}},
+		},
+		TerrainMods: &worldintel.TerrainMods{Zones: []worldintel.TerrainZone{
+			// Centre 20 m west of the tile edge, so 12 m of its samples are inside it.
+			{X: -20, Z: 64, Pitch: 65, Scale: 1, Road: 100},
+			{X: 4096, Z: 4096, Pitch: 65, Scale: 1, Road: 5},
+		}},
+		Objects: []worldintel.Object{
+			{ID: 1, Category: "vehicle", Position: worldintel.Vec3{X: 10, Z: 10}, Heading: 175},
+			{ID: 2, Category: "vehicle", Position: worldintel.Vec3{X: 12, Z: 12}, Heading: 13.5},
+			{ID: 3, Category: "vehicle", Position: worldintel.Vec3{X: 14, Z: 14}, Heading: 300},
+			{ID: 4, Category: "container", Position: worldintel.Vec3{X: 10, Z: 10}},
+			{ID: 5, Category: "container", Position: worldintel.Vec3{X: 12, Z: 12}},
+		},
+	}
+
+	closeTile, ok := SelectOverlay(snapshot, closeLevel, 12, 12)
+	if !ok {
+		t.Fatal("close tile rejected")
+	}
+	if len(closeTile.TerrainZones) != 1 || closeTile.TerrainZones[0].X != -20 {
+		t.Fatalf("terrain zones on the origin tile = %#v, want the one whose samples reach into it", closeTile.TerrainZones)
+	}
+	if len(closeTile.Clusters) != 1 || closeTile.Clusters[0].ID != 1 {
+		t.Fatalf("structures on the origin tile = %#v, want the one whose footprint overlaps it", closeTile.Clusters)
+	}
+
+	overview := Level{Zoom: 0, Width: 384, Height: 384, TilesWide: 1, TilesHigh: 1}
+	overviewTile, ok := SelectOverlay(snapshot, overview, 0, 0)
+	if !ok {
+		t.Fatal("overview tile rejected")
+	}
+	headings := map[float32]bool{}
+	for _, object := range overviewTile.Objects {
+		if object.Category != "vehicle" {
+			t.Fatalf("overview kept a %q object individually; only vehicles are exempt", object.Category)
+		}
+		headings[object.Heading] = true
+	}
+	if len(overviewTile.Objects) != 3 {
+		t.Fatalf("overview kept %d vehicles individually, want all 3", len(overviewTile.Objects))
+	}
+	if !headings[175] || !headings[13.5] || !headings[300] {
+		t.Fatalf("overview lost a vehicle heading: %v", headings)
+	}
+	// The containers still aggregate, which is what keeps a zoom-0 tile small and what makes the
+	// vehicle exemption meaningful rather than a blanket "keep everything".
+	if len(overviewTile.Markers) != 1 || overviewTile.Markers[0].Category != "container" || overviewTile.Markers[0].Count != 2 {
+		t.Fatalf("overview markers = %#v, want the two containers rolled into one", overviewTile.Markers)
+	}
+	if len(overviewTile.TerrainZones) != 2 {
+		t.Fatalf("overview terrain zones = %d, want both", len(overviewTile.TerrainZones))
+	}
+}

@@ -425,6 +425,7 @@
       locations: [],
       clusters: [],
       construction_coverage: null,
+      terrain_mods: null,
       objects: [],
     };
     const zones = new Set();
@@ -432,6 +433,9 @@
     const clusters = new Set();
     const objects = new Set();
     const coverage = new Map();
+    // Keyed on the compiler's own position, which is unique per zone, so the same edited zone
+    // arriving from two neighbouring tiles is drawn once.
+    const terrain = new Map();
     let coverageMetadata = null;
     for (const tile of tiles) {
       for (const zone of tile.generated_zones || []) {
@@ -449,6 +453,7 @@
         coverageMetadata = tile.construction_coverage;
         for (const cell of tile.construction_coverage.cells || []) coverage.set(`${cell.x}:${cell.z}`, cell);
       }
+      for (const zone of tile.terrain_zones || []) terrain.set(`${zone.x}:${zone.z}`, zone);
       const exactObjects = tile.objects || [];
       const aggregateObjects = (tile.markers || []).map((marker, index) => ({
         id: `aggregate-${tile.zoom}-${tile.x}-${tile.y}-${index}`,
@@ -470,6 +475,7 @@
     if (coverageMetadata) {
       snapshot.construction_coverage = { ...coverageMetadata, cells: [...coverage.values()] };
     }
+    if (terrain.size) snapshot.terrain_mods = { zones: [...terrain.values()] };
     return snapshot;
   }
 
@@ -837,6 +843,9 @@
     // has been near it, so the zone list is the record of where they have been.
     if (fogOfWar) drawFog(snapshot.generated_zones || []);
     if (state.layers.zones) drawZones(snapshot.generated_zones || []);
+    // Roads go under the structures and the pins: a road is ground, and the thing standing on it
+    // must stay readable.
+    if (state.layers.roads) drawTerrainMods(snapshot.terrain_mods);
     if (state.layers.clusters) {
       drawConstructionCoverage(snapshot.construction_coverage);
       drawClusters(snapshot.clusters || [], Boolean(snapshot.construction_coverage));
@@ -1027,6 +1036,120 @@
     context.restore();
   }
 
+  // Terrain-modification flag bits, the same byte layout worldintel writes into the run-length
+  // mask. Bits 32 (raised) and 64 (lowered) are in the data and deliberately not read here: this
+  // layer answers "what was the ground turned into", and which way the earth moved is a question
+  // for the readout, not for a colour.
+  const TERRAIN_DIRT = 1;
+  const TERRAIN_CULTIVATED = 2;
+  const TERRAIN_PAVED = 4;
+  const TERRAIN_HEIGHT = 16;
+  // A road is paved or dirt paint. Cultivated ground is a field and levelled ground is a building
+  // platform, so they are drawn - if at all - as separate things and never as road.
+  const TERRAIN_ROAD = TERRAIN_DIRT | TERRAIN_PAVED;
+
+  // Masks arrive run-length encoded as base64 of value/length byte pairs. Decoding is cached per
+  // zone because a pan redraws the same zones every frame and 4,225 samples a zone is real work.
+  const terrainMaskCache = new Map();
+  function terrainMask(zone) {
+    const size = zone.pitch * zone.pitch;
+    const cacheKey = `${zone.x}:${zone.z}:${zone.mask.length}`;
+    const cached = terrainMaskCache.get(cacheKey);
+    if (cached && cached.length === size) return cached;
+    const packed = atob(zone.mask);
+    const mask = new Uint8Array(size);
+    let at = 0;
+    for (let index = 0; index + 1 < packed.length && at < size; index += 2) {
+      const value = packed.charCodeAt(index);
+      const runLength = packed.charCodeAt(index + 1);
+      for (let repeat = 0; repeat < runLength && at < size; repeat += 1) mask[at++] = value;
+    }
+    if (at !== size) return null;
+    terrainMaskCache.set(cacheKey, mask);
+    return mask;
+  }
+
+  // The roads layer. Every sample is one metre of ground, which is the resolution the save has and
+  // the finest anything here can honestly draw, so this rasterises rather than trying to trace a
+  // centreline: a 3 m wide paved path is three samples across, and joining those into a polyline
+  // would invent precision the data does not have.
+  //
+  // Zoomed out, one metre is a fraction of a pixel. Rather than draw 4,225 sub-pixel rectangles a
+  // zone, the samples are accumulated into a screen-pixel coverage grid and painted once, so a road
+  // 200 m away still shows as a continuous line instead of a dotted one.
+  function drawTerrainMods(mods) {
+    if (!mods || !mods.zones || !mods.zones.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const bounds = visibleBounds(2);
+    const width = Math.max(1, Math.ceil(rect.width));
+    const height = Math.max(1, Math.ceil(rect.height));
+    // Three channels of coverage per screen pixel: road paint, cultivated ground, moved earth.
+    const road = new Float32Array(width * height);
+    const farm = new Float32Array(width * height);
+    const dug = new Float32Array(width * height);
+    let any = false;
+    for (const zone of mods.zones) {
+      const scale = zone.scale || 1;
+      const half = (zone.pitch - 1) * scale / 2;
+      if (zone.x + half < bounds.minX || zone.x - half > bounds.maxX
+        || zone.z + half < bounds.minZ || zone.z - half > bounds.maxZ) continue;
+      const mask = terrainMask(zone);
+      if (!mask) continue;
+      const origin = (zone.pitch - 1) / 2;
+      for (let sampleZ = 0; sampleZ < zone.pitch; sampleZ += 1) {
+        const worldZ = zone.z + (sampleZ - origin) * scale;
+        if (worldZ < bounds.minZ || worldZ > bounds.maxZ) continue;
+        const row = sampleZ * zone.pitch;
+        for (let sampleX = 0; sampleX < zone.pitch; sampleX += 1) {
+          const flags = mask[row + sampleX];
+          if (!flags) continue;
+          const worldX = zone.x + (sampleX - origin) * scale;
+          if (worldX < bounds.minX || worldX > bounds.maxX) continue;
+          const [pixelX, pixelY] = screen(worldX, worldZ);
+          const column = Math.floor(pixelX);
+          const line = Math.floor(pixelY);
+          if (column < 0 || column >= width || line < 0 || line >= height) continue;
+          const cell = line * width + column;
+          if (flags & TERRAIN_ROAD) { road[cell] += 1; any = true; }
+          else if (flags & TERRAIN_CULTIVATED) { farm[cell] += 1; any = true; }
+          else if (flags & TERRAIN_HEIGHT) { dug[cell] += 1; any = true; }
+        }
+      }
+    }
+    if (!any) return;
+    // One metre of ground occupies scale*scale pixels; below one pixel per metre several samples
+    // land in the same pixel, so full opacity is reached at whatever count that is rather than at
+    // one. Without this a zoomed-out road was as faint as a single stray hoe mark.
+    const perPixel = Math.max(1, 1 / Math.max(state.scale * state.scale, 1e-6));
+    const image = context.createImageData(width, height);
+    const data = image.data;
+    const roadColour = rgbToken('--map-road');
+    const farmColour = rgbToken('--map-road-cultivated');
+    const dugColour = rgbToken('--map-road-earth');
+    for (let cell = 0; cell < road.length; cell += 1) {
+      let colour = null;
+      let coverage = 0;
+      let ceiling = 0;
+      if (road[cell] > 0) { colour = roadColour; coverage = road[cell]; ceiling = 0.92; }
+      else if (farm[cell] > 0) { colour = farmColour; coverage = farm[cell]; ceiling = 0.62; }
+      else if (dug[cell] > 0) { colour = dugColour; coverage = dug[cell]; ceiling = 0.4; }
+      if (!colour) continue;
+      const alpha = Math.min(ceiling, ceiling * coverage / perPixel);
+      const at = cell * 4;
+      data[at] = colour[0];
+      data[at + 1] = colour[1];
+      data[at + 2] = colour[2];
+      data[at + 3] = Math.round(alpha * 255);
+    }
+    const layer = document.createElement('canvas');
+    layer.width = width;
+    layer.height = height;
+    layer.getContext('2d').putImageData(image, 0, 0);
+    context.save();
+    context.drawImage(layer, 0, 0);
+    context.restore();
+  }
+
   function drawConstructionCoverage(coverage) {
     if (!coverage || state.scale < COVERAGE_VISIBLE_SCALE) return;
     const fade = Math.min(1, (state.scale - COVERAGE_VISIBLE_SCALE) / (COVERAGE_FULL_SCALE - COVERAGE_VISIBLE_SCALE));
@@ -1107,8 +1230,16 @@
   function drawClusters(clusters, haveCoverage) {
     const bounds = visibleBounds(20);
     const coverageVisible = haveCoverage && state.scale >= COVERAGE_VISIBLE_SCALE;
-    const visible = clusters.filter((cluster) => cluster.center.x >= bounds.minX && cluster.center.x <= bounds.maxX
-      && cluster.center.z >= bounds.minZ && cluster.center.z <= bounds.maxZ).slice(0, MAX_CLUSTER_GLYPHS);
+    // Against the footprint, not the centre. A 175 m wide shared village whose centre is just off
+    // screen is still half on screen, and the old centre test dropped it entirely.
+    const visible = clusters.filter((cluster) => {
+      const box = cluster.bounds;
+      if (!box) {
+        return cluster.center.x >= bounds.minX && cluster.center.x <= bounds.maxX
+          && cluster.center.z >= bounds.minZ && cluster.center.z <= bounds.maxZ;
+      }
+      return box[2] >= bounds.minX && box[0] <= bounds.maxX && box[3] >= bounds.minZ && box[1] <= bounds.maxZ;
+    }).slice(0, MAX_CLUSTER_GLYPHS);
     const bySize = [...visible].sort((a, b) => (b.pieces || 0) - (a.pieces || 0));
 
     // Smallest first, so the shape an operator came to see ends up on top. Four builders sharing one
@@ -1116,20 +1247,38 @@
     // painting over the 58-piece base.
     for (const cluster of [...bySize].reverse()) {
       const [pixelX, pixelY] = screen(cluster.center.x, cluster.center.z);
-      // The 35 m floor keeps a cluster findable on a whole-world view, but close in it inflates
-      // neighbours into one blob. Zoomed in, a site is drawn the size it actually is.
-      const metres = state.scale >= COVERAGE_FULL_SCALE ? Math.max(cluster.radius, 4) : Math.max(cluster.radius, 35);
-      context.save();
-      context.beginPath();
-      context.arc(pixelX, pixelY, Math.max(3, metres * state.scale), 0, Math.PI * 2);
       const builder = builderColour(cluster.creator);
+      const box = cluster.bounds;
+      // The footprint is drawn as itself once it is more than a few pixels across. Below that an
+      // outline is indistinguishable from a dot, so the circle - which has a legibility floor -
+      // takes over. The circle's 35 m floor keeps a structure findable on a whole-world view; zoomed
+      // in it would inflate neighbours into one blob, which is the other half of why the outline
+      // exists.
+      const boxWide = box ? (box[2] - box[0]) * state.scale : 0;
+      const boxHigh = box ? (box[3] - box[1]) * state.scale : 0;
+      context.save();
       context.fillStyle = builder;
-      context.globalAlpha = coverageVisible ? 0.06 : 0.16;
-      context.fill();
       context.strokeStyle = builder;
-      context.globalAlpha = coverageVisible ? 0.24 : 0.42;
-      context.lineWidth = 1;
-      context.stroke();
+      if (box && Math.max(boxWide, boxHigh) >= 6) {
+        const [left, top] = screen(box[0], box[3]);
+        // Never thinner than a pixel: a 3 m wide pier at a distance still has to be a line.
+        const drawWidth = Math.max(1, boxWide);
+        const drawHeight = Math.max(1, boxHigh);
+        context.globalAlpha = coverageVisible ? 0.07 : 0.18;
+        context.fillRect(left, top, drawWidth, drawHeight);
+        context.globalAlpha = coverageVisible ? 0.36 : 0.58;
+        context.lineWidth = 1;
+        context.strokeRect(left + 0.5, top + 0.5, Math.max(1, drawWidth - 1), Math.max(1, drawHeight - 1));
+      } else {
+        const metres = state.scale >= COVERAGE_FULL_SCALE ? Math.max(cluster.radius, 4) : Math.max(cluster.radius, 35);
+        context.beginPath();
+        context.arc(pixelX, pixelY, Math.max(3, metres * state.scale), 0, Math.PI * 2);
+        context.globalAlpha = coverageVisible ? 0.06 : 0.16;
+        context.fill();
+        context.globalAlpha = coverageVisible ? 0.24 : 0.42;
+        context.lineWidth = 1;
+        context.stroke();
+      }
       context.restore();
       drawGlyph('cluster', pixelX, pixelY, markerSize(), builder);
     }
@@ -1253,17 +1402,58 @@
         ordinal += 1;
         const objects = index.cells.get(indexKey(cellX, cellZ));
         if (!objects) continue;
-        const perCell = state.scale < ZONE_DETAIL_SCALE ? 1 : objects.length;
+        // Vehicles are never thinned to one per cell. There are 36 boats and carts in a
+        // 451,451-object world and each one is somebody's; the server already exempts them from
+        // tile aggregation for the same reason, and dropping three of four here would undo that.
+        const vehicles = layer === 'vehicle';
+        const perCell = state.scale < ZONE_DETAIL_SCALE && !vehicles ? 1 : objects.length;
         for (let objectIndex = 0; objectIndex < perCell && drawn < maximum; objectIndex += 1) {
           const object = objects[objectIndex];
           if (object.position.x < bounds.minX || object.position.x > bounds.maxX || object.position.z < bounds.minZ || object.position.z > bounds.maxZ) continue;
           const [pixelX, pixelY] = screen(object.position.x, object.position.z);
           const kind = object.category === 'world' ? 'world' : object.category === 'unknown' ? 'unknown' : object.category;
-          drawGlyph(kind, pixelX, pixelY, markerSize(), objectColor(object.category));
+          const colour = objectColor(object.category);
+          if (vehicles && !object.aggregate) drawHeading(pixelX, pixelY, object.heading, colour);
+          drawGlyph(kind, pixelX, pixelY, markerSize(), colour);
           drawn += 1;
         }
       }
     }
+  }
+
+  // A boat's heading, as an arrow from the hull. Valheim's Y euler is degrees clockwise from +Z,
+  // and this canvas has +Z up the screen with +X right, so screen-space is
+  // (sin(yaw), -cos(yaw)) - a heading of 0 points up the map and 90 points right. Getting the sign
+  // wrong here is invisible at the origin and wrong everywhere, so the check is the two Vangard
+  // carts at (831.2, -24.9) heading 175.0 and (861.98, -17.7) heading 13.5: the first must point
+  // very nearly straight DOWN the screen and the second very nearly straight UP.
+  function drawHeading(x, y, heading, colour) {
+    if (typeof heading !== 'number' || !Number.isFinite(heading)) return;
+    const radians = heading * Math.PI / 180;
+    const length = markerSize() * 1.6;
+    const tipX = x + Math.sin(radians) * length;
+    const tipY = y - Math.cos(radians) * length;
+    context.save();
+    context.strokeStyle = colour;
+    context.fillStyle = colour;
+    context.lineWidth = Math.max(1.25, markerSize() / 6);
+    context.lineCap = 'round';
+    context.globalAlpha = 0.9;
+    context.beginPath();
+    context.moveTo(x, y);
+    context.lineTo(tipX, tipY);
+    context.stroke();
+    // A small filled head, rotated with the shaft, so direction survives at 7 px.
+    const headSize = Math.max(2.5, markerSize() / 3);
+    context.translate(tipX, tipY);
+    context.rotate(radians);
+    context.beginPath();
+    context.moveTo(0, -headSize);
+    context.lineTo(headSize * 0.7, headSize * 0.6);
+    context.lineTo(-headSize * 0.7, headSize * 0.6);
+    context.closePath();
+    context.fill();
+    context.restore();
   }
 
   function markerSize() {

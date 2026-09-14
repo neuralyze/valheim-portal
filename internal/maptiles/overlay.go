@@ -14,7 +14,12 @@ import (
 // that still call a church a landmark - the tiles are what the map draws locations from at close
 // zoom. Bumped from 3 to 4 on 2026-08-21 when shrine, tower, ruins, monument, port, mine and arena
 // were split out: any change to what a tile's categories MEAN has to be bumped here too.
-const OverlaySchemaVersion = 4
+//
+// Bumped 4 to 5 for the structures, boats and roads layers: a tile now carries structure footprints
+// and builder counts, a terrain-modification mask, and clusters that hold only player-placed pieces
+// where they used to hold generated ruins as well. Every one of those changes what an existing tile
+// means, so no v4 pyramid may be served as if it were this.
+const OverlaySchemaVersion = 5
 
 const MaxOverlayFeatures = 4096
 
@@ -36,9 +41,14 @@ type OverlayTile struct {
 	Locations      []worldintel.Location            `json:"locations,omitempty"`
 	Clusters       []worldintel.Cluster             `json:"clusters,omitempty"`
 	Coverage       *worldintel.ConstructionCoverage `json:"construction_coverage,omitempty"`
-	Objects        []worldintel.Object              `json:"objects,omitempty"`
-	Markers        []OverlayMarker                  `json:"markers,omitempty"`
-	Truncated      bool                             `json:"truncated,omitempty"`
+	// TerrainZones is the roads layer: the 1 m paint and height masks for every edited zone that
+	// touches this tile. A zone is 64 m of ground and a mask is about 440 base64 characters on
+	// average, so a zoom-5 tile carries at most a handful and the whole of Vangard is 68,200
+	// characters - the reason this can be per-tile JSON rather than a second image pyramid.
+	TerrainZones []worldintel.TerrainZone `json:"terrain_zones,omitempty"`
+	Objects      []worldintel.Object      `json:"objects,omitempty"`
+	Markers      []OverlayMarker          `json:"markers,omitempty"`
+	Truncated    bool                     `json:"truncated,omitempty"`
 }
 
 func BoundsForTile(level Level, x, y int) (Bounds, bool) {
@@ -79,10 +89,24 @@ func SelectOverlay(snapshot worldintel.Snapshot, level Level, x, y int) (Overlay
 		}
 	}
 	for _, cluster := range snapshot.Clusters {
-		radius := float64(cluster.Radius)
-		if float64(cluster.Center.X)+radius >= bounds.MinX && float64(cluster.Center.X)-radius <= bounds.MaxX &&
-			float64(cluster.Center.Z)+radius >= bounds.MinZ && float64(cluster.Center.Z)-radius <= bounds.MaxZ {
+		// Against the footprint, not a circle around the centre. A 175 m wide shared village at
+		// (819, -15) on Vangard has a 136 m radius, so the circle test pulled it onto tiles it does
+		// not touch and - worse at close zoom - a long thin pier failed the test on the tiles its
+		// far end actually sits in.
+		if float64(cluster.Bounds[2]) >= bounds.MinX && float64(cluster.Bounds[0]) <= bounds.MaxX &&
+			float64(cluster.Bounds[3]) >= bounds.MinZ && float64(cluster.Bounds[1]) <= bounds.MaxZ {
 			tile.Clusters = append(tile.Clusters, cluster)
+		}
+	}
+	if mods := snapshot.TerrainMods; mods != nil {
+		for _, zone := range mods.Zones {
+			// A zone's samples run from its centre minus half the zone to its centre plus half, so
+			// the extent is (pitch-1)*scale wide and the compiler sits in the middle of it.
+			half := float64(zone.Pitch-1) * float64(zone.Scale) / 2
+			if float64(zone.X)+half >= bounds.MinX && float64(zone.X)-half <= bounds.MaxX &&
+				float64(zone.Z)+half >= bounds.MinZ && float64(zone.Z)-half <= bounds.MaxZ {
+				tile.TerrainZones = append(tile.TerrainZones, zone)
+			}
 		}
 	}
 	if coverage := snapshot.ConstructionCoverage; coverage != nil {
@@ -120,6 +144,16 @@ func SelectOverlay(snapshot worldintel.Snapshot, level Level, x, y int) (Overlay
 			if !inside(float64(object.Position.X), float64(object.Position.Z)) {
 				continue
 			}
+			// Vehicles survive the overview aggregation as themselves. There are 36 of them in a
+			// 451,451-object world, each one somebody's boat with a name, a heading and an owner,
+			// and rolling three rafts in one bay into a marker that says "vehicle x3" throws away
+			// exactly the thing that makes the layer worth having. Everything else - 1,020
+			// containers, 547 creatures - is aggregated, because that is what keeps a zoom-0 tile
+			// small.
+			if object.Category == "vehicle" {
+				tile.Objects = append(tile.Objects, object)
+				continue
+			}
 			cellX := int(math.Floor(float64(object.Position.X) / cellSize))
 			cellZ := int(math.Floor(float64(object.Position.Z) / cellSize))
 			key := fmt.Sprintf("%s/%d/%d", object.Category, cellX, cellZ)
@@ -150,6 +184,9 @@ func SelectOverlay(snapshot worldintel.Snapshot, level Level, x, y int) (Overlay
 	tile.GeneratedZones, tile.Truncated = bounded(tile.GeneratedZones, 512, tile.Truncated)
 	tile.Locations, tile.Truncated = boundedLocations(tile.Locations, 1024, tile.Truncated)
 	tile.Clusters, tile.Truncated = bounded(tile.Clusters, 512, tile.Truncated)
+	// 512 edited zones is 32 km of ground on one tile, which only a zoom-0 overview could reach;
+	// the cap exists so a pathological world cannot make one tile megabytes of mask.
+	tile.TerrainZones, tile.Truncated = bounded(tile.TerrainZones, 512, tile.Truncated)
 	if tile.Coverage != nil {
 		tile.Coverage.Cells, tile.Truncated = bounded(tile.Coverage.Cells, 1024, tile.Truncated)
 	}

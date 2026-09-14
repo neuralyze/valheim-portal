@@ -31,7 +31,11 @@ const (
 	maxBlob                      = 64 << 20
 	maxArchiveMember             = 512 << 20
 	constructionCoverageBaseCell = 32
-	constructionClusterCell      = 128
+	// constructionLinkDistance is the single-linkage threshold that groups pieces into structures,
+	// and minStructurePieces is the floor below which a group is not one. See
+	// aggregateConstructionClusters for the measurement behind both.
+	constructionLinkDistance     = 8
+	minStructurePieces           = 3
 	maxConstructionCoverageCells = 2_048
 	maxConstructionClusters      = 1_024
 )
@@ -101,7 +105,12 @@ type Object struct {
 	// Meadows ruins, crypts, villages - carry the same field with the value 0, so presence alone
 	// classified every ruin on the map as player construction and put "our builds" in places
 	// nobody had visited. The value is what separates them, so the value is kept.
-	Creator          int64      `json:"creator,omitempty"`
+	Creator int64 `json:"creator,omitempty"`
+	// Heading is the object's Y rotation in degrees, decoded from the quantised rotation the save
+	// stores. It is only meaningful - and only recorded - for the things the map draws a direction
+	// for, which today is vehicles: a boat is worth an arrow, a wall is not, and every wall in a
+	// 72,846-piece world carrying a redundant float is 72,846 floats of map payload.
+	Heading          float32    `json:"heading,omitempty"`
 	ConnectionHash   int32      `json:"connection_hash,omitempty"`
 	Inventory        *Inventory `json:"inventory,omitempty"`
 	InventoryWarning string     `json:"inventory_warning,omitempty"`
@@ -128,6 +137,9 @@ const (
 	sentinelZoneIndex = 15625
 )
 
+// Cluster is one player-built structure: a single-link spatial grouping of pieces somebody placed.
+// See aggregateConstructionClusters for the rule and for why generated location pieces are not in
+// here at all.
 type Cluster struct {
 	ID     int     `json:"id"`
 	Center Vec3    `json:"center"`
@@ -137,6 +149,14 @@ type Cluster struct {
 	// map could show that somebody had built something and never which somebody - which is how an
 	// operator ends up asking whether a stranger has been on the server.
 	Creator int64 `json:"creator,omitempty"`
+	// Builders is how many distinct player ids placed pieces in this structure. Clustering is
+	// spatial, not per-builder, because two people extending the same longhouse have built one
+	// longhouse; Creator names the majority and this says whether that is the whole story.
+	Builders int `json:"builders,omitempty"`
+	// Bounds is the axis-aligned footprint as minX, minZ, maxX, maxZ. A circle of Radius around
+	// Center is the wrong shape for a 60 m pier or a curtain wall, and at zoom 5 the difference
+	// between "a marker somewhere here" and the actual outline is the whole value of the layer.
+	Bounds [4]float32 `json:"bounds"`
 }
 type CoverageCell struct {
 	X      int `json:"x"`
@@ -178,16 +198,27 @@ type Summary struct {
 	// ExploredZones counts only zones inside the playable grid; SentinelZones counts the far-away
 	// bookkeeping zones. ExploredSquareKm and ExploredPercent are what an operator actually asked
 	// for: how much of the map has been visited.
-	ExploredZones      int            `json:"explored_zones"`
-	SentinelZones      int            `json:"sentinel_zones"`
-	ExploredSquareKm   float64        `json:"explored_square_km"`
-	ExploredPercent    float64        `json:"explored_percent"`
-	Locations          int            `json:"locations"`
-	InventoryObjects   int            `json:"inventory_objects"`
-	InventoryStacks    int            `json:"inventory_stacks"`
-	InventoryItems     int64          `json:"inventory_items"`
-	TamedCreatures     int            `json:"tamed_creatures"`
-	NamedCreatures     int            `json:"named_creatures"`
+	ExploredZones    int     `json:"explored_zones"`
+	SentinelZones    int     `json:"sentinel_zones"`
+	ExploredSquareKm float64 `json:"explored_square_km"`
+	ExploredPercent  float64 `json:"explored_percent"`
+	Locations        int     `json:"locations"`
+	InventoryObjects int     `json:"inventory_objects"`
+	InventoryStacks  int     `json:"inventory_stacks"`
+	InventoryItems   int64   `json:"inventory_items"`
+	TamedCreatures   int     `json:"tamed_creatures"`
+	NamedCreatures   int     `json:"named_creatures"`
+	// PlayerPieces and GeneratedPieces split the construction category by whether Valheim stamped
+	// a builder on the piece. Both are reported because the structures layer draws only the first,
+	// and an operator looking at 32,694 pieces on a map needs to know the other 40,152 were not
+	// lost but are the generated ruins the location pins already mark.
+	PlayerPieces    int `json:"player_pieces"`
+	GeneratedPieces int `json:"generated_pieces"`
+	Structures      int `json:"structures"`
+	Vehicles        int `json:"vehicles"`
+	// TerrainZones is how many 64 m zones carry a _TerrainCompiler, i.e. how much of the world
+	// anybody has dug, levelled or paved.
+	TerrainZones       int            `json:"terrain_zones"`
 	Categories         map[string]int `json:"categories"`
 	LocationCategories map[string]int `json:"location_categories"`
 	Bounds             [4]float32     `json:"bounds"`
@@ -210,7 +241,14 @@ type Snapshot struct {
 	Locations            []Location            `json:"locations"`
 	Clusters             []Cluster             `json:"clusters"`
 	ConstructionCoverage *ConstructionCoverage `json:"construction_coverage,omitempty"`
-	Objects              []Object              `json:"objects"`
+	// TerrainMods is the roads layer's source: the per-zone paint and height masks the players' own
+	// digging left behind. Absent on a world nobody has edited, which is the honest answer.
+	TerrainMods *TerrainMods `json:"terrain_mods,omitempty"`
+	Objects     []Object     `json:"objects"`
+	// terrainZones is where absorbObject parks the decoded compilers until finalize can sort and
+	// total them. Unexported so it never reaches the wire twice: TerrainMods above is the published
+	// form and holds the same slice.
+	terrainZones []TerrainZone
 }
 type Diff struct {
 	Older         string         `json:"older"`
@@ -303,18 +341,33 @@ func (r *reader) position(flags uint16) (Vec3, error) {
 	return Vec3{X: float32(x), Z: float32(z)}, e
 }
 
-// skipSmallRotation consumes the quantised rotation 1.0 writes in place of a Vector3. Per
-// ZPackage::ReadSmallRotation, the first uint16 carries bit 15 when only the Y angle was stored, and
-// otherwise it is the high half of a 32-bit triple of 10-bit angles, so the record is two bytes or
-// four. Measured on Ulfsland: the two rotated ZDOs in 00_00__0_1.chunk hold 0x8198 and 0x82a6,
-// both with bit 15 set, i.e. the two-byte form for Y = 204 and 339 degrees.
-func (r *reader) skipSmallRotation() error {
+// smallRotation decodes the quantised rotation 1.0 writes in place of a Vector3 and returns the Y
+// angle in degrees. Per ZPackage::WriteSmallRotation the euler triple is multiplied by 2 and
+// truncated to integers, so the wire unit is HALF-degrees, and there are two forms:
+//
+//   - Y only, when x and z are both within one half-degree of zero or of 720: one int16 of
+//     (y | 0x8000). Bit 15 is the discriminator.
+//   - all three, as a 30-bit triple of 10-bit angles packed x | y<<10 | z<<20 and written as the
+//     high uint16 then the low uint16.
+//
+// Measured on Ulfsland: the two rotated ZDOs in 00_00__0_1.chunk hold 0x8198 and 0x82a6, both with
+// bit 15 set, i.e. the Y-only form for 408 and 678 half-degrees - 204 and 339 degrees.
+//
+// A boat's heading is the only reason this is decoded rather than skipped: a raft drawn without one
+// is a dot, and the operator asked which way the boats are pointing.
+func (r *reader) smallRotation() (float32, error) {
 	packed, e := r.u16()
-	if e != nil || packed&0x8000 != 0 {
-		return e
+	if e != nil {
+		return 0, e
 	}
-	_, e = r.u16()
-	return e
+	if packed&0x8000 != 0 {
+		return float32(packed&0x7fff) / 2, nil
+	}
+	low, e := r.u16()
+	if e != nil {
+		return 0, e
+	}
+	return float32((uint32(packed)<<16|uint32(low))>>10&0x3ff) / 2, nil
 }
 func (r *reader) skip(n int64) error {
 	if n < 0 || n > maxBlob {
@@ -344,6 +397,29 @@ func (r *reader) str() (string, error) {
 		}
 	}
 	return "", errors.New("invalid string length")
+}
+
+// vehicleAssetRE matches a top-level prefab entry in one of Valheim's own vehicle asset folders.
+// Measured against the 1.0.12 manifest_extended: Ships/ holds Raft, Karve, VikingShip,
+// VikingShip_Ashlands, Trailership and CargoCrate at the top level with its effects one level down
+// in _res/fx/, and Cart/ holds Cart, Sled, Catapult and BatteringRam beside its ammo prefabs. The
+// group two capture is the prefab name; the "no slash" character class is what keeps the match at
+// the top level so vfx_Place_Raft is not admitted.
+var vehicleAssetRE = regexp.MustCompile(`Assets/[A-Za-z0-9_/]*/(Ships|Cart)/([A-Za-z0-9_]+)\.prefab`)
+
+// vehicleAssetMarker prefixes the taxonomy entries so they can never collide with a prefab name: a
+// colon does not occur in one.
+const vehicleAssetMarker = "vehicle:"
+
+// VehicleAsset reports whether the game's own asset taxonomy files this prefab as a ship or a cart.
+// This is the third and weakest of the three vehicle signals, and the only one that can recognise a
+// vehicle nobody has used: measured on Ulfsland, the Cart at (-2312, 63, 1918) carries no builder
+// and none of the component keys, because Vagon only writes attachJoint once somebody attaches it.
+func VehicleAsset(name string, catalog map[int32]string) bool {
+	if name == "" {
+		return false
+	}
+	return catalog[StableHash(vehicleAssetMarker+name)] != ""
 }
 func (r *reader) num() (int, error) {
 	a, e := r.u8()
@@ -426,6 +502,19 @@ func CatalogFromFiles(paths ...string) map[int32]string {
 		}
 		files++
 		scanned += int64(len(data))
+		// The game's own taxonomy for what is a vehicle. A SoftRef manifest indexes assets by path,
+		// and Valheim files its hulls under Assets/GameElements/Ships/ and its carts under
+		// Assets/GameElements/Cart/ while filing the generated shipwreck props under
+		// Assets/world/Props/ShipwreckKarve/ - so the FOLDER separates a boat from a decoration
+		// that shares its name, which no amount of reading the name can do.
+		//
+		// It is registered as a "vehicle:<name>" marker in this same map rather than returned
+		// separately, because the catalog is already threaded through every parse path and a second
+		// parallel argument would be one more thing a caller could forget to pass. Only top-level
+		// entries count: the _res/fx subfolder holds vfx_Place_Raft and friends, which are effects.
+		for _, match := range vehicleAssetRE.FindAllSubmatch(data, -1) {
+			out[StableHash(vehicleAssetMarker+string(match[2]))] = vehicleAssetMarker + string(match[2])
+		}
 		register := func(s string) {
 			if strings.Contains(s, "::") || strings.Contains(s, "System.") {
 				return
@@ -706,7 +795,23 @@ func ParseDB(src io.Reader, catalog map[int32]string) (Snapshot, error) {
 // are classified by exactly the same code - which is the point, because the vehicle and category
 // classifiers were verified against Hrafnheim's 1,780,660-entry catalog and must not fork.
 func (s *Snapshot) absorbObject(o Object, vals valueMaps, catalog map[int32]string) {
-	semanticCategory(&o, vals)
+	semanticCategory(&o, vals, catalog)
+	// A heading is only drawn for the things that have a direction worth drawing, so it is dropped
+	// everywhere else rather than serialised 72,846 times for walls that face nowhere in
+	// particular.
+	if o.Category != "vehicle" {
+		o.Heading = 0
+	}
+	if raw, ok := vals.b[StableHash(terrainDataKey)]; ok && len(raw.data) > 0 {
+		zone, _, err := parseTerrainData(raw.data)
+		if err != nil {
+			s.Health.Findings = append(s.Health.Findings,
+				fmt.Sprintf("terrain data for the zone at (%.0f, %.0f) is unreadable: %v", o.Position.X, o.Position.Z, err))
+		} else {
+			zone.X, zone.Z = int32(math.Round(float64(o.Position.X))), int32(math.Round(float64(o.Position.Z)))
+			s.terrainZones = append(s.terrainZones, zone)
+		}
+	}
 	if encoded, ok := vals.s[StableHash("items")]; ok && encoded != "" {
 		raw, err := base64.StdEncoding.DecodeString(encoded)
 		if err != nil {
@@ -777,10 +882,14 @@ func readObject(r *reader, version int32, catalog map[int32]string, id uint32) (
 	o := Object{ID: id, PrefabHash: ph, Prefab: catalog[ph], Position: p, Persistent: flags&256 != 0, Distant: flags&512 != 0, Type: uint8(flags >> 10 & 3)}
 	o.Category = category(o.Prefab)
 	if flags&flagRotation != 0 {
+		// The rotation is decoded, not skipped, because the boats layer draws a heading. The
+		// pre-1.0 format stores the euler triple as a full Vector3 of degrees; 1.0 quantises it.
 		if version < worldVersionCompactZDO {
-			e = r.skip(12)
+			var euler Vec3
+			euler, e = r.vec3()
+			o.Heading = euler.Y
 		} else {
-			e = r.skipSmallRotation()
+			o.Heading, e = r.smallRotation()
 		}
 		if e != nil {
 			return o, valueMaps{}, e
@@ -917,7 +1026,10 @@ func readMapS(r *reader, v int32) (map[int32]string, error) {
 func readMapB(r *reader, v int32) (map[int32]blob, error) {
 	n, e := count(r, v)
 	m := make(map[int32]blob, n)
-	itemsHash := StableHash("items")
+	// The only two byte arrays worth the memory of keeping. Everything else in the map - roomData
+	// on a dungeon generator, itemData on a stack - is skipped in place, and on Vangard that is
+	// 1,440 blobs against the 154 TCData and 975 items that are actually read.
+	itemsHash, terrainHash := StableHash("items"), StableHash(terrainDataKey)
 	for i := 0; i < n && e == nil; i++ {
 		var k, l int32
 		k, e = r.i32()
@@ -931,7 +1043,7 @@ func readMapB(r *reader, v int32) (map[int32]blob, error) {
 			continue
 		}
 		entry := blob{size: int(l)}
-		if k == itemsHash {
+		if k == itemsHash || k == terrainHash {
 			entry.data = make([]byte, l)
 			e = r.read(entry.data)
 		} else {
@@ -1022,16 +1134,61 @@ func vehicleHull(name string) bool {
 	return false
 }
 
+// vehicleComponent reports whether a ZDO's property maps carry a key that only a vehicle's own
+// component writes. This is what answers "which prefabs are vehicles" from the game's own data
+// instead of from a list of names: the keys are ZDOVars constants in the shipped 1.0.12 assembly,
+// and the code that writes them is the vehicle component, so a mod's boat that subclasses Ship is
+// found without anybody adding its name anywhere.
+//
+//   - Ship::CustomFixedUpdate calls Ship::UpdateControlls every physics tick, and UpdateControlls
+//     Sets ZDOVars.s_forward ("forward", int) and ZDOVars.s_rudder ("rudder", float) on the ZDO
+//     whenever the view is the owner. A ZDO is only in a save because its zone was loaded and
+//     simulated, so a persisted ship has been through that path. Measured on Vangard: the one
+//     Karve at (1056.5, 28.5, -2905.8) carries both.
+//   - Vagon - the cart class - keys its attach state under ZDOVars.s_attachJointHash
+//     ("attachJoint", int) on its own ZDO (Vagon::IsAttached). Measured: all four of Vangard's
+//     Carts carry it.
+//
+// The name heuristic in vehicleHull is kept alongside, not replaced, but it is now subordinate: see
+// semanticCategory for why a name alone is not allowed to make something a boat.
+func vehicleComponent(v valueMaps) bool {
+	return has(v.f, "rudder") || has(v.i, "forward") || has(v.i, "attachJoint")
+}
+
 func asciiLetter(b byte) bool { c := b | 0x20; return c >= 'a' && c <= 'z' }
 func asciiUpper(b byte) bool  { return b >= 'A' && b <= 'Z' }
-func semanticCategory(o *Object, v valueMaps) {
-	// A Karve, a longship and a cart all carry cargo, so they hold an "items" map exactly like a chest
-	// does, and the container rule below would relabel every loaded hull a container - a boat would
-	// then be retained but drawn as a chest, which is the second half of why boats never looked like
-	// boats. The hull name is the stronger signal, so it wins; the inventory is attached by the caller
-	// regardless of category, so a boat keeps its cargo either way.
-	if o.Category == "vehicle" {
+func semanticCategory(o *Object, v valueMaps, catalog map[int32]string) {
+	// The builder is read first and unconditionally, because every branch below can return and a
+	// chest or a smelter somebody placed has a builder too. Leaving it to the last branch meant
+	// the structures layer could not tell whose base a workbench belonged to.
+	if creator, ok := v.l[StableHash("creator")]; ok {
+		o.Creator = creator
+	}
+	// Component evidence outranks every name and inventory rule. A loaded Karve holds an "items"
+	// map exactly like a chest does, so the container rule below would relabel a laden hull a
+	// container - a boat retained but drawn as a chest, which is half of why boats never looked
+	// like boats. The inventory is attached by the caller regardless of category, so a boat keeps
+	// its cargo either way.
+	if vehicleComponent(v) {
+		o.Category = "vehicle"
 		return
+	}
+	// A hull NAME on its own is not a boat. Valheim's generated shipwrecks are static props called
+	// shipwreck_karve_bow, _stern, _sternpost and _dragonhead, and vehicleHull matches every one of
+	// them on "karve"; measured on Vangard, 25 of the 36 objects the name rule called vehicles were
+	// wreck parts, so the boats layer was three quarters scenery. A wreck carries no vehicle
+	// component key and no builder, because nobody built it - so a name-only hull is admitted only
+	// when somebody placed it, and otherwise falls through to be treated like the rock or tree it
+	// resembles.
+	if o.Category == "vehicle" {
+		// A builder, or the game's own asset taxonomy filing this prefab under Ships/ or Cart/.
+		// Either is enough; a bare hull noun is not.
+		if o.Creator != 0 || VehicleAsset(o.Prefab, catalog) {
+			return
+		}
+		// "world" is category()'s bucket for generated scenery, and retain() drops it - the same
+		// fate as the rocks and trees beside the wreck.
+		o.Category = "world"
 	}
 	if has(v.s, "tag") {
 		o.Category = "portal"
@@ -1049,14 +1206,10 @@ func semanticCategory(o *Object, v valueMaps) {
 		o.Category = "creature"
 		return
 	}
-	if creator, ok := v.l[StableHash("creator")]; ok {
-		o.Creator = creator
-		// A zero creator is the game's own handiwork: the field exists on every piece a generated
-		// location placed. Only a real player id means somebody built this.
-		if creator != 0 {
-			o.Category = "construction"
-		}
-		return
+	// A zero creator is the game's own handiwork: the field exists on every piece a generated
+	// location placed. Only a real player id means somebody built this.
+	if o.Creator != 0 {
+		o.Category = "construction"
 	}
 }
 func has[T any](m map[int32]T, name string) bool { _, ok := m[StableHash(name)]; return ok }
@@ -1328,15 +1481,33 @@ func finalize(s *Snapshot) {
 				b[3] = max(b[3], o.Position.Z)
 			}
 		}
+		// Construction pieces leave the object list either way: 72,846 of them would swamp the map
+		// payload and every one is already represented, a player's by its structure and a generated
+		// location's by its location pin. Only the player's are aggregated, because "player
+		// construction" drawn over 40,152 generated crypt and ruin pieces is a map that says
+		// somebody has built a fortress in a valley nobody has visited.
 		if o.Category == "construction" && validPos(o.Position) {
-			construction = append(construction, constructionPoint{Position: o.Position, Creator: o.Creator})
-		} else {
-			kept = append(kept, o)
+			if o.Creator == 0 {
+				s.Summary.GeneratedPieces++
+			} else {
+				s.Summary.PlayerPieces++
+				construction = append(construction, constructionPoint{Position: o.Position, Creator: o.Creator})
+			}
+			continue
 		}
+		if o.Category == "vehicle" {
+			s.Summary.Vehicles++
+		}
+		kept = append(kept, o)
 	}
 	s.Objects = kept
 	s.ConstructionCoverage = aggregateConstructionCoverage(construction)
 	s.Clusters = aggregateConstructionClusters(construction)
+	s.Summary.Structures = len(s.Clusters)
+	s.TerrainMods = aggregateTerrainMods(s.terrainZones)
+	if s.TerrainMods != nil {
+		s.Summary.TerrainZones = s.TerrainMods.ZoneCount
+	}
 	s.Summary.Bounds = b
 	if s.Health.InvalidCoordinates > 0 {
 		s.Health.Findings = append(s.Health.Findings, "objects with sentinel or invalid coordinates were excluded from map bounds")
@@ -1405,104 +1576,179 @@ func aggregateConstructionCoverage(points []constructionPoint) *ConstructionCove
 	return coverage
 }
 
-type constructionClusterAccumulator struct {
-	x      float64
-	y      float64
-	z      float64
-	pieces int
-	center Vec3
-	radius float32
-}
-
-// constructionPoint is a piece and whoever placed it, so clusters can be grouped per builder: two
-// people building in the same valley are two clusters, which is the whole point of colouring them.
+// constructionPoint is a piece and whoever placed it. Clustering is spatial and ignores the
+// builder, because two people extending the same longhouse have built one longhouse; the builder
+// is carried so the finished structure can name its majority and say how many people worked on it.
 type constructionPoint struct {
 	Position Vec3
 	Creator  int64
 }
 
+// aggregateConstructionClusters groups player-placed pieces into structures by SINGLE LINKAGE: two
+// pieces belong to the same structure when they are within constructionLinkDistance of each other
+// in the horizontal plane, and the relation is transitive, so a pier walking out into the water is
+// one structure rather than a dozen.
+//
+// The threshold is 8 m, and it is a measurement rather than a taste. Valheim's longest ordinary
+// build pieces are 4 m (wood_pole_log_4, wood_wall_log_4x0.5, stone_wall_4x2), so two pieces of the
+// same building are at most about 4 m apart centre to centre, and 8 m is twice that: enough to link
+// a house to the workbench and the fence beside it, not enough to bridge open ground to the next
+// camp. Measured on Vangard's 32,694 player-placed pieces, the threshold sweep is
+//
+//	4 m -> 84 structures    8 m -> 62    16 m -> 44    32 m -> 35
+//
+// so the count is a smooth function of the threshold with no natural gap to snap to; 8 m is chosen
+// on the piece geometry, and the sweep is recorded so a later change is an argument and not a
+// guess. What 8 m avoids is the previous rule, a fixed 128 m grid keyed by builder: a base astride
+// a cell corner split into four structures, and two people sharing a base produced two overlapping
+// circles on the same roof.
+//
+// This replaces the old grid so the map stops lying about where a structure is. It is O(n) in
+// pieces: the bucket grid is one link-distance wide, so each piece only compares against the nine
+// buckets around it.
 func aggregateConstructionClusters(points []constructionPoint) []Cluster {
-	type clusterKey struct {
-		cell    [2]int
-		creator int64
+	if len(points) == 0 {
+		return nil
 	}
-	accumulators := make(map[clusterKey]*constructionClusterAccumulator)
-	for _, item := range points {
-		point := item.Position
-		key := clusterKey{cell: constructionCell(point, constructionClusterCell), creator: item.Creator}
-		accumulator := accumulators[key]
-		if accumulator == nil {
-			accumulator = &constructionClusterAccumulator{}
-			accumulators[key] = accumulator
+	parent := make([]int32, len(points))
+	for index := range parent {
+		parent[index] = int32(index)
+	}
+	var find func(int32) int32
+	find = func(node int32) int32 {
+		for parent[node] != node {
+			parent[node] = parent[parent[node]]
+			node = parent[node]
 		}
-		accumulator.x += float64(point.X)
-		accumulator.y += float64(point.Y)
-		accumulator.z += float64(point.Z)
-		accumulator.pieces++
+		return node
 	}
-	keys := make([]clusterKey, 0, len(accumulators))
-	for key, accumulator := range accumulators {
-		if accumulator.pieces >= 3 {
-			keys = append(keys, key)
+	union := func(left, right int32) {
+		l, r := find(left), find(right)
+		if l != r {
+			parent[l] = r
 		}
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		left, right := accumulators[keys[i]], accumulators[keys[j]]
+	buckets := make(map[[2]int][]int32, len(points))
+	for index, item := range points {
+		key := constructionCell(item.Position, constructionLinkDistance)
+		buckets[key] = append(buckets[key], int32(index))
+	}
+	limit := float64(constructionLinkDistance) * float64(constructionLinkDistance)
+	for index, item := range points {
+		key := constructionCell(item.Position, constructionLinkDistance)
+		for dx := -1; dx <= 1; dx++ {
+			for dz := -1; dz <= 1; dz++ {
+				for _, other := range buckets[[2]int{key[0] + dx, key[1] + dz}] {
+					if int(other) <= index {
+						continue
+					}
+					deltaX := float64(item.Position.X - points[other].Position.X)
+					deltaZ := float64(item.Position.Z - points[other].Position.Z)
+					if deltaX*deltaX+deltaZ*deltaZ <= limit {
+						union(int32(index), other)
+					}
+				}
+			}
+		}
+	}
+	type accumulator struct {
+		x, y, z  float64
+		pieces   int
+		bounds   [4]float32
+		builders map[int64]int
+	}
+	groups := make(map[int32]*accumulator)
+	for index, item := range points {
+		root := find(int32(index))
+		group := groups[root]
+		if group == nil {
+			group = &accumulator{
+				bounds:   [4]float32{item.Position.X, item.Position.Z, item.Position.X, item.Position.Z},
+				builders: map[int64]int{},
+			}
+			groups[root] = group
+		}
+		group.x += float64(item.Position.X)
+		group.y += float64(item.Position.Y)
+		group.z += float64(item.Position.Z)
+		group.pieces++
+		group.bounds[0] = min(group.bounds[0], item.Position.X)
+		group.bounds[1] = min(group.bounds[1], item.Position.Z)
+		group.bounds[2] = max(group.bounds[2], item.Position.X)
+		group.bounds[3] = max(group.bounds[3], item.Position.Z)
+		group.builders[item.Creator]++
+	}
+	roots := make([]int32, 0, len(groups))
+	for root, group := range groups {
+		// Three pieces is the floor the grid rule already used: one dropped torch beside a road is
+		// not a structure, and a map peppered with single-piece markers is unreadable.
+		if group.pieces >= minStructurePieces {
+			roots = append(roots, root)
+		}
+	}
+	// Biggest first for the cap, so a truncated world loses the sheds and keeps the castles.
+	sort.Slice(roots, func(i, j int) bool {
+		left, right := groups[roots[i]], groups[roots[j]]
 		if left.pieces != right.pieces {
 			return left.pieces > right.pieces
 		}
-		if keys[i].cell[0] != keys[j].cell[0] {
-			return keys[i].cell[0] < keys[j].cell[0]
+		if left.bounds[0] != right.bounds[0] {
+			return left.bounds[0] < right.bounds[0]
 		}
-		if keys[i].cell[1] != keys[j].cell[1] {
-			return keys[i].cell[1] < keys[j].cell[1]
-		}
-		return keys[i].creator < keys[j].creator
+		return left.bounds[1] < right.bounds[1]
 	})
-	if len(keys) > maxConstructionClusters {
-		keys = keys[:maxConstructionClusters]
+	if len(roots) > maxConstructionClusters {
+		roots = roots[:maxConstructionClusters]
 	}
-	selected := make(map[clusterKey]*constructionClusterAccumulator, len(keys))
-	for _, key := range keys {
-		accumulator := accumulators[key]
-		divisor := float64(accumulator.pieces)
-		accumulator.center = Vec3{
-			X: float32(accumulator.x / divisor),
-			Y: float32(accumulator.y / divisor),
-			Z: float32(accumulator.z / divisor),
+	// Then positional, so the same world always serialises in the same order and tile ETags only
+	// change when the content does.
+	sort.Slice(roots, func(i, j int) bool {
+		left, right := groups[roots[i]], groups[roots[j]]
+		if left.bounds[0] != right.bounds[0] {
+			return left.bounds[0] < right.bounds[0]
 		}
-		selected[key] = accumulator
-	}
-	for _, item := range points {
-		point := item.Position
-		accumulator := selected[clusterKey{cell: constructionCell(point, constructionClusterCell), creator: item.Creator}]
-		if accumulator == nil {
-			continue
+		if left.bounds[1] != right.bounds[1] {
+			return left.bounds[1] < right.bounds[1]
 		}
-		distance := float32(math.Hypot(float64(point.X-accumulator.center.X), float64(point.Z-accumulator.center.Z)))
-		accumulator.radius = max(accumulator.radius, distance)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].cell[0] != keys[j].cell[0] {
-			return keys[i].cell[0] < keys[j].cell[0]
-		}
-		if keys[i].cell[1] != keys[j].cell[1] {
-			return keys[i].cell[1] < keys[j].cell[1]
-		}
-		return keys[i].creator < keys[j].creator
+		return left.pieces > right.pieces
 	})
-	clusters := make([]Cluster, 0, len(keys))
-	for _, key := range keys {
-		accumulator := selected[key]
+	clusters := make([]Cluster, 0, len(roots))
+	for _, root := range roots {
+		group := groups[root]
+		divisor := float64(group.pieces)
+		center := Vec3{
+			X: float32(group.x / divisor),
+			Y: float32(group.y / divisor),
+			Z: float32(group.z / divisor),
+		}
+		dominant, dominantPieces := int64(0), 0
+		for creator, pieces := range group.builders {
+			// Ties resolve on the id so the same world always draws the same colour.
+			if pieces > dominantPieces || (pieces == dominantPieces && creator > dominant) {
+				dominant, dominantPieces = creator, pieces
+			}
+		}
 		clusters = append(clusters, Cluster{
-			ID:      len(clusters) + 1,
-			Center:  accumulator.center,
-			Radius:  accumulator.radius,
-			Pieces:  accumulator.pieces,
-			Creator: key.creator,
+			ID:       len(clusters) + 1,
+			Center:   center,
+			Radius:   structureRadius(group.bounds, center),
+			Pieces:   group.pieces,
+			Creator:  dominant,
+			Builders: len(group.builders),
+			Bounds:   group.bounds,
 		})
 	}
 	return clusters
+}
+
+// structureRadius is the circle that covers the footprint, kept for the callers that still draw a
+// circle. It is derived from the bounds rather than from the farthest piece so it can never
+// disagree with the outline drawn beside it.
+func structureRadius(bounds [4]float32, center Vec3) float32 {
+	return float32(math.Hypot(
+		math.Max(float64(center.X-bounds[0]), float64(bounds[2]-center.X)),
+		math.Max(float64(center.Z-bounds[1]), float64(bounds[3]-center.Z)),
+	))
 }
 
 func constructionCell(point Vec3, cellSize int) [2]int {

@@ -145,7 +145,32 @@ func clipToDiscovered(snapshot worldintel.Snapshot, seen discoveredArea) worldin
 		clipped.Cells = cells
 		snapshot.ConstructionCoverage = &clipped
 	}
+
+	// A terrain-modification zone is 64 m of ground and the fog is drawn per 64 m zone, so the
+	// compiler's own centre is the right and only sample: it is the centre of exactly the cell the
+	// fog decides. Clipping per sample instead would be finer than the fog it has to agree with.
+	if mods := snapshot.TerrainMods; mods != nil {
+		zones := make([]worldintel.TerrainZone, 0, len(mods.Zones))
+		for _, zone := range mods.Zones {
+			if seen.has(float32(zone.X), float32(zone.Z)) {
+				zones = append(zones, zone)
+			}
+		}
+		// Totals recomputed from the surviving zones, not copied: the whole world's road area
+		// printed beside a fogged map would tell a player about roads they have not found.
+		snapshot.TerrainMods = worldintel.TerrainModsFromZones(zones)
+	}
 	return snapshot
+}
+
+// clippedPieces totals the pieces in whatever structures survived clipping, so the players' map
+// labels its own layer with its own numbers rather than the whole world's.
+func clippedPieces(clusters []worldintel.Cluster) int {
+	total := 0
+	for _, cluster := range clusters {
+		total += cluster.Pieces
+	}
+	return total
 }
 
 func (s *Server) playerWorldMap(w http.ResponseWriter, r *http.Request) {
@@ -181,6 +206,11 @@ func (s *Server) playerWorldMap(w http.ResponseWriter, r *http.Request) {
 		clipped := clipToDiscovered(snapshots[0], s.discoveredFor(world, snapshots[0], player))
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
 		page.Explored = formatExplored(snapshots[0].Summary)
+		// From the CLIPPED snapshot, so the count beside the layer matches what this player's map
+		// will actually draw. Counting the whole world here would advertise structures and roads on
+		// ground the same page is about to fog over.
+		page.Structures = formatStructures(worldintel.Summary{Structures: len(clipped.Clusters), PlayerPieces: clippedPieces(clipped.Clusters)})
+		page.RoadArea = formatRoadArea(clipped.TerrainMods)
 		var styles map[string]map[string]string
 		page.Builders, styles = s.builderLegend(r.Context(), world, clipped)
 		// The pins this view will actually draw: one character's own when a character is chosen,

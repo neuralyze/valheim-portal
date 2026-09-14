@@ -58,6 +58,13 @@
   --map-vehicle: #f0c66b;
   --map-risk: #ef807b;
   --map-other: #b5c0b8;
+  /* The roads layer. Paved and hoed-dirt ground reads as a warm pale track so it separates from
+     every biome underneath it; cultivated ground is the green of a field; moved earth is a muted
+     brown so a levelled platform or a dug moat is visible without competing with the road on it.
+     Six-digit hex only: rgbToken parses these into pixels and refuses anything else. */
+  --map-road: #e8dcc0;
+  --map-road-cultivated: #8fa860;
+  --map-road-earth: #9c8466;
   --map-biome-void: #07100c;
   --map-biome-void-texture: #14221a;
   --map-biome-ocean: #14374d;

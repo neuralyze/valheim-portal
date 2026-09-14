@@ -28,6 +28,12 @@ type worldAnalysisPage struct {
 	// lives in their character file on their machine - so generated zones are the only server-side
 	// answer to "how much have we discovered".
 	Explored string
+	// Structures and RoadArea label their own layer checkboxes with the size of what it draws, so a
+	// ticked layer that renders nothing is distinguishable from a broken one. Both are empty until a
+	// world has been analysed, and RoadArea is empty when nobody has dug anything - which is the
+	// difference between "this world has no roads" and "this layer is not working".
+	Structures string
+	RoadArea   string
 	// Builders is every creator id the snapshot found, with the name an operator gave it, how many
 	// pieces it placed, and the colour the map draws it in. Valheim stamps a player id on each
 	// piece and nothing resolves that to a person - names live in client character files - so the
@@ -164,6 +170,8 @@ func (s *Server) worldAnalysisMap(w http.ResponseWriter, r *http.Request) {
 		page.Backup = snapshots[0].Source.Backup
 		page.AnalyzedAt = snapshots[0].Source.ModifiedAt.Format("2006-01-02 15:04 UTC")
 		page.Explored = formatExplored(snapshots[0].Summary)
+		page.Structures = formatStructures(snapshots[0].Summary)
+		page.RoadArea = formatRoadArea(snapshots[0].TerrainMods)
 		var styles map[string]map[string]string
 		page.Builders, styles = s.builderLegend(r.Context(), world, snapshots[0])
 		// Every contributor's pins: this is the one map that sees all of them.
@@ -183,6 +191,28 @@ func formatExplored(summary worldintel.Summary) string {
 		return ""
 	}
 	return fmt.Sprintf("%.1f%% (%.1f km²)", summary.ExploredPercent, summary.ExploredSquareKm)
+}
+
+// formatStructures counts what the structures layer will draw. Empty when there is nothing, because
+// a legend that says "0" beside a ticked layer reads as a fault.
+func formatStructures(summary worldintel.Summary) string {
+	if summary.Structures == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d from %d pieces", summary.Structures, summary.PlayerPieces)
+}
+
+// formatRoadArea phrases the terrain-modification measure. The paved-or-dirt area is the road; the
+// zone count is how much ground anybody has touched at all, which is the honest denominator - most
+// of a levelled base is not a road.
+func formatRoadArea(mods *worldintel.TerrainMods) string {
+	if mods == nil || mods.ZoneCount == 0 {
+		return ""
+	}
+	if mods.Road == 0 {
+		return fmt.Sprintf("%d edited zones, no paved or dirt ground", mods.ZoneCount)
+	}
+	return fmt.Sprintf("%.2f km² paved or dirt across %d zones", mods.RoadSquareMetres/1_000_000, mods.ZoneCount)
 }
 
 // builderLegend turns the clusters in a snapshot into legend rows and the styles the canvas draws
@@ -736,7 +766,8 @@ const worldAnalysisTemplate = `<!doctype html>
 <label class="map-layer"><input type="checkbox" data-layer="zones" {{if not .HaveAnalysis}}disabled{{end}}><span>Explored area{{if .Explored}} · {{.Explored}}{{end}}</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="locations" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Locations</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="pins" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player pins</span></label>
-<label class="map-layer"><input type="checkbox" data-layer="clusters" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player construction</span></label>
+<label class="map-layer"><input type="checkbox" data-layer="clusters" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player structures{{if .Structures}} · {{.Structures}}{{end}}</span></label>
+<label class="map-layer"><input type="checkbox" data-layer="roads" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Roads and terrain edits{{if .RoadArea}} · {{.RoadArea}}{{end}}</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="portal" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Portals</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="vehicle" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Boats and carts</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="container" {{if not .HaveAnalysis}}disabled{{end}}><span>Containers</span></label>
