@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 
+	"github.com/neuralyze/valheim-portal/internal/servercharacters"
 	"github.com/neuralyze/valheim-portal/internal/valheimvr"
 	"os"
 	"path/filepath"
@@ -573,4 +574,93 @@ func mustHostname(t *testing.T, rawURL string) string {
 		t.Fatal(err)
 	}
 	return parsed.Hostname()
+}
+
+// TEMPORARY: local ServerCharacters build. Delete with the feature.
+//
+// A local-build package publishes the digest of the archive the CLIENT carries and no URL,
+// and reaches no index at all: the HTTP client here fails every request, so a build that
+// tried to resolve or download this package could not pass.
+func TestLocalBuildPackagePublishesTheEmbeddedDigestWithoutFetching(t *testing.T) {
+	wantSHA256, wantSize, err := servercharacters.ArchiveDigest()
+	if err != nil {
+		t.Skipf("archive not built: %v", err)
+	}
+
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(dir, "profile.zip")
+	if err := buildProfileDefinition(context.Background(), builderOptions{
+		SourceManifestPath: writeManagedManifest(t, dir,
+			`{"schema_version":2,"packages":[{"identifier":"Smoothbrain-ServerCharacters","version":"1.4.17","source":"local-build"}]}`),
+		World:          "world-one",
+		Profile:        "world-one-non-vr",
+		ClientType:     "flat",
+		Audience:       "player",
+		ConfigDir:      configDir,
+		Output:         output,
+		TrueNonVR:      true,
+		PackageBaseURL: "http://thunderstore.invalid/",
+		HTTPClient:     &http.Client{Transport: refusingTransport{t}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var manifest profileManifest
+	if err := json.Unmarshal(readZIPEntry(t, output, "profile-manifest.json"), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Packages) != 1 {
+		t.Fatalf("package count = %d, want 1", len(manifest.Packages))
+	}
+	entry := manifest.Packages[0]
+	if entry.SHA256 != wantSHA256 || entry.Size != wantSize {
+		t.Fatalf("sha256/size = %q/%d, want the embedded archive's %q/%d",
+			entry.SHA256, entry.Size, wantSHA256, wantSize)
+	}
+	// No URL: the bytes are already on the client, and a url key would additionally break
+	// every installed client, which decodes this manifest with DisallowUnknownFields.
+	if entry.URL != "" {
+		t.Fatalf("url = %q, want none for a package the client already carries", entry.URL)
+	}
+}
+
+// A version the embedded build cannot satisfy must stop the publish. Shipping a definition
+// that pins 1.4.18 while every client carries 1.4.17 is the ServerSync mismatch this route
+// exists to prevent, and it would only surface as a failed join.
+func TestLocalBuildPackageRefusesAVersionTheEmbedDoesNotCarry(t *testing.T) {
+	if _, _, err := servercharacters.ArchiveDigest(); err != nil {
+		t.Skipf("archive not built: %v", err)
+	}
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	err := buildProfileDefinition(context.Background(), builderOptions{
+		SourceManifestPath: writeManagedManifest(t, dir,
+			`{"schema_version":2,"packages":[{"identifier":"Smoothbrain-ServerCharacters","version":"1.4.18","source":"local-build"}]}`),
+		World:          "world-one",
+		Profile:        "world-one-non-vr",
+		ClientType:     "flat",
+		Audience:       "player",
+		ConfigDir:      configDir,
+		Output:         filepath.Join(dir, "profile.zip"),
+		TrueNonVR:      true,
+		PackageBaseURL: "http://thunderstore.invalid/",
+		HTTPClient:     &http.Client{Transport: refusingTransport{t}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "1.4.18") {
+		t.Fatalf("err = %v, want a refusal naming the pinned version", err)
+	}
+}
+
+type refusingTransport struct{ t *testing.T }
+
+func (transport refusingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	transport.t.Errorf("unexpected request to %s", request.URL)
+	return nil, fmt.Errorf("no requests expected")
 }

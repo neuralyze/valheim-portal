@@ -42,6 +42,13 @@ release-targets.json
 # fails naming the missing path, which points straight at build.sh.
 /tools/worldseed/*.dll
 
+# TEMPORARY: local ServerCharacters build. Built by tools/servercharacters/build.sh from
+# unmodified upstream bb7d3cd6 and embedded by internal/servercharacters. It MUST NOT be
+# committed: this repository is published, the mod has no licence, and running our own
+# compile on the operator's own machines is theirs to decide while redistributing it here
+# is not. internal/servercharacters/embedded/README.md holds the whole record.
+/internal/servercharacters/embedded/*.zip
+
 # Python bytecode and pytest state from running tools/test_valheim_mods.py.
 __pycache__/
 .pytest_cache/

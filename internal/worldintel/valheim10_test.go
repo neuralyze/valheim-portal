@@ -129,6 +129,28 @@ func TestCatalogNamesUnderscorePrefabsAndBundlePaths(t *testing.T) {
 	}
 }
 
+// TestCatalogNamesModSoftRefManifest pins the source that names a location a MOD placed. 1.0 stores
+// a location by prefab hash, so a hash the catalog cannot answer is a pin on the map with no name
+// and no category. A location mod indexes its bundles with its own SoftRef manifest, under its own
+// name - More World Locations AIO calls its one assetBundleManifest_full - and matching only the
+// game's "manifest" and "manifest_extended" skipped it. Measured on Ulfsland at seed Pirate68:
+// 2,116 of 14,040 location instances across 182 prefab hashes were nameless until this file was
+// read, and it names every one of them.
+func TestCatalogNamesModSoftRefManifest(t *testing.T) {
+	dir := t.TempDir()
+	manifest := filepath.Join(dir, "assetBundleManifest_full")
+	// The literal shape of the mod's own manifest, copied from its first entry.
+	body := "SoftRef manifest - Text\nversion: 2\nasset locations:\n" +
+		"- asset ID: 000080bc000080bc000080bc000080bc\n  bundle: mwl_foresthouse2\n" +
+		"  path in bundle: Assets/WarpProjects/More World Locations/Blackforest/MWL_ForestHouse2.prefab\n"
+	if err := os.WriteFile(manifest, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := CatalogFromFiles(manifest)[StableHash("MWL_ForestHouse2")]; got != "MWL_ForestHouse2" {
+		t.Fatalf("MWL_ForestHouse2 resolved to %q; a mod's SoftRef manifest is named by the mod, not by the game", got)
+	}
+}
+
 // TestAnalyzeArchiveStillReadsOldFormatPair is the control. The four worlds on this host are still
 // 0.220 and are the rollback path, so the old two-member archive has to keep routing to ParseDB and
 // producing the same snapshot it always did.

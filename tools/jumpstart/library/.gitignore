@@ -1,0 +1,8 @@
+# Downloaded blueprint bodies. `web.py --fetch` refills this from pinned
+# commits; `materialise.py --verify` checks it against the manifest hashes.
+#
+# Bodies stay out of git unless their source states a licence that permits
+# redistribution -- those few live under bodies/ and are NOT ignored.
+# See PROVENANCE.md.
+staging/
+__pycache__/

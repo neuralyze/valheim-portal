@@ -1008,19 +1008,25 @@ func analyzeWorldBackup(worldRoot, world string) (worldintel.Snapshot, error) {
 	if err != nil || !within(worldRoot, worldPath) {
 		return worldintel.Snapshot{}, errors.New("world unavailable")
 	}
+	return worldintel.AnalyzeArchive(backups[0].path, world, worldintel.CatalogFromFiles(prefabCatalogPaths(worldPath)...))
+}
+
+// prefabCatalogPaths lists every file worth mining for prefab names for one world. Valheim 1.0
+// stores a location by prefab hash where 0.220 stored its name, so a hash with no catalog entry is
+// a location with no name at all, and what is listed here is exactly what decides whether the map
+// can label what it draws.
+func prefabCatalogPaths(worldPath string) []string {
 	// resources.assets and assembly_valheim.dll carry the vanilla prefab names that are still
 	// compiled in, so they are listed first and are never subject to the plugin budget below.
 	//
 	// The two SoftRef manifests are what Valheim 1.0 made necessary: 1.0 moved much of its prefab
 	// and location naming into SoftReferenceableAssets bundles under StreamingAssets/SoftRef, and
-	// these manifests are the only plain-text index of them. This matters far more on a 1.0 world
-	// than on a 0.220 one, because 1.0 stores a location by prefab hash where 0.220 stored its
-	// name, so without a catalog entry a 1.0 location has no name at all. Measured on Ulfsland:
-	// resources.assets plus the assembly give 384,755 catalog entries and name 275 of its 12,228
-	// location instances; adding the two manifests gives 437,939 entries and names all 12,228, and
-	// takes unresolved object prefab hashes on that world from 81 to 0. The two files are 200 KB and
-	// 3.3 MB, so they cost nothing against the 1 GiB CatalogFromFiles will scan.
-	catalogPaths := []string{
+	// these manifests are the only plain-text index of them. Measured on Ulfsland: resources.assets
+	// plus the assembly give 384,755 catalog entries and name 275 of its 12,228 location instances;
+	// adding the two manifests gives 437,939 entries and names all 12,228, and takes unresolved
+	// object prefab hashes on that world from 81 to 0. The two files are 200 KB and 3.3 MB, so they
+	// cost nothing against the 1 GiB CatalogFromFiles will scan.
+	paths := []string{
 		filepath.Join(worldPath, "data/server/valheim_server_Data/resources.assets"),
 		filepath.Join(worldPath, "data/server/valheim_server_Data/Managed/assembly_valheim.dll"),
 		filepath.Join(worldPath, "data/server/valheim_server_Data/StreamingAssets/SoftRef/manifest"),
@@ -1033,17 +1039,47 @@ func analyzeWorldBackup(worldRoot, world string) (worldintel.Snapshot, error) {
 	// walking the mirror first would have dropped real ones. Reading the mirror anyway cost real time
 	// (34s capped versus 67s uncapped for a catalog identical to the byte, 1,780,660 entries).
 	//
-	// So the budget now counts distinct DLL names. 512 leaves better than four times today's headroom
+	// So the budget counts distinct DLL names. 512 leaves better than four times today's headroom
 	// while still bounding the walk; the real guard on work is CatalogFromFiles, which stops at 20,000
 	// files or 1 GiB scanned whatever it is handed.
-	const maxPluginDLLs = 512
+	//
+	// A mod that ADDS locations indexes its own bundles the same way the game indexes its own, and
+	// its manifest is not a DLL, so collecting only DLLs left every location it places nameless.
+	// Measured on Ulfsland after the re-roll onto seed Pirate68: 2,116 of 14,040 location instances,
+	// across 182 distinct prefab hashes, had an empty name, and every one of them is named by
+	// More_World_Locations_AIO/assetBundleManifest_full - a 1.1 MB "SoftRef manifest - Text" listing
+	// "path in bundle: Assets/.../MWL_ForestHouse2.prefab". Manifests are counted separately from
+	// DLLs so a mod pack full of code can never spend the budget that names the world.
+	const (
+		maxPluginDLLs      = 512
+		maxPluginManifests = 64
+	)
 	seen := make(map[string]struct{}, maxPluginDLLs)
+	manifests := make(map[string]struct{}, maxPluginManifests)
 	for _, root := range []string{filepath.Join(worldPath, "config_merged/bepinex/plugins"), filepath.Join(worldPath, "data/bepinex/BepInEx/plugins")} {
 		_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil || len(seen) >= maxPluginDLLs {
+			if walkErr != nil {
 				return nil
 			}
-			if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".dll") {
+			if entry.IsDir() {
+				return nil
+			}
+			if worldintel.IsSoftRefManifest(entry.Name()) {
+				if len(manifests) >= maxPluginManifests {
+					return nil
+				}
+				// Keyed by the mod directory plus the file name, not by the file name
+				// alone: the two roots are mirrors of each other and must dedupe, but two
+				// different mods may each call their manifest the same thing.
+				key := strings.ToLower(filepath.Join(filepath.Base(filepath.Dir(path)), entry.Name()))
+				if _, duplicate := manifests[key]; duplicate {
+					return nil
+				}
+				manifests[key] = struct{}{}
+				paths = append(paths, path)
+				return nil
+			}
+			if len(seen) >= maxPluginDLLs || !strings.EqualFold(filepath.Ext(entry.Name()), ".dll") {
 				return nil
 			}
 			name := strings.ToLower(entry.Name())
@@ -1051,11 +1087,11 @@ func analyzeWorldBackup(worldRoot, world string) (worldintel.Snapshot, error) {
 				return nil
 			}
 			seen[name] = struct{}{}
-			catalogPaths = append(catalogPaths, path)
+			paths = append(paths, path)
 			return nil
 		})
 	}
-	return worldintel.AnalyzeArchive(backups[0].path, world, worldintel.CatalogFromFiles(catalogPaths...))
+	return paths
 }
 
 type worldCatalogEntry struct {

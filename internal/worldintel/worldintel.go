@@ -376,6 +376,24 @@ func StableHash(s string) int32 {
 // prefabs and raised a health finding about a purely internal object.
 var tokenRE = regexp.MustCompile(`_?[A-Za-z][A-Za-z0-9_$.:+-]{2,119}`)
 
+// IsSoftRefManifest reports whether a file name is a SoftReferenceableAssets text manifest - the
+// plain-text index of what lives in an asset bundle, and on a 1.0 world the only way a location's
+// prefab hash gets a name at all.
+//
+// The test is positive on the two things every one of them has: no extension, and "manifest" in the
+// name. Valheim's own pair are StreamingAssets/SoftRef/manifest and manifest_extended. A mod that
+// adds locations ships its own alongside its bundles under whatever name it chose - More World
+// Locations AIO calls its one assetBundleManifest_full, and matching only the two vanilla names
+// left every location that mod places with an empty name. Measured on Ulfsland at seed Pirate68:
+// 2,116 of 14,040 location instances across 182 prefab hashes were nameless, and that one file
+// names all 2,116. The name is matched rather than the content because the file has to be chosen
+// before it is read, and an extensionless name containing "manifest" matches nothing else in a
+// game install or a plugin tree - a Thunderstore manifest.json is already admitted by extension.
+func IsSoftRefManifest(name string) bool {
+	base := strings.ToLower(filepath.Base(name))
+	return filepath.Ext(base) == "" && strings.Contains(base, "manifest")
+}
+
 func CatalogFromFiles(paths ...string) map[int32]string {
 	out := knownCatalog()
 	const maxCatalogBytes int64 = 1 << 30
@@ -387,15 +405,14 @@ func CatalogFromFiles(paths ...string) map[int32]string {
 		}
 		base := strings.ToLower(filepath.Base(path))
 		switch {
-		// SoftRef's two manifests have no extension at all, and 1.0 needs them: Valheim 1.0 moved
-		// much of its prefab and location naming into SoftReferenceableAssets bundles under
-		// StreamingAssets/SoftRef, and the manifests are the only plain-text index of them.
-		// This is the difference between a usable 1.0 map and an unlabelled one. Measured on
-		// Ulfsland: resources.assets plus assembly_valheim.dll give 384,755 entries and name 275 of
-		// its 12,228 location instances across 5 distinct prefabs; adding these two manifests gives
-		// 437,939 entries and names all 12,228 across 177 prefabs, and takes unresolved object
-		// prefab hashes from 81 to 0.
-		case base == "manifest", base == "manifest_extended":
+		// A SoftRef manifest has no extension at all, and 1.0 needs it: Valheim 1.0 moved much of
+		// its prefab and location naming into SoftReferenceableAssets bundles, and the manifest is
+		// the only plain-text index of what is in them. This is the difference between a usable 1.0
+		// map and an unlabelled one. Measured on Ulfsland: resources.assets plus assembly_valheim.dll
+		// give 384,755 entries and name 275 of its 12,228 location instances across 5 distinct
+		// prefabs; adding the game's two manifests gives 437,939 entries and names all 12,228 across
+		// 177 prefabs, and takes unresolved object prefab hashes from 81 to 0.
+		case IsSoftRefManifest(base):
 		default:
 			switch strings.ToLower(filepath.Ext(path)) {
 			case ".dll", ".assets", ".json", ".cfg", ".yml", ".yaml", ".txt":

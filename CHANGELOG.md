@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TEMPORARY, and deliberately easy to remove: `Smoothbrain-ServerCharacters` 1.4.17 reaches the
+  Ulfsland server and the clients of its four editions from ONE archive that
+  `tools/servercharacters/build.sh` compiles from unmodified upstream `bb7d3cd6`. A profile
+  manifest entry can now declare `"source": "local-build"`, which makes
+  `cmd/profile-definition-builder` publish the archive's SHA256 and size and no `url` at all,
+  and makes `cmd/valheim-profile-sync` install the copy compiled into itself - after checking it
+  against those two values - instead of downloading anything. Server and clients therefore run
+  the same bytes, which is what makes ServerSync's `MinimumRequiredVersion = "1.4.17"` /
+  `ModRequired = true` unable to mismatch; a client carrying a different build refuses the
+  install and tells the player to download the current client rather than failing mid-join.
+  Gated on the definition naming the package, so no world but Ulfsland is affected. The archive
+  is NOT in git - it is built into the gitignored `internal/servercharacters/embedded/` - because
+  the mod has no licence and this repository is published; running our own compile on the
+  operator's own machines was their call, on 2026-09-14, and redistributing it is not.
+  `tools/servercharacters/README.md` and `deploy/upstream-sources.json` carry the record, the
+  boundaries and the one-command retirement for when Thunderstore publishes 1.4.17. The Hexium
+  backend added earlier is untouched and remains the route for the next off-Thunderstore mod.
 - A third world source when creating a server: upload a `.zip` of an existing world's save.
   The admin form now presents one exclusive switch - generate a new world on a random seed,
   generate from a typed seed, copy a world already on this host, or upload one - and the fields
@@ -277,6 +294,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operators, which preserves the previous behaviour exactly.
 
 ### Fixed
+
+- A location a MOD places is named on the map again. Valheim 1.0 stores a location instance by
+  prefab hash where 0.220 stored its name, so the map can only label what the prefab catalog can
+  answer, and the catalog collected `*.dll` from the plugin roots plus the game's own two SoftRef
+  manifests. A mod that adds locations indexes its bundles with a SoftRef manifest of its own,
+  under its own name, and neither the plugin walk nor `CatalogFromFiles` would take it: More World
+  Locations AIO calls its one `assetBundleManifest_full`. Measured on Ulfsland immediately after
+  its re-roll onto seed `Pirate68`: 2,116 of 14,040 location instances, across 182 distinct prefab
+  hashes, came back with an empty name and fell into the `other` category - every location that
+  mod places, unlabelled. `worldintel.IsSoftRefManifest` now recognises a SoftRef manifest by what
+  they all share, an extensionless name containing `manifest`, and `prefabCatalogPaths` collects
+  them from the plugin roots under a budget of their own so a mod pack full of code cannot spend
+  the budget that names the world. Re-running the analysis took unresolved locations to 0 and
+  populated the `arena` and `shrine` categories for the first time on that world.
 
 - Building a world's map tiles no longer kills the portal container. `maptiles.Build` held both
   12288x12288 map sources decoded in full plus a `float32` height and a 12-byte biome colour for

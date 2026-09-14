@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Builds ServerCharacters 1.4.17 from upstream master and packages it as a custom
-# override for the pinned Smoothbrain-ServerCharacters 1.4.16 Thunderstore package.
+# Builds ServerCharacters 1.4.17 from UNMODIFIED upstream source and packages it the way
+# a Thunderstore archive is packaged, so one artifact serves both sides of the fleet.
 #
-# Why this exists instead of a binary patch: Valheim 1.0 changed six things this mod
-# depends on, not one. Upstream fixed all six in blaxxun-boop/ServerCharacters@bb7d3cd6
-# ("fix for deep north", 2026-09-09) and bumped the version to 1.4.17, but has never
-# published that build - Thunderstore's newest is still 1.4.16 from 2025-05-02. So the
-# fix exists; only the release does not. Building it is strictly better than patching
-# the released binary, which would repair one call site and leave five live faults.
-# The full accounting is in tools/modpatches/README.md.
+# TEMPORARY, OPERATOR-AUTHORISED. Read tools/servercharacters/README.md, section "What we
+# ship, and why that is temporary", before changing anything here. The short version:
+# Valheim 1.0 broke eight members this mod uses, upstream fixed all eight in
+# blaxxun-boop/ServerCharacters@bb7d3cd6 ("fix for deep north", 2026-09-09) and bumped the
+# version to 1.4.17, and that build has never been published to Thunderstore - its newest
+# is 1.4.16 from 2025-05-02, which is fatal on 1.0.12. The operator decided on 2026-09-14
+# to run our own compile of that commit on their own server and their own clients until
+# Thunderstore carries 1.4.17.
 #
-# Output: ServerCharacters.zip, laid out the way tools/valheim_mods.py `custom-add`
-# expects (BepInEx/plugins/<files>), whose install key is derived from the archive stem
-# and therefore lands on top of the stock plugin directory rather than beside it.
+# Output: a Thunderstore-shaped archive - ServerCharacters.dll and a manifest.json of our
+# own at the root - written by default to the gitignored embed path that
+# internal/servercharacters compiles into the Windows client and that tools/valheim_mods.py
+# installs on the server. The archive is deliberately NOT in git: this repository is
+# published, and the mod has no licence. See internal/servercharacters/embedded/README.md.
 #
 # Cross-compiled on Linux. The mod needs C# 10 and 12 features, so mcs cannot build it
 # the way tools/everybodyshim and tools/vrfixes are built; this uses the .NET SDK in a
@@ -20,31 +23,56 @@
 set -euo pipefail
 
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-out="${1:-$here/ServerCharacters.zip}"
+repo="$(cd -- "$here/../.." && pwd)"
+out="${1:-$repo/internal/servercharacters/embedded/ServerCharacters.zip}"
 work="${SERVERCHARACTERS_WORK:-${TMPDIR:-/tmp}/servercharacters-build}"
 commit="${SERVERCHARACTERS_COMMIT:-bb7d3cd6}"
 sdk_image="${DOTNET_SDK_IMAGE:-mcr.microsoft.com/dotnet/sdk:8.0}"
 
-# Reference assemblies, same contract as tools/everybodyshim/build.sh: with neither
-# VALHEIM_MANAGED nor BEPINEX_CORE set they are lifted out of the named running server
-# container, because that is the assembly set the plugin will actually face.
+# Reference assemblies. Preference order, and the order matters because a stopped server is
+# the normal state during a deploy: the world's own on-disk BepInEx tree first, then an
+# explicit VALHEIM_MANAGED/BEPINEX_CORE or a previously lifted cache, then `docker cp` out
+# of the running container as a last resort. The on-disk tree is the same assembly set the
+# plugin will face and needs nothing running - hostops/export_valheim_map_sources.sh reads
+# it the same way, and tools/worldseed/build.sh was changed to prefer it for this reason.
+#
+# VALHEIM_CONTAINER may be given either as a world name or as the container name; the
+# valheim-server- prefix is stripped so the old invocation still resolves a world directory.
 container="${VALHEIM_CONTAINER:-valheim-server-Ulfsland}"
+world=${container#valheim-server-}
 refroot="${SERVERCHARACTERS_REFS:-${TMPDIR:-/tmp}/everybodyshim-refs}"
-managed="${VALHEIM_MANAGED:-$refroot/managed}"
-bepinex_core="${BEPINEX_CORE:-$refroot/core}"
+ondisk="${VALHEIM_ROOT:-/media/big4/projects/game/valheim}/$world/data/bepinex"
+managed="${VALHEIM_MANAGED:-}"
+bepinex_core="${BEPINEX_CORE:-}"
 
-if [[ ! -d $managed || ! -d $bepinex_core ]]; then
+# Both halves are checked for the assemblies this build actually reads, not merely for the
+# directory: a half-populated tree fails later, inside the container, as a compile error.
+if [[ -z $managed && -f $ondisk/valheim_server_Data/Managed/assembly_valheim.dll ]]; then
+    managed=$ondisk/valheim_server_Data/Managed
+fi
+if [[ -z $bepinex_core && -f $ondisk/BepInEx/core/BepInEx.dll ]]; then
+    bepinex_core=$ondisk/BepInEx/core
+fi
+[[ -n $managed || ! -f $refroot/managed/assembly_valheim.dll ]] || managed=$refroot/managed
+[[ -n $bepinex_core || ! -f $refroot/core/BepInEx.dll ]] || bepinex_core=$refroot/core
+
+if [[ -z $managed || -z $bepinex_core ]]; then
     docker inspect "$container" >/dev/null 2>&1 || {
-        echo "no reference assemblies and container $container is not present." >&2
-        echo "set VALHEIM_MANAGED and BEPINEX_CORE, or VALHEIM_CONTAINER." >&2
+        echo "no reference assemblies on disk under $ondisk and container $container is not present." >&2
+        echo "set VALHEIM_MANAGED and BEPINEX_CORE, or VALHEIM_CONTAINER/VALHEIM_ROOT." >&2
         exit 1
     }
     mkdir -p "$refroot"
-    [[ -d $managed ]] ||
-        docker cp "$container:/opt/valheim/server/valheim_server_Data/Managed" "$managed"
-    [[ -d $bepinex_core ]] ||
-        docker cp "$container:/opt/valheim/bepinex/BepInEx/core" "$bepinex_core"
+    [[ -n $managed ]] || {
+        docker cp "$container:/opt/valheim/server/valheim_server_Data/Managed" "$refroot/managed"
+        managed=$refroot/managed
+    }
+    [[ -n $bepinex_core ]] || {
+        docker cp "$container:/opt/valheim/bepinex/BepInEx/core" "$refroot/core"
+        bepinex_core=$refroot/core
+    }
 fi
+printf 'references: managed=%s core=%s\n' "$managed" "$bepinex_core" >&2
 
 rm -rf -- "$work"
 mkdir -p "$work"
@@ -93,36 +121,52 @@ docker run --rm -u "$(id -u):$(id -g)" \
 dll=$proj/bin/Release/ServerCharacters.dll
 [[ -f $dll ]] || { echo "build produced no assembly" >&2; exit 1; }
 
-# 4. Package over the pinned Thunderstore payload. manifest.json is carried across from
-#    the stock package unchanged, so the profile's 1.4.16 pin and the deploy-time cache
-#    check in tools/valheim_mods.py stay true; only the DLL is ours.
-stock=${SERVERCHARACTERS_STOCK:-}
-if [[ -z $stock ]]; then
-    for candidate in "${VALHEIM_ROOT:-/media/big4/projects/game/valheim}"/profiles/*/manager-cache/server/BepInEx/plugins/ServerCharacters; do
-        [[ -f $candidate/manifest.json ]] && { stock=$candidate; break; }
-    done
-fi
-[[ -n $stock && -f $stock/manifest.json ]] ||
-    { echo "no stock ServerCharacters package found; set SERVERCHARACTERS_STOCK" >&2; exit 1; }
-
+# 4. Package it the way Thunderstore packages this mod: payload and metadata at the root of
+#    the archive, which is the shape both install paths already understand -
+#    extractPackageArchive in cmd/valheim-profile-sync maps a root-level file into
+#    BepInEx/plugins/<namespace>-<name>/ and skips manifest.json, and extract_package in
+#    tools/valheim_mods.py copies the tree into the profile's plugin cache, where
+#    assert_cached_version reads manifest.json back.
+#
+#    manifest.json is OURS, not the author's: it exists to satisfy that version check, and
+#    copying his metadata and icon would redistribute more of his package than the operator
+#    decision calls for. Nothing reads its description, so it says what this build is.
 pkg=$work/pkg
-mkdir -p "$pkg/BepInEx/plugins"
-cp "$dll" "$pkg/BepInEx/plugins/"
-cp "$stock/manifest.json" "$stock/icon.png" "$stock/README.md" "$pkg/BepInEx/plugins/"
-cat >"$pkg/README.txt" <<EOF
-ServerCharacters $built_version - built from upstream master
-(blaxxun-boop/ServerCharacters@$commit, "fix for deep north"), the commit that ports the
-mod to Valheim 1.0 but has never been released to Thunderstore. Replaces the payload of
-the pinned Smoothbrain-ServerCharacters package in place; manifest.json still reads the
-pinned version so the profile's version pin stays honest.
+mkdir -p "$pkg"
+cp "$dll" "$pkg/ServerCharacters.dll"
+cat >"$pkg/manifest.json" <<EOF
+{
+  "name": "ServerCharacters",
+  "version_number": "$built_version",
+  "website_url": "https://github.com/blaxxun-boop/ServerCharacters/tree/$commit",
+  "description": "Local compile of upstream $commit, built by tools/servercharacters/build.sh. Not an upstream release.",
+  "dependencies": []
+}
+EOF
+cat >"$pkg/README.md" <<EOF
+ServerCharacters $built_version, compiled from unmodified upstream source at
+blaxxun-boop/ServerCharacters@$commit ("fix for deep north"), the commit that ports the mod
+to Valheim 1.0 and bumps the version to $built_version. Upstream has not released it:
+Thunderstore's newest is 1.4.16, which is fatal on 1.0.12.
 
-Shipped to server AND clients from one archive because ServerSync enforces
-MinimumRequiredVersion = $built_version with ModRequired = true.
+Server and clients are given THIS archive, so both sides run the same bytes and ServerSync's
+MinimumRequiredVersion = $built_version / ModRequired = true cannot mismatch.
 
-Built by tools/servercharacters/build.sh in valheim-portal.
+Temporary and operator-authorised; replaced by the Thunderstore package as soon as
+$built_version is published there. Built by tools/servercharacters/build.sh in valheim-portal.
 EOF
 
+mkdir -p "$(dirname -- "$out")"
 rm -f -- "$out"
-(cd "$pkg" && zip -qrX "$out" BepInEx README.txt)
+# Reproducible on purpose: the SHA256 of this archive is published in every Ulfsland
+# profile definition and is checked by the client against the copy compiled into it, so a
+# rebuild that changes the hash without changing the payload would fail every install.
+# MEASURED: the compiler is already deterministic here - two builds of bb7d3cd6 produced
+# ServerCharacters.dll sha256 efe7d421... twice - but zip records each file's mtime in the
+# DOS timestamp field, which -X does not drop, so the archive differed. Pinning the mtimes
+# to the DOS epoch removes the only remaining source of variation.
+touch -d '1980-01-01 00:00:00' "$pkg/ServerCharacters.dll" "$pkg/manifest.json" "$pkg/README.md"
+(cd "$pkg" && zip -qrX "$out" ServerCharacters.dll manifest.json README.md)
 printf 'built %s (%s bytes)\n' "$out" "$(stat -c %s "$out")"
+printf 'archive sha256 %s\n' "$(sha256sum "$out" | cut -d' ' -f1)"
 printf 'plugin sha256 %s\n' "$(sha256sum "$dll" | cut -d' ' -f1)"

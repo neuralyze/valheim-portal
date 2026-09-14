@@ -1075,3 +1075,54 @@ class CopyIntoPlaceTest(unittest.TestCase):
         valheim_mods.copy_into_place(self.source, self.destination)
 
         self.assertEqual(self.destination.stat().st_mtime_ns, self.source.stat().st_mtime_ns)
+
+
+# TEMPORARY: local ServerCharacters build. Delete this class with the feature.
+class LocalBuildPackageTest(unittest.TestCase):
+    """A package installed from a local build rather than an index.
+
+    The archive cache is keyed by name and version, and this identifier already HAD a
+    1.4.17 archive in every Ulfsland profile - the author's, downloaded from Hexium before
+    the operator chose to run our own compile. Reusing it would have put the author's
+    assembly on the server while every client carried ours, which is the ServerSync version
+    mismatch that shows up only as a refused join.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name) / "profiles/test-profile"
+        self.root.mkdir(parents=True)
+        self.build_output = Path(self.temp.name) / "ServerCharacters.zip"
+        self.write_archive(self.build_output, b"ours")
+        self.patch = unittest.mock.patch.dict(
+            valheim_mods.LOCAL_BUILD_PACKAGES,
+            {"Smoothbrain-ServerCharacters": (self.build_output, "tools/servercharacters/build.sh")},
+            clear=True)
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        self.temp.cleanup()
+
+    def write_archive(self, path, payload):
+        with zipfile.ZipFile(path, "w") as bundle:
+            bundle.writestr("manifest.json", json.dumps({
+                "name": "ServerCharacters", "version_number": "1.4.17"}))
+            bundle.writestr("ServerCharacters.dll", payload)
+
+    def test_install_replaces_a_cached_archive_that_is_not_the_local_build(self):
+        package = valheim_mods.local_build_package("Smoothbrain-ServerCharacters")
+        stale = valheim_mods.archive_path(self.root, package, "1.4.17")
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        self.write_archive(stale, b"the author's build")
+
+        valheim_mods.install(self.root, package, "1.4.17", "server")
+
+        self.assertEqual(stale.read_bytes(), self.build_output.read_bytes())
+        plugin = self.root / "manager-cache/server/BepInEx/plugins/ServerCharacters"
+        self.assertEqual((plugin / "ServerCharacters.dll").read_bytes(), b"ours")
+
+    def test_a_missing_build_names_the_script_that_produces_it(self):
+        self.build_output.unlink()
+        with self.assertRaisesRegex(RuntimeError, "tools/servercharacters/build.sh"):
+            valheim_mods.local_build_package("Smoothbrain-ServerCharacters")

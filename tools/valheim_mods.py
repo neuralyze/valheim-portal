@@ -36,6 +36,32 @@ HEXIUM_API = 'https://valheim.hexium.gg/api/experimental/package/'
 HEXIUM_SOURCE = 'hexium'
 HEXIUM_PACKAGES = ('Smoothbrain-ServerCharacters',)
 
+# TEMPORARY: local ServerCharacters build. Supersedes the Hexium route above for this one
+# identifier, and only for as long as Thunderstore lacks 1.4.17.
+#
+# The operator decided on 2026-09-14 to run our own compile of upstream bb7d3cd6 - the
+# commit that fixes all eight breakages and calls itself 1.4.17 - on their own server and
+# their own clients, rather than have each client fetch the author's build from a second
+# CDN. One archive then installs both sides, which removes ServerSync version skew as a
+# category: 1.4.17 declares MinimumRequiredVersion 1.4.17 with ModRequired true, so a
+# client whose build differs from the server's is refused at the handshake.
+#
+# The archive is NOT in git - the mod has no licence and this repository is published - so
+# it is built on demand, exactly like tools/worldseed's patch, and a missing one fails
+# naming the script that produces it. internal/servercharacters/embedded/README.md and
+# tools/servercharacters/README.md hold the record and the licence position.
+#
+# RETIREMENT: when Thunderstore publishes 1.4.17, delete LOCAL_BUILD_PACKAGES,
+# local_build_package(), the two blocks in index() and install() that name them, and
+# internal/servercharacters. `add Smoothbrain-ServerCharacters` then does the whole job.
+LOCAL_BUILD_SOURCE = 'local-build'
+LOCAL_BUILD_PACKAGES = {
+    'Smoothbrain-ServerCharacters': (
+        TOOLS_ROOT.parent / 'internal' / 'servercharacters' / 'embedded' / 'ServerCharacters.zip',
+        'tools/servercharacters/build.sh',
+    ),
+}
+
 # ---------------------------------------------------------------------------------------------
 # The player-visible mod list
 # ---------------------------------------------------------------------------------------------
@@ -504,6 +530,42 @@ def hexium_package(identifier):
         'source': HEXIUM_SOURCE,
         'versions': [payload['latest']],
     }
+
+# TEMPORARY: local ServerCharacters build.
+def local_build_package(identifier):
+    """One locally built package, shaped like a Thunderstore v1 registry entry.
+
+    The version is read out of the archive rather than written here, so the thing installed
+    and the thing pinned in the manifest cannot disagree: build.sh copies upstream's own
+    ModVersion into manifest.json, and assert_cached_version reads the same file back after
+    extraction.
+
+    `download_url` is a file: URL. install() below recognises it and copies instead of
+    fetching; nothing else in this tool has to know where the bytes came from.
+    """
+    archive, builder = LOCAL_BUILD_PACKAGES[identifier]
+    if not archive.is_file():
+        raise RuntimeError(f'{identifier} is built locally and {archive} is missing; run {builder}')
+    with zipfile.ZipFile(archive) as package:
+        metadata = json.loads(package.read('manifest.json').decode('utf-8-sig'))
+    namespace, _, name = identifier.partition('-')
+    if metadata.get('name') != name:
+        raise RuntimeError(f'{archive} declares name {metadata.get("name")!r}, expected {name!r}')
+    return {
+        'full_name': identifier,
+        'name': name,
+        'owner': namespace,
+        'package_url': metadata.get('website_url', ''),
+        'rating_score': 0,
+        'is_deprecated': False,
+        'categories': [],
+        'source': LOCAL_BUILD_SOURCE,
+        'versions': [{
+            'version_number': metadata['version_number'],
+            'download_url': archive.resolve().as_uri(),
+            'dependencies': metadata.get('dependencies', []),
+        }],
+    }
 def index():
     r = requests.get(API, timeout=60); r.raise_for_status()
     registry = {p['full_name']: p for p in r.json()}
@@ -513,7 +575,15 @@ def index():
     # and must never be installed on this fleet, so falling back to it would be worse than
     # failing. When Hexium cannot be reached the identifier is dropped from the registry
     # entirely and `add` reports it as unknown, which is the safe direction to fail in.
+    # TEMPORARY: local ServerCharacters build. Shadows BOTH indexes for its identifiers, so
+    # the Hexium lookup below is skipped rather than made and discarded - the point of
+    # shipping our own build is that no client and no publish depends on that CDN. Deleting
+    # this block restores the Hexium route exactly as it was.
+    for identifier in LOCAL_BUILD_PACKAGES:
+        registry[identifier] = local_build_package(identifier)
     for identifier in HEXIUM_PACKAGES:
+        if identifier in LOCAL_BUILD_PACKAGES:  # TEMPORARY: local ServerCharacters build.
+            continue
         try:
             registry[identifier] = hexium_package(identifier)
         except Exception as error:
@@ -573,7 +643,20 @@ def assert_cached_version(side, plugin, identifier, expected):
 
 def install(root, p, ver, side):
     archive = archive_path(root, p, ver); archive.parent.mkdir(parents=True, exist_ok=True)
-    if not archive.is_file():
+    # TEMPORARY: local ServerCharacters build. Copied from the build output, and copied
+    # again whenever the cached archive differs from it - unlike a Thunderstore archive,
+    # whose filename and version pin its contents, this one changes whenever the mod is
+    # rebuilt, and the cache already holds the Hexium archive of the same version under the
+    # same name from before the operator chose this route. Reusing that would install the
+    # author's bytes on the server while the clients carry ours, which is precisely the
+    # skew this route exists to remove.
+    if p.get('source') == LOCAL_BUILD_SOURCE:
+        source, builder = LOCAL_BUILD_PACKAGES[p['full_name']]
+        if not source.is_file():
+            raise RuntimeError(f'{p["full_name"]} is built locally and {source} is missing; run {builder}')
+        if not archive.is_file() or archive.read_bytes() != source.read_bytes():
+            shutil.copyfile(source, archive)
+    elif not archive.is_file():
         v = version(p, ver)
         if not v: raise RuntimeError(f'{p["full_name"]} has no version {ver}')
         r = requests.get(v['download_url'], headers={'User-Agent':'r2modman/3.1.57'}, timeout=120)

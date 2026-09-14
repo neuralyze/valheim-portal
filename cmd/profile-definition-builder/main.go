@@ -24,12 +24,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/neuralyze/valheim-portal/internal/servercharacters"
 	"github.com/neuralyze/valheim-portal/internal/valheimvr"
 )
 
 const (
-	thunderstorePackagesURL       = "https://gcdn.thunderstore.io/live/repository/packages/"
-	sourceHexium                  = "hexium"
+	thunderstorePackagesURL = "https://gcdn.thunderstore.io/live/repository/packages/"
+	sourceHexium            = "hexium"
+	// TEMPORARY: local ServerCharacters build. A package whose bytes are not fetched from
+	// any index but compiled into the client, so the definition publishes its hash and no
+	// URL. See internal/servercharacters.
+	sourceLocalBuild              = "local-build"
 	maxProfileManifestBytes int64 = 1 << 20
 	maxPackageBytes         int64 = 512 << 20
 )
@@ -226,7 +231,34 @@ func buildProfileDefinition(ctx context.Context, options builderOptions) error {
 	if client == nil {
 		client = newPackageHTTPClient()
 	}
+	// TEMPORARY: local ServerCharacters build. A local-build package is not fetched: the
+	// bytes are compiled into the client, so the definition publishes their SHA256 and size
+	// and no URL at all. The client compares what it carries against these two values, which
+	// is what turns "the operator published from a tree with a different archive" into a
+	// named error instead of a failed join.
 	for i := range packages {
+		if packages[i].source != sourceLocalBuild {
+			continue
+		}
+		if !servercharacters.Selects(packages[i].Namespace, packages[i].Name) {
+			return fmt.Errorf("package %s claims source %q, which exists only for %s-%s",
+				packages[i].Filename, sourceLocalBuild, servercharacters.Namespace, servercharacters.Name)
+		}
+		if packages[i].Version != servercharacters.Version {
+			return fmt.Errorf("package %s pins %s but the embedded build is %s",
+				packages[i].Filename, packages[i].Version, servercharacters.Version)
+		}
+		checksum, size, err := servercharacters.ArchiveDigest()
+		if err != nil {
+			return err
+		}
+		packages[i].SHA256 = checksum
+		packages[i].Size = size
+	}
+	for i := range packages {
+		if packages[i].source == sourceLocalBuild {
+			continue
+		}
 		requestURL, err := packageSourceURL(ctx, client, baseURL, packages[i])
 		if err != nil {
 			return fmt.Errorf("resolve %s: %w", packages[i].Filename, err)

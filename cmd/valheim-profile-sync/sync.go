@@ -18,6 +18,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/neuralyze/valheim-portal/internal/servercharacters"
 )
 
 const (
@@ -521,6 +523,20 @@ func (syncer *profileSyncer) ensureCachedPackage(ctx context.Context, cache stri
 	path := filepath.Join(cache, packageInfo.Filename)
 	if err := verifyFile(path, packageInfo.Size, packageInfo.SHA256); err == nil {
 		return path, false, nil
+	}
+	// TEMPORARY: local ServerCharacters build. This one package is not downloaded from
+	// anywhere: its bytes are compiled into this executable, because Thunderstore's newest
+	// release is fatal on Valheim 1.0.12 and the build that fixes it was never published
+	// there. Gated on the DEFINITION selecting it, so a profile that does not ask for the
+	// mod - every world but Ulfsland - is untouched, and materialised into the same package
+	// cache under the same filename, so extraction, state and change reporting all stay on
+	// the ordinary path. See internal/servercharacters for the licence position and the
+	// retirement condition.
+	if servercharacters.Selects(packageInfo.Namespace, packageInfo.Name) {
+		if err := writeEmbeddedPackage(path, packageInfo); err != nil {
+			return "", false, err
+		}
+		return path, true, nil
 	}
 	downloadURL, err := packageDownloadURL(packageInfo)
 	if err != nil {

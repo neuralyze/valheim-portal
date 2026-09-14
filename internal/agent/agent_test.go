@@ -639,3 +639,44 @@ func TestWorldUploadIDIsValidatedAndSigned(t *testing.T) {
 		t.Fatal("accepted a request naming both a seed and an uploaded world")
 	}
 }
+
+// TestPrefabCatalogPathsIncludesModSoftRefManifests pins what the analysis mines for prefab names.
+// Valheim 1.0 stores a location by prefab hash, so a hash with no catalog entry is a nameless,
+// uncategorised pin on the map. A mod that adds locations indexes its own bundles with a SoftRef
+// manifest sitting beside them, and collecting only *.dll from the plugin roots never handed that
+// file to the catalog: measured on Ulfsland at seed Pirate68, 2,116 of its 14,040 location
+// instances - every location More World Locations AIO places - came back with an empty name.
+func TestPrefabCatalogPathsIncludesModSoftRefManifests(t *testing.T) {
+	world := t.TempDir()
+	mod := filepath.Join(world, "config_merged/bepinex/plugins/More_World_Locations_AIO")
+	if err := os.MkdirAll(filepath.Join(mod, "Bundles"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"More_World_Locations_AIO.dll": "code",
+		"assetBundleManifest_full":     "path in bundle: Assets/x/MWL_ForestHouse2.prefab",
+		"manifest.json":                `{"name":"More_World_Locations_AIO"}`,
+		"Bundles/mwl_foresthouse2":     "UnityFS",
+	} {
+		if err := os.WriteFile(filepath.Join(mod, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var manifest, bundle bool
+	for _, path := range prefabCatalogPaths(world) {
+		switch filepath.Base(path) {
+		case "assetBundleManifest_full":
+			manifest = true
+		case "mwl_foresthouse2":
+			bundle = true
+		}
+	}
+	if !manifest {
+		t.Fatal("the mod's SoftRef manifest was not collected; without it every location it places is nameless")
+	}
+	// The bundles themselves are binary and enormous, and the manifest already names everything
+	// in them. Collecting them would spend the catalog's byte budget for nothing.
+	if bundle {
+		t.Fatal("an asset bundle was collected; only the text manifest is wanted")
+	}
+}
