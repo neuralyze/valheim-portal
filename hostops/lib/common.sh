@@ -389,3 +389,104 @@ world_save_is_readable() {
   done
   return 0
 }
+
+# require_matching_game_build proves that the game binary a world is ABOUT TO RUN
+# is the one that was installed, and repairs the one divergence that is
+# repairable. Call it with the world name, before starting the container.
+#
+# There are three copies of the game under a world's DATA_DIR, and only one of
+# them is the one that executes:
+#
+#   dl/server/      the Steam download cache. valheim-updater rsyncs this ONTO
+#                   the install, with --delete.
+#   server/         the install.
+#   bepinex/        the BepInEx overlay. THIS is what runs - the process is
+#                   /opt/valheim/bepinex/valheim_server.x86_64 - and it is
+#                   re-merged from the install only when the updater's rsync
+#                   reports a change.
+#
+# Nothing used to compare them, and on 2026-09-13 that cost three worlds. Steam
+# refused to update Doggerland, Storgard and Vangard ("Error! App 896660 state
+# is 0x6"); the updater fell through to its rsync and restored the stale cache
+# over a correct install; the overlay was never re-merged because the rsync
+# reported "no change". Each world then booted Valheim 0.221.12 against a 1.0
+# mod set, logged 10,000-12,000 MissingMethodException for Character.Message,
+# generated a fresh empty world and SAVED IT over the real one - Doggerland.db
+# went from 20,164,038 bytes to 70. Recovery took the pre-migration archives.
+#
+# The updater's fall-through is fixed upstream of us now (valheim-server-docker
+# f000f97f), but that fix lives in a separate checkout that this repository's
+# gates cannot see, and a stale image can still carry the old script. So this
+# check does not trust it: it measures the bytes.
+#
+# Divergence is treated by which copy is authoritative:
+#   overlay != install  -> repairable, and repaired. Touching dl/bepinex/merge
+#                          is the signal the container's own bepinex-updater
+#                          consumes to re-merge on boot, so the fix rides the
+#                          normal path rather than this script copying binaries.
+#   cache   != install  -> reported, not repaired. Mid-update this is normal and
+#                          transient. It is only dangerous when the cache is
+#                          OLDER, because then the next update rsyncs a
+#                          downgrade over a good install - exactly what happened
+#                          above - so that one case refuses to start.
+#
+# A world with no install yet (a first-ever boot, where the updater downloads
+# everything) has nothing to compare and passes.
+require_matching_game_build() {
+  local world=$1
+  local env_file="$VALHEIM_ROOT/$world/valheim.env"
+  local data_dir=""
+
+  if [[ -f $env_file ]]; then
+    # DATA_DIR is quoted in the env file; strip one layer of either quote.
+    data_dir=$(sed -n 's/^DATA_DIR=//p' "$env_file" | tail -1 | sed "s/^[\"']//; s/[\"']$//")
+  fi
+  [[ -n $data_dir ]] || data_dir="$VALHEIM_ROOT/$world/data"
+
+  local managed=valheim_server_Data/Managed/assembly_valheim.dll
+  local install="$data_dir/server/$managed"
+  local overlay="$data_dir/bepinex/$managed"
+  local cache="$data_dir/dl/server/$managed"
+
+  if [[ ! -f $install ]]; then
+    echo "$world: no game install yet at $install - letting the updater fetch it" >&2
+    return 0
+  fi
+
+  local install_sum overlay_sum cache_sum
+  install_sum=$(sha256sum -- "$install" | cut -d' ' -f1)
+
+  if [[ -f $overlay ]]; then
+    overlay_sum=$(sha256sum -- "$overlay" | cut -d' ' -f1)
+    if [[ $overlay_sum != "$install_sum" ]]; then
+      echo "$world: the BepInEx overlay is not the installed game build." >&2
+      echo "  overlay $overlay" >&2
+      echo "  install $install" >&2
+      echo "  Signalling a re-merge; the container will rebuild the overlay on boot." >&2
+      mkdir -p -- "$data_dir/dl/bepinex"
+      touch -- "$data_dir/dl/bepinex/merge"
+    fi
+  fi
+
+  if [[ -f $cache ]]; then
+    cache_sum=$(sha256sum -- "$cache" | cut -d' ' -f1)
+    if [[ $cache_sum != "$install_sum" ]]; then
+      if [[ $cache -ot $install ]]; then
+        echo "$world: REFUSING TO START - the Steam download cache is older than the install." >&2
+        echo "  cache   $cache" >&2
+        echo "  install $install" >&2
+        echo "  valheim-updater rsyncs the cache onto the install with --delete, so" >&2
+        echo "  starting now risks downgrading the game under this world's mod set." >&2
+        echo "  Fix the cache first, e.g. let Steam refresh it:" >&2
+        echo "    docker exec -u valheim valheim-server-$world bash -lc \\" >&2
+        echo "      'cd /opt/steamcmd && ./steamcmd.sh +force_install_dir /opt/valheim/dl/server \\" >&2
+        echo "       +login anonymous +app_update 896660 -validate +quit'" >&2
+        return 1
+      fi
+      echo "$world: the Steam download cache differs from the install but is newer -" >&2
+      echo "  an update is pending and will be applied on boot." >&2
+    fi
+  fi
+
+  return 0
+}

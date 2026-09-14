@@ -26,6 +26,14 @@ if ! "$SCRIPT_DIR/manage_mods.sh" "$VALHEIM_WORLD" release-status --require-comp
 	exit 1
 fi
 
+# The mod set about to be deployed targets one game version. Prove the binary
+# that will actually execute is that version before letting it open a world:
+# a server running an older build against a newer mod set does not fail safe,
+# it generates a fresh world and saves it over the real one.
+if ! require_matching_game_build "$VALHEIM_WORLD"; then
+	exit 1
+fi
+
 cd "$VALHEIM_SERVER_DOCKER_DIR"
 
 # --build, not a bare `up -d`. Each world has its own image (`<world>-valheim`),

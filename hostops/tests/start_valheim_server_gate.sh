@@ -90,4 +90,61 @@ grep -q 'VALHEIM_SERVER_DOCKER_DIR' "$tmp/err" ||
   fail "unset VALHEIM_SERVER_DOCKER_DIR: stderr does not name it: $(cat "$tmp/err")"
 [[ ! -s $DOCKER_LOG ]] || fail "unset VALHEIM_SERVER_DOCKER_DIR: docker was invoked"
 
+# 6. The game-build gate. Three copies of the game live under a world's
+#    DATA_DIR and only bepinex/ executes; on 2026-09-13 a stale cache was
+#    rsynced over a good install, the overlay was never re-merged, and three
+#    worlds booted an old binary against a new mod set and saved fresh empty
+#    worlds over the real ones. These cases are that failure, in miniature.
+managed=valheim_server_Data/Managed/assembly_valheim.dll
+data="$tmp/valheim/$WORLD/data"
+build_world() {
+  # $1 install bytes, $2 overlay bytes, $3 cache bytes
+  rm -rf -- "$data"
+  local p
+  for p in "server/$managed" "bepinex/$managed" "dl/server/$managed"; do
+    mkdir -p -- "$(dirname "$data/$p")"
+  done
+  printf '%s' "$1" >"$data/server/$managed"
+  printf '%s' "$2" >"$data/bepinex/$managed"
+  printf '%s' "$3" >"$data/dl/server/$managed"
+  printf "DATA_DIR='%s'\n" "$data" >"$tmp/valheim/$WORLD/valheim.env"
+}
+
+# 6a. All three agree: start normally, and do not signal a re-merge.
+build_world same same same
+run_start 0 "$WORLD"
+[[ $rc -eq 0 ]] || fail "agreeing build: expected exit 0, got $rc -- $(cat "$tmp/err")"
+[[ -s $DOCKER_LOG ]] || fail "agreeing build: docker was not invoked"
+[[ ! -e "$data/dl/bepinex/merge" ]] ||
+  fail "agreeing build: signalled a re-merge that was not needed"
+
+# 6b. Overlay is not the install. Repairable, so the world still starts - but
+#     only because the re-merge signal the container consumes was written.
+build_world newbuild oldbuild newbuild
+run_start 0 "$WORLD"
+[[ $rc -eq 0 ]] || fail "stale overlay: expected exit 0, got $rc -- $(cat "$tmp/err")"
+[[ -s $DOCKER_LOG ]] || fail "stale overlay: docker was not invoked"
+[[ -e "$data/dl/bepinex/merge" ]] ||
+  fail "stale overlay: no re-merge signal written, so the old binary would run"
+
+# 6c. Cache older than the install. This is the downgrade setup: the updater
+#     rsyncs the cache onto the install with --delete. Refuse, and start nothing.
+build_world newbuild newbuild oldbuild
+touch -d '2020-01-01' "$data/dl/server/$managed"
+run_start 0 "$WORLD"
+[[ $rc -ne 0 ]] || fail "older cache: expected non-zero exit, got 0"
+[[ ! -s $DOCKER_LOG ]] || fail "older cache: docker was invoked: $(cat "$DOCKER_LOG")"
+grep -q 'REFUSING TO START' "$tmp/err" ||
+  fail "older cache: stderr does not refuse clearly: $(cat "$tmp/err")"
+
+# 6d. Cache differs but is NEWER: a pending update, which is normal. Start.
+build_world oldbuild oldbuild newbuild
+run_start 0 "$WORLD"
+[[ $rc -eq 0 ]] || fail "newer cache: expected exit 0, got $rc -- $(cat "$tmp/err")"
+[[ -s $DOCKER_LOG ]] || fail "newer cache: docker was not invoked"
+
+rm -rf -- "$data"
+rm -f -- "$tmp/valheim/$WORLD/valheim.env"
+touch "$tmp/valheim/$WORLD/valheim.env"
+
 echo "PASS: start_valheim_server.sh release gate"
