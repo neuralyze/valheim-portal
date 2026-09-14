@@ -20,15 +20,15 @@
           "sha256_prefix": "dd38ede2f298",
           "size": 617984,
           "releases": 15,
-          "corresponds_to": "neuralyze/v0.10.0 cb9e0f7dccb6 built with -c SyncOnlyRelease, NOT YET TAGGED AND NOT YET PUSHED TO THE FORK",
-          "evidence": "The Flat companion, rebuilt 2026-09-13 from the same commit as the VR runtime but under the SyncOnlyRelease configuration, which is what defines NONVRMODE - the first attempt used the default Release and produced the VR binary 2ee889227063 instead, caught before publishing because the companion had historically been a different size. Embeds version 0.10.0. Shipped in companion-0.10.0.zip as hrafnheim/doggerland/storgard/vangard -vr-flat, -non-vr and -vr-flat-admin at 1.0.13 and the three ulfsland equivalents at 1.0.3, replacing 3fe2ce0874f2. That retires the older of the two companions this registry records as corresponding to no commit that exists: every flat edition now ships a binary with a real source commit, though the same source offer gap applies - the fork has no shipped/valheimvrmod-dd38ede2f298 tag."
+          "corresponds_to": "neuralyze/v0.10.0 cb9e0f7dccb6, tagged shipped/valheimvrmod-dd38ede2f298 and pushed to https://github.com/neuralyze/vhvr-mod",
+          "evidence": "The Flat companion, rebuilt 2026-09-13 from the same commit as the VR runtime but under the SyncOnlyRelease configuration, which is what defines NONVRMODE - the first attempt used the default Release and produced the VR binary 2ee889227063 instead, caught before publishing because the companion had historically been a different size. Embeds version 0.10.0. Shipped in companion-0.10.0.zip as hrafnheim/doggerland/storgard/vangard -vr-flat, -non-vr and -vr-flat-admin at 1.0.13 and the three ulfsland equivalents at 1.0.3, replacing 3fe2ce0874f2. That retires the older of the two companions this registry records as corresponding to no commit that exists: every flat edition now ships a binary with a real source commit, and the source offer is satisfied: the tag shipped/valheimvrmod-dd38ede2f298 is on the fork at the same commit, verified through the GitHub API."
         },
         {
           "sha256_prefix": "2ee889227063",
           "size": 617984,
           "releases": 5,
-          "corresponds_to": "neuralyze/v0.10.0 cb9e0f7dccb6, NOT YET TAGGED AND NOT YET PUSHED TO THE FORK",
-          "evidence": "Built 2026-09-13 with scripts/build-valheimvr-artifact.sh (mcs) from the branch tip against build/latest-1.0.12; embeds version string 0.10.0 and scans clean against the live 1.0 member tables. Shipped in vr-runtime-0.10.0.zip as hrafnheim-vr 2.5.127, doggerland-vr 2.5.52, storgard-vr 2.5.52, vangard-vr 2.5.52 and ulfsland-vr 1.0.3. THE SOURCE OFFER IS NOT YET SATISFIED for this binary: the fork has no shipped/valheimvrmod-2ee889227063 tag and cb9e0f7dccb6 is not pushed, so five live releases currently serve a GPL-3.0 binary whose corresponding source is only on this host. Push the branch and the tag to https://github.com/neuralyze/vhvr-mod to close it."
+          "corresponds_to": "neuralyze/v0.10.0 cb9e0f7dccb6, tagged shipped/valheimvrmod-2ee889227063 and pushed to https://github.com/neuralyze/vhvr-mod",
+          "evidence": "Built 2026-09-13 with scripts/build-valheimvr-artifact.sh (mcs) from the branch tip against build/latest-1.0.12; embeds version string 0.10.0 and scans clean against the live 1.0 member tables. Shipped in vr-runtime-0.10.0.zip as hrafnheim-vr 2.5.127, doggerland-vr 2.5.52, storgard-vr 2.5.52, vangard-vr 2.5.52 and ulfsland-vr 1.0.3. Source offer satisfied 2026-09-13: the branch and the tag shipped/valheimvrmod-2ee889227063 are on the fork, verified through the GitHub API."
         },
         {
           "sha256_prefix": "f879224e030c",
