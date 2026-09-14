@@ -1,0 +1,15 @@
+# Blueprint bodies are MATERIALISED here, never committed.
+#
+# No licence is stated for any file in the corpus by any of its authors, and
+# this repository is published. The identity of each file (author, source path,
+# size, SHA-256, 1.0.12 viability verdict) lives in
+# tools/jumpstart/blueprints/data/corpus_manifest.json; the bytes are copied in
+# on demand and verified against those checksums by
+#
+#     tools/jumpstart/blueprints/materialise.py --world <world> --all --strict
+#
+# See tools/jumpstart/blueprints/PROVENANCE.md.
+*.blueprint
+*.vbuild
+*.png
+__omp_shell(".gitignore")

@@ -1,0 +1,234 @@
+# Ulfsland -- WORLD-SPECIFIC facts for the jumpstart tree.
+#
+# This is the only place a world's own numbers live. Everything under
+# Ulfsland/<preset>/ is GENERATED from this file plus ../tier-policy.yaml plus
+# ../../presets/<preset>.yaml by ../derive.py. Adding a second world means adding
+# a sibling directory with its own world.yaml -- no code change.
+#
+# Claims are marked MEASURED (observed on this box) or INFERRED.
+
+version: 1
+world: Ulfsland
+
+# --------------------------------------------------------------------------
+# Identity
+# --------------------------------------------------------------------------
+seed: Pirate68
+disposable: true
+notes:
+  - >-
+    Ulfsland is an expendable experimental world, re-rolled on seed Pirate68.
+    Its WORLD contents are throwaway; its PROFILES and everything in this repo
+    are durable and survive the re-roll.
+  - >-
+    Hrafnheim, Doggerland, Storgard and Vangard are real worlds and the shared
+    admin/flat/vr profiles are theirs. Nothing in this tree targets them.
+
+profiles:
+  server: ulfsland-dn
+  admin: ulfsland-admin
+  flat: ulfsland-flat
+  vr: ulfsland-vr
+
+# All building, terrain and world modification happens from the ulfsland-admin
+# client edition. Operator hard rule; no admin tooling goes into the player
+# editions.
+admin_edition: ulfsland-admin
+
+server_config_root: profiles/ulfsland-dn/server-config
+
+# --------------------------------------------------------------------------
+# Launch baseline -- THE single source for world modifiers
+# --------------------------------------------------------------------------
+# Nine settings/world-modifiers.env files are generated from this block. To
+# change the fleet's resource rate, change it here and re-run derive.py; do not
+# edit the generated files.
+baseline:
+  launch_preset: Normal
+  world_modifiers:
+    Resources: MuchMore
+    Portals: Casual
+  # Modifier keys the WORLD owns. A preset may not move these, and derive.py
+  # records the disagreement instead of honouring it. Without the pin the merge
+  # runs backwards on exactly the value that is supposed to have one home: every
+  # `pre-*` preset declares `Resources: More` from before the fleet settled on
+  # MuchMore, so nine tier files would quietly halve the world's drop rate.
+  # Keys no preset and the world both claim -- Combat, DeathPenalty, Raids --
+  # stay unpinned, so `deepnorth-sandbox` can still ask for `Raids None`.
+  pinned:
+  - Resources
+  - Portals
+  measured:
+    # What the PREVIOUS value produced, read back out of the live world.
+    resources_more: "resourcerate 150"
+    portals_casual: "teleportall"
+    # MEASURED by YieldDesign out of the game's own slider data: MuchMore =
+    # resourcerate 200, and Game.m_resourceRate is a linear multiplier on drop
+    # count (DropTable.GetDropList loops Ceil(rate) times, last pass scaled by
+    # the fraction). So MuchMore is a flat, unconditional 2x with no skill gate.
+    resources_muchmore: "resourcerate 200"
+  owner: >-
+    YieldDesign owns the Resources value. It settled on MuchMore; if that changes
+    again this is the one token to edit.
+
+# --------------------------------------------------------------------------
+# Inventory capacity model
+# --------------------------------------------------------------------------
+# ServerCharacters grants items with Inventory.AddItem, which returns null once
+# the grid is full -- and ServerCharacters ignores the return value. Anything
+# past the last free slot is silently dropped. So the generator has to know how
+# many slots this world's profile actually provides, and how big its stacks are.
+inventory:
+  # MEASURED: vanilla grid is 8x4, and
+  # Azumatt.AzuExtendedPlayerInventory.cfg has `Extra Inventory Rows = 0` in both
+  # its [2 - Extended Inventory] and [2 - Inventory] sections. The equipment row
+  # and the 3 quickslots are separate panels and cannot be pre-filled.
+  slots: 32
+  slots_evidence: MEASURED
+  # MEASURED: 847 explicit <prefab>_max_stack entries.
+  stack_table: profiles/ulfsland-dn/server-config/ItemStacksRewrite/fortis.mods.itemstacksrewrite.stacks.cfg
+  # INFERRED. The deployed ItemStacksRewrite config predates Valheim 1.0, so it
+  # has no entry for the Deep North / Ashlands 1.0 prefabs the late presets use.
+  # Each fallback names the in-table analogue it copies. Counts of 1 need no
+  # entry -- one item is one slot whatever the stack size -- so this list is only
+  # the prefabs a preset asks for in bulk. Deliberately conservative: guessing
+  # LOW over-counts slots, which over-fills the chest manifest rather than
+  # silently truncating the template.
+  stack_fallbacks:
+    ArrowBloodGold: 100    # = ArrowCarapace, ArrowNeedle
+    BoltBloodGold: 100     # = BoltCarapace, BoltBone
+    BarkaBranch: 50        # = YggdrasilWood (wood-class material)
+    BombDynamite: 20       # = BlackCore (thrown/charge-class)
+    BloodGoldKey: 1        # dungeon keys do not stack in vanilla
+    CryptKey: 1            # same
+    FaderEmber: 50         # = ProustitePowder, MorgenSinew (Ashlands material)
+    FrostCore: 10          # = SurtlingCore
+    FrozenFuel: 50         # = Sap
+    Gold: 30               # = Flametal (refined metal)
+    GoldOre: 30            # = FlametalOre
+    HatefulBlood: 20       # = BlackCore
+    NornThread: 50         # = MorgenSinew
+    SealBlubber: 50        # = AskHide
+    SealHide: 50           # = AskHide
+    SealSoup: 10           # = cooked-food / mead class
+
+# --------------------------------------------------------------------------
+# Skills
+# --------------------------------------------------------------------------
+# Which skill names actually move this world's gathering economy, and which are
+# inert on this mod set. MEASURED by YieldDesign out of the mod IL. This is
+# world-specific because it is a property of the DEPLOYED mods, not of a tier.
+skills:
+  # Five skills drive yield, and three of them are custom skills registered
+  # through SkillManager rather than members of the vanilla Skills.SkillType enum.
+  yield_drivers:
+    ore_and_stone: [Mining, Pickaxes]   # Smoothbrain custom + vanilla (id 12)
+    wood: [Lumberjacking]               # Smoothbrain custom
+    berries_and_mushrooms: [Foraging, Farming]  # Smoothbrain custom + vanilla Farming
+    crops: [Farming]                    # vanilla Farming, which ImpactfulSkills reads
+    meat_and_hide: []                   # no skill; flat at the world resource rate
+
+  # Can CharacterTemplate.yml's `skills:` map actually REACH these? It applies
+  # them with Skills.CheatRaiseSkill(name, value). MEASURED here from the IL of
+  # assembly_valheim.dll and of the deployed Smoothbrain plugins (monodis).
+  reachability:
+    answer: >-
+      YES, all of them, by plain name, case-insensitively. Two different
+      mechanisms carry it, and the distinction matters if the mod set changes.
+    vanilla_path: >-
+      MEASURED. Skills::.cctor sets `s_allSkills = Enum.GetValues(typeof(SkillType))`
+      into an `initonly` static, and CheatRaiseSkill walks that array comparing
+      `SkillType.ToString().ToLower()` against `name.ToLower()`. So unaided it can
+      only ever reach a member of the vanilla enum; it skips SkillType 0 and 999,
+      the literal name "all" raises everything, and the write is `m_level += value`
+      clamped to 0..100 -- an ADD, which equals a set on a brand-new character.
+    custom_path: >-
+      MEASURED. SkillManager (ILRepacked into each Smoothbrain plugin) Harmony-
+      PREFIXES Skills.CheatRaiseSkill with Patch_Skills_CheatRaiseskill. The prefix
+      walks SkillManager's own registry, compares each skill's `internalSkillName`
+      with String.Equals(..., StringComparison.OrdinalIgnoreCase), and on a match
+      raises it and returns false so the vanilla loop never runs. This is why
+      Mining / Foraging / Lumberjacking work despite not being in the enum: their
+      SkillType is (SkillType)englishName.GetStableHashCode().
+    exact_string_form: >-
+      `internalSkillName`, which is Regex.Replace(englishName, "[^a-zA-Z]", "_").
+      MEASURED english names: Mining registers "Mining", Foraging registers
+      "Foraging", Lumberjacking registers "Lumberjacking" -- all pure alpha, so the
+      internal name equals the display name and the plain literal works. Matching is
+      case-insensitive. A skill whose display name contained a space or digit would
+      need the underscored form, which is why this is written down.
+    blacksmithing: >-
+      BlacksmithingExpanded is a SkillManager skill too (SkillManager is ILRepacked
+      into it) so the same prefix applies, but its english-name literal is behind a
+      wrapper ctor and was not read directly. That "Blacksmithing" is the registered
+      name is INFERRED. It is not a yield driver, so nothing economic rests on it.
+    precedence_trap: >-
+      The SkillManager prefix runs BEFORE the vanilla loop and returns false on a
+      match, so a custom skill whose internalSkillName collides with a vanilla name
+      WINS and the vanilla skill of that name is never raised. This is live history,
+      not theory: Smoothbrain-Farming registered "Farming" and would have captured
+      the name. It was removed during tonight's 1.0 migration, so today "Farming"
+      falls through to the vanilla skill. Re-adding it would silently re-capture the
+      name and change what every template's `Farming:` line means.
+  resolved:
+    Farming: >-
+      RESOLVED, and the earlier note was wrong in one detail. MEASURED from the
+      Skills/SkillType enum in this exact build: vanilla `Farming` is 0x6a = 106.
+      The "SkillType 106" attributed to ImpactfulSkills IS vanilla Farming under 1.0
+      numbering (the "id 15" figure is pre-1.0). ImpactfulSkills.dll contains no
+      reference to SkillManager at all, so it registers no custom skill and simply
+      reads vanilla Farming. With Smoothbrain-Farming gone there is exactly ONE
+      Farming, `CheatRaiseSkill("Farming", v)` reaches it by the vanilla path, and it
+      is the one ImpactfulSkills reads. The crop half of every tier's economy is
+      therefore correctly addressed. Also MEASURED from the same enum: Pickaxes = 12
+      and WoodCutting = 13.
+
+# --------------------------------------------------------------------------
+# ServerCharacters
+# --------------------------------------------------------------------------
+servercharacters:
+  # MEASURED by PatchServerChars: the mod reads CharacterTemplate.yml from the
+  # directory holding ServerCharacters.dll, watches it with a FileSystemWatcher,
+  # and ServerSyncs the file TEXT to clients as CustomSyncedValue
+  # "PlayerTemplate". No restart to switch templates.
+  plugin_dir_runtime: Ulfsland/config_merged/bepinex/plugins/ServerCharacters
+  # config_merged is regenerated by deploy, so the durable home is the profile's
+  # manual-mods overlay. That install path belongs to PatchServerChars; this tree
+  # only produces the file.
+  durable_path: profiles/ulfsland-dn/manual-mods/ServerCharacters/CharacterTemplate.yml
+  template_filename: CharacterTemplate.yml
+
+  requires_version: "1.4.17"
+  version_note: >-
+    MEASURED: 1.4.17 exists only as upstream commit bb7d3cd6 (2026-09-09, "fix for
+    deep north"); Thunderstore still publishes 1.4.16 from May 2025. 1.4.16 MUST
+    NOT be installed -- it hard-fails on Valheim 1.0.12 (it resolves
+    PlayerProfile.GetCharacterFolderPath from Initialize(), which 1.0 moved to
+    SaveSystem) and ServerSync rejects a 1.4.16 client against a 1.4.17 server.
+  status: STAGED_NOT_LIVE
+  status_note: >-
+    PatchServerChars built 1.4.17 and proved the SERVER side end to end
+    (WebInterfaceAPI GetModList returned "Server Characters 1.4.17", RaiseSkill
+    rewrote an offline stored character, the server read and live-reloaded
+    CharacterTemplate.yml), then reverted it because client distribution is
+    blocked: valheim-profile-sync pulls every package from the Thunderstore CDN
+    and checks it against the SHA256 in the published profile definition, so an
+    in-house build cannot reach a client. With 1.4.17 installed and no matching
+    client, Ulfsland was unjoinable. These templates become live the moment
+    upstream publishes 1.4.17 or the build is embedded in the sync binary.
+
+  # One server, one template file, one active preset at a time. Switching preset
+  # means replacing the file -- there is no per-character or per-tier section in
+  # the format.
+  single_active_preset: true
+
+# --------------------------------------------------------------------------
+# Spawn points
+# --------------------------------------------------------------------------
+# The template's `spawn:` block is the only per-world coordinate this tree emits.
+# It is read from each preset's placements.yaml (`spawn_points:`, a list of
+# [x, y, z] integer triples), which BlueprintHunt owns and regenerates from the
+# solver after every re-roll. Absent -> `spawn: []`, which leaves the vanilla
+# spawn alone. y is world units with sea level at 0, rounded up, so it is
+# directly usable with no offset.
+spawn_points_source: placements.yaml#spawn_points

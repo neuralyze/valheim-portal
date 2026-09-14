@@ -66,3 +66,70 @@ pre-1.0 save again.
 tracker; its Thunderstore `website_url` is a Discord invite
 (https://discord.gg/jkcJCq2sK5), so reporting needs an operator with a Discord
 account. Everything needed for that report is in bead `vhp-e0h`.
+
+## servercharacters_savesystem_move.cs — considered, NOT written
+
+**Mod:** `Smoothbrain-ServerCharacters` 1.4.16
+**Defect:** Valheim 1.0 moved `string PlayerProfile.GetCharacterFolderPath(FileHelpers.FileSource)`
+to a new `SaveSystem` type with an identical signature. The call is reached from
+`ServerCharacters.Initialize()`, which Harmony runs at `FejdStartup.Awake` - server boot
+and client main-menu load - so Mono throws `MissingMethodException` at JIT time and the
+mod never initialises. `Awake` has by then already patched
+`PlayerProfile.LoadPlayerFromDisk`, `Player.Load`, `Skills.Load` and `Inventory.Load`,
+so an unpatched install is live save/load patches over an uninitialised profile store.
+
+**`Smoothbrain-ServerCharacters` 1.4.16 must never be installed on Valheim 1.0.12.** Do
+not pin it. Thunderstore has no other version; the working build, 1.4.17, is published on
+Hexium only. `tools/valheim_mods.py` sources it from there and deliberately fails closed
+rather than falling back to 1.4.16.
+
+**The patch that was not taken:** the DLL has exactly one MemberRef row for that method,
+shared by all three call sites (`Initialize` IL_004d, `ServerSide.backupProfile` IL_0006,
+`Utils.get_CharacterSavePath` IL_0001). Retargeting that row's declaring type to
+`SaveSystem` is a two-line Cecil edit and it does clear the exception.
+
+**Why it was rejected:** it fixes one of eight. Resolving every member reference in the
+shipped 1.4.16 assembly against 1.0.12's `assembly_valheim.dll` leaves eight genuinely
+unresolvable members: `m_playerStats` became `PlayerStats[]`, `Character.Message` gained a
+trailing `bool log`, and `Inventory.AddItem`, `SEMan.AddStatusEffect`,
+`Game.SavePlayerProfile`, `MessageHud.ShowMessage` and `Terminal.ConsoleCommand..ctor` all
+changed signature. Several sit on exactly the paths this fleet wants: `m_playerStats` is
+inside `Utils.GetPlayerListFromFiles()`, which is the web API's `GetPlayerList`, and
+`Inventory.Load` gained an overload that makes the mod's
+`AccessTools.DeclaredMethod(typeof(Inventory), "Load")` ambiguous. A patch that cleared
+only the exception would have looked like it worked and left seven landmines.
+
+Upstream had already fixed all eight in `blaxxun-boop/ServerCharacters@bb7d3cd6` ("fix for
+deep north", 2026-09-09) = 1.4.17, and published it. So the remedy is neither a patch nor
+a fork but installing the author's own build from the index he actually publishes to.
+
+**Upstream:** nothing filed, and nothing should be. The repository has NO LICENSE file -
+all rights reserved - and on 2026-09-11 the author publicly refused a fork-and-redistribute
+request (issue #98) and said he is done with Thunderstore. Do not fork, mirror or embed
+this mod. Full record, with the quote and the measurements, in
+`tools/servercharacters/UPSTREAM-request-1.4.17-release.md`.
+
+## Checking compatibility by reference graph, not by version number
+
+Three separate "does this mod work on 1.0.12?" questions were settled tonight by the same
+technique, and none of them could have been answered by reading a version number or a
+changelog. It is worth reaching for first.
+
+Load the mod assembly with Mono.Cecil, resolving against the assemblies the server is
+actually running - copy them out of the live container, `valheim_server_Data/Managed` and
+`BepInEx/core` - then call `Resolve()` on every `TypeReference` and every
+`MemberReference` and collect the failures. What the list gives you:
+
+- **A precise defect list.** Each unresolved member is a `MissingMethodException` or
+  `MissingFieldException` waiting for the first call, named, before anything runs.
+- **A baseline, so the noise cancels.** Some references never resolve and never matter -
+  `System.Numerics.Vector` intrinsics, `ImmutableArray.AddRange(ReadOnlySpan<T>)` - because
+  Unity's own BCL supplies them at runtime. Diff the unresolved SET against a build known
+  to have worked instead of reading it raw, and only the real changes remain.
+- **Verification of a fix, and of a build.** Diffing the sets of a broken build and a
+  candidate proves both that the eight faults are gone and that no ninth was introduced.
+  Diffing a from-source build against the author's published binary found the sets
+  byte-for-byte equal, which simultaneously validated our build and the artifact.
+
+`tools/servercharacters/README.md` records the measurements this produced; the throwaway
+verifier is ~30 lines of Cecil and is worth rewriting per investigation.

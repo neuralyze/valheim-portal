@@ -1,0 +1,83 @@
+schema_version: 1
+world: Ulfsland
+preset: pre-moder
+seed: Pirate68
+owner: BlueprintHunt
+rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
+  calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
+  seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
+  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
+  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
+  exactly onto y.'
+resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
+  Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
+  all of them.
+placements:
+- id: mountain-outpost
+  blueprint: jaik-mistvale-keep.blueprint
+  sha256: 7379cb5afc27e6e1f6951acdadfdf7dba782012ee0e25afd2228b55410fc3af0
+  pieces: 3472
+  footprint_xzy_m:
+  - 27.9
+  - 26.8
+  - 48.0
+  creator: Jaik
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: Mountain
+    footprint_m: 40
+    max_flat_m: 4.0
+    min_biome_purity: 0.6
+    coastal: false
+    location_clearance_m: 60
+    feature: Mountain inside the silver band and close to the Moder altar; the AncientUpgradeStation that
+      gives the level-4 black forge is also a Mountain-cave find
+    near: Dragonqueen
+    within_m: 1200
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 180
+    pitch: 0
+    roll: 0
+    facing: keep entrance faces downhill, away from the summit
+  flatten_required: true
+  note: Tall stone keep, 48 m of vertical. Bed, chest, cooking, forge, oven, prep, portal, workbench.
+    Mountain sites are rarely flat - expect real hoe work.
+  solved:
+    seed: Pirate68
+    x: 1932.0
+    y: 127.92
+    z: -3068.0
+    flat_spread_m: 4.67
+    biome_purity: 1.0
+    water_dist_m: 249.9
+    anchor: Dragonqueen @ (1270.0,275.9,-2488.2)
+    anchor_dist_m: 880.0
+    nearest_location_m: 76.0
+    relaxation: max_flat x1.5, within x1.5
+  containers:
+    by_prefab:
+      piece_chest_wood: 7
+      piece_chest: 3
+      piece_chest_blackmetal: 1
+    containers: 11
+    slots_floor: 220
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: -620.0
+      y: 126.43
+      z: -972.0
+      flat_spread_m: 4.98
+      biome_purity: 1.0
+      water_dist_m: 508.5
+      anchor: Dragonqueen @ (-397.9,235.0,-2165.9)
+      anchor_dist_m: 1214.0
+      nearest_location_m: 112.0
+      relaxation: max_flat x1.5, within x1.5
+spawn_points:
+- - 1932
+  - 129
+  - -3094

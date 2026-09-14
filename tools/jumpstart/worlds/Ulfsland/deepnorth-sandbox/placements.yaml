@@ -1,0 +1,209 @@
+schema_version: 1
+world: Ulfsland
+preset: deepnorth-sandbox
+seed: Pirate68
+owner: BlueprintHunt
+rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
+  calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
+  seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
+  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
+  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
+  exactly onto y.'
+resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
+  Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
+  all of them.
+placements:
+- id: complete-station-hub
+  blueprint: Ultimate_OutPost.blueprint
+  sha256: 2f984f3b649bcac1ee3e83cd704791b5080aefd9b57ac3c3d0c20be739bad33c
+  pieces: 1820
+  footprint_xzy_m:
+  - 52.7
+  - 49.0
+  - 13.8
+  creator: Randominis
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: Meadows
+    footprint_m: 60
+    max_flat_m: 2.5
+    min_biome_purity: 0.85
+    coastal: false
+    location_clearance_m: 60
+    feature: flat central Meadows near spawn - this is the sandbox hub everyone portals to
+    near: StartTemple
+    within_m: 1200
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 0
+    pitch: 0
+    roll: 0
+    facing: main hall faces spawn
+  flatten_required: true
+  note: 'THE jumpstart base. 1820 pieces carrying every station in the game: workbench, forge, stonecutter,
+    artisan, black forge, blast furnace, smelter, charcoal kiln, windmill, spinning wheel, eitr refinery,
+    galdr table, oven, prep table, cauldron, cooking station, beehive, barber, portal, 32 chests. Places
+    100% clean on 1.0.12 with zero missing prefabs.'
+  solved:
+    seed: Pirate68
+    x: -784.0
+    y: 17.15
+    z: -704.0
+    flat_spread_m: 2.86
+    biome_purity: 1.0
+    water_dist_m: 221.8
+    anchor: StartTemple @ (-64.7,75.0,3.3)
+    anchor_dist_m: 1009.0
+    nearest_location_m: 420.0
+    relaxation: max_flat x1.5, within x1.5
+  containers:
+    by_prefab:
+      piece_chest: 32
+      piece_cartographytable: 1
+    containers: 33
+    slots_floor: 660
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: 152.0
+      y: 17.14
+      z: -968.0
+      flat_spread_m: 3.46
+      biome_purity: 1.0
+      water_dist_m: 100.2
+      anchor: StartTemple @ (-130.5,34.0,-3.4)
+      anchor_dist_m: 1005.0
+      nearest_location_m: 287.0
+      relaxation: max_flat x1.5, within x1.5
+- id: sandbox-portal-hub
+  blueprint: god-portaaoo.blueprint
+  sha256: e249c441d846199c05c6bdba5c74213c4aeedb30a8c94d5622a777f01bc3e154
+  pieces: 2191
+  footprint_xzy_m:
+  - 36.0
+  - 12.0
+  - 23.0
+  creator: God
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: Meadows
+    footprint_m: 50
+    max_flat_m: 3.0
+    min_biome_purity: 0.7
+    coastal: false
+    location_clearance_m: 60
+    feature: flat Meadows near the station hub so the two read as one settlement
+    near: StartTemple
+    within_m: 900
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 0
+    pitch: 0
+    roll: 0
+    facing: arcade runs toward the station hub
+  flatten_required: true
+  note: Stone portal arcade, 2191 pieces. With teleportall on, one hub of tagged portals is the spine
+    of the whole world.
+  solved:
+    seed: Pirate68
+    x: -100.0
+    y: 13.73
+    z: -436.0
+    flat_spread_m: 2.93
+    biome_purity: 1.0
+    water_dist_m: 111.1
+    anchor: StartTemple @ (-64.7,75.0,3.3)
+    anchor_dist_m: 441.0
+    nearest_location_m: 175.0
+    relaxation: exact
+  containers:
+    by_prefab: {}
+    containers: 0
+    slots_floor: 0
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: 76.0
+      y: 16.44
+      z: -668.0
+      flat_spread_m: 2.8
+      biome_purity: 1.0
+      water_dist_m: 254.1
+      anchor: StartTemple @ (-130.5,34.0,-3.4)
+      anchor_dist_m: 696.0
+      nearest_location_m: 132.0
+      relaxation: exact
+- id: sandbox-harbour
+  blueprint: dock.blueprint
+  sha256: 4157326c69a0157df45f96bbcf1c56c6e85fd81e66020006171cdb9ef79de9b9
+  pieces: 2036
+  footprint_xzy_m:
+  - 42.2
+  - 29.0
+  - 23.5
+  creator: Olivanderr
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: Meadows
+    footprint_m: 48
+    max_flat_m: 2.5
+    min_biome_purity: 0.6
+    coastal: true
+    location_clearance_m: 60
+    feature: coastal Meadows on the world sea with longship draught at the jetty head
+    near: StartTemple
+    within_m: 1400
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 0
+    pitch: 0
+    roll: 0
+    facing: jetty runs out into open water
+  flatten_required: true
+  note: Harbour for the sandbox settlement.
+  solved:
+    seed: Pirate68
+    x: -1400.0
+    y: 10.97
+    z: -848.0
+    flat_spread_m: 2.37
+    biome_purity: 1.0
+    water_dist_m: 96.0
+    anchor: StartTemple @ (-64.7,75.0,3.3)
+    anchor_dist_m: 1584.0
+    nearest_location_m: 205.0
+    relaxation: max_flat x1.5, within x1.5
+  containers:
+    by_prefab:
+      piece_chest: 6
+      piece_chest_wood: 4
+      piece_chest_private: 4
+    containers: 14
+    slots_floor: 280
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: -1320.0
+      y: 14.16
+      z: 888.0
+      flat_spread_m: 2.62
+      biome_purity: 1.0
+      water_dist_m: 64.5
+      anchor: StartTemple @ (-130.5,34.0,-3.4)
+      anchor_dist_m: 1486.0
+      nearest_location_m: 115.0
+      relaxation: max_flat x1.5, within x1.5
+spawn_points:
+- - -784
+  - 19
+  - -668
+- - -100
+  - 15
+  - -405
+- - -1400
+  - 12
+  - -818

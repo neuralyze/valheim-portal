@@ -1,0 +1,145 @@
+schema_version: 1
+world: Ulfsland
+preset: pre-kall
+seed: Pirate68
+owner: BlueprintHunt
+rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
+  calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
+  seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
+  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
+  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
+  exactly onto y.'
+resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
+  Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
+  all of them.
+placements:
+- id: deepnorth-landing-portal
+  blueprint: Portal13.vbuild
+  sha256: 30a255fa85b2083d50b9787d9d118361f4ba0e01995c486349e9865ca4852528
+  pieces: 133
+  footprint_xzy_m:
+  - 3.9
+  - 6.5
+  - 7.2
+  creator: ''
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: DeepNorth
+    footprint_m: 32
+    max_flat_m: 2.5
+    min_biome_purity: 0.5
+    coastal: true
+    location_clearance_m: 60
+    feature: Deep North coastal landing on the world sea - a longship must be able to beach here and the
+      portal links it home. teleportall is on, so the portal is the lifeline.
+    near: bosslocation
+    within_m: 2500
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 0
+    pitch: 0
+    roll: 0
+    facing: portal arch faces the landing beach
+  flatten_required: true
+  note: 'Small stone-and-wood portal shelter, 133 pieces. Deliberately tiny: a landing camp, not a base.'
+  solved:
+    seed: Pirate68
+    x: 3528.0
+    y: 33.0
+    z: 8744.0
+    flat_spread_m: 1.06
+    biome_purity: 1.0
+    water_dist_m: 89.4
+    anchor: bosslocation @ (2624.0,111.7,8064.0)
+    anchor_dist_m: 1131.0
+    nearest_location_m: 82.0
+    relaxation: exact
+  containers:
+    by_prefab: {}
+    containers: 0
+    slots_floor: 0
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: 440.0
+      y: 32.57
+      z: 10072.0
+      flat_spread_m: 0.98
+      biome_purity: 1.0
+      water_dist_m: 64.5
+      anchor: bosslocation @ (-512.0,145.1,8576.0)
+      anchor_dist_m: 1773.0
+      nearest_location_m: 152.0
+      relaxation: exact
+- id: deepnorth-landing-camp
+  blueprint: wagon-camp.blueprint
+  sha256: a3affe60acfffa35a745b313a51f6e1b10ecd65d3e2cd7040353392a294e7547
+  pieces: 160
+  footprint_xzy_m:
+  - 14.3
+  - 10.0
+  - 5.3
+  creator: Cooties
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: DeepNorth
+    footprint_m: 32
+    max_flat_m: 2.5
+    min_biome_purity: 0.5
+    coastal: true
+    location_clearance_m: 60
+    feature: same landing beach as the portal shelter, within sight of it
+    near: bosslocation
+    within_m: 2500
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 0
+    pitch: 0
+    roll: 0
+    facing: wagon opening faces the portal shelter
+  flatten_required: true
+  note: 'Cart camp with cauldron, cooking station, barrel and chests. 160 pieces. Carries no forge or
+    smelter: the Deep North camp is staged through the portal.'
+  solved:
+    seed: Pirate68
+    x: 1704.0
+    y: 15.58
+    z: 7984.0
+    flat_spread_m: 1.06
+    biome_purity: 1.0
+    water_dist_m: 120.0
+    anchor: bosslocation @ (2624.0,111.7,8064.0)
+    anchor_dist_m: 923.0
+    nearest_location_m: 174.0
+    relaxation: exact
+  containers:
+    by_prefab:
+      dvergrprops_crate: 10
+      piece_chest_barrel: 8
+      piece_chest_wood: 7
+      piece_chest_private: 1
+    containers: 26
+    slots_floor: 520
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: 672.0
+      y: 34.07
+      z: 9256.0
+      flat_spread_m: 0.98
+      biome_purity: 1.0
+      water_dist_m: 112.0
+      anchor: bosslocation @ (-512.0,145.1,8576.0)
+      anchor_dist_m: 1365.0
+      nearest_location_m: 125.0
+      relaxation: exact
+spawn_points:
+- - 3528
+  - 34
+  - 8766
+- - 1704
+  - 17
+  - 8006

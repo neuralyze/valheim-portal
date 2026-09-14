@@ -1,0 +1,214 @@
+# Valheim jumpstart preset -- pre-elder
+#
+# Versioned DATA ONLY. tools/jumpstart/jumpstart.py reads this file; nothing in
+# here is executed. Prefab names are verified against
+# tools/jumpstart/data/prefab_index.json by `jumpstart.py verify`.
+#
+# Fields
+#   global_keys      cumulative defeated_* keys for the bosses already dead at
+#                    this point in the chain. Applied one at a time by the
+#                    driver, with the resulting key set read back after each.
+#   world_modifiers  the -modifier <key> <value> pairs this preset implies.
+#                    NOT applied by the driver: they are launch arguments.
+#   kit              worn/carried gear, tools, ammunition, consumables.
+#   materials        biome material stock. Doubles as the recipe-unlock
+#                    mechanism: Valheim discovers a recipe when the player
+#                    first holds its materials.
+#   chain_items      Ashlands/Deep North progression inputs, called out
+#                    separately from `materials` because they are what actually
+#                    gates entry to the next biome.
+#   skills           per-skill target levels. Not applicable automatically;
+#                    see the README's "what is manual" section.
+#   stations         crafting stations with the LEVEL they must reach. Level is
+#                    1 + placed extension pieces, so a station requirement is a
+#                    build requirement for an admin in-game.
+#   notes            what this preset deliberately does not give, plus gaps.
+
+name: pre-elder
+tier: 2
+biome: Black Forest
+boss: The Elder
+summary: Bronze-equipped and standing at the Elder's altar with Ancient Seeds in the bag.
+global_keys:
+- defeated_eikthyr
+world_modifiers:
+  Combat: Default
+  DeathPenalty: Default
+  Resources: More
+  Raids: Default
+  Portals: Default
+kit:
+- prefab: AxeBronze
+  quality: 2
+  count: 1
+- prefab: MaceBronze
+  quality: 2
+  count: 1
+- prefab: SpearBronze
+  quality: 2
+  count: 1
+- prefab: BowFineWood
+  quality: 2
+  count: 1
+- prefab: ShieldBronzeBuckler
+  quality: 2
+  count: 1
+- prefab: ShieldWoodTower
+  quality: 2
+  count: 1
+- prefab: PickaxeAntler
+  quality: 2
+  count: 1
+- prefab: SledgeStagbreaker
+  quality: 2
+  count: 1
+- prefab: ArmorBronzeChest
+  quality: 2
+  count: 1
+- prefab: ArmorBronzeLegs
+  quality: 2
+  count: 1
+- prefab: HelmetBronze
+  quality: 2
+  count: 1
+- prefab: CapeTrollHide
+  quality: 2
+  count: 1
+- prefab: Cultivator
+  quality: 1
+  count: 1
+- prefab: FishingRod
+  quality: 1
+  count: 1
+- prefab: ArrowBronze
+  quality: 1
+  count: 100
+- prefab: ArrowFlint
+  quality: 1
+  count: 100
+- prefab: MeadHealthMinor
+  quality: 1
+  count: 10
+- prefab: MeadStaminaMinor
+  quality: 1
+  count: 10
+- prefab: MeadTasty
+  quality: 1
+  count: 10
+materials:
+- prefab: Wood
+  count: 300
+- prefab: RoundLog
+  count: 300
+- prefab: FineWood
+  count: 300
+- prefab: Stone
+  count: 300
+- prefab: Flint
+  count: 100
+- prefab: Resin
+  count: 300
+- prefab: GreydwarfEye
+  count: 50
+- prefab: TrollHide
+  count: 50
+- prefab: SurtlingCore
+  count: 20
+- prefab: BoneFragments
+  count: 50
+- prefab: Copper
+  count: 100
+- prefab: Tin
+  count: 100
+- prefab: Bronze
+  count: 100
+- prefab: CopperOre
+  count: 100
+- prefab: TinOre
+  count: 100
+- prefab: Coal
+  count: 300
+- prefab: AncientSeed
+  count: 5
+- prefab: Carrot
+  count: 50
+- prefab: Dandelion
+  count: 50
+- prefab: MushroomYellow
+  count: 50
+- prefab: LeatherScraps
+  count: 50
+- prefab: DeerHide
+  count: 50
+chain_items: []
+skills:
+  Axes: 22
+  Blacksmithing: 8
+  Blocking: 18
+  BloodMagic: 0
+  Bows: 20
+  Clubs: 16
+  Cooking: 18
+  Crafting: 16
+  Crossbows: 0
+  Dodge: 10
+  ElementalMagic: 0
+  Farming: 12
+  Fishing: 8
+  Foraging: 20
+  Jump: 20
+  Knives: 10
+  Lumberjacking: 22
+  Mining: 18
+  Pickaxes: 18
+  Polearms: 8
+  Ride: 0
+  Run: 24
+  Sneak: 14
+  Spears: 14
+  Swim: 16
+  Swords: 6
+  Unarmed: 4
+  WoodCutting: 24
+stations:
+- prefab: piece_workbench
+  level: 4
+  max_level: 5
+  extensions:
+  - piece_workbench_ext1
+  - piece_workbench_ext2
+  - piece_workbench_ext3
+- prefab: forge
+  level: 1
+  max_level: 7
+  extensions: []
+- prefab: smelter
+  level: 1
+  max_level: 1
+  extensions: []
+- prefab: charcoal_kiln
+  level: 1
+  max_level: 1
+  extensions: []
+- prefab: piece_chest_wood
+  level: 1
+  max_level: 1
+  extensions: []
+- prefab: portal_wood
+  level: 1
+  max_level: 1
+  extensions: []
+- prefab: hearth
+  level: 1
+  max_level: 1
+  extensions: []
+- prefab: piece_beehive
+  level: 1
+  max_level: 1
+  extensions: []
+notes:
+  withholds:
+  - No iron and no Swamp Key - both come from the Elder himself.
+  - No Stagbreaker upgrades past quality 2; no artisan table (needs a Dragon Tear).
+  gaps:
+  - Greydwarf-nest Ancient Seeds are granted directly; the burial-chamber crawl is skipped.

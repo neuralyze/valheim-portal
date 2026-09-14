@@ -7,9 +7,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 
 	"github.com/neuralyze/valheim-portal/internal/valheimvr"
 	"os"
@@ -427,4 +429,148 @@ func TestTheBuiltDefinitionCarriesNoPortalOnlyFields(t *testing.T) {
 	if manifest["schema"] != float64(1) {
 		t.Fatalf("schema = %v; a bump also breaks every installed client (sync.go rejects != 1)", manifest["schema"])
 	}
+}
+
+// Installed clients decode profile-manifest.json with DisallowUnknownFields, so a key
+// added to a PACKAGE entry breaks every client just as surely as one added at the top
+// level - and TestTheBuiltDefinitionCarriesNoPortalOnlyFields cannot see it, because it
+// builds with an empty package list. An ordinary Thunderstore package must therefore
+// encode exactly the six keys it always has, with no trace of the Hexium support.
+func TestThunderstorePackageEntriesCarryNoNewKeys(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("zeta package"))
+	}))
+	defer server.Close()
+
+	output := filepath.Join(dir, "profile.zip")
+	if err := buildProfileDefinition(context.Background(), builderOptions{
+		SourceManifestPath: writeManagedManifest(t, dir, `{"schema_version":2,"packages":[{"identifier":"Team-Zeta","version":"1.2.3"}]}`),
+		World:              "world-one",
+		Profile:            "world-one-non-vr",
+		ClientType:         "flat",
+		Audience:           "player",
+		ConfigDir:          configDir,
+		Output:             output,
+		TrueNonVR:          true,
+		PackageBaseURL:     server.URL + "/",
+		HTTPClient:         server.Client(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var manifest struct {
+		Packages []map[string]any `json:"packages"`
+	}
+	if err := json.Unmarshal(readZIPEntry(t, output, "profile-manifest.json"), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Packages) != 1 {
+		t.Fatalf("package count = %d, want 1", len(manifest.Packages))
+	}
+	for key := range manifest.Packages[0] {
+		switch key {
+		case "namespace", "name", "version", "filename", "sha256", "size":
+		default:
+			t.Fatalf("Thunderstore package entry carries %q, which an installed client will reject", key)
+		}
+	}
+}
+
+// A package whose author does not publish to Thunderstore is resolved against Hexium at
+// build time and published with an absolute URL, so the client never has to know that a
+// second index exists. The pinned version is what gets asked for: following `latest`
+// would let an upstream release change what a publish ships.
+func TestHexiumPackageIsResolvedToAPinnedAbsoluteURL(t *testing.T) {
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config")
+	if err := os.Mkdir(configDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	var asked string
+	cdn := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("server characters package"))
+	}))
+	defer cdn.Close()
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = r.URL.Path
+		_, _ = fmt.Fprintf(w, `{"version_number":"1.4.17","download_url":%q}`, cdn.URL+"/upload/359/1.4.17.zip")
+	}))
+	defer api.Close()
+
+	originalAPI, originalHost := hexiumPackageAPI, hexiumPackageHost
+	hexiumPackageAPI = api.URL + "/"
+	hexiumPackageHost = mustHostname(t, cdn.URL)
+	defer func() { hexiumPackageAPI, hexiumPackageHost = originalAPI, originalHost }()
+
+	output := filepath.Join(dir, "profile.zip")
+	if err := buildProfileDefinition(context.Background(), builderOptions{
+		SourceManifestPath: writeManagedManifest(t, dir,
+			`{"schema_version":2,"packages":[{"identifier":"Smoothbrain-ServerCharacters","version":"1.4.17","source":"hexium"}]}`),
+		World:          "world-one",
+		Profile:        "world-one-non-vr",
+		ClientType:     "flat",
+		Audience:       "player",
+		ConfigDir:      configDir,
+		Output:         output,
+		TrueNonVR:      true,
+		PackageBaseURL: "http://thunderstore.invalid/",
+		HTTPClient:     cdn.Client(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if asked != "/Smoothbrain/ServerCharacters/1.4.17/" {
+		t.Fatalf("asked Hexium for %q, want the pinned version", asked)
+	}
+
+	var manifest profileManifest
+	if err := json.Unmarshal(readZIPEntry(t, output, "profile-manifest.json"), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Packages) != 1 {
+		t.Fatalf("package count = %d, want 1", len(manifest.Packages))
+	}
+	entry := manifest.Packages[0]
+	if entry.URL != cdn.URL+"/upload/359/1.4.17.zip" {
+		t.Fatalf("url = %q, want the resolved CDN URL", entry.URL)
+	}
+	// The hash is what the client verifies, so it has to describe the bytes actually
+	// fetched from the CDN rather than anything the index claimed.
+	if entry.Size != int64(len("server characters package")) || entry.SHA256 == "" {
+		t.Fatalf("size/sha256 = %d/%q, want the CDN body's", entry.Size, entry.SHA256)
+	}
+}
+
+// A version other than the pinned one must abort the publish rather than ship whatever
+// upstream happens to be serving.
+func TestHexiumResolutionRefusesAVersionMismatch(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `{"version_number":"1.4.18","download_url":"https://cdn.hexium.gg/upload/359/1.4.18.zip"}`)
+	}))
+	defer api.Close()
+	originalAPI := hexiumPackageAPI
+	hexiumPackageAPI = api.URL + "/"
+	defer func() { hexiumPackageAPI = originalAPI }()
+
+	_, err := resolveHexiumPackageURL(context.Background(), api.Client(), packageManifest{
+		Namespace: "Smoothbrain", Name: "ServerCharacters", Version: "1.4.17",
+		Filename: "Smoothbrain-ServerCharacters-1.4.17.zip", source: sourceHexium,
+	})
+	if err == nil || !strings.Contains(err.Error(), "1.4.18") {
+		t.Fatalf("err = %v, want a refusal naming the version served", err)
+	}
+}
+
+func mustHostname(t *testing.T, rawURL string) string {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parsed.Hostname()
 }

@@ -1,0 +1,80 @@
+schema_version: 1
+world: Ulfsland
+preset: pre-eikthyr
+seed: Pirate68
+owner: BlueprintHunt
+rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
+  calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
+  seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
+  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
+  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
+  exactly onto y.'
+resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
+  Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
+  all of them.
+placements:
+- id: meadows-starter-hall
+  blueprint: small_long_house.blueprint
+  sha256: ed8f8daf21c5fbc0c990dd9973f342a7c1df2a9686b26a90a674a3b51cbbe03d
+  pieces: 1444
+  footprint_xzy_m:
+  - 50.2
+  - 33.6
+  - 15.0
+  creator: Пипкин
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: Meadows
+    footprint_m: 60
+    max_flat_m: 3.0
+    min_biome_purity: 0.85
+    coastal: false
+    location_clearance_m: 60
+    feature: flat Meadows within easy walking distance of the start temple
+    near: StartTemple
+    within_m: 700
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 0
+    pitch: 0
+    roll: 0
+    facing: front door faces the start temple, so a new spawn walks straight in
+  flatten_required: true
+  note: 'Meadows longhouse with workbench, cooking station and chests. Deliberately has NO forge: pre-eikthyr
+    has no metal, and a forge on site would advertise a tier the party cannot reach.'
+  solved:
+    seed: Pirate68
+    x: -784.0
+    y: 17.15
+    z: -704.0
+    flat_spread_m: 2.86
+    biome_purity: 1.0
+    water_dist_m: 221.8
+    anchor: StartTemple @ (-64.7,75.0,3.3)
+    anchor_dist_m: 1009.0
+    nearest_location_m: 420.0
+    relaxation: max_flat x1.5, within x1.5
+  containers:
+    by_prefab:
+      piece_chest_wood: 12
+    containers: 12
+    slots_floor: 240
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: 152.0
+      y: 17.14
+      z: -968.0
+      flat_spread_m: 3.46
+      biome_purity: 1.0
+      water_dist_m: 100.2
+      anchor: StartTemple @ (-130.5,34.0,-3.4)
+      anchor_dist_m: 1005.0
+      nearest_location_m: 287.0
+      relaxation: max_flat x1.5, within x1.5
+spawn_points:
+- - -784
+  - 19
+  - -668

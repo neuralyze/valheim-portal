@@ -1,0 +1,85 @@
+schema_version: 1
+world: Ulfsland
+preset: pre-fader
+seed: Pirate68
+owner: BlueprintHunt
+rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
+  calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
+  seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
+  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
+  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
+  exactly onto y.'
+resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
+  Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
+  all of them.
+placements:
+- id: ashlands-forward-base
+  blueprint: deardly-casa-drly.blueprint
+  sha256: 215e53145d53ed09bb240aa99d67f714360a9d502bb2842dbaeb2a57a4eb5f70
+  pieces: 1901
+  footprint_xzy_m:
+  - 31.2
+  - 29.7
+  - 13.0
+  creator: Deardly
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: AshLands
+    footprint_m: 50
+    max_flat_m: 3.5
+    min_biome_purity: 0.7
+    coastal: false
+    location_clearance_m: 60
+    feature: Ashlands landfall within striking distance of a Fader altar
+    near: FaderLocation
+    within_m: 2000
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 180
+    pitch: 0
+    roll: 0
+    facing: shielded face toward the Ashlands interior, open face to the sea approach
+  flatten_required: true
+  note: Grausten, ashwood and flametal forward base with black forge, eitr refinery, galdr table and artisan.
+    Ashlands is hostile ground - this is a beachhead, not a home.
+  solved:
+    seed: Pirate68
+    x: 716.0
+    y: 11.8
+    z: -8284.0
+    flat_spread_m: 0.29
+    biome_purity: 1.0
+    water_dist_m: 734.3
+    anchor: FaderLocation @ (-1024.0,48.3,-8768.0)
+    anchor_dist_m: 1806.0
+    nearest_location_m: 312.0
+    relaxation: exact
+  containers:
+    by_prefab:
+      piece_chest_blackmetal: 45
+      piece_chest: 16
+      piece_chest_barrel: 6
+      piece_chest_private: 4
+      piece_chest_treasure: 1
+      piece_cartographytable: 1
+    containers: 73
+    slots_floor: 1460
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: 1004.0
+      y: 8.07
+      z: -10004.0
+      flat_spread_m: 0.23
+      biome_purity: 1.0
+      water_dist_m: 232.0
+      anchor: FaderLocation @ (1216.0,37.0,-8384.0)
+      anchor_dist_m: 1634.0
+      nearest_location_m: 348.0
+      relaxation: exact
+spawn_points:
+- - 716
+  - 13
+  - -8315

@@ -1,0 +1,83 @@
+schema_version: 1
+world: Ulfsland
+preset: pre-queen
+seed: Pirate68
+owner: BlueprintHunt
+rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
+  calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
+  seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
+  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
+  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
+  exactly onto y.'
+resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
+  Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
+  all of them.
+placements:
+- id: mistlands-blackforge-base
+  blueprint: PuP_black_house_full.blueprint
+  sha256: 0cdcee665b7e8f95d14d89850644e819b90ac0fe8f337ba6f085121292b98322
+  pieces: 6262
+  footprint_xzy_m:
+  - 40.6
+  - 72.5
+  - 78.2
+  creator: PuP
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: Mistlands
+    footprint_m: 80
+    max_flat_m: 4.0
+    min_biome_purity: 0.6
+    coastal: false
+    location_clearance_m: 60
+    feature: Mistlands ground solid enough for a black-marble build, Queen entrance as anchor
+    near: Mistlands_DvergrBossEntrance1
+    within_m: 1800
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 180
+    pitch: 0
+    roll: 0
+    facing: entrance faces away from the Dvergr boss entrance
+  flatten_required: true
+  note: 'Black-marble and Dvergr Mistlands base: black forge, blast furnace, galdr table, artisan, smelter,
+    spinning wheel, oven, prep. It has a 42 m basement below its origin, so ground-center alignment sinks
+    the whole build - check the site is not on a ridge.'
+  solved:
+    seed: Pirate68
+    x: 5664.0
+    y: 11.48
+    z: -6344.0
+    flat_spread_m: 6.51
+    biome_purity: 1.0
+    water_dist_m: 131.2
+    anchor: Mistlands_DvergrBossEntrance1 @ (6336.0,34.0,-2816.0)
+    anchor_dist_m: 3591.0
+    nearest_location_m: 174.0
+    relaxation: max_flat x2.0, within x2.0
+  containers:
+    by_prefab:
+      piece_chest_blackmetal: 21
+      piece_chest: 9
+      piece_cartographytable: 1
+    containers: 31
+    slots_floor: 620
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: 1696.0
+      y: 8.95
+      z: 7680.0
+      flat_spread_m: 6.5
+      biome_purity: 1.0
+      water_dist_m: 277.7
+      anchor: Mistlands_DvergrBossEntrance1 @ (1728.0,44.9,6272.0)
+      anchor_dist_m: 1408.0
+      nearest_location_m: 308.0
+      relaxation: max_flat x2.0, within x2.0
+spawn_points:
+- - 5664
+  - 13
+  - -6390

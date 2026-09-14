@@ -889,3 +889,34 @@ func TestRepairProfilePatchersIsWhatBothSyncPathsCall(t *testing.T) {
 		t.Fatalf("EverybodyShim.dll not installed: %d bytes, %v", len(shim), err)
 	}
 }
+
+// A profile definition is data the client is handed, not a capability. The SHA256 in the
+// definition still decides what bytes are acceptable - downloadVerified checks it on
+// every download - but a URL field could still aim a client at an arbitrary host, so the
+// resolver accepts two CDNs and nothing else. Thunderstore packages, which carry no URL
+// at all, must keep resolving exactly as they did before the field existed.
+func TestPackageDownloadURLAcceptsOnlyKnownCDNs(t *testing.T) {
+	thunderstore := packageDefinition{Filename: "Team-Zeta-1.2.3.zip"}
+	got, err := packageDownloadURL(thunderstore)
+	if err != nil || got != packageRepositoryURL+"Team-Zeta-1.2.3.zip" {
+		t.Fatalf("Thunderstore package resolved to %q, %v", got, err)
+	}
+
+	hexium := packageDefinition{Filename: "Smoothbrain-ServerCharacters-1.4.17.zip", URL: "https://cdn.hexium.gg/upload/359/1.4.17.zip"}
+	got, err = packageDownloadURL(hexium)
+	if err != nil || got != hexium.URL {
+		t.Fatalf("Hexium package resolved to %q, %v", got, err)
+	}
+
+	for _, refused := range []string{
+		"http://cdn.hexium.gg/upload/359/1.4.17.zip",
+		"https://cdn.hexium.gg.evil.example/upload/359/1.4.17.zip",
+		"https://example.com/1.4.17.zip",
+		"file:///etc/passwd",
+		"://nonsense",
+	} {
+		if _, err := packageDownloadURL(packageDefinition{Filename: "x.zip", URL: refused}); err == nil {
+			t.Fatalf("%q was accepted", refused)
+		}
+	}
+}

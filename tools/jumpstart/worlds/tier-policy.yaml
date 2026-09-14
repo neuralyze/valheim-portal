@@ -1,0 +1,260 @@
+# Jumpstart tier policy -- WORLD-AGNOSTIC
+#
+# This file answers one question: "given that a party has been fast-forwarded to
+# tier N, which deployed server-config values are now wrong, and what should they
+# be instead?"
+#
+# It is deliberately NOT per world and NOT per directory. The nine
+# worlds/<World>/<preset>/settings/ directories are GENERATED from this file plus
+# worlds/<World>/world.yaml by worlds/derive.py. Editing a generated file is a
+# mistake; edit this file or world.yaml and re-run the generator.
+#
+# Every rule names the config file, the BepInEx SECTION (these files have
+# duplicate key names across sections -- ZenRaids has two different
+# `Min Player Count` keys -- so a section-less override is ambiguous and wrong),
+# the deployed base value, the evidence class, and the reason.
+#
+# `by_tier` lists ONLY the tiers that differ from `base`. A tier absent from
+# `by_tier` gets no override and inherits the deployed value. That is the point:
+# an override table with nine identical rows is a copy of the config file, which
+# is the drift trap this whole layout exists to avoid.
+#
+# Tiers: 1 pre-eikthyr, 2 pre-elder, 3 pre-bonemass, 4 pre-moder, 5 pre-yagluth,
+#        6 pre-queen, 7 pre-fader, 8 pre-kall, 9 deepnorth-sandbox.
+
+version: 1
+
+# --------------------------------------------------------------------------
+# Launch arguments
+# --------------------------------------------------------------------------
+# World modifiers are not config keys, they are process arguments, so they are
+# resolved rather than "overridden":
+#
+#   effective = world.yaml baseline.world_modifiers
+#               overlaid with the preset's world_modifiers, ignoring `Default`
+#               EXCEPT for keys listed in world.yaml baseline.pinned, which the
+#               world owns outright
+#
+# A preset saying `Portals: Default` therefore does NOT clobber the fleet's
+# standing `Portals Casual`; a preset saying `Raids: None` does apply.
+#
+# The pin exists because the presets predate the fleet's current resource
+# decision: all nine still declare `Resources: More`, which without a pin would
+# let nine tier files quietly halve a `MuchMore` baseline. Pinning Resources and
+# Portals keeps them a one-token edit in world.yaml, which is the whole point of
+# reading them from a single place. derive.py records the disagreement in the
+# generated header rather than silently discarding it.
+world_modifiers:
+  merge: baseline-then-preset-non-default-except-pinned
+  ignore_value: Default
+  pinned_source: "<World>/world.yaml baseline.pinned"
+
+# --------------------------------------------------------------------------
+# Server-config overrides
+# --------------------------------------------------------------------------
+server_config_rules:
+
+  - id: cllc-difficulty
+    config: org.bepinex.plugins.creaturelevelcontrol.cfg
+    section: "2 - Creatures"
+    key: Difficulty
+    base: Medium
+    accepts: [Custom, Very_easy, Easy, Medium, Hard, Very_hard, Insane]
+    evidence: MEASURED -- deployed value and the acceptable-values list both read
+      out of profiles/ulfsland-dn/server-config/org.bepinex.plugins.creaturelevelcontrol.cfg.
+      Note the underscore spelling; `VeryEasy` is not a legal value.
+    why: >-
+      CLLC has `Second factor = BossesKilled`, so the creature star curve is a
+      direct function of how many defeated_* keys exist -- and a jumpstart's
+      entire job is to hand those keys out on day zero. Left alone, a tier-7
+      preset ships an Ashlands-difficulty world to a party whose granted skills
+      are capped at 82 and who lose 5% of them per death. Lowering Difficulty
+      keeps the preset fast-forwarded in CONTENT without also fast-forwarding
+      DANGER. World level saturates at 6, which is why the step stops at tier 7
+      rather than continuing to scale.
+    by_tier:
+      4: Easy
+      5: Easy
+      6: Easy
+      7: Very_easy
+      8: Very_easy
+      9: Very_easy
+
+  - id: deathpenalty-skillloss
+    config: dev.crystal.deathpenalty.cfg
+    section: Death
+    key: SkillLossPercent
+    base: "5"
+    accepts: "Single, 0-100"
+    evidence: MEASURED -- deployed file; 5 is also the vanilla game default.
+    why: >-
+      The skills in a preset are GRANTED, not earned, and ServerCharacters applies
+      its template to NEW characters only. Once a granted skill erodes there is no
+      re-grant short of deleting the character, so death erosion is not a
+      difficulty knob here -- it is an irreversible leak out of the preset's own
+      definition. The leak scales with how much was granted, so the percentage
+      comes down as the tier goes up. Tiers 1-2 keep the stock 5 because a
+      12-skill and a 24-skill character has almost nothing to lose and the normal
+      rule is worth teaching.
+    by_tier:
+      3: "2"
+      4: "2"
+      5: "2"
+      6: "2"
+      7: "1"
+      8: "1"
+      9: "0"
+
+  - id: deathpenalty-resetprogress
+    config: dev.crystal.deathpenalty.cfg
+    section: Death
+    key: ResetLevelProgress
+    base: "true"
+    accepts: [true, false]
+    evidence: MEASURED -- deployed file; true is the vanilla default.
+    why: >-
+      Same leak, different mechanism: this wipes in-level progress independently
+      of the level loss. From tier 3 up the granted levels are high enough that
+      the XP behind one level is hours of play the player never did and cannot
+      redo at speed, so wiping it converts a death into a permanent downgrade of
+      the preset rather than a setback.
+    by_tier:
+      3: "false"
+      4: "false"
+      5: "false"
+      6: "false"
+      7: "false"
+      8: "false"
+      9: "false"
+
+  - id: zenraids-raidchance
+    config: ZenDragon.ZenRaids.cfg
+    section: "Raids General"
+    key: Raid Chance
+    base: "-1"
+    accepts: "Int32, -1 to 100; -1 = use vanilla (20), 0 = raids never trigger"
+    evidence: MEASURED -- deployed value and semantics from the key's own comment
+      block in ZenDragon.ZenRaids.cfg.
+    why: >-
+      Vanilla gates raids behind "the player has built something" --
+      `Raid Threshold - Limit = 3` base pieces. A jumpstart deletes that grace
+      period, because BlueprintHunt's placement drops a finished base at the spawn
+      before the first login. At tier 2 the world already carries
+      `defeated_eikthyr`, `Append Global Keys To Player Keys = true` pushes it
+      onto every player, and `No Raid Biomes Exeption Raids = army_eikthyr` lets
+      that raid into Meadows specifically -- so a tier-2 character can be raided in
+      its home biome on day zero with no notice. Tiers 3+ are left at vanilla
+      odds: by then the key set genuinely matches the kit and raids are the
+      content, not an ambush.
+    by_tier:
+      1: "0"
+      2: "0"
+
+  - id: zenraids-appendglobalkeys
+    config: ZenDragon.ZenRaids.cfg
+    section: "Raid Keys"
+    key: Append Global Keys To Player Keys
+    base: "true"
+    accepts: [true, false]
+    evidence: MEASURED -- deployed value; the key's comment states it appends
+      global keys to the player key list used for raid triggering.
+    why: >-
+      For `pre-*` presets this default is exactly right and must stay: the world's
+      keys ARE the party's tier, so raid eligibility should follow them.
+      `deepnorth-sandbox` is the one case where it inverts -- it grants the entire
+      chain through `defeated_frozenking_p3` to the WORLD, so with append on, any
+      character at all (including one created before the template landed, which
+      ServerCharacters will never touch) is instantly eligible for Ashlands and
+      Mistlands raids in every biome. Turning it off makes the sandbox's raid
+      pressure follow the individual player again.
+    by_tier:
+      9: "false"
+
+  - id: zenworldsettings-spawnerrules
+    config: ZenDragon.ZenWorldSettings.cfg
+    section: Spawners
+    key: _Enable Spawner Rules
+    base: "true"
+    accepts: [true, false]
+    evidence: MEASURED -- key name and deployed value verified at line 452 of
+      profiles/ulfsland-dn/server-config/ZenDragon.ZenWorldSettings.cfg. The
+      leading underscore is real. Plugin default is false; this server sets true.
+    why: >-
+      Keep it on for every `pre-*` preset -- the per-biome blocked-key lists are
+      tiered (Meadows blocks gdking..fader, BlackForest blocks bonemass..fader, and
+      so on down to empty in AshLands/DeepNorth), so they are self-correcting: a
+      tier-N world only holds keys up to N-1, and every lower biome already blocks
+      them. That tiering is precisely what keeps a fast-forwarded world survivable
+      where the party physically stands. `deepnorth-sandbox` is the exception: its
+      stated purpose is exercising endgame content, and these rules exist to hide
+      endgame content from convenient biomes. A sandbox that cannot summon what it
+      is meant to test is not a sandbox.
+    by_tier:
+      9: "false"
+
+  - id: zenworldsettings-ocean-blockedkeys
+    config: ZenDragon.ZenWorldSettings.cfg
+    section: Spawners
+    key: Ocean - Blocked Keys
+    base: ""
+    accepts: "StringList of global keys"
+    evidence: MEASURED that the deployed list is EMPTY while every land biome
+      through Mistlands carries a tiered list. The replacement VALUE is INFERRED
+      -- it mirrors the Mistlands/Plains tiering rather than being observed.
+    why: >-
+      Ocean is the single hole in an otherwise carefully tiered table, and it is
+      the one biome a jumpstarted party cannot avoid: every other landmass is on
+      the far side of it. At tiers 7-8 the world carries `defeated_queen` and
+      `defeated_fader`, so ocean spawns scale to the full chain while the party's
+      boat is whatever the placement gave them. Blocking those two keys in Ocean
+      restores the same protection the land biomes already get. Not applied at
+      tier 9, where `_Enable Spawner Rules` is off and the whole section is inert.
+    by_tier:
+      7: "defeated_queen, defeated_fader"
+      8: "defeated_queen, defeated_fader"
+
+# --------------------------------------------------------------------------
+# Deliberately NOT declared here
+# --------------------------------------------------------------------------
+# Recording the non-overrides matters as much as the overrides: it is how the
+# next reader knows a missing key is a decision rather than an oversight.
+not_declared:
+  - keys:
+      - "org.bepinex.plugins.creaturelevelcontrol.cfg [3 - Loot] Multiplier for dropped creature items"
+      - "org.bepinex.plugins.creaturelevelcontrol.cfg [3 - Loot] Multiplier for dropped boss items"
+      - "org.bepinex.plugins.mining.cfg Mining Yield Factor"
+      - "org.bepinex.plugins.foraging.cfg Foraging Yield Factor"
+      - "org.bepinex.plugins.foraging.cfg Multiplier for Respawn Speed"
+      - "org.bepinex.plugins.lumberjacking.cfg Tree item yield modifier at level 100"
+      - "MidnightsFX.ImpactfulSkills.cfg MiningLootFactor"
+    owner: YieldDesign
+    reason: >-
+      These are the world's yield economy, tuned once for the whole world, not per
+      tier. Splitting them per preset would put two agents' hands on the same
+      numbers. Confirmed with YieldDesign over hub: CLLC `[2 - Creatures]
+      Difficulty` is mine, CLLC `[3 - Loot]` multipliers are theirs.
+  - keys:
+      - "ZenDragon.ZenRaids.cfg [Raids General] Min Player Count"
+      - "ZenDragon.ZenRaids.cfg [General] Min Player Count"
+    owner: nobody
+    reason: >-
+      No tier reason to vary it. Flagged instead as a config-hygiene finding:
+      ZenRaids carries BOTH a commentless `[General]` section (Min Player Count =
+      2, No Raid Biomes = Meadows, No Raid Biomes Exeption Raids = army_eikthyr,
+      Never Disable Raids) and the plugin-written `[Raids General]` section
+      (Min Player Count = 1, same three keys again). Only the commented section is
+      plugin-generated; `[General]` is an orphan from an older ZenRaids and its
+      `Min Player Count = 2` almost certainly does nothing. Worth deleting, but not
+      by a per-preset override.
+  - keys:
+      - "ZenDragon.ZenRaids.cfg [Raids General] Never Activated Raids"
+    owner: nobody
+    reason: >-
+      It is the obvious "turn off endgame raids" lever and it takes a comma list of
+      RAID NAMES. Only six names are attested anywhere on this box (army_eikthyr,
+      army_moder, army_goblin, army_gjall, army_charred, army_charredspawners --
+      from the ZenRaids README and the config's own defaults) and the vanilla event
+      list is longer. Raid events are RandomEvent ScriptableObjects inside the
+      asset bundles, not strings in assembly_valheim.dll, so the full list could
+      not be extracted here. `Raid Chance` achieves the same protection with no
+      guessed identifiers, so that is what tiers 1-2 use.

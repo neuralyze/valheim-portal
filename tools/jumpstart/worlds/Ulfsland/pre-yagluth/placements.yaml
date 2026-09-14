@@ -1,0 +1,90 @@
+schema_version: 1
+world: Ulfsland
+preset: pre-yagluth
+seed: Pirate68
+owner: BlueprintHunt
+rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
+  calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
+  seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
+  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
+  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
+  exactly onto y.'
+resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
+  Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
+  all of them.
+placements:
+- id: plains-farm-base
+  blueprint: cozy_house.blueprint
+  sha256: 2e61bf0d2586b89003945c0f662dd9be6c2aee3665ea0b40530defec6be76e7b
+  pieces: 6034
+  footprint_xzy_m:
+  - 52.4
+  - 52.5
+  - 24.1
+  creator: Пипкин
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: Plains
+    footprint_m: 60
+    max_flat_m: 3.0
+    min_biome_purity: 0.7
+    coastal: false
+    location_clearance_m: 60
+    feature: open Plains flat enough to farm, Goblin King altar as anchor
+    near: GoblinKing
+    within_m: 1600
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 0
+    pitch: 0
+    roll: 0
+    facing: field side faces open Plains for barley and flax
+  flatten_required: true
+  note: 'Plains farm base with windmill, blast furnace, artisan table, forge, smelter, kiln, oven, cauldron
+    and cooking station. The black forge in this blueprint is dropped: it is a Mistlands station and would
+    leak a tier. The black forge and BOTH of its extension pieces (blackforge_ext1, blackforge_ext2_vise)
+    are dropped - the extensions are separate prefabs and dropping only "blackforge" leaves them behind.
+    Mistlands dvergr WALL/pole/lantern pieces are left in place: they are cosmetic structure, not a craftable-tier
+    leak.'
+  drop_prefabs:
+  - blackforge
+  - blackforge_ext1
+  - blackforge_ext2_vise
+  solved:
+    seed: Pirate68
+    x: -3944.0
+    y: 32.05
+    z: 1568.0
+    flat_spread_m: 3.09
+    biome_purity: 1.0
+    water_dist_m: 263.9
+    anchor: GoblinKing @ (-3264.0,37.8,1344.0)
+    anchor_dist_m: 716.0
+    nearest_location_m: 209.0
+    relaxation: max_flat x1.5, within x1.5
+  containers:
+    by_prefab:
+      piece_chest: 53
+      piece_chest_blackmetal: 8
+      piece_cartographytable: 1
+    containers: 62
+    slots_floor: 1240
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: 752.0
+      y: 35.03
+      z: -3680.0
+      flat_spread_m: 2.89
+      biome_purity: 1.0
+      water_dist_m: 520.6
+      anchor: GoblinKing @ (960.0,37.1,-3008.0)
+      anchor_dist_m: 703.0
+      nearest_location_m: 95.0
+      relaxation: exact
+spawn_points:
+- - -3944
+  - 34
+  - 1604

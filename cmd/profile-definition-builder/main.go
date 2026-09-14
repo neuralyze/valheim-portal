@@ -29,8 +29,16 @@ import (
 
 const (
 	thunderstorePackagesURL       = "https://gcdn.thunderstore.io/live/repository/packages/"
+	sourceHexium                  = "hexium"
 	maxProfileManifestBytes int64 = 1 << 20
 	maxPackageBytes         int64 = 512 << 20
+)
+
+// Hexium endpoints. Variables rather than constants so the tests can point them at an
+// httptest server; nothing else reassigns them.
+var (
+	hexiumPackageAPI  = "https://valheim.hexium.gg/api/experimental/package/"
+	hexiumPackageHost = "cdn.hexium.gg"
 )
 
 var deterministicZIPTime = time.Date(1980, time.January, 1, 0, 0, 0, 0, time.UTC)
@@ -76,6 +84,15 @@ type packageManifest struct {
 	Filename  string `json:"filename"`
 	SHA256    string `json:"sha256"`
 	Size      int64  `json:"size"`
+	// Absolute download URL for a package that is not on Thunderstore, resolved here at
+	// build time so the client never has to talk to a second index. Omitted - and so
+	// absent from the encoded definition - for every Thunderstore package, which is what
+	// keeps the definitions of profiles that select none of these byte-identical.
+	URL string `json:"url,omitempty"`
+	// Which index the package comes from, carried from the profile manifest so the
+	// download loop knows whether URL has to be resolved. Unexported: it is builder
+	// state, not part of the definition a client reads.
+	source string
 }
 
 type managedProfileManifest struct {
@@ -88,6 +105,9 @@ type managedProfileManifest struct {
 type managedPackage struct {
 	Identifier string `json:"identifier"`
 	Version    string `json:"version"`
+	// Which index this package comes from. Empty or "thunderstore" is the default and
+	// covers everything but Smoothbrain-ServerCharacters; see resolveHexiumPackageURL.
+	Source string `json:"source,omitempty"`
 }
 
 type companionManifest struct {
@@ -207,12 +227,22 @@ func buildProfileDefinition(ctx context.Context, options builderOptions) error {
 		client = newPackageHTTPClient()
 	}
 	for i := range packages {
-		checksum, size, err := downloadPackage(ctx, client, baseURL, packages[i].Filename)
+		requestURL, err := packageSourceURL(ctx, client, baseURL, packages[i])
+		if err != nil {
+			return fmt.Errorf("resolve %s: %w", packages[i].Filename, err)
+		}
+		checksum, size, err := downloadPackageFrom(ctx, client, requestURL)
 		if err != nil {
 			return fmt.Errorf("download %s: %w", packages[i].Filename, err)
 		}
 		packages[i].SHA256 = checksum
 		packages[i].Size = size
+		// Only a non-Thunderstore package publishes a URL. Leaving it empty otherwise is
+		// what makes a definition for a profile that selects none of these encode exactly
+		// as it did before this field existed.
+		if packages[i].source == sourceHexium {
+			packages[i].URL = requestURL
+		}
 	}
 
 	manifest, err := json.Marshal(profileManifest{
@@ -418,6 +448,7 @@ func managedManifestPackage(entry managedPackage) (packageManifest, error) {
 		Name:      name,
 		Version:   entry.Version,
 		Filename:  filename,
+		source:    entry.Source,
 	}, nil
 }
 
@@ -455,6 +486,68 @@ func downloadPackage(ctx context.Context, client *http.Client, baseURL, filename
 	if err != nil {
 		return "", 0, err
 	}
+	return downloadPackageFrom(ctx, client, requestURL)
+}
+
+// packageSourceURL is where one package's bytes come from. Thunderstore packages keep the
+// old shape exactly - the configured base URL plus the derived filename - and are the only
+// case any profile but Ulfsland's hits.
+func packageSourceURL(ctx context.Context, client *http.Client, baseURL string, pkg packageManifest) (string, error) {
+	if pkg.source != sourceHexium {
+		if !validPackageFilename(pkg.Filename) {
+			return "", fmt.Errorf("invalid package filename")
+		}
+		return packageURL(baseURL, pkg.Filename)
+	}
+	return resolveHexiumPackageURL(ctx, client, pkg)
+}
+
+// resolveHexiumPackageURL asks Hexium where a pinned version lives.
+//
+// Hexium is a second Valheim mod backend. We speak to it for exactly one package,
+// Smoothbrain-ServerCharacters, because its author stopped publishing to Thunderstore -
+// Thunderstore's newest is 1.4.16 from 2025-05-02, which throws MissingMethodException at
+// FejdStartup.Awake on Valheim 1.0 and must never be installed on 1.0.12 - while 1.4.17,
+// the build that fixes it, is published only here. See tools/servercharacters/README.md.
+//
+// Resolution happens at build time so the CLIENT never talks to this index: it receives a
+// concrete URL and the SHA256 of the bytes behind it, and verifies the bytes as strictly as
+// it verifies a Thunderstore download. The versioned endpoint is used rather than the
+// package endpoint's `latest`, because the profile pins a version and a publish must not
+// silently follow upstream.
+func resolveHexiumPackageURL(ctx context.Context, client *http.Client, pkg packageManifest) (string, error) {
+	endpoint := fmt.Sprintf("%s%s/%s/%s/", hexiumPackageAPI,
+		url.PathEscape(pkg.Namespace), url.PathEscape(pkg.Name), url.PathEscape(pkg.Version))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("hexium returned %s for %s", response.Status, pkg.Filename)
+	}
+	var payload struct {
+		VersionNumber string `json:"version_number"`
+		DownloadURL   string `json:"download_url"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
+		return "", fmt.Errorf("hexium response for %s: %w", pkg.Filename, err)
+	}
+	if payload.VersionNumber != pkg.Version {
+		return "", fmt.Errorf("hexium served version %q for pinned %q", payload.VersionNumber, pkg.Version)
+	}
+	parsed, err := url.Parse(payload.DownloadURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() != hexiumPackageHost {
+		return "", fmt.Errorf("hexium download URL for %s is not an https %s URL", pkg.Filename, hexiumPackageHost)
+	}
+	return parsed.String(), nil
+}
+
+func downloadPackageFrom(ctx context.Context, client *http.Client, requestURL string) (string, int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return "", 0, err

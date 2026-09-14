@@ -26,6 +26,7 @@ const (
 	maxArchiveEntryBytes   = int64(512 << 20)
 	maxArchiveTotalBytes   = int64(1 << 30)
 	packageRepositoryURL   = "https://gcdn.thunderstore.io/live/repository/packages/"
+	hexiumPackageHost      = "cdn.hexium.gg"
 	stateFilename          = "state.json"
 	generationStateFile    = ".valheim-profile-sync-state.json"
 )
@@ -37,6 +38,41 @@ type packageDefinition struct {
 	Filename  string `json:"filename"`
 	SHA256    string `json:"sha256"`
 	Size      int64  `json:"size"`
+	// Absolute download URL, for a package that is not on Thunderstore. Empty for every
+	// ordinary package, which keeps a definition built before this field existed - and a
+	// definition for a profile that selects no such package - byte-identical to what it
+	// was. See packageDownloadURL for why only two hosts are accepted.
+	URL string `json:"url,omitempty"`
+}
+
+// packageDownloadURL resolves where a package is fetched from. The default is unchanged:
+// the Thunderstore CDN, addressed by filename. A definition may instead name an absolute
+// URL, which is how Smoothbrain-ServerCharacters is installed - its author stopped
+// publishing to Thunderstore, and the only build that works on Valheim 1.0 lives on
+// Hexium, the backend he now redirects people to.
+//
+// The host allowlist is the point of this function. The SHA256 in the definition is
+// still authoritative and is still checked by downloadVerified on every byte that lands
+// on disk, so a hostile URL cannot substitute a different archive - but it could still
+// aim a client at an arbitrary host, and a profile definition is not a capability we
+// want to hand out. Two CDNs we already trust, https only, nothing else.
+func packageDownloadURL(packageInfo packageDefinition) (string, error) {
+	if packageInfo.URL == "" {
+		return packageRepositoryURL + url.PathEscape(packageInfo.Filename), nil
+	}
+	parsed, err := url.Parse(packageInfo.URL)
+	if err != nil {
+		return "", fmt.Errorf("package %s has an unparsable URL", packageInfo.Filename)
+	}
+	if parsed.Scheme != "https" {
+		return "", fmt.Errorf("package %s URL is not https", packageInfo.Filename)
+	}
+	switch parsed.Hostname() {
+	case hexiumPackageHost, "gcdn.thunderstore.io":
+	default:
+		return "", fmt.Errorf("package %s URL host %q is not allowed", packageInfo.Filename, parsed.Hostname())
+	}
+	return parsed.String(), nil
 }
 
 type companionDefinition struct {
@@ -486,7 +522,11 @@ func (syncer *profileSyncer) ensureCachedPackage(ctx context.Context, cache stri
 	if err := verifyFile(path, packageInfo.Size, packageInfo.SHA256); err == nil {
 		return path, false, nil
 	}
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, packageRepositoryURL+url.PathEscape(packageInfo.Filename), nil)
+	downloadURL, err := packageDownloadURL(packageInfo)
+	if err != nil {
+		return "", false, err
+	}
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return "", false, err
 	}

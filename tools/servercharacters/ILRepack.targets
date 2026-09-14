@@ -1,0 +1,26 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Upstream's ILRepack.targets, with the merge inputs resolved from the restored
+       package graph instead of a NuGet packages/ directory. Internalize keeps the
+       merged YamlDotNet/protobuf-net out of the global assembly namespace, which
+       matters on a profile carrying 94 other plugins. -->
+  <Target Name="ILRepacker" AfterTargets="Build">
+    <ItemGroup>
+      <InputAssemblies Include="$(TargetPath)" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/Libs/ServerSync.dll" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/bin/Release/YamlDotNet.dll" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/Libs/System.IO.Compression.dll" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/Libs/System.IO.Compression.FileSystem.dll" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/Libs/System.IO.Compression.ZipFile.dll" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/Libs/System.Buffers.dll" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/Libs/System.Memory.dll" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/Libs/System.Collections.Immutable.dll" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/Libs/System.Runtime.CompilerServices.Unsafe.dll" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/bin/Release/protobuf-net.dll" />
+      <InputAssemblies Include="$(MSBuildProjectDirectory)/bin/Release/protobuf-net.Core.dll" />
+    </ItemGroup>
+    <ILRepack Parallel="true" DebugInfo="false" Internalize="true"
+              InputAssemblies="@(InputAssemblies)" OutputFile="$(TargetPath)"
+              TargetKind="SameAsPrimaryAssembly"
+              LibraryPath="$(MSBuildProjectDirectory)/bin/Release;$(RefDir);$(MSBuildProjectDirectory)/Libs" />
+  </Target>
+</Project>

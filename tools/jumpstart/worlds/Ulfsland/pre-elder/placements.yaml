@@ -1,0 +1,145 @@
+schema_version: 1
+world: Ulfsland
+preset: pre-elder
+seed: Pirate68
+owner: BlueprintHunt
+rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation <x> <y> <z>`
+  calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns the building clockwise
+  seen from above. Only yaw is used here; pitch and roll stay 0 so buildings sit level.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height. Sea level is y=0 in the WorldGenerator
+  heights these were solved from, and the ZoneSystem location dump agrees with those heights to 0.02 m
+  median. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is dropped
+  exactly onto y.'
+resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
+  Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
+  all of them.
+placements:
+- id: blackforest-walled-base
+  blueprint: fox-0123456.blueprint
+  sha256: d60ae0e4f99243dad3c03017e3bc9082f6fd51ebe54350e7e29cf9879ca44d35
+  pieces: 1229
+  footprint_xzy_m:
+  - 47.4
+  - 38.6
+  - 12.0
+  creator: Fox-
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: BlackForest
+    footprint_m: 56
+    max_flat_m: 3.0
+    min_biome_purity: 0.85
+    coastal: false
+    location_clearance_m: 60
+    feature: Black Forest with copper/tin working range; the Elder altar anchors it as a staging post
+    near: GDKing
+    within_m: 1200
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 180
+    pitch: 0
+    roll: 0
+    facing: gate faces back toward spawn, away from the Elder altar
+  flatten_required: true
+  note: Walled Black Forest base carrying forge, charcoal kiln, smelter, beehive, cauldron, cooking station,
+    workbench and a portal. Exactly the pre-Elder station set.
+  solved:
+    seed: Pirate68
+    x: 2132.0
+    y: 27.11
+    z: 868.0
+    flat_spread_m: 2.65
+    biome_purity: 1.0
+    water_dist_m: 168.0
+    anchor: GDKing @ (1606.1,58.4,1093.5)
+    anchor_dist_m: 572.0
+    nearest_location_m: 105.0
+    relaxation: exact
+  containers:
+    by_prefab:
+      piece_chest_wood: 30
+      piece_cartographytable: 1
+    containers: 31
+    slots_floor: 620
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: -2108.0
+      y: 10.38
+      z: 1036.0
+      flat_spread_m: 2.54
+      biome_purity: 1.0
+      water_dist_m: 200.0
+      anchor: GDKing @ (-890.5,40.7,775.0)
+      anchor_dist_m: 1245.0
+      nearest_location_m: 246.0
+      relaxation: max_flat x1.5, within x1.5
+- id: early-dock
+  blueprint: dock.blueprint
+  sha256: 4157326c69a0157df45f96bbcf1c56c6e85fd81e66020006171cdb9ef79de9b9
+  pieces: 2036
+  footprint_xzy_m:
+  - 42.2
+  - 29.0
+  - 23.5
+  creator: Olivanderr
+  viability: PLACES_CLEAN
+  align: ground-center
+  requirement:
+    biome: Meadows
+    footprint_m: 48
+    max_flat_m: 2.5
+    min_biome_purity: 0.6
+    coastal: true
+    location_clearance_m: 60
+    feature: coastal Meadows on the world sea, karve draught at the jetty head
+    near: StartTemple
+    within_m: 900
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 0
+    pitch: 0
+    roll: 0
+    facing: jetty runs out into open water
+  flatten_required: true
+  note: Harbour. Placed at pre-elder because a karve is the first boat worth a dock.
+  solved:
+    seed: Pirate68
+    x: -840.0
+    y: 10.32
+    z: -872.0
+    flat_spread_m: 2.7
+    biome_purity: 1.0
+    water_dist_m: 99.0
+    anchor: StartTemple @ (-64.7,75.0,3.3)
+    anchor_dist_m: 1169.0
+    nearest_location_m: 419.0
+    relaxation: max_flat x1.5, within x1.5
+  containers:
+    by_prefab:
+      piece_chest: 6
+      piece_chest_wood: 4
+      piece_chest_private: 4
+    containers: 14
+    slots_floor: 280
+  solved_alternatives:
+    TPTc3AIvfH:
+      seed: TPTc3AIvfH
+      x: 136.0
+      y: 16.21
+      z: -968.0
+      flat_spread_m: 2.07
+      biome_purity: 1.0
+      water_dist_m: 86.2
+      anchor: StartTemple @ (-130.5,34.0,-3.4)
+      anchor_dist_m: 1001.0
+      nearest_location_m: 273.0
+      relaxation: max_flat x1.5, within x1.5
+spawn_points:
+- - 2132
+  - 29
+  - 834
+- - -840
+  - 12
+  - -842

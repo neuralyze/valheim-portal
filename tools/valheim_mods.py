@@ -18,6 +18,24 @@ else:
 TOOLS_ROOT = portal_paths.TOOLS_ROOT
 API = 'https://thunderstore.io/c/valheim/api/v1/package/'
 
+# Hexium is a second Valheim mod backend. We speak to it for exactly one package, and it
+# should stay that way: this is not a general mod-source abstraction, it is a named
+# exception with a reason.
+#
+# Smoothbrain-ServerCharacters' author stopped publishing to Thunderstore. Thunderstore's
+# newest is 1.4.16 (2025-05-02), which throws MissingMethodException at FejdStartup.Awake
+# on Valheim 1.0 because PlayerProfile.GetCharacterFolderPath moved to SaveSystem - plus
+# seven further signature changes. 1.4.17 fixes all eight and is published on Hexium only.
+# See tools/servercharacters/README.md for the measurements and the licence position: the
+# mod has no LICENSE file, we redistribute nothing, and clients fetch the author's own
+# unmodified archive from his CDN.
+#
+# Operational consequence: a package sourced here has a single point of failure that a
+# Thunderstore package does not. If Hexium is down it cannot be installed or published.
+HEXIUM_API = 'https://valheim.hexium.gg/api/experimental/package/'
+HEXIUM_SOURCE = 'hexium'
+HEXIUM_PACKAGES = ('Smoothbrain-ServerCharacters',)
+
 # ---------------------------------------------------------------------------------------------
 # The player-visible mod list
 # ---------------------------------------------------------------------------------------------
@@ -462,9 +480,46 @@ def remove_custom_files(root, entry):
         return
     for side in ('client', 'server'):
         shutil.rmtree(cache(root) / side / 'BepInEx' / 'plugins' / key, ignore_errors=True)
+def hexium_package(identifier):
+    """One Hexium package, shaped like a Thunderstore v1 registry entry.
+
+    Hexium's experimental API is Thunderstore's experimental API with the same field
+    names, so adapting it is a rename of nothing and a reshape of one thing: it exposes
+    the newest build as `latest` rather than a `versions` list. Everything downstream -
+    add, sync, update, install, the deploy's cache check - reads `versions`,
+    `version_number` and `download_url`, so a one-element list is the whole adapter.
+    """
+    namespace, _, name = identifier.partition('-')
+    response = requests.get(f'{HEXIUM_API}{namespace}/{name}/', timeout=60)
+    response.raise_for_status()
+    payload = response.json()
+    return {
+        'full_name': payload['full_name'],
+        'name': payload['name'],
+        'owner': payload['owner'],
+        'package_url': payload['package_url'],
+        'rating_score': payload.get('rating_score', 0),
+        'is_deprecated': bool(payload.get('is_deprecated')),
+        'categories': next((listing.get('categories', []) for listing in payload.get('community_listings', [])), []),
+        'source': HEXIUM_SOURCE,
+        'versions': [payload['latest']],
+    }
 def index():
     r = requests.get(API, timeout=60); r.raise_for_status()
-    return {p['full_name']: p for p in r.json()}
+    registry = {p['full_name']: p for p in r.json()}
+    # Hexium shadows Thunderstore for the few packages whose author publishes there
+    # instead. Unconditionally: for Smoothbrain-ServerCharacters the Thunderstore entry is
+    # 1.4.16, which throws MissingMethodException at FejdStartup.Awake on Valheim 1.0.12
+    # and must never be installed on this fleet, so falling back to it would be worse than
+    # failing. When Hexium cannot be reached the identifier is dropped from the registry
+    # entirely and `add` reports it as unknown, which is the safe direction to fail in.
+    for identifier in HEXIUM_PACKAGES:
+        try:
+            registry[identifier] = hexium_package(identifier)
+        except Exception as error:
+            registry.pop(identifier, None)
+            print(f'warning: {identifier} is unavailable; Hexium lookup failed: {error}', file=sys.stderr)
+    return registry
 def latest(p): return max(p['versions'], key=lambda v: Version(v['version_number']))
 def version(p, ver):
     return next((v for v in p['versions'] if v['version_number'] == ver), None)
@@ -655,8 +710,12 @@ def ensure_dependencies(root, registry, package, version_number, scope, selected
     for dependency, dependency_version in ordered:
         for side in install_sides(root, dependency['name'], server_required):
             install(root, dependency, dependency_version, side)
+    # `source` is recorded only when it is not Thunderstore, so every existing manifest
+    # entry and every entry written for an ordinary package is unchanged. The profile
+    # definition builder reads it to decide whether a download URL has to be resolved.
     return [
-        {'identifier': dependency['full_name'], 'version': dependency_version, 'scope': scope}
+        {'identifier': dependency['full_name'], 'version': dependency_version, 'scope': scope,
+         **({'source': dependency['source']} if dependency.get('source') else {})}
         for dependency, dependency_version in ordered
     ]
 def cmd_list(root, m, args):
