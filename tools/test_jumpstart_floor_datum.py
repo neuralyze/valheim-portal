@@ -300,6 +300,191 @@ class FloorDatumCases(unittest.TestCase):
         self.assertEqual([v["code"] for v in datum.violations], ["no_measurable_solid"])
 
 
+class MajorLevelDatum(unittest.TestCase):
+    """The datum must be a STOREY, not the lowest sliver of floor-shaped piece.
+
+    Reported from live play on Ulfsland: `pre-bonemass/iron-era-workshop` was
+    placed with its lowest walkable level -- 7 `stone_floor_2x2` on a single
+    diagonal, 28 m2, 2.5% of the body's floor area, carrying a second identical
+    course of slabs 1 m directly above it -- resting on the pad, which lifted the
+    124 m2 hall floor and every level above it. The operator's words: "now it's
+    floating in air".
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = bg.geometry()
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.tmp = Path(cls._tmp.name)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def _diagonal_and_hall(self, name: str, hall_tiles: int = 80) -> Path:
+        """`BjOrN_blueprint001`'s shape in miniature: a 7-slab diagonal whose top
+        is at local 1.5 and which carries a second course of the same slabs 1 m
+        above it, plus a hall floor of `hall_tiles` slabs 0.334 m higher. The
+        diagonal holds 28 m2 of the 376 m2 of floor -- 7.4%, under the 10% a
+        storey has to hold -- which is the real body's proportion (28 of 1142)."""
+        rows = [row("stone_floor_2x2", 10 + 1.41 * i, 1.0, 2 + 1.41 * i)
+                for i in range(7)]
+        rows += [row("stone_floor_2x2", 10 + 1.41 * i, 2.0, 2 + 1.41 * i)
+                 for i in range(7)]          # the second course of the same wall
+        rows += [row("stone_floor_2x2", 20 + 2 * (i % 8), 1.334, 28 + 2 * (i // 8))
+                 for i in range(hall_tiles)]
+        return blueprint(self.tmp, name, rows)
+
+    def test_a_sliver_level_does_not_define_the_datum(self):
+        datum = bg.floor_datum(read_objects(self._diagonal_and_hall("sliver")), self.g)
+        self.assertEqual(datum.method, "lowest_major_walkable_surface")
+        self.assertAlmostEqual(datum.base_y, 1.834, places=3)
+        # the sliver is named, with what it costs, rather than silently buried
+        codes = [v["code"] for v in datum.violations]
+        self.assertIn("minor_levels_below_datum", codes)
+        detail = next(v["detail"] for v in datum.violations
+                      if v["code"] == "minor_levels_below_datum")
+        self.assertIn("28.0 m2", detail)
+        self.assertIn("0.334 m", detail)
+
+    def test_the_hall_floor_lands_flush_and_the_step_is_buried_by_a_third_of_a_metre(self):
+        pad = 70.91
+        datum = bg.floor_datum(read_objects(self._diagonal_and_hall("flush")), self.g)
+        origin = datum.place_y(pad)
+        hall_top = origin + 1.334 + self.g.y_span(
+            "stone_floor_2x2", (0, 0, 0, 1), (1, 1, 1))[1]
+        self.assertAlmostEqual(hall_top, pad, places=3)
+        step_top = origin + 1.0 + 0.5
+        self.assertAlmostEqual(pad - step_top, 0.334, places=3)
+
+    def test_a_majority_level_at_the_bottom_is_left_alone(self):
+        # The common case, and the guard against the rule climbing for no reason:
+        # when the lowest level IS the storey, nothing moves.
+        path = blueprint(self.tmp, "big_ground_floor", [
+            row("stone_floor_2x2", 2 * i, 0.5, 0) for i in range(12)
+        ] + [
+            row("wood_floor_1x1", i, 3.0969, 0) for i in range(3)
+        ])
+        datum = bg.floor_datum(read_objects(path), self.g)
+        self.assertEqual(datum.method, "lowest_walkable_surface")
+        self.assertAlmostEqual(datum.base_y, 1.0, places=6)
+
+    def test_a_storey_below_the_main_floor_is_not_buried(self):
+        # The bound that keeps this rule honest. A level a full wall course or
+        # more below the major floor is a STOREY, and burying a storey is the
+        # failure the module exists to avoid -- so the climb stops and the low
+        # level keeps the datum even though it is small.
+        path = blueprint(self.tmp, "low_storey", [
+            row("stone_floor_2x2", 2 * i, 0.5, 0) for i in range(3)
+        ] + [
+            row("stone_floor_2x2", 2 * i, 2.5, 8) for i in range(40)
+        ])
+        datum = bg.floor_datum(read_objects(path), self.g)
+        self.assertEqual(datum.method, "lowest_walkable_surface")
+        self.assertAlmostEqual(datum.base_y, 1.0, places=6)
+        self.assertNotIn("minor_levels_below_datum",
+                         [v["code"] for v in datum.violations])
+
+    def test_the_real_body_rests_on_its_hall_floor(self):
+        # The live placement, against the body on disk rather than a fixture.
+        body = Path("/media/big4/projects/game/valheim/old/old/old/old_Storgard/"
+                    "config_merged/BepInEx/PlanBuild/blueprints/"
+                    "BjOrN_blueprint001.blueprint")
+        if not body.is_file():
+            self.skipTest(f"{body} not present")
+        objs = [o for o in read_objects(body) if o.prefab != "piece_Sundial"]
+        datum = bg.floor_datum(objs, self.g)
+        self.assertEqual(datum.method, "lowest_major_walkable_surface")
+        self.assertAlmostEqual(datum.base_y, 1.834, places=3)
+        self.assertAlmostEqual(datum.levels[0].y, 1.5, places=3)
+        self.assertEqual(datum.levels[0].area_m2, 28.0)
+        self.assertEqual(datum.levels[1].area_m2, 124.0)
+
+
+class BaseProfileMeasurement(unittest.TestCase):
+    """"Is the bottom of the blueprint flat?" -- the operator's question, which
+    no datum can answer because a datum is one number and a base is a surface."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = bg.geometry()
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.tmp = Path(cls._tmp.name)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_a_flat_bottomed_body_is_reported_grounded(self):
+        path = blueprint(self.tmp, "flat_bottom", [
+            row("stone_floor_2x2", 2 * i, 0.5, 2 * j)
+            for i in range(6) for j in range(6)
+        ])
+        datum = bg.floor_datum(read_objects(path), self.g)
+        prof = datum.profile
+        self.assertIsNotNone(prof)
+        self.assertEqual(round(prof.relief_m, 6), 0.0)
+        self.assertTrue(prof.grounded(datum.base_y))
+        self.assertEqual(prof.air(datum.base_y)["columns_floating"], 0)
+        self.assertNotIn("base_not_grounded_on_flat_pad",
+                         [v["code"] for v in datum.violations])
+
+    def test_a_deep_foundation_is_not_mistaken_for_floating(self):
+        # The distinction the verdict is gated on. This body has 3.5 m of base
+        # relief and NONE of it is air: the spread is a pole driven below the
+        # floor, which is a pole doing its job.
+        path = blueprint(self.tmp, "deep_foundation", [
+            row("stone_floor_2x2", 2 * i, 0.5, 2 * j)
+            for i in range(6) for j in range(6)
+        ] + [
+            row("wood_pole", 2 * i, -2.0, 0) for i in range(6)
+        ])
+        datum = bg.floor_datum(read_objects(path), self.g)
+        self.assertGreater(datum.profile.relief_m, 2.0)
+        self.assertTrue(datum.profile.grounded(datum.base_y))
+        self.assertNotIn("base_not_grounded_on_flat_pad",
+                         [v["code"] for v in datum.violations])
+
+    def test_a_terraced_body_reports_the_air_under_it(self):
+        # Half the body's base 4 m up with nothing beneath it: a hillside wing.
+        # No datum grounds both halves, and the violation says so with numbers.
+        path = blueprint(self.tmp, "hillside", [
+            row("stone_floor_2x2", 2 * i, 0.5, 2 * j)
+            for i in range(6) for j in range(6)
+        ] + [
+            row("stone_floor_2x2", 2 * i, 4.5, 2 * j + 14)
+            for i in range(6) for j in range(6)
+        ])
+        datum = bg.floor_datum(read_objects(path), self.g)
+        self.assertAlmostEqual(datum.base_y, 1.0, places=6)
+        air = datum.profile.air(datum.base_y)
+        self.assertGreater(air["floating_fraction"], 0.4)
+        self.assertAlmostEqual(air["max_air_m"], 3.0, places=3)
+        self.assertFalse(datum.profile.grounded(datum.base_y))
+        self.assertIn("base_not_grounded_on_flat_pad",
+                      [v["code"] for v in datum.violations])
+
+    def test_the_real_body_is_a_terraced_hillside_and_says_so(self):
+        body = Path("/media/big4/projects/game/valheim/old/old/old/old_Storgard/"
+                    "config_merged/BepInEx/PlanBuild/blueprints/"
+                    "BjOrN_blueprint001.blueprint")
+        if not body.is_file():
+            self.skipTest(f"{body} not present")
+        objs = [o for o in read_objects(body) if o.prefab != "piece_Sundial"]
+        datum = bg.floor_datum(objs, self.g)
+        prof = datum.profile
+        self.assertEqual(prof.columns, 508)
+        self.assertAlmostEqual(prof.percentile(0), -0.5, places=3)
+        self.assertAlmostEqual(prof.percentile(100), 13.342, places=3)
+        self.assertGreater(prof.relief_m, 13.0)
+        self.assertFalse(prof.grounded(datum.base_y))
+        air = prof.air(datum.base_y)
+        self.assertEqual(air["columns_floating"], 173)
+        self.assertAlmostEqual(air["floating_area_m2"], 692.0, places=1)
+        self.assertIn("base_not_grounded_on_flat_pad",
+                      [v["code"] for v in datum.violations])
+
+
 class EmitterIntegration(unittest.TestCase):
     """`to_rcon_plan.py --align floor-center` has to actually apply the datum."""
 

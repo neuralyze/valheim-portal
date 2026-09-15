@@ -183,6 +183,78 @@ PIVOT_AT_BASE_TOL_M = 0.10
 BELOW_GRADE_AREA_FRACTION = 0.02
 BELOW_GRADE_STEP_M = 1.5
 
+# A STOREY's worth of floor area. The datum is the lowest walkable level holding
+# at least this share of the blueprint's floor area; smaller levels below it are
+# steps, porches, daises, cart decks and causeway courses, not the floor a player
+# stands on.
+#
+# MEASURED case this exists for: `BjOrN_blueprint001` (pre-bonemass/
+# iron-era-workshop). Its lowest walkable level is 7 `stone_floor_2x2` tiles,
+# 28 m2 (2.5% of its 1142 m2 of floor), laid as a single diagonal line of slabs
+# that carries the SECOND course of the same diagonal 1.0 m directly above it --
+# a wall built out of floor pieces, not a floor. Its main hall floor is 31 tiles,
+# 124 m2, 0.334 m higher. Resting the 28 m2 line on the pad lifts the hall and
+# everything above it by that 0.334 m.
+#
+# 0.10 is the threshold, and it is chosen against the corpus rather than picked:
+# sweeping 0.05 - 0.20 over the 174 parseable bodies moves 10-16 of them, and
+# every fraction in that range moves the same core set. At 0.10 the 15 bodies
+# that move all go from a 1-148 m2 sliver to a 36-1969 m2 storey, which is the
+# shape the rule is claiming to fix.
+MAJOR_LEVEL_AREA_FRACTION = 0.10
+
+# How far the datum may CLIMB to reach that major level. One wall course.
+#
+# A level less than a course below the major floor cannot be a separate storey --
+# there is no room for one -- so burying it is burying a step. A level a full
+# course or more below IS a storey, and burying a storey is the failure this
+# module exists to avoid, so the climb stops and the lowest level stands with the
+# discrepancy reported. MEASURED over the corpus: 26 of the 124 eligible bodies
+# hit this bound and keep their lowest level, including `citadel` (6.0 m down to
+# its lowest plane) and `Пипкин_full_castle` (2.0 m); without the bound those
+# would be buried by that much.
+MAJOR_LEVEL_CLIMB_M = 1.0
+
+# The base PROFILE raster. The question "is the bottom of this blueprint flat?"
+# is not answerable from a floor level: it is the lowest SOLID in each column of
+# the body's footprint, and on a slope-captured body it is a staircase.
+#
+# 2 m cells because that is the module size of the pieces being measured
+# (`stone_floor_2x2`, `stone_wall_2x1`), so a finer raster reports sub-piece
+# sampling noise as relief.
+BASE_PROFILE_CELL_M = 2.0
+
+# How far above the pad a column's lowest solid has to stand before a player
+# reads daylight under it. 0.5 m, the half-thickness of `stone_floor_2x2`, the
+# thickest slab in the corpus: less than that and the gap is inside the slab the
+# body is built from.
+BASE_PROFILE_FLAT_TOL_M = 0.5
+
+# Vertical extent above which a BUILD PIECE's stored solid is a trigger volume
+# rather than a collider. See `Geometry._drop_trigger_volumes` for the
+# measurement; the short version is 15.53 m of real maximum against one 200 m
+# outlier.
+TRIGGER_VOLUME_HEIGHT_M = 16.0
+
+# How much of the footprint may stand in air before the placement is reported as
+# not sitting on its pad.
+#
+# The verdict is the AIR, not the relief, and that distinction is measured. Raw
+# base relief conflates two opposite things: `PuP_black_house_full` has 68.9 m of
+# relief and ZERO floating columns, because all of its spread is foundation
+# BELOW the datum, which is a foundation doing its job. Judging by relief would
+# have flagged it and missed the difference that matters.
+#
+# 0.10 comes from the corpus distribution of floating area at each body's own
+# chosen datum over the 164 placeable bodies: p25 0.000, median 0.045, p75 0.292,
+# max 0.713. A tenth of the footprint is above the median and below the upper
+# quartile, so an ordinary body clears it and a terraced or spanning one does
+# not. It fires on 62 of the 164, and reading the list back is the check on the
+# number: hillside castles (`Пипкин_full_castle` 0.61), bridges by design
+# (`brokkr-broken-bridge-1` 0.58, `salty-dick-bridge-curved-final` 0.71), docks
+# (`dock` 0.70) and ruins. Those bodies genuinely cannot rest on a flat pad.
+BASE_PROFILE_AIR_AREA_FRACTION = 0.10
+
 # Floor levels are quantised before they are compared, because a captured
 # building's floor pieces land on fractional Y values that differ in the fourth
 # decimal. 0.02 m is finer than any real build step and coarser than that noise.
@@ -309,6 +381,48 @@ class Geometry:
         self._prefabs: dict[str, list] = doc["prefabs"]
         self._build_pieces: frozenset[str] = frozenset(doc.get("build_pieces", ()))
         self._span_cache: dict[tuple, tuple[float, float] | None] = {}
+        self.trigger_volumes: dict[str, list[float]] = {}
+        self._drop_trigger_volumes()
+
+    def _drop_trigger_volumes(self) -> None:
+        """Discard the dump's non-physical volumes from BUILD PIECES.
+
+        MEASURED, and the reason this exists: `piece_artisanstation` carries
+        three solids -- a 2.65 x 1.03 x 1.10 m bench, a 2.35 x 1.56 x 0.23 m
+        rack, and a 40 x 200 x 40 m box centred on its pivot. The third is a
+        trigger volume, not a collider, and unioned in it makes the prefab's
+        AABB reach 100 m below its own pivot. Left in, it eats a 40 x 40 m
+        square of any pad the piece stands on: MEASURED on
+        `deepnorth-sandbox/complete-station-hub`, only 113 of the pad's 3,249
+        one-metre cells survived the fixture-clearance test, and the four
+        chests that would not fit were reported as "nowhere legal to stand".
+
+        The bound is 16 m of VERTICAL extent and it applies to build pieces
+        only, both halves measured. Over the dump's 2,028 build-piece solids the
+        tallest genuine one is a 15.53 m `VikingShip_Ashlands` hull box, then
+        14.90 and 14.64; the next value up is 200.0, so the threshold sits in a
+        13x gap rather than in a distribution. And it is build pieces only
+        because world decor is legitimately that big -- in this corpus
+        `cliff_mistlands1` is 72.65 m tall across 625 rows, `Beech1` 30.46,
+        `rock1_mountain` 29.14, all real geometry a fixture must not be placed
+        inside.
+        """
+        for prefab in self._build_pieces:
+            solids = self._prefabs.get(prefab)
+            if not solids or len(solids) < 2:
+                # A prefab whose ONLY solid is huge is not a trigger volume with
+                # a piece attached; it is whatever it is, and guessing it away
+                # would be inventing geometry rather than measuring it.
+                continue
+            kept, dropped = [], []
+            for s in solids:
+                pts = _solid_corners(s)
+                height = max(p[1] for p in pts) - min(p[1] for p in pts)
+                (dropped if height > TRIGGER_VOLUME_HEIGHT_M else kept).append(
+                    round(height, 2) if height > TRIGGER_VOLUME_HEIGHT_M else s)
+            if dropped and kept:
+                self._prefabs[prefab] = kept
+                self.trigger_volumes[prefab] = dropped
 
     def known(self, prefab: str) -> bool:
         return prefab in self._prefabs
@@ -508,6 +622,138 @@ def xz_footprint(objects, yaw_deg: float = 0.0, geom: Geometry | None = None) ->
     return Footprint(lo_x, hi_x, lo_z, hi_z, yaw_deg, pieces, pivot_only)
 
 # ---------------------------------------------------------------------------
+# the base profile -- "is the bottom of this blueprint flat?"
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BaseProfile:
+    """The lowest SOLID in each cell of the body's footprint, in blueprint-local
+    metres. This is the shape that would have to be cut into the pad for the
+    whole body to touch ground, and it is the only honest answer to the
+    operator's question -- a datum is one number and a base is a surface.
+
+    `bottom` is keyed by (cell x, cell z) index at `cell_m` resolution.
+    """
+
+    cell_m: float
+    bottom: dict[tuple[int, int], float] = field(default_factory=dict)
+
+    @property
+    def columns(self) -> int:
+        return len(self.bottom)
+
+    @property
+    def area_m2(self) -> float:
+        return self.columns * self.cell_m * self.cell_m
+
+    def percentile(self, q: float) -> float:
+        vals = sorted(self.bottom.values())
+        if not vals:
+            return float("nan")
+        return vals[min(len(vals) - 1, max(0, int(q / 100.0 * (len(vals) - 1))))]
+
+    @property
+    def relief_m(self) -> float:
+        """Peak-to-peak spread of the base. Zero for a body with a flat bottom."""
+        if not self.bottom:
+            return 0.0
+        return max(self.bottom.values()) - min(self.bottom.values())
+
+    def grounded(self, base_y: float) -> bool:
+        """Does the body actually SIT on a flat pad at this datum?
+
+        Asked of the air under the footprint rather than of the relief, because
+        relief cannot tell a deep foundation from a floating wing: MEASURED,
+        `PuP_black_house_full` has 68.9 m of base relief and not one floating
+        column, all of it foundation below the datum.
+        """
+        air = self.air(base_y)
+        return (not air) or air["floating_fraction"] <= BASE_PROFILE_AIR_AREA_FRACTION
+
+    def air(self, base_y: float, tol: float = BASE_PROFILE_FLAT_TOL_M) -> dict:
+        """What a player would see under the body once `base_y` is put on the pad.
+
+        A column whose lowest solid stands more than `tol` above the pad has
+        VISIBLE AIR under it: nothing in that column reaches the ground. A column
+        below the pad is buried, which is what a foundation is for.
+        """
+        if not self.bottom:
+            return {}
+        air = [v - base_y for v in self.bottom.values() if v - base_y > tol]
+        cell_area = self.cell_m * self.cell_m
+        return {
+            "columns": self.columns,
+            "columns_floating": len(air),
+            "floating_fraction": round(len(air) / self.columns, 3),
+            "floating_area_m2": round(len(air) * cell_area, 1),
+            "max_air_m": round(max(air), 3) if air else 0.0,
+            "mean_air_m": round(sum(air) / len(air), 3) if air else 0.0,
+            "air_volume_m3": round(sum(air) * cell_area, 1),
+            "max_buried_m": round(
+                max((base_y - v for v in self.bottom.values()), default=0.0), 3),
+            "grounded": len(air) / self.columns <= BASE_PROFILE_AIR_AREA_FRACTION,
+        }
+
+    def steps(self, bin_m: float = 0.5, top: int = 8) -> list[dict]:
+        """The base's own terraces: how much area bottoms out at each height.
+        This is the profile a human reads, rather than 400 raw cell values."""
+        cell_area = self.cell_m * self.cell_m
+        hist: dict[float, int] = {}
+        for v in self.bottom.values():
+            key = round(round(v / bin_m) * bin_m, 3)
+            hist[key] = hist.get(key, 0) + 1
+        out = [{"bottom_y": y, "area_m2": round(n * cell_area, 1),
+                "share": round(n / self.columns, 3)}
+               for y, n in sorted(hist.items(), key=lambda kv: -kv[1])]
+        return out[:top]
+
+
+def base_profile(objects, geom: Geometry | None = None,
+                 cell_m: float = BASE_PROFILE_CELL_M) -> BaseProfile:
+    """Rasterise the lowest solid in each column of the body's footprint.
+
+    Measured in the body's OWN frame: a yaw turns the raster but cannot change
+    its relief, and the relief is the whole point.
+    """
+    g = geom or geometry()
+    prof = BaseProfile(cell_m=cell_m)
+    bottom = prof.bottom
+    for o in objects:
+        solids = g._prefabs.get(o.prefab)
+        if not solids:
+            continue
+        q = _normalised(tuple(o.rot))
+        sx, sy, sz = o.scale
+        lo_x = lo_y = lo_z = math.inf
+        hi_x = hi_z = -math.inf
+        for s in solids:
+            for cx, cy, cz in _solid_corners(s):
+                px, py, pz = _qrot(q, (cx * sx, cy * sy, cz * sz))
+                if px < lo_x:
+                    lo_x = px
+                if px > hi_x:
+                    hi_x = px
+                if pz < lo_z:
+                    lo_z = pz
+                if pz > hi_z:
+                    hi_z = pz
+                if py < lo_y:
+                    lo_y = py
+        y0 = o.pos[1] + lo_y
+        ix0 = math.floor((o.pos[0] + lo_x) / cell_m)
+        ix1 = math.ceil((o.pos[0] + hi_x) / cell_m)
+        iz0 = math.floor((o.pos[2] + lo_z) / cell_m)
+        iz1 = math.ceil((o.pos[2] + hi_z) / cell_m)
+        for ix in range(ix0, max(ix0 + 1, ix1)):
+            for iz in range(iz0, max(iz0 + 1, iz1)):
+                key = (ix, iz)
+                if key not in bottom or y0 < bottom[key]:
+                    bottom[key] = y0
+    return prof
+
+
+# ---------------------------------------------------------------------------
 # the datum
 # ---------------------------------------------------------------------------
 
@@ -544,6 +790,31 @@ class FloorDatum:
     floor_pieces: int = 0
     unmeasured_prefabs: list[str] = field(default_factory=list)
     props_below_floor_m: float | None = None
+    profile: BaseProfile | None = None
+
+    def base_dict(self) -> dict | None:
+        """The base PROFILE, reported beside the datum because a datum is one
+        number and a base is a surface. Absent only when nothing in the body has
+        a measurable solid."""
+        if self.profile is None or not self.profile.bottom:
+            return None
+        p = self.profile
+        out = {
+            "cell_m": p.cell_m,
+            "columns": p.columns,
+            "footprint_area_m2": round(p.area_m2, 1),
+            "bottom_y_min": round(p.percentile(0), 3),
+            "bottom_y_p25": round(p.percentile(25), 3),
+            "bottom_y_median": round(p.percentile(50), 3),
+            "bottom_y_p75": round(p.percentile(75), 3),
+            "bottom_y_max": round(p.percentile(100), 3),
+            "relief_m": round(p.relief_m, 3),
+            "bottom_is_flat": p.relief_m <= BASE_PROFILE_FLAT_TOL_M,
+            "steps": p.steps(),
+        }
+        if self.base_y is not None:
+            out["on_a_flat_pad"] = p.air(self.base_y)
+        return out
 
     @property
     def placeable(self) -> bool:
@@ -582,6 +853,7 @@ class FloorDatum:
             "walkable_level_pieces": [lv.pieces for lv in self.levels],
             "walkable_level_area_m2": [lv.area_m2 for lv in self.levels],
             "props_below_floor_m": self.props_below_floor_m,
+            "base_profile": self.base_dict(),
             "floor_pieces": self.floor_pieces,
             "pieces": self.pieces,
             "violations": self.violations,
@@ -619,6 +891,9 @@ class FloorDatum:
             "walkable_levels": levels,
             "walkable_levels_total": len(self.levels),
         }
+        base = self.base_dict()
+        if base is not None:
+            out["base_profile"] = base
         if self.props_below_floor_m is not None:
             out["props_below_floor_m"] = self.props_below_floor_m
         out["violations"] = self.violations
@@ -627,6 +902,52 @@ class FloorDatum:
 
 def _quantise(y: float) -> float:
     return round(y / LEVEL_QUANTUM_M) * LEVEL_QUANTUM_M
+
+
+def _not_grounded_violation(prof: BaseProfile | None, base_y: float) -> dict | None:
+    """The violation nobody had, and the one the operator raised by eye.
+
+    A datum is a single number and a body's BASE is a surface. When that surface
+    is not flat, no datum can put all of it on a flat pad: part of the body is
+    buried and part of it stands in the air, and the only question is how much.
+    That is a property of the BLUEPRINT and the PAD, not an error in the datum,
+    so it is reported rather than refused -- but it is REPORTED, because
+    `violations: []` on a body with 13.8 m of base relief is how a hillside
+    castle got signed off as correctly placed and the operator found the truth by
+    walking up to it.
+
+    Gated on the AIR under the footprint, not on the relief: see
+    BASE_PROFILE_AIR_AREA_FRACTION for why relief cannot tell a deep foundation
+    from a floating wing.
+
+    MEASURED on `BjOrN_blueprint001` (pre-bonemass/iron-era-workshop): 508
+    occupied 2 m columns, base from -0.500 to +13.342, and at the chosen datum
+    173 of those columns -- 692 m2, a third of the footprint -- stand more than
+    0.5 m clear of the pad, up to 11.5 m of it. The operator's words were "now
+    it's floating in air... it looks like the bottom of the blueprint isnt
+    flat.. correct?". Correct.
+    """
+    if prof is None or not prof.bottom or prof.grounded(base_y):
+        return None
+    air = prof.air(base_y)
+    steps = ", ".join(f"{s['area_m2']:.0f} m2 at y={s['bottom_y']:+.1f}"
+                      for s in prof.steps(top=4))
+    return {
+        "code": "base_not_grounded_on_flat_pad",
+        "detail": f"the body's BASE is not flat: over {prof.columns} occupied "
+                  f"{prof.cell_m:g} m columns its lowest solid runs from "
+                  f"{prof.percentile(0):.3f} to {prof.percentile(100):.3f} "
+                  f"({prof.relief_m:.3f} m of relief), so it was captured across a "
+                  f"slope or on terraced ground. Largest steps: {steps}. Resting "
+                  f"y={base_y:.3f} on a FLAT pad therefore buries up to "
+                  f"{air['max_buried_m']:.2f} m of it and leaves "
+                  f"{air['floating_area_m2']:.0f} m2 "
+                  f"({air['floating_fraction']:.1%} of the footprint, over the "
+                  f"{BASE_PROFILE_AIR_AREA_FRACTION:.0%} allowed) standing in air, "
+                  f"mean {air['mean_air_m']:.2f} m and up to {air['max_air_m']:.2f} m. "
+                  f"No single datum removes that; only cutting the pad to this "
+                  f"profile, or choosing a body whose base IS flat, does.",
+    }
 
 
 def floor_datum(objects, geom: Geometry | None = None) -> FloorDatum:
@@ -638,6 +959,10 @@ def floor_datum(objects, geom: Geometry | None = None) -> FloorDatum:
     duplicated here.
     """
     g = geom or geometry()
+    # Materialised because the body is walked TWICE -- once for the levels, once
+    # for the base profile -- and a caller passing a generator would otherwise
+    # get a silently empty profile.
+    objects = list(objects)
     violations: list[dict] = []
     levels: dict[float, list[tuple[float, float]]] = {}
     bottom_solid = math.inf
@@ -694,6 +1019,7 @@ def floor_datum(objects, geom: Geometry | None = None) -> FloorDatum:
         lowest_ground_resting=lowest_resting,
         lowest_station=lowest_station,
         unmeasured_prefabs=sorted(unmeasured),
+        profile=base_profile(objects, g),
     )
     out.levels = [
         FloorLevel(y=min(t[1] for t in a), pieces=len(a),
@@ -742,6 +1068,9 @@ def floor_datum(objects, geom: Geometry | None = None) -> FloorDatum:
         })
         out.base_y = bottom
         out.method = "lowest_build_solid_no_floor"
+        flat = _not_grounded_violation(out.profile, bottom)
+        if flat:
+            violations.append(flat)
         out.violations = violations
         return out
 
@@ -782,8 +1111,58 @@ def floor_datum(objects, geom: Geometry | None = None) -> FloorDatum:
                       f"y={out.levels[1].y:.3f}",
         })
         idx = 1
+
+    # THE LOWEST LEVEL IS NOT NECESSARILY A FLOOR. Having skipped a sump, climb
+    # to the lowest level that is big enough to BE a storey -- at least
+    # MAJOR_LEVEL_AREA_FRACTION of the body's floor area -- provided the climb
+    # stays inside one wall course, MAJOR_LEVEL_CLIMB_M. Every level stepped over
+    # is by construction smaller than that fraction and less than a course down,
+    # so what gets buried is a step, a porch, a dais or a cart deck, never a
+    # storey.
+    #
+    # MEASURED case this exists for, and the defect it fixes: `BjOrN_blueprint001`
+    # (pre-bonemass/iron-era-workshop). Its lowest walkable level is 7
+    # `stone_floor_2x2` on a single 12 m diagonal -- 28 m2, 2.5% of 1142 m2 --
+    # carrying a SECOND identical course of slabs 1.0 m directly above it at the
+    # same XZ. That is a wall built out of floor pieces, and the old rule rested
+    # the whole castle on it, lifting the 124 m2 hall floor and all 26 levels
+    # above it by 0.334 m. The cost is not the 0.334 m: MEASURED from the base
+    # profile, resting the hall floor instead grounds 540 m2 of footprint that
+    # otherwise stands 0.55 m clear of the pad, i.e. a quarter of the plan with
+    # daylight under it.
+    #
+    # The area fraction is NOT the inhabited test the sump rule uses, on purpose:
+    # FLOOR_TOL_M is 0.35 m and these two levels are 0.334 m apart, so a prop on
+    # the hall floor reads as standing on the diagonal too. A tolerance cannot
+    # separate planes closer together than itself, and area can.
+    climbed: list[FloorLevel] = []
+    if total_area > 0 and out.levels[idx].area_m2 / total_area < MAJOR_LEVEL_AREA_FRACTION:
+        for j in range(idx + 1, len(out.levels)):
+            if out.levels[j].y - out.levels[idx].y > MAJOR_LEVEL_CLIMB_M:
+                break
+            if out.levels[j].area_m2 / total_area >= MAJOR_LEVEL_AREA_FRACTION:
+                climbed = out.levels[idx:j]
+                idx = j
+                break
     chosen = out.levels[idx]
-    method = "lowest_walkable_surface" if idx == 0 else "lowest_walkable_surface_above_cellar"
+    if climbed:
+        violations.append({
+            "code": "minor_levels_below_datum",
+            "detail": ", ".join(
+                f"y={lv.y:.3f} holding {lv.area_m2:.1f} m2 "
+                f"({lv.area_m2 / total_area:.1%})" for lv in climbed)
+            + f" {'is' if len(climbed) == 1 else 'are'} below the chosen datum "
+              f"y={chosen.y:.3f} ({chosen.area_m2:.1f} m2, "
+              f"{chosen.area_m2 / total_area:.1%} of {total_area:.1f} m2) and will be "
+              f"buried by up to {chosen.y - climbed[0].y:.3f} m. Each holds under "
+              f"{MAJOR_LEVEL_AREA_FRACTION:.0%} of the floor area and sits less than a "
+              f"{MAJOR_LEVEL_CLIMB_M:g} m wall course down, so it is a step or a "
+              f"terrace course rather than a storey; the storey wins.",
+        })
+        method = "lowest_major_walkable_surface"
+    else:
+        method = ("lowest_walkable_surface" if idx == 0
+                  else "lowest_walkable_surface_above_cellar")
 
     # A CRAFTING STATION below the chosen plane overrides it. A buried station is
     # a functional failure (nobody can craft at a workbench under the pad); a
@@ -802,6 +1181,9 @@ def floor_datum(objects, geom: Geometry | None = None) -> FloorDatum:
         })
         out.base_y = lowest_station
         out.method = "lowest_station_below_floor"
+        flat = _not_grounded_violation(out.profile, lowest_station)
+        if flat:
+            violations.append(flat)
         out.violations = violations
         return out
 
@@ -827,5 +1209,8 @@ def floor_datum(objects, geom: Geometry | None = None) -> FloorDatum:
 
     out.base_y = chosen.y
     out.method = method
+    flat = _not_grounded_violation(out.profile, chosen.y)
+    if flat:
+        violations.append(flat)
     out.violations = violations
     return out
