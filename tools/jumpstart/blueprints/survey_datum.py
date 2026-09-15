@@ -48,7 +48,18 @@ CORPUS_ROOTS = [
 
 def resolve_bodies() -> dict[str, Path]:
     """Every manifest row -> a body on disk. Raises if any row is unresolvable,
-    because a survey that silently covers 140 of 176 files is not a survey."""
+    because a survey that silently covers 140 of 176 files is not a survey.
+
+    A candidate of ZERO bytes never wins over a later root. MEASURED: the
+    `old_Storgard` root holds 0-byte stubs for `s-ren-dockhouse.blueprint` and
+    `salty-dick-cottage-final.blueprint` while `bp_old` holds the real 101,856
+    and 83,966-byte bodies, and first-root-wins resolved both buildings to
+    nothing. The survey then reported them as floorless rather than as
+    unresolved, which is the same failure shape as the pivot-plane bug: a
+    confident answer to a question that was not measured. An empty file is only
+    accepted when every root offers nothing better, so a manifest name whose
+    only copy is genuinely empty still resolves and still raises nothing.
+    """
     manifest = json.loads(
         (JUMPSTART / "library" / "data" / "library_manifest.json").read_text()
     )
@@ -58,17 +69,25 @@ def resolve_bodies() -> dict[str, Path]:
         name = entry["name"]
         if name in out:
             continue
+        fallback: Path | None = None
         for root in CORPUS_ROOTS:
             direct = root / name
-            if direct.is_file():
-                out[name] = direct
-                break
-            hits = sorted(root.rglob(name)) if root.is_dir() else []
-            if hits:
-                out[name] = hits[0]
+            hits = [direct] if direct.is_file() else (
+                sorted(root.rglob(name)) if root.is_dir() else []
+            )
+            for hit in hits:
+                if hit.stat().st_size:
+                    out[name] = hit
+                    break
+                if fallback is None:
+                    fallback = hit
+            if name in out:
                 break
         else:
-            missing.append(name)
+            if fallback is not None:
+                out[name] = fallback
+            else:
+                missing.append(name)
     if missing:
         raise SystemExit(f"unresolved bodies: {missing}")
     return out

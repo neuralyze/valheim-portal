@@ -322,6 +322,22 @@ class EmitterIntegration(unittest.TestCase):
         )
         return proc, out
 
+    @staticmethod
+    def _ys(out: Path) -> list[float]:
+        """Every distinct world Y in a plan.
+
+        `spawn_object pos=` is `x,z,y` (`Parse::VectorXZY`), so the height is
+        the LAST component, not the second. Reading it positionally as
+        `line.split()[3]` -- which is what this test did while the emitter still
+        wrote vanilla `spawn` -- would silently read Z as height.
+        """
+        ys = set()
+        for line in out.read_text("utf-8").splitlines():
+            for token in line.split(" "):
+                if token.startswith("pos="):
+                    ys.add(float(token[4:].split(",")[2]))
+        return sorted(ys)
+
     def test_floor_center_puts_the_walkable_surface_on_the_requested_y(self):
         path = blueprint(self.tmp, "emit_floor", [
             row("stone_wall_1x1", 0, 0.0, 0),
@@ -330,7 +346,7 @@ class EmitterIntegration(unittest.TestCase):
         ])
         proc, out = self._plan(path, "--align", "floor-center")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        ys = sorted({float(line.split()[3]) for line in out.read_text().splitlines()})
+        ys = self._ys(out)
         # floor pivots land 0.5 below the pad so their tops are ON it
         self.assertIn(70.41, ys)
         self.assertIn(69.41, ys)
@@ -339,7 +355,7 @@ class EmitterIntegration(unittest.TestCase):
         # nothing and the floor tops end up 1.5 m above the requested Y
         proc, out = self._plan(path, "--align", "ground-center")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        ys_old = sorted({float(line.split()[3]) for line in out.read_text().splitlines()})
+        ys_old = self._ys(out)
         self.assertEqual(ys_old, [70.91, 71.91])
 
     def test_the_emitter_refuses_an_unplaceable_body(self):
@@ -358,7 +374,7 @@ class EmitterIntegration(unittest.TestCase):
         proc, out = self._plan(path, "--align", "floor-center", "--base-y", "0.0")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("datum override", proc.stderr)
-        ys = sorted({float(line.split()[3]) for line in out.read_text().splitlines()})
+        ys = self._ys(out)
         self.assertEqual(ys, [71.91])
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Translate a PlanBuild-format blueprint into a ValheimRcon `spawn` plan.
+"""Translate a PlanBuild-format blueprint into a ValheimRcon `spawn_object` plan.
 
 Why this exists
 ---------------
@@ -10,32 +10,40 @@ Infinity Hammer's blueprint commands (`hammer_blueprint`, `hammer_restore`,
 needs a live local player holding a hammer.  There is no headless path through
 Infinity Hammer.
 
-ValheimRcon's `spawn` **is** headless -- MEASURED, it resolves the prefab from
-`ZNetScene`, instantiates it, and closes with `ZNetView::FinishGhostInit()` plus
-`Object::Destroy`, i.e. it writes a persistent ZDO without needing a player in
-the world.  So this tool converts the high-fidelity client-side format into the
-low-fidelity headless channel.
+World Edit Commands 1.77.0 -- already deployed server-side -- **is** headless,
+and unlike vanilla `spawn` it takes the blueprint's own per-piece ZDO state:
+`spawn_object <prefab> pos= rot= data=<base64>`.  MEASURED on a throwaway
+dedicated server with zero players (see
+`docs/proposed/2026-09-15-blueprint-tooling-evaluation.md` §4): the 14th column
+lands on the new ZDO, including a container's full inventory.  A treasure chest
+came out of a blueprint already holding its coins with nobody online.
 
-What is lost, exactly
----------------------
-`spawn <prefab> <x> <y> <z> -rotation <x> <y> <z>` takes **euler degrees**
-(MEASURED: `Quaternion::Euler(Vector3)`), and offers no scale and no object-data
-argument.  Therefore:
-
-  * rotation  -- preserved.  Quaternion -> Unity euler -> quaternion is exact
-                 for the rotation itself; `--verify` proves it per blueprint.
-  * scale     -- LOST.  Reported as a count; it is a handful of pieces at most
-                 in every real blueprint measured here.
-  * data      -- LOST.  Chest contents, sign text, item-stand contents and
-                 ward permissions live in the blueprint `data` column and have
-                 no `spawn` equivalent.
-  * creator   -- LOST.  `spawn` never sets `Piece.m_creator`, so pieces land
-                 with creator 0.
-  * support   -- NOT COMPUTED.  Ghost-init writes the ZDO without running
-                 WearNTear support propagation, so an unsupported piece can be
-                 destroyed when the zone first loads.  Emit in bottom-up Y
-                 order (the default here) to keep each piece's support below it
-                 already placed.
+What is carried, and what the game recomputes
+---------------------------------------------
+  * rotation  -- preserved.  `rot=` is euler degrees; see `rot_arg` for the
+                 component ORDER, which is not the vanilla one.
+  * data      -- CARRIED.  Column 13 is passed through byte-for-byte; that is
+                 per-piece health, support, scale, creator, the Infinity
+                 Hammer / Structure Tweaks component overrides, sign text,
+                 item-stand contents and **container inventories**.
+  * scale     -- carried for the 5,326 rows that state a non-unit scale in
+                 columns 10-12 and have no data column, by writing the same
+                 `scale` vector3 key the other 67,803 corpus rows use.  For a
+                 row that HAS a data column the column wins untouched: 670
+                 corpus rows state a non-unit scale that their own payload does
+                 not repeat, and `--merge-scale` is how a placement opts into
+                 fixing that at the cost of re-encoding.
+  * item stands -- 4 corpus rows write the item NAME in column 13 instead of a
+                 payload (`...;1;1;1;ShieldWood`).  Those are translated into
+                 the `item` string key that the other 873 item-stand rows use,
+                 rather than dropped.
+  * support   -- still recomputed by the game.  MEASURED: a `support` float sent
+                 in `data=` does NOT survive, because WearNTear recomputes it on
+                 Awake.  Emit in bottom-up Y order (the default here) so each
+                 piece has its support below it already placed.
+  * creator   -- carried, from the column's `creator` long.  `--strip-identity`
+                 drops it along with the 8,620 rows' worth of third-party Steam
+                 IDs and names.
 
 Loot and creatures
 ------------------
@@ -50,7 +58,7 @@ Usage
 
 The plan is one RCON command per line.  Feed it to an RCON client one command
 at a time and keep each response small: MEASURED, ValheimRcon truncates any
-response over 4050 payload bytes, and `spawn` echoes a detailed line per
+response over 4050 payload bytes, and `spawn_object` echoes a detailed line per
 spawned object, so batching with `-count` is a bad idea.
 """
 
@@ -76,6 +84,7 @@ from inventory import (  # noqa: E402  (local module, path set above)
     resolve,
 )
 import base_geometry  # noqa: E402  (local module, path set above)
+import data_entry  # noqa: E402  (local module, path set above)
 
 RAD = 180.0 / math.pi
 
@@ -231,10 +240,26 @@ def read_objects(path: Path) -> list[Obj]:
         return out
 
     # Sections come from inventory.header_section, which mirrors Infinity
-    # Hammer's own state machine. Anything not under `#Pieces` is not an object,
-    # and this converter's whole output is `spawn` commands aimed at a live
-    # server -- a converter that can emit `spawn circle` is a converter that will
-    # eventually be run.
+    # Hammer's own state machine: an unrecognised header discards every row
+    # after it. That mirroring is deliberate for `inventory.py`'s reporting and
+    # is the reason `spawn circle` never reached a server, but it is a BUG to
+    # inherit here, and the shape of the bug is not what it looks like.
+    #
+    # MEASURED across the catalogued corpus: the `#Terrain` sections hold 463
+    # fourteen-field PIECE rows and only 16 genuine terrain operations. The
+    # props are 391 x `FirTree_oldLog`, 70 x `stubbe` and 2 x `lox_ribs`,
+    # written under a `#Terrain` header by whichever tool produced the RustyMods
+    # VikingNPC packs; 308 of them even carry a data column.
+    # `BlackForestRaiderTown1` loses 187 of its 1,090 rows to this -- 17.2% of
+    # the file, all props. So `#Terrain` is read here, and the discrimination is
+    # by FIELD COUNT, not by prefab name: a PlanBuild terrain operation is
+    # `shape;x;y;z;radius;rotation;smooth;` (8 fields at most) and a piece row
+    # needs at least 13 to reach its scale. Name-based filtering cannot work --
+    # `circle` and `square` both resolve `vanilla` in the prefab evidence.
+    #
+    # Every OTHER unrecognised header still discards its rows. The vendored
+    # `terrain-future-section.blueprint` contract fixture states exactly that:
+    # "Unknown sections must not inherit the preceding parser state".
     section: str | None = "#pieces"
     for row in text.splitlines():
         if not row:
@@ -247,14 +272,18 @@ def read_objects(path: Path) -> list[Obj]:
                     f"{path}: {exc}. Infinity Hammer refuses this file outright; "
                     f"re-save it with a current version."
                 ) from None
+            if section is None and row.split(":", 1)[0].strip().lower() == "#terrain":
+                section = "#terrain"
             continue
-        if section != "#pieces":
+        if section not in ("#pieces", "#terrain"):
             continue
         line = row.replace(",", ".") if "," in row else row
         p = line.split(";")
         name = p[0].strip()
         if not name:
             continue
+        if section == "#terrain" and len(p) < 13:
+            continue  # a genuine terrain operation; this emitter cannot place one
         out.append(
             Obj(
                 name,
@@ -271,6 +300,128 @@ def read_objects(path: Path) -> list[Obj]:
 def fmt(v: float) -> str:
     s = f"{v:.4f}".rstrip("0").rstrip(".")
     return s if s not in ("", "-0") else "0"
+
+
+# --------------------------------------------------------------------------
+# `spawn_object` argument order -- the highest-risk part of this converter
+#
+# `spawn_object` uses a DIFFERENT component order for `pos=` and for `rot=`,
+# and a THIRD one for `from=`. All three were read out of the IL of the
+# deployed assemblies, and the position order was then confirmed against a real
+# saved ZDO, because the help text and the parameter name both mislead.
+# --------------------------------------------------------------------------
+def pos_arg(x: float, y: float, z: float) -> str:
+    """`spawn_object pos=` takes **z,x,y**.
+
+    MEASURED TWICE, because the first measurement was wrong and would have
+    shipped every building rotated 90 degrees about the vertical axis about the
+    site centre:
+
+    1. From IL. `WorldEditCommands.SpawnObjectParameters` parses `pos=` with
+       `ServerDevcommands.Parse::VectorZXYRange`, whose body is
+       `x = Float(args, index+1); y = Float(args, index+2);
+        z = Float(args, index+0)`. So token 0 is Z, token 1 is X, token 2 is Y.
+       It is NOT `Parse::VectorXZY` -- that is what the same command uses for
+       `from=`/`refpos=`, and its `" (vec x,z,y)"` help text is what makes
+       `pos=` look like x,z,y when it is not.
+    2. From a saved world. `pos=1971.7835,1998.76,40.395` sent headlessly to a
+       sandbox dedicated server produced a ZDO at `m_position` =
+       (1998.76, 40.395, 1971.784) -- token 0 in Z, token 1 in X, token 2 in Y,
+       exactly as the IL says.
+
+    Vanilla `spawn <x> <y> <z>` is x,y,z. Getting this wrong raises no error:
+    the building simply lands with X and Z exchanged, which for a square
+    footprint looks almost right. `test_jumpstart_data_column.py` pins it with
+    a position whose three components are all different, because a fixture like
+    `(5, 5, 5)` passes under any permutation and proves nothing.
+    """
+    return f"{fmt(z)},{fmt(x)},{fmt(y)}"
+
+
+def rot_arg(ex: float, ey: float, ez: float) -> str:
+    """`spawn_object rot=` takes euler **y,x,z**.
+
+    MEASURED from IL: parsed by `ServerDevcommands.Parse::VectorYXZRange`, whose
+    body is `x = Float(args, index+1); y = Float(args, index+0);
+    z = Float(args, index+2)` -- token 0 is Y (yaw), token 1 is X, token 2 is Z.
+    Vanilla `spawn ... -rotation` is `Quaternion::Euler(x, y, z)` in x,y,z
+    order. Yaw is the component that matters most for a building, and yaw is
+    FIRST here.
+    """
+    return f"{fmt(ey)},{fmt(ex)},{fmt(ez)}"
+
+
+# `pos=` is a RELATIVE position: `SpawnObjectParameters` stores it in
+# `RelativePosition` and adds it to `From`. MEASURED: `From` defaults to a
+# PLAYER's position when one can be resolved ("Unable to find the player." /
+# "Player doesn't have a public position." are its failure strings), and only
+# falls back to the origin when there is nobody online. A plan that relies on
+# that fallback silently moves the moment somebody logs in, so every command
+# pins the reference explicitly. `from=` is parsed by `Parse::VectorXZY` -- a
+# THIRD order -- and the origin is the one value that is identical under all
+# six permutations, which is why it is written as three zeroes rather than
+# omitted.
+FROM_ORIGIN = "from=0,0,0"
+
+
+PASS_THROUGH = "pass-through"
+SYNTH_SCALE = "scale-only"
+SYNTH_ITEM = "item-name"
+MERGED = "merged"
+NONE = "none"
+
+
+def data_for(
+    obj: Obj, *, strip_identity: bool, merge_scale: bool
+) -> tuple[str, str, data_entry.DataEntry | None]:
+    """The `data=` value for one row, how it was arrived at, and what it holds.
+
+    The default for a row that carries a decodable column 13 is to emit that
+    STRING UNCHANGED. `data_entry.encode` is proven byte-exact on all 125,576
+    decodable corpus payloads, so re-encoding would in fact reproduce the same
+    bytes -- but the game reads these bytes, the proof is a property of today's
+    corpus rather than of every future body, and there is no upside. Verbatim is
+    the only form that cannot drift.
+
+    The decoded entry is returned so the caller can report on the payload
+    without decoding it a second time.
+    """
+    raw = obj.data.strip()
+    nonunit = any(abs(s - 1.0) > 1e-4 for s in obj.scale)
+    if raw:
+        try:
+            entry = data_entry.decode(raw)
+        except data_entry.DataEntryError:
+            # Not a payload. MEASURED: 4 corpus rows put the item NAME here
+            # (`itemstand;;...;1;1;1;ShieldWood`). The 873 well-formed
+            # item-stand rows carry that name as the `item` string key, so the
+            # plain form translates into exactly that and nothing more -- stack,
+            # quality and durability are not stated by the plain form and are
+            # left for the game to default.
+            synth = data_entry.DataEntry()
+            synth.strings[data_entry.stable_hash("item")] = raw
+            if nonunit:
+                synth.vecs[data_entry.stable_hash("scale")] = obj.scale
+            return synth.encode(), SYNTH_ITEM, synth
+        changed = False
+        if strip_identity:
+            entry = entry.without_identity()
+            changed = True
+        if merge_scale and nonunit and data_entry.stable_hash("scale") not in entry.vecs:
+            entry.vecs[data_entry.stable_hash("scale")] = obj.scale
+            changed = True
+        if changed:
+            return entry.encode(), MERGED, entry
+        return raw, PASS_THROUGH, entry
+    if nonunit:
+        # Nothing to preserve, so nothing can be corrupted: state the scale the
+        # row itself states, under the `scale` vector3 key that 67,803 corpus
+        # rows already use for it.
+        synth = data_entry.DataEntry()
+        synth.vecs[data_entry.stable_hash("scale")] = obj.scale
+        return synth.encode(), SYNTH_SCALE, synth
+    return "", NONE, None
+
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -341,6 +492,35 @@ def main(argv: list[str] | None = None) -> int:
         "--allow-missing-prefabs",
         action="store_true",
         help="emit spawns even for prefabs the evidence cannot resolve",
+    )
+    ap.add_argument(
+        "--no-data",
+        action="store_true",
+        help=(
+            "emit `spawn_object` without `data=`, discarding every per-piece "
+            "payload. This is what this converter did before the data column was "
+            "carried; keep it only to reproduce an old plan."
+        ),
+    )
+    ap.add_argument(
+        "--strip-identity",
+        action="store_true",
+        help=(
+            "remove steamID, steamName, creator, crafterID, crafterName and "
+            "xray_created from each payload. 8,620 corpus rows carry a third "
+            "party's Steam ID and display name. This RE-ENCODES the payload, "
+            "which is safe only because the encoder is proven byte-exact on all "
+            "125,576 decodable corpus payloads -- see the round-trip test."
+        ),
+    )
+    ap.add_argument(
+        "--merge-scale",
+        action="store_true",
+        help=(
+            "for the 670 corpus rows whose columns 10-12 state a non-unit scale "
+            "their own payload does not repeat, add the `scale` key. Also "
+            "re-encodes; same proof applies."
+        ),
     )
     ap.add_argument(
         "--verify",
@@ -455,8 +635,9 @@ def main(argv: list[str] | None = None) -> int:
     kept.sort(key=lambda o: o.pos[1])
 
     worst = 0.0
-    scaled = 0
-    with_data = 0
+    how: dict[str, int] = {}
+    scale_unrepeated = 0
+    inventories = 0
     lines: list[str] = []
     for o in kept:
         pos = (o.pos[0] + dx, o.pos[1] + dy, o.pos[2] + dz)
@@ -468,14 +649,27 @@ def main(argv: list[str] | None = None) -> int:
         if args.verify:
             back = euler_to_quat(ex, ey, ez)
             worst = max(worst, quat_angle_between(rot, back))
-        if any(abs(s - 1.0) > 1e-4 for s in o.scale):
-            scaled += 1
-        if o.data.strip():
-            with_data += 1
+        if args.no_data:
+            blob, kind, entry = "", NONE, None
+        else:
+            blob, kind, entry = data_for(o, strip_identity=args.strip_identity,
+                                         merge_scale=args.merge_scale)
+        how[kind] = how.get(kind, 0) + 1
+        if entry is not None:
+            if (kind == PASS_THROUGH
+                    and any(abs(s - 1.0) > 1e-4 for s in o.scale)
+                    and data_entry.stable_hash("scale") not in entry.vecs):
+                scale_unrepeated += 1
+            if data_entry.inventory_of(entry) is not None:
+                inventories += 1
         cmd = (
-            f"spawn {o.prefab} {fmt(pos[0] + ox)} {fmt(pos[1] + oy)} {fmt(pos[2] + oz)}"
-            f" -rotation {fmt(ex)} {fmt(ey)} {fmt(ez)}"
+            f"spawn_object {o.prefab}"
+            f" pos={pos_arg(pos[0] + ox, pos[1] + oy, pos[2] + oz)}"
+            f" rot={rot_arg(ex, ey, ez)}"
+            f" {FROM_ORIGIN}"
         )
+        if blob:
+            cmd += f" data={blob}"
         lines.append(cmd)
 
     body = "\n".join(lines) + "\n"
@@ -485,14 +679,22 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(body)
 
     note = sys.stderr
-    print(f"{path.name}: {len(objs)} objects read, {len(lines)} spawn commands", file=note)
+    print(f"{path.name}: {len(objs)} objects read, {len(lines)} spawn_object commands",
+          file=note)
     print(
         "  dropped: "
         + ", ".join(f"{k}={v}" for k, v in dropped.items() if v)
         + (" (none)" if not any(dropped.values()) else ""),
         file=note,
     )
-    print(f"  scale lost on {scaled} objects; object data lost on {with_data}", file=note)
+    print("  data: " + ", ".join(f"{k}={v}" for k, v in sorted(how.items()) if v),
+          file=note)
+    print(f"  container inventories carried: {inventories}", file=note)
+    if scale_unrepeated:
+        print(f"  NOTE: {scale_unrepeated} object(s) state a non-unit scale in columns "
+              f"10-12 that their own payload does not repeat; the payload is passed "
+              f"through verbatim, so that scale is NOT applied. --merge-scale adds it.",
+              file=note)
     if args.verify:
         print(f"  max rotation round-trip error: {worst:.6f} deg", file=note)
     return 0
