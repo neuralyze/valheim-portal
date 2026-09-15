@@ -192,6 +192,17 @@ func fetchClientBuild(ctx context.Context, httpClient *http.Client, base *url.UR
 	return build, nil
 }
 
+// clientDownloadLeaf is the portal's content-named download path for one build. The
+// digest is in the URL, so the request cannot be answered from a cache entry belonging
+// to a different build - there is no shared key to hit. It is belt and braces with the
+// digest check below, and it is the cheap half.
+func clientDownloadLeaf(build clientBuild) string {
+	if len(build.SHA256) < 12 {
+		return installedExecutableName
+	}
+	return "download/ValheimProfileSync-" + strings.ToLower(build.SHA256[:12]) + ".exe"
+}
+
 // downloadClientExecutable fetches the replacement and proves it is the advertised build
 // before a single byte is committed to disk.
 //
@@ -201,20 +212,14 @@ func fetchClientBuild(ctx context.Context, httpClient *http.Client, base *url.UR
 // one the portal reported is discarded. Nothing here trusts ETag, Last-Modified or
 // Cache-Control to be honest - they only save a round trip when they are.
 func downloadClientExecutable(ctx context.Context, httpClient *http.Client, base *url.URL, build clientBuild) ([]byte, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, clientRouteURL(base, installedExecutableName), nil)
+	// The content-named path first. A portal that predates it - or one deployed a step
+	// behind the client that is asking - answers 404, and the stable path is then used
+	// instead. Either way the bytes are verified below, so the fallback costs nothing
+	// but a round trip and removes a deployment-ordering trap.
+	payload, err := fetchClientBytes(ctx, httpClient, clientRouteURL(base, clientDownloadLeaf(build)), build.Size)
 	if err != nil {
-		return nil, err
+		payload, err = fetchClientBytes(ctx, httpClient, clientRouteURL(base, installedExecutableName), build.Size)
 	}
-	request.Header.Set("Cache-Control", "no-cache")
-	response, err := httpClient.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("the portal answered %s", response.Status)
-	}
-	payload, err := io.ReadAll(io.LimitReader(response.Body, build.Size+1))
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +235,23 @@ func downloadClientExecutable(ctx context.Context, httpClient *http.Client, base
 		return nil, errors.New("the download is not a Windows executable")
 	}
 	return payload, nil
+}
+
+func fetchClientBytes(ctx context.Context, httpClient *http.Client, target string, size int64) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Cache-Control", "no-cache")
+	response, err := httpClient.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("the portal answered %s", response.Status)
+	}
+	return io.ReadAll(io.LimitReader(response.Body, size+1))
 }
 
 // selfUpdater replaces the running executable in place. Every filesystem and process

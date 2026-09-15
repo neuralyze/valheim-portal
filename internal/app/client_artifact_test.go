@@ -97,7 +97,11 @@ func TestClientInstallerRefusesAConsoleBuildAndServesAGUIBuild(t *testing.T) {
 	if served.Code != http.StatusOK {
 		t.Fatalf("gui build = %d: %s", served.Code, served.Body.String())
 	}
-	if got := served.Header().Get("Content-Disposition"); !strings.Contains(got, "ValheimProfileSync.exe") {
+	// The exact filename is asserted where it is decided, in
+	// TestClientDownloadIsNamedAfterItsOwnBytes: it carries the digest of the served
+	// bytes, so this only pins that a GUI build is offered as a Windows executable.
+	got := served.Header().Get("Content-Disposition")
+	if !strings.HasPrefix(got, "attachment; ") || !strings.Contains(got, "ValheimProfileSync") || !strings.Contains(got, ".exe") {
 		t.Fatalf("content disposition = %q", got)
 	}
 }

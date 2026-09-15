@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -242,11 +243,16 @@ type fakePortal struct {
 	status  int
 	body    string
 	hang    chan struct{}
+	// noNamedRoute models a portal deployed a step behind the client asking it, which
+	// has /client/version but not the content-named download path.
+	noNamedRoute bool
+	requested    []string
 }
 
 func (portal *fakePortal) start(t *testing.T) (*url.URL, *http.Client) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		portal.requested = append(portal.requested, r.URL.Path)
 		switch r.URL.Path {
 		case "/client/version":
 			if portal.hang != nil {
@@ -259,6 +265,12 @@ func (portal *fakePortal) start(t *testing.T) (*url.URL, *http.Client) {
 				return
 			}
 			_ = json.NewEncoder(w).Encode(portal.build)
+		case "/client/" + clientDownloadLeaf(portal.build):
+			if portal.noNamedRoute {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write(portal.payload)
 		case "/client/ValheimProfileSync.exe":
 			_, _ = w.Write(portal.payload)
 		default:
@@ -517,5 +529,38 @@ func TestClientRouteURLTolerantOfAPortalBase(t *testing.T) {
 		if got := clientRouteURL(parsed, "version"); got != "https://portal.example/client/version" {
 			t.Fatalf("base %q resolved to %q", base, got)
 		}
+	}
+}
+
+// The replacement is fetched from a URL that carries the digest of the build being
+// fetched, so no cache anywhere on the path has an entry that could answer it with a
+// different build - there is no shared key to hit. A portal deployed a step behind,
+// which publishes an identity but not that path, is still updated from the stable path,
+// because the bytes are verified either way and a deployment-ordering trap is not worth
+// a refused update.
+func TestSelfUpdateFetchesTheReplacementByItsDigest(t *testing.T) {
+	replacement := fakeExecutable("published")
+	build := clientBuild{SHA256: digestBytes(replacement), Size: int64(len(replacement))}
+
+	portal := &fakePortal{build: build, payload: replacement}
+	harness := newUpdateHarness(t, portal, fakeExecutable("installed"))
+	if !harness.updater.apply(context.Background()) {
+		t.Fatalf("no update:\n%s", harness.progress.text())
+	}
+	named := "/client/download/ValheimProfileSync-" + build.SHA256[:12] + ".exe"
+	if !slices.Contains(portal.requested, named) {
+		t.Fatalf("the replacement was not fetched by digest: %q", portal.requested)
+	}
+	if slices.Contains(portal.requested, "/client/ValheimProfileSync.exe") {
+		t.Fatalf("the stable path was used when the digest path worked: %q", portal.requested)
+	}
+
+	older := &fakePortal{build: build, payload: replacement, noNamedRoute: true}
+	fallback := newUpdateHarness(t, older, fakeExecutable("installed"))
+	if !fallback.updater.apply(context.Background()) {
+		t.Fatalf("a portal without the named route blocked the update:\n%s", fallback.progress.text())
+	}
+	if got := readFile(t, fallback.canonical); got != string(replacement) {
+		t.Fatalf("the fallback installed %q", got)
 	}
 }

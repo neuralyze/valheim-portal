@@ -334,6 +334,9 @@ func (s *Server) routes() {
 	// SHA-256; see internal/app/package_mirror.go for why it exists and what it refuses.
 	s.mux.HandleFunc("GET /client/package/{world}/{profile}/{clientType}/{sha256}", s.clientPackage)
 	s.mux.HandleFunc("GET /client/ValheimProfileSync.exe", s.clientInstaller)
+	// The same bytes under a filename that names them, for downloads made with a tool
+	// that ignores Content-Disposition.
+	s.mux.HandleFunc("GET /client/download/{name}", s.clientNamedDownload)
 	// The identity of the bytes above, so an installed launcher can tell in one cheap
 	// unauthenticated request whether the copy it is running is the one being published.
 	s.mux.HandleFunc("GET /client/version", s.clientVersion)
@@ -555,6 +558,51 @@ func (s *Server) clientDownloadProblem() string {
 // who clicked Download for Windows.
 const clientUnavailableMessage = "The Windows app is not available to download right now. Ask the world owner to publish it."
 
+// clientDownloadName is the filename a download is saved under: the client executable
+// named after the BYTES it is.
+//
+// It used to be named after internal/version.Version, and that was wrong in a way worth
+// recording. The portal and the Windows client are separate binaries built by separate
+// scripts at separate times; the portal's own version has nothing to do with the client
+// it happens to be serving. Measured on 2026-09-14, the portal offered
+// "ValheimProfileSync-v1.0.1-268-g5538c15.exe" while the file it served was
+// v1.0.1-301-g2b1fc1f - a filename that named neither the client nor, since the
+// deployment pins PORTAL_VERSION in its .env, even the running portal. It made the
+// confusion it was meant to end worse.
+//
+// A content digest cannot be wrong about its own content. It needs no coordination
+// between two builds, and it changes exactly when the bytes change - which is the one
+// question a player, or anyone reading a support report, actually has. Three builds that
+// day shared a filename and sat within 25 KB of each other, so neither name nor size
+// could tell them apart; twelve hex characters can.
+func clientDownloadName(descriptor clientBuildDescriptor) string {
+	if len(descriptor.SHA256) < 12 {
+		return "ValheimProfileSync.exe"
+	}
+	return "ValheimProfileSync-" + descriptor.SHA256[:12] + ".exe"
+}
+
+// clientNamedDownload serves the client under its content-named filename, so a download
+// made with a tool that ignores Content-Disposition - curl -O, which is exactly what the
+// operator used at 22:49 on 2026-09-14 - still lands on disk as a distinct file.
+//
+// The name must be the name of the bytes currently published. A request for any other is
+// refused rather than quietly satisfied with different content, because a link that
+// silently serves a build other than the one it names is the whole failure being fixed
+// here. The stable path is kept alongside it for scripts and for the launcher's own
+// self-update, both of which verify the digest for themselves.
+func (s *Server) clientNamedDownload(w http.ResponseWriter, r *http.Request) {
+	descriptor, err := describeClientExecutable(s.cfg.ClientExecutable, &s.clientBuild)
+	if err != nil || r.PathValue("name") != clientDownloadName(descriptor) {
+		s.playerError(w, r, http.StatusNotFound, errorPage{
+			Title:   "That build is not published",
+			Message: "This link names a build the portal is no longer serving. Return to the portal and download the app again.",
+		})
+		return
+	}
+	s.clientInstaller(w, r)
+}
+
 func (s *Server) clientInstaller(w http.ResponseWriter, r *http.Request) {
 	if problem := s.clientDownloadProblem(); problem != "" {
 		// Refusing is the point: a console-subsystem build is visibly broken for
@@ -579,17 +627,13 @@ func (s *Server) clientInstaller(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-	// Name the download after the build it actually is. Every build carries the same
-	// name and near-identical size - three on 2026-09-14 were all 16,649,728 bytes - so
-	// a player who has downloaded twice cannot tell the files apart, and neither can
-	// anyone reading a support report. That cost hours: a broken build was replaced
-	// within the hour and the stale copy kept being the one launched, invisibly, because
-	// nothing about the file said which it was. A version-stamped filename makes every
-	// download a distinct file on disk, so the new one cannot be mistaken for, or
-	// silently overwritten by, the old one.
+	// Named after the bytes; see clientDownloadName. A failure to describe them is not a
+	// reason to refuse the download - the artifact check above already passed - so the
+	// plain name is the fallback.
+	descriptor, describeErr := describeClientExecutable(s.cfg.ClientExecutable, &s.clientBuild)
 	name := "ValheimProfileSync.exe"
-	if version.Stamped() {
-		name = "ValheimProfileSync-" + version.Version + ".exe"
+	if describeErr == nil {
+		name = clientDownloadName(descriptor)
 	}
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	// Revalidate on every download. This file is replaced in place whenever the client
