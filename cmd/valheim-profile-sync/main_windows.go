@@ -516,7 +516,7 @@ func (ui *playerWindow) finishFailure(title string, err error) {
 		ui.busy = false
 		ui.headline.SetText(title)
 		ui.progress.SetValue(0)
-		ui.appendActivityLog("Failed", fmt.Sprintf("%s\r\n\r\nNo profile was replaced. Your previous working profile remains available.\r\n\r\nWhat to do next:\r\n• Confirm Steam is signed in.\r\n• Confirm your account has access to this world.\r\n• Check your internet connection and try the profile link again.\r\n\r\nTechnical detail: %v", title, err))
+		ui.appendActivityLog("Failed", failureGuidance(title, err))
 		ui.complete = true
 		ui.doneNeedsGame = false
 		ui.action.SetText("Close")

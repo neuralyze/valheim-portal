@@ -31,6 +31,12 @@ type Config struct {
 	AgentTokenFile   string
 	PublicBaseURL    string
 	ClientExecutable string
+	// PackageCacheRoot is the server-side mod cache the package mirror serves from,
+	// holding one directory per source profile with a manager-cache/packages inside. Empty
+	// - the default, and every deployment that has not mounted it - means the portal
+	// serves no package bytes and clients have Thunderstore only. Read-only to the portal
+	// by intent: it publishes nothing here, it only hands out what publishing left behind.
+	PackageCacheRoot string
 	TrustedProxyCIDR string
 	// SkipDeviceCode disables the "Confirm this sign-in" step, where the player
 	// retypes a code that only the desktop application shows. It defends a PUBLIC
@@ -111,6 +117,7 @@ func LoadConfig() (Config, error) {
 		AgentTokenFile:   os.Getenv("PORTAL_AGENT_TOKEN_FILE"),
 		PublicBaseURL:    os.Getenv("PORTAL_PUBLIC_BASE_URL"),
 		ClientExecutable: getenv("PORTAL_CLIENT_EXECUTABLE", "/srv/client/ValheimProfileSync.exe"),
+		PackageCacheRoot: strings.TrimSpace(os.Getenv("PORTAL_PACKAGE_CACHE_ROOT")),
 		TrustedProxyCIDR: os.Getenv("PORTAL_TRUSTED_PROXY_CIDR"),
 		// Opt OUT explicitly, like PORTAL_COOKIE_SECURE: only the exact string "false"
 		// disables the step, so a typo cannot silently switch off a public deployment's
@@ -184,6 +191,12 @@ func LoadConfig() (Config, error) {
 		if !filepath.IsAbs(p) {
 			return Config{}, errors.New("portal paths must be absolute")
 		}
+	}
+	// Optional, so it is checked separately: an unset mirror root is a disabled mirror,
+	// but a relative one is a typo that would silently resolve against the container's
+	// working directory and serve nothing.
+	if c.PackageCacheRoot != "" && !filepath.IsAbs(c.PackageCacheRoot) {
+		return Config{}, errors.New("PORTAL_PACKAGE_CACHE_ROOT must be absolute")
 	}
 	return c, nil
 }

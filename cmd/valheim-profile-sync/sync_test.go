@@ -40,6 +40,15 @@ type testPortal struct {
 	packages     map[string][]byte
 	payloadCalls int
 	packageCalls int
+	// packageFault, when set, is consulted before each Thunderstore package response.
+	// Returning (nil, nil) serves the real archive; anything else is handed back to the
+	// client as-is, which is how a dial timeout, a 503 or a truncated body is injected.
+	packageFault func(filename string, call int) (*http.Response, error)
+	// mirror is this portal's /client/package route: off unless a test turns it on, so
+	// every existing test still describes a client with Thunderstore as its only source.
+	mirror        bool
+	mirrorCorrupt bool
+	mirrorCalls   int
 }
 
 func makeTestZip(t *testing.T, entries []zipEntry) []byte {
@@ -146,6 +155,28 @@ func newTestPortal(t *testing.T, payload []byte, packages map[string][]byte) *te
 			writer.Write(portal.companion)
 		case strings.HasPrefix(request.URL.Path, "/client/diagnostics-plugin/"):
 			writer.Write(portal.diagPlugin)
+		case strings.HasPrefix(request.URL.Path, "/client/package/"):
+			portal.mirrorCalls++
+			if !portal.mirror {
+				writer.WriteHeader(http.StatusNotFound)
+				return
+			}
+			digest := filepath.Base(request.URL.Path)
+			for _, archive := range portal.packages {
+				sum := sha256.Sum256(archive)
+				if hex.EncodeToString(sum[:]) != digest {
+					continue
+				}
+				if portal.mirrorCorrupt {
+					// Same length, different bytes: the one mirror answer that must be a
+					// hard failure rather than a retry.
+					writer.Write(bytes.Repeat([]byte("x"), len(archive)))
+					return
+				}
+				writer.Write(archive)
+				return
+			}
+			writer.WriteHeader(http.StatusNotFound)
 		default:
 			writer.WriteHeader(http.StatusNotFound)
 		}
@@ -163,7 +194,16 @@ func newTestPortal(t *testing.T, payload []byte, packages map[string][]byte) *te
 	portal.httpClient = &http.Client{Transport: testRoundTripper(func(request *http.Request) (*http.Response, error) {
 		if request.URL.Host == "gcdn.thunderstore.io" {
 			portal.packageCalls++
-			data, found := portal.packages[filepath.Base(request.URL.Path)]
+			filename := filepath.Base(request.URL.Path)
+			if portal.packageFault != nil {
+				if response, err := portal.packageFault(filename, portal.packageCalls); response != nil || err != nil {
+					if response != nil {
+						response.Request = request
+					}
+					return response, err
+				}
+			}
+			data, found := portal.packages[filename]
 			if !found {
 				return &http.Response{StatusCode: http.StatusNotFound, Status: "404 Not Found", Body: io.NopCloser(strings.NewReader("missing")), Request: request}, nil
 			}

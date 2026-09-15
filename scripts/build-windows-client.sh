@@ -5,6 +5,22 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 out=$(realpath -m "${1:-"$root/dist/ValheimProfileSync.exe"}")
 mkdir -p "$(dirname "$out")"
 
+# Refuse to build a client that cannot work. The ServerCharacters archive is embedded
+# with `//go:embed embedded`, which points at a DIRECTORY holding a committed README.md -
+# so the pattern still matches when the archive is absent and `go build` succeeds
+# silently, producing an installer that fails at the user's first from-scratch install,
+# after they have already completed the Steam sign-in. That shipped on 2026-09-14: this
+# script was run inside the deployment checkout, where the archive is gitignored and
+# therefore missing, and the operator hit "ServerCharacters archive is missing" three
+# times before the cause was found. A build-time failure costs seconds; that cost an hour.
+embedded_archive="$root/internal/servercharacters/embedded/ServerCharacters.zip"
+if [ ! -s "$embedded_archive" ]; then
+	printf 'refusing to build: %s is missing or empty.\n' "$embedded_archive" >&2
+	printf 'run tools/servercharacters/build.sh, or copy the archive from a tree that has it.\n' >&2
+	printf 'it is gitignored deliberately, so a fresh checkout never has it.\n' >&2
+	exit 1
+fi
+
 # Resolve the build identity here: the staging copy below carries no VCS data,
 # and an unstamped binary cannot be matched to a release in a support report.
 version=${PORTAL_VERSION:-$(git -C "$root" describe --tags --always --dirty 2>/dev/null || printf 'dev')}

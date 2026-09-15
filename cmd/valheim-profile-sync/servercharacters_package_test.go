@@ -41,7 +41,7 @@ func TestEmbeddedServerCharactersIsInstalledWithoutADownload(t *testing.T) {
 	cache := filepath.Join(t.TempDir(), "packages")
 	syncer := &profileSyncer{HTTPClient: &http.Client{Transport: refusingRoundTripper{t}}}
 
-	path, downloaded, err := syncer.ensureCachedPackage(context.Background(), cache, definition)
+	path, downloaded, err := syncer.ensureCachedPackage(context.Background(), cache, definition, packageMirror{}, newRetryAllowance())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestEmbeddedServerCharactersRefusesADefinitionItCannotSatisfy(t *testing.T)
 	cache := filepath.Join(t.TempDir(), "packages")
 	syncer := &profileSyncer{HTTPClient: &http.Client{Transport: refusingRoundTripper{t}}}
 
-	_, _, err := syncer.ensureCachedPackage(context.Background(), cache, definition)
+	_, _, err := syncer.ensureCachedPackage(context.Background(), cache, definition, packageMirror{}, newRetryAllowance())
 	if err == nil {
 		t.Fatal("a definition naming a different build was installed anyway")
 	}

@@ -145,6 +145,10 @@ type profileSyncer struct {
 	ExplorationToken    string
 	ExplorationEndpoint string
 	PortalBase          string
+	// Wait is how the download retry loop sleeps between attempts. Nil means time.Sleep,
+	// which is every real run; a test substitutes a no-op so pinning the backoff policy
+	// does not cost seventeen seconds of wall clock.
+	Wait func(time.Duration)
 }
 
 func newProfileSyncer(httpClient *http.Client) *profileSyncer {
@@ -292,7 +296,22 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 		return false, err
 	}
 	defer os.RemoveAll(next)
-	cache := filepath.Join(root, "packages")
+	// One cache for every profile in this installation, not one per profile. See
+	// package_cache.go: four Ulfsland editions pin nearly the same hundred packages, so a
+	// private cache per edition meant four downloads and four copies of the same bytes -
+	// and meant a fresh edition could not use an archive another edition had already
+	// fetched successfully, which is how one dead CDN edge stopped an install.
+	cache, err := sharedPackageCache(localAppData)
+	if err != nil {
+		return false, err
+	}
+	if adopted, adoptErr := adoptPackageCache(filepath.Join(root, "packages"), cache); adoptErr != nil {
+		// Adoption is an optimisation, never a reason to fail an install: the worst
+		// outcome is downloading again what was already on disk.
+		report(syncer.Progress, progressUpdate{Stage: "Moving cached mods to the shared folder", Detail: fmt.Sprintf("Adopted %d of this profile's cached archives before stopping: %v. Anything left behind will be downloaded again.", adopted, adoptErr), Percent: 48})
+	} else if adopted > 0 {
+		report(syncer.Progress, progressUpdate{Stage: "Moving cached mods to the shared folder", Detail: fmt.Sprintf("Adopted %d cached mod archives, now shared with this world's other editions.", adopted), Percent: 48})
+	}
 	changes := classifyPackageChanges(current.Packages, definition.Packages)
 	companionChanged := request.ClientType == clientFlat && (!present || !strings.EqualFold(current.CompanionSHA256, manifest.CompanionSHA256) || current.CompanionSize != manifest.CompanionSize)
 	detail := changes.Detail()
@@ -300,9 +319,14 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 		detail += " Flat ValheimVR companion changed."
 	}
 	report(syncer.Progress, progressUpdate{Stage: "Changes detected", Detail: detail, Percent: 48})
+	// The mirror: this world's own portal, as a second source if Thunderstore cannot be
+	// reached. Built from the connection that already authorised this sync, so it costs
+	// nothing when it is not needed and needs no new permission when it is.
+	mirror := packageMirror{endpoint: portal.endpoint("client", "package", request.World, request.Profile, request.ClientType), token: token}
+	allowance := newRetryAllowance()
 	downloadedPackages := 0
 	for _, packageInfo := range definition.Packages {
-		packagePath, downloaded, err := syncer.ensureCachedPackage(ctx, cache, packageInfo)
+		packagePath, downloaded, err := syncer.ensureCachedPackage(ctx, cache, packageInfo, mirror, allowance)
 		if err != nil {
 			return false, err
 		}
@@ -481,7 +505,13 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 			return false, err
 		}
 	}
-	if err := prunePackageCache(cache, newState.Packages); err != nil {
+	// The cache is shared, so "keep" is the union over every installed profile, not this
+	// profile's list. Pruning the shared store against one profile would delete the other
+	// editions' archives on every sync and turn a disk saving into a download storm. A
+	// keep-set that cannot be computed skips the prune entirely, which costs disk and
+	// nothing else.
+	keep, keepErr := referencedPackageFilenames(localAppData, newState.Packages)
+	if keepErr != nil || prunePackageCache(cache, keep) != nil {
 		report(syncer.Progress, progressUpdate{Stage: "Profile updated", Detail: "Your profile is ready. Some cached downloads will be cleaned up later.", Percent: 87})
 	}
 	return true, nil
@@ -516,11 +546,21 @@ func packageIdentity(packageInfo packageDefinition) string {
 func samePackage(left, right packageDefinition) bool {
 	return left.Filename == right.Filename && left.Size == right.Size && strings.EqualFold(left.SHA256, right.SHA256)
 }
-func (syncer *profileSyncer) ensureCachedPackage(ctx context.Context, cache string, packageInfo packageDefinition) (string, bool, error) {
+
+func packageCachePath(cache string, packageInfo packageDefinition) string {
+	return filepath.Join(cache, packageInfo.Filename)
+}
+
+func (syncer *profileSyncer) ensureCachedPackage(ctx context.Context, cache string, packageInfo packageDefinition, mirror packageMirror, allowance *retryAllowance) (string, bool, error) {
 	if err := os.MkdirAll(cache, 0o700); err != nil {
 		return "", false, err
 	}
-	path := filepath.Join(cache, packageInfo.Filename)
+	path := packageCachePath(cache, packageInfo)
+	// Verified on every HIT, not only after a download. The cache is shared by all of
+	// this installation's profiles, so this check is what stops one bad entry - a
+	// truncated file, a half-written adoption, a disk fault - from being handed to every
+	// profile that reads it: a cached archive that does not match the published size and
+	// SHA-256 is treated as absent and fetched again.
 	if err := verifyFile(path, packageInfo.Size, packageInfo.SHA256); err == nil {
 		return path, false, nil
 	}
@@ -538,29 +578,8 @@ func (syncer *profileSyncer) ensureCachedPackage(ctx context.Context, cache stri
 		}
 		return path, true, nil
 	}
-	downloadURL, err := packageDownloadURL(packageInfo)
+	path, err := syncer.fetchPackage(ctx, cache, packageInfo, mirror, allowance)
 	if err != nil {
-		return "", false, err
-	}
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
-	if err != nil {
-		return "", false, err
-	}
-	response, err := syncer.HTTPClient.Do(httpRequest)
-	if err != nil {
-		return "", false, err
-	}
-	if response.StatusCode != http.StatusOK {
-		response.Body.Close()
-		return "", false, fmt.Errorf("download package %s: %s", packageInfo.Filename, response.Status)
-	}
-	temporary, downloadErr := downloadVerified(response.Body, cache, ".package-", packageInfo.Size, packageInfo.SHA256, maxPackageArchiveBytes)
-	response.Body.Close()
-	if downloadErr != nil {
-		return "", false, downloadErr
-	}
-	if err := replaceFile(temporary, path); err != nil {
-		os.Remove(temporary)
 		return "", false, err
 	}
 	return path, true, nil
@@ -1356,9 +1375,17 @@ func downloadVerified(body io.Reader, directory, pattern string, expectedSize in
 		os.Remove(path)
 		return "", copyErr
 	}
-	if written != expectedSize || !strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), expectedSHA256) {
+	// Two different failures, and the retry policy depends on telling them apart: a body
+	// that did not arrive whole is a transport fault worth another attempt, while a body
+	// of exactly the right length whose hash is wrong means this source is serving
+	// different content and no number of retries will change that.
+	if written != expectedSize {
 		os.Remove(path)
-		return "", errors.New("download checksum or size mismatch")
+		return "", fmt.Errorf("%w: got %d of %d bytes", errDownloadIncomplete, written, expectedSize)
+	}
+	if !strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), expectedSHA256) {
+		os.Remove(path)
+		return "", errDownloadWrongBytes
 	}
 	return path, nil
 }
@@ -1382,28 +1409,6 @@ func verifyFile(path string, expectedSize int64, expectedSHA256 string) error {
 	}
 	if !strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), expectedSHA256) {
 		return errors.New("cached package checksum mismatch")
-	}
-	return nil
-}
-
-func prunePackageCache(cache string, packages []packageDefinition) error {
-	entries, err := os.ReadDir(cache)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	keep := make(map[string]struct{}, len(packages))
-	for _, packageInfo := range packages {
-		keep[packageInfo.Filename] = struct{}{}
-	}
-	for _, entry := range entries {
-		if _, found := keep[entry.Name()]; !found {
-			if err := os.RemoveAll(filepath.Join(cache, entry.Name())); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }

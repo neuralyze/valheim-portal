@@ -327,6 +327,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /client/runtime/{world}/{profile}/{clientType}", s.clientRuntime)
 	s.mux.HandleFunc("GET /client/companion/{world}/{profile}/{clientType}", s.clientCompanion)
 	s.mux.HandleFunc("GET /client/diagnostics-plugin/{world}/{profile}/{clientType}", s.clientDiagnosticsPlugin)
+	// The package mirror. Scoped to one release's published packages and addressed by
+	// SHA-256; see internal/app/package_mirror.go for why it exists and what it refuses.
+	s.mux.HandleFunc("GET /client/package/{world}/{profile}/{clientType}/{sha256}", s.clientPackage)
 	s.mux.HandleFunc("GET /client/ValheimProfileSync.exe", s.clientInstaller)
 	s.mux.HandleFunc("POST /client/diagnostics/{world}/{profile}/{clientType}", s.clientDiagnostics)
 	// Where a player's own revealed map and pins arrive from the launcher. Authorised by the same
@@ -571,6 +574,17 @@ func (s *Server) clientInstaller(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
 	w.Header().Set("Content-Disposition", `attachment; filename="ValheimProfileSync.exe"`)
+	// Revalidate on every download. This file is replaced in place whenever the client
+	// is rebuilt, and it keeps the SAME NAME and the SAME SIZE across builds - three
+	// builds on 2026-09-14 were all exactly 16,649,728 bytes - so nothing a browser can
+	// see from its cached copy tells it the bytes changed. Without Cache-Control there is
+	// no freshness lifetime, so a browser is free to apply its own heuristic and hand back
+	// a stale exe with no request at all. That happened: an installer built without its
+	// embedded ServerCharacters archive was served, replaced within the hour, and the
+	// operator kept getting the broken one. ServeContent still answers a conditional
+	// request with 304 when the Last-Modified genuinely matches, so this costs a round
+	// trip rather than a re-download.
+	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 	http.ServeContent(w, r, "ValheimProfileSync.exe", info.ModTime(), file)
 }
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
