@@ -39,5 +39,15 @@ cp -a "$root/." "$staging/source/"
 # unsigned build that gets quarantined mid-session is worse than a slower build.
 "$root/scripts/sign-windows-client.sh" "$out" || true
 
+# Publish the identity of the bytes that were just produced, beside the bytes themselves.
+# The portal serves this as /client/version, which is how an already-installed launcher
+# finds out it is stale - and it is written AFTER signing, because signing rewrites the
+# file. The portal only believes the version in here when the digest in here is the digest
+# of the executable on disk, so a sidecar left over from an earlier build is ignored rather
+# than believed. Three builds on 2026-09-14 shared a filename and a size to within 25 KB;
+# the digest is the only thing that told them apart.
+digest=$(sha256sum "$out" | cut -d' ' -f1)
+printf '{"version":"%s","sha256":"%s"}\n' "$version" "$digest" >"$out.build.json"
+
 printf 'built %s\n' "$version" >&2
 printf '%s\n' "$out"

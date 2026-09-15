@@ -112,6 +112,9 @@ type Server struct {
 	authMu               sync.Mutex
 	steamStates          map[string]steamState
 	deviceCodes          map[string]deviceGrant
+	// clientBuild memoises the digest of the published Windows client for
+	// GET /client/version, which the launcher polls on every profile link.
+	clientBuild clientBuildCache
 }
 
 type restoreRequest struct {
@@ -331,6 +334,9 @@ func (s *Server) routes() {
 	// SHA-256; see internal/app/package_mirror.go for why it exists and what it refuses.
 	s.mux.HandleFunc("GET /client/package/{world}/{profile}/{clientType}/{sha256}", s.clientPackage)
 	s.mux.HandleFunc("GET /client/ValheimProfileSync.exe", s.clientInstaller)
+	// The identity of the bytes above, so an installed launcher can tell in one cheap
+	// unauthenticated request whether the copy it is running is the one being published.
+	s.mux.HandleFunc("GET /client/version", s.clientVersion)
 	s.mux.HandleFunc("POST /client/diagnostics/{world}/{profile}/{clientType}", s.clientDiagnostics)
 	// Where a player's own revealed map and pins arrive from the launcher. Authorised by the same
 	// profile-scoped device token an ordinary sync uses, so reporting costs the player nothing extra.
@@ -573,7 +579,19 @@ func (s *Server) clientInstaller(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-	w.Header().Set("Content-Disposition", `attachment; filename="ValheimProfileSync.exe"`)
+	// Name the download after the build it actually is. Every build carries the same
+	// name and near-identical size - three on 2026-09-14 were all 16,649,728 bytes - so
+	// a player who has downloaded twice cannot tell the files apart, and neither can
+	// anyone reading a support report. That cost hours: a broken build was replaced
+	// within the hour and the stale copy kept being the one launched, invisibly, because
+	// nothing about the file said which it was. A version-stamped filename makes every
+	// download a distinct file on disk, so the new one cannot be mistaken for, or
+	// silently overwritten by, the old one.
+	name := "ValheimProfileSync.exe"
+	if version.Stamped() {
+		name = "ValheimProfileSync-" + version.Version + ".exe"
+	}
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	// Revalidate on every download. This file is replaced in place whenever the client
 	// is rebuilt, and it keeps the SAME NAME and the SAME SIZE across builds - three
 	// builds on 2026-09-14 were all exactly 16,649,728 bytes - so nothing a browser can

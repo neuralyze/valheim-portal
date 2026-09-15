@@ -29,7 +29,10 @@ func failureGuidance(title string, err error) string {
 		"",
 	}
 	lines = append(lines, guidanceBullets(err)...)
-	lines = append(lines, "", fmt.Sprintf("Technical detail: %v", err))
+	// The build and the file that produced this failure. Four identical-looking reports
+	// on 2026-09-14 named neither, and the hour that cost went entirely on establishing
+	// which binary the player was actually running.
+	lines = append(lines, "", fmt.Sprintf("Technical detail: %v", err), "", clientEnvironmentLine())
 	return strings.Join(lines, "\r\n")
 }
 

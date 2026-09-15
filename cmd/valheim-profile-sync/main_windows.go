@@ -42,10 +42,13 @@ type playerWindow struct {
 	busy             bool
 	complete         bool
 	activityLines    int
+	// launchArgs is exactly what this process was started with, so a self-update can
+	// hand the replacement the same profile link and the player's click still lands.
+	launchArgs []string
 }
 
 func runWindowsApplication(args []string) {
-	ui := &playerWindow{}
+	ui := &playerWindow{launchArgs: args}
 	window := MainWindow{
 		AssignTo: &ui.window,
 		Title:    applicationName,
@@ -262,6 +265,19 @@ func (ui *playerWindow) synchronize(request profileRequest) {
 	ui.resetActivityLog()
 	ui.setProgress(progressUpdate{Stage: "Opening selected profile", Detail: request.Profile, Percent: 2})
 	go func() {
+		executable, executableErr := os.Executable()
+		if executableErr != nil {
+			executable = ""
+		}
+		ui.setProgress(clientIdentityUpdate(executable, request.Portal))
+		// Before anything else, and never at the player's expense: a portal that does
+		// not answer in updateCheckTimeout leaves this run on the build already here.
+		if applyClientSelfUpdate(context.Background(), request.Portal, ui.launchArgs, ui.setProgress) {
+			ui.window.Synchronize(func() {
+				ui.window.Close()
+			})
+			return
+		}
 		if _, err := installCurrentApplication(); err != nil {
 			ui.finishFailure("Valheim Profile Sync could not register", err)
 			return
