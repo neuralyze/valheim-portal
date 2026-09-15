@@ -211,12 +211,48 @@ class Commands(unittest.TestCase):
     def test_truncated_listings_do_not_invent_prefab_names(self):
         """ValheimRcon severs a response at ~4050 bytes.  MEASURED: a bare
         `^-Prefab: (\\S+)` read "Pic" out of a cut "Pickable_Stone" and reported
-        it as an object that had not been removed."""
+        it as an object that had not been removed.  `locations_inside` is the
+        one remaining `findObjects` consumer, so its parser carries the guard:
+        a severed final line must contribute nothing."""
         body = ("Found 2 objects:\n"
-                "-Prefab: Beech1 Id: 1:2 Position: (1 2 3)\n"
+                "-Prefab: LocationProxy Id: 1:2 Position: (1 2 3)\n"
                 "-Prefab: Pic")
-        self.assertEqual(CL.PREFAB_RE.findall(body), ["Beech1"])
-        self.assertEqual(int(CL.FOUND_RE.search(body).group(1)), 2)
+        self.assertEqual([m[0] for m in CL.POSITION_RE.findall(body)],
+                         ["LocationProxy"])
+
+    def test_count_table_reads_the_name_on_the_left_of_the_colon(self):
+        """`objects_count`'s console table is `<prefab>: <count>`, which is the
+        opposite order from `findObjects`.  MEASURED on the live workshop pad:
+        `stone_wall_2x1: 854` ... `Total: 1907`.  Reading it the other way round
+        yields a list of numbers that still looks like a list of prefabs."""
+        table = ("Total: 1907\n"
+                 "stone_wall_2x1: 854\n"
+                 "stone_floor_2x2: 76\n")
+        self.assertEqual(int(CL.TOTAL_RE.search(table).group(1)), 1907)
+        self.assertEqual([n for n, _c in CL.COUNT_LINE_RE.findall(table)],
+                         ["stone_wall_2x1", "stone_floor_2x2"])
+
+    def test_a_count_with_no_total_raises_instead_of_reading_as_empty(self):
+        """`objects_count` is NOT a staged operation -- MEASURED, staging it
+        answers `routine is null` -- and its table goes to the server console,
+        not the RCON reply.  Reading the reply therefore finds no `Total:`, and
+        that must not be reported as an empty pad: aiming a removal at nothing
+        is the failure this guards."""
+        class Silent:
+            def command(self, _cmd):
+                return "Command 'objects_count ...' executed."
+
+        def no_console_output(_rc, _cmd, **_kw):
+            return ["Command 'objects_count ...' executed."]
+
+        original = CL.run_console
+        CL.run_console = no_console_output
+        try:
+            with self.assertRaises(RuntimeError) as caught:
+                CL.box_query(Silent(), 1.0, 2.0, 3.0, 40.0)
+        finally:
+            CL.run_console = original
+        self.assertIn("no Total line", str(caught.exception))
 
 
 class AgainstTheRealPlacements(unittest.TestCase):

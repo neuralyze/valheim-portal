@@ -407,6 +407,107 @@ def geometry() -> Geometry:
 
 
 # ---------------------------------------------------------------------------
+# the footprint
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Footprint:
+    """The XZ rectangle a blueprint body actually OCCUPIES, after a yaw.
+
+    Two things separate this from `min(pos.x)..max(pos.x)` over the rows, and
+    both were MEASURED wrong on `BjOrN_blueprint001` before it existed:
+
+    1. A pivot is not a solid. That body's pivot box is
+       `0..65.467` x `0..65.984`; its colliders reach `-0.63..65.74` x
+       `-0.63..66.55`, so the pivot box misplaces the centre by
+       `(+0.17, +0.03)` m and understates the footprint by ~1.2 m on both axes.
+    2. A footprint is not rotation-equivariant, so it MUST be measured after
+       the yaw rather than rotated with the body. Centring on a pre-rotation
+       centre and then rotating about it leaves the real centre offset by
+       `R(yaw) * d - d`, where `d` is the pivot-box-to-solid-box offset: zero
+       at 0 degrees, and `-2d` at 180, which is a sign FLIP rather than an
+       error that stays put. That is what "centred at 0, off at 180" looks
+       like, and on this body it is 0.35 m of X.
+    """
+
+    min_x: float
+    max_x: float
+    min_z: float
+    max_z: float
+    yaw_deg: float = 0.0
+    pieces: int = 0
+    pivot_only: list[str] = field(default_factory=list)
+
+    @property
+    def center_x(self) -> float:
+        return (self.min_x + self.max_x) * 0.5
+
+    @property
+    def center_z(self) -> float:
+        return (self.min_z + self.max_z) * 0.5
+
+    @property
+    def size_x(self) -> float:
+        return self.max_x - self.min_x
+
+    @property
+    def size_z(self) -> float:
+        return self.max_z - self.min_z
+
+
+def xz_footprint(objects, yaw_deg: float = 0.0, geom: Geometry | None = None) -> Footprint:
+    """The occupied XZ rectangle of `objects` after rotating the body `yaw_deg`
+    about the blueprint's own origin.
+
+    `objects` is the same shape `floor_datum` takes: `.prefab`, `.pos`, `.rot`,
+    `.scale`. Every measured collider corner of every row is transformed by the
+    row's own rotation and scale, translated to the row's pivot, then yawed.
+    Rows whose prefab has no measured solid contribute their pivot alone and are
+    named in `pivot_only` -- a point is an honest under-statement, and the
+    caller can see how many rows it applies to.
+    """
+    g = geom or geometry()
+    half = math.radians(yaw_deg) * 0.5
+    sin_h, cos_h = math.sin(half), math.cos(half)
+    lo_x = lo_z = math.inf
+    hi_x = hi_z = -math.inf
+    pivot_only: list[str] = []
+    pieces = 0
+    for obj in objects:
+        pieces += 1
+        solids = g._prefabs.get(obj.prefab)
+        if solids:
+            q = _normalised(tuple(obj.rot))
+            sx, sy, sz = obj.scale
+            offsets = [
+                _qrot(q, (cx * sx, cy * sy, cz * sz))
+                for s in solids
+                for cx, cy, cz in _solid_corners(s)
+            ]
+        else:
+            pivot_only.append(obj.prefab)
+            offsets = [(0.0, 0.0, 0.0)]
+        for ox, _oy, oz in offsets:
+            px = obj.pos[0] + ox
+            pz = obj.pos[2] + oz
+            # yaw about the local origin, from the same quaternion the emitter
+            # uses: (0, sin, 0, cos) applied to (x, y, z).
+            rx = px * (1.0 - 2.0 * sin_h * sin_h) + pz * (2.0 * sin_h * cos_h)
+            rz = pz * (1.0 - 2.0 * sin_h * sin_h) - px * (2.0 * sin_h * cos_h)
+            if rx < lo_x:
+                lo_x = rx
+            if rx > hi_x:
+                hi_x = rx
+            if rz < lo_z:
+                lo_z = rz
+            if rz > hi_z:
+                hi_z = rz
+    if pieces == 0:
+        raise ValueError("no objects: a footprint of nothing has no centre")
+    return Footprint(lo_x, hi_x, lo_z, hi_z, yaw_deg, pieces, pivot_only)
+
+# ---------------------------------------------------------------------------
 # the datum
 # ---------------------------------------------------------------------------
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Translate a PlanBuild-format blueprint into a ValheimRcon `spawn_object` plan.
+"""Translate a PlanBuild-format blueprint into a World Edit Commands
+`spawn_object` plan, to be sent over RCON through `consoleCommand`.
 
 Why this exists
 ---------------
@@ -56,10 +57,24 @@ Usage
     python3 to_rcon_plan.py BASE.blueprint --at 120 32 -450 [--rotate 90]
         [--out plan.txt] [--verify] [--keep-loot] [--keep-creatures]
 
-The plan is one RCON command per line.  Feed it to an RCON client one command
-at a time and keep each response small: MEASURED, ValheimRcon truncates any
-response over 4050 payload bytes, and `spawn_object` echoes a detailed line per
-spawned object, so batching with `-count` is a bad idea.
+The plan is one World Edit Commands command per line. Send it with
+`send_plan.py`, which is the only thing that runs it correctly:
+
+  * a plan line is a CONSOLE command, so it has to go through ValheimRcon's
+    `consoleCommand` bridge. MEASURED against the deployed ValheimRcon 1.6.2,
+    `spawn_object` sent as a bare RCON command answers `Unknown command
+    spawn_object` -- ValheimRcon's own spawn verb is called `spawn` and takes
+    positional coordinates.
+  * Server Devcommands has `Multiple commands per line = true` in the deployed
+    config, so `send_plan.py` batches ~43 lines per round trip and this body
+    lands in 45 round trips and 1.8 s rather than 1,907 round trips and a
+    minute. That is not an optimisation: MEASURED, sustained RCON traffic over
+    this site wedged the server, because ValheimRcon logs each command's full
+    result to the container's stdout before truncating it and that write blocks
+    the Unity main thread.
+  * for the same reason, do NOT verify a placement by listing it.
+    `verify_placement.py` counts with `objects_count` and lists only the four
+    extreme pieces, under a hard output budget.
 """
 
 from __future__ import annotations
@@ -442,10 +457,15 @@ def main(argv: list[str] | None = None) -> int:
         choices=("raw", "ground", "center", "ground-center", "floor", "floor-center"),
         help=(
             "how the blueprint's own origin maps onto --at. 'floor-center' (default) "
-            "puts the XZ bounding-box centre on --at XZ and the blueprint's FLOOR PLANE "
-            "on --at Y, where the floor plane is measured by base_geometry.floor_datum "
-            "from real piece colliders; 'floor' does the Y half only. 'ground' and "
-            "'ground-center' are the OLD rule, min pivot Y, kept only for comparison: "
+            "puts the centre of the body's MEASURED XZ footprint AT THIS YAW on --at XZ "
+            "-- base_geometry.xz_footprint, collider corners rather than pivots, taken "
+            "after --rotate is applied -- and the blueprint's FLOOR PLANE on --at Y, "
+            "where the floor plane is measured by base_geometry.floor_datum from the "
+            "same colliders; 'floor' does the Y half only and so anchors XZ on the "
+            "blueprint's own origin, which for a corner-origin body like "
+            "BjOrN_blueprint001 puts the CORNER on --at and the building 33 m off the "
+            "pad in each axis. 'ground' and "
+            "'ground-center' are the OLD Y rule, min pivot Y, kept only for comparison: "
             "a pivot is not a surface, and 99 of the 157 non-empty .blueprint bodies in "
             "this corpus are already normalised to min pivot Y == 0, on which that shift "
             "is always exactly zero. 'center' does XZ only; 'raw' trusts the file."
@@ -583,12 +603,20 @@ def main(argv: list[str] | None = None) -> int:
     yq = yaw_quat(args.rotate) if args.rotate else None
     ox, oy, oz = args.at
 
-    # Normalise the blueprint's own origin, then yaw, then translate onto --at.
-    # The yaw has to happen about the aligned origin, otherwise rotating a
-    # corner-origin blueprint swings the whole building off the site.
-    xs = [o.pos[0] for o in kept]
+    # Yaw about the blueprint's own origin FIRST, then translate so the chosen
+    # datum lands on --at. The order matters and it is not symmetric:
+    #
+    #   * Y is unaffected by a yaw, so the floor datum may be measured either
+    #     side of the rotation and is measured before it, as it always was.
+    #   * XZ is NOT. An axis-aligned footprint is not rotation-equivariant, and
+    #     a body's solids are not centred on its pivot box, so the centre has to
+    #     be measured AFTER the yaw. Measuring it before and rotating the offset
+    #     with the body leaves the real centre off by `R(yaw)*d - d` -- zero at
+    #     0 degrees and `-2d` at 180, i.e. an error that FLIPS SIGN with the
+    #     rotation instead of staying put. On `BjOrN_blueprint001` that is
+    #     0.35 m of X at yaw 180, and it is 1.2 m of unaccounted footprint on
+    #     both axes at every yaw, because a pivot is not a solid.
     ys = [o.pos[1] for o in kept]
-    zs = [o.pos[2] for o in kept]
     dx = dy = dz = 0.0
     datum = None
     if args.align in ("floor", "floor-center"):
@@ -622,12 +650,25 @@ def main(argv: list[str] | None = None) -> int:
                   f"terraces above the pad={datum.terraces_m()[:8]}", file=sys.stderr)
     if args.align in ("ground", "ground-center"):
         dy = -min(ys)
+    foot = base_geometry.xz_footprint(kept, args.rotate)
     if args.align in ("center", "ground-center", "floor-center"):
-        dx = -(min(xs) + max(xs)) * 0.5
-        dz = -(min(zs) + max(zs)) * 0.5
+        dx = -foot.center_x
+        dz = -foot.center_z
+    if foot.pivot_only:
+        names = sorted(set(foot.pivot_only))
+        print(f"  footprint: {len(foot.pivot_only)} row(s) across {len(names)} prefab(s) "
+              f"have no measured solid and contributed their pivot only: "
+              f"{', '.join(names[:6])}", file=sys.stderr)
     print(
         f"  align={args.align} origin shift=({dx:+.2f},{dy:+.2f},{dz:+.2f})"
-        f" extent={max(xs) - min(xs):.1f}x{max(zs) - min(zs):.1f}x{max(ys) - min(ys):.1f}",
+        f" footprint@yaw{args.rotate:g}={foot.size_x:.2f}x{foot.size_z:.2f}"
+        f" height={max(ys) - min(ys):.1f}",
+        file=sys.stderr,
+    )
+    print(
+        f"  expected world span x {foot.min_x + dx + ox:.2f}..{foot.max_x + dx + ox:.2f}"
+        f" z {foot.min_z + dz + oz:.2f}..{foot.max_z + dz + oz:.2f}"
+        f" centre ({foot.center_x + dx + ox:.2f},{foot.center_z + dz + oz:.2f})",
         file=sys.stderr,
     )
 
@@ -640,11 +681,12 @@ def main(argv: list[str] | None = None) -> int:
     inventories = 0
     lines: list[str] = []
     for o in kept:
-        pos = (o.pos[0] + dx, o.pos[1] + dy, o.pos[2] + dz)
+        pos = o.pos
         rot = o.rot
         if yq is not None:
             pos = qrot(yq, pos)
             rot = qmul(yq, rot)
+        pos = (pos[0] + dx, pos[1] + dy, pos[2] + dz)
         ex, ey, ez = quat_to_euler(*rot)
         if args.verify:
             back = euler_to_quat(ex, ey, ez)

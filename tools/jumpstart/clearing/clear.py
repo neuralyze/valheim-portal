@@ -63,12 +63,34 @@ Ulfsland (Valheim l-1.0.12, network version 40):
      game's own convention and ValheimRcon's `ZdoUtils::CanModifyZdo`, which
      refuses `_`-prefixed prefabs without -force.
 
-VERIFICATION.  Counting is done with ValheimRcon's `findObjects`, not by
-scraping the console: `-near <x> <y> <z> <r>` is an axis-aligned BOX of
-half-side r -- MEASURED in `NearCriteria::IsMatch`, which tests |dx|<r AND
-|dy|<r AND |dz|<r, so it also constrains HEIGHT.  The box used here is the
-largest one that fits wholly INSIDE the cleared cylinder, so anything left in
-it is a real miss rather than an artefact of box-versus-disc.
+VERIFICATION.  Counting is done with Upgrade World's `objects_count`, read out
+of the SERVER CONSOLE LOG, and both halves of that sentence are measured
+corrections to what this file used to do:
+
+  * `findObjects -near` could not survive a dense site.  MEASURED against the
+    live Ulfsland workshop pad holding this 1,907-piece building: a
+    `findObjects -detailed` query wide enough to see the body WEDGED the
+    server.  `RconCommandReceiver` passes the command's result to
+    `Log.Message` -- the container's stdout, through supervisord -- BEFORE
+    `ValidatePayloadLength` truncates it, so a 1,907-line result is a ~290 KB
+    blocking write on the Unity main thread.  The log stopped mid-object and
+    the server answered nothing further until the container was restarted.  A
+    sustained ~100 line/s stream of smaller replies wedged it the same way
+    after about 1,000 lines.  So the rule is not "keep replies under 4050
+    bytes", it is "never ask a question whose ANSWER is long".
+  * `objects_count` is NOT a staged operation.  MEASURED: staging it answers
+    `routine is null`, and its per-prefab table plus `Total:` line goes to the
+    server console, not into the RCON reply -- the reply is only
+    `Command '<cmd>' executed.`.  So it is run directly and read back from the
+    container log with `console.run_console`, the same way `flatten.py` reads
+    a console command's output.  A few hundred bytes for a site with thousands
+    of objects, and the reply size no longer scales with the thing being
+    measured.
+
+Note the SHAPE difference from the old box: `objects_count`'s `pos=`/`max=` is
+Upgrade World's vertical cylinder (`Utils.DistanceXZ`, y ignored), so `half` is
+read as a radius.  For the clearing decision that is the correct shape anyway,
+because the removal is the same cylinder.
 
 Usage:
     clear.py plan  --world Ulfsland --preset pre-bonemass --id iron-era-workshop
@@ -94,6 +116,7 @@ sys.path.insert(0, str(JUMPSTART / "terraform"))
 from area import (ClearArea, ClearAreaRefused, DEFAULT_MARGIN_M,  # noqa: E402
                   clearing_area, placement)
 from rcon import Rcon  # noqa: E402
+from console import run_console  # noqa: E402
 
 ZONE_HALF_M = 32.0
 # A zone is selected by the distance from `pos` to its CENTRE (MEASURED:
@@ -102,11 +125,9 @@ ZONE_HALF_M = 32.0
 # plus a zone's half-diagonal.
 ZONE_REACH_M = ZONE_HALF_M * math.sqrt(2.0)
 DEFAULT_KEEP = ("_*",)
-FOUND_RE = re.compile(r"^Found (\d+) objects", re.M)
 # `Id:` is required on the line: ValheimRcon truncates a response at ~4050
 # bytes mid-line, and a bare `^-Prefab: (\S+)` happily reads "Pic" out of a
-# severed "Pickable_Stone" and reports it as an unremoved prefab.
-PREFAB_RE = re.compile(r"^-Prefab: (\S+) Id: ", re.M)
+# severed "Pickable_Stone" and reports it as a location marker.
 POSITION_RE = re.compile(
     r"^-Prefab: (\S+) Id: \S+ Position: \((-?[\d.]+) (-?[\d.]+) (-?[\d.]+)\)", re.M)
 # Every generated location plants one of these at its centre, so it is the
@@ -134,16 +155,39 @@ class Endpoint:
         return Rcon(host=self.host, port=self.port, password=self.password, timeout=timeout)
 
 
+TOTAL_RE = re.compile(r"^Total:?\s*(\d+)\s*$", re.M)
+# `objects_count`'s table is one `<prefab>: <count>` line per prefab. MEASURED
+# on the live workshop pad: `Total: 1907` first, then `stone_wall_2x1: 854` and
+# 59 more. The name is on the LEFT, which is the opposite way round from
+# `findObjects`, and reading it the other way silently produces a list of
+# numbers. The `Total:` line has the same shape as a prefab row, so it is
+# excluded explicitly -- without that, "Total" is reported as a prefab that
+# survived the removal.
+COUNT_LINE_RE = re.compile(r"^(?!Total:)(\S+):\s*(\d+)\s*$", re.M)
+
+
 def box_query(rc: Rcon, x: float, y: float, z: float, half: float) -> tuple[int, list[str]]:
-    """Objects inside the axis-aligned box of half-side `half`, as
-    (count, prefab names seen).  The count comes off the FIRST line because
-    ValheimRcon truncates responses past ~4050 bytes: the count survives
-    truncation, the listing does not."""
-    out = rc.command(f"findObjects -near {x:.2f} {y:.2f} {z:.2f} {half:.2f}")
-    found = FOUND_RE.search(out)
-    if not found:
-        return 0, []
-    return int(found.group(1)), PREFAB_RE.findall(out)
+    """Objects inside the cylinder of radius `half`, as (count, prefab names).
+
+    `y` is accepted and ignored: Upgrade World's filter is a vertical cylinder
+    on `Utils.DistanceXZ`. It stays in the signature because every caller has
+    the surface height to hand and dropping it would make the two coordinate
+    conventions in this file look interchangeable.
+
+    See this module's VERIFICATION note for why this counts on the console
+    instead of listing over RCON, and why `objects_count` is NOT staged.
+    """
+    del y
+    lines = run_console(
+        rc, f"objects_count id=* ignore=_* pos={x:.2f},{z:.2f} max={half:.2f}")
+    text = "\n".join(lines)
+    total = TOTAL_RE.search(text)
+    prefabs = [name for name, _count in COUNT_LINE_RE.findall(text)]
+    if total:
+        return int(total.group(1)), prefabs
+    # No total line at all means the query did not run, which must NOT read as
+    # "the pad is empty" - that is how a removal gets aimed at nothing.
+    raise RuntimeError(f"objects_count printed no Total line; console said {lines!r}")
 
 
 def locations_inside(rc: Rcon, area: ClearArea) -> list[tuple[str, float]]:
