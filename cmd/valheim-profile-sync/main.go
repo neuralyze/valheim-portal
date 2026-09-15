@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/neuralyze/valheim-portal/internal/version"
 )
 
 const applicationName = "Valheim Profile Sync"
@@ -47,7 +49,13 @@ func synchronizeProfile(ctx context.Context, request profileRequest, gameDir str
 			return false, err
 		}
 	}
-	report(reporter, progressUpdate{Stage: "Preparing profile", Detail: request.Profile, Percent: 5})
+	// Name the build in the output the player can see and paste. Three installers were
+	// shipped within an hour on 2026-09-14, all with the same filename and byte size, and
+	// one of them was missing its embedded ServerCharacters archive. Without a version in
+	// the log there was no way to tell from a failure report WHICH binary produced it, so
+	// the same wrong conclusion got drawn three times and the operator re-downloaded for
+	// nothing. A support report that cannot identify its own build is not a report.
+	report(reporter, progressUpdate{Stage: "Preparing profile", Detail: request.Profile + "  (installer " + version.Version + ")", Percent: 5})
 	syncer := newProfileSyncer(nil)
 	syncer.GameDir = gameDir
 	syncer.Progress = reporter
