@@ -627,14 +627,13 @@ func (s *Server) clientInstaller(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/vnd.microsoft.portable-executable")
-	// Named after the bytes; see clientDownloadName. A failure to describe them is not a
-	// reason to refuse the download - the artifact check above already passed - so the
-	// plain name is the fallback.
-	descriptor, describeErr := describeClientExecutable(s.cfg.ClientExecutable, &s.clientBuild)
+	// The plain name, deliberately. The operator asked for a controlled experiment: the
+	// working download differed from the failing ones in TWO ways at once - a
+	// digest-named URL and a client that self-updates - so neither could be credited.
+	// Holding the name constant isolates it. The digest-named route at
+	// /client/download/{name} still exists and is what the self-update fetches, so
+	// reverting this affects only what a browser saves the file as.
 	name := "ValheimProfileSync.exe"
-	if describeErr == nil {
-		name = clientDownloadName(descriptor)
-	}
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	// Revalidate on every download. This file is replaced in place whenever the client
 	// is rebuilt, and it keeps the SAME NAME and the SAME SIZE across builds - three

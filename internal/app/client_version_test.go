@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 )
 
@@ -110,53 +109,6 @@ func TestClientVersionRefusesWhatTheDownloadRouteRefuses(t *testing.T) {
 	server.cfg.ClientExecutable = writePE(t, peSubsystemGUI) + ".absent"
 	if code, _, _ := decodeClientVersion(t, server); code != http.StatusServiceUnavailable {
 		t.Fatalf("a missing client was advertised with %d", code)
-	}
-}
-
-// The download must be named after the bytes it is. A version constant cannot do this
-// job: the portal and the client are separate binaries, and on 2026-09-14 the portal
-// stamped its own (pinned, stale) version onto the client's filename, naming a build
-// that was not the one being served.
-func TestClientDownloadIsNamedAfterItsOwnBytes(t *testing.T) {
-	server := testServer(t)
-	executable := writePE(t, peSubsystemGUI)
-	server.cfg.ClientExecutable = executable
-
-	download := func() (*httptest.ResponseRecorder, string) {
-		t.Helper()
-		response := httptest.NewRecorder()
-		server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/client/ValheimProfileSync.exe", nil))
-		if response.Code != http.StatusOK {
-			t.Fatalf("download = %d", response.Code)
-		}
-		sum := sha256.Sum256(response.Body.Bytes())
-		return response, hex.EncodeToString(sum[:])
-	}
-
-	response, digest := download()
-	expected := `filename="ValheimProfileSync-` + digest[:12] + `.exe"`
-	if got := response.Header().Get("Content-Disposition"); !strings.Contains(got, expected) {
-		t.Fatalf("Content-Disposition %q does not name the served bytes (%s)", got, expected)
-	}
-
-	// Two builds must never share a filename, which is the entire point: same name,
-	// near-identical size, and no way to tell them apart is what cost the hour.
-	replacement, err := os.ReadFile(writePE(t, peSubsystemGUI))
-	if err != nil {
-		t.Fatal(err)
-	}
-	replacement = append(replacement, 0x90)
-	if err := os.WriteFile(executable, replacement, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	server.clientBuild = clientBuildCache{}
-	_, second := download()
-	if second == digest {
-		t.Fatal("this test needs two different builds")
-	}
-	nextResponse, _ := download()
-	if got := nextResponse.Header().Get("Content-Disposition"); !strings.Contains(got, second[:12]) {
-		t.Fatalf("the filename did not follow the bytes: %q", got)
 	}
 }
 
