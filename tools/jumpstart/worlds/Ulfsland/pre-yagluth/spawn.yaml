@@ -33,29 +33,29 @@ criteria:
   approach_max_step_m: 1.5
   y_clearance_m: 1.0
 points:
-- x: 695
+- x: 700
   y: 36
-  z: -4288
+  z: -4292
   base: plains-farm-base
   base_xz:
   - 718.5
   - -4310.5
   base_y: 36.67
   base_freeboard_m: 4.65
-  terrain_y: 34.3
-  spawn_freeboard_m: 4.3
-  disc_min_freeboard_m: 2.87
-  dist_to_base_m: 32.5
-  dist_to_footprint_edge_m: 6.3
+  terrain_y: 34.04
+  spawn_freeboard_m: 4.04
+  disc_min_freeboard_m: 3.2
+  dist_to_base_m: 26.2
+  dist_to_footprint_edge_m: 6.4
   footprint_half_extents_m:
-  - 26.2
-  - 26.25
+  - 15.15
+  - 19.75
   yaw: 315.0
   facade_agreement: 1.0
-  score: 0.999
+  score: 0.998
   approach:
-    length_m: 6.3
-    min_freeboard_m: 4.3
-    max_step_m: 0.29
+    length_m: 6.4
+    min_freeboard_m: 3.61
+    max_step_m: 0.4
     dry_to_footprint_edge: true
-  candidates_considered: 34993
+  candidates_considered: 32486

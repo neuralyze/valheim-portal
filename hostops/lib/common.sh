@@ -432,21 +432,21 @@ world_save_is_readable() {
 #
 # A world with no install yet (a first-ever boot, where the updater downloads
 # everything) has nothing to compare and passes.
+#
+# Since 2026-09-15 it also enforces the mod set's game-build ANCHOR, which is
+# the check this function was believed to be and was not: three copies of a NEW
+# build agree with each other perfectly. See the anchor section at the bottom of
+# this file for what is recorded, why the anchor is the assembly hash and not the
+# Steam buildid, and what a refusal does.
 require_matching_game_build() {
   local world=$1
-  local env_file="$VALHEIM_ROOT/$world/valheim.env"
-  local data_dir=""
+  local data_dir config_dir
+  data_dir=$(world_env_dir "$world" DATA_DIR data)
+  config_dir=$(world_env_dir "$world" CONFIG_DIR config_merged)
 
-  if [[ -f $env_file ]]; then
-    # DATA_DIR is quoted in the env file; strip one layer of either quote.
-    data_dir=$(sed -n 's/^DATA_DIR=//p' "$env_file" | tail -1 | sed "s/^[\"']//; s/[\"']$//")
-  fi
-  [[ -n $data_dir ]] || data_dir="$VALHEIM_ROOT/$world/data"
-
-  local managed=valheim_server_Data/Managed/assembly_valheim.dll
-  local install="$data_dir/server/$managed"
-  local overlay="$data_dir/bepinex/$managed"
-  local cache="$data_dir/dl/server/$managed"
+  local install="$data_dir/server/$VALHEIM_GAME_ASSEMBLY"
+  local overlay="$data_dir/bepinex/$VALHEIM_GAME_ASSEMBLY"
+  local cache="$data_dir/dl/server/$VALHEIM_GAME_ASSEMBLY"
 
   if [[ ! -f $install ]]; then
     echo "$world: no game install yet at $install - letting the updater fetch it" >&2
@@ -481,6 +481,16 @@ require_matching_game_build() {
         echo "    docker exec -u valheim valheim-server-$world bash -lc \\" >&2
         echo "      'cd /opt/steamcmd && ./steamcmd.sh +force_install_dir /opt/valheim/dl/server \\" >&2
         echo "       +login anonymous +app_update 896660 -validate +quit'" >&2
+        echo "  This world is deliberately DOWN, not broken; the reason is recorded in" >&2
+        echo "  $(game_build_hold_path "$world")." >&2
+        # Every refusal on this path writes a hold, so "is this world down on purpose?" is
+        # one file to read rather than three scripts to reverse-engineer.
+        write_game_build_hold "$world" \
+          "held=cache_older_than_install" \
+          "detail=the Steam download cache is older than the install, and the boot rsyncs it onto the install with --delete" \
+          "installed_game_assembly_sha256=$install_sum" \
+          "cache_game_assembly_sha256=$cache_sum" \
+          "release=refresh the Steam download cache, then start the world normally" || true
         return 1
       fi
       echo "$world: the Steam download cache differs from the install but is newer -" >&2
@@ -488,5 +498,365 @@ require_matching_game_build() {
     fi
   fi
 
+  require_anchored_game_build "$world" "$data_dir" "$config_dir" "$install_sum" "${cache_sum:-}"
+}
+
+# ---------------------------------------------------------------------------
+# The game-build anchor: what the deployed mod set was validated against.
+# ---------------------------------------------------------------------------
+#
+# require_matching_game_build above compares the three copies of the game to
+# each other. That catches a real failure, but it answers a question nobody
+# asked - "do these three files agree?" - and the question that matters is "is
+# this the build the plugins in this world were built against?". Three copies of
+# a NEW build agree with each other perfectly, so a legitimate Steam update
+# passes that check trivially, which is the case it most needs to catch. The
+# limitation was written down at the time: docs/proposed/2026-09-13-mod-set-
+# provenance.md:46-49.
+#
+# So the mod set gets a record of its own, beside the profile link it already
+# has (tools/profile_store.py:45 writes <world>/mods/.active-mod-profile):
+#
+#   <world>/mods/.game-build-anchor   key=value, written by record_game_build_anchor
+#   <world>/mods/.game-build-hold     key=value, written when a start is refused
+#
+# WHY THE ASSEMBLY HASH AND NOT THE STEAM BUILDID. Measured on this host
+# 2026-09-15:
+#
+#   Ulfsland/data/server/steamapps/appmanifest_896660.acf      ABSENT
+#   Ulfsland/data/dl/server/steamapps/appmanifest_896660.acf   buildid 25253791
+#   Hrafnheim: identical - absent under the install, 25253791 under the cache
+#
+# There is no appmanifest under the install at all, because the updater rsyncs
+# the cache onto the install with --exclude steamapps (valheim-updater:86). The
+# buildid is therefore a property of the DOWNLOAD CACHE - the one copy that is
+# allowed to be ahead of the install - so a gate keyed on it would be reading
+# one file to answer a question about a different one. The assembly hash is the
+# opposite: it is measurable on all three copies, and it is the surface the
+# plugins are patched against (assembly_valheim.dll, 2,560,000 bytes, sha256
+# 1231fc2f... on all 15 copies across the five worlds, measured 2026-09-15). So
+# the hash is what is compared; the buildid is recorded beside it because
+# "25253791 -> something else" is what a human can act on, and it is never
+# compared.
+#
+# The mod set's own fingerprint is recorded too, so the anchor cannot silently
+# outlive the mod set it claims to describe. It is structural - relative path
+# plus size over *.dll under bepinex/plugins and bepinex/patchers - not content:
+# the deployed set is 887,174,428 bytes on Ulfsland, and hashing that on every
+# start and every five-minute watchdog pass is I/O this gate does not need. A
+# mod-set difference is REPORTED and never refused: a changed plugin does not
+# overwrite a world, a changed binary does. What it means is "this anchor is
+# stale", and it is said in those words.
+VALHEIM_GAME_ASSEMBLY=valheim_server_Data/Managed/assembly_valheim.dll
+
+# world_env_dir reads one directory out of a world's valheim.env, falling back to
+# the conventional path under the world root. The values are quoted in that file
+# (CONFIG_DIR='...'), so one layer of either quote is stripped.
+world_env_dir() {
+  local world=$1 key=$2 fallback=$3
+  local env_file="$VALHEIM_ROOT/$world/valheim.env" value=""
+  if [[ -f $env_file ]]; then
+    value=$(sed -n "s/^$key=//p" "$env_file" | tail -1 | sed "s/^[\"']//; s/[\"']\$//")
+  fi
+  [[ -n $value ]] || value="$VALHEIM_ROOT/$world/$fallback"
+  printf '%s' "$value"
+}
+
+game_build_anchor_path() { printf '%s' "$VALHEIM_ROOT/$1/mods/.game-build-anchor"; }
+game_build_hold_path() { printf '%s' "$VALHEIM_ROOT/$1/mods/.game-build-hold"; }
+
+# anchor_field prints one value out of a key=value file, or nothing. A missing
+# file is not an error here: the caller decides what absence means, and the two
+# callers mean different things by it.
+anchor_field() {
+  local file=$1 key=$2
+  [[ -f $file ]] || return 0
+  sed -n "s/^$key=//p" "$file" | tail -1
+}
+
+# game_cache_buildid prints the Steam buildid of the DOWNLOAD CACHE, or
+# "unknown". It is recorded for a human to read and is never compared - see the
+# section header for why the install has no manifest to read.
+game_cache_buildid() {
+  local data_dir=$1 id=""
+  local manifest="$data_dir/dl/server/steamapps/appmanifest_896660.acf"
+  if [[ -r $manifest ]]; then
+    id=$(sed -n 's/^[[:space:]]*"buildid"[[:space:]]*"\([0-9]*\)".*/\1/p' "$manifest" | head -1)
+  fi
+  printf '%s' "${id:-unknown}"
+}
+
+# mod_set_fingerprint prints "<sha256> <dll count>" for one world's deployed mod
+# set, or "none 0" when nothing is deployed there yet.
+mod_set_fingerprint() {
+  local config_dir=$1 listing="" sum="" count=0
+  local plugins="$config_dir/bepinex/plugins" patchers="$config_dir/bepinex/patchers"
+  listing=$(
+    {
+      if [[ -d $plugins ]]; then
+        find "$plugins" -type f -name '*.dll' -printf 'plugins/%P %s\n' 2>/dev/null
+      fi
+      if [[ -d $patchers ]]; then
+        find "$patchers" -type f -name '*.dll' -printf 'patchers/%P %s\n' 2>/dev/null
+      fi
+    } | LC_ALL=C sort
+  ) || true
+  if [[ -n $listing ]]; then
+    count=$(printf '%s\n' "$listing" | wc -l | tr -d ' ')
+    sum=$(printf '%s\n' "$listing" | sha256sum | cut -d' ' -f1)
+  fi
+  printf '%s %s' "${sum:-none}" "$count"
+}
+
+# record_game_build_anchor states that this world's deployed mod set runs on one
+# particular game build. It is the human decision, made explicit: the deploy path
+# calls it after staging a mod set, and an operator calls it through
+# hostops/anchor_game_build.sh after re-validating one against a new build.
+# Recording releases any hold, because the hold is the absence of this decision.
+#
+#   record_game_build_anchor WORLD REASON [install|cache]
+#
+# The third argument names which copy of the game to read the build from, and
+# defaults to the install. "cache" exists for the one case the install cannot
+# answer: a Steam update that has landed in the download cache and not yet been
+# rsynced onto the install. Without it a pending update would be unreleasable,
+# because the install only changes on boot and the boot is what gets refused.
+record_game_build_anchor() {
+  local world=$1 reason=$2 source=${3:-install}
+  local data_dir config_dir copy copy_sum copy_bytes buildid anchor tmp fp count
+  data_dir=$(world_env_dir "$world" DATA_DIR data)
+  config_dir=$(world_env_dir "$world" CONFIG_DIR config_merged)
+  case "$source" in
+  install) copy="$data_dir/server/$VALHEIM_GAME_ASSEMBLY" ;;
+  cache) copy="$data_dir/dl/server/$VALHEIM_GAME_ASSEMBLY" ;;
+  *)
+    echo "$world: cannot anchor - unknown source '$source' (want install or cache)" >&2
+    return 1
+    ;;
+  esac
+  if [[ ! -f $copy ]]; then
+    echo "$world: cannot anchor - there is no game $source at $copy" >&2
+    return 1
+  fi
+  copy_sum=$(sha256sum -- "$copy" | cut -d' ' -f1)
+  copy_bytes=$(stat -c %s -- "$copy")
+  buildid=$(game_cache_buildid "$data_dir")
+  read -r fp count <<<"$(mod_set_fingerprint "$config_dir")"
+  anchor=$(game_build_anchor_path "$world")
+  mkdir -p -- "${anchor%/*}" 2>/dev/null || true
+  tmp="$anchor.new.$$"
+  if ! {
+    printf 'anchor_version=1\n'
+    printf 'world=%s\n' "$world"
+    printf 'game_assembly_sha256=%s\n' "$copy_sum"
+    printf 'game_assembly_bytes=%s\n' "$copy_bytes"
+    printf 'game_assembly_source=%s\n' "$source"
+    printf 'game_buildid=%s\n' "$buildid"
+    printf 'mod_set_fingerprint=%s\n' "$fp"
+    printf 'mod_set_dll_count=%s\n' "$count"
+    printf 'recorded_at=%s\n' "$(date --iso-8601=seconds)"
+    printf 'recorded_by=%s\n' "${SUDO_USER:-${USER:-unknown}}"
+    printf 'recorded_reason=%s\n' "$reason"
+  } >"$tmp" 2>/dev/null; then
+    rm -f -- "$tmp" 2>/dev/null || true
+    echo "$world: could not write the game-build anchor at $anchor" >&2
+    return 1
+  fi
+  if ! mv -f -- "$tmp" "$anchor" 2>/dev/null; then
+    rm -f -- "$tmp" 2>/dev/null || true
+    echo "$world: could not install the game-build anchor at $anchor" >&2
+    return 1
+  fi
+  echo "$world: game-build anchor recorded ($reason)" >&2
+  echo "  assembly $copy_sum ($copy_bytes bytes) from the $source, Steam cache buildid $buildid" >&2
+  echo "  mod set  $fp ($count dll)" >&2
+  clear_game_build_hold "$world"
+  return 0
+}
+
+# write_game_build_hold records WHY a world is deliberately not running. Extra
+# arguments are key=value lines appended verbatim.
+#
+# This file is the answer to "is this world down because Steam moved, or because
+# it is broken?". A crash leaves no hold file; this is only ever written by a
+# refusal, and it is removed the moment a start passes the gate, so its presence
+# means "held now", not "was held once".
+write_game_build_hold() {
+  local world=$1
+  shift
+  local hold tmp
+  hold=$(game_build_hold_path "$world")
+  mkdir -p -- "${hold%/*}" 2>/dev/null || true
+  tmp="$hold.new.$$"
+  if ! {
+    printf 'hold_version=1\n'
+    printf 'world=%s\n' "$world"
+    printf 'detected_at=%s\n' "$(date --iso-8601=seconds)"
+    printf 'detected_by=%s\n' "${0##*/}"
+    printf '%s\n' "$@"
+  } >"$tmp" 2>/dev/null; then
+    rm -f -- "$tmp" 2>/dev/null || true
+    return 1
+  fi
+  mv -f -- "$tmp" "$hold" 2>/dev/null || { rm -f -- "$tmp" 2>/dev/null || true; return 1; }
+  return 0
+}
+
+clear_game_build_hold() {
+  local hold
+  hold=$(game_build_hold_path "$1")
+  [[ -e $hold ]] || return 0
+  if rm -f -- "$hold" 2>/dev/null; then
+    echo "$1: cleared the game-build hold at $hold" >&2
+  fi
+  return 0
+}
+
+# require_anchored_game_build refuses a start when the game build is not the one
+# this world's mod set was anchored to. Call it from require_matching_game_build,
+# never directly: the three-copy comparison has to run first, because the copy
+# this compares is the install and the overlay repair is what makes the install
+# the copy that will execute.
+#
+# The comparison is against the build that will be EXECUTING after this start,
+# which is the cache's when a cache exists and the install's otherwise:
+#
+#   cache != anchor          REFUSE. The boot rsyncs the cache onto the install
+#                            (valheim-updater:86, with --delete) and re-merges the
+#                            overlay, unconditionally and with no host-side file
+#                            able to stop it, so the start IS the update and the
+#                            start is the only place it can be stopped. Reported
+#                            as pending_game_update when the install still matches
+#                            the anchor, game_build_changed when neither does.
+#   no cache, install
+#   != anchor                REFUSE. The game changed under the mod set.
+#   cache == anchor but
+#   install != anchor        PERMIT, and say so: the boot installs the anchored
+#                            build from the cache, so the anchored build is what
+#                            ends up executing.
+#   anchor present but has
+#   no assembly hash         REFUSE. A safety record that cannot be read
+#                            certifies nothing, and a human wrote it.
+#   mod set != anchor        REPORT. The anchor is stale; the binary is still the
+#                            one the anchor names.
+#
+# No anchor at all records the installed build and then compares against it. That
+# is trust-on-first-use, and it is the only honest option here: five worlds are
+# deployed today with no anchor, refusing them all would take the fleet down to
+# install a safety feature, and there is nothing on disk that says what those mod
+# sets were validated against. What it records is a fact - "this is what is
+# installed right now" - not a certification, and it says so.
+#
+# A first observation is still COMPARED, not waved through. Recording the install
+# and then returning would let a pending update ride in on the first pass, which
+# is the one route this function exists to close.
+require_anchored_game_build() {
+  local world=$1 data_dir=$2 config_dir=$3 install_sum=$4 cache_sum=${5:-}
+  local anchor expected expected_buildid recorded_at recorded_reason buildid fp count anchor_fp
+
+  anchor=$(game_build_anchor_path "$world")
+  buildid=$(game_cache_buildid "$data_dir")
+  read -r fp count <<<"$(mod_set_fingerprint "$config_dir")"
+
+  if [[ ! -f $anchor ]]; then
+    echo "$world: no game-build anchor yet - recording the installed build as the" >&2
+    echo "  one this mod set runs on. This records what is installed now; it does not" >&2
+    echo "  certify that the $count deployed dll were validated against it." >&2
+    if ! record_game_build_anchor "$world" first-observation; then
+      echo "$world: WARNING - no anchor was written, so a game-build change cannot be detected." >&2
+      return 0
+    fi
+  fi
+
+  expected=$(anchor_field "$anchor" game_assembly_sha256)
+  expected_buildid=$(anchor_field "$anchor" game_buildid)
+  recorded_at=$(anchor_field "$anchor" recorded_at)
+  recorded_reason=$(anchor_field "$anchor" recorded_reason)
+
+  if [[ -z $expected ]]; then
+    echo "$world: REFUSING TO START - the game-build anchor is unreadable." >&2
+    echo "  anchor $anchor has no game_assembly_sha256 line." >&2
+    echo "  A human wrote that file to say which build this mod set runs on. Re-record it" >&2
+    echo "  once you know the answer:  ./hostops/anchor_game_build.sh $world --reason operator-approved" >&2
+    write_game_build_hold "$world" \
+      "held=anchor_unreadable" \
+      "anchor=$anchor" \
+      "detail=the game-build anchor exists but carries no game_assembly_sha256, so nothing can be compared" \
+      "release=./hostops/anchor_game_build.sh $world --reason operator-approved" || true
+    return 1
+  fi
+
+  # What matters is the build that will be EXECUTING after this start, not the one on the
+  # install right now: the container rsyncs the download cache onto the install on boot
+  # (valheim-updater:86, with --delete) and re-merges the overlay when that rsync reports a
+  # change. So when a cache is present it is the cache that decides, and an install which
+  # differs from the anchor while the cache holds the anchored build is not a refusal - it is
+  # the boot repairing itself.
+  #
+  # This is also what keeps the gate releasable. Anchoring reads the install, so if a refusal
+  # required install == anchor there would be no way out of a pending update: the install only
+  # changes on boot, and the boot is what is refused. --from-cache is the human's way to say
+  # "the mod set was validated against the build that is about to land".
+  local held="" detail=""
+  if [[ -n $cache_sum && $cache_sum != "$expected" ]]; then
+    if [[ $install_sum == "$expected" ]]; then
+      held=pending_game_update
+      detail="the Steam download cache holds a different game build, and the container rsyncs it onto the install on boot"
+    else
+      held=game_build_changed
+      detail="neither the installed game assembly nor the Steam download cache is the build this mod set was anchored to"
+    fi
+  elif [[ $install_sum != "$expected" ]]; then
+    if [[ -n $cache_sum ]]; then
+      echo "$world: the install is not the anchored build, but the Steam cache is - the boot" >&2
+      echo "  rsyncs the cache onto the install, so the anchored build is what will execute." >&2
+    else
+      held=game_build_changed
+      detail="the installed game assembly is not the one this mod set was anchored to"
+    fi
+  fi
+
+  if [[ -n $held ]]; then
+    echo "$world: REFUSING TO START - $detail." >&2
+    echo "  anchored  $expected  (Steam cache buildid $expected_buildid, recorded $recorded_at, $recorded_reason)" >&2
+    echo "  installed $install_sum" >&2
+    if [[ -n $cache_sum ]]; then
+      echo "  cache     $cache_sum  (Steam cache buildid $buildid)" >&2
+    fi
+    echo "  This world's $count deployed dll were validated against the anchored build." >&2
+    echo "  Starting anyway is the 2026-09-13 failure: a mismatched binary generated a" >&2
+    echo "  fresh world and saved it over the real one (Doggerland.db 20,164,038 -> 70 bytes)." >&2
+    echo "  This world is deliberately DOWN, not broken. The reason is recorded in:" >&2
+    echo "    $(game_build_hold_path "$world")" >&2
+    echo "  Re-validate the mod set against the new build, then release the hold - from the" >&2
+    echo "  install, or from the Steam cache when the new build has not landed on it yet:" >&2
+    echo "    ./hostops/anchor_game_build.sh $world --reason operator-approved" >&2
+    echo "    ./hostops/anchor_game_build.sh $world --from-cache --reason operator-approved" >&2
+    write_game_build_hold "$world" \
+      "held=$held" \
+      "detail=$detail" \
+      "anchored_game_assembly_sha256=$expected" \
+      "installed_game_assembly_sha256=$install_sum" \
+      "cache_game_assembly_sha256=${cache_sum:-absent}" \
+      "anchored_steam_cache_buildid=$expected_buildid" \
+      "steam_cache_buildid=$buildid" \
+      "anchor_recorded_at=$recorded_at" \
+      "anchor_recorded_reason=$recorded_reason" \
+      "mod_set_dll_count=$count" \
+      "release=./hostops/anchor_game_build.sh $world --reason operator-approved" || true
+    return 1
+  fi
+
+  anchor_fp=$(anchor_field "$anchor" mod_set_fingerprint)
+  if [[ -n $anchor_fp && $anchor_fp != "$fp" ]]; then
+    echo "$world: the deployed mod set is not the one the game-build anchor describes." >&2
+    echo "  anchored mod set $anchor_fp ($(anchor_field "$anchor" mod_set_dll_count) dll, recorded $recorded_at)" >&2
+    echo "  deployed mod set $fp ($count dll)" >&2
+    echo "  The binary is still the anchored build, so this world starts. What is stale is" >&2
+    echo "  the claim that these plugins were validated against it; re-record it with" >&2
+    echo "  ./hostops/anchor_game_build.sh $world --reason mod-set-changed when that is true." >&2
+  fi
+
+  clear_game_build_hold "$world"
   return 0
 }

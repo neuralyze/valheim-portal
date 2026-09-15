@@ -33,7 +33,7 @@ criteria:
   approach_max_step_m: 1.5
   y_clearance_m: 1.0
 points:
-- x: 232
+- x: 231
   y: 79
   z: 343
   base: meadows-starter-hall
@@ -42,20 +42,20 @@ points:
   - 353.5
   base_y: 78.36
   base_freeboard_m: 47.49
-  terrain_y: 77.78
-  spawn_freeboard_m: 47.78
-  disc_min_freeboard_m: 47.62
-  dist_to_base_m: 14.2
+  terrain_y: 77.87
+  spawn_freeboard_m: 47.87
+  disc_min_freeboard_m: 47.41
+  dist_to_base_m: 14.8
   dist_to_footprint_edge_m: 6.4
   footprint_half_extents_m:
-  - 9.55
-  - 7.75
+  - 4.0
+  - 8.4
   yaw: 225.0
-  facade_agreement: 0.999
+  facade_agreement: 1.0
   score: 0.998
   approach:
     length_m: 6.4
     min_freeboard_m: 47.78
-    max_step_m: 0.28
+    max_step_m: 0.22
     dry_to_footprint_edge: true
-  candidates_considered: 53030
+  candidates_considered: 50784

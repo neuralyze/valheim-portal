@@ -16,7 +16,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 # its lib/common.sh and the stubbed gate, with the world root and the
 # valheim-server-docker checkout supplied through the environment.
 mkdir -p "$tmp/hostops/lib" "$tmp/bin" "$tmp/valheim-server-docker" "$tmp/valheim/$WORLD"
-cp "$HOSTOPS/start_valheim_server.sh" "$tmp/hostops/"
+cp "$HOSTOPS/start_valheim_server.sh" "$HOSTOPS/anchor_game_build.sh" "$tmp/hostops/"
 cp "$HOSTOPS/lib/common.sh" "$tmp/hostops/lib/"
 touch "$tmp/valheim/$WORLD/valheim.env" "$tmp/valheim-server-docker/docker-compose.yaml"
 
@@ -108,6 +108,11 @@ build_world() {
   printf '%s' "$2" >"$data/bepinex/$managed"
   printf '%s' "$3" >"$data/dl/server/$managed"
   printf "DATA_DIR='%s'\n" "$data" >"$tmp/valheim/$WORLD/valheim.env"
+  # Each case here is about the three copies of the game agreeing with each other, so each one
+  # starts from a world with no game-build anchor yet: the gate records the installed build on
+  # first observation, and these cases are not about what happens on the second start.
+  # hostops/tests/game_build_anchor_gate.sh is where the anchor itself is tested.
+  rm -f -- "$tmp/valheim/$WORLD/mods/.game-build-anchor" "$tmp/valheim/$WORLD/mods/.game-build-hold"
 }
 
 # 6a. All three agree: start normally, and do not signal a re-merge.
@@ -137,13 +142,29 @@ run_start 0 "$WORLD"
 grep -q 'REFUSING TO START' "$tmp/err" ||
   fail "older cache: stderr does not refuse clearly: $(cat "$tmp/err")"
 
-# 6d. Cache differs but is NEWER: a pending update, which is normal. Start.
+# 6d. Cache differs from the install and is NEWER: an update Steam has downloaded and the
+#     container will rsync onto the install on boot. That start IS the update, and the mod set
+#     was anchored to the build the install still carries, so it is refused - this is the hole
+#     the anchor exists to close, and until 2026-09-15 this case started the world.
 build_world oldbuild oldbuild newbuild
 run_start 0 "$WORLD"
-[[ $rc -eq 0 ]] || fail "newer cache: expected exit 0, got $rc -- $(cat "$tmp/err")"
-[[ -s $DOCKER_LOG ]] || fail "newer cache: docker was not invoked"
+[[ $rc -ne 0 ]] || fail "newer cache: expected non-zero exit, got 0"
+[[ ! -s $DOCKER_LOG ]] || fail "newer cache: docker was invoked: $(cat "$DOCKER_LOG")"
+grep -q '^held=pending_game_update$' "$tmp/valheim/$WORLD/mods/.game-build-hold" ||
+  fail "newer cache: hold does not name a pending update: $(cat "$tmp/valheim/$WORLD/mods/.game-build-hold")"
 
-rm -rf -- "$data"
+# 6e. The mirror image: the cache holds the ANCHORED build and the install does not. The boot
+#     rsyncs the cache onto the install, so the anchored build is what ends up executing, and
+#     refusing here would make a pending update unreleasable - the install only changes on boot.
+build_world oldbuild oldbuild newbuild
+bash "$tmp/hostops/anchor_game_build.sh" "$WORLD" --from-cache --reason operator-approved \
+  >/dev/null 2>&1 || fail "cache anchor: anchor_game_build.sh --from-cache failed"
+run_start 0 "$WORLD"
+[[ $rc -eq 0 ]] || fail "cache anchor: expected exit 0, got $rc -- $(cat "$tmp/err")"
+[[ -s $DOCKER_LOG ]] || fail "cache anchor: docker was not invoked"
+
+rm -rf -- "$data" "$tmp/valheim/$WORLD/mods"
+
 rm -f -- "$tmp/valheim/$WORLD/valheim.env"
 touch "$tmp/valheim/$WORLD/valheim.env"
 

@@ -28,8 +28,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+# shellcheck source=hostops/lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
 CONTAINER_NAME="valheim-server-$WORLD_NAME"
-STATE_DIR=/var/log/valheim-worlds
+# The default is the host's log directory, which only root can write. The override exists so the
+# regression test can exercise the restart decision without root and without a real world.
+STATE_DIR=${VALHEIM_HANG_STATE_DIR:-/var/log/valheim-worlds}
 LOG_FILE="$STATE_DIR/hang-watchdog.log"
 STAMP_FILE="$STATE_DIR/.hang-watchdog-$WORLD_NAME.last"
 
@@ -80,6 +84,39 @@ if [[ -n "$BUNDLE" && -f "$BUNDLE/hang-context.txt" ]]; then
     VERDICT=$(sed -n 's/^verdict=//p' "$BUNDLE/hang-context.txt" | head -1)
 fi
 
+# restart_is_allowed decides whether this world may be started again, and prints the gate's own
+# explanation either way.
+#
+# A container start is not the cheap action it looks like. Starting one runs the in-container
+# valheim-updater, which does `steamcmd +app_update 896660` and then rsyncs the download cache onto
+# the install with --delete (valheim-updater:86,162), re-merges the BepInEx overlay and starts the
+# server. So `docker restart` on this timer is an unattended GAME UPDATE, on a two-minute cycle,
+# with no human present - and on 2026-09-13 a binary that did not match its mod set generated a
+# fresh world and saved it over the real one.
+#
+# The gate is applied HERE rather than by routing this through stop_valheim_server.sh /
+# start_valheim_server.sh the way watch_valheim_servers.sh does, for two measured reasons:
+#
+#   1. Those scripts require VALHEIM_SERVER_DOCKER_DIR and this unit does not set it -
+#      /etc/systemd/system/valheim-hang-watchdog@.service carries only
+#      Environment=VALHEIM_ROOT=... - so require_server_docker_dir would exit 78 and a hung world
+#      would stop being recoverable at all. Trading a hazard for a broken recovery is worse than
+#      the hazard.
+#   2. `docker compose down` removes the container and `up -d --build` rebuilds the image; this
+#      script exists to recover a wedge in seconds while keeping the evidence it just captured.
+#
+# The gate itself is the shared one, so the hang path and the five-minute watchdog path refuse on
+# exactly the same evidence. It needs the world root: without it nothing can be measured, and an
+# unmeasured restart is the hazard, so a missing root refuses rather than restarting blind.
+restart_is_allowed() {
+    if [[ -z ${VALHEIM_ROOT:-}${AGENT_WORLD_ROOT:-}${VALHEIM_WORLD_ROOT:-} ]]; then
+        echo "no world root configured (VALHEIM_ROOT) - cannot check the game build"
+        return 1
+    fi
+    require_valheim_root
+    require_matching_game_build "$WORLD_NAME"
+}
+
 # Restart only when the evidence says the server is actually wedged.
 #
 # Silence alone is not enough to justify kicking players: the capture can distinguish a stopped game
@@ -89,6 +126,15 @@ if (( RESTART )); then
     if [[ "$VERDICT" == MAIN_LOOP_ALIVE* ]]; then
         note "$WORLD_NAME: NOT restarting - the main loop is alive despite the silence ($VERDICT)"
     else
+        GATE_OUTPUT=""
+        if ! GATE_OUTPUT=$(restart_is_allowed 2>&1); then
+            note "$WORLD_NAME: NOT restarting - the game-build gate refused: $(printf '%s' "$GATE_OUTPUT" | tr '\n' ' ')"
+            note "$WORLD_NAME: the container was left as it is, hung and capturable. Nothing was updated."
+            exit 1
+        fi
+        if [[ -n $GATE_OUTPUT ]]; then
+            note "$WORLD_NAME: game-build gate: $(printf '%s' "$GATE_OUTPUT" | tr '\n' ' ')"
+        fi
         note "$WORLD_NAME: restarting after capture ($VERDICT)"
         if docker restart "$CONTAINER_NAME" >/dev/null 2>&1; then
             note "$WORLD_NAME: restart completed"

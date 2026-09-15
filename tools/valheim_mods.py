@@ -1576,15 +1576,26 @@ def stale_cache_entries(root, manifest):
     keep, and no check that reads only the directory name can tell those apart. Comparing
     against the archive can, exactly and cheaply.
 
+    Keeping `<Package>/patchers/` intact is correct here, but it is NOT the same as the
+    deploy knowing how to run what is inside it, and this docstring previously implied it
+    was. MEASURED 2026-09-15: FOUR packages now ship a patcher, not three, and the fourth -
+    L4zerShark_Team-CLLCCompatibility - nests it a level deeper at
+    `<Package>/patchers/<Vendor-Name>/<Name>.dll`. cmd_deploy's hoist globbed only
+    `*/patchers/*.dll`, so it matched the three flat ones and left the nested one under
+    plugins/, inert and silent. The hoist is now depth-independent; this check is unchanged
+    and was never wrong, but do not read "the extractor is right to keep it" as "and
+    therefore something downstream handles it".
+
     MEASURED 2026-09-15 over all seven profiles, both cache sides and every pinned package
     (14 caches, 86-94 packages each): exactly ONE entry fails this check,
     ulfsland-dn/server/ImpactfulSkills, whose DLL sits at ImpactfulSkills/plugins/
     while the identical archive in ulfsland-admin extracted flat. Re-extracting that same
     archive with the current extractor produces the flat layout, so the entry is stale -
     written before 'plugins/' was in the strip list - and not a layout the deploy has never
-    handled. Five other packages per profile do hold nested files (BepInExPack_Valheim's
-    BepInEx/core, three patchers/, Ravenwood_Currency and Venture_Area_Repair's own
-    subfolders); all five reproduce exactly from their archives and all five pass.
+    handled. Six other packages per profile do hold nested files (BepInExPack_Valheim's
+    BepInEx/core, four patchers/ - three flat plus CLLCCompatibility's nested one -
+    Ravenwood_Currency and Venture_Area_Repair's own subfolders); all reproduce exactly
+    from their archives and all pass.
 
     Returns [(identifier, install_name, missing paths)]. Extra files are tolerated: a
     deploy is harmed by a file that is not where it belongs, not by one that is also
@@ -1712,6 +1723,53 @@ def deploy_server_config(root, world_root):
     for entry in touched:
         print(f'server_config_override={entry}')
 
+def record_deploy_game_build_anchor(world_root):
+    """Anchor the deployed mod set to the game build it was staged against.
+
+    Returns the anchored assembly SHA-256, or 'unavailable reason=<why>'. The caller prints
+    it as `game_build_anchor=` beside `deployed=true`, in the same outcome vocabulary as
+    `generated_placed=`, `deploy_dropped=` and `patcher_hoisted=` - three silent failures
+    that only became visible because they had a line of their own.
+
+    Why the deploy writes this at all: `require_matching_game_build` (hostops/lib/common.sh)
+    refuses to START a world whose installed game assembly differs from its anchor, and
+    recording an anchor is what releases that hold. Until now the deploy recorded nothing,
+    so the anchor was established by trust-on-first-use or by an operator remembering a
+    separate command - which means a Steam update could change the binary under a validated
+    mod set and the first thing to notice would be the game. The deploy IS the revalidation,
+    so it is the right place: `record_game_build_anchor`'s own docstring already says "the
+    deploy path calls it after staging a mod set", and anchor_game_build.sh documents the
+    order as deploy first, anchor second.
+
+    This NEVER raises. A changed game build must refuse a START; a deploy that has already
+    moved files must not fail afterwards on bookkeeping, and an unwritable anchor is not a
+    reason to leave a world with half a mod set. The failure is reported on the line instead,
+    which keeps it visible rather than turning it into an outage. Note the deliberate
+    asymmetry this preserves: a CHANGED game build refuses a start, a STALE
+    mod_set_fingerprint only reports - that distinction is the difference between a gate and
+    an outage, and nothing here collapses it.
+    """
+    script = portal_paths.HOSTOPS_ROOT/'anchor_game_build.sh'
+    if not script.is_file():
+        return 'unavailable reason=no-anchor-script'
+    environment = dict(os.environ, VALHEIM_ROOT=str(world_root.parent))
+    try:
+        done = subprocess.run([str(script), world_root.name, '--reason', 'deploy'],
+                              env=environment, capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as error:
+        return f'unavailable reason={type(error).__name__}'
+    if done.returncode != 0:
+        # The script explains itself on stderr; keep its last line so the outcome names the
+        # actual obstacle (no game install, unreadable assembly) rather than just a code.
+        detail = (done.stderr or '').strip().splitlines()
+        return f'unavailable reason=exit{done.returncode}' + (f' detail={detail[-1]!r}' if detail else '')
+    anchor = world_root/'mods'/'.game-build-anchor'
+    try:
+        recorded = dict(line.split('=', 1) for line in anchor.read_text().splitlines() if '=' in line)
+    except OSError:
+        return 'unavailable reason=anchor-unreadable'
+    return recorded.get('game_assembly_sha256') or 'unavailable reason=anchor-incomplete'
+
 def cmd_deploy(root,m,args):
     world=args.world_dir.name
     server_plugins=cache(root)/'server'/'BepInEx'/'plugins'
@@ -1785,20 +1843,32 @@ def cmd_deploy(root,m,args):
                 backup.rename(target)
             raise
     # Hoist package-shipped preloader patchers. A Thunderstore package that carries one puts it
-    # at <Package>/patchers/*.dll, and BepInEx only runs patchers from BepInEx/patchers - one
+    # under <Package>/patchers/, and BepInEx only runs patchers from BepInEx/patchers - one
     # left under plugins/ is inert, silently. valheim-profile-sync already does this hoist for
     # clients; the server side had no equivalent, so on 2026-09-12 both Valheim10Compatibility's
     # patcher and ServersideQoL's had to be moved by hand after installing them through the
     # tooling, and any later deploy would have disarmed them again without saying so. That
     # matters more than it sounds: a game-assembly signature can only be fixed by a preloader
     # patch, so an inert patcher means mods that loaded yesterday stop loading today.
+    #
+    # The search is DEPTH-INDEPENDENT because the depth is the author's choice, not a
+    # convention. MEASURED 2026-09-15: EverybodyShim, ServersideQoL and Valheim10Compatibility
+    # all ship theirs flat at <Package>/patchers/<Name>.dll, but
+    # L4zerShark_Team-CLLCCompatibility ships it one level deeper at
+    # <Package>/patchers/<Vendor-Name>/<Name>.dll. The previous glob was '*/patchers/*.dll',
+    # which matched the three flat ones and silently missed the nested one - and
+    # stale_cache_entries below is right that the extractor must KEEP these subfolders, so
+    # nothing upstream flattens them. BepInEx itself loads patchers by file name out of one
+    # flat directory, so the intermediate directory carries no meaning here either.
     patchers = world_root/'config_merged'/'bepinex'/'patchers'
     patchers.mkdir(parents=True, exist_ok=True)
-    for shipped in sorted(target.glob('*/patchers/*.dll')):
+    for shipped in sorted(p for d in target.glob('*/patchers') if d.is_dir() for p in d.rglob('*.dll')):
         placed = patchers/shipped.name
         if not placed.is_file() or shipped.stat().st_mtime > placed.stat().st_mtime:
             copy_into_place(shipped, placed)
-            print(f'patcher_hoisted={shipped.parent.parent.name}/{shipped.name}')
+            # Name the PACKAGE, not the immediate parent: with a nested layout the parent is
+            # the vendor subfolder, so parent.parent used to read 'patchers/<Name>.dll'.
+            print(f'patcher_hoisted={shipped.relative_to(target).parts[0]}/{shipped.name}')
     if runtime_plugins.is_dir():
         for entry in runtime_plugins.iterdir():
             if entry.is_dir() and not entry.is_symlink():
@@ -1806,6 +1876,7 @@ def cmd_deploy(root,m,args):
             else:
                 entry.unlink()
     deploy_server_config(root, world_root)
+    print(f'game_build_anchor={record_deploy_game_build_anchor(world_root)}')
     print('deployed=true')
 
 def cmd_admin_mode(root, m, args):

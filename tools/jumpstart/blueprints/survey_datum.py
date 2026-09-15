@@ -36,61 +36,48 @@ sys.path.insert(0, str(HERE))
 import base_geometry as bg  # noqa: E402
 from to_rcon_plan import read_objects  # noqa: E402
 
-CORPUS_ROOTS = [
-    Path("/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/"
-         "BepInEx/PlanBuild/blueprints"),
-    Path("/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/"
-         "PlanBuild/blueprints"),
-    JUMPSTART / "library" / "staging",
-    JUMPSTART / "library" / "bodies",
-]
+sys.path.insert(0, str(JUMPSTART / "library"))
+from materialise import load_rows, locate  # noqa: E402
 
 
 def resolve_bodies() -> dict[str, Path]:
-    """Every manifest row -> a body on disk. Raises if any row is unresolvable,
-    because a survey that silently covers 140 of 176 files is not a survey.
+    """Every RESOLVABLE manifest row -> the body on disk, keyed by library handle.
 
-    A candidate of ZERO bytes never wins over a later root. MEASURED: the
-    `old_Storgard` root holds 0-byte stubs for `s-ren-dockhouse.blueprint` and
-    `salty-dick-cottage-final.blueprint` while `bp_old` holds the real 101,856
-    and 83,966-byte bodies, and first-root-wins resolved both buildings to
-    nothing. The survey then reported them as floorless rather than as
-    unresolved, which is the same failure shape as the pivot-plane bug: a
-    confident answer to a question that was not measured. An empty file is only
-    accepted when every root offers nothing better, so a manifest name whose
-    only copy is genuinely empty still resolves and still raises nothing.
+    There used to be a second resolver here, walking a hard-coded root list and
+    matching on file name. It is gone, and both reasons are worth recording
+    because each one produced a confident wrong answer:
+
+    * **Name is not identity.** `brokkr-the-cathedral.blueprint` exists in two
+      sources and is two DIFFERENT buildings (8269 and 8240 pieces, MEASURED).
+      Keying on the name surveyed whichever root came first and never reported
+      the other. The manifest now carries a unique `name` handle and the
+      `source_name` to look for on disk, and `library/materialise.locate`
+      requires the body to HASH to what the row claims -- so a survey row is
+      about a known body rather than about a file that happened to match.
+    * **A zero-byte candidate must never win.** The `old_Storgard` root holds
+      0-byte stubs for `s-ren-dockhouse.blueprint` and
+      `salty-dick-cottage-final.blueprint` while another root holds the real
+      101,856 and 83,966-byte bodies (MEASURED). First-root-wins resolved both
+      to nothing and this survey then reported two real buildings as FLOORLESS.
+
+    Rows marked `resolvable: false` -- the ten 0-byte corpus names, which have
+    exactly one copy each and it is empty -- are SKIPPED and returned separately
+    rather than raised on. A body that does not exist is not a survey failure;
+    claiming to have surveyed it would be.
     """
-    manifest = json.loads(
-        (JUMPSTART / "library" / "data" / "library_manifest.json").read_text()
-    )
-    out: dict[str, Path] = {}
-    missing = []
-    for entry in manifest["entries"]:
-        name = entry["name"]
-        if name in out:
+    resolved: dict[str, Path] = {}
+    missing: list[str] = []
+    for entry in load_rows():
+        if not entry.get("resolvable", bool(entry.get("sha256"))):
             continue
-        fallback: Path | None = None
-        for root in CORPUS_ROOTS:
-            direct = root / name
-            hits = [direct] if direct.is_file() else (
-                sorted(root.rglob(name)) if root.is_dir() else []
-            )
-            for hit in hits:
-                if hit.stat().st_size:
-                    out[name] = hit
-                    break
-                if fallback is None:
-                    fallback = hit
-            if name in out:
-                break
-        else:
-            if fallback is not None:
-                out[name] = fallback
-            else:
-                missing.append(name)
+        path = locate(entry)
+        if path is None:
+            missing.append(entry["name"])
+            continue
+        resolved[entry["name"]] = path
     if missing:
         raise SystemExit(f"unresolved bodies: {missing}")
-    return out
+    return resolved
 
 
 def survey(geom: bg.Geometry) -> list[dict]:

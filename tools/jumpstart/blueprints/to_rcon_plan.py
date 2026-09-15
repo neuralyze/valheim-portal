@@ -58,7 +58,7 @@ Usage
         [--out plan.txt] [--verify] [--keep-loot] [--keep-creatures]
 
 The plan is one World Edit Commands command per line. Send it with
-`send_plan.py`, which is the only thing that runs it correctly:
+`../terraform/place.py`, which is the only thing that runs it correctly:
 
   * a plan line is a CONSOLE command, so it has to go through ValheimRcon's
     `consoleCommand` bridge. MEASURED against the deployed ValheimRcon 1.6.2,
@@ -66,15 +66,22 @@ The plan is one World Edit Commands command per line. Send it with
     spawn_object` -- ValheimRcon's own spawn verb is called `spawn` and takes
     positional coordinates.
   * Server Devcommands has `Multiple commands per line = true` in the deployed
-    config, so `send_plan.py` batches ~43 lines per round trip and this body
-    lands in 45 round trips and 1.8 s rather than 1,907 round trips and a
-    minute. That is not an optimisation: MEASURED, sustained RCON traffic over
-    this site wedged the server, because ValheimRcon logs each command's full
-    result to the container's stdout before truncating it and that write blocks
-    the Unity main thread.
-  * for the same reason, do NOT verify a placement by listing it.
-    `verify_placement.py` counts with `objects_count` and lists only the four
-    extreme pieces, under a hard output budget.
+    config, so `place.py` batches ~43 lines per round trip and this body lands
+    in 45 round trips and 1.8 s rather than 1,907 round trips and a minute.
+    That is throughput only -- round trips cost 2-4 Unity frames each.
+  * PLACEMENT IS SAFE TO BATCH; VERIFICATION IS THE DANGEROUS HALF. This
+    docstring used to blame the wedge on sustained placement traffic, and that
+    was WRONG. MEASURED from ValheimRcon 1.6.2's IL: `Log.Message` writes the
+    full `CommandResult.Text` on the Unity main thread before truncation, and
+    `InvokeConsoleCommand.OnHandle` returns only `Command '<cmd>' executed.`,
+    never the console output -- so a placement batch's logged bytes are capped
+    by the 4050-byte payload limit no matter how large the world is. The
+    unbounded write belongs to `findObjects`, whose per-ZDO listing IS the
+    logged text. See `../terraform/rcon.py` for the instruction offsets.
+  * so do NOT verify a placement by listing it. `verify_placement.py` counts
+    with `objects_count` and lists only the four extreme pieces, under a hard
+    output budget; `rcon.py::guard` now refuses an unscoped `findObjects`
+    outright.
 """
 
 from __future__ import annotations

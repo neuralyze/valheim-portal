@@ -1,0 +1,539 @@
+name	flat_pad_verdict	setting	intended_setting	floating_fraction	air_isolation_max_m	mean_air_m	max_air_m	relief_m	footprint_span_m	footprint_area_m2	pieces	stations	portals	beds	missing_pieces	verdict	category	kind	metadata	licence	origin
+hs_ashlands_sheepshank_myfirsthome.blueprint	DEFECT_on_land	needs_support	land	0.118	7.21	2.003	5.179	8.175	36.9	880.0	2144	19	5	1	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_lionsprideinn2.blueprint	DEFECT_on_land	needs_support	land	0.172	8.0	3.797	15.232	62.039	53.6	2256.0	7830	11	0	3	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_Bone-dragon.blueprint	DEFECT_on_land	needs_support	land	0.202	34.23	45.281	64.097	114.034	120.5	6384.0	926	0	0	0	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	fleet corpus
+Rocket Raccoon_Casa_de_Campo.blueprint	DEFECT_on_land	needs_support	land	0.216	8.25	1.193	2.365	7.1	45.4	1276.0	489	5	0	2	2	PLACES_WITH_GAPS	base	setpiece	derived	none stated	mcarvall/Midgard-Valheim-Server
+hs_ashlands_wissman_jarvidr_church_full.blueprint	DEFECT_on_land	needs_support	land	0.229	10.0	1.934	9.91	15.011	65.5	1884.0	3193	6	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_throneofdecay_brigames.blueprint	DEFECT_on_land	needs_support	land	0.239	10.2	1.413	8.471	9.835	62.9	1588.0	3180	4	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_feasthallfinal.blueprint	DEFECT_on_land	needs_support	land	0.243	24.0	1.555	3.742	54.083	97.7	6404.0	6671	20	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_softpea_medievalbay.blueprint	DEFECT_on_land	needs_support	land	0.257	10.0	10.04	27.732	36.732	43.9	1088.0	4213	41	10	2	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_sorcererstower.blueprint	DEFECT_on_land	needs_support	land	0.275	8.94	7.732	17.241	60.78	22.6	364.0	1413	22	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_wissman_dunvegan_tavern.blueprint	DEFECT_on_land	needs_support	land	0.279	12.0	1.754	9.494	58.65	69.0	1436.0	2410	14	1	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+ruins_0_and_0_1_and_0_2_and_0_3.blueprint	DEFECT_on_land	needs_support	land	0.292	7.21	3.453	7.147	10.062	33.1	684.0	910	0	0	0	4	PLACES_WITH_GAPS	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+hs_ashlands_giant_cake_on_stand.blueprint	DEFECT_on_land	needs_support	land	0.3	6.32	2.539	24.218	25.798	28.4	720.0	2016	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+ruins_0_and_0_2_and_0_3.blueprint	DEFECT_on_land	needs_support	land	0.31	8.0	3.744	6.279	9.086	33.1	632.0	821	0	0	0	2	PLACES_WITH_GAPS	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+hs_ashlands_bridge_2.blueprint	DEFECT_on_land	needs_support	land	0.315	6.32	1.489	3.5	6.5	46.3	496.0	359	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+meadhall.blueprint	DEFECT_on_land	needs_support	land	0.317	14.14	11.585	39.8	40.8	90.5	4828.0	20213	51	2	1	2	PLACES_WITH_GAPS	base	setpiece	curated	none stated	fleet corpus
+BjOrN_blueprint001.blueprint	DEFECT_on_land	needs_support	land	0.341	33.29	4.934	11.508	13.842	67.2	2032.0	1908	21	1	0	1	PLACES_WITH_GAPS	base	setpiece	curated	none stated	fleet corpus
+floatingisland_atgeir.blueprint	DEFECT_on_land	needs_support	land	0.356	22.0	54.176	81.803	108.086	68.4	3596.0	341	0	0	1	9	UNUSABLE	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+floatingisland_axe.blueprint	DEFECT_on_land	needs_support	land	0.356	22.0	54.178	81.803	108.086	68.4	3596.0	341	0	0	1	9	UNUSABLE	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+floatingisland_battleaxe.blueprint	DEFECT_on_land	needs_support	land	0.356	22.0	54.176	81.803	108.086	68.4	3596.0	341	0	0	1	9	UNUSABLE	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+floatingisland_greatsword.blueprint	DEFECT_on_land	needs_support	land	0.356	22.0	54.177	81.803	108.086	68.4	3596.0	341	0	0	1	9	UNUSABLE	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+floatingisland_knife.blueprint	DEFECT_on_land	needs_support	land	0.356	22.0	54.178	81.803	108.086	68.4	3596.0	341	0	0	1	9	UNUSABLE	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+floatingisland_mace.blueprint	DEFECT_on_land	needs_support	land	0.356	22.0	54.177	81.803	108.086	68.4	3596.0	341	0	0	1	9	UNUSABLE	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+floatingisland_sledge.blueprint	DEFECT_on_land	needs_support	land	0.356	22.0	54.176	81.803	108.086	68.4	3596.0	341	0	0	1	9	UNUSABLE	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+floatingisland_staff.blueprint	DEFECT_on_land	needs_support	land	0.356	22.0	54.176	81.803	108.086	68.4	3596.0	341	0	0	1	9	UNUSABLE	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+floatingisland_sword.blueprint	DEFECT_on_land	needs_support	land	0.356	22.0	54.176	81.803	108.086	68.4	3596.0	341	0	0	1	9	UNUSABLE	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+ruins_0_and_0_2.blueprint	DEFECT_on_land	needs_support	land	0.366	11.66	3.316	5.123	9.087	31.0	448.0	681	0	0	0	2	PLACES_WITH_GAPS	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+floatingisland.blueprint	DEFECT_on_land	needs_support	land	0.37	21.63	54.442	81.803	108.086	69.2	3664.0	340	0	0	1	9	UNUSABLE	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+hs_ashlands_astrid_sinjesdo_viking_dumpling_paradise.blueprint	DEFECT_on_land	needs_support	land	0.419	36.0	4.67	9.8	58.801	88.6	3544.0	6164	32	1	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_wissman_hymir.blueprint	DEFECT_on_land	needs_support	land	0.439	14.56	2.432	11.309	14.154	74.1	2780.0	2670	24	1	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+god-shadowstone-fortress.blueprint	DEFECT_on_land	needs_support	land	0.446	42.94	4.942	24.653	33.802	140.1	7868.0	8283	25	3	15	0	PLACES_CLEAN	defence	setpiece	curated	none stated	fleet corpus
+hs_ashlands_sheepshank_toxins_arena.blueprint	DEFECT_on_land	needs_support	land	0.464	10.0	2.975	10.05	12.05	36.7	1172.0	3233	3	1	8	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_l_le_de_bronze.blueprint	DEFECT_on_land	needs_support	land	0.487	12.0	4.649	15.089	22.083	61.2	1964.0	1978	40	7	4	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_arthur_manor_elver.blueprint	DEFECT_on_land	needs_support	land	0.49	6.32	4.035	16.599	66.588	36.9	768.0	2802	1	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_feathercapetower.blueprint	DEFECT_on_land	needs_support	land	0.493	10.0	12.519	55.113	56.114	17.7	284.0	1467	0	2	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PlainsRaiderTower1.blueprint	DEFECT_on_land	needs_support	land	0.527	7.21	2.172	13.25	13.25	26.5	524.0	588	0	0	0	0	PLACES_CLEAN	outpost	module	curated	none stated	RustyMods/VikingNPC
+hs_ashlands_monkey_dvergr_tavern.blueprint	DEFECT_on_land	needs_support	land	0.542	11.31	2.198	13.713	61.279	28.5	672.0	2063	11	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_birdseyetower.blueprint	DEFECT_on_land	needs_support	land	0.547	7.21	4.818	19.952	20.952	24.1	424.0	1098	0	2	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+ruins_0.blueprint	DEFECT_on_land	needs_support	land	0.551	10.0	2.182	7.109	12.659	20.1	276.0	549	0	0	0	2	PLACES_WITH_GAPS	flavour	module	curated	none stated	Oosquai/SavheimIV
+hs_ashlands_sheepshank_chickencoop.blueprint	DEFECT_on_land	needs_support	land	0.555	8.0	5.545	14.263	15.263	24.3	440.0	1572	1	0	0	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_wissman_sondergaard.blueprint	DEFECT_on_land	needs_support	land	0.578	16.12	6.448	13.975	25.996	68.0	2116.0	2618	0	1	4	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+14464-Valheimian.blueprint	DEFECT_on_land	needs_support	land	0.586	12.0	4823.866	5037.732	10098.58	39.8	1324.0	2329	38	7	2	2	EXPLOIT/PLACES_WITH_GAPS	base	exploit	curated	none stated	fleet corpus
+gnome_house.blueprint	DEFECT_on_land	needs_support	land	0.586	12.0	4823.866	5037.732	10098.58	39.8	1324.0	2329	38	7	2	2	EXPLOIT/PLACES_WITH_GAPS	base	exploit	curated	none stated	fleet corpus
+hs_mistlands_sheepshank_lighthouse.blueprint	DEFECT_on_land	needs_support	land	0.589	12.65	1.636	3.121	4.366	41.4	876.0	2241	14	2	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+skybound.blueprint	DEFECT_on_land	needs_support	land	0.595	14.14	8.711	10.703	12.141	51.0	672.0	3702	13	3	1	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+Пипкин_full_castle.blueprint	DEFECT_on_land	needs_support	land	0.608	100.58	15.836	116.114	149.758	533.9	50156.0	32361	0	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	offsetkeyz/valheim_mod_sync
+jaik-mistvale-keep.blueprint	DEFECT_on_land	needs_support	land	0.612	17.09	8.185	28.967	32.967	30.4	752.0	3472	12	1	7	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_plains_20037_valheimian.blueprint	DEFECT_on_land	needs_support	land	0.653	7.21	2.763	4.097	5.097	21.5	484.0	968	47	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_upgrade_house.blueprint	DEFECT_on_land	needs_support	land	0.659	14.42	2.853	10.232	55.678	49.8	1480.0	2603	33	1	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_hagrids_hut.blueprint	DEFECT_on_land	needs_support	land	0.688	8.94	4.938	9.757	48.841	18.6	256.0	1144	13	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_badmin_cake_of_valhalla.blueprint	DEFECT_on_land	needs_support	land	0.7	7.21	11.304	21.054	21.054	10.7	120.0	1898	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+brokkr-fort-torment-final-cut-sh.blueprint	DEFECT_on_land	needs_support	land	0.701	21.54	14.393	46.889	48.023	176.9	6748.0	8139	0	0	0	0	PLACES_CLEAN	defence	setpiece	curated	none stated	Oosquai/SavheimIV
+hs_plains_gunbunny_blacksmith_house.blueprint	DEFECT_on_land	needs_support	land	0.707	20.0	2.14	6.084	7.084	31.5	656.0	1023	12	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_the_architect_rime_flamereforeged.blueprint	DEFECT_on_land	needs_support	land	0.728	14.14	3.997	4.5	49.511	35.3	972.0	2272	7	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_arbby_sherma_6785.blueprint	DEFECT_on_land	needs_support	land	0.731	14.0	9.995	19.184	48.623	47.2	1784.0	5942	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+15643-Valheimian.blueprint	DEFECT_on_land	needs_support	land	0.738	22.09	1914.739	5015.146	10050.555	63.0	2676.0	5692	57	13	5	31	EXPLOIT/PLACES_WITH_GAPS	base	exploit	curated	none stated	fleet corpus
+hs_ashlands_sheepshank_towerflat.blueprint	DEFECT_on_land	needs_support	land	0.738	50.12	60.166	72.051	111.929	80.6	2048.0	17596	70	10	1	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_fluffyvillagehousev2.blueprint	DEFECT_on_land	needs_support	land	0.754	10.2	6.799	20.104	21.162	34.3	844.0	2589	34	2	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_kaer_mor_boarv2.blueprint	DEFECT_on_land	needs_support	land	0.754	22.0	7.52	20.234	61.549	67.2	3224.0	6707	41	1	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_sheepshank_nickmansion.blueprint	DEFECT_on_land	needs_support	land	0.764	16.49	1.689	12.232	13.998	51.9	1812.0	3542	29	0	7	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_dana_libraryfinal.blueprint	DEFECT_on_land	needs_support	land	0.765	18.0	4.309	14.633	15.73	44.3	868.0	3829	13	5	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_admin_veseljko_the_silent_enclave.blueprint	DEFECT_on_land	needs_support	land	0.774	37.74	9.384	27.0	28.0	65.1	3404.0	4035	36	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_badmin_eaglebird.blueprint	DEFECT_on_land	needs_support	land	0.786	10.0	5.26	10.015	10.015	16.4	168.0	576	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_fishtrapbistrofinal.blueprint	DEFECT_on_land	needs_support	land	0.809	26.83	3.918	10.968	11.968	54.5	1720.0	3668	26	3	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_checkered_castle_with_lamps.blueprint	DEFECT_on_land	needs_support	land	0.832	16.12	3.579	21.722	68.15	78.4	2828.0	5795	38	15	2	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_amund_lilhouse.blueprint	DEFECT_on_land	needs_support	land	0.843	17.2	1.929	14.892	15.796	33.0	944.0	1063	7	1	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_rizzosretreatfinal.blueprint	DEFECT_on_land	needs_support	land	0.845	26.0	2.865	13.8	15.322	50.3	1216.0	2322	21	3	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_the_canary_house.blueprint	DEFECT_on_land	needs_support	land	0.85	24.17	2.106	7.079	49.265	54.1	1916.0	3764	41	5	8	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_wissman_straunvaig.blueprint	DEFECT_on_land	needs_support	land	0.851	21.63	3.345	14.052	59.632	70.4	2720.0	3664	25	1	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_moongoddess.blueprint	DEFECT_on_land	needs_support	land	0.857	16.0	8.564	22.301	22.301	25.1	168.0	2018	1	0	0	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_mistrock_peak.blueprint	DEFECT_on_land	needs_support	land	0.862	36.06	32.474	91.889	98.889	56.3	1244.0	3617	45	4	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_petalstronghold.blueprint	DEFECT_on_land	needs_support	land	0.864	30.46	1.694	8.486	55.85	65.2	3244.0	7112	65	3	7	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_sheepshank_wizardtower.blueprint	DEFECT_on_land	needs_support	land	0.875	40.0	4.24	44.833	45.923	92.3	1088.0	3425	28	10	1	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_thomashofredux.blueprint	DEFECT_on_land	needs_support	land	0.888	20.1	2.361	9.812	11.847	55.1	1464.0	3904	4	5	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_innandbistrov2.blueprint	DEFECT_on_land	needs_support	land	0.898	23.41	4.595	10.732	55.249	43.8	824.0	1149	8	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_enterpriseihv6.blueprint	DEFECT_on_land	needs_support	land	0.902	26.08	18.137	41.294	46.821	44.6	1640.0	10387	45	86	15	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_sheepshank_mangohall.blueprint	DEFECT_on_land	needs_support	land	0.91	20.88	3.116	13.395	13.894	46.0	1340.0	3503	19	3	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_builder_blacksmith.blueprint	DEFECT_on_land	needs_support	land	0.912	24.41	5.188	11.13	12.934	34.5	820.0	1445	17	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_sneglehus_1_1.blueprint	DEFECT_on_land	needs_support	land	0.916	24.74	1.894	2.104	2.234	53.3	2388.0	4305	38	18	6	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_suspicious_turnip1.blueprint	DEFECT_on_land	needs_support	land	0.925	8.49	3.017	5.52	5.52	17.7	320.0	1869	3	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_militarybarracks.blueprint	DEFECT_on_land	needs_support	land	0.939	27.78	2.074	15.467	18.859	72.7	1840.0	4738	36	3	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_magne_athelgard_cathedral.blueprint	DEFECT_on_land	needs_support	land	0.943	40.2	1.64	6.278	53.208	95.1	3700.0	17954	1	0	0	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_therefineryv2.blueprint	DEFECT_on_land	needs_support	land	0.946	42.94	2.568	4.559	6.559	54.6	1708.0	3823	43	16	2	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_badmin_fallen_angel.blueprint	DEFECT_on_land	needs_support	land	0.96	17.89	17.04	30.423	30.423	28.0	396.0	3221	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_dana_towersdestiny.blueprint	DEFECT_on_land	needs_support	land	0.982	76.66	9.875	17.202	18.872	92.7	5736.0	13491	42	11	15	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_eric_bloodaxe_prefab_large_fort.blueprint	DEFECT_on_land	needs_support	land	0.983	91.76	4.439	15.0	17.0	106.0	4228.0	4105	32	13	1	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_badmin_lox.blueprint	DEFECT_on_land	needs_support	land	0.984	28.28	9.557	23.181	23.181	27.3	504.0	1550	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_misttreehousev2.blueprint	DEFECT_on_land	needs_support	land	0.987	53.14	19.718	101.261	101.626	55.1	1256.0	2371	31	2	3	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_villageskilodgecenter.blueprint	DEFECT_on_land	needs_support	land	0.988	90.09	19.128	50.344	53.344	96.0	4240.0	13311	93	9	12	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_badmin_valkyriecorrected.blueprint	DEFECT_on_land	needs_support	land	0.993	24.74	17.487	36.017	36.017	39.9	604.0	3079	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+long-bridge.blueprint	expected_over_water	needs_support	over_water	0.256	10.2	6.328	9.197	18.912	90.9	1064.0	814	0	0	0	0	PLACES_CLEAN	bridge	setpiece	curated	none stated	fleet corpus
+brokkr-broken-bridge-2.blueprint	expected_over_water	needs_support	over_water	0.545	8.0	6.436	8.014	13.014	95.8	1424.0	2468	0	0	0	2	PLACES_WITH_GAPS	bridge	setpiece	curated	none stated	Oosquai/SavheimIV
+brokkr-broken-bridge-3.blueprint	expected_over_water	needs_support	over_water	0.546	10.0	8.965	11.014	11.014	74.8	1400.0	1973	0	0	1	0	PLACES_CLEAN	bridge	setpiece	curated	none stated	Oosquai/SavheimIV
+brokkr-broken-bridge-3-short.blueprint	expected_over_water	needs_support	over_water	0.556	7.21	9.178	11.014	11.014	51.2	856.0	1212	0	0	0	0	PLACES_CLEAN	bridge	module	curated	none stated	Oosquai/SavheimIV
+brokkr-broken-bridge-1.blueprint	expected_over_water	needs_support	over_water	0.582	7.21	10.586	13.014	13.014	89.2	1760.0	2883	0	0	0	0	PLACES_CLEAN	bridge	setpiece	curated	none stated	Oosquai/SavheimIV
+brokkr-broken-bridge-1-short.blueprint	expected_over_water	needs_support	over_water	0.584	8.25	11.003	13.014	13.014	48.4	904.0	1418	0	0	0	0	PLACES_CLEAN	bridge	module	curated	none stated	Oosquai/SavheimIV
+brokkr-broken-bridge-2-short.blueprint	expected_over_water	needs_support	over_water	0.62	6.32	6.463	10.282	14.282	59.1	820.0	1407	1	0	0	0	PLACES_WITH_GAPS	bridge	module	curated	none stated	Oosquai/SavheimIV
+dock.blueprint	expected_over_water	needs_support	over_water	0.701	13.42	6.082	20.787	23.787	44.5	1324.0	2036	0	0	0	0	PLACES_CLEAN	dock	setpiece	curated	none stated	fleet corpus
+salty-dick-bridge-curved-final.blueprint	expected_over_water	needs_support	over_water	0.713	18.0	12.73	18.267	18.375	65.8	712.0	1242	0	0	0	0	PLACES_CLEAN	bridge	module	curated	none stated	offsetkeyz/valheim_mod_sync
+PuP_house2.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	6.946	13.7	176.0	302	0	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+hs_ashlands_madzobuild_ashlandcamp.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.288	18.9	268.0	266	4	1	1	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_madzobuild_blackeitrrefinery.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.138	12.0	168.0	244	1	0	0	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+creator-looney-swamp-starter-home.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	8.045	17.8	252.0	218	12	0	2	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+hs_blackforest_tester_meadows_log_cabin.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.93	17.0	240.0	207	11	1	2	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+PuP_house4.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	7.222	14.9	212.0	178	1	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+PuP_house9.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.967	11.6	136.0	167	0	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+Rocket Raccoon_Quick_House.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	3.967	11.2	156.0	157	2	0	2	0	PLACES_WITH_GAPS	base	module	derived	none stated	mcarvall/Midgard-Valheim-Server
+hs_blackforest_aodi_quickrest_sleep_module.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.72	7.1	64.0	118	1	0	1	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_hobbit_repairhut.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.842	10.4	80.0	62	1	0	0	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_madzobuild_simpleeitrrefinery.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.065	8.9	80.0	59	1	0	0	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_spatub_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	49.118	4.9	64.0	54	1	0	0	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_kitchensink_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.009	4.6	32.0	52	1	0	0	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_arkitek_repair_shack.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.732	4.6	56.0	50	1	0	0	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+Rocket Raccoon_Beliche.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	3.1	16.0	6	0	0	2	0	PLACES_WITH_GAPS	base	module	derived	none stated	mcarvall/Midgard-Valheim-Server
+PuP_black_house_full.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	59.453	81.6	3488.0	6262	55	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+brokkr-the-belmont.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	29.207	113.9	10720.0	4901	8	0	0	1	PLACES_WITH_GAPS	base	setpiece	curated	none stated	Oosquai/SavheimIV
+PuP_Minicastle__556fd22e78ea.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	41.775	60.8	3004.0	3810	12	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_mistlands_sheepshank_trophytowerv2.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	5.689	28.5	748.0	3577	1	1	0	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_Minicastle__dcbdd295f512.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	41.775	60.8	3004.0	3334	12	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_ashlands_sheepshank_starterhome10.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	48.998	40.5	1208.0	2762	41	2	3	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_the_architect_twinravensbooks_curios_v2.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	49.554	23.7	524.0	2723	6	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_Capitol.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	8.2	49.2	1168.0	2304	0	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_ashlands_gorthein_fancy_house_redux.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	3.967	36.4	1072.0	1962	33	2	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_deardly_deardly_modern_house.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.0	34.3	908.0	1672	36	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+god-o.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	9.0	8.1	108.0	194	0	0	0	0	PLACES_CLEAN	defence	module	curated	none stated	fleet corpus
+MistlandRaiderTown1.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	25.707	79.8	4672.0	570	8	0	4	0	PLACES_CLEAN	defence	setpiece	curated	none stated	RustyMods/VikingNPC
+terrain-blueprint-contract.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	6.0	32.0	2	0	0	0	0	PLACES_CLEAN	fixture	module	curated	Unlicense (public domain)	JereKuusela/valheim-infinity_hammer
+terrain-rotated-center.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	5.0	16.0	2	0	0	0	0	PLACES_CLEAN	fixture	module	curated	Unlicense (public domain)	JereKuusela/valheim-infinity_hammer
+terrain-future-section.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	2.0	16.0	1	0	0	0	0	PLACES_CLEAN	fixture	module	curated	Unlicense (public domain)	JereKuusela/valheim-infinity_hammer
+hs_ashlands_sheepshank_statuevalhallav2.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	2.865	21.0	340.0	546	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_giantchristmastreeonly.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.4	7.9	72.0	442	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_wissman_godwayshrine.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	12.0	180.0	394	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+boom-christianruins1.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.836	25.5	452.0	359	0	0	0	1	PLACES_WITH_GAPS	flavour	module	curated	none stated	Oosquai/SavheimIV
+hs_mistlands_aodi_skardvakt_the_black_tower.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	8.0	11.5	144.0	358	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_chessboard.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.755	20.0	456.0	337	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_abzul_storage.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	50.051	12.6	168.0	294	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_halvar_cluckingham_palace.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	12.0	128.0	273	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_brigames_snowflake.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	3.8	12.2	176.0	239	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_mad_madstarterhouse.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.8	14.7	188.0	217	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_santasleigh.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.399	9.7	80.0	214	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_artio_pergola_crossroad.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.732	8.3	88.0	200	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_tallbookcase_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	5.6	32.0	197	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_wizards_tower_rings.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.0	31.5	600.0	160	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_bakedgoodsstall.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	49.188	7.7	76.0	159	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+Rocket Raccoon_Barracas_Media.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	3.967	11.0	148.0	134	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	mcarvall/Midgard-Valheim-Server
+ruins_0_2.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	2.291	12.7	144.0	132	0	0	0	0	PLACES_CLEAN	flavour	module	curated	none stated	Oosquai/SavheimIV
+sample_002.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	2.213	16.4	216.0	132	0	0	0	0	PLACES_CLEAN	flavour	module	derived	GPL-3.0	sighsorry1029/Homestead
+hs_blackforest_kitchenstorage_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.093	3.1	16.0	123	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+RuinedTower.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.0	11.2	128.0	122	0	0	1	0	PLACES_CLEAN	flavour	module	curated	none stated	RustyMods/VikingNPC
+outposttower_ruins.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	12.2	156.0	115	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+outposttower_burnt.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.0	13.1	200.0	114	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_swamp_bridge1_stone.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	3.0	16.0	208.0	114	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_lacko_pianodecoration_madebylacko.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.086	5.3	40.0	94	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_kitchenstorage2_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.067	3.0	16.0	93	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_customspiralstairs_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.049	5.9	56.0	84	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_cornercouchashlands_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.178	6.2	64.0	82	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_gazebograusten_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	7.1	64.0	82	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_cornercouchdecorative_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.233	6.0	56.0	78	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+outposttower_remnant.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	12.0	136.0	73	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_blackforest_chessboard.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	2.2	16.0	64	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+sample_001.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	2.18	14.4	128.0	63	0	0	0	0	PLACES_CLEAN	flavour	module	derived	GPL-3.0	sighsorry1029/Homestead
+SettlerRuins_Ashlands1.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.426	23.8	324.0	59	0	0	0	0	PLACES_CLEAN	flavour	module	curated	none stated	RustyMods/VikingNPC
+hs_ashlands_madzobuild_couch3.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.006	4.8	36.0	30	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_armchair_sidetable_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	3.2	16.0	23	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_daybed_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.442	4.2	28.0	19	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_madzobuild_couch2.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.008	2.9	16.0	14	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sidetable_book_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	1.5	16.0	13	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_armchair_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	1.6	16.0	10	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_madzobuild_couch1.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	1.7	8.0	10	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_madzobuild_woodcouch1.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	1.9	8.0	10	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sidetable_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	1.4	16.0	6	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_barstool_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	1.4	16.0	4	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_madzobuild_coffeetable.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	2.2	16.0	4	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+sample_snap.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	4.0	12.0	4	0	0	0	0	PLACES_CLEAN	flavour	module	derived	GPL-3.0	sighsorry1029/Homestead
+sh_firtree_light_black.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	9.0	144.0	2	0	0	0	1	UNUSABLE	flavour	module	curated	none stated	Oosquai/SavheimIV
+sh_firtree_light_blue.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	9.0	144.0	2	0	0	0	1	UNUSABLE	flavour	module	curated	none stated	Oosquai/SavheimIV
+sh_firtree_light_green.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	9.0	144.0	2	0	0	0	1	UNUSABLE	flavour	module	curated	none stated	Oosquai/SavheimIV
+sh_firtree_light_orange.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	9.0	144.0	2	0	0	0	1	UNUSABLE	flavour	module	curated	none stated	Oosquai/SavheimIV
+sh_firtree_light_purple.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	9.0	144.0	2	0	0	0	1	UNUSABLE	flavour	module	curated	none stated	Oosquai/SavheimIV
+sh_firtree_light_red.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	9.0	144.0	2	0	0	0	1	UNUSABLE	flavour	module	curated	none stated	Oosquai/SavheimIV
+sh_firtree_light_yellow.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	9.0	144.0	2	0	0	0	1	UNUSABLE	flavour	module	curated	none stated	Oosquai/SavheimIV
+brokkr-the-cathedral__3060609d536b.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	49.252	131.4	14480.0	8269	0	0	0	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+magic-tower.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.081	18.0	400.0	5895	0	0	0	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	fleet corpus
+hs_ashlands_admin_veseljko_one_way_maze.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	3.95	61.0	3596.0	4554	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_harbor.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	7.753	78.1	3992.0	4381	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+brokkr-the-sacrifice.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	22.171	117.6	11768.0	3081	11	0	0	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+hs_ashlands_lotusandlily.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.25	41.7	1536.0	2390	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_the_architect_leifcotraders.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.5	24.7	676.0	2046	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_lacko_almightyhammer.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.827	46.1	1212.0	1794	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_belltower.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.5	12.4	152.0	1381	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_the_architect_aesirtemple.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.0	35.3	952.0	1165	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_admin_veseljko_drakepeak_ruins_v2.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.094	34.6	1088.0	1025	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_the_architect_dvergrbrothersbank_v2.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.0	23.3	584.0	868	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+altar.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.645	22.5	528.0	527	0	0	0	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	fleet corpus
+MeadowSettlerTown1.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	4.314	67.5	2628.0	436	0	0	7	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	RustyMods/VikingNPC
+aodi-skardvakt-the-black-tower.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	8.0	11.5	144.0	358	0	0	0	0	PLACES_CLEAN	outpost	module	curated	none stated	fleet corpus
+outposttower.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	12.4	160.0	212	0	0	0	0	PLACES_CLEAN	outpost	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+wagon-camp.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	49.566	15.7	204.0	160	7	0	1	0	PLACES_CLEAN	outpost	module	curated	none stated	fleet corpus
+PiNoKi_SmallHut.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.213	12.1	120.0	48	0	0	0	0	PLACES_CLEAN	outpost	module	curated	MIT	constXife/bygd
+Portal13.vbuild	grounds	land_flat	land	0.0	0.0	0.0	0.0	3.164	7.6	52.0	133	0	0	0	0	PLACES_CLEAN	portal	module	curated	none stated	fleet corpus
+Portal11.vbuild	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.283	4.6	40.0	111	0	0	0	0	PLACES_CLEAN	portal	module	curated	none stated	fleet corpus
+Portal15.vbuild	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.121	5.5	48.0	107	0	0	0	0	PLACES_CLEAN	portal	module	curated	none stated	fleet corpus
+hs_ashlands_arkitek_grausten_tri_portal.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.0	13.0	128.0	75	0	3	0	0	PLACES_CLEAN	portal	module	derived	none stated	OverDrive/BiomeBlueprints
+Portal12.vbuild	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.2	5.0	32.0	66	0	0	0	0	PLACES_CLEAN	portal	module	curated	none stated	fleet corpus
+hs_ashlands_thrad_portal_nexus.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.936	44.2	1580.0	4744	3	17	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+you-died-ocean-base.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	7.294	96.6	9084.0	3400	35	14	2	0	PLACES_CLEAN	portal	setpiece	curated	none stated	fleet corpus
+hs_ashlands_sheepshank_fluffydanatownhomes.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.614	33.1	752.0	2936	51	3	2	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_portalhub_dome.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.261	22.6	488.0	909	0	14	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+nurr-portalpyramid02.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.551	33.9	748.0	796	0	8	0	0	PLACES_CLEAN	portal	setpiece	curated	none stated	offsetkeyz/valheim_mod_sync
+hs_plains_admin_veseljko_storage_hub_v1.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.0	18.3	320.0	691	0	7	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_thrad_workshop.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.335	19.1	248.0	493	9	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_babe_estacao_de_trabalho.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.0	20.0	276.0	384	11	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_meathousevanilla_brigames.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.0	13.7	164.0	265	19	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_the_neck_nook.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	2.078	11.6	152.0	183	5	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_hive_tower.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.0	5.6	48.0	75	7	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_aodi_quickrest_1_0a.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.097	4.7	60.0	69	3	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_mini_sap_extractor.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	0.058	7.8	64.0	47	3	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_ragnar_openwarehouse.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	1.888	55.4	3196.0	8599	35	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_the_architect_grand_loki_theater.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	49.084	42.6	1124.0	4345	3	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sanctifiedtower.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	50.134	10.8	144.0	1059	7	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_minicastleworkshop.blueprint	grounds	land_flat	land	0.0	0.0	0.0	0.0	49.175	20.5	416.0	601	20	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+arty-magetower.blueprint	grounds	land_flat	land	0.003	2.0	4.0	4.0	10.288	47.3	1236.0	4948	1	2	0	18	PLACES_WITH_GAPS	flavour	setpiece	curated	none stated	fleet corpus
+citadel.blueprint	grounds	land_flat	land	0.004	2.0	1.279	1.768	36.899	165.5	19560.0	33655	0	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_ashlands_feuersbrunst_henk.blueprint	grounds	land_flat	land	0.005	2.0	4.962	4.962	6.462	44.3	1492.0	1221	0	4	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+salty-dick-portal-hub-final.blueprint	grounds	land_flat	land	0.005	2.0	4.497	4.497	6.047	29.1	816.0	1043	0	8	0	0	PLACES_CLEAN	portal	setpiece	curated	none stated	offsetkeyz/valheim_mod_sync
+hs_ashlands_neletit_parthenon.blueprint	grounds	land_flat	land	0.006	2.0	16.307	16.307	17.307	52.1	1452.0	9580	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+brokkr-the-execution.blueprint	grounds	land_flat	land	0.006	2.0	12.802	21.913	56.349	74.8	3392.0	3873	5	0	0	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+fox-0123456.blueprint	grounds	land_flat	land	0.007	2.0	6.7	6.7	8.065	48.3	1088.0	1229	24	4	1	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_mistlands_black_marble_pillars_parts.blueprint	grounds	land_flat	land	0.007	2.0	3.008	3.008	4.412	26.0	560.0	264	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_admin_veseljko_ancient_ruined_city_v3.blueprint	grounds	land_flat	land	0.007	2.0	1.539	2.502	4.158	96.7	4304.0	1139	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+Ultimate_OutPost.blueprint	grounds	land_flat	land	0.007	2.0	0.5	0.5	4.977	53.5	1792.0	1820	54	2	2	0	PLACES_CLEAN	outpost	setpiece	curated	none stated	fleet corpus
+hs_ashlands_ragnar_warehouse.blueprint	grounds	land_flat	land	0.007	2.0	5.968	6.0	7.888	69.8	3260.0	7939	35	1	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+brokkr-the-flabellum.blueprint	grounds	land_flat	land	0.008	2.83	18.841	34.924	76.24	103.7	7172.0	5490	13	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	Oosquai/SavheimIV
+PuP_mag-tower.blueprint	grounds	land_flat	land	0.009	2.0	6.187	6.187	8.187	25.0	448.0	2461	0	0	0	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	fleet corpus
+hs_ashlands_builder_babe_portal_hub.blueprint	grounds	land_flat	land	0.009	2.0	4.865	4.865	5.865	32.5	920.0	905	0	11	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_the_forge_2.blueprint	grounds	land_flat	land	0.009	2.0	1.0	1.0	2.0	24.1	448.0	462	18	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+small_long_house.blueprint	grounds	land_flat	land	0.01	2.0	5.421	6.2	7.945	51.3	1164.0	1444	5	0	4	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_ashlands_the_architect_runestonetownhomestriplex.blueprint	grounds	land_flat	land	0.01	2.0	2.3	2.3	49.113	29.6	816.0	4986	30	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+BlackForestRaiderTown1.blueprint	grounds	land_flat	land	0.011	2.0	1.197	4.427	6.244	84.8	4744.0	1090	5	0	4	0	PLACES_CLEAN	defence	setpiece	curated	none stated	RustyMods/VikingNPC
+MeadowSettlerTown2.blueprint	grounds	land_flat	land	0.011	2.0	1.69	1.69	4.002	31.9	748.0	1005	0	0	3	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	RustyMods/VikingNPC
+Hong_Marble_Telepyramid_(Shielded).blueprint	grounds	land_flat	land	0.011	2.0	3.903	3.903	4.194	22.6	372.0	398	1	0	0	0	PLACES_CLEAN	portal	module	curated	none stated	offsetkeyz/valheim_mod_sync
+Hong_Marble_Telepyramid.blueprint	grounds	land_flat	land	0.011	2.0	3.903	3.903	4.194	22.6	372.0	396	1	0	0	0	PLACES_CLEAN	portal	module	curated	none stated	offsetkeyz/valheim_mod_sync
+hs_swamp_xxx_blackforest_house.blueprint	grounds	land_flat	land	0.012	2.0	1.635	1.635	51.16	18.5	332.0	544	21	0	1	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_ulf_the_builder_pyramid_base_final.blueprint	grounds	land_flat	land	0.012	2.83	5.143	5.25	8.399	62.2	2264.0	6188	53	1	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+swamptown1.blueprint	grounds	land_flat	land	0.012	2.0	2.485	4.167	18.583	73.4	3360.0	733	1	0	4	0	PLACES_CLEAN	defence	setpiece	curated	none stated	RustyMods/VikingNPC
+hs_ashlands_sheepshank_theburrow.blueprint	grounds	land_flat	land	0.012	2.0	14.875	14.875	65.221	19.9	328.0	2001	26	1	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_badmin_freyja.blueprint	grounds	land_flat	land	0.013	4.47	17.338	24.907	76.021	91.4	2384.0	2136	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_euphyschurch.blueprint	grounds	land_flat	land	0.013	2.0	3.854	3.854	4.854	28.2	620.0	887	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+vcastle.blueprint	grounds	land_flat	land	0.014	15.23	19.529	24.106	51.617	197.0	27976.0	28297	3	0	8	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_ashlands_softpea_stave_church.blueprint	grounds	land_flat	land	0.014	2.0	4.31	4.833	5.833	26.4	560.0	1117	19	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PlainsRaiderTown1.blueprint	grounds	land_flat	land	0.014	2.0	2.936	8.255	21.537	107.0	5948.0	1684	0	0	4	0	PLACES_CLEAN	defence	setpiece	curated	none stated	RustyMods/VikingNPC
+MountainRaiderTown1.blueprint	grounds	land_flat	land	0.014	2.0	2.17	10.603	42.378	77.2	2864.0	1024	0	0	1	0	PLACES_CLEAN	defence	setpiece	curated	none stated	RustyMods/VikingNPC
+halvar-master-refinery.blueprint	grounds	land_flat	land	0.015	2.0	2.307	3.814	5.814	25.3	544.0	917	20	0	0	0	PLACES_CLEAN	production	module	curated	none stated	fleet corpus
+hs_ashlands_monkeystoragehouse.blueprint	grounds	land_flat	land	0.015	2.0	7.232	7.232	8.234	23.6	520.0	1067	17	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_halvar_master_refinery.blueprint	grounds	land_flat	land	0.015	2.0	2.307	3.814	5.814	25.3	544.0	917	20	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_house10.blueprint	grounds	land_flat	land	0.016	2.0	2.53	2.53	7.101	20.9	244.0	225	1	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+PuP_capitoliy.blueprint	grounds	land_flat	land	0.016	2.0	11.4	11.4	12.729	24.3	492.0	5115	0	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_swamp_vrolok_caba_a_2.blueprint	grounds	land_flat	land	0.016	2.0	0.63	0.647	2.0	33.5	500.0	343	20	4	1	0	PLACES_CLEAN	portal	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_20999_valheimian.blueprint	grounds	land_flat	land	0.016	2.0	9.462	9.462	11.192	24.0	512.0	1244	37	4	1	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_wissman_beacon.blueprint	grounds	land_flat	land	0.016	2.0	3.321	4.962	12.462	37.7	768.0	1611	6	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+brokkr-the-misery.blueprint	grounds	land_flat	land	0.017	4.0	1.624	2.512	42.787	148.3	12672.0	5108	18	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	Oosquai/SavheimIV
+hs_blackforest_dream_house_template.blueprint	grounds	land_flat	land	0.017	2.0	1.473	3.403	3.573	34.0	952.0	1015	3	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_einherjar_ringfort.blueprint	grounds	land_flat	land	0.017	2.0	3.833	3.833	4.833	108.8	4264.0	1482	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_sheepshank_longboatlugev2.blueprint	grounds	land_flat	land	0.018	2.0	2.775	3.727	6.939	28.8	436.0	293	1	1	0	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_teakeycee_mudcastle.blueprint	grounds	land_flat	land	0.018	2.0	2.658	3.8	7.971	57.9	1812.0	2857	0	0	4	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_xxx_starthome.blueprint	grounds	land_flat	land	0.02	2.0	0.855	0.855	50.38	22.9	404.0	466	11	0	2	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+brokkr-the-churn.blueprint	grounds	land_flat	land	0.02	4.0	4.888	11.962	54.344	88.9	5316.0	4655	11	0	0	0	PLACES_CLEAN	production	setpiece	curated	none stated	Oosquai/SavheimIV
+hs_blackforest_great_hall.blueprint	grounds	land_flat	land	0.021	2.0	3.635	3.635	3.932	12.4	192.0	132	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_great_hall.blueprint	grounds	land_flat	land	0.021	2.0	3.635	3.635	3.932	12.4	192.0	132	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_great_hall.blueprint	grounds	land_flat	land	0.021	2.0	3.635	3.635	3.932	12.4	192.0	132	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_great_hall.blueprint	grounds	land_flat	land	0.021	2.0	3.635	3.635	3.932	12.4	192.0	132	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_great_hall.blueprint	grounds	land_flat	land	0.021	2.0	3.635	3.635	3.932	12.4	192.0	132	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_great_hall.blueprint	grounds	land_flat	land	0.021	2.0	3.635	3.635	3.932	12.4	192.0	132	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_tester_duo_black_forest_home.blueprint	grounds	land_flat	land	0.022	2.0	3.967	4.855	5.952	30.8	728.0	586	22	1	2	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_modestypooh_portalhub.blueprint	grounds	land_flat	land	0.022	2.0	2.003	3.587	4.117	40.2	1256.0	2026	4	30	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_house3.blueprint	grounds	land_flat	land	0.023	2.0	1.688	1.688	4.421	17.0	176.0	201	0	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+hs_ashlands_compact_endgame_base1.blueprint	grounds	land_flat	land	0.023	2.0	3.09	3.5	4.505	27.3	520.0	537	43	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_kin_01_woodhouse.blueprint	grounds	land_flat	land	0.025	2.0	3.532	3.532	4.702	14.3	160.0	216	4	0	1	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_longhouse.blueprint	grounds	land_flat	land	0.025	2.0	3.635	3.635	3.932	16.4	160.0	108	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_longhouse.blueprint	grounds	land_flat	land	0.025	2.0	3.635	3.635	3.932	16.4	160.0	108	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_longhouse.blueprint	grounds	land_flat	land	0.025	2.0	3.635	3.635	3.932	16.4	160.0	108	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_longhouse.blueprint	grounds	land_flat	land	0.025	2.0	3.635	3.635	3.932	16.4	160.0	108	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_longhouse.blueprint	grounds	land_flat	land	0.025	2.0	3.635	3.635	3.932	16.4	160.0	108	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_longhouse.blueprint	grounds	land_flat	land	0.025	2.0	3.635	3.635	3.932	16.4	160.0	108	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_prefab_collection1.blueprint	grounds	land_flat	land	0.026	2.0	3.282	3.282	5.051	59.1	1824.0	1796	57	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+twotwohouse_ruins.blueprint	grounds	land_flat	land	0.026	2.0	1.635	1.635	1.988	14.5	156.0	148	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+brokkr-the-cathedral__8127bac49f36.blueprint	grounds	land_flat	land	0.026	4.0	11.499	24.306	26.96	87.9	4448.0	8240	0	1	0	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	offsetkeyz/valheim_mod_sync
+hs_swamp_sheepshank_danamermhomefinal.blueprint	grounds	land_flat	land	0.026	2.0	4.508	4.58	6.792	45.7	1084.0	3009	28	5	8	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_ugm_seabasefor4.blueprint	grounds	land_flat	land	0.027	2.0	4.221	11.182	60.379	89.3	3140.0	3252	48	0	4	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_ugm_stavechurch.blueprint	grounds	land_flat	land	0.028	2.0	6.218	7.081	8.769	56.3	1008.0	2009	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_house12.blueprint	grounds	land_flat	land	0.029	2.0	0.503	0.503	2.8	12.5	140.0	216	0	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+Meadow_Ruins.blueprint	grounds	land_flat	land	0.029	2.0	4.558	13.695	19.68	40.8	968.0	755	0	0	0	1	PLACES_WITH_GAPS	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+hs_ashlands_cozycabin.blueprint	grounds	land_flat	land	0.029	2.0	2.903	3.64	5.285	30.7	548.0	2797	19	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_salty_d_watermill_cottage_complete_with_terrain_markers.blueprint	grounds	land_flat	land	0.03	2.0	2.701	4.703	7.014	41.5	672.0	3068	13	0	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_sheepshank_meadows_home.blueprint	grounds	land_flat	land	0.03	2.0	4.568	5.988	8.931	35.7	928.0	1448	20	0	4	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_tester_swamp_to_mountains_bungalow.blueprint	grounds	land_flat	land	0.03	2.0	3.951	4.819	5.549	40.1	1084.0	875	45	1	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_michel_portals_tower.blueprint	grounds	land_flat	land	0.03	2.0	0.635	0.635	2.732	24.5	528.0	4989	0	159	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_mister_black_forest_base.blueprint	grounds	land_flat	land	0.03	2.0	2.458	2.8	52.033	26.5	400.0	987	7	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_house8.blueprint	grounds	land_flat	land	0.031	2.0	1.726	1.726	3.823	12.0	128.0	157	1	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+MeadowRaiderTown1.blueprint	grounds	land_flat	land	0.032	7.21	4.192	6.27	35.457	80.9	3252.0	979	2	0	9	0	PLACES_CLEAN	defence	setpiece	curated	none stated	RustyMods/VikingNPC
+hs_ashlands_customspiralstairsgrausten_brigames.blueprint	grounds	land_flat	land	0.032	2.0	1.894	1.894	2.894	9.4	124.0	257	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_pubvanilla.blueprint	grounds	land_flat	land	0.032	2.0	6.577	12.285	62.293	31.9	628.0	1971	3	2	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_pub.blueprint	grounds	land_flat	land	0.032	2.0	6.63	12.241	62.249	31.9	624.0	1970	3	2	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_marketmarket.blueprint	grounds	land_flat	land	0.035	2.0	2.744	2.746	4.825	15.6	228.0	257	0	0	1	1	PLACES_WITH_GAPS	flavour	module	curated	none stated	fleet corpus
+hs_blackforest_villa.blueprint	grounds	land_flat	land	0.036	2.0	3.769	5.635	5.932	12.4	224.0	178	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_villa.blueprint	grounds	land_flat	land	0.036	2.0	3.769	5.635	5.932	12.4	224.0	178	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_villa.blueprint	grounds	land_flat	land	0.036	2.0	3.769	5.635	5.932	12.4	224.0	178	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_villa.blueprint	grounds	land_flat	land	0.036	2.0	3.769	5.635	5.932	12.4	224.0	178	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_villa.blueprint	grounds	land_flat	land	0.036	2.0	3.769	5.635	5.932	12.4	224.0	178	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_villa.blueprint	grounds	land_flat	land	0.036	2.0	3.769	5.635	5.932	12.4	224.0	178	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+PiNoKi_Longhouse.blueprint	grounds	land_flat	land	0.037	2.0	0.703	0.703	1.59	16.5	216.0	182	0	0	0	0	PLACES_CLEAN	base	module	curated	MIT	constXife/bygd
+Пипкин_small_castle.blueprint	grounds	land_flat	land	0.037	5.66	7.059	24.0	26.402	87.9	6260.0	17628	0	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	offsetkeyz/valheim_mod_sync
+hs_ashlands_minicastlevanilla.blueprint	grounds	land_flat	land	0.037	2.0	6.499	8.998	59.2	14.2	216.0	980	11	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+twotwohouse.blueprint	grounds	land_flat	land	0.038	2.0	1.635	1.635	2.011	15.0	208.0	273	0	0	0	0	PLACES_CLEAN	base	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+POISWAMPCASTLERUINS.blueprint	grounds	land_flat	land	0.038	4.0	1.16	2.207	6.543	49.4	1664.0	1036	0	0	0	0	PLACES_CLEAN	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+hs_meadows_aodi_the_hive_1_0.blueprint	grounds	land_flat	land	0.038	2.0	1.835	1.835	3.932	10.0	104.0	126	15	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+sample_003.blueprint	grounds	land_flat	land	0.04	2.0	1.719	1.855	3.951	16.5	300.0	236	0	0	0	0	PLACES_CLEAN	flavour	module	derived	GPL-3.0	sighsorry1029/Homestead
+hs_blackforest_stilt_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	5.732	8.4	96.0	68	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_stilt_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	5.732	8.4	96.0	68	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_stilt_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	5.732	8.4	96.0	68	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_stilt_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	5.732	8.4	96.0	68	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_stilt_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	5.732	8.4	96.0	68	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_stilt_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	5.732	8.4	96.0	68	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	3.932	8.4	96.0	60	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	3.932	8.4	96.0	60	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	3.932	8.4	96.0	60	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	3.932	8.4	96.0	60	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	3.932	8.4	96.0	60	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_house.blueprint	grounds	land_flat	land	0.042	2.0	3.635	3.635	3.932	8.4	96.0	60	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+shop.blueprint	grounds	land_flat	land	0.042	7.21	4.473	22.356	25.356	67.2	2288.0	4131	34	0	0	25	PLACES_WITH_GAPS	flavour	setpiece	curated	none stated	fleet corpus
+hs_blackforest_mister_basestart_simple.blueprint	grounds	land_flat	land	0.044	2.0	1.147	1.16	2.257	17.8	272.0	270	12	0	1	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_cm_thug_floating_base.blueprint	grounds	land_flat	land	0.046	2.0	1.796	1.796	2.796	34.5	788.0	1837	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_cm_thug_outpost.blueprint	grounds	land_flat	land	0.047	2.0	3.685	6.307	8.014	40.2	1448.0	1649	49	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+twotwohouse_stormed.blueprint	grounds	land_flat	land	0.048	2.0	1.635	1.635	2.011	14.9	168.0	205	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_blackforest_stone_manor.blueprint	grounds	land_flat	land	0.048	2.0	2.766	4.732	5.732	11.0	168.0	152	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_stone_manor.blueprint	grounds	land_flat	land	0.048	2.0	2.766	4.732	5.732	11.0	168.0	152	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_stone_manor.blueprint	grounds	land_flat	land	0.048	2.0	2.766	4.732	5.732	11.0	168.0	152	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_stone_manor.blueprint	grounds	land_flat	land	0.048	2.0	2.766	4.732	5.732	11.0	168.0	152	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_stone_manor.blueprint	grounds	land_flat	land	0.048	2.0	2.766	4.732	5.732	11.0	168.0	152	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_stone_manor.blueprint	grounds	land_flat	land	0.048	2.0	2.766	4.732	5.732	11.0	168.0	152	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_neletit_mansion.blueprint	grounds	land_flat	land	0.048	2.83	13.654	22.851	23.851	116.5	7008.0	39487	21	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+Black_Viking_forteca_starting_base.blueprint	grounds	land_flat	land	0.049	2.0	2.566	4.703	6.013	45.9	1464.0	2610	6	0	0	21	PLACES_WITH_GAPS	base	setpiece	curated	none stated	fleet corpus
+hs_ashlands_scholarstower.blueprint	grounds	land_flat	land	0.049	2.0	14.249	14.249	15.999	12.2	164.0	1928	2	0	0	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_storehousevanilla_brigames.blueprint	grounds	land_flat	land	0.049	2.0	3.87	3.87	55.006	12.4	164.0	383	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+twotwohouse_remnant.blueprint	grounds	land_flat	land	0.049	2.0	1.753	1.87	2.04	14.4	164.0	70	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_ashlands_sheepshank_burningtreev3.blueprint	grounds	land_flat	land	0.049	2.0	3.595	3.911	7.8	26.4	576.0	1218	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+cozy_house.blueprint	grounds	land_flat	land	0.05	2.83	6.504	12.142	14.596	55.2	1904.0	6034	37	0	9	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_blackforest_stilt_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	5.732	6.4	80.0	54	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_stilt_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	5.732	6.4	80.0	54	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_stilt_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	5.732	6.4	80.0	54	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_stilt_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	5.732	6.4	80.0	54	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_stilt_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	5.732	6.4	80.0	54	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_stilt_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	5.732	6.4	80.0	54	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	3.932	6.4	80.0	48	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	3.932	6.4	80.0	48	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	3.932	6.4	80.0	48	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	3.932	6.4	80.0	48	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	3.932	6.4	80.0	48	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_cottage.blueprint	grounds	land_flat	land	0.05	2.0	3.635	3.635	3.932	6.4	80.0	48	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_sheepshank_skeggoxmanor.blueprint	grounds	land_flat	land	0.05	2.0	1.34	4.285	6.552	48.7	1696.0	2857	19	4	3	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+bridge.vbuild	grounds	land_flat	over_water	0.051	2.0	1.105	1.469	9.079	58.1	784.0	873	0	0	0	0	PLACES_CLEAN	bridge	setpiece	curated	none stated	fleet corpus
+hs_ashlands_softpea_fantasy_castle.blueprint	grounds	land_flat	land	0.053	2.83	7.241	20.807	22.807	57.8	1900.0	5697	25	0	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+instairtower_remnant.blueprint	grounds	land_flat	land	0.053	2.0	2.105	2.105	3.105	11.0	76.0	30	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_mountain_abzul_modern_house.blueprint	grounds	land_flat	land	0.054	2.0	3.69	3.8	6.178	22.3	372.0	1401	2	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+god-house33.blueprint	grounds	land_flat	land	0.055	2.0	7.213	12.178	12.873	30.7	724.0	2949	21	0	1	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+gold_castle.blueprint	grounds	land_flat	land	0.056	2.83	14.669	18.673	20.191	74.6	4060.0	18036	2177	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+instairtower_damaged.blueprint	grounds	land_flat	land	0.056	2.0	2.0	2.0	3.0	10.2	144.0	165	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_blackforest_manor.blueprint	grounds	land_flat	land	0.056	2.0	2.769	3.635	3.932	8.4	144.0	96	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_manor.blueprint	grounds	land_flat	land	0.056	2.0	2.769	3.635	3.932	8.4	144.0	96	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_manor.blueprint	grounds	land_flat	land	0.056	2.0	2.769	3.635	3.932	8.4	144.0	96	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_manor.blueprint	grounds	land_flat	land	0.056	2.0	2.769	3.635	3.932	8.4	144.0	96	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_manor.blueprint	grounds	land_flat	land	0.056	2.0	2.769	3.635	3.932	8.4	144.0	96	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_manor.blueprint	grounds	land_flat	land	0.056	2.0	2.769	3.635	3.932	8.4	144.0	96	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+god-2.blueprint	grounds	land_flat	land	0.056	2.0	9.0	9.0	10.002	11.1	144.0	702	0	0	0	0	PLACES_CLEAN	outpost	module	curated	none stated	fleet corpus
+PuP_house1.blueprint	grounds	land_flat	land	0.059	2.0	2.947	3.854	7.079	11.8	136.0	238	0	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+berserkers-keep.vbuild	grounds	land_flat	land	0.059	2.83	10.386	17.267	19.85	56.5	2360.0	10686	52	0	4	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+forge (copy 1).blueprint	grounds	land_flat	land	0.06	2.83	4.182	5.355	7.355	32.1	736.0	2968	18	0	0	0	PLACES_CLEAN	production	setpiece	curated	none stated	fleet corpus
+forge.blueprint	grounds	land_flat	land	0.06	2.83	4.182	5.355	7.355	32.1	736.0	2968	18	0	0	0	PLACES_CLEAN	production	setpiece	curated	none stated	fleet corpus
+s-ren-dockhouse.blueprint	grounds	land_flat	over_water	0.061	2.0	5.371	6.726	13.823	43.7	1116.0	1225	10	0	0	0	PLACES_CLEAN	dock	setpiece	curated	none stated	fleet corpus
+hs_ashlands_neletit_portalhubtower.blueprint	grounds	land_flat	land	0.061	2.0	6.932	7.0	8.321	36.4	1044.0	5565	0	15	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_megaCastle.blueprint	grounds	land_flat	land	0.062	14.0	9.873	28.016	86.204	220.5	17244.0	25207	46	10	1	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_blackforest_stilt_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	3.732	4.4	64.0	32	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_stilt_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	3.732	4.4	64.0	32	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_stilt_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	3.732	4.4	64.0	32	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_stilt_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	3.732	4.4	64.0	32	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_stilt_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	3.732	4.4	64.0	32	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_stilt_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	3.732	4.4	64.0	32	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	1.932	4.4	64.0	28	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	1.932	4.4	64.0	28	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	1.932	4.4	64.0	28	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	1.932	4.4	64.0	28	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	1.932	4.4	64.0	28	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_hut.blueprint	grounds	land_flat	land	0.062	2.0	1.635	1.635	1.932	4.4	64.0	28	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+loki_ruins1.blueprint	grounds	land_flat	land	0.062	2.0	4.98	19.952	24.589	40.0	1164.0	1693	0	0	0	3	PLACES_WITH_GAPS	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+hs_mistlands_henkodrom.blueprint	grounds	land_flat	land	0.063	4.47	2.854	7.0	8.645	61.0	1720.0	1649	0	3	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_jorykstombfinal.blueprint	grounds	land_flat	land	0.064	2.0	2.471	3.496	16.298	44.3	1440.0	4286	0	1	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+deardly-casa-drly.blueprint	grounds	land_flat	land	0.065	2.0	4.842	7.803	10.8	34.0	864.0	1901	37	0	1	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+arty-dragontavern.blueprint	grounds	land_flat	land	0.07	2.0	3.15	6.732	8.0	53.7	1380.0	6852	0	0	0	7	PLACES_WITH_GAPS	flavour	setpiece	curated	none stated	fleet corpus
+hs_ashlands_thrad_smithy.blueprint	grounds	land_flat	land	0.074	2.0	4.464	5.791	6.057	22.7	380.0	567	15	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_madzobuild_modernstarterhouse.blueprint	grounds	land_flat	land	0.077	2.0	5.769	5.857	8.028	20.1	364.0	612	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_halvar_epic_starting_house.blueprint	grounds	land_flat	land	0.079	2.0	4.068	9.787	19.787	56.7	960.0	1875	23	0	3	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_dumbel_small_work.blueprint	grounds	land_flat	land	0.08	2.0	2.136	2.667	4.667	19.7	300.0	312	22	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+PuP_house6.blueprint	grounds	land_flat	land	0.081	2.0	1.762	1.818	6.078	13.4	148.0	230	0	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+PuP_house13.blueprint	grounds	land_flat	land	0.083	2.0	3.005	3.122	7.219	15.0	192.0	379	0	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+hs_blackforest_stone_house.blueprint	grounds	land_flat	land	0.083	2.0	2.766	4.732	5.732	9.0	96.0	80	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_stone_house.blueprint	grounds	land_flat	land	0.083	2.0	2.766	4.732	5.732	9.0	96.0	80	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_stone_house.blueprint	grounds	land_flat	land	0.083	2.0	2.766	4.732	5.732	9.0	96.0	80	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_stone_house.blueprint	grounds	land_flat	land	0.083	2.0	2.766	4.732	5.732	9.0	96.0	80	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_stone_house.blueprint	grounds	land_flat	land	0.083	2.0	2.766	4.732	5.732	9.0	96.0	80	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_stone_house.blueprint	grounds	land_flat	land	0.083	2.0	2.766	4.732	5.732	9.0	96.0	80	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_balgruff_prefab_small_fort.blueprint	grounds	land_flat	land	0.084	2.83	5.0	5.0	7.213	86.7	2092.0	2179	32	1	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_freelift_abcabin2.blueprint	grounds	land_flat	land	0.086	4.0	3.98	6.952	7.952	23.1	560.0	786	5	0	3	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+fortress.blueprint	grounds	land_flat	land	0.088	2.83	9.81	24.79	24.991	77.5	2192.0	10626	25	0	4	0	PLACES_CLEAN	defence	setpiece	curated	none stated	fleet corpus
+hs_ashlands_rapunzel_twr.blueprint	grounds	land_flat	land	0.089	2.0	41.292	44.635	48.019	25.2	492.0	2623	12	2	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_castle_blackmarble.blueprint	grounds	land_flat	land	0.09	4.0	8.949	22.8	24.797	79.2	2988.0	8036	8	0	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_admin_veseljko_smokehouse.blueprint	grounds	land_flat	land	0.091	2.0	2.622	4.04	5.682	21.7	440.0	491	22	0	6	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_arthur_hall_of_portals.blueprint	grounds	land_flat	land	0.092	2.0	5.703	9.951	10.952	41.7	1048.0	1932	3	15	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_forge1.blueprint	grounds	land_flat	land	0.092	2.83	5.023	5.603	10.968	24.9	348.0	343	10	0	0	0	PLACES_CLEAN	production	module	curated	none stated	fleet corpus
+hs_ashlands_swampytreehouse.blueprint	grounds	land_flat	land	0.098	2.0	3.646	9.712	58.942	25.4	448.0	1792	22	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_stone_cottage.blueprint	grounds	land_flat	land	0.1	2.0	2.766	4.732	5.732	7.0	80.0	64	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_stone_cottage.blueprint	grounds	land_flat	land	0.1	2.0	2.766	4.732	5.732	7.0	80.0	64	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_stone_cottage.blueprint	grounds	land_flat	land	0.1	2.0	2.766	4.732	5.732	7.0	80.0	64	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_mountain_stone_cottage.blueprint	grounds	land_flat	land	0.1	2.0	2.766	4.732	5.732	7.0	80.0	64	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_stone_cottage.blueprint	grounds	land_flat	land	0.1	2.0	2.766	4.732	5.732	7.0	80.0	64	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_stone_cottage.blueprint	grounds	land_flat	land	0.1	2.0	2.766	4.732	5.732	7.0	80.0	64	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_crimsonchaostownhall.blueprint	grounds	land_flat	land	0.1	2.0	2.979	6.69	7.861	28.4	560.0	1058	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_enchantedforeststump_brigames.blueprint	grounds	low_plinth	land	0.273	2.0	0.681	0.795	0.795	6.2	44.0	27	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_startinghouse_plainsmodel.blueprint	grounds	low_plinth	land	0.316	4.0	0.603	0.738	2.104	26.3	608.0	868	30	0	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hiccup-simplewoodbeambridge.blueprint	grounds	low_plinth	over_water	0.433	4.0	0.62	0.769	7.226	39.9	416.0	196	1	0	0	0	PLACES_CLEAN	bridge	module	curated	none stated	fleet corpus
+hs_ashlands_henhousevanilla_brigames.blueprint	grounds	low_plinth	land	0.692	4.47	0.573	0.573	0.573	7.1	52.0	62	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_kitchenbench_brigames.blueprint	grounds	low_plinth	land	0.867	7.21	0.667	0.77	0.77	7.9	60.0	110	2	0	0	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_kambucha_starter_house.blueprint	grounds_on_posts	supported_air	land	0.109	2.83	3.214	5.635	7.732	29.9	588.0	715	5	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_babe_cozinha_completa.blueprint	grounds_on_posts	supported_air	land	0.11	2.0	3.387	4.952	6.952	18.2	292.0	456	14	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_shipyard2.blueprint	grounds_on_posts	supported_air	land	0.111	5.66	1.871	2.766	6.227	42.9	940.0	510	20	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_lavaforge.blueprint	grounds_on_posts	supported_air	land	0.115	4.0	7.657	12.793	14.88	58.0	1080.0	4398	26	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_modestypooh_igloo.blueprint	grounds_on_posts	supported_air	land	0.118	2.0	2.104	2.479	2.479	11.5	136.0	151	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_constructor_casa_principal.blueprint	grounds_on_posts	supported_air	land	0.119	4.0	11.152	24.451	65.265	23.3	436.0	2825	38	2	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_pvp_arena.blueprint	grounds_on_posts	supported_air	land	0.119	6.0	4.178	6.903	9.0	57.9	2052.0	3115	4	5	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_the_bone_stonage.blueprint	grounds_on_posts	supported_air	land	0.12	2.0	7.205	7.217	8.8	19.0	368.0	1365	0	2	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_boggyexp_lavitating_portalhub.blueprint	grounds_on_posts	supported_air	land	0.122	4.0	2.317	3.856	11.998	39.8	1176.0	3564	0	7	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_dad_tavern.blueprint	grounds_on_posts	supported_air	land	0.123	2.83	8.904	14.569	16.319	46.4	1400.0	3641	3	1	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_cts_wolfrunlodge.blueprint	grounds_on_posts	supported_air	land	0.123	4.47	6.135	12.603	62.298	40.0	1332.0	4926	19	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_lady_silvergrey_midnighttavern.blueprint	grounds_on_posts	supported_air	land	0.125	4.0	8.244	10.951	57.114	53.6	1348.0	6797	36	0	4	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+Portal14.vbuild	grounds_on_posts	supported_air	land	0.125	2.0	2.0	2.0	2.97	7.1	64.0	161	0	0	0	0	PLACES_CLEAN	portal	module	curated	none stated	fleet corpus
+instairtower_rebuilt.blueprint	grounds_on_posts	supported_air	land	0.128	2.0	2.36	3.8	4.873	13.0	156.0	255	0	0	1	0	PLACES_CLEAN	outpost	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_blackforest_mister_small_kitchen_startgame.blueprint	grounds_on_posts	supported_air	land	0.128	2.0	2.708	2.855	52.174	12.6	156.0	263	3	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_mansion_vanilla.blueprint	grounds_on_posts	supported_air	land	0.128	2.0	5.124	5.952	8.152	57.8	1624.0	6556	3	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_builder_portalhouse.blueprint	grounds_on_posts	supported_air	land	0.13	2.0	2.538	3.066	7.163	15.5	276.0	203	0	14	0	0	PLACES_CLEAN	portal	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_badgerforgefinal.blueprint	grounds_on_posts	supported_air	land	0.131	2.83	5.363	7.916	10.787	37.2	944.0	2247	25	4	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+foresthold_ruins.blueprint	grounds_on_posts	supported_air	land	0.133	2.83	3.846	4.0	9.0	17.2	240.0	285	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_ashlands_bullseyestall.blueprint	grounds_on_posts	supported_air	land	0.133	2.0	2.781	2.972	3.269	6.4	60.0	115	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+god-3.blueprint	grounds_on_posts	supported_air	land	0.133	2.0	13.903	13.903	15.073	18.5	332.0	1518	0	0	4	0	PLACES_CLEAN	outpost	module	curated	none stated	fleet corpus
+hs_plains_vrolok_stone_refuge_2.blueprint	grounds_on_posts	supported_air	land	0.133	2.0	2.0	2.0	3.23	10.2	120.0	89	6	1	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_lacko_paintedversion1.blueprint	grounds_on_posts	supported_air	land	0.138	4.47	1.853	3.74	6.509	23.6	260.0	1203	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+pillartower.blueprint	grounds_on_posts	supported_air	land	0.14	2.0	4.6	5.0	6.0	14.2	172.0	199	0	0	0	0	PLACES_CLEAN	outpost	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_ashlands_sweettoothstall.blueprint	grounds_on_posts	supported_air	land	0.143	2.0	3.137	3.137	52.146	7.1	56.0	232	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_ugm_portalhub.blueprint	grounds_on_posts	supported_air	land	0.144	2.83	6.233	10.685	12.025	47.2	1888.0	4319	0	32	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_henkolymp.blueprint	grounds_on_posts	supported_air	land	0.145	4.47	5.925	12.298	14.55	95.4	4520.0	3285	0	15	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+salty-dick-cottage-final.blueprint	grounds_on_posts	supported_air	land	0.149	2.83	4.269	9.69	11.377	26.9	484.0	877	6	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+hs_ashlands_ragnar_henry_s_forge.blueprint	grounds_on_posts	supported_air	land	0.155	6.0	4.691	15.239	17.162	79.4	2556.0	3412	44	1	3	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_creative_black_forest_mansion.blueprint	grounds_on_posts	supported_air	land	0.155	2.0	3.008	3.903	4.5	26.5	620.0	680	9	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+ruins_0_3.blueprint	grounds_on_posts	supported_air	land	0.156	2.83	0.706	1.424	3.271	14.6	180.0	140	0	0	0	0	PLACES_CLEAN	flavour	module	curated	none stated	Oosquai/SavheimIV
+hs_ashlands_thrad_forge.blueprint	grounds_on_posts	supported_air	land	0.174	4.0	4.79	6.884	8.136	21.8	368.0	807	15	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_gorthein_dupont_house.blueprint	grounds_on_posts	supported_air	land	0.175	6.0	2.559	11.951	14.493	64.3	1940.0	2250	33	0	3	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_wolfgdgdbreederfinal.blueprint	grounds_on_posts	supported_air	land	0.175	4.0	6.207	10.8	17.8	30.3	824.0	1557	11	1	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_church_of_restless.blueprint	grounds_on_posts	supported_air	land	0.186	2.83	4.918	11.0	12.2	37.2	668.0	2213	0	1	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_house.blueprint	grounds_on_posts	supported_air	land	0.191	4.0	5.937	11.69	13.316	39.7	860.0	2966	10	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_giantsnowflakeonly.blueprint	grounds_on_posts	supported_air	land	0.194	2.0	49.784	49.823	49.823	17.5	288.0	230	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+instairtower.blueprint	grounds_on_posts	supported_air	land	0.194	2.0	2.0	2.0	3.142	10.4	144.0	243	0	0	0	0	PLACES_CLEAN	outpost	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_plains_abzul_common_hall.blueprint	grounds_on_posts	supported_air	land	0.195	2.83	4.305	17.953	20.221	34.6	740.0	2291	1	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_black_house_light.blueprint	grounds_on_posts	supported_air	land	0.2	4.0	4.192	10.131	12.131	31.9	880.0	5398	40	0	0	0	PLACES_CLEAN	base	setpiece	curated	none stated	fleet corpus
+hs_ashlands_badmin_archer.blueprint	grounds_on_posts	supported_air	land	0.2	2.83	4.748	6.838	14.563	15.7	100.0	1184	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+loki_ruins2.blueprint	grounds_on_posts	supported_air	land	0.202	5.66	2.729	12.874	57.43	47.1	1328.0	1994	0	0	0	7	PLACES_WITH_GAPS	flavour	setpiece	curated	none stated	Oosquai/SavheimIV
+foresthold_remnant.blueprint	grounds_on_posts	supported_air	land	0.205	2.83	2.7	3.478	4.478	18.8	176.0	86	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_ashlands_sheepshank_notsotinyhome.blueprint	grounds_on_posts	supported_air	land	0.208	4.0	1.196	3.0	10.0	25.1	672.0	2289	35	1	5	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+god-test.blueprint	grounds_on_posts	supported_air	land	0.211	4.0	10.942	16.703	18.6	29.7	700.0	3356	0	0	0	0	PLACES_CLEAN	defence	setpiece	curated	none stated	fleet corpus
+hs_plains_builder_tavern_001.blueprint	grounds_on_posts	supported_air	land	0.215	4.0	1.806	2.0	48.338	25.6	520.0	660	11	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_house11.blueprint	grounds_on_posts	supported_air	land	0.216	2.0	2.731	2.795	7.892	14.5	204.0	266	2	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+hs_ashlands_crookedhouse_brigamesau.blueprint	grounds_on_posts	supported_air	land	0.219	4.47	3.867	13.629	59.021	39.3	748.0	3023	52	2	7	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_house5.blueprint	grounds_on_posts	supported_air	land	0.231	5.66	1.608	1.624	3.721	13.1	156.0	291	3	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+hs_ashlands_wissman_yngolkeep.blueprint	grounds_on_posts	supported_air	land	0.234	6.0	1.233	5.806	54.85	52.1	1640.0	4388	25	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_sheepshank_stoneportalhub.blueprint	grounds_on_posts	supported_air	land	0.239	5.66	6.529	8.232	9.232	64.0	2656.0	6747	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_thrad_two_towers.blueprint	grounds_on_posts	supported_air	land	0.24	6.0	11.986	15.796	18.334	34.4	616.0	1902	5	1	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_blackmarble_fortress_med.blueprint	grounds_on_posts	supported_air	land	0.241	4.0	7.452	11.974	12.932	41.1	1796.0	1838	9	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_adelaide.blueprint	grounds_on_posts	supported_air	land	0.241	2.83	1.733	2.355	3.525	9.5	116.0	184	10	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_the_flint_flat.blueprint	grounds_on_posts	supported_air	land	0.242	2.83	3.362	3.737	5.717	10.9	132.0	176	6	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_silly_pie_octagon_starter_base.blueprint	grounds_on_posts	supported_air	land	0.244	2.83	2.731	2.952	4.122	53.1	656.0	972	12	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_black_bv_build2.blueprint	grounds_on_posts	supported_air	land	0.247	4.0	1.834	1.899	3.069	20.4	324.0	217	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_silent_citizen_storage_compact.blueprint	grounds_on_posts	supported_air	land	0.248	2.83	4.965	7.8	9.8	21.6	404.0	893	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+PuP_house7.blueprint	grounds_on_posts	supported_air	land	0.25	2.83	2.147	4.012	4.985	12.4	112.0	152	2	0	0	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+smallstarthome.blueprint	grounds_on_posts	supported_air	land	0.258	2.83	3.12	7.185	9.445	24.8	496.0	1013	20	0	1	0	PLACES_CLEAN	base	module	curated	none stated	fleet corpus
+hs_blackforest_abzulute_caba_a_demons.blueprint	grounds_on_posts	supported_air	land	0.258	6.0	2.309	7.931	10.75	63.3	1796.0	1609	29	4	6	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+ruins_0_1_and_0_2_and_0_3.blueprint	grounds_on_posts	supported_air	land	0.265	5.66	2.969	8.173	10.02	28.3	468.0	360	0	0	0	1	PLACES_WITH_GAPS	flavour	module	curated	none stated	Oosquai/SavheimIV
+hs_ashlands_eventyr.blueprint	grounds_on_posts	supported_air	land	0.265	5.66	1.767	18.008	21.025	49.4	1132.0	2695	0	2	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_admin_veseljko_cooking_hut.blueprint	grounds_on_posts	supported_air	land	0.271	2.83	2.407	5.726	54.745	23.6	560.0	505	18	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_sheepshank_basichouse.blueprint	grounds_on_posts	supported_air	land	0.275	4.0	3.819	8.596	9.962	41.2	844.0	2528	24	0	6	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+god-portaaoo.blueprint	grounds_on_posts	supported_air	land	0.284	2.83	17.805	17.895	18.896	37.0	592.0	2191	0	0	0	0	PLACES_CLEAN	defence	setpiece	curated	none stated	fleet corpus
+hs_plains_creative_house.blueprint	grounds_on_posts	supported_air	land	0.303	2.83	7.791	7.951	9.951	32.0	660.0	1150	7	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_swamp_halfnate_viking_house_new.blueprint	grounds_on_posts	supported_air	land	0.313	6.0	2.982	8.474	9.787	28.9	844.0	3476	21	0	4	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_boar_breeder.blueprint	grounds_on_posts	supported_air	land	0.317	4.0	5.579	8.703	12.068	17.5	240.0	394	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_cabin_bf_cozy_carrot.blueprint	grounds_on_posts	supported_air	land	0.323	4.0	7.738	14.002	16.996	16.5	248.0	3298	7	0	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+instairtower_ruin.blueprint	grounds_on_posts	supported_air	land	0.324	2.83	2.091	3.0	4.0	10.0	136.0	96	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_ashlands_odin_compactforge.blueprint	grounds_on_posts	supported_air	land	0.325	4.0	4.827	4.943	6.895	25.6	492.0	764	20	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_madzobuild_madhouse.blueprint	grounds_on_posts	supported_air	land	0.327	4.0	4.893	9.599	10.985	36.7	820.0	1412	31	1	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+drake-lighthouse.blueprint	grounds_on_posts	supported_air	land	0.333	2.0	35.75	36.8	38.8	14.5	276.0	1255	0	0	0	0	PLACES_CLEAN	flavour	module	curated	none stated	fleet corpus
+pillartower_ruins.blueprint	grounds_on_posts	supported_air	land	0.333	2.83	3.693	7.951	8.951	14.2	144.0	111	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+pillartower_remnant.blueprint	grounds_on_posts	supported_air	land	0.346	2.0	1.0	1.0	2.0	14.0	104.0	29	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+foresthold.blueprint	grounds_on_posts	supported_air	land	0.347	2.83	4.898	8.658	8.988	18.4	288.0	585	0	0	0	0	PLACES_CLEAN	defence	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_ashlands_blueprints_mint_s_ash_tower.blueprint	grounds_on_posts	supported_air	land	0.354	4.47	4.777	11.219	11.379	27.6	656.0	1538	31	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_plains_ulf_the_builder_lighthouse.blueprint	grounds_on_posts	supported_air	land	0.354	4.0	15.466	22.962	23.962	16.0	260.0	1267	3	0	1	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_flam_travel_cabin_1.blueprint	grounds_on_posts	supported_air	land	0.367	2.0	1.179	1.256	5.507	10.5	120.0	146	1	0	0	0	PLACES_CLEAN	base	module	derived	none stated	OverDrive/BiomeBlueprints
+instairtower_reruined.blueprint	grounds_on_posts	supported_air	land	0.371	2.83	2.861	5.732	6.732	10.2	140.0	87	0	0	0	0	PLACES_CLEAN	flavour	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+hs_plains_ragnar_smelter.blueprint	grounds_on_posts	supported_air	land	0.38	4.47	3.196	3.952	5.952	37.8	632.0	695	6	0	0	0	PLACES_CLEAN	production	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+hs_mistlands_thrad_storehouse.blueprint	grounds_on_posts	supported_air	land	0.393	2.83	3.739	9.69	9.866	20.0	336.0	671	0	0	0	0	PLACES_CLEAN	flavour	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+speeds-bridge2.blueprint	grounds_on_posts	supported_air	over_water	0.417	4.47	2.023	2.72	2.72	27.9	240.0	63	0	0	0	0	PLACES_CLEAN	bridge	module	curated	none stated	fleet corpus
+hs_plains_mister_meia_casa.blueprint	grounds_on_posts	supported_air	land	0.421	2.83	1.741	3.828	4.803	19.7	380.0	760	13	0	2	0	PLACES_CLEAN	base	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+Relicv_Raven_V2.blueprint	grounds_on_posts	supported_air	land	0.429	6.0	4.492	6.41	6.41	12.4	112.0	94	0	0	0	1	PLACES_WITH_GAPS	flavour	module	derived	none stated	okeanz/LootGoblinsUtils
+ruins_0_1.blueprint	grounds_on_posts	supported_air	land	0.438	5.66	3.358	5.323	7.877	11.8	128.0	85	0	0	0	1	PLACES_WITH_GAPS	flavour	module	curated	none stated	Oosquai/SavheimIV
+god-22.blueprint	grounds_on_posts	supported_air	land	0.438	2.83	17.803	17.895	18.896	13.0	256.0	836	0	0	0	0	PLACES_CLEAN	outpost	module	curated	none stated	fleet corpus
+hs_ashlands_lady_silvergrey_oceanflame.blueprint	grounds_on_posts	supported_air	land	0.461	6.0	35.327	52.806	82.762	52.3	2188.0	6291	0	46	0	0	PLACES_CLEAN	portal	setpiece	derived	none stated	OverDrive/BiomeBlueprints
+foresthold_deserted.blueprint	grounds_on_posts	supported_air	land	0.486	2.83	3.221	6.718	8.888	18.4	288.0	515	0	0	0	0	PLACES_CLEAN	defence	module	curated	AGPL-3.0	RickardAndreasAgren/ValheimBlueprintCruncher
+god-ponte-plus.blueprint	grounds_on_posts	supported_air	over_water	0.5	4.0	11.933	13.226	15.353	28.1	320.0	883	0	0	0	0	PLACES_CLEAN	bridge	module	curated	none stated	fleet corpus
+hs_blackforest_sheepshank_karve5manluge.blueprint	grounds_on_posts	supported_air	land	0.522	5.66	2.024	7.967	34.967	28.4	552.0	573	3	3	0	0	PLACES_CLEAN	portal	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_enchantedforeststumpcombo_brigames.blueprint	grounds_on_posts	supported_air	land	0.536	5.66	5.306	61.239	61.239	11.9	112.0	65	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_starterhouse.blueprint	grounds_on_posts	supported_air	land	0.625	4.0	2.858	5.87	8.18	11.4	128.0	221	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_ugm_starheim_atst_leanedforward.blueprint	grounds_on_posts	supported_air	land	0.636	6.0	5.553	7.564	8.137	9.6	88.0	161	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_meadows_busy_bee_beehive.blueprint	grounds_on_posts	supported_air	land	0.667	4.47	4.577	4.913	4.913	10.5	48.0	70	6	0	0	0	PLACES_CLEAN	production	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_ashlands_fireplace_brigames.blueprint	grounds_on_posts	supported_air	land	0.867	4.47	0.942	1.0	1.0	7.4	60.0	122	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+hs_blackforest_lotusflower_brigames.blueprint	grounds_on_posts	supported_air	land	0.875	4.47	5.748	6.732	6.732	10.2	128.0	92	0	0	0	0	PLACES_CLEAN	flavour	module	derived	none stated	OverDrive/BiomeBlueprints
+PuP_Owl-tree_house.blueprint	no_body	unresolvable	unknown													EMPTY	base	empty	curated	none stated	fleet corpus
+salty-dick-mordach-castle-final.blueprint	no_body	unresolvable	unknown													EMPTY	base	empty	curated	none stated	fleet corpus
+PuP_rampart1.blueprint	no_body	unresolvable	unknown													EMPTY	defence	empty	curated	none stated	fleet corpus
+PuP_tavern.blueprint	no_body	unresolvable	unknown													EMPTY	flavour	empty	curated	none stated	fleet corpus
+SerpentShip.blueprint	no_body	unresolvable	unknown													EMPTY	flavour	empty	curated	none stated	fleet corpus
+SerpentShip_Empty.blueprint	no_body	unresolvable	unknown													EMPTY	flavour	empty	curated	none stated	fleet corpus
+serpent.blueprint	no_body	unresolvable	unknown													EMPTY	flavour	empty	curated	none stated	fleet corpus
+salty-dick-tower-test.blueprint	no_body	unresolvable	unknown													EMPTY	outpost	empty	curated	none stated	fleet corpus
+PuP_stable.blueprint	no_body	unresolvable	unknown													EMPTY	production	empty	curated	none stated	fleet corpus
+ragnar-warehouse.blueprint	no_body	unresolvable	unknown													EMPTY	production	empty	curated	none stated	fleet corpus

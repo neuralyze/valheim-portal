@@ -33,16 +33,40 @@ constraint_note: 'Constraints come in two classes and the solver treats them dif
 resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
   Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
   all of them.
+location_clearance_note: 'MEASURED 2026-09-15 and it invalidates this field: `requirement.location_clearance_m`
+  and `solved.nearest_location_m` are VANILLA-ONLY figures and must not be read as clearance against the
+  live world.
+
+  `tools/seedscan/run_locscan.sh` builds its sandbox with `rsync --exclude ''BepInEx/''`, then `rm -rf
+  $SANDBOX/BepInEx`, then copies back only `BepInEx/core` and builds its own scanner into `plugins`. So
+  the location dump the solver scores against is produced by a server with ZERO gameplay mods loaded,
+  and More_World_Locations_AIO''s 190 POI locations cannot register in it. The seed is right (Pirate68)
+  and the dump is not stale; it is measuring a different world.
+
+  The proof is a matched pair rather than an inference. At `pre-eikthyr#meadows-starter-hall` the solver
+  recorded nearest_location_m 77.0; the LIVE world holds THREE LocationProxy markers at 11.08, 25.41 and
+  77.44 m from that pad centre. The solver found exactly the vanilla one and neither of the two nearer
+  ones. The same gap appears at every site checked: recorded 178.0 vs live 23.05 m (pre-moder#mountain-outpost),
+  recorded 147.0 vs live 17.12 m (deepnorth-sandbox#complete-station-hub), recorded 96.0 vs live 24.14
+  m (deepnorth-sandbox#sandbox-portal-hub).
+
+  What the figure can still be trusted for: ranking candidate sites against VANILLA locations during the
+  solve, which is what it was computed for. What it must NOT be used for: deciding that ground is free
+  to clear or build on. That question is answered LIVE, and only live, by `clearing/clear.py`''s `locations_inside()`
+  probe, which refuses to clear when a generated marker stands inside the cylinder. That refusal is the
+  real gate and it has already blocked three sites here. Re-running the solver will not fix the number:
+  the dump is mod-free BY CONSTRUCTION, and a mod''s own location quantity switches only apply at world
+  generation, so they cannot retract a marker from a zone this world has already generated either.'
 placements:
 - id: ashlands-forward-base
-  blueprint: deardly-casa-drly.blueprint
-  sha256: 215e53145d53ed09bb240aa99d67f714360a9d502bb2842dbaeb2a57a4eb5f70
-  pieces: 1901
+  blueprint: hs_ashlands_compact_endgame_base1.blueprint
+  sha256: a9670aeedf7b836e27e34e28718f6536f969f3a448ee16931ae84db130659c44
+  pieces: 537
   footprint_xzy_m:
-  - 31.2
-  - 29.7
-  - 13.0
-  creator: Deardly
+  - 20.9
+  - 23.7
+  - 11.7
+  creator: Monkey
   viability: PLACES_CLEAN
   align: floor-center
   requirement:
@@ -233,48 +257,155 @@ placements:
         foundations_note: 'the driest footprint this seed offers here is -0.52 m relative to the water
           plane, so the pad is partly submerged wherever it goes: declare min_height_m at or below that
           and build on foundations, or pick a smaller footprint_m'
+  body_choice: 'Replaces `deardly-casa-drly`. MEASURED: `hs_ashlands_compact_endgame_base1` carries 4/4
+    of the stations this tier ranks on (blackforge, eitr refinery, galdr table, artisan) against casa-drly''s
+    3/4, grounds better (2.3% floating and a 3.50 m worst gap against 6.5% and 7.80 m), and costs 537
+    pieces against 1901 -- 3.5x cheaper for strictly better coverage. Span 27.3 m inside the 50 m pad,
+    missing_pieces 0, material ashlands(113): genuine grausten and flametal, which is what this tier should
+    read as.'
+  body_audit:
+    source: library/audit_bases.py raster in library/data/base_audit.json, 1 m columns on a flat pad
+    flat_pad_verdict: grounds
+    setting: land_flat
+    floating_fraction: 0.023
+    max_air_m: 3.5
+    air_isolation_max_m: 2.0
+    footprint_span_m: 27.3
+    pad_m: 50.0
+    pieces: 537
+    stations: 43
+    beds: 0
+    portals_in_body: 0
+    missing_pieces: 0
+    missing_prefabs: []
+    material_tier: ashlands
+    material_tier_pieces: 113
+    licence: none stated
+    redistributable: false
+    licence_note: referenced by name and sha256 only; body is not vendored in this repo
+  portal:
+    role: spoke
+    tag: u-ashland
+    peer: deepnorth-sandbox#sandbox-portal-hub
+    pieces_to_place: 1
+    pieces_in_body_dropped: 0
+    tag_max_len: 10
+    note: 'Vanilla pairs portals BY TAG, and MEASURED by FixtureHome from the deployed assembly, Game::FindRandomUnconnectedPortal
+      draws UNIFORMLY AT RANDOM among same-tag unconnected portals and re-draws whenever either end loses
+      its partner -- so a blank-tag portal is not merely one-way, its destination is non-deterministic.
+      This world holds 26 mod-added portal_wood instances, three of them within 5-29 m of the workshop
+      pad, and the single untagged portal placed at the workshop is why the operator went through and
+      found no portal to return with. So: every portal here carries a tag, exactly two portals share each
+      tag, and an absent tag is a build FAILURE rather than a default. The tag is a ZDO string field (ZDOVars.s_tag)
+      written at spawn time in the `data=` payload of `spawn_object`; TeleportWorld has no tag field of
+      its own and reads that same ZDO string, so a headlessly tagged portal is indistinguishable to the
+      pairing code from one a player typed. Tags are capped at 10 characters because TextInput::RequestText(this,
+      "$piece_portal_tag", 10) is the UI input cap: a longer tag would PAIR but could never be re-typed,
+      making a broken pair unrepairable by hand. Topology is a single central hub -- deepnorth-sandbox#sandbox-portal-hub
+      at (-270.5, 211.5), 340 m from the StartTemple -- holding one portal per site; 11 tags, 22 portal
+      ZDOs, worst case two hops between any two sites. Any portal_wood the BODY carries is DROPPED, because
+      a captured tag is an unknown tag.'
+  portal_tag: u-ashland
   blueprint_datum:
-    base_y: 0.5
+    base_y: 1.0
     method: lowest_walkable_surface
     placeable: true
-    bottom_solid_y: -99.525
-    support_bottom_y: -2.5
-    lowest_station_y: 0.465
-    lowest_ground_resting_y: 0.458
-    floor_pieces: 264
-    pieces: 1901
+    bottom_solid_y: -0.006
+    support_bottom_y: 0.0
+    lowest_station_y: 0.957
+    lowest_ground_resting_y: 0.447
+    floor_pieces: 109
+    pieces: 537
     walkable_levels:
-    - y: 0.5
+    - y: 1.0
       above_pad_m: 0.0
-      pieces: 80
-      area_m2: 536.0
-    - y: 0.6
-      above_pad_m: 0.1
-      pieces: 4
-      area_m2: 16.0
-    - y: 1.6
-      above_pad_m: 1.1
-      pieces: 23
-      area_m2: 74.0
-    - y: 2.6
-      above_pad_m: 2.1
-      pieces: 13
-      area_m2: 46.0
-    - y: 3.6
-      above_pad_m: 3.1
-      pieces: 10
-      area_m2: 34.0
-    - y: 4.6
-      above_pad_m: 4.1
-      pieces: 62
-      area_m2: 236.0
-    - y: 5.6
-      above_pad_m: 5.1
-      pieces: 58
-      area_m2: 202.0
-    - y: 6.6
-      above_pad_m: 6.1
-      pieces: 14
-      area_m2: 20.0
-    walkable_levels_total: 8
-    violations: []
+      pieces: 21
+      area_m2: 252.0
+    - y: 1.097
+      above_pad_m: 0.097
+      pieces: 18
+      area_m2: 72.0
+    - y: 2.83
+      above_pad_m: 1.83
+      pieces: 2
+      area_m2: 2.0
+    - y: 3.097
+      above_pad_m: 2.097
+      pieces: 3
+      area_m2: 3.0
+    - y: 3.255
+      above_pad_m: 2.255
+      pieces: 1
+      area_m2: 1.0
+    - y: 3.735
+      above_pad_m: 2.735
+      pieces: 1
+      area_m2: 1.0
+    - y: 3.788
+      above_pad_m: 2.788
+      pieces: 1
+      area_m2: 1.0
+    - y: 3.841
+      above_pad_m: 2.841
+      pieces: 1
+      area_m2: 1.0
+    - y: 3.893
+      above_pad_m: 2.893
+      pieces: 1
+      area_m2: 1.0
+    - y: 3.946
+      above_pad_m: 2.946
+      pieces: 1
+      area_m2: 1.0
+    - y: 3.999
+      above_pad_m: 2.999
+      pieces: 1
+      area_m2: 1.0
+    - y: 4.34
+      above_pad_m: 3.34
+      pieces: 1
+      area_m2: 1.0
+    walkable_levels_total: 31
+    base_profile:
+      cell_m: 2.0
+      columns: 130
+      footprint_area_m2: 520.0
+      bottom_y_min: -0.006
+      bottom_y_p25: -0.0
+      bottom_y_median: -0.0
+      bottom_y_p75: -0.0
+      bottom_y_max: 4.5
+      relief_m: 4.505
+      bottom_is_flat: false
+      steps:
+      - bottom_y: 0.0
+        area_m2: 404.0
+        share: 0.777
+      - bottom_y: 1.0
+        area_m2: 88.0
+        share: 0.169
+      - bottom_y: 0.5
+        area_m2: 16.0
+        share: 0.031
+      - bottom_y: 4.5
+        area_m2: 8.0
+        share: 0.015
+      - bottom_y: 3.5
+        area_m2: 4.0
+        share: 0.008
+      on_a_flat_pad:
+        columns: 130
+        columns_floating: 3
+        floating_fraction: 0.023
+        floating_area_m2: 12.0
+        max_air_m: 3.5
+        mean_air_m: 3.09
+        air_volume_m3: 37.1
+        max_buried_m: 1.006
+        grounded: true
+    props_below_floor_m: 0.553
+    violations:
+    - code: props_below_floor
+      detail: a ground-resting piece sits at y=0.447, 0.55 m below the chosen floor plane y=1.000; on
+        a flat pad it will stand proud of the ground by that much. Floors define the datum because burying
+        a floor makes a building unenterable and a floating barrel does not.

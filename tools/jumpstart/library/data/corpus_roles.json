@@ -6,7 +6,7 @@
   "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints"
  ],
  "category_tally": {
-  "base": 41,
+  "base": 42,
   "bridge": 5,
   "defence": 6,
   "dock": 2,
@@ -19,15 +19,20 @@
   "empty": 10,
   "exploit": 3,
   "module": 34,
-  "setpiece": 39
+  "setpiece": 40
  },
  "entries": [
   {
    "file": "14464-Valheimian.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/14464-Valheimian.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/14464-Valheimian.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 339266,
    "sha256": "0387c1a4c1c80ffe0b63c902382ef518e0cb1b1718e68f328eb4fb2c6778d706",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "ДОМ ДВЕРГОВ",
    "creator": "Торкель",
    "licence": "none stated",
@@ -82,9 +87,14 @@
   {
    "file": "15643-Valheimian.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/15643-Valheimian.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/15643-Valheimian.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 676527,
    "sha256": "76e1fbac1a0ec443a663e6a6e1a85aa5c2fc02c22263050ed5ae222df1a5441b",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Нокстелл",
    "creator": "Азура Тираэцу",
    "licence": "none stated",
@@ -143,9 +153,15 @@
   {
    "file": "BjOrN_blueprint001.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/BjOrN_blueprint001.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/BjOrN_blueprint001.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/BjOrN_blueprint001.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 186313,
    "sha256": "020d4a2a64a8e7953ea54b5aea6c3e72fd1f554a39ae34dd9a62d5e20e364690",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "blueprint001",
    "creator": "BjOrN",
    "licence": "none stated",
@@ -197,9 +213,14 @@
   {
    "file": "Black_Viking_forteca_starting_base.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Black_Viking_forteca_starting_base.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Black_Viking_forteca_starting_base.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 242661,
    "sha256": "5967d55ef012799eb55a82925973452c63d243c0c387489b16b3386bb4c67741",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "forteca starting base",
    "creator": "Enslaver",
    "licence": "none stated",
@@ -255,9 +276,15 @@
   {
    "file": "Portal11.vbuild",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Portal11.vbuild",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Portal11.vbuild",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/Portal11.vbuild"
+   ],
    "format": "vbuild",
    "bytes": 7110,
    "sha256": "00097089275fc2054d6cf23d31ec3bbbbf1e48c75f5a2d9c4a6c5974971b7982",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -302,9 +329,15 @@
   {
    "file": "Portal12.vbuild",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Portal12.vbuild",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Portal12.vbuild",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/Portal12.vbuild"
+   ],
    "format": "vbuild",
    "bytes": 3727,
    "sha256": "4de7deda6a07b1332eb4083e1977225f2318873f831da72d132ade352b665206",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -349,9 +382,15 @@
   {
    "file": "Portal13.vbuild",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Portal13.vbuild",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Portal13.vbuild",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/Portal13.vbuild"
+   ],
    "format": "vbuild",
    "bytes": 8405,
    "sha256": "30a255fa85b2083d50b9787d9d118361f4ba0e01995c486349e9865ca4852528",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -396,9 +435,15 @@
   {
    "file": "Portal14.vbuild",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Portal14.vbuild",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Portal14.vbuild",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/Portal14.vbuild"
+   ],
    "format": "vbuild",
    "bytes": 9709,
    "sha256": "c34a06144a4967bffd849802111a5528211faf240f4b2b462bc1494a64e45f9a",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -443,9 +488,15 @@
   {
    "file": "Portal15.vbuild",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Portal15.vbuild",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/Portal15.vbuild",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/Portal15.vbuild"
+   ],
    "format": "vbuild",
    "bytes": 6214,
    "sha256": "1ac260b2cb5971a93d9ebc80555c1fff3e1329296f0a24fc4b72e814eb0c4d2a",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -490,9 +541,14 @@
   {
    "file": "PuP_Bone-dragon.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_Bone-dragon.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_Bone-dragon.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 105203,
    "sha256": "3472de9f2e94d8aabcb94e656b5c3aa5cb6cb3361fd2206fbf9fb4811233ba20",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Bone-dragon",
    "creator": "PuP",
    "licence": "none stated",
@@ -537,9 +593,14 @@
   {
    "file": "PuP_Capitol.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_Capitol.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_Capitol.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 229877,
    "sha256": "14c34a0bf02c57d88746a370773a47a8c3883b23be71090d8d99c186db89b2d5",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Capitol",
    "creator": "PuP",
    "licence": "none stated",
@@ -586,9 +647,14 @@
   {
    "file": "PuP_Minicastle.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/PuP_Minicastle.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/PuP_Minicastle.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 404763,
    "sha256": "556fd22e78eac5b575fb479b8f86edc021faf5ffd62c47ef9317a96258cf112b",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Minicastle",
    "creator": "PuP",
    "licence": "none stated",
@@ -637,11 +703,74 @@
    }
   },
   {
+   "file": "PuP_Minicastle.blueprint",
+   "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_Minicastle.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_Minicastle.blueprint"
+   ],
+   "format": "blueprint",
+   "bytes": 352256,
+   "sha256": "dcbdd295f5123ef61df2e2d8954a37995bb2e5af4c2cc04022cd3f15beddf518",
+   "resolvable": true,
+   "unresolved_reason": "",
+   "blueprint_name": "Minicastle",
+   "creator": "PuP",
+   "licence": "none stated",
+   "origin": "fleet corpus (local disk)",
+   "committed_body": false,
+   "category": "base",
+   "kind": "setpiece",
+   "role": "compact grausten castle",
+   "fit": "Ashlands / pre-fader",
+   "note": "1408 blank sign_notext used as decor panels -- ZDO hazard",
+   "verdict": "PLACES_CLEAN",
+   "missing_pct": 0.0,
+   "missing_prefabs": {},
+   "mod_prefabs": {},
+   "pieces": 3334,
+   "distinct_prefabs": 76,
+   "footprint_xzy": [
+    35.2,
+    41.1,
+    23.9
+   ],
+   "top_tier": "ashlands",
+   "top_tier_pieces": 1925,
+   "tier_histogram": {
+    "meadows": 1143,
+    "blackforest": 5,
+    "swamp": 68,
+    "plains": 8,
+    "mistlands": 185,
+    "ashlands": 1925
+   },
+   "stations": 12,
+   "portals": 0,
+   "beds": 0,
+   "wards": 0,
+   "snap_points": 0,
+   "terrain_height_rows": 0,
+   "terrain_paint_rows": 0,
+   "ih_discarded_rows": 0,
+   "ih_discarded_shapes": {},
+   "unknown_sections": [],
+   "pieces_after_unknown": 0,
+   "legacy_terrain_rejected": false,
+   "zdo_spam": {
+    "sign_notext": 1014
+   }
+  },
+  {
    "file": "PuP_Owl-tree_house.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_Owl-tree_house.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_Owl-tree_house.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 0,
    "sha256": "",
+   "resolvable": false,
+   "unresolved_reason": "zero-byte source: the only copy on disk is 0 bytes, so there is no content to hash, materialise, parse or place. Truncated when the corpus was fetched; no second copy exists locally or in any referenced web source (MEASURED).",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -683,9 +812,14 @@
   {
    "file": "PuP_black_house_full.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_black_house_full.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_black_house_full.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 631532,
    "sha256": "0cdcee665b7e8f95d14d89850644e819b90ac0fe8f337ba6f085121292b98322",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "black_house_full",
    "creator": "PuP",
    "licence": "none stated",
@@ -735,9 +869,14 @@
   {
    "file": "PuP_black_house_light.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_black_house_light.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_black_house_light.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 549080,
    "sha256": "13d151e83fdbbe11fd7181b9e7d005f3a7291eadd4bf1b39e950e926c9587b91",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "black_house_light",
    "creator": "PuP",
    "licence": "none stated",
@@ -785,9 +924,14 @@
   {
    "file": "PuP_capitoliy.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_capitoliy.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_capitoliy.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 568958,
    "sha256": "b32bd850a3941269ebabc986417ef2377b39b3e5d7a59d3255f938241df8bed5",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "capitoliy",
    "creator": "PuP",
    "licence": "none stated",
@@ -837,9 +981,14 @@
   {
    "file": "PuP_forge1.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_forge1.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_forge1.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 32337,
    "sha256": "02d12b1445127bdcfd9783936e4ef8c547d8d303e7b055aacd13f91f66ea1022",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "forge1",
    "creator": "PuP",
    "licence": "none stated",
@@ -886,9 +1035,14 @@
   {
    "file": "PuP_house1.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house1.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house1.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 24374,
    "sha256": "576fd5c19bf26e4db3dc276ff98dd9f5b956d95cbb9a6def3b133e23cde6e591",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house1",
    "creator": "PuP",
    "licence": "none stated",
@@ -936,9 +1090,14 @@
   {
    "file": "PuP_house10.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house10.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house10.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 21242,
    "sha256": "45cc03f7ff2ef13d7d4abae8d172fc2b1892ebfbe55d1ad535f0984975d3710c",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house10",
    "creator": "PuP",
    "licence": "none stated",
@@ -985,9 +1144,14 @@
   {
    "file": "PuP_house11.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house11.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house11.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 25132,
    "sha256": "8460b7e61ce330186a40eec9ba3e1306865e295a53881d80972fefcd8c5f2376",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house11",
    "creator": "PuP",
    "licence": "none stated",
@@ -1034,9 +1198,14 @@
   {
    "file": "PuP_house12.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house12.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house12.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 20683,
    "sha256": "671e72fd4d7696ba0b87e545e56a7f9c0aebafb7834192efd9339ce38052af8f",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house12",
    "creator": "PuP",
    "licence": "none stated",
@@ -1083,9 +1252,14 @@
   {
    "file": "PuP_house13.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house13.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house13.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 37639,
    "sha256": "e82a91835b4a71b8f8be2702cc3d672579a05dec90ec933c7abee4e4bd9f7d39",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house13",
    "creator": "PuP",
    "licence": "none stated",
@@ -1132,9 +1306,14 @@
   {
    "file": "PuP_house2.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house2.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house2.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 31360,
    "sha256": "39220d65b622cc8ecc1650a87bf833f0ad60c23bbabe571aff04ca59f9aed93f",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house2",
    "creator": "PuP",
    "licence": "none stated",
@@ -1182,9 +1361,14 @@
   {
    "file": "PuP_house3.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house3.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house3.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 18836,
    "sha256": "ab4faf7691c7b0dcb39dec3267a47dbbbec38fc6d0e6788d659c11303488b1ab",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house3",
    "creator": "PuP",
    "licence": "none stated",
@@ -1232,9 +1416,14 @@
   {
    "file": "PuP_house4.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house4.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house4.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 16724,
    "sha256": "e3e6e42ac2b7c4977d7b8cdd5779bb2c0d633585822f4917d7cc481ba962df96",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house4",
    "creator": "PuP",
    "licence": "none stated",
@@ -1280,9 +1469,14 @@
   {
    "file": "PuP_house5.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house5.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house5.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 29022,
    "sha256": "2134217de138bd5563b54aea2384a422e9e71a8e0c66294e9d65c66fecb51f22",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house5",
    "creator": "PuP",
    "licence": "none stated",
@@ -1331,9 +1525,14 @@
   {
    "file": "PuP_house6.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house6.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house6.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 23743,
    "sha256": "bc5f107fed3c8d9589a67fd8f02291449bc79b833c10f2d6f274bcc5bc089218",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house6",
    "creator": "PuP",
    "licence": "none stated",
@@ -1381,9 +1580,14 @@
   {
    "file": "PuP_house7.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house7.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house7.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 15229,
    "sha256": "24deeb4c8553dea2a5cfbe6bd891dd8bf78f95f46da47023d3547a2d77cf84db",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house7",
    "creator": "PuP",
    "licence": "none stated",
@@ -1429,9 +1633,14 @@
   {
    "file": "PuP_house8.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house8.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house8.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 14970,
    "sha256": "6deaae408b0c28bfdc7b8afbe0f28b4391f689d2312eacee0d7196b7907df1bb",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house8",
    "creator": "PuP",
    "licence": "none stated",
@@ -1478,9 +1687,14 @@
   {
    "file": "PuP_house9.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house9.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_house9.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 16600,
    "sha256": "fc970d234b382812390f710a644af52f402040ec057cfdb7299b7aba3165a685",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house9",
    "creator": "PuP",
    "licence": "none stated",
@@ -1528,9 +1742,14 @@
   {
    "file": "PuP_mag-tower.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_mag-tower.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_mag-tower.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 236869,
    "sha256": "eae8b106ed2bb2cb2aa7fbc7aa8ec551e5ad81e82445bd9ae298875b751f2925",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "mag-tower",
    "creator": "PuP",
    "licence": "none stated",
@@ -1577,9 +1796,14 @@
   {
    "file": "PuP_marketmarket.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_marketmarket.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_marketmarket.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 25414,
    "sha256": "d548bf12567f5c0e2d2093a77553a8af4d94ea5eaf078d868b2af81388ba7e33",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "market",
    "creator": "PuP",
    "licence": "none stated",
@@ -1630,9 +1854,14 @@
   {
    "file": "PuP_megaCastle.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_megaCastle.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_megaCastle.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 2927089,
    "sha256": "d929fd987a04508e34d90cc8ba8eeb1dfdf5da9684ee1233f5e0d6ef797da302",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "megaCastle",
    "creator": "PuP",
    "licence": "none stated",
@@ -1682,9 +1911,14 @@
   {
    "file": "PuP_rampart1.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_rampart1.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_rampart1.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 0,
    "sha256": "",
+   "resolvable": false,
+   "unresolved_reason": "zero-byte source: the only copy on disk is 0 bytes, so there is no content to hash, materialise, parse or place. Truncated when the corpus was fetched; no second copy exists locally or in any referenced web source (MEASURED).",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -1726,9 +1960,14 @@
   {
    "file": "PuP_stable.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_stable.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_stable.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 0,
    "sha256": "",
+   "resolvable": false,
+   "unresolved_reason": "zero-byte source: the only copy on disk is 0 bytes, so there is no content to hash, materialise, parse or place. Truncated when the corpus was fetched; no second copy exists locally or in any referenced web source (MEASURED).",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -1770,9 +2009,14 @@
   {
    "file": "PuP_tavern.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_tavern.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/PuP_tavern.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 0,
    "sha256": "",
+   "resolvable": false,
+   "unresolved_reason": "zero-byte source: the only copy on disk is 0 bytes, so there is no content to hash, materialise, parse or place. Truncated when the corpus was fetched; no second copy exists locally or in any referenced web source (MEASURED).",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -1814,9 +2058,14 @@
   {
    "file": "SerpentShip.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/SerpentShip.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/SerpentShip.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 0,
    "sha256": "",
+   "resolvable": false,
+   "unresolved_reason": "zero-byte source: the only copy on disk is 0 bytes, so there is no content to hash, materialise, parse or place. Truncated when the corpus was fetched; no second copy exists locally or in any referenced web source (MEASURED).",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -1858,9 +2107,14 @@
   {
    "file": "SerpentShip_Empty.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/SerpentShip_Empty.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/SerpentShip_Empty.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 0,
    "sha256": "",
+   "resolvable": false,
+   "unresolved_reason": "zero-byte source: the only copy on disk is 0 bytes, so there is no content to hash, materialise, parse or place. Truncated when the corpus was fetched; no second copy exists locally or in any referenced web source (MEASURED).",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -1902,9 +2156,14 @@
   {
    "file": "Ultimate_OutPost.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/Ultimate_OutPost.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/Ultimate_OutPost.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 148886,
    "sha256": "2f984f3b649bcac1ee3e83cd704791b5080aefd9b57ac3c3d0c20be739bad33c",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Ultimate OutPost",
    "creator": "Randominis",
    "licence": "none stated",
@@ -1952,9 +2211,15 @@
   {
    "file": "altar.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/altar.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/altar.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/altar.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 49342,
    "sha256": "538e12f329836c0a90066481d53a5d60fde0263d47d735c49e63e581eb8acd47",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (527)",
    "creator": "Olivanderr",
    "licence": "none stated",
@@ -2000,9 +2265,14 @@
   {
    "file": "aodi-skardvakt-the-black-tower.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/aodi-skardvakt-the-black-tower.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/aodi-skardvakt-the-black-tower.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 36861,
    "sha256": "20403b117dab7c7aff16ece97963ee3ed53da7ccfd14eeec891b918c34fc580e",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Skardvakt - The Black Tower",
    "creator": "Aodi",
    "licence": "none stated",
@@ -2051,9 +2321,14 @@
   {
    "file": "arty-dragontavern.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/arty-dragontavern.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/arty-dragontavern.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 518926,
    "sha256": "bae11c44b77c4658107550b15eb8eb9947d27108bd8a211183b6e2f10f7311b5",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "DragonTavern",
    "creator": "Arty",
    "licence": "none stated",
@@ -2111,9 +2386,15 @@
   {
    "file": "arty-magetower.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/arty-magetower.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/arty-magetower.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/arty-magetower.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 488886,
    "sha256": "bd89c8daa098723769d4c66e6eb761a6b069f8b2594c26d9e6ca0c2faf6b79d2",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "MageTower",
    "creator": "Arty",
    "licence": "none stated",
@@ -2183,9 +2464,15 @@
   {
    "file": "berserkers-keep.vbuild",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/berserkers-keep.vbuild",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/berserkers-keep.vbuild",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/berserkers-keep.vbuild"
+   ],
    "format": "vbuild",
    "bytes": 624214,
    "sha256": "58736c1376f397943d379a9910cff10361c3383a0644d30ffb2cf557dd128e0d",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -2232,9 +2519,14 @@
   {
    "file": "bridge.vbuild",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/bridge.vbuild",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/bridge.vbuild"
+   ],
    "format": "vbuild",
    "bytes": 49563,
    "sha256": "d5da48288ae74847ca37e3c4c128b4ed83a3da6c5fef7779a3ca59e48679b81f",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -2279,9 +2571,15 @@
   {
    "file": "citadel.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/citadel.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/citadel.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/citadel.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 3177629,
    "sha256": "830c1a483b8c0006dd3149b0ac2d078a3ecc9d0bc5862bee846fef6046e144c6",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "citadel",
    "creator": "Пипкин",
    "licence": "none stated",
@@ -2330,9 +2628,15 @@
   {
    "file": "cozy_house.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/cozy_house.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/cozy_house.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/cozy_house.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 546483,
    "sha256": "2e61bf0d2586b89003945c0f662dd9be6c2aee3665ea0b40530defec6be76e7b",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "cozy_house",
    "creator": "Пипкин",
    "licence": "none stated",
@@ -2381,9 +2685,15 @@
   {
    "file": "creator-looney-swamp-starter-home.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/creator-looney-swamp-starter-home.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/creator-looney-swamp-starter-home.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/creator-looney-swamp-starter-home.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 17783,
    "sha256": "6421f91354f582b48879b36794680e74e54b4b874dfc6e2182dae80044c09d39",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "looney-swamp-starter home",
    "creator": "Creator",
    "licence": "none stated",
@@ -2427,9 +2737,15 @@
   {
    "file": "deardly-casa-drly.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/deardly-casa-drly.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/deardly-casa-drly.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/deardly-casa-drly.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 218734,
    "sha256": "215e53145d53ed09bb240aa99d67f714360a9d502bb2842dbaeb2a57a4eb5f70",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Casa DRLY",
    "creator": "Deardly",
    "licence": "none stated",
@@ -2477,9 +2793,15 @@
   {
    "file": "dock.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/dock.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/dock.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/dock.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 176083,
    "sha256": "4157326c69a0157df45f96bbcf1c56c6e85fd81e66020006171cdb9ef79de9b9",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (2036)",
    "creator": "Olivanderr",
    "licence": "none stated",
@@ -2524,9 +2846,15 @@
   {
    "file": "drake-lighthouse.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/drake-lighthouse.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/drake-lighthouse.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/drake-lighthouse.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 95347,
    "sha256": "8f531ce29c330c7bc8d367047c2bfcde31bfb5afa42f499cdedc3f4c3eee2fac",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Lighthouse",
    "creator": "Drake",
    "licence": "none stated",
@@ -2573,9 +2901,14 @@
   {
    "file": "forge (copy 1).blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/forge (copy 1).blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/forge (copy 1).blueprint"
+   ],
    "format": "blueprint",
    "bytes": 325146,
    "sha256": "9e535f87511097bd8ee4c2d9747cedb84c74a152caf47244bbb0c8298d9aa852",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (2968)",
    "creator": "Olivanderr",
    "licence": "none stated",
@@ -2623,9 +2956,15 @@
   {
    "file": "forge.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/forge.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/forge.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/forge.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 325146,
    "sha256": "9e535f87511097bd8ee4c2d9747cedb84c74a152caf47244bbb0c8298d9aa852",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (2968)",
    "creator": "Olivanderr",
    "licence": "none stated",
@@ -2673,9 +3012,14 @@
   {
    "file": "fortress.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/fortress.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/fortress.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 1069601,
    "sha256": "27d720f73eb4c097fdf3bdac693b863ac300a6f586d46474c327af9476066ff6",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (10626)",
    "creator": "Olivanderr",
    "licence": "none stated",
@@ -2723,9 +3067,15 @@
   {
    "file": "fox-0123456.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/fox-0123456.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/fox-0123456.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/fox-0123456.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 107933,
    "sha256": "d60ae0e4f99243dad3c03017e3bc9082f6fd51ebe54350e7e29cf9879ca44d35",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "0123456",
    "creator": "Fox-",
    "licence": "none stated",
@@ -2769,9 +3119,14 @@
   {
    "file": "gnome_house.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/gnome_house.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/gnome_house.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 339241,
    "sha256": "3a1c4e7696d6dffc2a02c7b88ee29d5a0c40615f81e2d3ea64a724126b32bb49",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "GnomeHouse",
    "creator": "",
    "licence": "none stated",
@@ -2826,9 +3181,14 @@
   {
    "file": "god-2.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-2.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-2.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 66030,
    "sha256": "b2b84fc6d0d3a6c72784ec0c1fb6ed76602c492c5ea25b3165fe66af3a32028a",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "2",
    "creator": "God",
    "licence": "none stated",
@@ -2874,9 +3234,14 @@
   {
    "file": "god-22.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-22.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-22.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 78490,
    "sha256": "d0a10377feb5cda703495de669b40fa5b795f3016a2eaf66cae6a4fe8ec5020c",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "22",
    "creator": "God",
    "licence": "none stated",
@@ -2922,9 +3287,14 @@
   {
    "file": "god-3.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-3.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-3.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 130786,
    "sha256": "468705130f4c8e3b9f9d3f64afb1dd00fa5dfb4992653dfb0e973b4af23f9b7f",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "3",
    "creator": "God",
    "licence": "none stated",
@@ -2971,9 +3341,15 @@
   {
    "file": "god-house33.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-house33.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-house33.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/god-house33.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 250093,
    "sha256": "faaabde377f240b2241289a564c884d3ca5e77f3a91431878cde2f299dd29e30",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "house33",
    "creator": "God",
    "licence": "none stated",
@@ -3024,9 +3400,14 @@
   {
    "file": "god-o.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-o.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-o.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 17145,
    "sha256": "32d0e66701e599c64749dde931d9cbc02b2f79d2b50fcf4df7e8beb71223521e",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "o",
    "creator": "God",
    "licence": "none stated",
@@ -3071,9 +3452,15 @@
   {
    "file": "god-ponte-plus.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-ponte-plus.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-ponte-plus.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/god-ponte-plus.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 84474,
    "sha256": "78156965204d6b26f833173c624916f326e5443df8d4b820625b3883e1060450",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "ponte plus",
    "creator": "God",
    "licence": "none stated",
@@ -3123,9 +3510,14 @@
   {
    "file": "god-portaaoo.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-portaaoo.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-portaaoo.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 198715,
    "sha256": "e249c441d846199c05c6bdba5c74213c4aeedb30a8c94d5622a777f01bc3e154",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "portaaoo",
    "creator": "God",
    "licence": "none stated",
@@ -3172,9 +3564,14 @@
   {
    "file": "god-shadowstone-fortress.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-shadowstone-fortress.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-shadowstone-fortress.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 732892,
    "sha256": "2eeb5128b725b0f4d877217c8e089179a9066654b27d7ededf16809a54b56731",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Shadowstone Fortress",
    "creator": "God",
    "licence": "none stated",
@@ -3229,9 +3626,14 @@
   {
    "file": "god-test.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-test.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/god-test.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 276596,
    "sha256": "c7ae43b206fb896917002f6fdb38bb1c2950ab9e63b6cf2864568e66c978b88a",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "test",
    "creator": "God",
    "licence": "none stated",
@@ -3277,9 +3679,15 @@
   {
    "file": "gold_castle.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/gold_castle.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/gold_castle.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/gold_castle.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 1764543,
    "sha256": "7bbf7a878cf577e273230e1f05e548a541c97b2c20200e6997f0ed5b9ed3023b",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "gold_castle",
    "creator": "Пипкин",
    "licence": "none stated",
@@ -3328,9 +3736,14 @@
   {
    "file": "halvar-master-refinery.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/halvar-master-refinery.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/halvar-master-refinery.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 81984,
    "sha256": "a9c75a2d4b20ef99d5329c6e744bc4fd0662c55cc904d940b5b0d2a9a3248024",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Master Refinery",
    "creator": "Halvar",
    "licence": "none stated",
@@ -3378,9 +3791,15 @@
   {
    "file": "hiccup-simplewoodbeambridge.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/hiccup-simplewoodbeambridge.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/hiccup-simplewoodbeambridge.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/hiccup-simplewoodbeambridge.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 15522,
    "sha256": "1f036ca2632e461b2791bf1e89943dc6a048a5bc8b093368fd176883e59cd5b0",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "SimpleWoodBeamBridge",
    "creator": "Hiccup",
    "licence": "none stated",
@@ -3424,9 +3843,15 @@
   {
    "file": "jaik-mistvale-keep.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/jaik-mistvale-keep.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/jaik-mistvale-keep.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/jaik-mistvale-keep.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 313862,
    "sha256": "7379cb5afc27e6e1f6951acdadfdf7dba782012ee0e25afd2228b55410fc3af0",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Mistvale Keep",
    "creator": "Jaik",
    "licence": "none stated",
@@ -3473,9 +3898,15 @@
   {
    "file": "long-bridge.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/long-bridge.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/long-bridge.blueprint",
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/long-bridge.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 121430,
    "sha256": "7626ec0673191fab3322d1ef86bd43b113c55252651f2c0198e07ee980ebe948",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (814)",
    "creator": "Cooties",
    "licence": "none stated",
@@ -3521,9 +3952,14 @@
   {
    "file": "magic-tower.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/magic-tower.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/magic-tower.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 568411,
    "sha256": "6f40c2ed25d3e12f99c569a49555379bf17f28eb0a8f3bf50abcca53454f2d5c",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (5895)",
    "creator": "Olivanderr",
    "licence": "none stated",
@@ -3573,9 +4009,14 @@
   {
    "file": "meadhall.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/meadhall.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/meadhall.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 2910107,
    "sha256": "dd32039e6f021334d60d78eece1b4034eff1a6ecf003090227c0442ecad44d7c",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (20213)",
    "creator": "Olivanderr",
    "licence": "none stated",
@@ -3628,9 +4069,14 @@
   {
    "file": "ragnar-warehouse.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/ragnar-warehouse.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/ragnar-warehouse.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 0,
    "sha256": "",
+   "resolvable": false,
+   "unresolved_reason": "zero-byte source: the only copy on disk is 0 bytes, so there is no content to hash, materialise, parse or place. Truncated when the corpus was fetched; no second copy exists locally or in any referenced web source (MEASURED).",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -3672,9 +4118,14 @@
   {
    "file": "s-ren-dockhouse.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/s-ren-dockhouse.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/s-ren-dockhouse.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 101856,
    "sha256": "1b221bf6ffe257b4e079e9b63bd98e32cce6170dba254c23507d53d4048574c3",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Dockhouse",
    "creator": "Sören",
    "licence": "none stated",
@@ -3720,9 +4171,14 @@
   {
    "file": "salty-dick-cottage-final.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/salty-dick-cottage-final.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/salty-dick-cottage-final.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 83966,
    "sha256": "6b588d9c46e2245680fdfcb3160cd66f0de7658cd68fd73d51f95fb8516a2730",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Cottage Final",
    "creator": "Salty Dick",
    "licence": "none stated",
@@ -3768,9 +4224,14 @@
   {
    "file": "salty-dick-mordach-castle-final.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/salty-dick-mordach-castle-final.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/salty-dick-mordach-castle-final.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 0,
    "sha256": "",
+   "resolvable": false,
+   "unresolved_reason": "zero-byte source: the only copy on disk is 0 bytes, so there is no content to hash, materialise, parse or place. Truncated when the corpus was fetched; no second copy exists locally or in any referenced web source (MEASURED).",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -3812,9 +4273,14 @@
   {
    "file": "salty-dick-tower-test.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/salty-dick-tower-test.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/salty-dick-tower-test.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 0,
    "sha256": "",
+   "resolvable": false,
+   "unresolved_reason": "zero-byte source: the only copy on disk is 0 bytes, so there is no content to hash, materialise, parse or place. Truncated when the corpus was fetched; no second copy exists locally or in any referenced web source (MEASURED).",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -3856,9 +4322,14 @@
   {
    "file": "serpent.blueprint",
    "source": "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/serpent.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/old/old/old_Storgard/config_merged/BepInEx/PlanBuild/blueprints/serpent.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 0,
    "sha256": "",
+   "resolvable": false,
+   "unresolved_reason": "zero-byte source: the only copy on disk is 0 bytes, so there is no content to hash, materialise, parse or place. Truncated when the corpus was fetched; no second copy exists locally or in any referenced web source (MEASURED).",
    "blueprint_name": "",
    "creator": "",
    "licence": "none stated",
@@ -3900,9 +4371,14 @@
   {
    "file": "shop.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/shop.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/shop.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 422800,
    "sha256": "d0d61ad407d1fa74d52c03cd7eb3b64930b8231bc0278d0f20a6e389473b4978",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (4131)",
    "creator": "Olivanderr",
    "licence": "none stated",
@@ -3965,9 +4441,14 @@
   {
    "file": "skybound.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/skybound.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/skybound.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 355181,
    "sha256": "971df7e399529b3b87b984f6ac780448c686d51217cd29bb1493af50376b3052",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (3702)",
    "creator": "Olivanderr",
    "licence": "none stated",
@@ -4016,9 +4497,14 @@
   {
    "file": "small_long_house.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/small_long_house.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/small_long_house.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 131305,
    "sha256": "ed8f8daf21c5fbc0c990dd9973f342a7c1df2a9686b26a90a674a3b51cbbe03d",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "small_long_house",
    "creator": "Пипкин",
    "licence": "none stated",
@@ -4063,9 +4549,14 @@
   {
    "file": "smallstarthome.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/smallstarthome.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/smallstarthome.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 78468,
    "sha256": "d5cb97bf6a3d77dff946adb9446415b3d161c492abb525b9115e82427c539a6c",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "SmallStartHomeFinal",
    "creator": "Хельс",
    "licence": "none stated",
@@ -4111,9 +4602,14 @@
   {
    "file": "speeds-bridge2.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/speeds-bridge2.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/speeds-bridge2.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 6043,
    "sha256": "6530391225917161209b896a0c931dadfd6dfefc0f040b98ec8bbdb4902531e6",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "bridge2",
    "creator": "Peeds",
    "licence": "none stated",
@@ -4158,9 +4654,14 @@
   {
    "file": "vcastle.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/vcastle.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/vcastle.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 2666376,
    "sha256": "b04e42b82ddf42d9080813a4bf4e467175e37c5c71d1a3a6704070d07d8486ba",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "vcastle",
    "creator": "Пипкин",
    "licence": "none stated",
@@ -4207,9 +4708,14 @@
   {
    "file": "wagon-camp.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/wagon-camp.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/wagon-camp.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 25335,
    "sha256": "a3affe60acfffa35a745b313a51f6e1b10ecd65d3e2cd7040353392a294e7547",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "Multiple (160)",
    "creator": "Cooties",
    "licence": "none stated",
@@ -4254,9 +4760,14 @@
   {
    "file": "you-died-ocean-base.blueprint",
    "source": "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/you-died-ocean-base.blueprint",
+   "sources": [
+    "/media/big4/projects/game/valheim/old/bp_old/config/default/bepinex_old/PlanBuild/blueprints/you-died-ocean-base.blueprint"
+   ],
    "format": "blueprint",
    "bytes": 336553,
    "sha256": "fb603c0858df33ab42f1757caf2a52bee414896661a45ffd74f841982b979ede",
+   "resolvable": true,
+   "unresolved_reason": "",
    "blueprint_name": "youdied-ocean_base",
    "creator": "YoU DiEd",
    "licence": "none stated",

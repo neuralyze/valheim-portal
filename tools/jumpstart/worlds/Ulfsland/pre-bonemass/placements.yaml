@@ -33,21 +33,88 @@ constraint_note: 'Constraints come in two classes and the solver treats them dif
 resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
   Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
   all of them.
+location_clearance_note: 'MEASURED 2026-09-15 and it invalidates this field: `requirement.location_clearance_m`
+  and `solved.nearest_location_m` are VANILLA-ONLY figures and must not be read as clearance against the
+  live world.
+
+  `tools/seedscan/run_locscan.sh` builds its sandbox with `rsync --exclude ''BepInEx/''`, then `rm -rf
+  $SANDBOX/BepInEx`, then copies back only `BepInEx/core` and builds its own scanner into `plugins`. So
+  the location dump the solver scores against is produced by a server with ZERO gameplay mods loaded,
+  and More_World_Locations_AIO''s 190 POI locations cannot register in it. The seed is right (Pirate68)
+  and the dump is not stale; it is measuring a different world.
+
+  The proof is a matched pair rather than an inference. At `pre-eikthyr#meadows-starter-hall` the solver
+  recorded nearest_location_m 77.0; the LIVE world holds THREE LocationProxy markers at 11.08, 25.41 and
+  77.44 m from that pad centre. The solver found exactly the vanilla one and neither of the two nearer
+  ones. The same gap appears at every site checked: recorded 178.0 vs live 23.05 m (pre-moder#mountain-outpost),
+  recorded 147.0 vs live 17.12 m (deepnorth-sandbox#complete-station-hub), recorded 96.0 vs live 24.14
+  m (deepnorth-sandbox#sandbox-portal-hub).
+
+  What the figure can still be trusted for: ranking candidate sites against VANILLA locations during the
+  solve, which is what it was computed for. What it must NOT be used for: deciding that ground is free
+  to clear or build on. That question is answered LIVE, and only live, by `clearing/clear.py`''s `locations_inside()`
+  probe, which refuses to clear when a generated marker stands inside the cylinder. That refusal is the
+  real gate and it has already blocked three sites here. Re-running the solver will not fix the number:
+  the dump is mod-free BY CONSTRUCTION, and a mod''s own location quantity switches only apply at world
+  generation, so they cannot retract a marker from a zone this world has already generated either.'
 placements:
 - id: iron-era-workshop
-  blueprint: BjOrN_blueprint001.blueprint
-  sha256: 020d4a2a64a8e7953ea54b5aea6c3e72fd1f554a39ae34dd9a62d5e20e364690
-  pieces: 1908
+  blueprint: halvar-master-refinery.blueprint
+  sha256: a9c75a2d4b20ef99d5329c6e744bc4fd0662c55cc904d940b5b0d2a9a3248024
+  pieces: 917
   footprint_xzy_m:
-  - 65.5
-  - 66.0
-  - 16.8
-  creator: BjOrN
-  viability: PLACES_WITH_GAPS
+  - 22.3
+  - 23.9
+  - 10.6
+  creator: Halvar
+  viability: PLACES_CLEAN
+  body_choice: 'Halvar''s `Master Refinery` replaces `BjOrN_blueprint001`, which the operator could see
+    floating on this pad three times. The reason was the BODY, not the placement. MEASURED, both rastered
+    in the WORLD frame at this pad (x -4673.5, z -310.5, pad y 70.91), 2 m columns, 0.5 m tolerance:
+
+    BjOrN_blueprint001      503 columns / 2012 m2 -- 174 floating (34.6%, 696 m2), mean 4.82 m, max 9.34
+    m, 3355 m3 of air; 33 of those columns are bottomed by a FLOOR piece and 33 more by a charcoal_kiln
+    or a smelter, i.e. 132 m2 of walkable deck and the whole smelting bay stand on nothing. Its base has
+    13.84 m of relief because it was captured across five terraces, and no datum removes that: `TerrainComp::ApplyToHeightmap`
+    clamps a terrain delta to +/-8 m (MEASURED), so the pad cannot be cut to match. halvar-master-refinery  141
+    columns / 564 m2 -- 6 floating (4.3%, 24 m2), mean 4.27 m, max 5.73 m, 102 m3 of air, and ZERO of
+    the six is bottomed by a floor piece: three are the roof ridge beam past the gable ends (`wood_beam_26`),
+    two are roof outer corners (`wood_roof_ocorner_45`), one is a `wood_beam` 0.80 m up. They are EAVES.
+    98.6% of its base bottoms out 1.0-2.0 m BELOW the datum, which is a foundation doing its job, and
+    2.0 m is well inside the clamp.
+
+    Role: the preset needs an iron-era workshop and this body IS one -- `Master Refinery`, 3 `smelter`,
+    3 `charcoal_kiln`, `forge` with all six extensions, `piece_workbench` with all four, 18 `iron_wall_1x1`,
+    on 127 `stone_floor_2x2` inside 86 stone walls, 23 stone arches and 8 stone pillars. It carries the
+    two stations whose placement is fragile: a level-5 workbench and a level-2 forge both need their extensions
+    inside the station''s own range, and `terraform/stock.py` has to SEARCH for those spots, while the
+    five it still places (`piece_cauldron`, `piece_stonecutter`, `hearth`, `portal_wood`, `piece_chest_wood`)
+    are free-standing singles with no adjacency to satisfy.
+
+    Placeability: `missing_pct` 0.0 and no mod prefabs -- nothing here needs the `--allow-missing-prefabs`
+    escape that `piece_Sundial` forced on the old body.
+
+    Runners-up, all MEASURED on the same raster, of the 102 corpus bodies that already pass `base_not_grounded_on_flat_pad`:
+    `Ultimate_OutPost` grounds best of any station-carrying body (0.7% / 6 m3, all nine station roles)
+    but it is already the deepnorth-sandbox `complete-station-hub`, and trimming it to iron tier means
+    dropping a black forge and its four extensions, an eitr refinery, two blast furnaces, an artisan station,
+    a windmill and a spinning wheel -- thirteen prefabs, which is exactly the station set that makes it
+    that preset''s body. `fox-0123456` (0.8%) and `cozy_house` (5.0%) are pre-elder''s and pre-yagluth''s.
+    `Black_Viking_forteca_starting_base` (4.9%) needs four MISSING mod prefabs across 21 objects. `PuP_Minicastle`
+    grounds at 0.0% but carries no forge, no smelter and no kiln, and is 1925 Ashlands-tier pieces.'
   align: floor-center
   requirement:
     biome: BlackForest
     footprint_m: 70
+    footprint_note: 'Kept at 70 after the body changed from a 65.5 x 66.0 m one to a 22.3 x 23.9 m one,
+      and that is a deliberate choice, not a stale number. 70 is the pad ALREADY CUT at this site: 7739
+      m3 moved, max cut 4.32 m, max fill 4.05 m, target_y 70.91. Re-solving at footprint_m 24 would score
+      a different and probably nearer-the-swamp site, and would throw away an earthwork that is done and
+      verified, for a building that fits inside the one that exists with 23 m to spare on every side.
+      MEASURED live after placement: the body occupies 23.86 m of x and 25.33 m of z, centred (-0.05,+0.02)
+      m off the pad centre. The surplus pad is the refinery YARD -- it is where `terraform/stock.py` puts
+      the cauldron, stonecutter, hearth, portal and chest bank, and having 23 m of clear ground to search
+      is why none of those placements has to fight the walls.'
     max_flat_m: 3.5
     min_biome_purity: 0.5
     coastal: false
@@ -72,15 +139,31 @@ placements:
     yaw: 180
     pitch: 0
     roll: 0
-    facing: 'workshop mouth faces the swamp it serves. yaw 180, MEASURED with a ray long enough to reach
-      the swamp (874 m, twice the 437 m the site sits from it): fraction landing in Swamp by yaw is {0:
-      0.0, 90: 0.0, 180: 0.303, 270: 0.0}. Two earlier values were wrong for instructive reasons - 90
-      was inherited from wherever the blueprint was captured and faced nothing here, and 0 was an artefact
-      of a 400 m default ray that never entered a swamp 437 m away. A yaw is only correct for the site
-      AND the reach it was measured at.'
+    facing: 'the refinery''s open side faces the swamp it serves. yaw 180 is unchanged from the old body
+      but is now measured for THIS one, which is two separate claims:
+
+      (1) the SITE. MEASURED with a ray long enough to reach the swamp (874 m, twice the 437 m the site
+      sits from it): fraction landing in Swamp by yaw is {0: 0.0, 90: 0.0, 180: 0.303, 270: 0.0}. That
+      is a property of the site, so it carries over from the old body unchanged. Two earlier values were
+      wrong for instructive reasons - 90 was inherited from wherever the blueprint was captured and faced
+      nothing here, and 0 was an artefact of a 400 m default ray that never entered a swamp 437 m away.
+
+      (2) the BODY. `site_finder.facing_check` takes the building''s front to be its local +Z, so a yaw
+      is only right if the body''s open side IS its +Z. MEASURED on halvar-master-refinery: wall, pole
+      and arch pieces within 3 m of each local footprint edge number -X 33, +X 39, -Z 19, +Z 10, so +Z
+      is the open side by more than a factor of three over the next one and by nearly four over the walled
+      flanks. yaw 180 turns local +Z to world -Z, which is the one cardinal bearing that reaches the swamp.'
   flatten_required: true
-  note: 'Stone-walled iron workshop: forge, smelter, kiln, stonecutter, cauldron, prep table, portal,
-    workbench. One missing piece (piece_Sundial, 1 object, 0.05%) simply will not place.'
+  note: 'Stone-and-wood iron-era refinery on a 70 m pad: 3 smelters, 3 charcoal kilns, a forge with all
+    six extensions, a workbench with all four, 18 iron wall panels, 5 chests, 3 carts, over two storeys
+    (ground at the pad, a gallery at pad + 4.00 m and a loft at pad + 5.10 m). Places 100% clean -- zero
+    missing prefabs, zero mod prefabs.
+
+    Two prefabs are DROPPED for tier, not for placeability, and both would spawn perfectly well: `piece_artisanstation`
+    needs a Dragon tear, which is a post-Moder drop, and `piece_spinningwheel` needs Lox pelt from the
+    Plains. Handing either to a party that has not killed Bonemass leaks four tiers of progression. The
+    14 Mistlands dvergr lanterns are LEFT in place on the standing precedent from pre-yagluth/plains-farmstead:
+    dvergr lamp and wall pieces are cosmetic structure, not a craftable-tier leak.'
   solved:
     seed: Pirate68
     x: -4673.5
@@ -609,64 +692,115 @@ placements:
         flat_spread_coarse_m: 17.45
         flat_p5_p95_m: 12.71
         refined_moved_m: 1.6
+  body_audit:
+    source: library/audit_bases.py raster in library/data/base_audit.json, 1 m columns on a flat pad
+    flat_pad_verdict: grounds
+    setting: land_flat
+    floating_fraction: 0.015
+    max_air_m: 3.814
+    air_isolation_max_m: 2.0
+    footprint_span_m: 25.3
+    pad_m: 70.0
+    pieces: 917
+    stations: 20
+    beds: 0
+    portals_in_body: 0
+    missing_pieces: 0
+    missing_prefabs: []
+    material_tier: mistlands
+    material_tier_pieces: 14
+    licence: none stated
+    redistributable: false
+    licence_note: referenced by name and sha256 only; body is not vendored in this repo
+  portal:
+    role: spoke
+    tag: u-workshop
+    peer: deepnorth-sandbox#sandbox-portal-hub
+    pieces_to_place: 1
+    pieces_in_body_dropped: 0
+    tag_max_len: 10
+    note: 'Vanilla pairs portals BY TAG, and MEASURED by FixtureHome from the deployed assembly, Game::FindRandomUnconnectedPortal
+      draws UNIFORMLY AT RANDOM among same-tag unconnected portals and re-draws whenever either end loses
+      its partner -- so a blank-tag portal is not merely one-way, its destination is non-deterministic.
+      This world holds 26 mod-added portal_wood instances, three of them within 5-29 m of the workshop
+      pad, and the single untagged portal placed at the workshop is why the operator went through and
+      found no portal to return with. So: every portal here carries a tag, exactly two portals share each
+      tag, and an absent tag is a build FAILURE rather than a default. The tag is a ZDO string field (ZDOVars.s_tag)
+      written at spawn time in the `data=` payload of `spawn_object`; TeleportWorld has no tag field of
+      its own and reads that same ZDO string, so a headlessly tagged portal is indistinguishable to the
+      pairing code from one a player typed. Tags are capped at 10 characters because TextInput::RequestText(this,
+      "$piece_portal_tag", 10) is the UI input cap: a longer tag would PAIR but could never be re-typed,
+      making a broken pair unrepairable by hand. Topology is a single central hub -- deepnorth-sandbox#sandbox-portal-hub
+      at (-270.5, 211.5), 340 m from the StartTemple -- holding one portal per site; 11 tags, 22 portal
+      ZDOs, worst case two hops between any two sites. Any portal_wood the BODY carries is DROPPED, because
+      a captured tag is an unknown tag.'
+  portal_tag: u-workshop
   blueprint_datum:
-    base_y: 1.5
+    base_y: 0.0
     method: lowest_walkable_surface
     placeable: true
-    bottom_solid_y: -0.5
-    support_bottom_y: 1.546
-    lowest_station_y: 2.119
-    lowest_ground_resting_y: 1.764
-    floor_pieces: 452
-    pieces: 1908
+    bottom_solid_y: -2.0
+    support_bottom_y: -2.0
+    lowest_station_y: -0.043
+    lowest_ground_resting_y: -0.043
+    floor_pieces: 143
+    pieces: 917
     walkable_levels:
-    - y: 1.5
+    - y: 0.0
       above_pad_m: 0.0
-      pieces: 7
-      area_m2: 28.0
-    - y: 1.84
-      above_pad_m: 0.34
-      pieces: 31
-      area_m2: 124.0
-    - y: 2.06
-      above_pad_m: 0.56
-      pieces: 17
-      area_m2: 68.0
-    - y: 2.14
-      above_pad_m: 0.64
-      pieces: 40
-      area_m2: 61.0
-    - y: 2.42
-      above_pad_m: 0.92
-      pieces: 7
-      area_m2: 28.0
-    - y: 2.5
+      pieces: 68
+      area_m2: 272.0
+    - y: 1.0
       above_pad_m: 1.0
-      pieces: 7
-      area_m2: 28.0
-    - y: 2.84
-      above_pad_m: 1.34
-      pieces: 4
+      pieces: 2
+      area_m2: 8.0
+    - y: 4.0
+      above_pad_m: 4.0
+      pieces: 57
+      area_m2: 228.0
+    - y: 5.097
+      above_pad_m: 5.097
+      pieces: 16
       area_m2: 16.0
-    - y: 3.0
-      above_pad_m: 1.5
-      pieces: 3
-      area_m2: 3.0
-    - y: 3.14
-      above_pad_m: 1.64
-      pieces: 3
-      area_m2: 3.0
-    - y: 3.94
-      above_pad_m: 2.44
-      pieces: 3
-      area_m2: 3.0
-    - y: 4.14
-      above_pad_m: 2.64
-      pieces: 6
-      area_m2: 6.0
-    - y: 4.94
-      above_pad_m: 3.44
-      pieces: 28
-      area_m2: 70.0
-    walkable_levels_total: 27
+    walkable_levels_total: 4
+    base_profile:
+      cell_m: 2.0
+      columns: 136
+      footprint_area_m2: 544.0
+      bottom_y_min: -2.0
+      bottom_y_p25: -1.268
+      bottom_y_median: -1.0
+      bottom_y_p75: -1.0
+      bottom_y_max: 3.814
+      relief_m: 5.814
+      bottom_is_flat: false
+      steps:
+      - bottom_y: -1.0
+        area_m2: 296.0
+        share: 0.544
+      - bottom_y: -1.5
+        area_m2: 188.0
+        share: 0.346
+      - bottom_y: -2.0
+        area_m2: 52.0
+        share: 0.096
+      - bottom_y: 1.0
+        area_m2: 4.0
+        share: 0.007
+      - bottom_y: 4.0
+        area_m2: 4.0
+        share: 0.007
+      on_a_flat_pad:
+        columns: 136
+        columns_floating: 2
+        floating_fraction: 0.015
+        floating_area_m2: 8.0
+        max_air_m: 3.814
+        mean_air_m: 2.307
+        air_volume_m3: 18.5
+        max_buried_m: 2.0
+        grounded: true
     violations: []
+  drop_prefabs:
+  - piece_artisanstation
+  - piece_spinningwheel

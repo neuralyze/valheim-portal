@@ -624,6 +624,59 @@ func TestHoistPackagePatchersToleratesNoPluginsDirectory(t *testing.T) {
 	}
 }
 
+func TestHoistPackagePatchersHoistsAPatcherNestedBelowPatchersDirectory(t *testing.T) {
+	// Measured 2026-09-15: L4zerShark_Team-CLLCCompatibility ships its preloader patcher at
+	// <Package>/patchers/<Vendor-Name>/<Name>.dll, one level deeper than the three patchers
+	// we already carry. This loop used to `continue` on any directory entry, so that package
+	// hoisted NOTHING - it would have installed cleanly, repaired no mod, and logged no
+	// complaint, which is the failure shape a boot-time unresolved-reference check cannot
+	// see. The flat package here is the control: both depths must land, by file name.
+	root := t.TempDir()
+	plugins := filepath.Join(root, "active", "BepInEx", "plugins")
+	files := map[string]string{
+		"CLLCCompatibility/patchers/L4zerShark_Team-CLLCCompatibility/CLLCCompatibility.dll": "nested-patcher",
+		"CLLCCompatibility/README.md": "not-a-dll",
+		"Wubarrk-Valheim10Compatibility/patchers/Valheim10Compatibility.Patcher.dll": "flat-patcher",
+	}
+	for name, body := range files {
+		path := filepath.Join(plugins, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := hoistPackagePatchers(root); err != nil {
+		t.Fatal(err)
+	}
+
+	patchers := filepath.Join(root, "active", "BepInEx", "patchers")
+	for name, want := range map[string]string{
+		"CLLCCompatibility.dll":              "nested-patcher",
+		"Valheim10Compatibility.Patcher.dll": "flat-patcher",
+	} {
+		got, err := os.ReadFile(filepath.Join(patchers, name))
+		if err != nil || string(got) != want {
+			t.Fatalf("hoisted %s = %q, %v", name, got, err)
+		}
+	}
+	// Flattened by file name: BepInEx loads patchers out of one directory, so the vendor
+	// subfolder must not be reproduced at the destination.
+	if _, err := os.Stat(filepath.Join(patchers, "L4zerShark_Team-CLLCCompatibility")); !os.IsNotExist(err) {
+		t.Fatalf("intermediate directory was reproduced at the destination: %v", err)
+	}
+	if entries, err := os.ReadDir(patchers); err != nil || len(entries) != 2 {
+		t.Fatalf("patchers directory holds %d entries, want exactly the two patchers: %v", len(entries), err)
+	}
+	// The package's own tree is untouched, as for any other patcher-carrying package.
+	source := filepath.Join(plugins, "CLLCCompatibility", "patchers", "L4zerShark_Team-CLLCCompatibility", "CLLCCompatibility.dll")
+	if got, err := os.ReadFile(source); err != nil || string(got) != "nested-patcher" {
+		t.Fatalf("shipped patcher was disturbed: %q, %v", got, err)
+	}
+}
+
 func TestRemoveRetiredDragonRidersRemovesOnlyItsManagedDirectory(t *testing.T) {
 	root := t.TempDir()
 	retired := filepath.Join(root, "active", "BepInEx", "plugins", "Yggdrah-DragonRiders", "DragonRiders.dll")

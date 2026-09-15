@@ -34,22 +34,22 @@ criteria:
   y_clearance_m: 1.0
 points:
 - x: -7
-  y: 110
-  z: 3920
+  y: 111
+  z: 3918
   base: mountain-outpost
   base_xz:
   - -7.5
   - 3939.5
   base_y: 111.5
   base_freeboard_m: 81.32
-  terrain_y: 108.85
-  spawn_freeboard_m: 78.85
-  disc_min_freeboard_m: 78.26
-  dist_to_base_m: 19.5
+  terrain_y: 109.39
+  spawn_freeboard_m: 79.39
+  disc_min_freeboard_m: 78.28
+  dist_to_base_m: 21.5
   dist_to_footprint_edge_m: 6.1
   footprint_half_extents_m:
-  - 13.95
-  - 13.4
+  - 10.15
+  - 15.4
   yaw: 180.0
   facade_agreement: 1.0
   score: 1.0
@@ -58,4 +58,4 @@ points:
     min_freeboard_m: 78.7
     max_step_m: 0.37
     dry_to_footprint_edge: true
-  candidates_considered: 57067
+  candidates_considered: 56185

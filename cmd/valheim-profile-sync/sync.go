@@ -1007,6 +1007,17 @@ func repairLoadTimeProfilerPatcher(root string) error {
 // directory is left alone: only the patcher is copied out. The managed profile is the
 // source of truth, so a stale patcher at the destination is replaced rather than reported -
 // the alternative is refusing to sync over a file the profile itself installed earlier.
+//
+// The walk is DEPTH-INDEPENDENT, and that is load-bearing rather than defensive. Measured
+// 2026-09-15: L4zerShark_Team-CLLCCompatibility ships its patcher one level deeper, at
+// <Package>/patchers/<Vendor-Name>/<Name>.dll, where our three flat patchers
+// (EverybodyShim, ServersideQoL, Valheim10Compatibility) sit directly under patchers/.
+// This loop used to skip directories outright, so that package hoisted NOTHING and would
+// have deployed inert - repairing no mod while logging no complaint. BepInEx flattens
+// patchers by file name anyway, so the intermediate directory carries no meaning and is
+// simply ignored. A name collision between two packages' patchers is resolved by the same
+// last-writer-wins the flat layout always had; the content check below still skips
+// identical files so an unchanged patcher is never rewritten.
 func hoistPackagePatchers(root string) error {
 	pluginRoot := filepath.Join(root, "active", "BepInEx", "plugins")
 	packages, err := os.ReadDir(pluginRoot)
@@ -1021,24 +1032,25 @@ func hoistPackagePatchers(root string) error {
 			continue
 		}
 		source := filepath.Join(pluginRoot, pkg.Name(), "patchers")
-		entries, err := os.ReadDir(source)
-		if errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(source); errors.Is(err, os.ErrNotExist) {
 			continue
 		} else if err != nil {
 			return err
 		}
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".dll") {
-				continue
+		walkErr := filepath.WalkDir(source, func(from string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
 			}
-			from := filepath.Join(source, entry.Name())
+			if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".dll") {
+				return nil
+			}
 			to := filepath.Join(destination, entry.Name())
 			same, err := sameFileContents(from, to)
 			if err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
 			if same {
-				continue
+				return nil
 			}
 			if err := os.MkdirAll(destination, 0o755); err != nil {
 				return err
@@ -1046,6 +1058,10 @@ func hoistPackagePatchers(root string) error {
 			if err := copyFileAtomically(from, to); err != nil {
 				return fmt.Errorf("hoist %s from %s: %w", entry.Name(), pkg.Name(), err)
 			}
+			return nil
+		})
+		if walkErr != nil {
+			return walkErr
 		}
 	}
 	return nil

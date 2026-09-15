@@ -37,6 +37,12 @@ dry_run=${VALHEIM_WATCHDOG_DRY_RUN:-0}
 
 mkdir -p -- "$state_dir"
 
+# The shared gate lives with the scripts this one drives, so both paths refuse on the same
+# evidence. VALHEIM_ROOT is what lib/common.sh calls the world root internally.
+# shellcheck source=hostops/lib/common.sh
+source "$hostops/lib/common.sh"
+export VALHEIM_ROOT="$worlds_root"
+
 note() { printf '%s watchdog: %s\n' "$(date -Is)" "$*"; }
 
 age_of() {  # seconds since mtime, or empty when absent
@@ -86,8 +92,18 @@ restart_world() {
     sudo -n -u "$agent_user" env VALHEIM_ROOT="$worlds_root" VALHEIM_SERVER_DOCKER_DIR="$server_docker_dir" \
         "$hostops/stop_valheim_server.sh" "$world" >/dev/null 2>&1 || note "$world stop reported failure"
     sleep 5
-    sudo -n -u "$agent_user" env VALHEIM_ROOT="$worlds_root" VALHEIM_SERVER_DOCKER_DIR="$server_docker_dir" \
-        "$hostops/start_valheim_server.sh" "$world" >/dev/null 2>&1 || note "$world start reported failure"
+    start_output=""
+    if ! start_output=$(sudo -n -u "$agent_user" env VALHEIM_ROOT="$worlds_root" VALHEIM_SERVER_DOCKER_DIR="$server_docker_dir" \
+        "$hostops/start_valheim_server.sh" "$world" 2>&1); then
+        # A refused start and a failed start leave the world in the same place and must not read
+        # the same way. The gate records why in <world>/mods/.game-build-hold, so the distinction
+        # is a file an operator can read, not a shell script they have to reverse-engineer.
+        if [[ -f $(game_build_hold_path "$world") ]]; then
+            note "$world start REFUSED by the game-build gate - deliberately DOWN, not broken; see $(game_build_hold_path "$world")"
+            return
+        fi
+        note "$world start reported failure: $(printf '%s' "$start_output" | tr '\n' ' ')"
+    fi
     note "$world restarted"
 }
 
@@ -96,6 +112,24 @@ while read -r container; do
     world=${container#valheim-server-}
     worlds_local="$worlds_root/$world/config_merged/worlds_local"
     output="$log_root/$world.log"
+    # Does this world still run the build its mod set was anchored to? The gate answers, records a
+    # hold when it does not, and its answer decides whether this world may be restarted at all - a
+    # restart is a start, and a start applies whatever the Steam cache holds.
+    #
+    # A held world is left exactly as it is. It is not stopped here: a running world whose binary
+    # changed under it may already have loaded a fresh empty world, and both a graceful stop and
+    # the next autosave write that over the real save, so there is no automatic action that is
+    # safe without first measuring which world is loaded. What this does guarantee is that the
+    # watchdog will not restart it into the mismatch, and that the reason is on disk.
+    gate_output=""
+    if ! gate_output=$(require_matching_game_build "$world" 2>&1); then
+        note "$world BUILD HOLD: $(printf '%s' "$gate_output" | tr '\n' ' ')"
+        note "$world left untouched - deliberately not restarted; see $(game_build_hold_path "$world")"
+        continue
+    fi
+    if [[ -n $gate_output ]]; then
+        note "$world game-build gate: $(printf '%s' "$gate_output" | tr '\n' ' ')"
+    fi
 
     save_age=$(age_of "$worlds_local/$world.db")
     # The pair first, so nothing changes for the four worlds still on 0.220.x, then the

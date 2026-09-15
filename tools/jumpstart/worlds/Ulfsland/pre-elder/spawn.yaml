@@ -59,7 +59,7 @@ points:
     max_step_m: 0.17
     dry_to_footprint_edge: true
   candidates_considered: 41698
-- x: 700
+- x: 703
   y: 36
   z: -55
   base: early-dock
@@ -68,20 +68,20 @@ points:
   - -85.6
   base_y: 32.63
   base_freeboard_m: -0.78
-  terrain_y: 34.1
-  spawn_freeboard_m: 4.1
-  disc_min_freeboard_m: 2.72
-  dist_to_base_m: 39.3
-  dist_to_footprint_edge_m: 13.9
+  terrain_y: 34.06
+  spawn_freeboard_m: 4.06
+  disc_min_freeboard_m: 1.99
+  dist_to_base_m: 41.2
+  dist_to_footprint_edge_m: 14.1
   footprint_half_extents_m:
-  - 21.1
-  - 14.5
+  - 17.9
+  - 21.4
   yaw: 90.0
-  facade_agreement: 0.813
-  score: 0.913
+  facade_agreement: 0.835
+  score: 0.918
   approach:
-    length_m: 13.9
-    min_freeboard_m: 0.81
-    max_step_m: 0.6
+    length_m: 14.1
+    min_freeboard_m: 0.77
+    max_step_m: 0.54
     dry_to_footprint_edge: true
-  candidates_considered: 28915
+  candidates_considered: 29941

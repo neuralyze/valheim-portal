@@ -166,7 +166,8 @@ TOTAL_RE = re.compile(r"^Total:?\s*(\d+)\s*$", re.M)
 COUNT_LINE_RE = re.compile(r"^(?!Total:)(\S+):\s*(\d+)\s*$", re.M)
 
 
-def box_query(rc: Rcon, x: float, y: float, z: float, half: float) -> tuple[int, list[str]]:
+def box_query(rc: Rcon, x: float, y: float, z: float, half: float,
+              ident: str = "*") -> tuple[int, list[str]]:
     """Objects inside the cylinder of radius `half`, as (count, prefab names).
 
     `y` is accepted and ignored: Upgrade World's filter is a vertical cylinder
@@ -174,12 +175,18 @@ def box_query(rc: Rcon, x: float, y: float, z: float, half: float) -> tuple[int,
     the surface height to hand and dropping it would make the two coordinate
     conventions in this file look interchangeable.
 
+    `ident` narrows the count to one prefab. The default `*` answers "how much
+    is here", which is what clearing needs; a named prefab answers "where did
+    MY pieces go", which is what verification needs and which a total cannot
+    answer -- a wider circle drawn after `zones_generate` is full of trees, so
+    comparing two totals at two radii reports the forest as strays.
+
     See this module's VERIFICATION note for why this counts on the console
     instead of listing over RCON, and why `objects_count` is NOT staged.
     """
     del y
     lines = run_console(
-        rc, f"objects_count id=* ignore=_* pos={x:.2f},{z:.2f} max={half:.2f}")
+        rc, f"objects_count id={ident} ignore=_* pos={x:.2f},{z:.2f} max={half:.2f}")
     text = "\n".join(lines)
     total = TOTAL_RE.search(text)
     prefabs = [name for name, _count in COUNT_LINE_RE.findall(text)]

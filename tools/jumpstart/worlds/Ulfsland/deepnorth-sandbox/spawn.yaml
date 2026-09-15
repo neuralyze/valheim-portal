@@ -33,33 +33,33 @@ criteria:
   approach_max_step_m: 1.5
   y_clearance_m: 1.0
 points:
-- x: 768
-  y: 37
-  z: 1146
+- x: 771
+  y: 39
+  z: 1151
   base: complete-station-hub
   base_xz:
   - 789.5
   - 1168.5
   base_y: 58.42
   base_freeboard_m: 14.91
-  terrain_y: 35.49
-  spawn_freeboard_m: 5.49
-  disc_min_freeboard_m: 4.31
-  dist_to_base_m: 31.1
-  dist_to_footprint_edge_m: 6.6
+  terrain_y: 37.35
+  spawn_freeboard_m: 7.35
+  disc_min_freeboard_m: 6.2
+  dist_to_base_m: 25.5
+  dist_to_footprint_edge_m: 6.2
   footprint_half_extents_m:
-  - 26.35
-  - 24.5
+  - 18.5
+  - 19.3
   yaw: 225.0
   facade_agreement: 1.0
-  score: 0.998
+  score: 0.999
   approach:
-    length_m: 6.6
-    min_freeboard_m: 5.49
-    max_step_m: 0.68
+    length_m: 6.2
+    min_freeboard_m: 7.35
+    max_step_m: 0.41
     dry_to_footprint_edge: true
-  candidates_considered: 32449
-- x: 700
+  candidates_considered: 30532
+- x: 703
   y: 36
   z: -55
   base: sandbox-harbour
@@ -68,46 +68,46 @@ points:
   - -85.6
   base_y: 32.63
   base_freeboard_m: -0.78
-  terrain_y: 34.1
-  spawn_freeboard_m: 4.1
-  disc_min_freeboard_m: 2.72
-  dist_to_base_m: 39.3
-  dist_to_footprint_edge_m: 13.9
+  terrain_y: 34.06
+  spawn_freeboard_m: 4.06
+  disc_min_freeboard_m: 1.99
+  dist_to_base_m: 41.2
+  dist_to_footprint_edge_m: 14.1
   footprint_half_extents_m:
-  - 21.1
-  - 14.5
+  - 17.9
+  - 21.4
   yaw: 90.0
-  facade_agreement: 0.813
-  score: 0.913
+  facade_agreement: 0.835
+  score: 0.918
   approach:
-    length_m: 13.9
-    min_freeboard_m: 0.81
-    max_step_m: 0.6
+    length_m: 14.1
+    min_freeboard_m: 0.77
+    max_step_m: 0.54
     dry_to_footprint_edge: true
-  candidates_considered: 28915
-- x: -262
-  y: 39
-  z: 203
+  candidates_considered: 29941
+- x: -256
+  y: 40
+  z: 197
   base: sandbox-portal-hub
   base_xz:
   - -270.5
   - 211.5
   base_y: 44.66
   base_freeboard_m: 7.75
-  terrain_y: 37.09
-  spawn_freeboard_m: 7.09
-  disc_min_freeboard_m: 5.47
-  dist_to_base_m: 12.0
-  dist_to_footprint_edge_m: 6.0
+  terrain_y: 38.71
+  spawn_freeboard_m: 8.71
+  disc_min_freeboard_m: 7.1
+  dist_to_base_m: 20.5
+  dist_to_footprint_edge_m: 6.5
   footprint_half_extents_m:
-  - 18.0
-  - 6.0
+  - 14.1
+  - 14.05
   yaw: 135.0
   facade_agreement: 1.0
-  score: 1.0
+  score: 0.998
   approach:
-    length_m: 6.0
-    min_freeboard_m: 6.83
-    max_step_m: 0.24
+    length_m: 6.5
+    min_freeboard_m: 7.44
+    max_step_m: 0.49
     dry_to_footprint_edge: true
-  candidates_considered: 32106
+  candidates_considered: 33358

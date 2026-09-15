@@ -33,16 +33,40 @@ constraint_note: 'Constraints come in two classes and the solver treats them dif
 resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
   Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
   all of them.
+location_clearance_note: 'MEASURED 2026-09-15 and it invalidates this field: `requirement.location_clearance_m`
+  and `solved.nearest_location_m` are VANILLA-ONLY figures and must not be read as clearance against the
+  live world.
+
+  `tools/seedscan/run_locscan.sh` builds its sandbox with `rsync --exclude ''BepInEx/''`, then `rm -rf
+  $SANDBOX/BepInEx`, then copies back only `BepInEx/core` and builds its own scanner into `plugins`. So
+  the location dump the solver scores against is produced by a server with ZERO gameplay mods loaded,
+  and More_World_Locations_AIO''s 190 POI locations cannot register in it. The seed is right (Pirate68)
+  and the dump is not stale; it is measuring a different world.
+
+  The proof is a matched pair rather than an inference. At `pre-eikthyr#meadows-starter-hall` the solver
+  recorded nearest_location_m 77.0; the LIVE world holds THREE LocationProxy markers at 11.08, 25.41 and
+  77.44 m from that pad centre. The solver found exactly the vanilla one and neither of the two nearer
+  ones. The same gap appears at every site checked: recorded 178.0 vs live 23.05 m (pre-moder#mountain-outpost),
+  recorded 147.0 vs live 17.12 m (deepnorth-sandbox#complete-station-hub), recorded 96.0 vs live 24.14
+  m (deepnorth-sandbox#sandbox-portal-hub).
+
+  What the figure can still be trusted for: ranking candidate sites against VANILLA locations during the
+  solve, which is what it was computed for. What it must NOT be used for: deciding that ground is free
+  to clear or build on. That question is answered LIVE, and only live, by `clearing/clear.py`''s `locations_inside()`
+  probe, which refuses to clear when a generated marker stands inside the cylinder. That refusal is the
+  real gate and it has already blocked three sites here. Re-running the solver will not fix the number:
+  the dump is mod-free BY CONSTRUCTION, and a mod''s own location quantity switches only apply at world
+  generation, so they cannot retract a marker from a zone this world has already generated either.'
 placements:
 - id: mountain-outpost
-  blueprint: jaik-mistvale-keep.blueprint
-  sha256: 7379cb5afc27e6e1f6951acdadfdf7dba782012ee0e25afd2228b55410fc3af0
-  pieces: 3472
+  blueprint: hs_swamp_vrolok_caba_a_2.blueprint
+  sha256: 44d3d966d2277494e3026f4ae3a75a3cb70322d4f3f33c3803ea5edba87ff79c
+  pieces: 343
   footprint_xzy_m:
-  - 27.9
-  - 26.8
-  - 48.0
-  creator: Jaik
+  - 20.3
+  - 30.8
+  - 6.5
+  creator: Vrolok
   viability: PLACES_CLEAN
   align: floor-center
   requirement:
@@ -92,14 +116,14 @@ placements:
     overland_from_spawn: true
     satisfies_requirement: true
     flatten_cost:
-      target_y: 109.47
-      cut_m3: 679.0
-      fill_m3: 1102.4
-      moved_m3: 1781.4
-      mean_move_m: 1.06
-      rms_m: 1.309
-      max_cut_m: 2.03
-      max_fill_m: 4.14
+      target_y: 109.52
+      cut_m3: 619.2
+      fill_m3: 1021.8
+      moved_m3: 1641.0
+      mean_move_m: 1.026
+      rms_m: 1.267
+      max_cut_m: 1.96
+      max_fill_m: 4.01
       resolution_m: 1.0
       estimated: false
     flat_spread_coarse_m: 4.36
@@ -322,6 +346,18 @@ placements:
       flat_spread_coarse_m: 5.54
       flat_p5_p95_m: 5.54
       refined_moved_m: 2.5
+    recost:
+      by: network/recost_pad.py
+      reason: body changed; flatten_cost and footprint_orientation belong to the body's rectangle, not
+        the previous body's
+      rectangle_source: square requirement.footprint_m
+      samples: 1600
+      generated_range_m:
+      - 105.51
+      - 111.48
+      min_freeboard_m: 75.51
+      over_clamp_samples: 0
+      height_source: blueprints/run_patchscan.sh, step 1 m, rivers included
   containers:
     by_prefab:
       piece_chest_wood: 7
@@ -586,64 +622,136 @@ placements:
         flat_spread_coarse_m: 10.28
         flat_p5_p95_m: 8.69
         refined_moved_m: 6.5
+  body_choice: 'Replaces `jaik-mistvale-keep`, which is the operator''s rule failing outright: MEASURED,
+    jaik-mistvale-keep is `DEFECT_on_land` -- 61.2% of its footprint stands clear on a flat pad, worst
+    gap 28.97 m, and the worst floating column is 17.1 m from anything that reaches the ground, so the
+    air is not piles or posts, it is a wing that needs a hillside that does not exist here. It is the
+    BjOrN_blueprint001 failure again, at 3472 pieces.
+
+    `hs_swamp_vrolok_caba_a_2` is `land_flat`: 1.6% of the footprint stands clear, worst gap 0.65 m, 343
+    pieces, 1 bed, span 33.5 m inside the 40 m pad, missing_pieces 0, material meadows(343) -- the whole
+    body is wood and stone, which is what a mountain cabin should be at silver tier.
+
+    The runner-up was `hs_plains_startinghouse_plainsmodel` and it was REJECTED on the operator''s rule
+    even though it scores one station higher. MEASURED by to_rcon_plan''s own datum check on this pad:
+    resting it on a flat pad leaves 192 m2 -- 31.6% of the footprint, over the 10% allowed -- standing
+    in air, mean 0.60 m and up to 0.74 m. The air is shallow (the audit classes it `low_plinth`, a step
+    rather than a storey) but it is a THIRD of the building, and the complaint being fixed here is buildings
+    that do not sit on the ground. vrolok''s 1.6% is 7 m2. The station it gives up against plainsmodel
+    is piece_spinningwheel, piece_stonecutter and piece_workbench_ext4, and it gains charcoal_kiln and
+    smelter; all five are free-standing singles that terraform/stock.py places, so the net cost of the
+    trade is zero stations in the ground and 525 fewer pieces.
+
+    Its 4 carried portal_wood pieces are DROPPED -- see `portal`.'
+  body_audit:
+    source: library/audit_bases.py raster in library/data/base_audit.json, 1 m columns on a flat pad
+    flat_pad_verdict: grounds
+    setting: land_flat
+    floating_fraction: 0.016
+    max_air_m: 0.647
+    air_isolation_max_m: 2.0
+    footprint_span_m: 33.5
+    pad_m: 40.0
+    pieces: 343
+    stations: 20
+    beds: 1
+    portals_in_body: 4
+    missing_pieces: 0
+    missing_prefabs: []
+    material_tier: meadows
+    material_tier_pieces: 343
+    licence: none stated
+    redistributable: false
+    licence_note: referenced by name and sha256 only; body is not vendored in this repo
+  portal:
+    role: spoke
+    tag: u-mtnpost
+    peer: deepnorth-sandbox#sandbox-portal-hub
+    pieces_to_place: 1
+    pieces_in_body_dropped: 4
+    tag_max_len: 10
+    note: 'Vanilla pairs portals BY TAG, and MEASURED by FixtureHome from the deployed assembly, Game::FindRandomUnconnectedPortal
+      draws UNIFORMLY AT RANDOM among same-tag unconnected portals and re-draws whenever either end loses
+      its partner -- so a blank-tag portal is not merely one-way, its destination is non-deterministic.
+      This world holds 26 mod-added portal_wood instances, three of them within 5-29 m of the workshop
+      pad, and the single untagged portal placed at the workshop is why the operator went through and
+      found no portal to return with. So: every portal here carries a tag, exactly two portals share each
+      tag, and an absent tag is a build FAILURE rather than a default. The tag is a ZDO string field (ZDOVars.s_tag)
+      written at spawn time in the `data=` payload of `spawn_object`; TeleportWorld has no tag field of
+      its own and reads that same ZDO string, so a headlessly tagged portal is indistinguishable to the
+      pairing code from one a player typed. Tags are capped at 10 characters because TextInput::RequestText(this,
+      "$piece_portal_tag", 10) is the UI input cap: a longer tag would PAIR but could never be re-typed,
+      making a broken pair unrepairable by hand. Topology is a single central hub -- deepnorth-sandbox#sandbox-portal-hub
+      at (-270.5, 211.5), 340 m from the StartTemple -- holding one portal per site; 11 tags, 22 portal
+      ZDOs, worst case two hops between any two sites. Any portal_wood the BODY carries is DROPPED, because
+      a captured tag is an unknown tag.'
+  portal_tag: u-mtnpost
+  drop_prefabs:
+  - portal_wood
   blueprint_datum:
-    base_y: 3.5
-    method: lowest_walkable_surface
+    base_y: 0.853
+    method: lowest_station_below_floor
     placeable: true
     bottom_solid_y: -0.5
-    support_bottom_y: 3.5
-    lowest_station_y: 3.457
-    lowest_ground_resting_y: 3.457
-    floor_pieces: 682
-    pieces: 3472
+    support_bottom_y: -0.5
+    lowest_station_y: 0.853
+    lowest_ground_resting_y: 0.853
+    floor_pieces: 39
+    pieces: 343
     walkable_levels:
-    - y: 3.5
-      above_pad_m: 0.0
-      pieces: 38
-      area_m2: 152.0
-    - y: 3.6
-      above_pad_m: 0.1
-      pieces: 9
-      area_m2: 36.0
-    - y: 4.48
-      above_pad_m: 0.98
-      pieces: 1
-      area_m2: 4.0
-    - y: 4.5
-      above_pad_m: 1.0
-      pieces: 10
-      area_m2: 40.0
-    - y: 5.5
-      above_pad_m: 2.0
-      pieces: 10
-      area_m2: 40.0
-    - y: 5.6
-      above_pad_m: 2.1
-      pieces: 10
-      area_m2: 10.0
-    - y: 6.6
-      above_pad_m: 3.1
+    - y: 1.597
+      above_pad_m: 0.743
+      pieces: 29
+      area_m2: 116.0
+    - y: 2.473
+      above_pad_m: 1.62
       pieces: 1
       area_m2: 1.0
-    - y: 6.7
-      above_pad_m: 3.2
-      pieces: 2
-      area_m2: 2.0
-    - y: 7.6
-      above_pad_m: 4.1
-      pieces: 14
-      area_m2: 14.0
-    - y: 8.6
-      above_pad_m: 5.1
-      pieces: 10
-      area_m2: 10.0
-    - y: 10.5
-      above_pad_m: 7.0
-      pieces: 70
-      area_m2: 280.0
-    - y: 10.6
-      above_pad_m: 7.1
-      pieces: 45
-      area_m2: 162.0
-    walkable_levels_total: 39
-    violations: []
+    - y: 2.512
+      above_pad_m: 1.659
+      pieces: 3
+      area_m2: 3.0
+    - y: 3.597
+      above_pad_m: 2.743
+      pieces: 6
+      area_m2: 24.0
+    walkable_levels_total: 4
+    base_profile:
+      cell_m: 2.0
+      columns: 125
+      footprint_area_m2: 500.0
+      bottom_y_min: -0.5
+      bottom_y_p25: 0.5
+      bottom_y_median: 0.695
+      bottom_y_p75: 0.853
+      bottom_y_max: 1.5
+      relief_m: 2.0
+      bottom_is_flat: false
+      steps:
+      - bottom_y: 0.5
+        area_m2: 296.0
+        share: 0.592
+      - bottom_y: 1.0
+        area_m2: 116.0
+        share: 0.232
+      - bottom_y: 1.5
+        area_m2: 80.0
+        share: 0.16
+      - bottom_y: -0.5
+        area_m2: 8.0
+        share: 0.016
+      on_a_flat_pad:
+        columns: 125
+        columns_floating: 2
+        floating_fraction: 0.016
+        floating_area_m2: 8.0
+        max_air_m: 0.647
+        mean_air_m: 0.63
+        air_volume_m3: 5.0
+        max_buried_m: 1.353
+        grounded: true
+    violations:
+    - code: station_below_floor
+      detail: a crafting station stands at y=0.853, 0.74 m below the lowest walkable surface y=1.597.
+        A buried station cannot be used, so the station plane wins; the floor above it stands proud by
+        that much, which is cosmetic.

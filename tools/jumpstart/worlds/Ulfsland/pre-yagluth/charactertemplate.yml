@@ -248,8 +248,8 @@ equip:
 #   left hand   ShieldBlackmetal (m_itemType Shield, quality 3)
 #   ammo        ArrowNeedle (m_itemType Ammo, quality 1)
 spawn:
-  - {x: 695, y: 36, z: -4288}
+  - {x: 700, y: 36, z: -4292}
 # MEASURED against Valheim's own generator at 1 m, water plane y=30:
-#   (695, 36, -4288)  ground 34.3 = +4.3 m over water, 6.3 m outside plains-farm-base's footprint (32.5 m from its centre),
-#     dry across a 4 m disc (min +2.87 m) and dry every metre of the 6.3 m walk to it.
+#   (700, 36, -4292)  ground 34.04 = +4.04 m over water, 6.4 m outside plains-farm-base's footprint (26.2 m from its centre),
+#     dry across a 4 m disc (min +3.2 m) and dry every metre of the 6.4 m walk to it.
 # Evidence: spawn.yaml. Re-verify: derive.py spawn Ulfsland

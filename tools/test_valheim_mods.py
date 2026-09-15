@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -61,6 +62,91 @@ class DeployTest(unittest.TestCase):
         self.assertFalse((bepinex / "plugins.previous").exists())
         self.assertTrue((backup / "server-plugins.previous/OldPlugin/old.dll").is_file())
         self.assertTrue((backup / "legacy-plugins.previous/More_World_Traders/More_World_Traders.dll").is_file())
+
+    def test_hoists_patchers_at_both_depths_authors_ship_them(self):
+        """A nested patcher must reach BepInEx/patchers, by file name.
+
+        MEASURED 2026-09-15: EverybodyShim, ServersideQoL and Valheim10Compatibility ship
+        theirs flat at <Package>/patchers/<Name>.dll, but L4zerShark_Team-CLLCCompatibility
+        ships it at <Package>/patchers/<Vendor-Name>/<Name>.dll. The hoist globbed only
+        '*/patchers/*.dll', so that package deployed INERT - repairing no mod and logging
+        nothing, which a boot-time unresolved-reference check cannot detect. The flat
+        package here is the control: a fix that only handled the nested shape would pass a
+        nested-only test.
+        """
+        (self.world / "config_merged/bepinex").mkdir(parents=True)
+        cache = self.root / "manager-cache/server/BepInEx/plugins"
+        flat = cache / "Valheim10Compatibility/patchers"
+        nested = cache / "CLLCCompatibility/patchers/L4zerShark_Team-CLLCCompatibility"
+        flat.mkdir(parents=True)
+        nested.mkdir(parents=True)
+        (flat / "Valheim10Compatibility.Patcher.dll").write_text("flat-patcher")
+        (nested / "CLLCCompatibility.dll").write_text("nested-patcher")
+        # Not a DLL, and must not be hoisted.
+        (cache / "CLLCCompatibility/README.md").write_text("not-a-dll")
+
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.deploy()
+
+        patchers = self.world / "config_merged/bepinex/patchers"
+        self.assertEqual(
+            (patchers / "CLLCCompatibility.dll").read_text(), "nested-patcher",
+            "a patcher nested below patchers/ was left under plugins/, where it is inert",
+        )
+        self.assertEqual((patchers / "Valheim10Compatibility.Patcher.dll").read_text(), "flat-patcher")
+        # Flattened by file name: BepInEx loads patchers from one directory.
+        self.assertFalse((patchers / "L4zerShark_Team-CLLCCompatibility").exists())
+        self.assertEqual(sorted(p.name for p in patchers.iterdir()),
+                         ["CLLCCompatibility.dll", "Valheim10Compatibility.Patcher.dll"])
+        # The printed line is the deploy-time proof the patcher engaged, so it must name the
+        # PACKAGE and not the intervening vendor directory.
+        self.assertIn("patcher_hoisted=CLLCCompatibility/CLLCCompatibility.dll", out.getvalue())
+
+    def test_deploy_anchors_the_game_build_it_staged_against(self):
+        """The deploy must record which game build the mod set was validated on.
+
+        `require_matching_game_build` refuses to START a world whose installed assembly
+        differs from its anchor, and recording an anchor is what releases that hold. The
+        deploy used to record nothing, so the anchor came from trust-on-first-use or from an
+        operator remembering a separate command - meaning a Steam update could change the
+        binary under a validated mod set with nothing noticing but the game.
+        """
+        (self.world / "config_merged/bepinex").mkdir(parents=True)
+        assembly = self.world / "data/server/valheim_server_Data/Managed/assembly_valheim.dll"
+        assembly.parent.mkdir(parents=True)
+        assembly.write_text("pretend-1.0.12")
+        expected = hashlib.sha256(assembly.read_bytes()).hexdigest()
+
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.deploy()
+
+        printed = out.getvalue()
+        self.assertIn(f"game_build_anchor={expected}", printed)
+        # It is an outcome line beside deployed=true, not a log message.
+        self.assertIn("deployed=true", printed)
+        anchor = self.world / "mods/.game-build-anchor"
+        recorded = dict(line.split("=", 1) for line in anchor.read_text().splitlines() if "=" in line)
+        self.assertEqual(recorded["game_assembly_sha256"], expected)
+        self.assertEqual(recorded["recorded_reason"], "deploy")
+        self.assertEqual(recorded["game_assembly_source"], "install")
+
+    def test_deploy_reports_rather_than_fails_when_the_build_cannot_be_anchored(self):
+        """A deploy that has already moved files must not fail on bookkeeping.
+
+        A CHANGED game build refuses a START; that is the gate. An unanchorable build must
+        not leave a world with half a mod set, so the obstacle is reported on the outcome
+        line instead. Collapsing the two would turn a gate into an outage.
+        """
+        (self.world / "config_merged/bepinex").mkdir(parents=True)
+        # No data/server/... assembly exists, so there is no build to anchor.
+
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.deploy()
+
+        printed = out.getvalue()
+        self.assertIn("game_build_anchor=unavailable", printed)
+        self.assertIn("deployed=true", printed)
+        self.assertTrue((self.world / "config_merged/bepinex/plugins/NewPlugin/new.dll").is_file())
 
     def test_rejects_cache_version_that_differs_from_profile_manifest(self):
         target_parent = self.world / "config_merged/bepinex"

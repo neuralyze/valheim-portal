@@ -28,10 +28,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import sys
 import urllib.parse
 import urllib.request
+import zipfile
 from collections import Counter
 from pathlib import Path
 
@@ -155,6 +157,85 @@ SOURCES: dict[str, dict] = {
             "MEASURED: its salty-dick-cottage-final.blueprint is BYTE-IDENTICAL "
             "(sha256 6b588d9c...) to this fleet's own corpus copy, which pins the corpus's "
             "upstream and makes this repo a recovery source for truncated files."
+        ),
+    },
+    # -----------------------------------------------------------------------
+    # 2026-09-15 sweep. Every one of these is `redistributable: "no"` or
+    # `"incompatible"`, so not one body is committed -- they are catalogued by
+    # SHA-256 and fetched into the gitignored staging/ at use time, exactly like
+    # the six sources above.
+    # -----------------------------------------------------------------------
+    "OverDrive/BiomeBlueprints": {
+        "url": "https://thunderstore.io/c/valheim/p/OverDrive/BiomeBlueprints/",
+        # Not a git host: pinned by package VERSION plus the SHA-256 of the
+        # downloaded archive, which is the same guarantee a commit gives.
+        "archive": "https://thunderstore.io/package/download/OverDrive/BiomeBlueprints/1.0.3/",
+        "archive_sha256": "36c5a04df80294c6b49b21c916d808fce60698b17479bfab7c95f850be12c707",
+        "commit": "OverDrive-BiomeBlueprints-1.0.3",
+        "licence": "none stated",
+        "licence_quote": (
+            "MEASURED on the 1.0.3 archive (sha256 36c5a04d...): 711 members, NO LICENSE "
+            "file, and the strings 'licen' and 'copyright' occur ZERO times in README.md. "
+            "The only permission language is the submission form: 'It also asks your "
+            "permission to ship it -- the mod redistributes the file, so that is the part "
+            "that lets it.' That is a grant from each builder to lg_9d for THIS package, "
+            "not a licence from those builders to anyone downstream."
+        ),
+        "redistributable": "no",
+        "catalogue": "derived",
+        "what": (
+            "353 PlanBuild bodies sorted by biome -- 78 generated house designs (huts, "
+            "cottages, longhouses, stilt houses, manors, great halls, stone-founded "
+            "villas) and 275 community builds by 89 builders. MEASURED name-prefix "
+            "distribution: ashlands 164, blackforest 43, plains 42, meadows 34, mistlands "
+            "33, swamp 21, mountain 16. The single largest referenceable catalogue found, "
+            "and the only bulk source that ships GROUND FLATTENING with each body -- which "
+            "is exactly the property this library now measures for."
+        ),
+        "members": ".blueprint",
+    },
+    "mcarvall/Midgard-Valheim-Server": {
+        "url": "https://github.com/mcarvall/Midgard-Valheim-Server",
+        "commit": "ebb14b0fe11830e68f6fbe75b7fb145bba0c334f",
+        "licence": "none stated",
+        "licence_quote": (
+            "MEASURED: the GitHub licence API reports `license: null` for this repository "
+            "and the root tree carries no LICENSE file."
+        ),
+        "redistributable": "no",
+        "catalogue": "derived",
+        "what": (
+            "a server config repo carrying four Rocket Raccoon bodies -- Quick House, "
+            "Barracas Media, Casa de Campo, Beliche -- each committed twice under two "
+            "config paths (8 repo paths, 4 distinct blobs, MEASURED)."
+        ),
+    },
+    "okeanz/LootGoblinsUtils": {
+        "url": "https://github.com/okeanz/LootGoblinsUtils",
+        "commit": "d58629730155ee420f1dd92e8919545bfd6284b9",
+        "licence": "none stated",
+        "licence_quote": (
+            "MEASURED: the GitHub licence API reports `license: null` and the root tree "
+            "carries no LICENSE file."
+        ),
+        "redistributable": "no",
+        "catalogue": "derived",
+        "what": "one body, `Relicv_Raven_V2.blueprint`, shipped as a Conquest location asset.",
+    },
+    "sighsorry1029/Homestead": {
+        "url": "https://github.com/sighsorry1029/Homestead",
+        "commit": "40fd3850c0babf566672da561938909034752dd3",
+        "licence": "GPL-3.0",
+        "licence_quote": (
+            "MEASURED: the GitHub licence API reports spdx_id GPL-3.0. 'GNU GENERAL PUBLIC "
+            "LICENSE Version 3, 29 June 2007'."
+        ),
+        "redistributable": "incompatible",
+        "catalogue": "derived",
+        "what": (
+            "the Homestead mod's own sample blueprints. Previously surveyed and left "
+            "unfetched; fetched now because strong copyleft makes LOCAL use unambiguous, "
+            "which is worth more than a body with no licence at all."
         ),
     },
 }
@@ -351,6 +432,96 @@ def sha256(path: Path) -> str:
     h.update(path.read_bytes())
     return h.hexdigest()
 
+# ---------------------------------------------------------------------------
+# derived metadata, for sources too large to curate by hand
+#
+# Every threshold below is stated with the measurement it came from, and every
+# row it produces is labelled `metadata: derived` so no consumer mistakes it for
+# a human verdict.  `role` and `fit` are generated SENTENCES made only of
+# measured numbers -- they say what was counted and nothing else.
+# ---------------------------------------------------------------------------
+
+# A body is a repeatable MODULE when it is small enough to stamp more than once
+# without dominating a site.  Both bounds come from the 90 hand-curated web
+# rows: every row curated `module` is at most 585 pieces (`foresthold`) and at
+# most 34 m across (`salty-dick-bridge-curved-final`), and every row curated
+# `setpiece` exceeds one of those.  So the hand judgements are reproduced rather
+# than a new convention invented.
+DERIVED_MODULE_PIECES = 600
+DERIVED_MODULE_SPAN_M = 35.0
+
+# Under this many pieces with no station, bed or portal, a body is furniture or
+# an ornament rather than a building.  MEASURED on BiomeBlueprints: its smallest
+# bodies are single armchairs and side tables in the tens of pieces, while its
+# smallest actual hut is 106.
+DERIVED_ORNAMENT_PIECES = 40
+
+
+def derive_catalogue(name: str, counts: Counter[str], pieces: int,
+                     footprint: list[float], tier: str) -> tuple[str, str, str, str]:
+    stations = sum(counts[s] for s in STATIONS if s in counts)
+    portals = sum(counts[p] for p in PORTALS if p in counts)
+    beds = sum(counts[b] for b in BEDS if b in counts)
+    fx, fz, fy = footprint
+    span = max(fx, fz)
+
+    if portals >= 3:
+        category = "portal"
+    elif beds and stations:
+        category = "base"
+    elif stations >= 3:
+        category = "production"
+    elif beds or stations:
+        category = "base"
+    elif pieces < DERIVED_ORNAMENT_PIECES:
+        category = "flavour"
+    else:
+        category = "flavour"
+    kind = ("module" if pieces <= DERIVED_MODULE_PIECES and span <= DERIVED_MODULE_SPAN_M
+            else "setpiece")
+    role = (f"{pieces} pieces, {len(counts)} prefabs, {fx}x{fz}x{fy} m, "
+            f"{stations} stations, {beds} beds, {portals} portals")
+    # The source's own biome tag, when its file name carries one. MEASURED:
+    # every BiomeBlueprints body is named `hs_<biome>_<...>`, which is the
+    # AUTHOR's biome assignment and a stronger signal than our material tier --
+    # so both are reported and neither is silently preferred.
+    parts = name.split("_")
+    tagged = parts[1] if len(parts) > 2 and parts[0] == "hs" else ""
+    fit = (f"source biome tag: {tagged or 'none'}; material tier: {tier}. "
+           f"DERIVED from the measurements in `role` -- not a curated judgement")
+    return category, kind, role, fit
+
+
+def fetch_archive(repo: str, spec: dict, out_dir: Path) -> int:
+    """Stage the bodies out of a packaged release, pinned by ARCHIVE hash.
+
+    Thunderstore is not a git host, so there is no commit to pin. The package
+    version plus the SHA-256 of the downloaded zip is the same guarantee: if
+    either changes, this refuses rather than staging different content under a
+    name the manifest already claims.
+    """
+    suffix = spec.get("members", ".blueprint")
+    staged = list(out_dir.glob(f"*{suffix}"))
+    if staged:
+        return 0
+    blob = _get(spec["archive"])
+    digest = hashlib.sha256(blob).hexdigest()
+    if digest != spec["archive_sha256"]:
+        raise SystemExit(
+            f"{repo}: archive SHA-256 is {digest}, manifest pins "
+            f"{spec['archive_sha256']}. The pinned release has been replaced; "
+            f"re-read its licence before re-pinning it."
+        )
+    written = 0
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        for member in zf.namelist():
+            if not member.lower().endswith(suffix):
+                continue
+            name = member.rsplit("/", 1)[-1]
+            (out_dir / name).write_bytes(zf.read(member))
+            written += 1
+    return written
+
 
 def fetch() -> int:
     STAGING.mkdir(exist_ok=True)
@@ -358,6 +529,10 @@ def fetch() -> int:
     for repo, spec in SOURCES.items():
         out_dir = STAGING / repo.replace("/", "__")
         out_dir.mkdir(exist_ok=True)
+        if spec.get("archive"):
+            written += fetch_archive(repo, spec, out_dir)
+            print(f"{repo}: {len(list(out_dir.iterdir()))} files staged ({spec['licence']})")
+            continue
         paths = spec.get("paths")
         if paths is None:
             api = f"https://api.github.com/repos/{repo}/git/trees/{spec['commit']}?recursive=1"
@@ -415,13 +590,27 @@ def measure() -> list[dict]:
                 footprint = [0.0, 0.0, 0.0]
             hist = tier_histogram(counts)
             tier, tier_pieces = top_tier(hist)
-            curated = CATALOGUE.get(path.name)
-            if curated is None:
-                raise SystemExit(f"CATALOGUE is missing a verdict for {repo}/{path.name}")
-            category, kind, role, fit = curated
+            if spec.get("catalogue") == "derived":
+                # A hand-written verdict per body does not scale to a
+                # 353-body pack, and faking 353 of them would be worse than
+                # deriving them: a curated line that was never read by a human
+                # reads exactly like one that was. So these rows carry
+                # `metadata: derived` and every field in them is a function of
+                # the measurements printed beside it.
+                category, kind, role, fit = derive_catalogue(
+                    path.name, counts, len(pieces), footprint, tier
+                )
+                metadata = "derived"
+            else:
+                curated = CATALOGUE.get(path.name)
+                if curated is None:
+                    raise SystemExit(f"CATALOGUE is missing a verdict for {repo}/{path.name}")
+                category, kind, role, fit = curated
+                metadata = "curated"
             rows.append(
                 {
                     "file": path.name,
+                    "metadata": metadata,
                     "origin": repo,
                     "source_url": spec["url"],
                     "commit": spec["commit"],
@@ -431,6 +620,16 @@ def measure() -> list[dict]:
                     "format": parsed["fmt"],
                     "bytes": path.stat().st_size,
                     "sha256": sha256(path),
+                    # Staged web bodies are fetched from a pinned commit, so a
+                    # 0-byte one would be a broken fetch rather than a lost
+                    # file. None are 0 bytes (MEASURED), but the field is
+                    # carried on every row so `build_manifest.py` can count
+                    # resolvable bodies without knowing which half a row is from.
+                    "resolvable": path.stat().st_size > 0,
+                    "unresolved_reason": (
+                        "" if path.stat().st_size else
+                        f"zero-byte staged file: re-run ./web.py --fetch for {repo}"
+                    ),
                     "blueprint_name": parsed["meta"].get("name", ""),
                     "creator": parsed["meta"].get("creator", ""),
                     "category": category,

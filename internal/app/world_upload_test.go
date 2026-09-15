@@ -183,7 +183,13 @@ func TestWorldUploadRefusals(t *testing.T) {
 			members: append([]member{
 				{name: "filler.bin", data: bytes.Repeat([]byte{0}, 8<<20)},
 			}, live...),
-			want: "expands 1027 times, over the 200 to 1 limit",
+			// NOT the exact ratio. The compressed size of 8 MiB of zeros is a
+			// property of the deflate implementation, not of this refusal: the
+			// same fixture measured 1027:1 when this was written and 1007:1 on a
+			// later toolchain, so pinning the number made a passing guard look
+			// like a regression. What the operator must be told is that the
+			// member is refused and what limit it broke.
+			want: "over the 200 to 1 limit",
 		},
 		{
 			name: "duplicate paths in different directories",

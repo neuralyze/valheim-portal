@@ -470,6 +470,15 @@ CATALOGUE: dict[str, tuple[str, str, str, str, str]] = {
 
 
 def sha256(path: Path) -> str:
+    """The body's content hash, or "" when there is no content to hash.
+
+    The empty string is deliberate and it is NOT the hash of an empty file.
+    `e3b0c442...` is a perfectly valid SHA-256 of zero bytes, and writing it
+    here would make `materialise.py --verify` certify a truncated download as
+    intact -- the manifest would say "this body is claimed by hash" and the hash
+    would agree. A row with no content must instead be unable to claim anything,
+    which is what "" plus `resolvable: false` says.
+    """
     if path.stat().st_size == 0:
         return ""
     h = hashlib.sha256()
@@ -498,71 +507,116 @@ def collect() -> list[dict]:
     vanilla, mod_owner = load_evidence()
     rows: list[dict] = []
     for name in sorted(by_name):
-        # Prefer the larger copy: 12 files are 0-byte in one directory and
-        # intact in the other.
-        path = max(by_name[name], key=lambda p: p.stat().st_size)
-        size = path.stat().st_size
-        parsed = parse_blueprint(path)
-        pieces = parsed["pieces"]
-        counts = Counter(prefab for prefab, _x, _y, _z in pieces)
-        hist = tier_histogram(counts)
-        tier, tier_pieces = top_tier(hist)
-        if pieces:
-            xs = [p[1] for p in pieces]
-            ys = [p[2] for p in pieces]
-            zs = [p[3] for p in pieces]
-            footprint = [round(max(xs) - min(xs), 1), round(max(zs) - min(zs), 1), round(max(ys) - min(ys), 1)]
-        else:
-            footprint = [0.0, 0.0, 0.0]
-        category, kind, role, fit, note = CATALOGUE[name]
-        spam = {
-            prefab: n
-            for prefab, n in counts.items()
-            if n >= SPAM_FLOOR and any(h in prefab.lower() for h in SPAM_HINTS)
-        }
-        viability = resolve_viability(counts, vanilla, mod_owner)
-        if kind == "exploit":
-            viability["verdict"] = "EXPLOIT/" + viability["verdict"]
-        rows.append(
-            {
-                "file": name,
-                "source": str(path),
-                "format": parsed["fmt"],
-                "bytes": size,
-                "sha256": sha256(path),
-                "blueprint_name": parsed["meta"].get("name", ""),
-                "creator": parsed["meta"].get("creator", ""),
-                "licence": "none stated",
-                "origin": "fleet corpus (local disk)",
-                "committed_body": False,
-                "category": category,
-                "kind": kind,
-                "role": role,
-                "fit": fit,
-                "note": note,
-                **viability,
-                "pieces": len(pieces),
-                "distinct_prefabs": len(counts),
-                "footprint_xzy": footprint,
-                "top_tier": tier,
-                "top_tier_pieces": tier_pieces,
-                "tier_histogram": dict(sorted(hist.items(), key=lambda kv: TIER_ORDER.index(kv[0]))),
-                "stations": sum(counts[s] for s in STATIONS if s in counts),
-                "portals": sum(counts[p] for p in PORTALS if p in counts),
-                "beds": sum(counts[b] for b in BEDS if b in counts),
-                "wards": sum(counts[w] for w in WARDS if w in counts),
-                "snap_points": parsed["snap_points"],
-                "terrain_height_rows": parsed["terrain_height"],
-                "terrain_paint_rows": parsed["terrain_paint"],
-                "ih_discarded_rows": sum(parsed["discarded"].values()),
-                "ih_discarded_shapes": dict(parsed["discarded"]),
-                "unknown_sections": parsed["unknown_sections"],
-                "pieces_after_unknown": parsed["pieces_after_unknown"],
-                "legacy_terrain_rejected": parsed["legacy_terrain"],
-                "zdo_spam": dict(sorted(spam.items(), key=lambda kv: -kv[1])),
-            }
-        )
+        # One row per distinct BODY, not per file name.
+        #
+        # The old rule was `max(by_name[name], key=size)` -- "prefer the larger
+        # copy: 12 files are 0-byte in one directory and intact in the other".
+        # That is true of 12 names and WRONG about one, and the one it was wrong
+        # about cost a whole building.
+        #
+        # MEASURED over the two corpus directories, 26 names appear in both:
+        # 24 are byte-identical, 2 are a 0-byte stub beside the real body
+        # (`s-ren-dockhouse`, `salty-dick-cottage-final`), and
+        # `PuP_Minicastle.blueprint` is **two different buildings** -- 352,256
+        # bytes / 3,334 rows in old_Storgard against 404,763 / 3,810 in bp_old,
+        # different SHA-256. Taking the larger silently discarded a 3,334-piece
+        # castle AND, because the downstream survey resolved by name through a
+        # different root order, measured the discarded one while the manifest
+        # claimed the kept one's hash. Grouping by content instead makes both
+        # bodies rows, and `build_manifest.identity()` gives each its own handle.
+        #
+        # A 0-byte copy is not a distinct body, it is the absence of one, so it
+        # is only kept when the name has nothing else.
+        by_content: dict[str, list[Path]] = {}
+        for candidate in by_name[name]:
+            if candidate.stat().st_size == 0:
+                continue
+            by_content.setdefault(sha256(candidate), []).append(candidate)
+        if not by_content:
+            by_content[""] = [by_name[name][0]]
+        for _digest, paths in sorted(by_content.items(), key=lambda kv: -kv[1][0].stat().st_size):
+            path = paths[0]
+            size = path.stat().st_size
+            rows.append(_measure_one(path, size, name, paths, vanilla, mod_owner))
     return rows
+
+
+def _measure_one(path: Path, size: int, name: str, paths: list[Path],
+                 vanilla: set[str], mod_owner: dict[str, str]) -> dict:
+    parsed = parse_blueprint(path)
+    pieces = parsed["pieces"]
+    counts = Counter(prefab for prefab, _x, _y, _z in pieces)
+    hist = tier_histogram(counts)
+    tier, tier_pieces = top_tier(hist)
+    if pieces:
+        xs = [p[1] for p in pieces]
+        ys = [p[2] for p in pieces]
+        zs = [p[3] for p in pieces]
+        footprint = [round(max(xs) - min(xs), 1), round(max(zs) - min(zs), 1), round(max(ys) - min(ys), 1)]
+    else:
+        footprint = [0.0, 0.0, 0.0]
+    category, kind, role, fit, note = CATALOGUE[name]
+    spam = {
+        prefab: n
+        for prefab, n in counts.items()
+        if n >= SPAM_FLOOR and any(h in prefab.lower() for h in SPAM_HINTS)
+    }
+    viability = resolve_viability(counts, vanilla, mod_owner)
+    if kind == "exploit":
+        viability["verdict"] = "EXPLOIT/" + viability["verdict"]
+    return {
+        "file": name,
+        "source": str(path),
+        "sources": [str(p) for p in paths],
+        "format": parsed["fmt"],
+        "bytes": size,
+        "sha256": sha256(path),
+        # A row is RESOLVABLE when a body exists that the manifest can
+        # claim by hash. Ten corpus files are 0 bytes and -- MEASURED,
+        # `find` over the whole of $VALHEIM_ROOT -- have exactly one copy
+        # each, that empty one. They are catalogued because their names
+        # record what the corpus once held, and they are marked
+        # unresolvable because a library that counts them as bodies is
+        # lying to every consumer.
+        "resolvable": size > 0,
+        "unresolved_reason": (
+            "" if size > 0 else
+            "zero-byte source: the only copy on disk is 0 bytes, so there is no "
+            "content to hash, materialise, parse or place. Truncated when the "
+            "corpus was fetched; no second copy exists locally or in any "
+            "referenced web source (MEASURED)."
+        ),
+        "blueprint_name": parsed["meta"].get("name", ""),
+        "creator": parsed["meta"].get("creator", ""),
+        "licence": "none stated",
+        "origin": "fleet corpus (local disk)",
+        "committed_body": False,
+        "category": category,
+        "kind": kind,
+        "role": role,
+        "fit": fit,
+        "note": note,
+        **viability,
+        "pieces": len(pieces),
+        "distinct_prefabs": len(counts),
+        "footprint_xzy": footprint,
+        "top_tier": tier,
+        "top_tier_pieces": tier_pieces,
+        "tier_histogram": dict(sorted(hist.items(), key=lambda kv: TIER_ORDER.index(kv[0]))),
+        "stations": sum(counts[s] for s in STATIONS if s in counts),
+        "portals": sum(counts[p] for p in PORTALS if p in counts),
+        "beds": sum(counts[b] for b in BEDS if b in counts),
+        "wards": sum(counts[w] for w in WARDS if w in counts),
+        "snap_points": parsed["snap_points"],
+        "terrain_height_rows": parsed["terrain_height"],
+        "terrain_paint_rows": parsed["terrain_paint"],
+        "ih_discarded_rows": sum(parsed["discarded"].values()),
+        "ih_discarded_shapes": dict(parsed["discarded"]),
+        "unknown_sections": parsed["unknown_sections"],
+        "pieces_after_unknown": parsed["pieces_after_unknown"],
+        "legacy_terrain_rejected": parsed["legacy_terrain"],
+        "zdo_spam": dict(sorted(spam.items(), key=lambda kv: -kv[1])),
+    }
 
 
 TSV_COLUMNS = (

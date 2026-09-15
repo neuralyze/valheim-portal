@@ -33,16 +33,40 @@ constraint_note: 'Constraints come in two classes and the solver treats them dif
 resolve_note: Every `solved` block below is seed-specific and disposable. The durable part is `requirement`.
   Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py --write to regenerate
   all of them.
+location_clearance_note: 'MEASURED 2026-09-15 and it invalidates this field: `requirement.location_clearance_m`
+  and `solved.nearest_location_m` are VANILLA-ONLY figures and must not be read as clearance against the
+  live world.
+
+  `tools/seedscan/run_locscan.sh` builds its sandbox with `rsync --exclude ''BepInEx/''`, then `rm -rf
+  $SANDBOX/BepInEx`, then copies back only `BepInEx/core` and builds its own scanner into `plugins`. So
+  the location dump the solver scores against is produced by a server with ZERO gameplay mods loaded,
+  and More_World_Locations_AIO''s 190 POI locations cannot register in it. The seed is right (Pirate68)
+  and the dump is not stale; it is measuring a different world.
+
+  The proof is a matched pair rather than an inference. At `pre-eikthyr#meadows-starter-hall` the solver
+  recorded nearest_location_m 77.0; the LIVE world holds THREE LocationProxy markers at 11.08, 25.41 and
+  77.44 m from that pad centre. The solver found exactly the vanilla one and neither of the two nearer
+  ones. The same gap appears at every site checked: recorded 178.0 vs live 23.05 m (pre-moder#mountain-outpost),
+  recorded 147.0 vs live 17.12 m (deepnorth-sandbox#complete-station-hub), recorded 96.0 vs live 24.14
+  m (deepnorth-sandbox#sandbox-portal-hub).
+
+  What the figure can still be trusted for: ranking candidate sites against VANILLA locations during the
+  solve, which is what it was computed for. What it must NOT be used for: deciding that ground is free
+  to clear or build on. That question is answered LIVE, and only live, by `clearing/clear.py`''s `locations_inside()`
+  probe, which refuses to clear when a generated marker stands inside the cylinder. That refusal is the
+  real gate and it has already blocked three sites here. Re-running the solver will not fix the number:
+  the dump is mod-free BY CONSTRUCTION, and a mod''s own location quantity switches only apply at world
+  generation, so they cannot retract a marker from a zone this world has already generated either.'
 placements:
 - id: complete-station-hub
-  blueprint: Ultimate_OutPost.blueprint
-  sha256: 2f984f3b649bcac1ee3e83cd704791b5080aefd9b57ac3c3d0c20be739bad33c
-  pieces: 1820
+  blueprint: hs_ashlands_cm_thug_outpost.blueprint
+  sha256: 0781c913c49182e1f45f3705d33ee1259116c2094894cd07fa579cd6f56e2fc1
+  pieces: 1649
   footprint_xzy_m:
-  - 52.7
-  - 49.0
-  - 13.8
-  creator: Randominis
+  - 37.0
+  - 38.6
+  - 11.3
+  creator: Cm Thug
   viability: PLACES_CLEAN
   align: floor-center
   requirement:
@@ -368,56 +392,181 @@ placements:
         flat_spread_coarse_m: 46.36
         flat_p5_p95_m: 39.59
         refined_moved_m: 5.7
+  body_choice: 'Replaces `Ultimate_OutPost`, which moves to pre-queen#mistlands-blackforge-base. MEASURED:
+    `hs_ashlands_cm_thug_outpost` carries 16/16 of the stations this sandbox ranks on -- every station
+    group in the library''s ladder -- against Ultimate_OutPost''s 15/16, in 1649 pieces against 1820.
+    `land_flat` at 4.7% floating with a 6.31 m worst gap at 2.0 m isolation, 1 bed, span 40.2 m inside
+    the 56 m pad, missing_pieces 0, no carried portals. Its 928 ashlands-tier pieces are structural grausten,
+    which is why it cannot be trimmed down a tier and why it belongs at the tier-9 sandbox rather than
+    anywhere earlier.'
+  body_audit:
+    source: library/audit_bases.py raster in library/data/base_audit.json, 1 m columns on a flat pad
+    flat_pad_verdict: grounds
+    setting: land_flat
+    floating_fraction: 0.047
+    max_air_m: 6.307
+    air_isolation_max_m: 2.0
+    footprint_span_m: 40.2
+    pad_m: 56.0
+    pieces: 1649
+    stations: 49
+    beds: 1
+    portals_in_body: 0
+    missing_pieces: 0
+    missing_prefabs: []
+    material_tier: ashlands
+    material_tier_pieces: 928
+    licence: none stated
+    redistributable: false
+    licence_note: referenced by name and sha256 only; body is not vendored in this repo
+  portal:
+    role: spoke
+    tag: u-stathub
+    peer: deepnorth-sandbox#sandbox-portal-hub
+    pieces_to_place: 1
+    pieces_in_body_dropped: 0
+    tag_max_len: 10
+    note: 'Vanilla pairs portals BY TAG, and MEASURED by FixtureHome from the deployed assembly, Game::FindRandomUnconnectedPortal
+      draws UNIFORMLY AT RANDOM among same-tag unconnected portals and re-draws whenever either end loses
+      its partner -- so a blank-tag portal is not merely one-way, its destination is non-deterministic.
+      This world holds 26 mod-added portal_wood instances, three of them within 5-29 m of the workshop
+      pad, and the single untagged portal placed at the workshop is why the operator went through and
+      found no portal to return with. So: every portal here carries a tag, exactly two portals share each
+      tag, and an absent tag is a build FAILURE rather than a default. The tag is a ZDO string field (ZDOVars.s_tag)
+      written at spawn time in the `data=` payload of `spawn_object`; TeleportWorld has no tag field of
+      its own and reads that same ZDO string, so a headlessly tagged portal is indistinguishable to the
+      pairing code from one a player typed. Tags are capped at 10 characters because TextInput::RequestText(this,
+      "$piece_portal_tag", 10) is the UI input cap: a longer tag would PAIR but could never be re-typed,
+      making a broken pair unrepairable by hand. Topology is a single central hub -- deepnorth-sandbox#sandbox-portal-hub
+      at (-270.5, 211.5), 340 m from the StartTemple -- holding one portal per site; 11 tags, 22 portal
+      ZDOs, worst case two hops between any two sites. Any portal_wood the BODY carries is DROPPED, because
+      a captured tag is an unknown tag.'
+  portal_tag: u-stathub
   blueprint_datum:
-    base_y: 3.264
+    base_y: -0.259
     method: lowest_station_below_floor
     placeable: true
-    bottom_solid_y: -96.261
-    support_bottom_y: 2.764
-    lowest_station_y: 3.264
-    lowest_ground_resting_y: 3.264
-    floor_pieces: 448
-    pieces: 1820
+    bottom_solid_y: -1.966
+    support_bottom_y: -0.716
+    lowest_station_y: -0.259
+    lowest_ground_resting_y: -0.259
+    floor_pieces: 455
+    pieces: 1649
     walkable_levels:
-    - y: 3.76
-      above_pad_m: 0.496
-      pieces: 290
-      area_m2: 1160.0
-    - y: 3.86
-      above_pad_m: 0.596
-      pieces: 4
-      area_m2: 16.0
-    - y: 4.86
-      above_pad_m: 1.596
-      pieces: 23
-      area_m2: 92.0
-    - y: 5.86
-      above_pad_m: 2.596
+    - y: -0.216
+      above_pad_m: 0.043
+      pieces: 36
+      area_m2: 144.0
+    - y: 0.284
+      above_pad_m: 0.543
+      pieces: 204
+      area_m2: 816.0
+    - y: 0.381
+      above_pad_m: 0.64
+      pieces: 14
+      area_m2: 56.0
+    - y: 0.784
+      above_pad_m: 1.043
+      pieces: 40
+      area_m2: 148.0
+    - y: 1.284
+      above_pad_m: 1.543
+      pieces: 29
+      area_m2: 104.0
+    - y: 1.381
+      above_pad_m: 1.64
+      pieces: 8
+      area_m2: 32.0
+    - y: 1.881
+      above_pad_m: 2.14
+      pieces: 7
+      area_m2: 28.0
+    - y: 2.663
+      above_pad_m: 2.923
+      pieces: 1
+      area_m2: 1.0
+    - y: 3.381
+      above_pad_m: 3.64
       pieces: 6
-      area_m2: 18.0
-    - y: 6.86
-      above_pad_m: 3.596
+      area_m2: 24.0
+    - y: 4.381
+      above_pad_m: 4.64
+      pieces: 71
+      area_m2: 71.0
+    - y: 4.466
+      above_pad_m: 4.726
+      pieces: 27
+      area_m2: 27.0
+    - y: 8.466
+      above_pad_m: 8.726
       pieces: 12
-      area_m2: 30.0
-    - y: 7.86
-      above_pad_m: 4.596
-      pieces: 113
-      area_m2: 116.0
-    walkable_levels_total: 6
+      area_m2: 12.0
+    walkable_levels_total: 12
+    base_profile:
+      cell_m: 2.0
+      columns: 362
+      footprint_area_m2: 1448.0
+      bottom_y_min: -1.966
+      bottom_y_p25: -1.716
+      bottom_y_median: -0.716
+      bottom_y_p75: -0.216
+      bottom_y_max: 6.048
+      relief_m: 8.014
+      bottom_is_flat: false
+      steps:
+      - bottom_y: 0.0
+        area_m2: 524.0
+        share: 0.362
+      - bottom_y: -0.5
+        area_m2: 360.0
+        share: 0.249
+      - bottom_y: -1.5
+        area_m2: 356.0
+        share: 0.246
+      - bottom_y: -1.0
+        area_m2: 88.0
+        share: 0.061
+      - bottom_y: -2.0
+        area_m2: 52.0
+        share: 0.036
+      - bottom_y: 4.0
+        area_m2: 24.0
+        share: 0.017
+      - bottom_y: 0.5
+        area_m2: 20.0
+        share: 0.014
+      - bottom_y: 5.0
+        area_m2: 16.0
+        share: 0.011
+      on_a_flat_pad:
+        columns: 362
+        columns_floating: 17
+        floating_fraction: 0.047
+        floating_area_m2: 68.0
+        max_air_m: 6.307
+        mean_air_m: 3.685
+        air_volume_m3: 250.6
+        max_buried_m: 1.707
+        grounded: true
     violations:
+    - code: minor_levels_below_datum
+      detail: y=-0.216 holding 144.0 m2 (9.8%) is below the chosen datum y=0.284 (816.0 m2, 55.8% of 1463.0
+        m2) and will be buried by up to 0.500 m. Each holds under 10% of the floor area and sits less
+        than a 1 m wall course down, so it is a step or a terrace course rather than a storey; the storey
+        wins.
     - code: station_below_floor
-      detail: a crafting station stands at y=3.264, 0.50 m below the lowest walkable surface y=3.760.
+      detail: a crafting station stands at y=-0.259, 0.54 m below the lowest walkable surface y=0.284.
         A buried station cannot be used, so the station plane wins; the floor above it stands proud by
         that much, which is cosmetic.
 - id: sandbox-portal-hub
-  blueprint: god-portaaoo.blueprint
-  sha256: e249c441d846199c05c6bdba5c74213c4aeedb30a8c94d5622a777f01bc3e154
-  pieces: 2191
+  blueprint: salty-dick-portal-hub-final.blueprint
+  sha256: 7afcc658f10ee7333152ddec9c625499e909fe5081da61fe9800f553ae642af3
+  pieces: 1043
   footprint_xzy_m:
-  - 36.0
-  - 12.0
-  - 23.0
-  creator: God
+  - 28.2
+  - 28.1
+  - 15.0
+  creator: Salty Dick
   viability: PLACES_CLEAN
   align: floor-center
   requirement:
@@ -617,52 +766,145 @@ placements:
         error_deg: 137.8
         best_cardinal_yaw: 0
         verdict: declared yaw is 138 deg off the anchor; bearing is 357
+  body_choice: 'Replaces `god-portaaoo`, and this site is now THE central portal hub for the whole world.
+    MEASURED: god-portaaoo is `grounds_on_posts` at 28.4% floating with a 17.89 m worst gap, 2191 pieces,
+    and ZERO stations. `salty-dick-portal-hub-final` is `land_flat` at 0.5% floating with a 4.50 m worst
+    gap at 2.0 m isolation, 1043 pieces, span 29.1 m inside the 50 m pad, missing_pieces 0, material mistlands(20)
+    which is trim rather than structure. Chosen as the hub for its POSITION as much as its numbers: the
+    solved site is (-270.5, 211.5), 340 m from the StartTemple, so the hub is where a new character actually
+    is. Its 8 carried portal_wood pieces are DROPPED -- see `portal`.'
+  body_audit:
+    source: library/audit_bases.py raster in library/data/base_audit.json, 1 m columns on a flat pad
+    flat_pad_verdict: grounds
+    setting: land_flat
+    floating_fraction: 0.005
+    max_air_m: 4.497
+    air_isolation_max_m: 2.0
+    footprint_span_m: 29.1
+    pad_m: 50.0
+    pieces: 1043
+    stations: 0
+    beds: 0
+    portals_in_body: 8
+    missing_pieces: 0
+    missing_prefabs: []
+    material_tier: mistlands
+    material_tier_pieces: 20
+    licence: none stated
+    redistributable: false
+    licence_note: referenced by name and sha256 only; body is not vendored in this repo
+  portal:
+    role: hub
+    tags:
+    - u-stathub
+    - u-workshop
+    - u-meadhall
+    - u-blacbase
+    - u-dock
+    - u-ashland
+    - u-dncamp
+    - u-dnshrine
+    - u-mtnpost
+    - u-mistfrge
+    - u-plainsfm
+    pieces_to_place: 11
+    pieces_in_body_dropped: 8
+    tag_max_len: 10
+    note: 'Vanilla pairs portals BY TAG, and MEASURED by FixtureHome from the deployed assembly, Game::FindRandomUnconnectedPortal
+      draws UNIFORMLY AT RANDOM among same-tag unconnected portals and re-draws whenever either end loses
+      its partner -- so a blank-tag portal is not merely one-way, its destination is non-deterministic.
+      This world holds 26 mod-added portal_wood instances, three of them within 5-29 m of the workshop
+      pad, and the single untagged portal placed at the workshop is why the operator went through and
+      found no portal to return with. So: every portal here carries a tag, exactly two portals share each
+      tag, and an absent tag is a build FAILURE rather than a default. The tag is a ZDO string field (ZDOVars.s_tag)
+      written at spawn time in the `data=` payload of `spawn_object`; TeleportWorld has no tag field of
+      its own and reads that same ZDO string, so a headlessly tagged portal is indistinguishable to the
+      pairing code from one a player typed. Tags are capped at 10 characters because TextInput::RequestText(this,
+      "$piece_portal_tag", 10) is the UI input cap: a longer tag would PAIR but could never be re-typed,
+      making a broken pair unrepairable by hand. Topology is a single central hub -- deepnorth-sandbox#sandbox-portal-hub
+      at (-270.5, 211.5), 340 m from the StartTemple -- holding one portal per site; 11 tags, 22 portal
+      ZDOs, worst case two hops between any two sites. Any portal_wood the BODY carries is DROPPED, because
+      a captured tag is an unknown tag.'
+  drop_prefabs:
+  - portal_wood
   blueprint_datum:
-    base_y: 1.0
+    base_y: 0.5
     method: lowest_walkable_surface
     placeable: true
-    bottom_solid_y: -0.002
-    support_bottom_y: -0.0
+    bottom_solid_y: -1.05
+    support_bottom_y: 1.0
     lowest_station_y: null
     lowest_ground_resting_y: null
-    floor_pieces: 62
-    pieces: 2191
+    floor_pieces: 194
+    pieces: 1043
     walkable_levels:
-    - y: 1.0
+    - y: 0.5
       above_pad_m: 0.0
-      pieces: 22
-      area_m2: 88.0
-    - y: 3.1
-      above_pad_m: 2.1
-      pieces: 2
-      area_m2: 8.0
-    - y: 5.1
-      above_pad_m: 4.1
-      pieces: 14
-      area_m2: 56.0
-    - y: 7.1
-      above_pad_m: 6.1
-      pieces: 2
-      area_m2: 8.0
-    - y: 9.0
-      above_pad_m: 8.0
-      pieces: 8
-      area_m2: 32.0
-    - y: 9.1
-      above_pad_m: 8.1
-      pieces: 14
-      area_m2: 56.0
-    walkable_levels_total: 6
+      pieces: 34
+      area_m2: 136.0
+    - y: 1.097
+      above_pad_m: 0.597
+      pieces: 108
+      area_m2: 432.0
+    - y: 1.5
+      above_pad_m: 1.0
+      pieces: 4
+      area_m2: 16.0
+    - y: 2.097
+      above_pad_m: 1.597
+      pieces: 48
+      area_m2: 192.0
+    walkable_levels_total: 4
+    base_profile:
+      cell_m: 2.0
+      columns: 204
+      footprint_area_m2: 816.0
+      bottom_y_min: -1.05
+      bottom_y_p25: -0.5
+      bottom_y_median: 0.5
+      bottom_y_p75: 0.5
+      bottom_y_max: 4.997
+      relief_m: 6.047
+      bottom_is_flat: false
+      steps:
+      - bottom_y: 0.5
+        area_m2: 272.0
+        share: 0.333
+      - bottom_y: -0.5
+        area_m2: 240.0
+        share: 0.294
+      - bottom_y: 1.0
+        area_m2: 136.0
+        share: 0.167
+      - bottom_y: 0.0
+        area_m2: 100.0
+        share: 0.123
+      - bottom_y: -1.0
+        area_m2: 64.0
+        share: 0.078
+      - bottom_y: 5.0
+        area_m2: 4.0
+        share: 0.005
+      on_a_flat_pad:
+        columns: 204
+        columns_floating: 1
+        floating_fraction: 0.005
+        floating_area_m2: 4.0
+        max_air_m: 4.497
+        mean_air_m: 4.497
+        air_volume_m3: 18.0
+        max_buried_m: 1.55
+        grounded: true
     violations: []
 - id: sandbox-harbour
-  blueprint: dock.blueprint
-  sha256: 4157326c69a0157df45f96bbcf1c56c6e85fd81e66020006171cdb9ef79de9b9
-  pieces: 2036
+  blueprint: s-ren-dockhouse.blueprint
+  sha256: 1b221bf6ffe257b4e079e9b63bd98e32cce6170dba254c23507d53d4048574c3
+  pieces: 1225
   footprint_xzy_m:
-  - 42.2
-  - 29.0
-  - 23.5
-  creator: Olivanderr
+  - 35.8
+  - 42.8
+  - 19.5
+  creator: "S\xF6ren"
   viability: PLACES_CLEAN
   align: floor-center
   requirement:
@@ -694,8 +936,8 @@ placements:
     max_height_m: 3.0
     max_grade_pct: 10
     footprint_xz_m:
-    - 42.2
-    - 29.0
+    - 35.8
+    - 42.8
   rotation:
     units: euler_degrees_yxz
     yaw: 90
@@ -1146,56 +1388,155 @@ placements:
           required: -2.0
           actual: -2.76
           over_by: 0.76
+  body_choice: 'Same body and same solved coordinates as pre-elder#early-dock, and therefore the SAME
+    PHYSICAL STRUCTURE: terraform/sites.py refuses the second one (''duplicate blueprint at the same solved
+    position'') rather than stacking it. Pointed at s-ren-dockhouse for the same reason early-dock is
+    -- the pad is levelled, so an over-water body would stand over dry ground. Built once, under pre-elder.'
+  body_audit:
+    source: library/audit_bases.py raster in library/data/base_audit.json, 1 m columns on a flat pad
+    flat_pad_verdict: grounds
+    setting: land_flat
+    floating_fraction: 0.061
+    max_air_m: 6.726
+    air_isolation_max_m: 2.0
+    footprint_span_m: 43.7
+    pad_m: 48.0
+    pieces: 1225
+    stations: 10
+    beds: 0
+    portals_in_body: 0
+    missing_pieces: 0
+    missing_prefabs: []
+    material_tier: swamp
+    material_tier_pieces: 18
+    licence: none stated
+    redistributable: false
+    licence_note: referenced by name and sha256 only; body is not vendored in this repo
+  portal:
+    role: duplicate
+    same_structure_as: pre-elder#early-dock
+    tag: u-dock
+    pieces_to_place: 0
+    tag_max_len: 10
+    note: 'Same structure as pre-elder#early-dock; its portal is that site''s portal. Vanilla pairs portals
+      BY TAG, and MEASURED by FixtureHome from the deployed assembly, Game::FindRandomUnconnectedPortal
+      draws UNIFORMLY AT RANDOM among same-tag unconnected portals and re-draws whenever either end loses
+      its partner -- so a blank-tag portal is not merely one-way, its destination is non-deterministic.
+      This world holds 26 mod-added portal_wood instances, three of them within 5-29 m of the workshop
+      pad, and the single untagged portal placed at the workshop is why the operator went through and
+      found no portal to return with. So: every portal here carries a tag, exactly two portals share each
+      tag, and an absent tag is a build FAILURE rather than a default. The tag is a ZDO string field (ZDOVars.s_tag)
+      written at spawn time in the `data=` payload of `spawn_object`; TeleportWorld has no tag field of
+      its own and reads that same ZDO string, so a headlessly tagged portal is indistinguishable to the
+      pairing code from one a player typed. Tags are capped at 10 characters because TextInput::RequestText(this,
+      "$piece_portal_tag", 10) is the UI input cap: a longer tag would PAIR but could never be re-typed,
+      making a broken pair unrepairable by hand. Topology is a single central hub -- deepnorth-sandbox#sandbox-portal-hub
+      at (-270.5, 211.5), 340 m from the StartTemple -- holding one portal per site; 11 tags, 22 portal
+      ZDOs, worst case two hops between any two sites. Any portal_wood the BODY carries is DROPPED, because
+      a captured tag is an unknown tag.'
+  duplicate_of: pre-elder#early-dock
+  duplicate_note: Same body and same solved coordinates as pre-elder#early-dock, so it is the SAME PHYSICAL
+    STRUCTURE and is built exactly once. Declared here rather than left to terraform/sites.py's first-seen
+    rule, which resolved by directory sort order and therefore made `deepnorth-sandbox` the survivor purely
+    because `d` sorts before `p` -- an ordering that would flip silently if a preset were renamed, and
+    which put the canonical structure in the tier-9 sandbox rather than at the tier-2 preset that actually
+    needs a dock.
   blueprint_datum:
-    base_y: 1.5
+    base_y: -0.903
     method: lowest_walkable_surface
     placeable: true
-    bottom_solid_y: -1.5
-    support_bottom_y: -1.5
-    lowest_station_y: null
-    lowest_ground_resting_y: 5.43
-    floor_pieces: 201
-    pieces: 2036
+    bottom_solid_y: -8.0
+    support_bottom_y: -8.0
+    lowest_station_y: -0.043
+    lowest_ground_resting_y: -0.043
+    floor_pieces: 153
+    pieces: 1225
     walkable_levels:
-    - y: 1.5
+    - y: -0.903
       above_pad_m: 0.0
-      pieces: 19
-      area_m2: 76.0
-    - y: 5.5
-      above_pad_m: 4.0
-      pieces: 126
-      area_m2: 504.0
-    - y: 5.6
-      above_pad_m: 4.1
-      pieces: 22
-      area_m2: 28.0
-    - y: 6.38
-      above_pad_m: 4.88
-      pieces: 2
-      area_m2: 2.0
-    - y: 6.74
-      above_pad_m: 5.24
-      pieces: 2
-      area_m2: 2.0
-    - y: 7.38
-      above_pad_m: 5.88
-      pieces: 2
-      area_m2: 2.0
-    - y: 8.6
-      above_pad_m: 7.1
-      pieces: 2
-      area_m2: 2.0
-    - y: 9.66
-      above_pad_m: 8.16
-      pieces: 3
-      area_m2: 6.0
-    - y: 10.6
-      above_pad_m: 9.1
+      pieces: 15
+      area_m2: 60.0
+    - y: -0.0
+      above_pad_m: 0.903
+      pieces: 82
+      area_m2: 328.0
+    - y: 0.097
+      above_pad_m: 1.0
       pieces: 20
       area_m2: 80.0
-    - y: 10.66
-      above_pad_m: 9.16
-      pieces: 3
-      area_m2: 3.0
+    - y: 2.097
+      above_pad_m: 3.0
+      pieces: 2
+      area_m2: 2.0
+    - y: 2.508
+      above_pad_m: 3.412
+      pieces: 2
+      area_m2: 2.0
+    - y: 2.547
+      above_pad_m: 3.45
+      pieces: 2
+      area_m2: 2.0
+    - y: 4.32
+      above_pad_m: 5.223
+      pieces: 1
+      area_m2: 1.0
+    - y: 8.097
+      above_pad_m: 9.0
+      pieces: 9
+      area_m2: 9.0
+    - y: 12.05
+      above_pad_m: 12.953
+      pieces: 4
+      area_m2: 16.0
+    - y: 12.097
+      above_pad_m: 13.0
+      pieces: 16
+      area_m2: 58.0
     walkable_levels_total: 10
+    base_profile:
+      cell_m: 2.0
+      columns: 279
+      footprint_area_m2: 1116.0
+      bottom_y_min: -8.0
+      bottom_y_p25: -5.0
+      bottom_y_median: -3.014
+      bottom_y_p75: -2.929
+      bottom_y_max: 5.823
+      relief_m: 13.823
+      bottom_is_flat: false
+      steps:
+      - bottom_y: -3.0
+        area_m2: 468.0
+        share: 0.419
+      - bottom_y: -5.0
+        area_m2: 204.0
+        share: 0.183
+      - bottom_y: -1.0
+        area_m2: 188.0
+        share: 0.168
+      - bottom_y: -4.0
+        area_m2: 88.0
+        share: 0.079
+      - bottom_y: -8.0
+        area_m2: 76.0
+        share: 0.068
+      - bottom_y: 6.0
+        area_m2: 32.0
+        share: 0.029
+      - bottom_y: -0.5
+        area_m2: 24.0
+        share: 0.022
+      - bottom_y: 4.0
+        area_m2: 24.0
+        share: 0.022
+      on_a_flat_pad:
+        columns: 279
+        columns_floating: 17
+        floating_fraction: 0.061
+        floating_area_m2: 68.0
+        max_air_m: 6.726
+        mean_air_m: 5.371
+        air_volume_m3: 365.2
+        max_buried_m: 7.097
+        grounded: true
     violations: []

@@ -1,0 +1,117 @@
+
+=== pre-eikthyr  pad 24 m  Meadows  (268 of 538 bodies fit the pad)
+    tier 1. A forge here hands out a whole tier the party has not reached. Chests are not ranked on: containers are stocked by stock.py, not inherited from the body.
+  grounds            Rocket Raccoon_Quick_House.blueprint                 span  11.2 m  air  0.0% iso   0.0 m worst  0.00 m     157 pc  st 2/2  meadows(157)
+  grounds            hs_blackforest_tester_meadows_log_cabin.blueprint    span  17.0 m  air  0.0% iso   0.0 m worst  0.00 m     207 pc  st 2/2  meadows(207)
+  grounds            hs_blackforest_xxx_starthome.blueprint               span  22.9 m  air  2.0% iso   2.0 m worst  0.85 m     466 pc  st 2/2  meadows(466)
+  grounds            hs_blackforest_kin_01_woodhouse.blueprint            span  14.3 m  air  2.5% iso   2.0 m worst  3.53 m     216 pc  st 2/2  meadows(216)
+  grounds            hs_blackforest_mister_basestart_simple.blueprint     span  17.8 m  air  4.4% iso   2.0 m worst  1.16 m     270 pc  st 2/2  meadows(270)
+  grounds            hs_blackforest_aodi_quickrest_1_0a.blueprint         span   4.7 m  air  0.0% iso   0.0 m worst  0.00 m      69 pc  st 2/2  meadows(69)
+  grounds            hs_meadows_the_neck_nook.blueprint                   span  11.6 m  air  0.0% iso   0.0 m worst  0.00 m     183 pc  st 2/2  meadows(183)
+  grounds            hs_swamp_xxx_blackforest_house.blueprint             span  18.5 m  air  1.2% iso   2.0 m worst  1.64 m     544 pc  st 2/2  meadows(544)  BLEED:forge,smelter
+  grounds            hs_blackforest_aodi_quickrest_sleep_module.blueprint span   7.1 m  air  0.0% iso   0.0 m worst  0.00 m     118 pc  st 1/2  meadows(118)
+  grounds            hs_meadows_arkitek_repair_shack.blueprint            span   4.6 m  air  0.0% iso   0.0 m worst  0.00 m      50 pc  st 1/2  meadows(50)
+
+=== pre-elder  pad 56 m  BlackForest  (426 of 538 bodies fit the pad)
+    tier 2. Bronze age: forge and smelter yes, artisan table no.
+  grounds            fox-0123456.blueprint                                span  48.3 m  air  0.7% iso   2.0 m worst  6.70 m    1229 pc  st 6/6  meadows(1229)
+  grounds            hs_swamp_xxx_blackforest_house.blueprint             span  18.5 m  air  1.2% iso   2.0 m worst  1.64 m     544 pc  st 6/6  meadows(544)
+  grounds            hs_swamp_vrolok_caba_a_2.blueprint                   span  33.5 m  air  1.6% iso   2.0 m worst  0.65 m     343 pc  st 6/6  meadows(343)
+  grounds            hs_blackforest_tester_duo_black_forest_home.blueprin span  30.8 m  air  2.2% iso   2.0 m worst  4.86 m     586 pc  st 6/6  meadows(586)
+  grounds            hs_swamp_sheepshank_danamermhomefinal.blueprint      span  45.7 m  air  2.6% iso   2.0 m worst  4.58 m    3009 pc  st 6/6  mistlands(16)
+  grounds            hs_blackforest_sheepshank_meadows_home.blueprint     span  35.7 m  air  3.0% iso   2.0 m worst  5.99 m    1448 pc  st 6/6  swamp(18)
+  grounds            hs_plains_sheepshank_skeggoxmanor.blueprint          span  48.7 m  air  5.0% iso   2.0 m worst  4.29 m    2857 pc  st 6/6  mistlands(16)
+  grounds            hs_plains_tester_swamp_to_mountains_bungalow.bluepri span  40.1 m  air  3.0% iso   2.0 m worst  4.82 m     875 pc  st 6/6  plains(6)  BLEED:artisan,blastfurnace,spinningwheel,windmill
+  grounds            hs_plains_dumbel_small_work.blueprint                span  19.7 m  air  8.0% iso   2.0 m worst  2.67 m     312 pc  st 4/6  blackforest(70)
+  grounds            halvar-master-refinery.blueprint                     span  25.3 m  air  1.5% iso   2.0 m worst  3.81 m     917 pc  st 4/6  mistlands(14)  BLEED:artisan,spinningwheel
+
+=== pre-bonemass  pad 70 m  BlackForest  (469 of 538 bodies fit the pad)
+    tier 3. Iron workshop. The artisan table needs a Dragon Tear, so it leaks a tier -- which is exactly why halvar-master-refinery was previously rejected on theme grounds.
+  grounds            hs_swamp_sheepshank_danamermhomefinal.blueprint      span  45.7 m  air  2.6% iso   2.0 m worst  4.58 m    3009 pc  st 6/6  mistlands(16)
+  grounds            hs_plains_tester_swamp_to_mountains_bungalow.bluepri span  40.1 m  air  3.0% iso   2.0 m worst  4.82 m     875 pc  st 6/6  plains(6)  BLEED:artisan,blastfurnace,windmill
+  grounds            fox-0123456.blueprint                                span  48.3 m  air  0.7% iso   2.0 m worst  6.70 m    1229 pc  st 5/6  meadows(1229)
+  grounds            hs_swamp_xxx_blackforest_house.blueprint             span  18.5 m  air  1.2% iso   2.0 m worst  1.64 m     544 pc  st 5/6  meadows(544)
+  grounds            hs_swamp_vrolok_caba_a_2.blueprint                   span  33.5 m  air  1.6% iso   2.0 m worst  0.65 m     343 pc  st 5/6  meadows(343)
+  grounds            hs_blackforest_tester_duo_black_forest_home.blueprin span  30.8 m  air  2.2% iso   2.0 m worst  4.86 m     586 pc  st 5/6  meadows(586)
+  grounds            hs_blackforest_sheepshank_meadows_home.blueprint     span  35.7 m  air  3.0% iso   2.0 m worst  5.99 m    1448 pc  st 5/6  swamp(18)
+  grounds            hs_plains_sheepshank_skeggoxmanor.blueprint          span  48.7 m  air  5.0% iso   2.0 m worst  4.29 m    2857 pc  st 5/6  mistlands(16)
+  grounds            halvar-master-refinery.blueprint                     span  25.3 m  air  1.5% iso   2.0 m worst  3.81 m     917 pc  st 4/6  mistlands(14)  BLEED:artisan
+  grounds            hs_swamp_halvar_master_refinery.blueprint            span  25.3 m  air  1.5% iso   2.0 m worst  3.81 m     917 pc  st 4/6  mistlands(14)  BLEED:artisan
+
+=== pre-moder  pad 40 m  Mountain  (365 of 538 bodies fit the pad)
+    tier 4. Mountain outpost; a 40 m pad is the binding constraint.
+  grounds            hs_plains_startinghouse_plainsmodel.blueprint        span  26.3 m  air 31.6% iso   4.0 m worst  0.74 m     868 pc  st 5/5  plains(1)
+  grounds            hs_swamp_xxx_blackforest_house.blueprint             span  18.5 m  air  1.2% iso   2.0 m worst  1.64 m     544 pc  st 4/5  meadows(544)
+  grounds            hs_swamp_vrolok_caba_a_2.blueprint                   span  33.5 m  air  1.6% iso   2.0 m worst  0.65 m     343 pc  st 4/5  meadows(343)
+  grounds            hs_blackforest_tester_duo_black_forest_home.blueprin span  30.8 m  air  2.2% iso   2.0 m worst  4.86 m     586 pc  st 4/5  meadows(586)
+  grounds            hs_blackforest_sheepshank_meadows_home.blueprint     span  35.7 m  air  3.0% iso   2.0 m worst  5.99 m    1448 pc  st 4/5  swamp(18)
+  grounds            hs_plains_admin_veseljko_smokehouse.blueprint        span  21.7 m  air  9.1% iso   2.0 m worst  4.04 m     491 pc  st 4/5  swamp(40)
+  grounds            hs_plains_dumbel_small_work.blueprint                span  19.7 m  air  8.0% iso   2.0 m worst  2.67 m     312 pc  st 4/5  blackforest(70)
+  grounds            hs_blackforest_dream_house_template.blueprint        span  34.0 m  air  1.7% iso   2.0 m worst  3.40 m    1015 pc  st 3/5  swamp(32)
+  grounds            Rocket Raccoon_Quick_House.blueprint                 span  11.2 m  air  0.0% iso   0.0 m worst  0.00 m     157 pc  st 2/5  meadows(157)
+  grounds            hs_blackforest_tester_meadows_log_cabin.blueprint    span  17.0 m  air  0.0% iso   0.0 m worst  0.00 m     207 pc  st 2/5  meadows(207)
+
+=== pre-yagluth  pad 60 m  Plains  (438 of 538 bodies fit the pad)
+    tier 5. Plains industry: windmill and blast furnace are the signature.
+  grounds            hs_plains_tester_swamp_to_mountains_bungalow.bluepri span  40.1 m  air  3.0% iso   2.0 m worst  4.82 m     875 pc  st 7/7  plains(6)
+  grounds            halvar-master-refinery.blueprint                     span  25.3 m  air  1.5% iso   2.0 m worst  3.81 m     917 pc  st 4/7  mistlands(14)
+  grounds            hs_swamp_halvar_master_refinery.blueprint            span  25.3 m  air  1.5% iso   2.0 m worst  3.81 m     917 pc  st 4/7  mistlands(14)
+  grounds            hs_plains_startinghouse_plainsmodel.blueprint        span  26.3 m  air 31.6% iso   4.0 m worst  0.74 m     868 pc  st 4/7  plains(1)
+  grounds            hs_swamp_sheepshank_danamermhomefinal.blueprint      span  45.7 m  air  2.6% iso   2.0 m worst  4.58 m    3009 pc  st 3/7  mistlands(16)
+  grounds            berserkers-keep.vbuild                               span  56.5 m  air  5.9% iso   2.8 m worst 17.27 m   10686 pc  st 3/7  plains(4)
+  grounds            hs_ashlands_thrad_smithy.blueprint                   span  22.7 m  air  7.4% iso   2.0 m worst  5.79 m     567 pc  st 3/7  ashlands(10)  BLEED:blackforge
+  grounds            fox-0123456.blueprint                                span  48.3 m  air  0.7% iso   2.0 m worst  6.70 m    1229 pc  st 2/7  meadows(1229)
+  grounds            hs_swamp_xxx_blackforest_house.blueprint             span  18.5 m  air  1.2% iso   2.0 m worst  1.64 m     544 pc  st 2/7  meadows(544)
+  grounds            hs_swamp_vrolok_caba_a_2.blueprint                   span  33.5 m  air  1.6% iso   2.0 m worst  0.65 m     343 pc  st 2/7  meadows(343)
+
+=== pre-queen  pad 80 m  Mistlands  (483 of 538 bodies fit the pad)
+    tier 6. Everything is earned by now; the black forge is the marker.
+  grounds            Ultimate_OutPost.blueprint                           span  53.5 m  air  0.7% iso   2.0 m worst  0.50 m    1820 pc  st 6/6  mistlands(36)
+  grounds            hs_mistlands_thrad_workshop.blueprint                span  19.1 m  air  0.0% iso   0.0 m worst  0.00 m     493 pc  st 3/6  mistlands(36)
+  grounds            hs_plains_tester_swamp_to_mountains_bungalow.bluepri span  40.1 m  air  3.0% iso   2.0 m worst  4.82 m     875 pc  st 3/6  plains(6)
+  grounds            cozy_house.blueprint                                 span  55.2 m  air  5.0% iso   2.8 m worst 12.14 m    6034 pc  st 3/6  mistlands(332)
+  grounds            halvar-master-refinery.blueprint                     span  25.3 m  air  1.5% iso   2.0 m worst  3.81 m     917 pc  st 2/6  mistlands(14)
+  grounds            hs_swamp_halvar_master_refinery.blueprint            span  25.3 m  air  1.5% iso   2.0 m worst  3.81 m     917 pc  st 2/6  mistlands(14)
+  grounds            berserkers-keep.vbuild                               span  56.5 m  air  5.9% iso   2.8 m worst 17.27 m   10686 pc  st 2/6  plains(4)
+  grounds            hs_ashlands_thrad_smithy.blueprint                   span  22.7 m  air  7.4% iso   2.0 m worst  5.79 m     567 pc  st 2/6  ashlands(10)
+  grounds            PuP_forge1.blueprint                                 span  24.9 m  air  9.2% iso   2.8 m worst  5.60 m     343 pc  st 2/6  ashlands(2)
+  grounds            hs_plains_startinghouse_plainsmodel.blueprint        span  26.3 m  air 31.6% iso   4.0 m worst  0.74 m     868 pc  st 2/6  plains(1)
+
+=== pre-fader  pad 50 m  AshLands  (405 of 538 bodies fit the pad)
+    tier 7. Ashlands materials; grausten and flametal read as the setting.
+  grounds            hs_ashlands_compact_endgame_base1.blueprint          span  27.3 m  air  2.3% iso   2.0 m worst  3.50 m     537 pc  st 4/4  ashlands(113)
+  grounds            hs_ashlands_cm_thug_outpost.blueprint                span  40.2 m  air  4.7% iso   2.0 m worst  6.31 m    1649 pc  st 4/4  ashlands(928)
+  grounds            hs_ashlands_gorthein_fancy_house_redux.blueprint     span  36.4 m  air  0.0% iso   0.0 m worst  0.00 m    1962 pc  st 3/4  ashlands(1110)
+  grounds            hs_ashlands_20999_valheimian.blueprint               span  24.0 m  air  1.6% iso   2.0 m worst  9.46 m    1244 pc  st 3/4  ashlands(584)
+  grounds            deardly-casa-drly.blueprint                          span  34.0 m  air  6.5% iso   2.0 m worst  7.80 m    1901 pc  st 3/4  ashlands(1418)
+  grounds            hs_mistlands_thrad_workshop.blueprint                span  19.1 m  air  0.0% iso   0.0 m worst  0.00 m     493 pc  st 2/4  mistlands(36)
+  grounds            hs_ashlands_deardly_deardly_modern_house.blueprint   span  34.3 m  air  0.0% iso   0.0 m worst  0.00 m    1672 pc  st 2/4  ashlands(1110)
+  grounds            hs_ashlands_sheepshank_starterhome10.blueprint       span  40.5 m  air  0.0% iso   0.0 m worst  0.00 m    2762 pc  st 2/4  ashlands(2120)
+  grounds            PuP_forge1.blueprint                                 span  24.9 m  air  9.2% iso   2.8 m worst  5.60 m     343 pc  st 2/4  ashlands(2)
+  grounds            hs_mistlands_madzobuild_simpleeitrrefinery.blueprint span   8.9 m  air  0.0% iso   0.0 m worst  0.00 m      59 pc  st 1/4  mistlands(1)
+
+=== pre-kall  pad 32 m  DeepNorth  (326 of 538 bodies fit the pad)
+    tier 8, but the SITE is a landing camp, not a base -- deliberately no forge. A bed matters here and is ranked as `beds` rather than as a station, because it is not one.
+  grounds            wagon-camp.blueprint                                 span  15.7 m  air  0.0% iso   0.0 m worst  0.00 m     160 pc  st 2/2  mistlands(22)
+  grounds            hs_ashlands_madzobuild_ashlandcamp.blueprint         span  18.9 m  air  0.0% iso   0.0 m worst  0.00 m     266 pc  st 2/2  ashlands(186)
+  grounds            hs_ashlands_the_architect_runestonetownhomestriplex. span  29.6 m  air  1.0% iso   2.0 m worst  2.30 m    4986 pc  st 2/2  ashlands(4151)
+  grounds            hs_ashlands_minicastlevanilla.blueprint              span  14.2 m  air  3.7% iso   2.0 m worst  9.00 m     980 pc  st 2/2  ashlands(522)
+  grounds            hs_ashlands_softpea_stave_church.blueprint           span  26.4 m  air  1.4% iso   2.0 m worst  4.83 m    1117 pc  st 2/2  ashlands(821)  BLEED:forge
+  grounds            god-house33.blueprint                                span  30.7 m  air  5.5% iso   2.0 m worst 12.18 m    2949 pc  st 2/2  mistlands(28)  BLEED:forge
+  grounds            hs_plains_admin_veseljko_smokehouse.blueprint        span  21.7 m  air  9.1% iso   2.0 m worst  4.04 m     491 pc  st 2/2  swamp(40)  BLEED:forge
+  grounds            hs_plains_dumbel_small_work.blueprint                span  19.7 m  air  8.0% iso   2.0 m worst  2.67 m     312 pc  st 2/2  blackforest(70)  BLEED:forge
+  grounds            hs_ashlands_swampytreehouse.blueprint                span  25.4 m  air  9.8% iso   2.0 m worst  9.71 m    1792 pc  st 2/2  ashlands(1115)  BLEED:forge
+  grounds            hs_swamp_xxx_blackforest_house.blueprint             span  18.5 m  air  1.2% iso   2.0 m worst  1.64 m     544 pc  st 2/2  meadows(544)  BLEED:forge,smelter
+
+=== deepnorth-sandbox  pad 56 m  Meadows  (426 of 538 bodies fit the pad)
+    tier 9 sandbox: the more stations the better, nothing is off-limits.
+  grounds            hs_ashlands_cm_thug_outpost.blueprint                span  40.2 m  air  4.7% iso   2.0 m worst  6.31 m    1649 pc  st 16/16  ashlands(928)
+  grounds            Ultimate_OutPost.blueprint                           span  53.5 m  air  0.7% iso   2.0 m worst  0.50 m    1820 pc  st 15/16  mistlands(36)
+  grounds            hs_ashlands_compact_endgame_base1.blueprint          span  27.3 m  air  2.3% iso   2.0 m worst  3.50 m     537 pc  st 14/16  ashlands(113)
+  grounds            hs_plains_tester_swamp_to_mountains_bungalow.bluepri span  40.1 m  air  3.0% iso   2.0 m worst  4.82 m     875 pc  st 13/16  plains(6)
+  grounds            hs_ashlands_20999_valheimian.blueprint               span  24.0 m  air  1.6% iso   2.0 m worst  9.46 m    1244 pc  st 12/16  ashlands(584)
+  grounds            hs_ashlands_gorthein_fancy_house_redux.blueprint     span  36.4 m  air  0.0% iso   0.0 m worst  0.00 m    1962 pc  st 11/16  ashlands(1110)
+  grounds            cozy_house.blueprint                                 span  55.2 m  air  5.0% iso   2.8 m worst 12.14 m    6034 pc  st 11/16  mistlands(332)
+  grounds            deardly-casa-drly.blueprint                          span  34.0 m  air  6.5% iso   2.0 m worst  7.80 m    1901 pc  st 10/16  ashlands(1418)
+  grounds            hs_ashlands_sheepshank_starterhome10.blueprint       span  40.5 m  air  0.0% iso   0.0 m worst  0.00 m    2762 pc  st 9/16  ashlands(2120)
+  grounds            hs_ashlands_ragnar_openwarehouse.blueprint           span  55.4 m  air  0.0% iso   0.0 m worst  0.00 m    8599 pc  st 9/16  ashlands(5268)

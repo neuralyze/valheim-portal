@@ -50,6 +50,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
 import re
@@ -67,7 +68,17 @@ sys.path.insert(0, str(HERE.parent / "terraform"))
 import base_geometry  # noqa: E402
 import fixtures  # noqa: E402
 import to_rcon_plan  # noqa: E402
-import survey_datum  # noqa: E402
+
+# `library/materialise.py` by PATH, not by name. There is a `materialise.py` in
+# THIS directory too, and `fixtures` re-inserts this directory at the head of
+# sys.path when it is imported, so a plain `import materialise` here resolves to
+# whichever one was imported first -- which is the blueprint-copier, not the
+# library resolver.
+_lib_materialise = importlib.util.spec_from_file_location(
+    "library_materialise", HERE.parent / "library" / "materialise.py")
+library_materialise = importlib.util.module_from_spec(_lib_materialise)
+_lib_materialise.loader.exec_module(library_materialise)
+locate_by_filename = library_materialise.locate_by_filename
 
 JUMPSTART = HERE.parent
 DELETED_RE = re.compile(r"Deleted (\d+)/(\d+) objects")
@@ -96,14 +107,20 @@ def placement(world: str, preset: str, pid: str) -> dict:
 
 
 def body_path(name: str) -> Path:
-    for root in survey_datum.CORPUS_ROOTS:
-        direct = root / name
-        hits = [direct] if direct.is_file() else (
-            sorted(root.rglob(name)) if root.is_dir() else [])
-        for hit in hits:
-            if hit.stat().st_size:
-                return hit
-    raise SystemExit(f"blueprint {name} is in no corpus root")
+    """The body a placement names, resolved by the library's own resolver.
+
+    Not a root-order search: MEASURED, 26 file names appear in both corpus
+    roots and one of them -- `PuP_Minicastle.blueprint` -- is TWO DIFFERENT
+    CASTLES, 3,334 rows against 3,810. First-root-wins returned the smaller
+    while the manifest claimed the larger, and a REMOVAL computed from the
+    wrong body leaves the difference standing on the pad. `locate_by_filename`
+    verifies the SHA-256 against the manifest row and refuses an ambiguous
+    name instead of picking one.
+    """
+    path = locate_by_filename(name)
+    if path is None:
+        raise SystemExit(f"blueprint {name} has no resolvable body in the library")
+    return path
 
 
 def expected(objs, place: dict, cx: float, cz: float, pad_y: float, yaw: float,
@@ -249,9 +266,16 @@ def main(argv: list[str] | None = None) -> int:
             items = dict((stock.load_manifest(args.world, args.preset)
                           .get("items") or {}))
             est = sum(max(1, -(-int(c) // 50)) for c in items.values())
+            # A tag is passed because `stock.solve_placement` now REFUSES to
+            # place a portal without one, and a refused portal has no position
+            # -- so a sweep run without a tag would silently skip the portal it
+            # is meant to remove. The tag does not affect WHERE the search puts
+            # it (it is attached after the position is chosen), so the
+            # placement's own tag is used when it has one and any valid
+            # placeholder otherwise: this is a removal plan, not a build.
             solved_plan = stock.solve_placement(
                 place, preset_doc, max(2, -(-est // 18)), cx, cz, pad_y, yaw,
-                pad_half)
+                pad_half, portal_tag=place.get("portal_tag") or "u-sweep")
             for row in solved_plan["stations"]:
                 for entry in ([row] if row.get("place") else []) + row["extensions"]:
                     p = entry.get("place")
