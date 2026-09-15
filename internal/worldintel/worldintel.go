@@ -81,11 +81,16 @@ type Property struct {
 	Value any    `json:"value"`
 }
 type InventoryItem struct {
-	Name       string `json:"name"`
-	Stack      int32  `json:"stack"`
-	Quality    int32  `json:"quality,omitempty"`
-	WorldLevel int32  `json:"world_level,omitempty"`
-	PickedUp   bool   `json:"picked_up,omitempty"`
+	Name string `json:"name"`
+	// PrefabHash is what a 1.0 save actually stores. Inventory version 108 replaced the item
+	// name string with StableHashCode(m_dropPrefab.name), so on Ulfsland every stack is a hash
+	// and Name is only filled when a prefab catalog resolves it. Keeping the hash means an
+	// uncataloged mod item is still identifiable rather than an empty string.
+	PrefabHash int32 `json:"prefab_hash,omitempty"`
+	Stack      int32 `json:"stack"`
+	Quality    int32 `json:"quality,omitempty"`
+	WorldLevel int32 `json:"world_level,omitempty"`
+	PickedUp   bool  `json:"picked_up,omitempty"`
 }
 type Inventory struct {
 	Version int32           `json:"version"`
@@ -816,13 +821,13 @@ func (s *Snapshot) absorbObject(o Object, vals valueMaps, catalog map[int32]stri
 		raw, err := base64.StdEncoding.DecodeString(encoded)
 		if err != nil {
 			o.InventoryWarning = "invalid inventory base64"
-		} else if inventory, err := parseInventory(raw); err != nil {
+		} else if inventory, err := parseInventory(raw, catalog); err != nil {
 			o.InventoryWarning = err.Error()
 		} else {
 			o.Inventory = inventory
 		}
 	} else if raw, ok := vals.b[StableHash("items")]; ok && len(raw.data) > 0 {
-		inventory, err := parseInventory(raw.data)
+		inventory, err := parseInventory(raw.data, catalog)
 		if err != nil {
 			o.InventoryWarning = err.Error()
 		} else {
@@ -1259,11 +1264,31 @@ func properties(v valueMaps, c map[int32]string) []Property {
 	sort.Slice(p, func(i, j int) bool { return p[i].Hash < p[j].Hash })
 	return p
 }
-func parseInventory(data []byte) (*Inventory, error) {
+
+// Inventory save versions, read out of assembly_valheim 1.0.12's Version.Item enum:
+// 101 Quality, 102 Variant, 103 CrafterID, 104 CustomData, 105 WorldLevel, 106 PickedUp/Stable,
+// 107 AbandonedDN, 108 Smaller, 109 ChunksNCheats. 108 is the cut: Inventory::Load switches to a
+// uint16 count and the compact ItemData::Save record at and above it, and calls LoadOld below it.
+const (
+	inventoryVersionCompact = 108
+	inventoryVersionMax     = 109
+)
+
+// parseInventory decodes a container or player inventory. The catalog resolves the item prefab
+// hashes a 1.0 save stores instead of names; it may be nil, and then the items carry only hashes.
+//
+// Reading 106 as the ceiling is what made Ulfsland's 112 filled containers read as empty: the save
+// holds them, all at version 109, and every one was rejected with "unsupported inventory version
+// 109" so inventory_objects, inventory_stacks and inventory_items all stayed at zero while 37,121
+// items sat in the chunk files.
+func parseInventory(data []byte, catalog map[int32]string) (*Inventory, error) {
 	r := &reader{r: bytes.NewReader(data)}
 	version, err := r.i32()
-	if err != nil || version < 100 || version > 106 {
+	if err != nil || version < 100 || version > inventoryVersionMax {
 		return nil, fmt.Errorf("unsupported inventory version %d", version)
+	}
+	if version >= inventoryVersionCompact {
+		return parseInventoryCompact(r, version, catalog, int64(len(data)))
 	}
 	count, err := r.i32()
 	if err != nil || count < 0 || count > 4096 {
@@ -1340,10 +1365,115 @@ func parseInventory(data []byte) (*Inventory, error) {
 			}
 			picked = value != 0
 		}
+		// 107 appended ItemData's m_cheated flag to the old record. Nothing in this fleet writes
+		// 107 - it was one patch wide - but the byte is measured, so reading it costs one branch
+		// and turns a would-be trailing-bytes error into a parse.
+		if version == 107 {
+			if _, err = r.u8(); err != nil {
+				return nil, err
+			}
+		}
 		out.Items = append(out.Items, InventoryItem{Name: name, Stack: stack, Quality: quality, WorldLevel: worldLevel, PickedUp: picked})
 	}
 	if r.n != int64(len(data)) {
 		return nil, fmt.Errorf("inventory has %d trailing bytes", int64(len(data))-r.n)
+	}
+	return out, nil
+}
+
+// parseInventoryCompact reads the inventory record layout introduced by version 108, transcribed
+// from ItemDrop.ItemData::Save / ::Load in assembly_valheim 1.0.12:
+//
+//	int32 durability*100, uint8 gridX, uint8 gridY, uint8 worldLevel, uint8 flags
+//	flags 0x01 pickedUp, 0x02 equipped
+//	flags 0x04 -> uint16 quality (else 1)      flags 0x08 -> uint16 stack (else 1)
+//	flags 0x10 -> int32 variant                flags 0x20 -> int64 crafterID + string crafterName
+//	flags 0x40 -> int32 prefab hash            flags 0x80 -> ReadNumItems count of key/value strings
+//	then uint8 cheated flags, for version 109 and above
+//
+// The version int32 has already been read; size is the whole blob so the trailing-byte check still
+// proves the record layout consumed exactly what the game wrote.
+func parseInventoryCompact(r *reader, version int32, catalog map[int32]string, size int64) (*Inventory, error) {
+	// uint16, not int32: Inventory::Save writes the item count with conv.u2 at and above 108.
+	count, err := r.u16()
+	if err != nil {
+		return nil, err
+	}
+	out := &Inventory{Version: version, Items: make([]InventoryItem, 0, count)}
+	for i := range int(count) {
+		if _, err = r.i32(); err != nil { // durability, hundredths
+			return nil, fmt.Errorf("item %d durability: %w", i, err)
+		}
+		if err = r.skip(2); err != nil { // grid x, grid y
+			return nil, fmt.Errorf("item %d grid: %w", i, err)
+		}
+		worldLevel, err := r.u8()
+		if err != nil {
+			return nil, fmt.Errorf("item %d world level: %w", i, err)
+		}
+		flags, err := r.u8()
+		if err != nil {
+			return nil, fmt.Errorf("item %d flags: %w", i, err)
+		}
+		item := InventoryItem{Stack: 1, Quality: 1, WorldLevel: int32(worldLevel), PickedUp: flags&0x01 != 0}
+		if flags&0x04 != 0 {
+			quality, err := r.u16()
+			if err != nil {
+				return nil, fmt.Errorf("item %d quality: %w", i, err)
+			}
+			item.Quality = int32(quality)
+		}
+		if flags&0x08 != 0 {
+			stack, err := r.u16()
+			if err != nil {
+				return nil, fmt.Errorf("item %d stack: %w", i, err)
+			}
+			item.Stack = int32(stack)
+		}
+		if flags&0x10 != 0 {
+			if _, err = r.i32(); err != nil { // variant
+				return nil, fmt.Errorf("item %d variant: %w", i, err)
+			}
+		}
+		if flags&0x20 != 0 {
+			if _, err = r.i64(); err != nil { // crafter id
+				return nil, fmt.Errorf("item %d crafter: %w", i, err)
+			}
+			if _, err = r.str(); err != nil { // crafter name
+				return nil, fmt.Errorf("item %d crafter name: %w", i, err)
+			}
+		}
+		if flags&0x40 != 0 {
+			hash, err := r.i32()
+			if err != nil {
+				return nil, fmt.Errorf("item %d prefab: %w", i, err)
+			}
+			item.PrefabHash, item.Name = hash, catalog[hash]
+		}
+		if flags&0x80 != 0 {
+			// ReadNumItems, the one-or-two byte count ZPackage uses for dictionaries.
+			custom, err := r.num()
+			if err != nil || custom < 0 || custom > 4096 {
+				return nil, fmt.Errorf("item %d has an invalid custom-data count", i)
+			}
+			for j := 0; j < custom; j++ {
+				if _, err = r.str(); err != nil {
+					return nil, fmt.Errorf("item %d custom key: %w", i, err)
+				}
+				if _, err = r.str(); err != nil {
+					return nil, fmt.Errorf("item %d custom value: %w", i, err)
+				}
+			}
+		}
+		if version >= 109 {
+			if _, err = r.u8(); err != nil { // cheated flags
+				return nil, fmt.Errorf("item %d cheat flags: %w", i, err)
+			}
+		}
+		out.Items = append(out.Items, item)
+	}
+	if r.n != size {
+		return nil, fmt.Errorf("inventory has %d trailing bytes", size-r.n)
 	}
 	return out, nil
 }
