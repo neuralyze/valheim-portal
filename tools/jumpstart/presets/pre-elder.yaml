@@ -11,6 +11,13 @@
 #   world_modifiers  the -modifier <key> <value> pairs this preset implies.
 #                    NOT applied by the driver: they are launch arguments.
 #   kit              worn/carried gear, tools, ammunition, consumables.
+#   equip            ORDERED list of `kit` prefabs the character spawns WEARING
+#                    or HOLDING, highest priority first. Everything else stays
+#                    in the bag. Slots are NOT named here: an item's slot is
+#                    m_shared.m_itemType and naming it again would create a
+#                    second source of truth. derive.py replays the game's own
+#                    Humanoid::EquipItem over this list and refuses to render a
+#                    template in which any listed entry is displaced.
 #   materials        biome material stock. Doubles as the recipe-unlock
 #                    mechanism: Valheim discovers a recipe when the player
 #                    first holds its materials.
@@ -57,7 +64,10 @@ kit:
   quality: 2
   count: 1
 - prefab: PickaxeAntler
-  quality: 2
+  # quality 1, not 2: MEASURED m_maxQuality is 1 for this prefab. The antler
+  # pickaxe has no upgrade path, and asking for 2 was an authoring error that was
+  # invisible while ServerCharacters hardcoded quality to 1.
+  quality: 1
   count: 1
 - prefab: SledgeStagbreaker
   quality: 2
@@ -74,6 +84,9 @@ kit:
 - prefab: CapeTrollHide
   quality: 2
   count: 1
+- prefab: BackpackBlackForest
+  quality: 4
+  count: 1
 - prefab: Cultivator
   quality: 1
   count: 1
@@ -82,19 +95,39 @@ kit:
   count: 1
 - prefab: ArrowBronze
   quality: 1
-  count: 100
+  count: 50
 - prefab: ArrowFlint
   quality: 1
-  count: 100
+  count: 50
 - prefab: MeadHealthMinor
   quality: 1
-  count: 10
+  count: 5
 - prefab: MeadStaminaMinor
   quality: 1
-  count: 10
+  count: 5
 - prefab: MeadTasty
   quality: 1
-  count: 10
+  count: 5
+equip:
+# WORN. The whole bronze set.
+- HelmetBronze
+- ArmorBronzeChest
+- ArmorBronzeLegs
+# BackpackBlackForest (Rugged Backpack) takes the Shoulder slot from
+# CapeTrollHide. MEASURED: both are m_itemType 17 and 1 armour + 1 per level, and
+# CapeTrollHide has an EMPTY m_damageModifiers and a null m_equipStatusEffect, so
+# at quality 4 the swap is armour-neutral and loses nothing. The backpack adds a
+# 3x2 grid rising to 6x2, +10 carry per item level, and -- from the live
+# server-enforced config, [Effect: Troll Armor Set] BlackForest = 2 -- the troll
+# set's sneak bonus at quality 2 and up, which the bronze set cannot give.
+- BackpackBlackForest
+# HELD. MaceBronze in the right hand, ShieldBronzeBuckler in the left. The Black
+# Forest is greydwarves and burial-chamber skeletons, both blunt targets, and the
+# buckler is the parry shield -- ShieldWoodTower is the block-and-hide option and
+# stays in the bag with the axe, spear, bow and Stagbreaker.
+- MaceBronze
+- ShieldBronzeBuckler
+- ArrowBronze
 materials:
 - prefab: Wood
   count: 300

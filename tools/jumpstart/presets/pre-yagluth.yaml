@@ -11,6 +11,13 @@
 #   world_modifiers  the -modifier <key> <value> pairs this preset implies.
 #                    NOT applied by the driver: they are launch arguments.
 #   kit              worn/carried gear, tools, ammunition, consumables.
+#   equip            ORDERED list of `kit` prefabs the character spawns WEARING
+#                    or HOLDING, highest priority first. Everything else stays
+#                    in the bag. Slots are NOT named here: an item's slot is
+#                    m_shared.m_itemType and naming it again would create a
+#                    second source of truth. derive.py replays the game's own
+#                    Humanoid::EquipItem over this list and refuses to render a
+#                    template in which any listed entry is displaced.
 #   materials        biome material stock. Doubles as the recipe-unlock
 #                    mechanism: Valheim discovers a recipe when the player
 #                    first holds its materials.
@@ -80,42 +87,73 @@ kit:
 - prefab: CapeLinen
   quality: 3
   count: 1
+- prefab: BackpackPlains
+  quality: 4
+  count: 1
 - prefab: Demister
   quality: 1
   count: 1
 - prefab: ArrowNeedle
   quality: 1
-  count: 150
+  count: 50
 - prefab: ArrowFrost
   quality: 1
-  count: 150
+  count: 50
 - prefab: ArrowObsidian
   quality: 1
-  count: 150
+  count: 50
 - prefab: MeadHealthMajor
   quality: 1
-  count: 15
+  count: 5
 - prefab: MeadStaminaLingering
   quality: 1
-  count: 15
+  count: 5
 - prefab: MeadFrostResist
   quality: 1
-  count: 15
+  count: 5
 - prefab: MeadBzerker
   quality: 1
-  count: 15
+  count: 5
 - prefab: LoxPie
   quality: 1
-  count: 10
+  count: 5
 - prefab: Bread
   quality: 1
   count: 10
 - prefab: FishWraps
   quality: 1
-  count: 10
+  count: 5
 - prefab: BlackSoup
   quality: 1
-  count: 10
+  count: 5
+equip:
+# WORN. The padded set, which is the Plains set and the heaviest armour granted
+# here (MEASURED 30 each at quality 3).
+- HelmetPadded
+- ArmorPaddedCuirass
+- ArmorPaddedGreaves
+# BackpackPlains (Lox Hide Knappsack) takes the Shoulder slot from CapeLox and
+# CapeLinen, which contend with each other anyway -- MEASURED, all three are
+# m_itemType 17 and there is one such slot. At quality 4 the pack is 4 armour,
+# identical to either cape, and it replaces the ONLY cape effect at stake:
+# MEASURED m_damageModifiers, CapeLox is [Frost Resistant] and CapeLinen is
+# EMPTY, and the live config's [Effect: Frost Resistance] Plains = 3 means the
+# quality-4 pack carries frost resistance too. It adds a 3x4 grid rising to 6x4
+# and +25 carry per item level. Both capes stay in the bag.
+- BackpackPlains
+# HELD. MaceNeedle in the right hand, ShieldBlackmetal in the left -- MEASURED,
+# the OneHandedWeapon arm of EquipItem keeps a Shield in the left hand, so this
+# pair coexists. Needle mace is the Plains blunt weapon and the round blackmetal
+# shield parries; the tower shield, sword, axe, knife, atgeir and pickaxe are
+# granted and bagged.
+- MaceNeedle
+- ShieldBlackmetal
+- ArrowNeedle
+# UTILITY. Demister is the only m_itemType 18 item in this kit, so nothing
+# contends. It does nothing in the Plains and everything the moment the player
+# walks into the Mistlands, and an equipped Demister costs exactly what a bagged
+# one costs.
+- Demister
 materials:
 - prefab: BlackMetal
   count: 100

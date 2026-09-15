@@ -11,6 +11,12 @@
 # ignores the return -- so anything past the last free slot vanishes silently.
 # This world's grid is 32 slots (world.yaml inventory.slots).
 #
+# TWO limits push items into this file, not one. The second is WEIGHT: a kit
+# that fits in the grid can still spawn the character OVERBURDENED, so materials
+# are also trimmed to keep the template under 210 kg -- 70% of the
+# MEASURED 300 kg carry capacity. `dropped_for_weight` below is
+# what the grid could have held and the budget could not.
+#
 # Delivery is headless and does not need the player online, per BlueprintHunt:
 #   findObjects -prefab piece_chest -near <x> <y> <z> <r>   -> ZDO ids
 #   addItemToContainer <id:userid> <item_name> -count <n>   -> stock each chest
@@ -23,31 +29,39 @@
 world: Ulfsland
 preset: pre-moder
 tier: 4
-carried_by_template_slots: 32
+carried_by_template_slots: 30
 inventory_slots: 32
-overflow_slots: 68
-implied_chests_at_32_slots: 3
+carried_by_template_kg: 189.0
+carry_capacity_kg: 300.0
+carry_budget_kg: 210.0
+headroom_kg: 111.0
+dropped_for_weight:
+- Chain
+- Crystal
+- DragonEgg
+- JuteRed
+- LeatherScraps
+- Obsidian
+- WolfPelt
+overflow_slots: 64
+implied_chests_at_32_slots: 2
 items:
+  Chain: 50
   Coal: 300
   Crystal: 100
   DragonEgg: 3
   ElderBark: 300
   FineWood: 300
-  FreezeGland: 50
-  Guck: 50
   Iron: 100
   IronScrap: 100
   JuteRed: 50
   LeatherScraps: 50
   Obsidian: 100
-  Onion: 50
   RoundLog: 300
   Silver: 100
   SilverOre: 100
   Stone: 300
-  Thistle: 50
   WolfClaw: 50
-  WolfFang: 50
   WolfPelt: 50
   Wood: 300
 placed_chest_slots: 220

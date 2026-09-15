@@ -4,9 +4,17 @@
 Two jobs a driver needs and neither placements.yaml nor to_rcon_plan.py does on
 its own: find each blueprint BODY (the corpus is not vendored, so bodies are
 copied from source at use time and verified by the manifest SHA-256), and place
-the building at the FLATTENED altitude rather than the solved ground drop --
-`solved.y` is where the lowest piece lands on raw terrain, and once the pad is
+the building at the FLATTENED altitude rather than the raw ground drop --
+`solved.y` is the HIGHEST terrain cell in the footprint, and once the pad is
 levelled the right altitude is `flatten_cost.target_y`.
+
+What lands on that altitude is the blueprint's FLOOR PLANE, measured from real
+piece colliders by `blueprints/base_geometry.py` and applied by
+`to_rcon_plan.py --align floor-center`. The old `--align ground-center` dropped
+the lowest PIVOT there instead, which floated every building by the distance
+from its lowest pivot to its floor -- 1.50 m on pre-bonemass/iron-era-workshop,
+which is the defect the operator reported as the workshop "floating about 10'
+high".
 
 It also refuses the duplicate: `pre-elder/early-dock` and
 `deepnorth-sandbox/sandbox-harbour` are the same blueprint at the same solved
@@ -115,13 +123,24 @@ def main() -> int:
             rows.append(row)
             continue
         cost = solved.get("flatten_cost") or {}
+        # The pad is the flattened plane, which is what the blueprint's FLOOR has
+        # to land on. `solved.y` is the raw ground drop (the highest cell in the
+        # footprint) and was never the right altitude once the pad is levelled.
         y = float(cost["target_y"]) if (args.flattened and cost.get("target_y")) else float(solved["y"])
         yaw = float((place.get("rotation") or {}).get("yaw") or 0.0)
         plan = outdir / f"{place['_preset']}__{place['id']}.txt"
         cmd = [sys.executable, str(JUMPSTART / "blueprints" / "to_rcon_plan.py"), str(body),
                "--at", f"{solved['x']}", f"{y}", f"{solved['z']}",
-               "--rotate", f"{yaw}", "--align", "ground-center", "--verify",
+               "--rotate", f"{yaw}", "--align", "floor-center", "--verify",
                "--out", str(plan)]
+        # A multi-storey body captured on a slope has no single correct floor
+        # plane. Where a placement DECLARES which plane it means, that
+        # declaration wins over the measured one and travels with the placement,
+        # in the same shape as the rest of placements.yaml: a value plus a
+        # written basis. See tools/jumpstart/blueprints/base_geometry.py.
+        override = (place.get("blueprint_datum") or {}).get("override_base_y")
+        if override is not None:
+            cmd += ["--base-y", f"{float(override)}"]
         for prefab in DROP_PREFABS.get(name, []):
             cmd += ["--drop-prefab", prefab]
         proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -132,7 +151,19 @@ def main() -> int:
             continue
         row["plan"] = str(plan)
         row["commands"] = len(plan.read_text().splitlines())
+        # `at` is the PAD: the altitude the blueprint's floor plane is aligned to.
+        # `origin_y` is where the blueprint's own origin ends up, which is the pad
+        # minus the floor datum, and is what the emitted `spawn` Y values are
+        # relative to. Recording both means the index cannot be misread as saying
+        # the origin went on the pad, which is the mistake this whole change fixes.
         row["at"] = [solved["x"], y, solved["z"], yaw]
+        datum = place.get("blueprint_datum") or {}
+        base_y = datum.get("override_base_y", datum.get("base_y"))
+        row["pad_y"] = y
+        row["base_y"] = base_y
+        row["origin_y"] = None if base_y is None else round(y - float(base_y), 3)
+        row["datum_method"] = ("declared override" if "override_base_y" in datum
+                               else datum.get("method"))
         row["status"] = "ok"
         row["notes"] = " / ".join(ln.strip() for ln in proc.stderr.strip().splitlines())
         rows.append(row)

@@ -75,6 +75,7 @@ from inventory import (  # noqa: E402  (local module, path set above)
     load_evidence,
     resolve,
 )
+import base_geometry  # noqa: E402  (local module, path set above)
 
 RAD = 180.0 / math.pi
 
@@ -286,15 +287,35 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--rotate", type=float, default=0.0, help="extra yaw in degrees")
     ap.add_argument(
         "--align",
-        default="ground-center",
-        choices=("raw", "ground", "center", "ground-center"),
+        default="floor-center",
+        choices=("raw", "ground", "center", "ground-center", "floor", "floor-center"),
         help=(
-            "how the blueprint's own origin maps onto --at. Blueprints in this corpus "
-            "disagree: some are corner-origin with min at (0,0,0), some are centred, and "
-            "their lowest piece sits anywhere from -42 to 0 on Y. 'ground' drops the "
-            "lowest piece exactly onto --at Y; 'center' puts the XZ bounding-box centre "
-            "on --at XZ; 'ground-center' (default) does both; 'raw' trusts the file."
+            "how the blueprint's own origin maps onto --at. 'floor-center' (default) "
+            "puts the XZ bounding-box centre on --at XZ and the blueprint's FLOOR PLANE "
+            "on --at Y, where the floor plane is measured by base_geometry.floor_datum "
+            "from real piece colliders; 'floor' does the Y half only. 'ground' and "
+            "'ground-center' are the OLD rule, min pivot Y, kept only for comparison: "
+            "a pivot is not a surface, and 99 of the 157 non-empty .blueprint bodies in "
+            "this corpus are already normalised to min pivot Y == 0, on which that shift "
+            "is always exactly zero. 'center' does XZ only; 'raw' trusts the file."
         ),
+    )
+    ap.add_argument(
+        "--base-y",
+        type=float,
+        help=(
+            "override the measured floor plane for the floor/floor-center modes, in "
+            "blueprint-local metres. For a multi-storey body captured on a slope there "
+            "is no single correct plane; this is how a placement DECLARES which one it "
+            "means. Recorded in placements.yaml as blueprint_datum.override_base_y with "
+            "a written basis."
+        ),
+    )
+    ap.add_argument(
+        "--allow-unplaceable",
+        action="store_true",
+        help="emit a plan even when the floor plane cannot be established (NOT "
+             "recommended: the blueprint lands on its raw origin)",
     )
     ap.add_argument("--out", help="write the plan here instead of stdout")
     ap.add_argument("--keep-loot", action="store_true")
@@ -389,9 +410,39 @@ def main(argv: list[str] | None = None) -> int:
     ys = [o.pos[1] for o in kept]
     zs = [o.pos[2] for o in kept]
     dx = dy = dz = 0.0
+    datum = None
+    if args.align in ("floor", "floor-center"):
+        # The FLOOR PLANE, measured from real piece colliders -- not the pivot
+        # plane. `base_geometry` documents why the two are different and what
+        # the old min-pivot rule got wrong. `kept` is used rather than the raw
+        # body so that a --drop-prefab'd floor cannot define a plane that will
+        # not exist in the world.
+        datum = base_geometry.floor_datum(kept)
+        for v in datum.violations:
+            print(f"  datum {v['code']}: {v['detail']}", file=sys.stderr)
+        if args.base_y is not None:
+            print(f"  datum override: base_y {args.base_y:+.3f} declared by the caller, "
+                  f"measured value was "
+                  f"{'none' if datum.base_y is None else f'{datum.base_y:+.3f}'}",
+                  file=sys.stderr)
+            dy = -args.base_y
+        elif datum.base_y is None:
+            if not args.allow_unplaceable:
+                print(f"{path}: refusing to emit a plan; the floor plane cannot be "
+                      f"established, so there is no honest Y to place at. Declare one "
+                      f"with --base-y, or override with --allow-unplaceable.",
+                      file=sys.stderr)
+                return 3
+            print("  datum UNPLACEABLE and --allow-unplaceable given; using the raw "
+                  "origin", file=sys.stderr)
+        else:
+            dy = -datum.base_y
+            print(f"  datum base_y={datum.base_y:+.3f} ({datum.method}) "
+                  f"walkable levels={[round(lv.y, 2) for lv in datum.levels[:8]]} "
+                  f"terraces above the pad={datum.terraces_m()[:8]}", file=sys.stderr)
     if args.align in ("ground", "ground-center"):
         dy = -min(ys)
-    if args.align in ("center", "ground-center"):
+    if args.align in ("center", "ground-center", "floor-center"):
         dx = -(min(xs) + max(xs)) * 0.5
         dz = -(min(zs) + max(zs)) * 0.5
     print(

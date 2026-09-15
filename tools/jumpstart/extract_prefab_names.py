@@ -128,6 +128,67 @@ def iter_bundle_blocks(path: Path, serialized_only: bool = True):
             cursor += usize
 
 
+def read_bundle_node(path: Path, index: int = 0) -> bytes:
+    """One whole node of a UnityFS bundle, decompressed.
+
+    ``iter_bundle_blocks`` is enough to grep bytes for tokens, but a *typed*
+    read needs the node reassembled with its own offsets intact, because a
+    SerializedFile's object table is expressed in node-relative offsets and a
+    block boundary can fall anywhere. Node 0 is the SerializedFile; the trailing
+    ``.resS`` / ``.resource`` nodes are texture and audio payload.
+
+    Same container walk as ``iter_bundle_blocks``, sharing ``_read_cstr`` and
+    ``_decompress`` so there is exactly one implementation of the format.
+    """
+    with path.open("rb") as fh:
+        if _read_cstr(fh) != "UnityFS":
+            return b""
+        version = struct.unpack(">I", fh.read(4))[0]
+        _read_cstr(fh)  # unity version
+        _read_cstr(fh)  # unity revision
+        _size, cbis, ubis, flags = struct.unpack(">qIII", fh.read(20))
+        if version >= 7:
+            fh.read((-fh.tell()) % 16)
+        if flags & 0x80:
+            here = fh.tell()
+            fh.seek(-cbis, os.SEEK_END)
+            info = fh.read(cbis)
+            fh.seek(here)
+        else:
+            info = fh.read(cbis)
+        info = _decompress(info, flags, ubis)
+
+        buf = io.BytesIO(info)
+        buf.read(16)
+        nblocks = struct.unpack(">i", buf.read(4))[0]
+        blocks = [struct.unpack(">IIH", buf.read(10)) for _ in range(nblocks)]
+        nnodes = struct.unpack(">i", buf.read(4))[0]
+        nodes = []
+        for _ in range(nnodes):
+            offset, size, nflags = struct.unpack(">qqI", buf.read(20))
+            nodes.append((offset, size, nflags, _read_cstr(buf)))
+        if index >= len(nodes):
+            return b""
+        want_start = nodes[index][0]
+        want_end = want_start + nodes[index][1]
+
+        fh.read((-fh.tell()) % 16)
+        out = bytearray()
+        cursor = 0
+        for usize, csize, bflags in blocks:
+            if cursor >= want_end:
+                break
+            if cursor + usize <= want_start:
+                fh.seek(csize, os.SEEK_CUR)
+                cursor += usize
+                continue
+            block = _decompress(fh.read(csize), bflags, usize)
+            out += block[max(0, want_start - cursor):max(0, want_end - cursor)]
+            cursor += usize
+        return bytes(out)
+
+
+
 def scan_bundles(bundle_dir: Path, progress=None) -> set[str]:
     tokens: set[bytes] = set()
     files = sorted(p for p in bundle_dir.iterdir() if p.is_file())

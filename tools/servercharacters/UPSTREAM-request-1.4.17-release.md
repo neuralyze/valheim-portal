@@ -107,18 +107,31 @@ That answers both questions we would have asked.
 
 ## Consequences for this fleet
 
-- Install from **Hexium**, pinned to 1.4.17. `tools/valheim_mods.py` has a one-entry
-  `HEXIUM_PACKAGES` allowlist for exactly this; the published profile definition carries an
-  absolute `cdn.hexium.gg` URL plus a SHA256, and each client fetches the author's
-  unmodified archive directly. **We host nothing and modify nothing.**
-- **Never pin 1.4.16 on a 1.0.x server.** If Hexium is unreachable, `tools/valheim_mods.py`
-  deliberately drops the identifier from the registry rather than falling back to
-  Thunderstore, because not installing is better than installing 1.4.16.
-- **Do not fork, mirror or embed this mod** without the author's written permission. The
-  refusal above is the reason, and it is recorded in `deploy/upstream-sources.json` so
-  nobody has to rediscover it.
-- Our from-source build under `tools/servercharacters/` is a diagnostic and cross-check
-  tool. It is not shipped and must not be.
+> **SUPERSEDED on 2026-09-14, and again on 2026-09-15.** This section described the Hexium
+> route and said our from-source build "is not shipped and must not be". Both halves are now
+> false: the operator decided on 2026-09-14 to ship our own compile instead of the author's
+> Hexium archive, and on 2026-09-15 to PATCH it - upstream's template code equips nothing
+> and hardcodes item quality to 1, which broke the whole kit system. The current position,
+> its four boundaries and its retirement condition are in
+> `tools/servercharacters/README.md`, section "What we ship, and why that is temporary", and
+> in `deploy/upstream-sources.json`. What is written below is kept because the LICENCE
+> findings above are unchanged and this is the record of what we believed before the
+> operator decided otherwise; do not act on it.
+
+- ~~Install from **Hexium**, pinned to 1.4.17.~~ `tools/valheim_mods.py` has a one-entry
+  `HEXIUM_PACKAGES` allowlist, and the mechanism still exists, but ServerCharacters no
+  longer uses it. **We host nothing publicly**, which is still true and still load-bearing;
+  "and modify nothing" is not, as of 2026-09-15.
+- **Never pin 1.4.16 on a 1.0.x server.** Unchanged. If Hexium is unreachable,
+  `tools/valheim_mods.py` deliberately drops the identifier from the registry rather than
+  falling back to Thunderstore, because not installing is better than installing 1.4.16.
+- **Do not fork, mirror or embed this mod** without the author's written permission - as a
+  PUBLIC act. Unchanged, and now the only thing separating our position from the one the
+  author declined: we publish no copy, commit no binary, and host nothing. The refusal is
+  recorded in `deploy/upstream-sources.json` so nobody has to rediscover it.
+- ~~Our from-source build under `tools/servercharacters/` is a diagnostic and cross-check
+  tool. It is not shipped and must not be.~~ It ships, to the Ulfsland server and the four
+  `ulfsland-*` client editions only, and it is patched. See the README.
 
 ## If you still want to contact upstream
 

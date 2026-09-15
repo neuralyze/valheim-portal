@@ -5,6 +5,13 @@
 # ordering that makes a maintenance window safe - back up, stop, arm, deploy, start, wait
 # for ready - is composed by the portal agent from the scripts that already do each step,
 # so there is no second copy of it here to drift out of agreement with the first.
+#
+# Note which profile the window's deploy names. A world can be armed and deployed under a
+# profile it is not linked to - Ulfsland is linked to ulfsland-dn and its window deploys
+# ulfsland-admin - so nothing that has to survive the window may live in one profile's
+# manual-mods. On 2026-09-15 that is exactly how ServerCharacters' generated
+# CharacterTemplate.yml was deleted; per-world generated config now lives in
+# <world>/mods/generated/, which every deploy of every profile carries.
 set -euo pipefail
 
 WORLD=${1:-}

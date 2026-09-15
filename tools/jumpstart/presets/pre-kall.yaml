@@ -11,6 +11,13 @@
 #   world_modifiers  the -modifier <key> <value> pairs this preset implies.
 #                    NOT applied by the driver: they are launch arguments.
 #   kit              worn/carried gear, tools, ammunition, consumables.
+#   equip            ORDERED list of `kit` prefabs the character spawns WEARING
+#                    or HOLDING, highest priority first. Everything else stays
+#                    in the bag. Slots are NOT named here: an item's slot is
+#                    m_shared.m_itemType and naming it again would create a
+#                    second source of truth. derive.py replays the game's own
+#                    Humanoid::EquipItem over this list and refuses to render a
+#                    template in which any listed entry is displaced.
 #   materials        biome material stock. Doubles as the recipe-unlock
 #                    mechanism: Valheim discovers a recipe when the player
 #                    first holds its materials.
@@ -70,10 +77,16 @@ kit:
   quality: 4
   count: 1
 - prefab: ShieldFlametal
-  quality: 4
+  # quality 3, not 4: MEASURED m_maxQuality is 3 for this prefab.
+  # Shields cap one level below weapons and armour, and asking for 4 was an
+  # authoring error that was invisible while ServerCharacters hardcoded quality to 1.
+  quality: 3
   count: 1
 - prefab: ShieldFlametalTower
-  quality: 4
+  # quality 3, not 4: MEASURED m_maxQuality is 3 for this prefab.
+  # Shields cap one level below weapons and armour, and asking for 4 was an
+  # authoring error that was invisible while ServerCharacters hardcoded quality to 1.
+  quality: 3
   count: 1
 - prefab: ArmorFlametalChest
   quality: 4
@@ -105,6 +118,9 @@ kit:
 - prefab: CapeWolf
   quality: 4
   count: 1
+- prefab: BackpackMistlands
+  quality: 4
+  count: 1
 - prefab: StaffClusterbomb
   quality: 4
   count: 1
@@ -128,31 +144,61 @@ kit:
   count: 1
 - prefab: ArrowCharred
   quality: 1
-  count: 200
+  count: 50
 - prefab: BoltCharred
   quality: 1
-  count: 200
+  count: 50
 - prefab: MeadFrostResist
   quality: 1
-  count: 20
+  count: 5
 - prefab: MeadHealthMajor
   quality: 1
-  count: 20
+  count: 5
 - prefab: MeadEitrLingering
   quality: 1
-  count: 20
+  count: 5
 - prefab: MeadBzerker
   quality: 1
-  count: 20
+  count: 5
 - prefab: SealSoup
   quality: 1
-  count: 10
+  count: 5
 - prefab: TrinketFlametalEitr
   quality: 1
   count: 1
 - prefab: TrinketFlametalStaminaHealth
   quality: 1
   count: 1
+equip:
+# WORN. The flametal set.
+- HelmetFlametal
+- ArmorFlametalChest
+- ArmorFlametalLegs
+# CapeAsh KEEPS the Shoulder slot here, and this is the ONE preset of the nine
+# where the backpack does not get it. The reason is measured, not aesthetic.
+# pre-kall is a DEEP NORTH preset, and the Deep North freezes. MEASURED from
+# Player::UpdateEnvStatusEffects: Freezing and Cold are both suppressed only when
+# GetDamageModifiers().GetModifier(Frost) is Resistant, VeryResistant or
+# SlightlyResistant (or the player is near a fire, in shelter, or in a frost
+# EffectArea). MEASURED m_damageModifiers for this kit's armour: ArmorFlametal*
+# and ArmorAshlandsMedium* carry NO modifiers at all, so unlike pre-moder
+# (ArmorWolfChest) and deepnorth-sandbox (ArmorDeepNorthHeavyChest) this preset
+# has no frost resistance on its chest piece. Its only VANILLA freezing gate is a
+# cape -- CapeAsh, CapeAsksvin, CapeFeather and CapeWolf are all measured
+# [Frost Resistant]. A backpack CAN supply the same modifier through
+# SEMan::ApplyDamageMods, but only as a mod-provided status effect, and survival
+# in the hardest biome in the game is not something to hang on a mod when a
+# vanilla item does it. CapeAsh also happens to be the highest-armour shoulder
+# granted: 12 + 2 per level = 18 at quality 4, against a backpack's 4.
+- CapeAsh
+# HELD. MaceEldner in the right hand, ShieldFlametal in the left. Two one-handed
+# swords, a two-handed sword, an axe, a spear, two bows, four staves, a lantern
+# and a grappling hook are granted and bagged.
+- MaceEldner
+- ShieldFlametal
+- ArrowCharred
+- Demister
+- TrinketFlametalStaminaHealth
 materials:
 - prefab: FlametalNew
   count: 100
@@ -224,22 +270,22 @@ chain_items:
   count: 1
 - prefab: FaderEmber
   quality: 1
-  count: 50
+  count: 10
 - prefab: BombDynamite
   quality: 1
-  count: 20
+  count: 10
 - prefab: SealHide
   quality: 1
-  count: 50
+  count: 10
 - prefab: FrostCore
   quality: 1
-  count: 50
+  count: 5
 - prefab: GrapplingHook
   quality: 1
   count: 1
 - prefab: MeadFrostResist
   quality: 1
-  count: 20
+  count: 5
 - prefab: CapeFeather
   quality: 4
   count: 1

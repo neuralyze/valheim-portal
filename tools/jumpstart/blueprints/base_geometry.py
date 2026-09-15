@@ -1,0 +1,730 @@
+#!/usr/bin/env python3
+"""Where does a blueprint's floor meet the ground?
+
+THE BUG THIS REPLACES
+---------------------
+`to_rcon_plan.py --align ground-center` used to compute `dy = -min(pivot Y)`
+over every row and call that "drop the lowest piece onto the pad". Two things
+are wrong with it, both MEASURED:
+
+  1. A pivot is not a surface. `stone_floor_2x2`'s solid collider runs from
+     -0.5 to +0.5 in its own local frame, i.e. the pivot sits at MID-THICKNESS
+     of a 1 m slab. `stone_wall_1x1` is the same. So `min(pivot Y)` is neither
+     the bottom of the structure nor the top of its floor -- it is a number with
+     no geometric meaning, off by half a piece in an unknown direction.
+  2. On 99 of the 157 non-empty `.blueprint` files in this corpus the writer had
+     already normalised the body so that `min(pivot Y) == 0` exactly. On those
+     files `dy` was ALWAYS 0.0 and the shift never did anything at all. It was a
+     computation that confidently answered a question it was not measuring. The
+     remaining 58 files are not normalised and span min pivot Y from -5064.42 to
+     +4.49 m, so the old rule was not even consistent across the corpus.
+
+Result in the live world, MEASURED: `pre-bonemass/iron-era-workshop`
+(`BjOrN_blueprint001.blueprint`) was placed with its local Y=0 plane on a pad
+flattened to 70.91 m. That put its lowest walkable floor 1.50 m up in the air,
+its main floor (124 m2 of `stone_floor_2x2` at local 1.834) 1.83 m up, and the
+median air gap under the structure 2.05 m -- the lowest solid in each 2 m column
+over its 337 occupied columns, mode 2.1 m, with the rear terrace's underside at
+6.02 m. The operator reported the building "floating about 10' high"; that was an
+eyeball estimate from a player walking past a two-terrace building, and no plane
+in this body's geometry sits 3.05 m up, so it is corroboration of the sign and
+rough size of the error and not an input to the datum. Loose props placed by
+`terraform/stock.py` at the same pad height sat correctly, which is the tell: the
+props used the pad datum and the blueprint did not.
+
+THE DATUM CHOSEN, AND WHAT IT DOES TO THE ALTERNATIVES
+------------------------------------------------------
+Three definitions of "the structure's bottom" were computed for every catalogued
+blueprint (see `survey_datum.py`). They differ by up to metres.
+
+  A. `bottom_solid`   lowest solid-collider Y over ALL pieces.
+  B. `walkable`       top of the lowest FLOOR-ROLE piece.  <-- CHOSEN
+  C. `support_bottom` lowest solid-collider Y over support/foundation pieces.
+
+B is chosen. The reasons, in order:
+
+  * B is the plane a player stands on, which is what "the floor rests on the
+    pad" means, and it is the SAME plane the loose-object placement already
+    uses. MEASURED from the collider dump: the ground-resting furnishings all
+    have their solid starting at their own pivot -- piece_workbench +0.025,
+    forge +0.035, hearth -0.017, piece_chest_wood +0.0003, smelter 0.000,
+    charcoal_kiln -0.023, portal_wood -0.007 m. `terraform/stock.py` spawns
+    those at the pad height and the operator confirmed they sit right. Putting
+    the blueprint's lowest walkable surface at the pad height therefore makes
+    the blueprint's own floor agree with the props placed beside it.
+  * A lifts every deliberately-buried part clear of the ground. On
+    iron-era-workshop the lowest solid is the underside of five stone_wall_1x1
+    cubes at local -0.5, which is 2.00 m BELOW the lowest walkable surface;
+    using A would float the ground floor by that 2.00 m, on top of the 1.50 m
+    the old rule already floated it by. Across the 162 placeable bodies in the
+    corpus A differs from B by a median of 2.23 m. That is the reported bug,
+    restated.
+  * C needs a list of "prefabs that are meant to be sunk into terrain" that the
+    game does not publish, and it is A's failure in a milder form: a blueprint
+    whose poles are sunk 0.5 m gets lifted 0.5 m. B leaves those poles sunk,
+    which is correct -- a corner pole below the pad is a pole doing its job.
+
+What B costs, stated rather than hidden: on a blueprint captured across a slope,
+only ONE floor level can be flush with a flat pad. B makes the LOWEST one flush,
+so higher terraces stand proud by their own step height. On iron-era-workshop
+the lowest floor level (7 `stone_floor_2x2` tiles, top at local 1.500) lands
+flush and the main floor (31 tiles, top at 1.834) stands 0.334 m proud. That
+residual is reported per placement as `terraces_m`; it is geometry, not error.
+
+REFUSAL
+-------
+`floor_datum` refuses rather than guesses. It returns a `FloorDatum` whose
+`base_y` is None and whose `violations` say why, in the same spirit as
+`solve_placements.py`'s `satisfies_requirement` / `violations` reporting:
+
+  unmeasured_floor_prefab  FATAL. A floor-role piece whose prefab is absent
+                           from the collider dump, so its surface cannot be
+                           located. Re-run `run_piecegeometry.sh` against the
+                           deployed game version.
+  no_measurable_solid      FATAL. Not one piece in the body has a measurable
+                           solid collider, so neither a floor nor a bottom
+                           exists to align to.
+
+and three non-fatal violations, each of which names the rule that answered so
+the decision is auditable rather than silent:
+
+  no_floor_used_lowest_solid  no floor-role piece at all -- a portal arch, a
+                           bridge span, a palisade module. The datum falls back
+                           to the bottom of the lowest solid, which is right for
+                           a floorless body: the thing a builder sinks into
+                           terrain on purpose is the foundation UNDER a floor,
+                           and there is no floor here.
+  suspect_below_grade_floor  the lowest plane holds under
+                           `BELOW_GRADE_AREA_FRACTION` of the blueprint's floor
+                           area AND the next plane up is at least
+                           `BELOW_GRADE_STEP_M` higher. That is the signature of
+                           a cellar or a sunken pit, and honouring it would bury
+                           the house by a storey. The datum falls back to the
+                           next plane up.
+  props_below_floor        a pivot-at-base piece sits more than `FLOOR_TOL_M`
+                           below the chosen plane. MEASURED across the corpus
+                           this is normally an outdoor prop that stood on ground
+                           lower than the building -- three `piece_chest_barrel`
+                           0.6-0.8 m under `PuP_house10`'s floor, a
+                           `piece_chest_wood` on bare terrain beside
+                           `instairtower`. Floors define the datum anyway,
+                           because burying a floor makes a building unenterable
+                           and a barrel standing 0.7 m proud of a flat pad is
+                           cosmetic. The depth is reported as
+                           `props_below_floor_m`.
+
+A blueprint whose body spans several storeys on a captured slope has NO single
+correct datum, and this module does not pretend otherwise: it reports every
+walkable level and the residual of each (`terraces_m`). Where an operator judges
+a different plane correct for a specific site -- a raised cart deck over a camp
+that stands on bare ground, a dock whose lower jetty belongs at the waterline --
+`placements.yaml` carries an explicit `blueprint_datum.override_base_y` with a
+written `basis`, in the same declared-requirement-plus-measured-verdict shape
+the rest of that file already uses. An override is a DECLARATION, recorded and
+reviewable; it is not this module guessing.
+
+Geometry comes from `data/piece_geometry.json`, built by
+`build_piece_geometry.py` from a sandbox dedicated-server run of
+`PieceGeometry.cs`. Nothing in this module assumes a dimension.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+GEOMETRY_PATH = HERE / "data" / "piece_geometry.json"
+
+# ---------------------------------------------------------------------------
+# tolerances, and where each number comes from
+# ---------------------------------------------------------------------------
+
+# How far below a floor surface a ground-resting object may legitimately sit
+# before the floor plane is considered unestablished.
+#
+# MEASURED, `survey_datum.py --offsets` over the whole catalogued corpus: for
+# every pivot-at-base piece, the highest floor surface whose slab contains it
+# horizontally, and the gap. 9243 samples. The NEGATIVE tail -- a piece sunk
+# into the surface it stands on -- is bounded: min -0.300 m (a `hearth` sunk
+# into a `stone_floor_2x2`), p01 -0.218, p05 -0.058, median +0.043. 0.35 m
+# covers the measured worst case with margin and still sits under the 0.500 m
+# half-thickness of `stone_floor_2x2`, the thickest floor slab in the corpus, so
+# it cannot swallow a genuine second floor.
+#
+# (The POSITIVE tail of that distribution runs to +39 m and is not a tolerance
+# candidate: it is pieces used as cladding on walls and upper storeys, which are
+# not standing on the floor beneath them at all. Worth stating, because reading
+# a symmetric tolerance out of that distribution is exactly the kind of number
+# that looks measured and is not.)
+FLOOR_TOL_M = 0.35
+
+# How close a prefab's solid must start to its own pivot for the prefab to count
+# as pivot-at-base, i.e. for its Y to be a reading of the surface it stands on.
+#
+# MEASURED over the 99 furniture/station/rug-named prefabs present in this
+# corpus: 76 have their solid starting within 0.080 m of their pivot. The next
+# ones out are 0.106 m and beyond and are all things that are NOT floor-standing
+# -- wall-mounted station extensions, ceiling braziers, and ground torches whose
+# stake is modelled 0.65 m below the pivot -- plus one `piece_artisanstation`
+# whose solid starts 100 m below its pivot. 0.10 m keeps the 76 and rejects
+# every one of those, which is the whole reason the check is measured and not a
+# name list.
+PIVOT_AT_BASE_TOL_M = 0.10
+
+# The cellar / sunken-pit signature. A floor level holding under 2% of the
+# blueprint's floor area, with the next level up at least 1.5 m higher, is not
+# the ground floor -- 1.5 m is above the tallest single build step in the game
+# (a 1 m wall course plus a 0.5 m slab) so two levels that far apart cannot be
+# adjacent terrace steps.
+BELOW_GRADE_AREA_FRACTION = 0.02
+BELOW_GRADE_STEP_M = 1.5
+
+# Floor levels are quantised before they are compared, because a captured
+# building's floor pieces land on fractional Y values that differ in the fourth
+# decimal. 0.02 m is finer than any real build step and coarser than that noise.
+LEVEL_QUANTUM_M = 0.02
+
+# ---------------------------------------------------------------------------
+# roles
+# ---------------------------------------------------------------------------
+
+# A floor-role prefab is one whose NAME says floor/paving AND whose MEASURED
+# collider is slab-shaped. The name test alone admits `piece_brazierfloor01`,
+# which is a 4 x 4 x 4 m brazier; the geometry test alone admits
+# `blackmarble_2x2x2`, a cube block used as much for walls as for floors. Both
+# gates together is what makes the set defensible.
+#
+# `(?:^|_)` before the word is load-bearing: it keeps `wood_floor`,
+# `Ashlands_Ruins_Floor_6x6` and `ashwood_deco_floor` and rejects
+# `piece_brazierfloor01`, in which `floor` is glued to `brazier`.
+#
+# Rugs and carpets are deliberately NOT floors. A rug lies ON a floor, so it
+# reports a surface a couple of centimetres too high and, worse, a rug thrown
+# over a beam deck would invent a floor plane where there is no slab. They are
+# ground-resting instead, which is what they are.
+_FLOOR_NAME = re.compile(r"(?:^|_)(?:floor|paving|paved)", re.IGNORECASE)
+
+# Prefabs that physically cannot float: they are put down ON a surface. Used
+# only as a GUARD on the chosen plane, never as the source of it. The list is
+# name-pattern based so a kit variant (`ashwood_bed`, `piece_chest_blackmetal`)
+# is caught, and every match is then required to have its solid collider start
+# within FLOOR_TOL_M of its own pivot -- prefabs failing that measured check are
+# dropped from the guard set rather than trusted, because a name is not
+# evidence.
+_GROUND_RESTING_NAME = re.compile(
+    r"(?:^|_)(?:chest|bed|bench|chair|throne|stool|table|preptable|cauldron|hearth"
+    r"|fireplace|workbench|forge|blackforge|smelter|kiln|blastfurnace|windmill"
+    r"|spinningwheel|stonecutter|artisanstation|magetable|cookingstation|oven"
+    r"|eitrrefinery|fermenter|beehive|sapcollector|barber|bathtub|cartographytable"
+    r"|rug|carpet|groundtorch|brazier|cart|sled)",
+    re.IGNORECASE,
+)
+
+# Crafting stations and station extensions -- the subset of the above whose
+# burial is a FUNCTIONAL failure rather than a cosmetic one. A workbench under
+# the pad cannot be crafted at; a barrel under the pad is just a barrel nobody
+# sees. So when the floor plane would bury a station, the station wins and the
+# datum drops to it, with the decision reported.
+#
+# MEASURED case this exists for: `wagon-camp.blueprint`, the body behind
+# `pre-kall/deepnorth-landing-camp`. Its only floor-role pieces are a 2 m2 and a
+# 19 m2 cart deck at local 1.560 and 2.460, while every station in the body --
+# `piece_workbench_ext2` 0.04, `piece_workbench_ext1` 0.13, `piece_cauldron` and
+# `piece_cookingstation` 0.39 -- stands on bare ground 1.2-1.5 m BELOW the lower
+# deck. The camp's ground plane is 0.04, not 1.560, and the floor-only rule gets
+# that wrong by 1.52 m.
+_STATION_NAME = re.compile(
+    r"(?:^|_)(?:workbench|forge|blackforge|smelter|kiln|blastfurnace|windmill"
+    r"|spinningwheel|stonecutter|artisanstation|artisan|magetable|cookingstation"
+    r"|oven|preptable|cauldron|eitrrefinery|fermenter|beehive|sapcollector|barber"
+    r"|bathtub|cartographytable)",
+    re.IGNORECASE,
+)
+
+# Support/foundation prefabs, for the `support_bottom` figure reported alongside
+# the chosen datum. Never used to place anything -- it exists so the report can
+# say how deep the chosen datum buries the things designed to be buried.
+_SUPPORT_NAME = re.compile(
+    r"(?:^|_)(?:pole|pillar|pillarbase|stake|sharpstakes|foundation|base)", re.IGNORECASE
+)
+
+
+# ---------------------------------------------------------------------------
+# geometry
+# ---------------------------------------------------------------------------
+
+_CORNER_SIGNS = tuple(
+    (-1 if not (i & 1) else 1, -1 if not (i & 2) else 1, -1 if not (i & 4) else 1)
+    for i in range(8)
+)
+
+
+def _solid_corners(entry: list) -> list[tuple[float, float, float]]:
+    """The 8 (or 8-per-collider) corner points of one stored solid."""
+    if entry[0] == "b":
+        x0, y0, z0, x1, y1, z1 = entry[1:7]
+        cx, cy, cz = (x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5
+        ex, ey, ez = (x1 - x0) * 0.5, (y1 - y0) * 0.5, (z1 - z0) * 0.5
+        return [(cx + sx * ex, cy + sy * ey, cz + sz * ez) for sx, sy, sz in _CORNER_SIGNS]
+    v = entry[1:]
+    return [(v[i], v[i + 1], v[i + 2]) for i in range(0, 24, 3)]
+
+
+def _qrot(q, v):
+    """Rotate v by quaternion q (x, y, z, w), Unity convention."""
+    qx, qy, qz, qw = q
+    vx, vy, vz = v
+    tx = 2.0 * (qy * vz - qz * vy)
+    ty = 2.0 * (qz * vx - qx * vz)
+    tz = 2.0 * (qx * vy - qy * vx)
+    return (
+        vx + qw * tx + (qy * tz - qz * ty),
+        vy + qw * ty + (qz * tx - qx * tz),
+        vz + qw * tz + (qx * ty - qy * tx),
+    )
+
+
+def _normalised(q) -> tuple[float, float, float, float]:
+    n = math.sqrt(sum(c * c for c in q))
+    if n < 1e-6:
+        # A `.vbuild` row with every rotation field blank parses to (0,0,0,0).
+        # Identity is the only defensible reading, and it is the reading
+        # `to_rcon_plan.py` already emits for those rows.
+        return (0.0, 0.0, 0.0, 1.0)
+    return tuple(c / n for c in q)  # type: ignore[return-value]
+
+
+class Geometry:
+    """The measured collider solids, keyed by prefab name."""
+
+    def __init__(self, path: Path | None = None):
+        self.path = Path(path) if path else GEOMETRY_PATH
+        doc = json.loads(self.path.read_text(encoding="utf-8"))
+        self.game_version = doc.get("game_version", "")
+        self.generated_utc = doc.get("generated_utc", "")
+        self._prefabs: dict[str, list] = doc["prefabs"]
+        self._build_pieces: frozenset[str] = frozenset(doc.get("build_pieces", ()))
+        self._span_cache: dict[tuple, tuple[float, float] | None] = {}
+
+    def known(self, prefab: str) -> bool:
+        return prefab in self._prefabs
+
+    def has_solid(self, prefab: str) -> bool:
+        return bool(self._prefabs.get(prefab))
+
+    def local_aabb(self, prefab: str) -> tuple[float, float, float, float, float, float] | None:
+        """Unrotated prefab-local AABB of the solids, for shape tests."""
+        solids = self._prefabs.get(prefab)
+        if not solids:
+            return None
+        pts = [p for s in solids for p in _solid_corners(s)]
+        return (
+            min(p[0] for p in pts), min(p[1] for p in pts), min(p[2] for p in pts),
+            max(p[0] for p in pts), max(p[1] for p in pts), max(p[2] for p in pts),
+        )
+
+    def y_span(self, prefab: str, rot, scale) -> tuple[float, float] | None:
+        """(min Y, max Y) of the prefab's solids in BLUEPRINT-LOCAL space,
+        relative to the piece's own pivot, with the row's rotation and scale
+        applied. `None` means the prefab has no measured solid."""
+        solids = self._prefabs.get(prefab)
+        if not solids:
+            return None
+        q = _normalised(tuple(rot))
+        sx, sy, sz = scale
+        key = (prefab, round(q[0], 6), round(q[1], 6), round(q[2], 6), round(q[3], 6),
+               round(sx, 6), round(sy, 6), round(sz, 6))
+        hit = self._span_cache.get(key, 0)
+        if hit != 0:
+            return hit
+        lo = math.inf
+        hi = -math.inf
+        for s in solids:
+            for cx, cy, cz in _solid_corners(s):
+                y = _qrot(q, (cx * sx, cy * sy, cz * sz))[1]
+                if y < lo:
+                    lo = y
+                if y > hi:
+                    hi = y
+        out = (lo, hi)
+        self._span_cache[key] = out
+        return out
+
+    def is_floor(self, prefab: str) -> bool:
+        """Name says floor AND the measured solid is slab-shaped: at least 0.9 m
+        across in both horizontal axes, and no taller than it is narrow."""
+        if not _FLOOR_NAME.search(prefab):
+            return False
+        box = self.local_aabb(prefab)
+        if box is None:
+            return False
+        dx, dy, dz = box[3] - box[0], box[4] - box[1], box[5] - box[2]
+        return dx >= 0.9 and dz >= 0.9 and dy <= min(dx, dz) + 1e-6
+
+    def is_ground_resting(self, prefab: str) -> bool:
+        """Name says furniture/station/rug AND its solid MEASURABLY starts at its
+        own pivot, which is what makes its Y a reading of the surface it stands
+        on rather than of nothing in particular."""
+        if not _GROUND_RESTING_NAME.search(prefab):
+            return False
+        box = self.local_aabb(prefab)
+        return box is not None and abs(box[1]) <= PIVOT_AT_BASE_TOL_M
+
+    def is_build_piece(self, prefab: str) -> bool:
+        """True when the prefab carries a `Piece` component, i.e. a player built
+        it. False for world decor -- rocks, trees, vegetation -- which blueprint
+        capture happily picks up and whose colliders reach metres below their
+        pivots because they are modelled to sit IN the ground."""
+        return prefab in self._build_pieces
+
+    def is_station(self, prefab: str) -> bool:
+        """A crafting station or station extension, gated on pivot-at-base.
+
+        Separated from the rest of the ground-resting set because a buried
+        station is a FUNCTIONAL failure -- a player cannot craft at a workbench
+        under the pad -- whereas a buried barrel is cosmetic. That difference is
+        what decides the datum when the two disagree."""
+        if not _STATION_NAME.search(prefab):
+            return False
+        box = self.local_aabb(prefab)
+        return box is not None and abs(box[1]) <= PIVOT_AT_BASE_TOL_M
+
+    def is_support(self, prefab: str) -> bool:
+        return bool(_SUPPORT_NAME.search(prefab)) and self.has_solid(prefab)
+
+
+_GEOMETRY: Geometry | None = None
+
+def geometry() -> Geometry:
+    global _GEOMETRY
+    if _GEOMETRY is None:
+        _GEOMETRY = Geometry()
+    return _GEOMETRY
+
+
+# ---------------------------------------------------------------------------
+# the datum
+# ---------------------------------------------------------------------------
+
+FATAL_VIOLATIONS = frozenset(("unmeasured_floor_prefab", "no_measurable_solid"))
+
+
+@dataclass
+class FloorLevel:
+    """One walkable surface plane in blueprint-local coordinates."""
+
+    y: float
+    pieces: int
+    area_m2: float
+
+
+@dataclass
+class FloorDatum:
+    """The answer to "given this blueprint, what Y should the placement origin
+    be at so the floor rests on terrain height H?"
+
+    `place_y(H) == H - base_y`. When `base_y` is None the blueprint is
+    UNPLACEABLE and `violations` says why.
+    """
+
+    base_y: float | None
+    method: str
+    violations: list[dict] = field(default_factory=list)
+    levels: list[FloorLevel] = field(default_factory=list)
+    bottom_solid: float | None = None
+    support_bottom: float | None = None
+    lowest_ground_resting: float | None = None
+    lowest_station: float | None = None
+    pieces: int = 0
+    floor_pieces: int = 0
+    unmeasured_prefabs: list[str] = field(default_factory=list)
+    props_below_floor_m: float | None = None
+
+    @property
+    def placeable(self) -> bool:
+        return self.base_y is not None
+
+    def place_y(self, terrain_height: float) -> float:
+        if self.base_y is None:
+            raise ValueError(f"unplaceable blueprint: {self.violations}")
+        return terrain_height - self.base_y
+
+    def terraces_m(self) -> list[float]:
+        """How far each walkable level ends up above the pad. The first entry is
+        0.0 for the chosen level; the rest are the unavoidable cost of laying a
+        slope-captured building on a flat pad."""
+        if self.base_y is None:
+            return []
+        return [round(lv.y - self.base_y, 3) for lv in self.levels]
+
+    def as_dict(self) -> dict:
+        return {
+            "base_y": None if self.base_y is None else round(self.base_y, 3),
+            "method": self.method,
+            "placeable": self.placeable,
+            "bottom_solid_y": None if self.bottom_solid is None else round(self.bottom_solid, 3),
+            "support_bottom_y": (
+                None if self.support_bottom is None else round(self.support_bottom, 3)
+            ),
+            "lowest_station_y": (
+                None if self.lowest_station is None else round(self.lowest_station, 3)
+            ),
+            "lowest_ground_resting_y": (
+                None if self.lowest_ground_resting is None
+                else round(self.lowest_ground_resting, 3)
+            ),
+            "walkable_levels_y": [round(lv.y, 3) for lv in self.levels],
+            "walkable_level_pieces": [lv.pieces for lv in self.levels],
+            "walkable_level_area_m2": [lv.area_m2 for lv in self.levels],
+            "props_below_floor_m": self.props_below_floor_m,
+            "floor_pieces": self.floor_pieces,
+            "pieces": self.pieces,
+            "violations": self.violations,
+        }
+
+    def summary_dict(self, max_levels: int = 12) -> dict:
+        """The compact form recorded in `placements.yaml`. Same numbers as
+        `as_dict`, with the walkable levels folded into one list of mappings and
+        capped -- `BjOrN_blueprint001` alone has 27 of them, and four parallel
+        27-element lists in a placement file is noise, not evidence."""
+        levels = [
+            {"y": round(lv.y, 3),
+             "above_pad_m": None if self.base_y is None else round(lv.y - self.base_y, 3),
+             "pieces": lv.pieces,
+             "area_m2": lv.area_m2}
+            for lv in self.levels[:max_levels]
+        ]
+        out = {
+            "base_y": None if self.base_y is None else round(self.base_y, 3),
+            "method": self.method,
+            "placeable": self.placeable,
+            "bottom_solid_y": None if self.bottom_solid is None else round(self.bottom_solid, 3),
+            "support_bottom_y": (
+                None if self.support_bottom is None else round(self.support_bottom, 3)
+            ),
+            "lowest_station_y": (
+                None if self.lowest_station is None else round(self.lowest_station, 3)
+            ),
+            "lowest_ground_resting_y": (
+                None if self.lowest_ground_resting is None
+                else round(self.lowest_ground_resting, 3)
+            ),
+            "floor_pieces": self.floor_pieces,
+            "pieces": self.pieces,
+            "walkable_levels": levels,
+            "walkable_levels_total": len(self.levels),
+        }
+        if self.props_below_floor_m is not None:
+            out["props_below_floor_m"] = self.props_below_floor_m
+        out["violations"] = self.violations
+        return out
+
+
+def _quantise(y: float) -> float:
+    return round(y / LEVEL_QUANTUM_M) * LEVEL_QUANTUM_M
+
+
+def floor_datum(objects, geom: Geometry | None = None) -> FloorDatum:
+    """Locate the blueprint's floor plane in blueprint-local coordinates.
+
+    `objects` is any iterable of items exposing `.prefab`, `.pos` (x, y, z),
+    `.rot` (quaternion x, y, z, w) and `.scale` (x, y, z) -- the shape
+    `to_rcon_plan.read_objects` already produces, so the parser is not
+    duplicated here.
+    """
+    g = geom or geometry()
+    violations: list[dict] = []
+    levels: dict[float, list[tuple[float, float]]] = {}
+    bottom_solid = math.inf
+    bottom_build = math.inf
+    support_bottom = math.inf
+    lowest_resting: float | None = None
+    lowest_station: float | None = None
+    resting_levels: list[float] = []
+    unmeasured: set[str] = set()
+    n = 0
+    floor_pieces = 0
+
+    for o in objects:
+        n += 1
+        span = g.y_span(o.prefab, o.rot, o.scale)
+        if span is None:
+            if _FLOOR_NAME.search(o.prefab):
+                unmeasured.add(o.prefab)
+            continue
+        lo, hi = o.pos[1] + span[0], o.pos[1] + span[1]
+        if lo < bottom_solid:
+            bottom_solid = lo
+        if g.is_build_piece(o.prefab) and lo < bottom_build:
+            bottom_build = lo
+        if g.is_support(o.prefab) and lo < support_bottom:
+            support_bottom = lo
+        if g.is_ground_resting(o.prefab):
+            resting_levels.append(o.pos[1])
+            if lowest_resting is None or o.pos[1] < lowest_resting:
+                lowest_resting = o.pos[1]
+        if g.is_station(o.prefab):
+            if lowest_station is None or o.pos[1] < lowest_station:
+                lowest_station = o.pos[1]
+        if g.is_floor(o.prefab):
+            floor_pieces += 1
+            box = g.local_aabb(o.prefab)
+            # Slab area from the MEASURED footprint, so a 4x4 stone_floor counts
+            # four times a 2x2 one when the area share is judged.
+            area = (box[3] - box[0]) * (box[5] - box[2])
+            # Grouped by the quantised surface, but the level's reported Y is the
+            # TRUE lowest slab top in the group. Reporting the quantised value
+            # instead would put up to half a quantum of invented error into the
+            # datum itself, which is not a thing to do to the number the whole
+            # placement hangs off.
+            levels.setdefault(_quantise(hi), []).append((area, hi))
+
+    out = FloorDatum(
+        base_y=None,
+        method="",
+        pieces=n,
+        floor_pieces=floor_pieces,
+        bottom_solid=None if bottom_solid is math.inf else bottom_solid,
+        support_bottom=None if support_bottom is math.inf else support_bottom,
+        lowest_ground_resting=lowest_resting,
+        lowest_station=lowest_station,
+        unmeasured_prefabs=sorted(unmeasured),
+    )
+    out.levels = [
+        FloorLevel(y=min(t[1] for t in a), pieces=len(a),
+                   area_m2=round(sum(t[0] for t in a), 2))
+        for y, a in sorted(levels.items())
+    ]
+
+    if unmeasured:
+        violations.append({
+            "code": "unmeasured_floor_prefab",
+            "prefabs": sorted(unmeasured),
+            "detail": "floor-role prefab absent from data/piece_geometry.json, so its "
+                      "walkable surface cannot be located; re-run "
+                      "run_piecegeometry.sh against the deployed game version",
+        })
+        out.violations = violations
+        out.method = "refused"
+        return out
+
+    if not out.levels:
+        # No floor-role piece at all: a portal arch, a bridge span, a palisade
+        # module, a pile of poles. There is no floor to rest, so the only
+        # defensible plane left is the bottom of the lowest BUILD piece. Build
+        # pieces only, because blueprint capture picks up world decor whose
+        # colliders are modelled to sit IN the ground -- MEASURED on
+        # `Portal13.vbuild`, whose `Rock_4` bottoms out at -3.024 while every
+        # built piece in the body bottoms out at 0.066. Using the raw lowest
+        # solid there would lift the shrine 3.02 m, i.e. reintroduce the exact
+        # bug this module exists to fix.
+        bottom = bottom_build if bottom_build is not math.inf else bottom_solid
+        if bottom is math.inf:
+            violations.append({
+                "code": "no_measurable_solid",
+                "detail": f"none of {n} pieces has a measurable solid collider, so "
+                          f"neither a floor nor a bottom can be located",
+            })
+            out.violations = violations
+            out.method = "refused"
+            return out
+        violations.append({
+            "code": "no_floor_used_lowest_solid",
+            "detail": f"no floor-role piece among {n} pieces; datum falls back to the "
+                      f"lowest build-piece solid y={bottom:.3f}"
+                      + ("" if bottom_build is not math.inf else
+                         " (no build piece either, so world decor was used)"),
+        })
+        out.base_y = bottom
+        out.method = "lowest_build_solid_no_floor"
+        out.violations = violations
+        return out
+
+    # A level is INHABITED when something pivot-at-base stands on it.
+    def inhabited(level_y: float) -> bool:
+        return any(abs(r - level_y) <= FLOOR_TOL_M for r in resting_levels)
+
+    total_area = sum(lv.area_m2 for lv in out.levels)
+    idx = 0
+    # Skip AT MOST ONE below-grade level. A level is read as below grade when it
+    # holds a negligible share of the blueprint's floor area AND nothing stands
+    # on it -- a sump, a pit, a sub-cellar slab.
+    #
+    # MEASURED case this exists for: `PuP_black_house_full.blueprint`
+    # (pre-queen/mistlands-blackforge-base) has 80 m2 at local -7.000 with no
+    # furniture on it at all, under 1216 m2 at -6.000 carrying 22 furnishings and
+    # every one of its 13 crafting stations.
+    #
+    # ONE level, not a loop, and the bound is load-bearing. An unbounded version
+    # was written first and MEASURED to walk `Пипкин_full_castle.blueprint` up
+    # through 24 successive levels, from local -36.333 to +5.760 -- 42 m of
+    # "skipping", which is not a sump, it is the rule losing its nerve one small
+    # level at a time. A sump is one level under the floor by construction, so
+    # one is the honest limit and anything deeper is left visible in `levels`
+    # for a human rather than quietly climbed.
+    if (
+        len(out.levels) > 1
+        and total_area > 0
+        and out.levels[0].area_m2 / total_area < BELOW_GRADE_AREA_FRACTION
+        and not inhabited(out.levels[0].y)
+    ):
+        violations.append({
+            "code": "suspect_below_grade_floor",
+            "detail": f"walkable level y={out.levels[0].y:.3f} holds "
+                      f"{out.levels[0].area_m2:.1f} m2 of {total_area:.1f} m2 "
+                      f"({out.levels[0].area_m2 / total_area:.1%}) and nothing stands "
+                      f"on it; read as a sump or sub-cellar and skipped in favour of "
+                      f"y={out.levels[1].y:.3f}",
+        })
+        idx = 1
+    chosen = out.levels[idx]
+    method = "lowest_walkable_surface" if idx == 0 else "lowest_walkable_surface_above_cellar"
+
+    # A CRAFTING STATION below the chosen plane overrides it. A buried station is
+    # a functional failure (nobody can craft at a workbench under the pad); a
+    # floor edge standing proud is cosmetic. MEASURED case: `wagon-camp.blueprint`
+    # (pre-kall/deepnorth-landing-camp), whose only floor-role pieces are a 2 m2
+    # and a 19 m2 cart deck at 1.560/2.460 while all four of its stations stand
+    # on bare ground at 0.04-0.39. The floor-only rule buries that camp 1.52 m.
+    if lowest_station is not None and lowest_station < chosen.y - FLOOR_TOL_M:
+        violations.append({
+            "code": "station_below_floor",
+            "detail": f"a crafting station stands at y={lowest_station:.3f}, "
+                      f"{chosen.y - lowest_station:.2f} m below the lowest walkable "
+                      f"surface y={chosen.y:.3f}. A buried station cannot be used, so "
+                      f"the station plane wins; the floor above it stands proud by that "
+                      f"much, which is cosmetic.",
+        })
+        out.base_y = lowest_station
+        out.method = "lowest_station_below_floor"
+        out.violations = violations
+        return out
+
+    if lowest_resting is not None and lowest_resting < chosen.y - FLOOR_TOL_M:
+        # A pivot-at-base piece below the chosen floor that is NOT a station.
+        # Not fatal, and not a reason to lower the datum. MEASURED across the
+        # corpus this is normally an outdoor prop that stood on ground lower than
+        # the building's floor -- three `piece_chest_barrel` 0.6-0.8 m below the
+        # floor of `PuP_house10`, a `piece_chest_wood` on bare terrain beside
+        # `instairtower`. Honouring those would bury the building's door sill,
+        # which makes it unenterable; leaving them proud of a flat pad is
+        # cosmetic. Floors win, and the cost is reported rather than hidden.
+        out.props_below_floor_m = round(chosen.y - lowest_resting, 3)
+        violations.append({
+            "code": "props_below_floor",
+            "detail": f"a ground-resting piece sits at y={lowest_resting:.3f}, "
+                      f"{chosen.y - lowest_resting:.2f} m below the chosen floor plane "
+                      f"y={chosen.y:.3f}; on a flat pad it will stand proud of the "
+                      f"ground by that much. Floors define the datum because burying a "
+                      f"floor makes a building unenterable and a floating barrel does "
+                      f"not.",
+        })
+
+    out.base_y = chosen.y
+    out.method = method
+    out.violations = violations
+    return out

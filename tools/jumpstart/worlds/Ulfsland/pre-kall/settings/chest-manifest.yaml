@@ -11,6 +11,12 @@
 # ignores the return -- so anything past the last free slot vanishes silently.
 # This world's grid is 32 slots (world.yaml inventory.slots).
 #
+# TWO limits push items into this file, not one. The second is WEIGHT: a kit
+# that fits in the grid can still spawn the character OVERBURDENED, so materials
+# are also trimmed to keep the template under 210 kg -- 70% of the
+# MEASURED 300 kg carry capacity. `dropped_for_weight` below is
+# what the grid could have held and the budget could not.
+#
 # Delivery is headless and does not need the player online, per BlueprintHunt:
 #   findObjects -prefab piece_chest -near <x> <y> <z> <r>   -> ZDO ids
 #   addItemToContainer <id:userid> <item_name> -count <n>   -> stock each chest
@@ -25,41 +31,43 @@ preset: pre-kall
 tier: 8
 carried_by_template_slots: 32
 inventory_slots: 32
-overflow_slots: 138
-implied_chests_at_32_slots: 5
+carried_by_template_kg: 128.1
+carry_capacity_kg: 300.0
+carry_budget_kg: 210.0
+headroom_kg: 171.9
+dropped_for_weight: []
+overflow_slots: 127
+implied_chests_at_32_slots: 4
 items:
   AskBladder: 50
   AskHide: 50
   BarkaBranch: 50
   BlackMetal: 100
   Blackwood: 300
-  BombDynamite: 20
+  BombDynamite: 10
   Carapace: 100
   CelestialFeather: 50
   CharredBone: 300
   Coal: 300
   Eitr: 100
   FaderDrop: 1
-  FaderEmber: 50
+  FaderEmber: 10
   FineWood: 300
   FlametalNew: 100
   FlametalOreNew: 100
-  FrostCore: 100
+  FrostCore: 55
   FrozenFuel: 50
   Gold: 100
   GoldOre: 100
   Grausten: 300
   HatefulBlood: 20
   Iron: 100
-  MeadFrostResist: 40
   MorgenSinew: 50
   NornThread: 50
   ProustitePowder: 50
   RoundLog: 300
   SealBlubber: 50
-  SealHide: 100
-  ShieldFlametal: 1
-  ShieldFlametalTower: 1
+  SealHide: 60
   Silver: 100
   Softtissue: 100
   SpearSplitner: 1
@@ -73,7 +81,6 @@ items:
   SwordNiedhogg: 1
   THSwordSlayer: 1
   TrinketFlametalEitr: 1
-  TrinketFlametalStaminaHealth: 1
   Wood: 300
   YggdrasilWood: 300
 placed_chest_slots: 520

@@ -11,6 +11,13 @@
 #   world_modifiers  the -modifier <key> <value> pairs this preset implies.
 #                    NOT applied by the driver: they are launch arguments.
 #   kit              worn/carried gear, tools, ammunition, consumables.
+#   equip            ORDERED list of `kit` prefabs the character spawns WEARING
+#                    or HOLDING, highest priority first. Everything else stays
+#                    in the bag. Slots are NOT named here: an item's slot is
+#                    m_shared.m_itemType and naming it again would create a
+#                    second source of truth. derive.py replays the game's own
+#                    Humanoid::EquipItem over this list and refuses to render a
+#                    template in which any listed entry is displaced.
 #   materials        biome material stock. Doubles as the recipe-unlock
 #                    mechanism: Valheim discovers a recipe when the player
 #                    first holds its materials.
@@ -81,24 +88,54 @@ kit:
 - prefab: CapeTrollHide
   quality: 3
   count: 1
+- prefab: BackpackSwamp
+  quality: 4
+  count: 1
 - prefab: ArrowIron
   quality: 1
-  count: 150
+  count: 50
 - prefab: ArrowFire
   quality: 1
-  count: 150
+  count: 50
 - prefab: MeadPoisonResist
   quality: 1
-  count: 10
+  count: 5
 - prefab: MeadHealthMedium
   quality: 1
-  count: 10
+  count: 5
 - prefab: MeadStaminaMedium
   quality: 1
-  count: 10
+  count: 5
 - prefab: SerpentStew
   quality: 1
-  count: 10
+  count: 5
+equip:
+# WORN. HelmetRoot over HelmetIron: MEASURED from the bundles, HelmetRoot's
+# m_damageModifiers is [Poison Resistant, Fire Weak] and Bonemass deals poison,
+# so the 6 armour it gives up against HelmetIron (12 vs 18 at quality 3) buys the
+# one resistance this boss fight is about. ArmorRootChest is NOT worn: its
+# modifier is PIERCE, not poison -- the poison is all on the helmet -- and taking
+# it would cost another 6 armour and add a second Fire Weak in a biome that
+# spawns Surtlings. Iron chest and legs therefore carry the armour, the root
+# helmet carries the resistance, and the rest of both sets is in the bag.
+- HelmetRoot
+- ArmorIronChest
+- ArmorIronLegs
+# BackpackSwamp takes the Shoulder slot from CapeTrollHide. MEASURED: both are
+# m_itemType 17 and both are 1 armour + 1 per level, so at quality 4 they are
+# armour-identical (4 each) and CapeTrollHide has no damage modifiers and no
+# equip status effect at all -- it is pure armour. The backpack adds a 3x4 grid
+# and, from the live server-enforced config, +15 carry per item level and Water
+# Resistance at quality 2+. Strictly better here, and the cape stays in the bag.
+- BackpackSwamp
+# HELD. MaceIron in the right hand, ShieldBanded in the left: MEASURED, the
+# OneHandedWeapon arm of EquipItem keeps a Shield in the left hand, so this is
+# the one pair that coexists. The Swamp is skeletons, blobs and Bonemass, all of
+# which take blunt; the atgeir, sledge, sword, bow and tower shield are granted
+# and bagged for when the player wants them.
+- MaceIron
+- ShieldBanded
+- ArrowIron
 materials:
 - prefab: Iron
   count: 100

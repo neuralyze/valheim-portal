@@ -1,7 +1,7 @@
 // TEMPORARY: local ServerCharacters build. Delete this package when Thunderstore
 // publishes 1.4.17; see the retirement note below.
 //
-// Package servercharacters carries our own compile of ServerCharacters 1.4.17 and hands the
+// Package servercharacters carries our own build of ServerCharacters 1.4.17.1 and hands the
 // same bytes to both sides of the fleet: cmd/profile-definition-builder hashes them into a
 // published profile definition, and cmd/valheim-profile-sync writes them into the player's
 // profile instead of downloading anything.
@@ -11,15 +11,20 @@
 // FejdStartup.Awake and must never be installed on 1.0.12. Upstream fixed all eight in
 // blaxxun-boop/ServerCharacters@bb7d3cd6 and called it 1.4.17, but has not released it.
 // The operator decided on 2026-09-14 to run our own compile of that commit on their own
-// server and their own clients until Thunderstore carries it.
+// server and their own clients until Thunderstore carries it, and on 2026-09-15 to modify
+// it: upstream's template code equips nothing and hardcodes item quality to 1, so a
+// templated character spawned unarmoured holding its own gear. tools/servercharacters/
+// patches/ is the whole divergence, and it is why the version here is 1.4.17.1 rather than
+// 1.4.17 - these bytes must never be mistaken for the author's.
 //
-// Why an embed rather than a download. ServerSync in 1.4.17 declares
-// MinimumRequiredVersion = "1.4.17" with ModRequired = true, so a client whose build
-// differs from the server's is refused at the handshake. Server and clients are installed
-// from this one archive, which removes version skew as a category rather than checking for
-// it. It also means we publish no URL for it and no client has to trust a second CDN - the
-// Hexium backend in cmd/profile-definition-builder stays where it is, unused by this path
-// and ready for the next mod that lives off Thunderstore.
+// Why an embed rather than a download. ServerSync declares MinimumRequiredVersion equal to
+// its own version with ModRequired = true, and VersionCheck.IsVersionOk is symmetric, so a
+// client whose build differs from the server's is refused at the handshake in BOTH
+// directions. Server and clients are installed from this one archive, which removes version
+// skew as a category rather than checking for it. It also means we publish no URL for it and
+// no client has to trust a second CDN - the Hexium backend in cmd/profile-definition-builder
+// stays where it is, unused by this path and ready for the next mod that lives off
+// Thunderstore.
 //
 // The archive itself is NOT in git. See embedded/README.md for why, and for how to build
 // it. This package compiles without it; only a profile that selects the mod needs it.
@@ -48,9 +53,15 @@ const (
 	// for the mod.
 	Namespace = "Smoothbrain"
 	Name      = "ServerCharacters"
-	// Version is upstream's own ModVersion at bb7d3cd6, read off the source by
-	// tools/servercharacters/build.sh, not chosen here.
-	Version = "1.4.17"
+	// Version is the ModVersion the build actually produces, read off the patched source by
+	// tools/servercharacters/build.sh and mirrored here because the profile definition, the
+	// package cache filename and the archive's own manifest.json must agree. It is
+	// upstream's 1.4.17 plus a fourth component, because this build is NOT upstream's: see
+	// tools/servercharacters/patches/ for the exact divergence. Upstream only ever
+	// publishes three components, so the fourth can never collide with a real release, and
+	// System.Version - which is what ServerSync.VersionCheck.IsVersionOk parses these
+	// strings with - orders 1.4.17.1 above 1.4.17.
+	Version = "1.4.17.1"
 	// ArchiveFileName is the name the archive carries inside the package cache. It matches
 	// what cmd/profile-definition-builder derives for every other package, so the client's
 	// cache and its definition entries stay one shape.

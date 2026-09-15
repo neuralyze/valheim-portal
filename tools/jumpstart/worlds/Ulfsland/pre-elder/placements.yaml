@@ -12,8 +12,14 @@ coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGe
   straddling 30, and every land location type in the ZoneSystem dump floors at 30.50..31.11 because Valheim
   places land locations with minAltitude 1. `freeboard_m` in each solved block is the metres the footprint''s
   LOWEST cell clears y=30 by, measured on a 1 m river-inclusive sample; negative means part of the pad
-  is under water. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is
-  dropped exactly onto y.'
+  is under water. `align: floor-center` means the blueprint is centred on x/z and its FLOOR PLANE is dropped
+  exactly onto y. The floor plane is measured from the game''s own piece colliders by tools/jumpstart/blueprints/base_geometry.py
+  and recorded per placement in `blueprint_datum`; the placement Y emitted to the server is `flatten_cost.target_y
+  - blueprint_datum.base_y`. The previous `align: ground-center` dropped the lowest PIVOT onto y instead,
+  which is not a surface: MEASURED, `stone_floor_2x2` is a 2x2x1 m solid whose pivot sits at mid-thickness,
+  and 99 of the 157 non-empty corpus bodies are normalised so that min pivot Y == 0, on which that shift
+  was always exactly 0.0. That is why every structure floated while loose props spawned at the same pad
+  height sat correctly.'
 constraint_note: 'Constraints come in two classes and the solver treats them differently. HARD -- biome,
   min_biome_purity, min_height_m (freeboard over the WHOLE footprint above the y=30 water plane), location_clearance_m,
   coastal/coastal_within_m, within_m, and require_overland when declared -- are things no amount of building
@@ -38,7 +44,7 @@ placements:
   - 12.0
   creator: Fox-
   viability: PLACES_CLEAN
-  align: ground-center
+  align: floor-center
   requirement:
     biome: BlackForest
     footprint_m: 56
@@ -575,6 +581,39 @@ placements:
         flat_spread_coarse_m: 21.83
         flat_p5_p95_m: 20.34
         refined_moved_m: 8.6
+  blueprint_datum:
+    base_y: 1.1
+    method: lowest_walkable_surface
+    placeable: true
+    bottom_solid_y: -0.268
+    support_bottom_y: 0.0
+    lowest_station_y: 0.8
+    lowest_ground_resting_y: 0.8
+    floor_pieces: 147
+    pieces: 1229
+    walkable_levels:
+    - y: 1.1
+      above_pad_m: 0.0
+      pieces: 110
+      area_m2: 434.0
+    - y: 2.1
+      above_pad_m: 1.0
+      pieces: 7
+      area_m2: 28.0
+    - y: 3.1
+      above_pad_m: 2.0
+      pieces: 6
+      area_m2: 12.0
+    - y: 5.1
+      above_pad_m: 4.0
+      pieces: 1
+      area_m2: 1.0
+    - y: 7.1
+      above_pad_m: 6.0
+      pieces: 23
+      area_m2: 92.0
+    walkable_levels_total: 5
+    violations: []
 - id: early-dock
   blueprint: dock.blueprint
   sha256: 4157326c69a0157df45f96bbcf1c56c6e85fd81e66020006171cdb9ef79de9b9
@@ -585,7 +624,7 @@ placements:
   - 23.5
   creator: Olivanderr
   viability: PLACES_CLEAN
-  align: ground-center
+  align: floor-center
   requirement:
     biome: Meadows
     footprint_m: 48
@@ -915,3 +954,56 @@ placements:
           required: 5.0
           actual: 6.95
           over_by: 1.95
+  blueprint_datum:
+    base_y: 1.5
+    method: lowest_walkable_surface
+    placeable: true
+    bottom_solid_y: -1.5
+    support_bottom_y: -1.5
+    lowest_station_y: null
+    lowest_ground_resting_y: 5.43
+    floor_pieces: 201
+    pieces: 2036
+    walkable_levels:
+    - y: 1.5
+      above_pad_m: 0.0
+      pieces: 19
+      area_m2: 76.0
+    - y: 5.5
+      above_pad_m: 4.0
+      pieces: 126
+      area_m2: 504.0
+    - y: 5.6
+      above_pad_m: 4.1
+      pieces: 22
+      area_m2: 28.0
+    - y: 6.38
+      above_pad_m: 4.88
+      pieces: 2
+      area_m2: 2.0
+    - y: 6.74
+      above_pad_m: 5.24
+      pieces: 2
+      area_m2: 2.0
+    - y: 7.38
+      above_pad_m: 5.88
+      pieces: 2
+      area_m2: 2.0
+    - y: 8.6
+      above_pad_m: 7.1
+      pieces: 2
+      area_m2: 2.0
+    - y: 9.66
+      above_pad_m: 8.16
+      pieces: 3
+      area_m2: 6.0
+    - y: 10.6
+      above_pad_m: 9.1
+      pieces: 20
+      area_m2: 80.0
+    - y: 10.66
+      above_pad_m: 9.16
+      pieces: 3
+      area_m2: 3.0
+    walkable_levels_total: 10
+    violations: []

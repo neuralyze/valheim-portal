@@ -11,6 +11,12 @@
 # ignores the return -- so anything past the last free slot vanishes silently.
 # This world's grid is 32 slots (world.yaml inventory.slots).
 #
+# TWO limits push items into this file, not one. The second is WEIGHT: a kit
+# that fits in the grid can still spawn the character OVERBURDENED, so materials
+# are also trimmed to keep the template under 210 kg -- 70% of the
+# MEASURED 300 kg carry capacity. `dropped_for_weight` below is
+# what the grid could have held and the budget could not.
+#
 # Delivery is headless and does not need the player online, per BlueprintHunt:
 #   findObjects -prefab piece_chest -near <x> <y> <z> <r>   -> ZDO ids
 #   addItemToContainer <id:userid> <item_name> -count <n>   -> stock each chest
@@ -23,12 +29,18 @@
 world: Ulfsland
 preset: pre-eikthyr
 tier: 1
-carried_by_template_slots: 32
+carried_by_template_slots: 29
 inventory_slots: 32
-overflow_slots: 24
+carried_by_template_kg: 192.4
+carry_capacity_kg: 300.0
+carry_budget_kg: 210.0
+headroom_kg: 107.6
+dropped_for_weight: []
+overflow_slots: 28
 implied_chests_at_32_slots: 1
 items:
   Coal: 300
+  Flint: 100
   Resin: 300
   Stone: 300
   Wood: 300

@@ -670,6 +670,39 @@ def install(root, p, ver, side):
     # printed synced=<id> while leaving the previous version on disk on 2026-09-12.
     assert_cached_version(side, target, p['full_name'], ver)
 
+# The prefixes a Thunderstore archive wraps its plugin files in. Stripped from every member
+# so a cached package is one flat directory named after the package, whatever shape its
+# author chose. Order matters: the longest, most specific wrapper first.
+def package_archive_prefixes(name):
+    return (f'BepInEx/plugins/{name}/', 'BepInEx/plugins/', f'plugins/{name}/', 'plugins/', f'{name}/')
+
+def strip_package_prefix(raw_name, name):
+    for prefix in package_archive_prefixes(name):
+        if raw_name.startswith(prefix):
+            return raw_name[len(prefix):]
+    return raw_name
+
+def archived_package_paths(archive, name):
+    """The relative paths extract_package would write, read from the zip index alone.
+
+    Nothing is inflated, so this costs a central-directory read per package and can run on
+    every deploy. It shares strip_package_prefix with the extractor deliberately: a guard
+    that computed the expected layout its own way would be a second opinion, and the whole
+    point is to compare the cache against what the extractor actually does.
+    """
+    paths = set()
+    with zipfile.ZipFile(archive) as z:
+        for member in z.infolist():
+            raw_name = member.filename.replace('\\','/')
+            entry_name = strip_package_prefix(raw_name, name)
+            if not entry_name or raw_name.endswith('/'):
+                continue
+            path = PurePosixPath(entry_name)
+            if path.is_absolute() or '..' in path.parts:
+                continue
+            paths.add(path)
+    return paths
+
 def extract_package(archive, target, name):
     """Unpack one Thunderstore archive into `target`, flattening its plugin prefix.
 
@@ -684,11 +717,7 @@ def extract_package(archive, target, name):
         total = 0
         for member in z.infolist():
             raw_name = member.filename.replace('\\','/')
-            entry_name = raw_name
-            for prefix in (f'BepInEx/plugins/{name}/', 'BepInEx/plugins/', f'plugins/{name}/', 'plugins/', f'{name}/'):
-                if entry_name.startswith(prefix):
-                    entry_name = entry_name[len(prefix):]
-                    break
+            entry_name = strip_package_prefix(raw_name, name)
             path = PurePosixPath(entry_name)
             if not entry_name or raw_name.endswith('/'):
                 continue
@@ -732,6 +761,203 @@ def admin_mode_armed(world_root):
     if not overlay.is_dir():
         return []
     return sorted(entry.name for entry in overlay.iterdir() if entry.is_dir())
+
+# Generated per-world server config: the third deploy source, layered last.
+#
+# MEASURED 2026-09-15 on Ulfsland. An admin-mode window ran
+# `portal_admin_mode.sh Ulfsland ulfsland-admin on` then
+# `portal_mod_admin.sh Ulfsland ulfsland-admin deploy`, and the rebuilt
+# config_merged/bepinex/plugins/ServerCharacters/ came back with ServerCharacters.dll,
+# README.md and manifest.json but WITHOUT CharacterTemplate.yml, so every new character
+# got no kit and no preset spawn point. The file survived only in
+# mods/deployment-backups/ulfsland-admin/server-plugins.previous/.
+#
+# The cause is a SCOPE mismatch, not a missing package. tools/jumpstart generates that
+# file per world AND per preset, and its declared durable home was
+# profiles/ulfsland-dn/manual-mods/ServerCharacters/CharacterTemplate.yml - per PROFILE.
+# Ulfsland links to ulfsland-dn (mods/.active-mod-profile), but the maintenance window
+# deploys ulfsland-admin, whose manual-mods holds no ServerCharacters directory at all
+# (both verified on disk 2026-09-15; the two copies and the backup are one file,
+# md5 d034f837f5426808a2f4d928e1b4029b, 7515 bytes). A per-profile directory therefore
+# cannot hold per-world content: any deploy of a DIFFERENT profile drops it, and
+# cmd_deploy replaces the plugin tree wholesale, so the drop is total.
+#
+# So generated per-world files get a per-world source of their own, layered after
+# manual-mods and after admin-mode. Layered last deliberately: this is the most
+# specific statement about one server, and it must beat a package-shipped default of
+# the same name. It holds plugin-relative paths, e.g.
+# <world>/mods/generated/ServerCharacters/CharacterTemplate.yml.
+GENERATED_DIR = 'generated'
+
+def generated_overlay(world_root):
+    return world_root / 'mods' / GENERATED_DIR
+
+def layer_overlay(source, staged):
+    """Copy one overlay source over the staged plugin tree.
+
+    Returns the staged-relative paths this source contributed, enumerated from the
+    SOURCE rather than from the destination: a directory is merged into a plugin folder
+    the cache already populated, so listing the destination would credit this overlay
+    with the package's own DLLs.
+
+    Top-level symlinks are skipped, which is the pre-existing behaviour this
+    consolidates rather than changes: manual-mods, admin-mode and generated must stay
+    identical in how they layer, and three copies of the loop is how they would stop
+    being.
+    """
+    written = []
+    for entry in sorted(source.iterdir()):
+        if entry.is_symlink():
+            continue
+        if entry.is_dir():
+            shutil.copytree(entry, staged / entry.name, dirs_exist_ok=True)
+            written += [
+                Path(entry.name) / path.relative_to(entry)
+                for path in sorted(entry.rglob('*')) if path.is_file()
+            ]
+        elif entry.is_file():
+            shutil.copy2(entry, staged / entry.name)
+            written.append(Path(entry.name))
+    return written
+
+def tree_files(root):
+    """Every regular file under `root`, as paths relative to it."""
+    if not root.is_dir():
+        return set()
+    return {
+        path.relative_to(root)
+        for path in root.rglob('*') if path.is_file() and not path.is_symlink()
+    }
+
+# How many dropped files are named individually before the report summarises. Removing a
+# large package legitimately drops hundreds; naming them all would bury the one line that
+# matters in the case this report exists for.
+DROP_REPORT_LIMIT = 20
+
+def report_dropped(target, staged, backup):
+    """Say which files the plugin swap is about to remove and nothing replaces.
+
+    cmd_deploy rebuilds the plugin tree from its sources and renames it over the live
+    one, so a file only the live tree had is gone with no message at all. That silence
+    is what cost an hour on 2026-09-15: the deletion was invisible and the symptom
+    surfaced much later, in a player's game, as a missing starting kit.
+
+    Two shapes, reported differently because they mean different things:
+      * a whole top-level directory that no source carries - a package removal taking
+        effect, expected, one line;
+      * a file missing from a package the sources still carry - the dangerous shape,
+        named per file, because nobody asked for it.
+    """
+    dropped = sorted(tree_files(target) - tree_files(staged))
+    if not dropped:
+        return
+    orphans = [path for path in dropped if not (staged / path.parts[0]).exists()]
+    for name in sorted({path.parts[0] for path in orphans}):
+        print(f'deploy_removed={name}')
+    unexplained = [path for path in dropped if (staged / path.parts[0]).exists()]
+    if not unexplained:
+        return
+    for path in unexplained[:DROP_REPORT_LIMIT]:
+        print(f'deploy_dropped={path.as_posix()}')
+    if len(unexplained) > DROP_REPORT_LIMIT:
+        print(f'deploy_dropped_truncated={len(unexplained) - DROP_REPORT_LIMIT}')
+    print(f'deploy_dropped_files={len(unexplained)}')
+    print(f'deploy_dropped_backup={backup}')
+    print(
+        f'warning: this deploy removed {len(unexplained)} file(s) from plugin directories '
+        f'it kept, and no deploy source replaced them. They are recoverable from {backup}. '
+        f'Generated per-world config belongs in mods/{GENERATED_DIR}/<Plugin>/<file>, which '
+        f'every deploy of every profile carries.',
+        file=sys.stderr,
+    )
+
+# The sidecar tools/modpatches/README.md requires beside a hand-patched mod assembly:
+# "Keep the stock DLL beside the patched one (`.stock-<version>`) so the change is
+# reversible and visible." It is the only machine-readable record that a DLL in a world
+# tree is not the bytes its package shipped, which is what makes the check below possible
+# without a second declaration file to drift out of agreement with the patchers.
+STOCK_SIDECAR = re.compile(r'^(?P<assembly>.+\.dll)\.stock-(?P<version>.+)$')
+
+def file_digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def patched_assemblies(tree):
+    """{relative assembly path: (version, sidecar path)} for each .stock-<version> sidecar."""
+    found = {}
+    for sidecar in sorted(tree.rglob('*.stock-*')) if tree.is_dir() else []:
+        match = STOCK_SIDECAR.match(sidecar.name)
+        if not match or not sidecar.is_file():
+            continue
+        assembly = sidecar.with_name(match['assembly'])
+        if assembly.is_file():
+            found[assembly.relative_to(tree)] = (match['version'], sidecar)
+    return found
+
+def classify_patch(live, incoming, sidecar):
+    """What a deploy does to one hand-patched assembly, or None when it does nothing to it.
+
+    'carried'  - the incoming bytes are the patched bytes, so a source holds the patch.
+    'reverted' - the incoming bytes are the stock build the patch was made against: the
+                 repair is replaced by the bytes it repaired, and rebuilding it is enough.
+    'stale'    - neither. The package moved, so the patcher must be revalidated against
+                 the new build before it can be reapplied at all.
+    """
+    if incoming is None or not incoming.is_file() or not live.is_file():
+        return None
+    incoming_digest = file_digest(incoming)
+    if incoming_digest == file_digest(live):
+        return 'carried'
+    return 'reverted' if incoming_digest == file_digest(sidecar) else 'stale'
+
+def report_patches(target, staged):
+    """Report what this deploy does to a hand-patched mod assembly.
+
+    tools/modpatches/ holds Cecil patchers for defects that no configuration switch can
+    avoid - today exactly one, blacksmithing_expanded_null_key.cs against
+    OdinPlus-BlacksmithingExpanded 1.1.7, live on Vangard only. A patcher verifies the IL
+    shape it expects and refuses to write anything if that shape changed, which is a real
+    safety feature and also a silent one: the deploy rebuilds the plugin tree from package
+    sources, so it hands the world stock bytes back and nothing says the repair is gone.
+    That is the failure shape of the CharacterTemplate.yml loss - invisible at deploy time,
+    visible much later in a player's game, here as the crash the patch prevents.
+
+    Reported, not refused. A deploy is the documented way this patch is reverted
+    (tools/modpatches/README.md, "Scope and lifetime"), reapplying it is a manual
+    mcs/mono build rather than a one-command repair, and the crash it prevents needs a
+    WorldVersion 37 save to reach - all five worlds are 41. Refusing would turn a
+    maintenance window into a stop no operator could clear from the portal. The stale-cache
+    guard refuses instead, and the difference is exactly that: there, one `sync` fixes it.
+    """
+    staged_patches = patched_assemblies(staged)
+    reverted, stale = [], []
+    for relative, (version_number, sidecar) in staged_patches.items():
+        if file_digest(staged / relative) != file_digest(sidecar):
+            print(f'patch_applied={relative.as_posix()} version={version_number}')
+    for relative, (version_number, sidecar) in patched_assemblies(target).items():
+        if relative in staged_patches:
+            continue
+        outcome = classify_patch(target / relative, staged / relative, sidecar)
+        if outcome == 'reverted':
+            print(f'patch_reverted={relative.as_posix()} version={version_number}')
+            reverted.append(relative)
+        elif outcome == 'stale':
+            print(f'patch_stale={relative.as_posix()} stock_version={version_number}')
+            stale.append(relative)
+    if not reverted and not stale:
+        return
+    detail = ', '.join(path.as_posix() for path in (*reverted, *stale))
+    advice = (
+        'rebuild and reapply it per tools/modpatches/README.md'
+        if not stale else
+        'the package no longer matches the build the patcher was verified against, so '
+        'revalidate the patcher before reapplying it - tools/modpatches/README.md'
+    )
+    print(
+        f'warning: this deploy replaced {len(reverted) + len(stale)} hand-patched mod '
+        f'assembly/assemblies with package bytes: {detail}. The repair they carry is gone '
+        f'until {advice}.',
+        file=sys.stderr,
+    )
 def selected_versions(manifest):
     selected = {}
     for item in all_packages(manifest):
@@ -1340,11 +1566,72 @@ def cmd_export(root,m,args):
     if not script.is_file():
         raise RuntimeError(f'Profile code exporter is not bundled with this checkout; expected {script}')
     subprocess.run([sys.executable,str(script)],check=True)
+def stale_cache_entries(root, manifest):
+    """Cached server packages that are missing files their own archive carries.
+
+    A cache entry is checked against the archive the manifest pins, not against a naming
+    rule. That distinction is the whole measurement: `<Package>/plugins/<dll>` looks like an
+    unflattened Thunderstore prefix, but `<Package>/Plugins/`, `<Package>/patchers/` and
+    `<Package>/BepInEx/core/` are author-chosen subfolders that the extractor is right to
+    keep, and no check that reads only the directory name can tell those apart. Comparing
+    against the archive can, exactly and cheaply.
+
+    MEASURED 2026-09-15 over all seven profiles, both cache sides and every pinned package
+    (14 caches, 86-94 packages each): exactly ONE entry fails this check,
+    ulfsland-dn/server/ImpactfulSkills, whose DLL sits at ImpactfulSkills/plugins/
+    while the identical archive in ulfsland-admin extracted flat. Re-extracting that same
+    archive with the current extractor produces the flat layout, so the entry is stale -
+    written before 'plugins/' was in the strip list - and not a layout the deploy has never
+    handled. Five other packages per profile do hold nested files (BepInExPack_Valheim's
+    BepInEx/core, three patchers/, Ravenwood_Currency and Venture_Area_Repair's own
+    subfolders); all five reproduce exactly from their archives and all five pass.
+
+    Returns [(identifier, install_name, missing paths)]. Extra files are tolerated: a
+    deploy is harmed by a file that is not where it belongs, not by one that is also
+    somewhere else.
+    """
+    stale = []
+    for item in all_packages(manifest):
+        name = package_install_name(item['identifier'])
+        plugin = cached_plugin(root, 'server', name)
+        archive = cache(root) / 'packages' / f'{name}-{item["version"]}.zip'
+        if not plugin.is_dir() or not archive.is_file():
+            continue
+        present = {path.relative_to(plugin).as_posix() for path in plugin.rglob('*') if path.is_file()}
+        missing = sorted(
+            path for path in archived_package_paths(archive, name) if path.as_posix() not in present
+        )
+        if missing:
+            stale.append((item['identifier'], name, missing))
+    return stale
+
 def validate_server_cache(root, manifest):
     for item in all_packages(manifest):
         plugin = cached_plugin(root, 'server', package_install_name(item['identifier']))
         if plugin.is_dir():
             assert_cached_version('server', plugin, item['identifier'], item['version'])
+    # A stale entry passes the version check - its manifest.json is the right version, it is
+    # the FILES that are in the wrong place - and then the deploy quietly installs a plugin
+    # tree where a DLL has moved. Refused rather than rearranged: flattening at compose time
+    # would guess at author intent, leave the cache wrong for every other consumer of it
+    # (the client publish path, republish-profiles.sh's drift check), and let the two
+    # profiles of one world keep disagreeing about the same archive forever. `sync`
+    # re-extracts from the archive already on disk, which is the documented repair for a
+    # cache that disagrees with the manifest and is the right repair for this too.
+    stale = stale_cache_entries(root, manifest)
+    if stale:
+        detail = '; '.join(
+            f'{identifier} is missing {", ".join(path.as_posix() for path in missing[:4])}'
+            for identifier, _, missing in stale
+        )
+        repair = ' '.join(
+            f'valheim_mods.py --profile {root.name} sync {identifier}' for identifier, _, _ in stale[:3]
+        )
+        raise RuntimeError(
+            f'Cached server package does not match its own archive: {detail}. The files are on '
+            f'disk in the wrong place, so deploying would move a plugin without saying so. '
+            f'Repair the cache first: {repair}'
+        )
 
 SERVER_CONFIG_DIR = 'server-config'
 OVERRIDE_DIR = 'overrides'
@@ -1432,8 +1719,27 @@ def cmd_deploy(root,m,args):
     world_root=args.world_dir
     target=world_root/'config_merged'/'bepinex'/'plugins'
     runtime_plugins=world_root/'data'/'bepinex'/'BepInEx'/'plugins'
-    print(f'source={server_plugins}\ntarget={target}\nmanual={manual_plugins}')
+    generated=generated_overlay(world_root)
+    print(f'source={server_plugins}\ntarget={target}\nmanual={manual_plugins}\ngenerated={generated}')
     if not args.apply:
+        # deploy-plan is the only read-only answer to "will my generated config survive
+        # this deploy?", so it has to name the files, not just the directory. It is also the
+        # only way to find a stale cache entry BEFORE a maintenance window stops the world
+        # on it, so the refusal --apply would raise is reported here instead of raised.
+        for path in sorted(tree_files(generated)):
+            print(f'generated_file={path.as_posix()}')
+        for identifier, _, missing in stale_cache_entries(root, m):
+            print(f'cache_stale={identifier} missing={",".join(path.as_posix() for path in missing[:4])}')
+        # What --apply would do to each hand-patched assembly, resolved without staging: the
+        # layers copy <entry>/<rest>, so a source's copy of a live file is at <source>/<rel>
+        # and the last layer that has it is the one that wins.
+        layers = (server_plugins, manual_plugins, admin_mode_overlay(world_root), generated)
+        for relative, (version_number, sidecar) in patched_assemblies(target).items():
+            incoming = next((layer / relative for layer in reversed(layers)
+                             if (layer / relative).is_file()), None)
+            outcome = classify_patch(target / relative, incoming, sidecar)
+            if outcome in ('reverted', 'stale'):
+                print(f'patch_would_be_{outcome}={relative.as_posix()} version={version_number}')
         print('plan only; rerun with --apply after stopping server')
         return
     require_stopped(world)
@@ -1444,22 +1750,19 @@ def cmd_deploy(root,m,args):
     with tempfile.TemporaryDirectory(dir=target.parent) as temp:
         staged=Path(temp)/'plugins'
         shutil.copytree(server_plugins,staged)
-        for manual in manual_plugins.iterdir():
-            if manual.is_dir() and not manual.is_symlink():
-                shutil.copytree(manual,staged/manual.name,dirs_exist_ok=True)
-            elif manual.is_file() and not manual.is_symlink():
-                shutil.copy2(manual,staged/manual.name)
-        # This world's own additions, layered last for the same reason manual-mods is layered
-        # after the profile cache: it is a per-world addition to a shared definition. Empty or
-        # absent for every world that is not in an admin-mode maintenance window, and a world
-        # whose overlay is non-empty kicks every player who joins it.
+        layer_overlay(manual_plugins, staged)
+        # This world's own additions, layered after the profile cache because they are
+        # per-world additions to a shared definition. The admin-mode overlay is empty or
+        # absent for every world that is not in a maintenance window, and a world whose
+        # overlay is non-empty kicks every player who joins it.
         overlay = admin_mode_overlay(world_root)
         if overlay.is_dir():
-            for entry in overlay.iterdir():
-                if entry.is_dir() and not entry.is_symlink():
-                    shutil.copytree(entry,staged/entry.name,dirs_exist_ok=True)
-                elif entry.is_file() and not entry.is_symlink():
-                    shutil.copy2(entry,staged/entry.name)
+            layer_overlay(overlay, staged)
+        # Generated per-world config last, so it wins over a package-shipped default of the
+        # same name, and so no profile switch can leave it out of the sources.
+        if generated.is_dir():
+            for path in layer_overlay(generated, staged):
+                print(f'generated_placed={path.as_posix()}')
         backup_root=world_root/'mods'/'deployment-backups'/root.name
         backup=backup_root/'server-plugins.previous'
         legacy_backup=target.with_name('plugins.previous')
@@ -1469,6 +1772,10 @@ def cmd_deploy(root,m,args):
             shutil.rmtree(legacy_archive,ignore_errors=True)
             legacy_backup.rename(legacy_archive)
         shutil.rmtree(backup,ignore_errors=True)
+        # Before the swap, while the live tree is still readable: the rename replaces it
+        # wholesale, and a file only it had is otherwise deleted without a word.
+        report_dropped(target, staged, backup)
+        report_patches(target, staged)
         if target.exists():
             target.rename(backup)
         try:

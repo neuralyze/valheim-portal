@@ -9,23 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- TEMPORARY, and deliberately easy to remove: `Smoothbrain-ServerCharacters` 1.4.17 reaches the
-  Ulfsland server and the clients of its four editions from ONE archive that
-  `tools/servercharacters/build.sh` compiles from unmodified upstream `bb7d3cd6`. A profile
+- TEMPORARY, and deliberately easy to remove: `Smoothbrain-ServerCharacters` 1.4.17.1 reaches
+  the Ulfsland server and the clients of its four editions from ONE archive that
+  `tools/servercharacters/build.sh` compiles from upstream `bb7d3cd6` plus the patches in
+  `tools/servercharacters/patches/`. A profile
   manifest entry can now declare `"source": "local-build"`, which makes
   `cmd/profile-definition-builder` publish the archive's SHA256 and size and no `url` at all,
   and makes `cmd/valheim-profile-sync` install the copy compiled into itself - after checking it
   against those two values - instead of downloading anything. Server and clients therefore run
-  the same bytes, which is what makes ServerSync's `MinimumRequiredVersion = "1.4.17"` /
+  the same bytes, which is what makes ServerSync's `MinimumRequiredVersion` /
   `ModRequired = true` unable to mismatch; a client carrying a different build refuses the
   install and tells the player to download the current client rather than failing mid-join.
   Gated on the definition naming the package, so no world but Ulfsland is affected. The archive
   is NOT in git - it is built into the gitignored `internal/servercharacters/embedded/` - because
-  the mod has no licence and this repository is published; running our own compile on the
-  operator's own machines was their call, on 2026-09-14, and redistributing it is not.
+  the mod has no licence and this repository is published; running our own PATCHED compile on
+  the operator's own machines was their call, on 2026-09-14 and again on 2026-09-15, and
+  redistributing it is not. The patches are committed, because they are our own text and they
+  are the record of exactly how our binary differs from the author's.
   `tools/servercharacters/README.md` and `deploy/upstream-sources.json` carry the record, the
   boundaries and the one-command retirement for when Thunderstore publishes 1.4.17. The Hexium
   backend added earlier is untouched and remains the route for the next off-Thunderstore mod.
+- New characters spawn WEARING their kit, at the quality the preset asked for, with a filled
+  backpack. `CharacterTemplate.yml` gains three keys in our ServerCharacters build -
+  `quality` (prefab -> quality, clamped at runtime to the item's own `m_maxQuality` and
+  logged when clamped), `equip` (ordered prefab list, highest priority first) and `contents`
+  (container prefab -> items, which fills a Vapok-AdventureBackpacks backpack through that
+  mod's own public API, reached by reflection so nothing is pinned to an AdventureBackpacks
+  version and ServerCharacters still loads where that mod is absent). Upstream equips
+  NOTHING - the string `EquipItem` occurs zero times in its whole assembly - and hardcodes
+  quality to the literal `1`, so until now every templated character spawned unarmoured and
+  unarmed holding a full set of gear, every `quality: 3` in every preset was silently
+  ignored, and a granted Megingjord was a 2 kg no-op because its carry-weight status effect
+  only applies while equipped. `tools/servercharacters/preset_to_template.py` renders the new
+  keys straight from the preset and never guesses what to wear. Unknown top-level template
+  keys are now ignored and logged instead of throwing away the entire template.
+
+  ROLLOUT ORDER MATTERS ONCE, HERE: new DLL to the server and to all four client editions
+  first, every player re-synced, and only THEN the new-schema template. ServerCharacters
+  1.4.17 throws an uncaught `YamlException` on the new keys and discards the whole template -
+  skills, items and spawn together - and `CharacterTemplate.yml` hot-reloads with no restart,
+  so a template that arrives ahead of the DLL ruins every character created in that window.
+  The DLL step itself is safe: the version check is symmetric, so a stale client is simply
+  refused at the handshake.
 - A third world source when creating a server: upload a `.zip` of an existing world's save.
   The admin form now presents one exclusive switch - generate a new world on a random seed,
   generate from a typed seed, copy a world already on this host, or upload one - and the fields

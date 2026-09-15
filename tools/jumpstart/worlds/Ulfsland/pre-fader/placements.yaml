@@ -12,8 +12,14 @@ coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGe
   straddling 30, and every land location type in the ZoneSystem dump floors at 30.50..31.11 because Valheim
   places land locations with minAltitude 1. `freeboard_m` in each solved block is the metres the footprint''s
   LOWEST cell clears y=30 by, measured on a 1 m river-inclusive sample; negative means part of the pad
-  is under water. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is
-  dropped exactly onto y.'
+  is under water. `align: floor-center` means the blueprint is centred on x/z and its FLOOR PLANE is dropped
+  exactly onto y. The floor plane is measured from the game''s own piece colliders by tools/jumpstart/blueprints/base_geometry.py
+  and recorded per placement in `blueprint_datum`; the placement Y emitted to the server is `flatten_cost.target_y
+  - blueprint_datum.base_y`. The previous `align: ground-center` dropped the lowest PIVOT onto y instead,
+  which is not a surface: MEASURED, `stone_floor_2x2` is a 2x2x1 m solid whose pivot sits at mid-thickness,
+  and 99 of the 157 non-empty corpus bodies are normalised so that min pivot Y == 0, on which that shift
+  was always exactly 0.0. That is why every structure floated while loose props spawned at the same pad
+  height sat correctly.'
 constraint_note: 'Constraints come in two classes and the solver treats them differently. HARD -- biome,
   min_biome_purity, min_height_m (freeboard over the WHOLE footprint above the y=30 water plane), location_clearance_m,
   coastal/coastal_within_m, within_m, and require_overland when declared -- are things no amount of building
@@ -38,7 +44,7 @@ placements:
   - 13.0
   creator: Deardly
   viability: PLACES_CLEAN
-  align: ground-center
+  align: floor-center
   requirement:
     biome: AshLands
     footprint_m: 50
@@ -227,3 +233,48 @@ placements:
         foundations_note: 'the driest footprint this seed offers here is -0.52 m relative to the water
           plane, so the pad is partly submerged wherever it goes: declare min_height_m at or below that
           and build on foundations, or pick a smaller footprint_m'
+  blueprint_datum:
+    base_y: 0.5
+    method: lowest_walkable_surface
+    placeable: true
+    bottom_solid_y: -99.525
+    support_bottom_y: -2.5
+    lowest_station_y: 0.465
+    lowest_ground_resting_y: 0.458
+    floor_pieces: 264
+    pieces: 1901
+    walkable_levels:
+    - y: 0.5
+      above_pad_m: 0.0
+      pieces: 80
+      area_m2: 536.0
+    - y: 0.6
+      above_pad_m: 0.1
+      pieces: 4
+      area_m2: 16.0
+    - y: 1.6
+      above_pad_m: 1.1
+      pieces: 23
+      area_m2: 74.0
+    - y: 2.6
+      above_pad_m: 2.1
+      pieces: 13
+      area_m2: 46.0
+    - y: 3.6
+      above_pad_m: 3.1
+      pieces: 10
+      area_m2: 34.0
+    - y: 4.6
+      above_pad_m: 4.1
+      pieces: 62
+      area_m2: 236.0
+    - y: 5.6
+      above_pad_m: 5.1
+      pieces: 58
+      area_m2: 202.0
+    - y: 6.6
+      above_pad_m: 6.1
+      pieces: 14
+      area_m2: 20.0
+    walkable_levels_total: 8
+    violations: []

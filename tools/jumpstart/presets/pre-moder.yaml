@@ -11,6 +11,13 @@
 #   world_modifiers  the -modifier <key> <value> pairs this preset implies.
 #                    NOT applied by the driver: they are launch arguments.
 #   kit              worn/carried gear, tools, ammunition, consumables.
+#   equip            ORDERED list of `kit` prefabs the character spawns WEARING
+#                    or HOLDING, highest priority first. Everything else stays
+#                    in the bag. Slots are NOT named here: an item's slot is
+#                    m_shared.m_itemType and naming it again would create a
+#                    second source of truth. derive.py replays the game's own
+#                    Humanoid::EquipItem over this list and refuses to render a
+#                    template in which any listed entry is displaced.
 #   materials        biome material stock. Doubles as the recipe-unlock
 #                    mechanism: Valheim discovers a recipe when the player
 #                    first holds its materials.
@@ -76,6 +83,9 @@ kit:
 - prefab: CapeWolf
   quality: 3
   count: 1
+- prefab: BackpackMountains
+  quality: 4
+  count: 1
 - prefab: ArmorFenringChest
   quality: 3
   count: 1
@@ -93,25 +103,57 @@ kit:
   count: 1
 - prefab: ArrowSilver
   quality: 1
-  count: 150
+  count: 50
 - prefab: ArrowObsidian
   quality: 1
-  count: 150
+  count: 50
 - prefab: ArrowFrost
   quality: 1
-  count: 150
+  count: 50
 - prefab: MeadFrostResist
   quality: 1
-  count: 15
+  count: 5
 - prefab: MeadHealthMedium
   quality: 1
-  count: 15
+  count: 5
 - prefab: MeadStaminaMedium
   quality: 1
-  count: 15
+  count: 5
 - prefab: MeadPoisonResist
   quality: 1
-  count: 15
+  count: 5
+equip:
+# WORN. The wolf set over the Fenring set: MEASURED at quality 3, wolf is
+# 24/24/24 armour against Fenring's 14/14/14, and ArmorWolfChest carries the
+# m_damageModifiers entry [Frost Resistant] that the Fenring chest also has --
+# so the heavy set loses nothing but mobility, which a boss fight does not need.
+- HelmetDrake
+- ArmorWolfChest
+- ArmorWolfLegs
+# BackpackMountains (Arctic Sherpa Pack) takes the Shoulder slot from CapeWolf,
+# and this is the preset where that needed checking, because the Mountain kills
+# you with cold. MEASURED from Player::UpdateEnvStatusEffects: Freezing and Cold
+# are both suppressed when GetDamageModifiers().GetModifier(Frost) is Resistant,
+# VeryResistant or SlightlyResistant, and GetDamageModifiers sums
+# ApplyArmorDamageMods (equipped items) AND SEMan::ApplyDamageMods (status
+# effects). ArmorWolfChest above is Frost Resistant on its own, so the freezing
+# gate is held by VANILLA gear and does not depend on a mod. The pack then adds
+# frost on top ([Effect: Frost Resistance] Mountains = 1 in the live
+# server-enforced config), a 3x3 grid rising to 6x3, and +20 carry per item
+# level. CapeWolf is in the bag as the third frost source.
+- BackpackMountains
+# HELD. MaceSilver in the right hand, ShieldSilver in the left. Silver carries
+# spirit damage, which is what the Mountain's draugr and wraiths are soft to, and
+# blunt is what stone golems take. The sword, knife, wolf-fang spear, crystal
+# battleaxe and draugr-fang bow are granted and bagged.
+- MaceSilver
+- ShieldSilver
+- ArrowSilver
+# UTILITY. Wishbone over SilverRing: MEASURED, both are m_itemType 18 (Utility)
+# and there is exactly one such slot, so they contend. The Wishbone is the reason
+# a character is in the Mountains at all -- it finds the silver -- and the ring is
+# cosmetic. SilverRing is in the bag.
+- Wishbone
 materials:
 - prefab: Silver
   count: 100

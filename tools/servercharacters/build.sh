@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Builds ServerCharacters 1.4.17 from UNMODIFIED upstream source and packages it the way
-# a Thunderstore archive is packaged, so one artifact serves both sides of the fleet.
+# Builds ServerCharacters from upstream source at a pinned commit PLUS the patches in
+# tools/servercharacters/patches/, and packages it the way a Thunderstore archive is
+# packaged, so one artifact serves both sides of the fleet.
 #
 # TEMPORARY, OPERATOR-AUTHORISED. Read tools/servercharacters/README.md, section "What we
 # ship, and why that is temporary", before changing anything here. The short version:
@@ -10,6 +11,13 @@
 # is 1.4.16 from 2025-05-02, which is fatal on 1.0.12. The operator decided on 2026-09-14
 # to run our own compile of that commit on their own server and their own clients until
 # Thunderstore carries 1.4.17.
+#
+# This build is NO LONGER byte-equivalent to the author's source. patches/ adds
+# CharacterTemplate.yml `quality` and `equip` support and bumps ModVersion to a fourth
+# component so the binary is never mistaken for an upstream release. patches/ is the
+# complete provenance record of that divergence. Nothing here is published or
+# redistributed: the archive stays gitignored and is consumed only by our own server and
+# our own clients.
 #
 # Output: a Thunderstore-shaped archive - ServerCharacters.dll and a manifest.json of our
 # own at the root - written by default to the gitignored embed path that
@@ -77,14 +85,39 @@ printf 'references: managed=%s core=%s\n' "$managed" "$bepinex_core" >&2
 rm -rf -- "$work"
 mkdir -p "$work"
 
-# 1. Upstream source at the fix commit. Only ServerCharacters/*.cs, Properties/ and Libs/
-#    are used; the checked-in .csproj wants a NuGet packages/ directory and a protogen
-#    run this build deliberately replaces.
+# 1. Upstream source at the fix commit, then OUR patches on top. Only
+#    ServerCharacters/*.cs, Properties/ and Libs/ are used; the checked-in .csproj wants a
+#    NuGet packages/ directory and a protogen run this build deliberately replaces.
+#
+#    patches/ is the provenance record: it is the complete, reviewable delta between the
+#    author's source and the binary we run, and it is the reason the ModVersion this build
+#    reports is 1.4.17.1 rather than upstream's 1.4.17. `git apply` is used without
+#    --3way on purpose - the commit is pinned, so a patch that no longer applies means
+#    something moved that a human must look at, not something to auto-merge.
 git clone -q https://github.com/blaxxun-boop/ServerCharacters.git "$work/src"
 git -C "$work/src" checkout -q "$commit"
+upstream_version=$(sed -n 's/.*ModVersion = "\([^"]*\)".*/\1/p' "$work/src/ServerCharacters/ServerCharacters.cs")
+[[ -n $upstream_version ]] || { echo "could not read ModVersion from upstream source" >&2; exit 1; }
+echo "upstream $commit declares ModVersion $upstream_version"
+
+shopt -s nullglob
+patches=("$here"/patches/*.patch)
+shopt -u nullglob
+for patch in "${patches[@]}"; do
+    echo "applying $(basename -- "$patch")"
+    git -C "$work/src" apply --whitespace=nowarn "$patch"
+done
+
 built_version=$(sed -n 's/.*ModVersion = "\([^"]*\)".*/\1/p' "$work/src/ServerCharacters/ServerCharacters.cs")
-[[ -n $built_version ]] || { echo "could not read ModVersion from upstream source" >&2; exit 1; }
-echo "upstream $commit declares ModVersion $built_version"
+[[ -n $built_version ]] || { echo "could not read ModVersion from patched source" >&2; exit 1; }
+if ((${#patches[@]} == 0)); then
+    echo "no local patches; building unmodified upstream $upstream_version"
+elif [[ $built_version == "$upstream_version" ]]; then
+    echo "patched source still declares ModVersion $built_version - a modified build MUST be distinguishable from upstream" >&2
+    exit 1
+else
+    echo "${#patches[@]} local patch(es) applied; building ModVersion $built_version"
+fi
 
 proj=$work/proj
 mkdir -p "$proj/Properties" "$proj/Libs" "$proj/refs"
@@ -139,21 +172,33 @@ cat >"$pkg/manifest.json" <<EOF
   "name": "ServerCharacters",
   "version_number": "$built_version",
   "website_url": "https://github.com/blaxxun-boop/ServerCharacters/tree/$commit",
-  "description": "Local compile of upstream $commit, built by tools/servercharacters/build.sh. Not an upstream release.",
+  "description": "Local build: upstream $commit ($upstream_version) plus ${#patches[@]} valheim-portal patch(es). NOT an upstream release.",
   "dependencies": []
 }
 EOF
 cat >"$pkg/README.md" <<EOF
-ServerCharacters $built_version, compiled from unmodified upstream source at
-blaxxun-boop/ServerCharacters@$commit ("fix for deep north"), the commit that ports the mod
-to Valheim 1.0 and bumps the version to $built_version. Upstream has not released it:
-Thunderstore's newest is 1.4.16, which is fatal on 1.0.12.
+ServerCharacters $built_version - a LOCAL build, not an upstream release.
+
+Base: blaxxun-boop/ServerCharacters@$commit ("fix for deep north"), which declares
+ModVersion $upstream_version and is the commit that ports the mod to Valheim 1.0. Upstream has
+not released it: Thunderstore's newest is 1.4.16, which is fatal on 1.0.12.
+
+On top of that base, ${#patches[@]} patch(es) from tools/servercharacters/patches/ in
+valheim-portal. The fourth version component exists precisely so this binary cannot be
+confused with upstream $upstream_version. What diverges:
+  - CharacterTemplate.yml gains \`quality\` (prefab -> quality, clamped to m_maxQuality)
+    and \`equip\` (ordered prefab list, highest priority first).
+  - Granted items honour that quality instead of the hardcoded 1.
+  - Listed items are equipped via Humanoid.EquipItem, so armour is worn and an equipped
+    utility item's status effect (e.g. BeltStrength) actually applies.
+  - Unknown top-level template keys are ignored and logged instead of throwing and
+    discarding the whole template.
 
 Server and clients are given THIS archive, so both sides run the same bytes and ServerSync's
-MinimumRequiredVersion = $built_version / ModRequired = true cannot mismatch.
+MinimumRequiredVersion = $built_version / ModRequired = true cannot mismatch. A client on
+$upstream_version is REFUSED by a $built_version server, and vice versa: IsVersionOk is symmetric.
 
-Temporary and operator-authorised; replaced by the Thunderstore package as soon as
-$built_version is published there. Built by tools/servercharacters/build.sh in valheim-portal.
+Temporary and operator-authorised. Built by tools/servercharacters/build.sh in valheim-portal.
 EOF
 
 mkdir -p "$(dirname -- "$out")"

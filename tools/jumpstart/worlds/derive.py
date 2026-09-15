@@ -35,11 +35,21 @@ spawn.yaml. `build` and `check` then need no terrain at all: they cross-check
 spawn.yaml against the CURRENT `solved` blocks, which is the check whose absence
 put a character in the sea -- the solver re-solved, the base moved, and nothing
 compared the two.
+
+A template is also REFUSED when the kit it would put on the character weighs
+more than the world's carry budget. Slots were the only capacity this tool used
+to model, and a kit can fit in 32 slots and still spawn the player OVERBURDENED:
+MEASURED on 2026-09-15, pre-bonemass rendered 30 prefabs into 32 slots weighing
+426.8 kg against Valheim's 300 kg limit, and the operator found that by being
+unable to walk rather than by running this tool. Weights come from
+tools/jumpstart/data/item_weights.json (read out of the game's own asset
+bundles); the capacity and the budget come from world.yaml `inventory:`.
 """
 from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import math
 import os
 import re
@@ -65,6 +75,12 @@ OWNED = (
     "keys.yaml",
     "charactertemplate.yml",
 )
+
+# Buckets whose entries define the tier and therefore MUST reach the character.
+# Materials are droppable -- the placed base has chests 40 m away -- so the
+# generator trims materials to fit the weight budget and refuses only when the
+# undroppable part is already too heavy.
+PRIORITY_BUCKETS = ("kit", "chain_items")
 
 
 def _load_jumpstart():
@@ -126,6 +142,26 @@ class World:
         raw = (self.raw.get("inventory") or {}).get("stack_fallbacks") or {}
         return {str(k): int(v) for k, v in raw.items()}
 
+    @property
+    def weight_table_path(self) -> Path:
+        """Repo-relative, unlike stack_table: this file is versioned, not deployed."""
+        rel = (self.raw.get("inventory") or {}).get("weight_table")
+        return (REPO / rel) if rel else Path()
+
+    @property
+    def carry_capacity_kg(self) -> float:
+        return float((self.raw.get("inventory") or {}).get("carry_capacity_kg") or 0.0)
+
+    @property
+    def carry_budget_fraction(self) -> float:
+        return float(
+            (self.raw.get("inventory") or {}).get("carry_budget_fraction") or 0.0
+        )
+
+    @property
+    def carry_budget_kg(self) -> float:
+        return self.carry_capacity_kg * self.carry_budget_fraction
+
 
 def load_world(name: str) -> World:
     root = HERE / name
@@ -158,6 +194,170 @@ def load_stacks(world: World) -> tuple[dict[str, int], dict[str, int]]:
             if m:
                 measured[m.group(1)] = int(m.group(2))
     return measured, world.stack_fallbacks
+
+
+# ==========================================================================
+# equipment slots
+# ==========================================================================
+# Which slot the game puts an item in, MEASURED from Humanoid::EquipItem in
+# assembly_valheim.dll (Valheim 1.0.12, monodis). The method is one long
+# if-chain on m_shared.m_itemType and each arm names the Humanoid field it
+# writes, so this table is a transcription of the game's own arbitration rather
+# than an interpretation of it. The item type numbers come out of the bundles
+# (`item_type` in item_weights.json), so nothing here is inferred from a name.
+#
+# Both hands are modelled, because a two-handed item is not "the weapon slot":
+#   Tool 19                 unequips right AND left, then writes m_rightItem
+#   TwoHandedWeapon 14      unequips left AND right, then writes m_rightItem
+#   Bow 4                   unequips left AND right, then writes m_leftItem
+#   TwoHandedWeaponLeft 22  unequips left AND right, then writes m_leftItem
+#   OneHandedWeapon 3       writes m_rightItem, and KEEPS the left hand when it
+#                           holds a Shield 5 or a Torch 15
+#   Shield 5                writes m_leftItem, and KEEPS the right hand when it
+#                           holds a OneHandedWeapon 3 or a Torch 15
+# so a one-hander plus a shield is the only pair that coexists, and everything
+# else in the hands displaces everything else.
+SLOT_RIGHT = "right hand"
+SLOT_LEFT = "left hand"
+# Torch 15 is deliberately absent: MEASURED, its arm is conditional -- it goes
+# to m_leftItem only when m_rightItem already holds a OneHandedWeapon and the
+# left hand is empty, otherwise it takes the right hand and clears both. A
+# static table cannot say which, so `equip_outcome` replays the condition.
+SLOT_BY_ITEM_TYPE = {
+    3: (SLOT_RIGHT,),                 # OneHandedWeapon
+    4: (SLOT_LEFT, SLOT_RIGHT),       # Bow
+    5: (SLOT_LEFT,),                  # Shield
+    6: ("helmet",),
+    7: ("chest",),
+    9: ("ammo",),                     # Ammo
+    11: ("legs",),
+    14: (SLOT_RIGHT, SLOT_LEFT),      # TwoHandedWeapon
+    17: ("shoulder",),
+    18: ("utility",),
+    19: (SLOT_RIGHT, SLOT_LEFT),      # Tool
+    22: (SLOT_LEFT, SLOT_RIGHT),      # TwoHandedWeaponLeft
+    23: ("ammo",),                    # AmmoNonEquipable
+    24: ("trinket",),
+}
+ITEM_TYPE_TORCH = 15
+ITEM_TYPE_ONE_HANDED = 3
+ITEM_TYPE_SHIELD = 5
+# Head-down reading order for the human-facing summary only; it has no effect on
+# arbitration.
+SLOT_ORDER = (
+    "helmet",
+    "chest",
+    "legs",
+    "shoulder",
+    "utility",
+    "trinket",
+    SLOT_RIGHT,
+    SLOT_LEFT,
+    "ammo",
+)
+
+
+@dataclass
+class ItemTable:
+    """Everything item_weights.json knows, keyed by prefab.
+
+    `item_type` and `max_quality` are MISSING for a prefab the extractor could
+    only price from the ItemStacksRewrite ObjectDB dump, because that dump
+    records weights and stack sizes and nothing else. Absent therefore means
+    UNKNOWN and is reported, never defaulted: a defaulted slot would quietly
+    make two contending items stop contending, and a defaulted max quality would
+    wave through an illegal `quality:`.
+    """
+
+    weights: dict[str, float]
+    evidence: dict[str, str]
+    item_type: dict[str, int]
+    max_quality: dict[str, int]
+    scale_weight_by_quality: dict[str, float]
+    item_type_names: dict[int, str]
+    containers: dict[str, dict]
+
+    def container_slots(self, prefab: str) -> int | None:
+        """Slots a container provides on EVERY client, or None if not a container.
+
+        The SMALLEST configured level, deliberately, and not the level matching
+        the granted quality. MEASURED: AdventureBackpacks' grid sizes are per
+        quality level and come from each client's OWN cfg -- the assembly's only
+        RPCs are PieceManager admin-list syncing, so its "[Synced with Server]"
+        annotation has no transport behind it. Sizing a payload to the level the
+        server happens to read would be a check answering a question it is not
+        measuring; sizing it to the minimum is a payload every client can hold.
+        """
+        facts = self.containers.get(prefab)
+        if not facts:
+            return None
+        return int(facts["min_slots"])
+
+    def type_name(self, prefab: str) -> str:
+        kind = self.item_type.get(prefab)
+        if kind is None:
+            return "unknown"
+        return self.item_type_names.get(kind, f"type {kind}")
+
+    def slots(self, prefab: str) -> tuple[str, ...] | None:
+        """Slots this prefab claims, or None when that cannot be answered."""
+        kind = self.item_type.get(prefab)
+        if kind is None:
+            return None
+        return SLOT_BY_ITEM_TYPE.get(kind)
+
+    def weight_at(self, prefab: str, count: int, quality: int) -> float:
+        """What Inventory::UpdateTotalWeight would add for this stack.
+
+        MEASURED from ItemDrop/ItemData::GetWeight: w = m_weight * stack, and
+        THEN, only when m_scaleWeightByQuality != 0 and quality != 1,
+        w += w * (quality - 1) * m_scaleWeightByQuality. So the quality factor
+        multiplies the whole stacked weight, not the unit weight.
+        MEASURED across all 2,481 priced prefabs: m_scaleWeightByQuality is
+        nonzero for 21 of them -- 20 fish variants at 1.0 and AsksvinEgg at 0.2
+        -- and for nothing else. No weapon, shield, armour piece, tool or cape
+        changes weight with quality, which is why honouring `quality:` moved no
+        preset's load by a single gram.
+        """
+        base = self.weights[prefab] * count
+        scale = self.scale_weight_by_quality.get(prefab, 0.0)
+        if scale and quality != 1:
+            base += base * (quality - 1) * scale
+        return base
+
+
+def load_item_table(world: World) -> ItemTable:
+    """The measured item table. A missing file IS fatal.
+
+    Unlike the stack table, this one is versioned in the repo and every preset
+    resolves against it with nothing unpriced. Carrying on without it would mean
+    emitting templates with no weight verdict at all, which is the state that let
+    a 426.8 kg kit reach the operator -- so it refuses instead of warning.
+    """
+    path = world.weight_table_path
+    if not path or not path.exists():
+        raise SystemExit(
+            f"{world.name}: inventory.weight_table is missing or unreadable ({path}).\n"
+            "Regenerate it: tools/jumpstart/extract_item_weights.py"
+        )
+    doc = json.loads(path.read_text("utf-8"))
+    weights = {str(k): float(v) for k, v in (doc.get("weights") or {}).items()}
+    if not weights:
+        raise SystemExit(f"{path}: no weights in the table")
+    return ItemTable(
+        weights=weights,
+        evidence={str(k): str(v) for k, v in (doc.get("evidence") or {}).items()},
+        item_type={str(k): int(v) for k, v in (doc.get("item_type") or {}).items()},
+        max_quality={str(k): int(v) for k, v in (doc.get("max_quality") or {}).items()},
+        scale_weight_by_quality={
+            str(k): float(v)
+            for k, v in (doc.get("scale_weight_by_quality") or {}).items()
+        },
+        item_type_names={
+            int(k): str(v) for k, v in (doc.get("item_type_names") or {}).items()
+        },
+        containers={str(k): dict(v) for k, v in (doc.get("containers") or {}).items()},
+    )
 
 
 def load_placements(preset_dir: Path) -> dict | None:
@@ -893,6 +1093,125 @@ def item_map(preset) -> tuple[dict[str, int], list[tuple[str, str, int]], list[s
     return merged, ordered, sorted(set(dupes))
 
 
+def quality_map(preset) -> tuple[dict[str, int], list[str]]:
+    """(prefab -> quality, prefabs whose buckets disagree).
+
+    `items` is a map and the buckets are lists, exactly as with counts, so a
+    prefab named twice at two qualities needs a rule. The rule is MAX: an author
+    who wrote 3 once and left the default 1 elsewhere meant "at least 3", and
+    taking the max can only ever grant a better item than was asked for, never a
+    worse one. The disagreement is reported rather than absorbed.
+    """
+    best: dict[str, int] = {}
+    seen: dict[str, set[int]] = {}
+    for bucket in ("kit", "chain_items", "materials"):
+        for row in preset.raw.get(bucket) or []:
+            prefab = str(row["prefab"])
+            quality = int(row.get("quality", 1))
+            best[prefab] = max(best.get(prefab, 1), quality)
+            seen.setdefault(prefab, set()).add(quality)
+    return best, sorted(p for p, values in seen.items() if len(values) > 1)
+
+
+def equip_list(preset) -> list[str]:
+    """The preset's ordered `equip:` list, highest priority first."""
+    return [str(p) for p in (preset.raw.get("equip") or [])]
+
+
+@dataclass
+class EquipOutcome:
+    """What the character actually ends up wearing, and what got displaced."""
+
+    worn: dict[str, str]  # slot -> prefab
+    order: list[str]
+    displaced: list[tuple[str, str, str]]  # (prefab, slot, prefab that took it)
+    unslotted: list[str]  # listed but no measured item type
+    unequipable: list[str]  # listed and the item type has no slot at all
+
+
+def equip_outcome(order: list[str], table: ItemTable) -> EquipOutcome:
+    """Replay Humanoid::EquipItem over an ordered list and report the result.
+
+    ServerCharacters' `equip:` is a LIST, and the game arbitrates slots itself,
+    so the only honest way to know whether two entries fight is to run the
+    game's own rules. Anything else is a check answering a question it is not
+    measuring -- and the interesting cases are precisely the ones a slot-name
+    table gets wrong: a Bow takes BOTH hands, so `[BowHuntsman, ShieldBanded]`
+    silently loses the shield even though "bow" and "shield" look like different
+    slots, while `[MaceIron, ShieldBanded]` keeps both because the
+    OneHandedWeapon arm preserves a Shield in the left hand.
+
+    Applied in list order, first entry highest priority: an earlier entry that
+    would be displaced by a later one is reported, because the mod applies them
+    in order and the LAST writer of a slot wins.
+    """
+    worn: dict[str, str] = {}
+    kinds: dict[str, int] = {}  # slot -> item type currently in it
+    displaced: list[tuple[str, str, str]] = []
+    unslotted: list[str] = []
+    unequipable: list[str] = []
+
+    def take(slot: str, prefab: str, kind: int) -> None:
+        previous = worn.get(slot)
+        if previous is not None and previous != prefab:
+            displaced.append((previous, slot, prefab))
+        worn[slot] = prefab
+        kinds[slot] = kind
+
+    for prefab in order:
+        kind = table.item_type.get(prefab)
+        if kind is None:
+            unslotted.append(prefab)
+            continue
+        if kind == ITEM_TYPE_TORCH:
+            # MEASURED: the Torch arm writes m_leftItem only when m_rightItem
+            # already holds a OneHandedWeapon and m_leftItem is empty; otherwise
+            # it writes m_rightItem and clears both hands.
+            if kinds.get(SLOT_RIGHT) == ITEM_TYPE_ONE_HANDED and SLOT_LEFT not in worn:
+                take(SLOT_LEFT, prefab, kind)
+            else:
+                for slot in (SLOT_LEFT, SLOT_RIGHT):
+                    if slot in worn and worn[slot] != prefab:
+                        displaced.append((worn[slot], slot, prefab))
+                        del worn[slot]
+                        kinds.pop(slot, None)
+                take(SLOT_RIGHT, prefab, kind)
+            continue
+        if kind == ITEM_TYPE_ONE_HANDED:
+            # MEASURED: keeps the left hand when it holds a Shield or a Torch,
+            # and clears it otherwise.
+            held = kinds.get(SLOT_LEFT)
+            if held is not None and held not in (ITEM_TYPE_SHIELD, ITEM_TYPE_TORCH):
+                displaced.append((worn[SLOT_LEFT], SLOT_LEFT, prefab))
+                del worn[SLOT_LEFT]
+                kinds.pop(SLOT_LEFT, None)
+            take(SLOT_RIGHT, prefab, kind)
+            continue
+        if kind == ITEM_TYPE_SHIELD:
+            # MEASURED: keeps the right hand when it holds a OneHandedWeapon or
+            # a Torch, and clears it otherwise.
+            held = kinds.get(SLOT_RIGHT)
+            if held is not None and held not in (ITEM_TYPE_ONE_HANDED, ITEM_TYPE_TORCH):
+                displaced.append((worn[SLOT_RIGHT], SLOT_RIGHT, prefab))
+                del worn[SLOT_RIGHT]
+                kinds.pop(SLOT_RIGHT, None)
+            take(SLOT_LEFT, prefab, kind)
+            continue
+        claims = SLOT_BY_ITEM_TYPE.get(kind)
+        if not claims:
+            unequipable.append(prefab)
+            continue
+        for slot in claims:
+            take(slot, prefab, kind)
+    return EquipOutcome(
+        worn=worn,
+        order=list(order),
+        displaced=displaced,
+        unslotted=unslotted,
+        unequipable=unequipable,
+    )
+
+
 def slot_cost(prefab: str, count: int, measured: dict[str, int], fallbacks: dict[str, int]) -> tuple[int, str]:
     if count <= 1:
         # One item is one slot whatever the stack size, so this needs no table.
@@ -908,58 +1227,299 @@ def slot_cost(prefab: str, count: int, measured: dict[str, int], fallbacks: dict
 class Partition:
     carried: dict[str, int]
     carried_slots: int
+    carried_kg: float
     overflow: dict[str, int]
     overflow_slots: int
     detail: dict[str, tuple[int, str, str]]  # prefab -> (slots, evidence, bucket)
     dupes: list[str]
     unknown: list[str]
+    unpriced: list[str]
+    priority_kg: float
+    budget_kg: float
+    capacity_kg: float
+    dropped_for_weight: list[str]
+    quality: dict[str, int]
+    quality_conflicts: list[str]
+    quality_illegal: list[tuple[str, int, int]]  # (prefab, asked, measured max)
+    quality_unbounded: list[str]  # asked > 1 with no measured m_maxQuality
+    equip: EquipOutcome
+    equip_not_granted: list[str]
+
+    @property
+    def headroom_kg(self) -> float:
+        return self.capacity_kg - self.carried_kg
+
+    @property
+    def load_fraction(self) -> float:
+        return (self.carried_kg / self.capacity_kg) if self.capacity_kg else 0.0
 
 
-def partition(preset, world: World, measured: dict[str, int], fallbacks: dict[str, int]) -> Partition:
-    """Split the preset's items into what a 32-slot grid can hold and what cannot.
+def partition(
+    preset,
+    world: World,
+    measured: dict[str, int],
+    fallbacks: dict[str, int],
+    table: ItemTable,
+) -> Partition:
+    """Split the preset's items into what the character can hold and what cannot.
+
+    TWO limits, not one. Slots were the only one this used to model, and a kit
+    that fits in 32 slots can still spawn the player overburdened -- MEASURED on
+    pre-bonemass: 32 of 32 slots and 426.8 kg against a 300 kg carry limit.
 
     Priority is kit, then chain_items, then the cheapest materials, because the
     kit is what makes a character read as "at this tier" and materials are also
     reachable from a chest. An entry that does not fit is skipped and the next is
     tried -- deterministic, and it wastes no slots -- rather than truncating the
     whole tail.
+
+    The priority buckets are taken on SLOTS ALONE, deliberately: they are what the
+    preset is FOR, so making them lose a coin-flip against a weight budget would
+    quietly emit a kit missing its armour. If they do not fit the budget the
+    preset is mis-specified and `weight_problems` refuses the build. Materials
+    are then added cheapest-first while BOTH limits allow, so a correctly
+    authored preset lands under budget with its materials trimmed rather than its
+    gear.
+
+    EQUIPPED entries are pinned. ServerCharacters equips what it was told to
+    equip, and it can only equip what reached the inventory, so an equipped
+    prefab that the partition dropped for slots or weight would be a template
+    asking the game to wear something the character does not have. They
+    therefore enter the grid first, before any bucket ordering, and
+    `weight_problems` refuses the build if even that does not fit.
     """
     merged, ordered, dupes = item_map(preset)
+    quality, quality_conflicts = quality_map(preset)
 
     detail: dict[str, tuple[int, str, str]] = {}
     first_bucket: dict[str, str] = {}
     for bucket, prefab, _count in ordered:
         first_bucket.setdefault(prefab, bucket)
     unknown: list[str] = []
+    unpriced: list[str] = []
     for prefab, count in merged.items():
         slots, evidence = slot_cost(prefab, count, measured, fallbacks)
         if evidence == "unknown":
             unknown.append(prefab)
+        if prefab not in table.weights:
+            unpriced.append(prefab)
         detail[prefab] = (slots, evidence, first_bucket[prefab])
 
+    # Legality of every requested quality, against the game's own m_maxQuality.
+    # The new ServerCharacters CLAMPS an over-max quality at runtime rather than
+    # refusing, so this never has to fire to keep a character safe -- it fires so
+    # that a preset asking for something the game cannot give is a build error
+    # instead of a silent downgrade, which is exactly how 14 pre-bonemass
+    # `quality: 3` entries went a whole session arriving as quality 1.
+    quality_illegal: list[tuple[str, int, int]] = []
+    quality_unbounded: list[str] = []
+    for prefab, asked in sorted(quality.items()):
+        if asked <= 1:
+            continue
+        cap = table.max_quality.get(prefab)
+        if cap is None:
+            quality_unbounded.append(prefab)
+        elif asked > cap:
+            quality_illegal.append((prefab, asked, cap))
+
+    wanted = equip_list(preset)
+    equip = equip_outcome(wanted, table)
+    equip_not_granted = [p for p in wanted if p not in merged]
+
+    def kg(prefab: str) -> float:
+        # An unpriced prefab is reported, not guessed at. Treating it as
+        # weightless would be a check answering a question it is not measuring,
+        # so it counts as the whole budget and forces the refusal.
+        if prefab not in table.weights:
+            return world.carry_budget_kg
+        return table.weight_at(prefab, merged[prefab], quality.get(prefab, 1))
+
     rank = {"kit": 0, "chain_items": 1, "materials": 2}
+    # Materials go cheapest-first, and "cheapest" now means LIGHTEST, not
+    # fewest-slots. Weight is the binding limit once the grid has 32 slots and the
+    # budget has 210 kg, and materials exist per KIND -- Valheim marks a recipe
+    # known once the player has held its materials -- so spending the budget on
+    # the lightest entries maximises the number of recipes that come with the
+    # character. Slots stay as the tie-break, then the name, so the result is
+    # still total and deterministic.
     order = sorted(
         merged,
-        key=lambda p: (rank[detail[p][2]], detail[p][0] if detail[p][2] == "materials" else 0, p),
+        key=lambda p: (
+            rank[detail[p][2]],
+            (kg(p), detail[p][0]) if detail[p][2] == "materials" else (0.0, 0),
+            p,
+        ),
     )
 
+    budget = world.carry_budget_kg
     carried: dict[str, int] = {}
+    dropped_for_weight: list[str] = []
     used = 0
-    for prefab in order:
-        cost = detail[prefab][0]
-        if used + cost <= world.slots:
-            carried[prefab] = merged[prefab]
-            used += cost
+    load = 0.0
+    priority_kg = 0.0
+    # Equipped first, in the order the template lists them, then everything else
+    # in bucket order. `order` is already total and deterministic, so prepending
+    # a deterministic prefix keeps it so.
+    pinned = [p for p in wanted if p in merged]
+    for prefab in pinned + [p for p in order if p not in pinned]:
+        cost, _evidence, bucket = detail[prefab]
+        if used + cost > world.slots:
+            continue
+        weight = kg(prefab)
+        if bucket in PRIORITY_BUCKETS or prefab in equip.worn.values():
+            priority_kg += weight
+        elif load + weight > budget:
+            dropped_for_weight.append(prefab)
+            continue
+        carried[prefab] = merged[prefab]
+        used += cost
+        load += weight
     overflow = {p: c for p, c in merged.items() if p not in carried}
     return Partition(
         carried=carried,
         carried_slots=used,
+        carried_kg=round(load, 3),
         overflow=overflow,
         overflow_slots=sum(detail[p][0] for p in overflow),
         detail=detail,
         dupes=dupes,
         unknown=sorted(unknown),
+        unpriced=sorted(unpriced),
+        priority_kg=round(priority_kg, 3),
+        budget_kg=round(budget, 3),
+        capacity_kg=world.carry_capacity_kg,
+        dropped_for_weight=sorted(dropped_for_weight),
+        quality=quality,
+        quality_conflicts=quality_conflicts,
+        quality_illegal=quality_illegal,
+        quality_unbounded=quality_unbounded,
+        equip=equip,
+        equip_not_granted=equip_not_granted,
     )
+
+
+def kit_problems(
+    world: World, preset, part: Partition, table: ItemTable
+) -> list[str]:
+    """Why this preset must NOT be rendered, in numbers an author can act on.
+
+    This is the check whose absence is the whole reason this code exists. The
+    operator found a 426.8 kg pre-bonemass kit by being unable to walk away from
+    the spawn; every number below was computable before anyone logged in. The
+    equip and quality checks are the same idea applied to the two fields the mod
+    only started honouring today: a kit that names gear it does not grant, or a
+    quality the game cannot produce, is a lie the build should catch rather than
+    a surprise the player finds.
+    """
+    problems: list[str] = []
+    if part.unpriced:
+        problems.append(
+            f"{world.name}/{preset.name}: {len(part.unpriced)} prefab(s) have no measured "
+            f"weight, so this kit's load cannot be verified: {', '.join(part.unpriced)}. "
+            "Regenerate tools/jumpstart/data/item_weights.json with "
+            "tools/jumpstart/extract_item_weights.py, or drop the prefab."
+        )
+    where = f"Edit tools/jumpstart/presets/{preset.name}.yaml."
+    if part.equip_not_granted:
+        problems.append(
+            f"{world.name}/{preset.name}: equip: names "
+            f"{len(part.equip_not_granted)} prefab(s) the preset does not grant: "
+            f"{', '.join(part.equip_not_granted)}. ServerCharacters can only equip what "
+            f"AddItem put in the inventory, so these entries are ignored and logged and "
+            f"the character spawns without them. {where}"
+        )
+    missing = [p for p in part.equip.worn.values() if p not in part.carried]
+    if missing:
+        problems.append(
+            f"{world.name}/{preset.name}: equip: names "
+            f"{len(set(missing))} prefab(s) that did not fit the "
+            f"{world.slots}-slot grid or the {part.budget_kg:g} kg budget and so never "
+            f"reach the inventory: {', '.join(sorted(set(missing)))}. {where}"
+        )
+    if part.equip.displaced:
+        detail = ", ".join(
+            f"{lost} loses the {slot} to {winner}"
+            for lost, slot, winner in part.equip.displaced
+        )
+        problems.append(
+            f"{world.name}/{preset.name}: equip: lists "
+            f"{len(part.equip.displaced)} item(s) that cannot be worn at the same time "
+            f"as a later entry -- {detail}. Slot arbitration is the GAME's "
+            f"(Humanoid::EquipItem), replayed here from the measured m_itemType, and the "
+            f"last writer of a slot wins, so an earlier entry named here arrives in the "
+            f"bag rather than on the character. List one item per slot. {where}"
+        )
+    if part.equip.unequipable:
+        kinds = ", ".join(
+            f"{p} ({table.type_name(p)})" for p in sorted(set(part.equip.unequipable))
+        )
+        problems.append(
+            f"{world.name}/{preset.name}: equip: names item(s) the game cannot equip at "
+            f"all: {kinds}. MEASURED from ItemData::IsEquipable, only "
+            "OneHandedWeapon/TwoHandedWeapon/TwoHandedWeaponLeft/Bow/Shield/Tool/Torch/"
+            f"Helmet/Chest/Legs/Shoulder/Utility/Ammo/Trinket have a slot. {where}"
+        )
+    if part.equip.unslotted:
+        problems.append(
+            f"{world.name}/{preset.name}: equip: names "
+            f"{len(set(part.equip.unslotted))} prefab(s) with no measured m_itemType, so "
+            f"which slot they take cannot be answered: "
+            f"{', '.join(sorted(set(part.equip.unslotted)))}. Regenerate "
+            "tools/jumpstart/data/item_weights.json with "
+            "tools/jumpstart/extract_item_weights.py; a prefab priced only from the "
+            "ItemStacksRewrite dump carries a weight and nothing else."
+        )
+    if part.quality_illegal:
+        detail = ", ".join(
+            f"{p} asks {asked} but m_maxQuality is {cap}"
+            for p, asked, cap in part.quality_illegal
+        )
+        problems.append(
+            f"{world.name}/{preset.name}: {len(part.quality_illegal)} quality request(s) "
+            f"exceed the item's measured maximum -- {detail}. ServerCharacters clamps at "
+            f"runtime and logs it, so the character is safe; the preset is still asking "
+            f"for something that does not exist. {where}"
+        )
+    if part.quality_unbounded:
+        problems.append(
+            f"{world.name}/{preset.name}: "
+            f"{len(part.quality_unbounded)} prefab(s) ask for quality > 1 with no "
+            f"measured m_maxQuality to check it against: "
+            f"{', '.join(part.quality_unbounded)}. Regenerate "
+            "tools/jumpstart/data/item_weights.json with "
+            "tools/jumpstart/extract_item_weights.py."
+        )
+    if part.quality_conflicts:
+        problems.append(
+            f"{world.name}/{preset.name}: "
+            f"{len(part.quality_conflicts)} prefab(s) are listed twice at different "
+            f"qualities: {', '.join(part.quality_conflicts)}. `items` is a map, so one "
+            f"quality wins; the highest is taken. Say it once. {where}"
+        )
+    if part.carried_kg > part.budget_kg:
+        heaviest = sorted(
+            (
+                (
+                    table.weight_at(prefab, count, part.quality.get(prefab, 1)),
+                    prefab,
+                    count,
+                )
+                for prefab, count in part.carried.items()
+                if part.detail[prefab][2] in PRIORITY_BUCKETS
+            ),
+            reverse=True,
+        )[:5]
+        worst = ", ".join(f"{p} x{c} = {w:g} kg" for w, p, c in heaviest)
+        problems.append(
+            f"{world.name}/{preset.name}: the kit this template would grant weighs "
+            f"{part.carried_kg:g} kg, over the {part.budget_kg:g} kg budget "
+            f"({part.budget_kg / part.capacity_kg:.0%} of the MEASURED "
+            f"{part.capacity_kg:g} kg carry capacity), leaving "
+            f"{part.headroom_kg:g} kg of headroom. Materials are already trimmed to fit, "
+            f"so {'/'.join(PRIORITY_BUCKETS)} is the {part.priority_kg:g} kg that has to "
+            f"come down -- heaviest first: {worst}. {where}"
+        )
+    return problems
 
 
 def effective_modifiers(preset, world: World, policy: dict) -> tuple[dict[str, str], list[str]]:
@@ -1157,6 +1717,13 @@ def render_chest_manifest(world: World, preset, part: Partition, capacity: int |
         "# ignores the return -- so anything past the last free slot vanishes silently.",
         f"# This world's grid is {world.slots} slots (world.yaml inventory.slots).",
         "#",
+        "# TWO limits push items into this file, not one. The second is WEIGHT: a kit",
+        "# that fits in the grid can still spawn the character OVERBURDENED, so materials",
+        f"# are also trimmed to keep the template under {part.budget_kg:g} kg -- "
+        f"{world.carry_budget_fraction:.0%} of the",
+        f"# MEASURED {part.capacity_kg:g} kg carry capacity. `dropped_for_weight` below is",
+        "# what the grid could have held and the budget could not.",
+        "#",
         "# Delivery is headless and does not need the player online, per BlueprintHunt:",
         "#   findObjects -prefab piece_chest -near <x> <y> <z> <r>   -> ZDO ids",
         "#   addItemToContainer <id:userid> <item_name> -count <n>   -> stock each chest",
@@ -1174,6 +1741,11 @@ def render_chest_manifest(world: World, preset, part: Partition, capacity: int |
         "tier": preset.tier,
         "carried_by_template_slots": part.carried_slots,
         "inventory_slots": world.slots,
+        "carried_by_template_kg": part.carried_kg,
+        "carry_capacity_kg": part.capacity_kg,
+        "carry_budget_kg": part.budget_kg,
+        "headroom_kg": round(part.headroom_kg, 3),
+        "dropped_for_weight": part.dropped_for_weight,
         "overflow_slots": part.overflow_slots,
         "implied_chests_at_32_slots": implied,
         "items": {p: part.overflow[p] for p in sorted(part.overflow)},
@@ -1203,7 +1775,9 @@ def render_chest_manifest(world: World, preset, part: Partition, capacity: int |
     return "\n".join(doc) + yaml.safe_dump(body, sort_keys=False, width=88, allow_unicode=True)
 
 
-def render_template(world: World, preset, part: Partition, spawn: list[dict]) -> str:
+def render_template(
+    world: World, preset, part: Partition, spawn: list[dict], table: ItemTable
+) -> str:
     sc = world.raw.get("servercharacters") or {}
     omit = dict((world.raw.get("skills") or {}).get("omit") or {})
     skills = {
@@ -1212,7 +1786,11 @@ def render_template(world: World, preset, part: Partition, spawn: list[dict]) ->
         if level and name not in omit
     }
     dropped_inert = sorted(n for n in omit if preset.skills.get(n))
-    quality_lost = sorted({str(r["prefab"]) for r in preset.raw.get("kit") or [] if int(r.get("quality", 1)) > 1})
+    quality = {p: q for p, q in sorted(part.quality.items()) if q > 1 and p in part.carried}
+    worn_by_slot = {
+        slot: part.equip.worn[slot]
+        for slot in sorted(part.equip.worn, key=lambda s: (SLOT_ORDER.index(s) if s in SLOT_ORDER else 99, s))
+    }
 
     lines = provenance(world, preset, "ServerCharacters CharacterTemplate.yml")
     lines += [
@@ -1222,30 +1800,84 @@ def render_template(world: World, preset, part: Partition, spawn: list[dict]) ->
         f"# {sc.get('requires_version')} server.",
         f"# STATUS: {sc.get('status')} -- see world.yaml servercharacters.status_note.",
         "#",
-        "# Install: copy this file to",
+        "# Install: copy this file to the world's GENERATED deploy layer,",
         f"#   {sc.get('durable_path')}",
-        "# The server watches it and live-reloads; no restart. One server holds ONE",
-        "# template, so exactly one preset is active at a time.",
+        "# then deploy. That layer is the fourth and last source the plugin tree is",
+        "# assembled from (cache -> manual-mods -> admin-mode -> generated), so it",
+        "# survives an admin-mode profile swap. It is deliberately NOT the profile's",
+        "# manual-mods overlay: manual-mods is PER PROFILE and this template is PER",
+        "# WORLD, so deploying a different profile left the file in no deploy source at",
+        "# all and the rebuild deleted it -- MEASURED tonight, and the operator met it as",
+        "# a new character with no kit and no preset spawn.",
+        "# The server watches the installed file and live-reloads; no restart. One server",
+        "# holds ONE template, so exactly one preset is active at a time.",
         "#",
         "# APPLIES TO NEW CHARACTERS ONLY. The client wipes inventory, skills, known",
         "# recipes and stations, calls GiveDefaultItems(), then applies this. An existing",
         "# character sees nothing.",
         "#",
-        "# Exactly three top-level keys are permitted. The deserializer is built with",
-        "# IgnoreFields() and the only catch is for SerializationException, which does not",
-        "# catch YamlDotNet's YamlException -- so an unknown top-level key throws out of a",
-        "# Harmony prefix. Comments are safe; extra keys are not.",
+        "# FIVE top-level keys are permitted by the build this world runs, and unknown",
+        "# keys are no longer fatal: the deserializer ignores unmatched properties and",
+        "# logs their names. The OLD 1.4.17 build is a different story -- it catches only",
+        "# SerializationException, which does not catch YamlDotNet's YamlException, so an",
+        "# unknown top-level key escapes a Harmony postfix and the WHOLE template is",
+        "# discarded: no skills, no items, no spawn. The DLL therefore has to reach the",
+        "# server and every client BEFORE this file is installed.",
         "#",
         "# What this format drops, and where it went instead:",
-        f"#   quality     AddItem hardcodes 1. {len(quality_lost)} kit entries ask for quality > 1 and",
-        "#               arrive unupgraded; they must be upgraded at the station.",
         f"#   overflow    {len(part.overflow)} prefabs ({part.overflow_slots} slots) do not fit in "
         f"{world.slots} inventory slots",
+        f"#               or the {part.budget_kg:g} kg weight budget"
+        f"{f' ({len(part.dropped_for_weight)} dropped for weight alone)' if part.dropped_for_weight else ''}",
         "#               and are in settings/chest-manifest.yaml instead.",
         "#   stations    buildings, not inventory -- blueprints/ and placements.yaml.",
         "#   keys        world state, not character state -- keys.yaml.",
         "#   modifiers   launch arguments -- settings/world-modifiers.env.",
-        "#   equipping   nothing is auto-equipped; the kit arrives in the bag.",
+        "#",
+        "# EQUIPPING. `equip:` is an ordered list, highest priority first, and every entry",
+        "# MUST also appear in `items:` because the mod can only equip what AddItem put in",
+        "# the inventory. Slot arbitration is the GAME's: the template names no slots,",
+        "# because m_itemType already decides which slot an item takes and a second source",
+        "# of truth could only ever disagree with the first. derive.py replays",
+        "# Humanoid::EquipItem over the list and REFUSES to render a template in which any",
+        "# listed item is displaced, so what is below is what the character wears:",
+        *[f"#   {slot:11} {prefab}" for slot, prefab in worn_by_slot.items()],
+        "# Everything else stays in the bag, which is correct -- a player switches to the",
+        "# sledge when they want the sledge.",
+        "#",
+        "# QUALITY. Honoured now, and clamped at runtime to [1, m_shared.m_maxQuality] read",
+        f"# live from the ObjectDB. {len(quality)} entries ask for more than 1. Quality does NOT",
+        "# change carried weight for any of them: MEASURED from ItemData::GetWeight, the",
+        "# quality term is gated on m_scaleWeightByQuality != 0, and across all 2,481 priced",
+        "# prefabs that field is nonzero for exactly 21 -- 20 fish variants at 1.0 and",
+        "# AsksvinEgg at 0.2. No weapon, shield, armour piece, tool or cape scales.",
+        "#",
+        f"# CARRY LOAD: {part.carried_kg:g} kg of a MEASURED {part.capacity_kg:g} kg capacity "
+        f"= {part.load_fraction:.0%},",
+        f"# leaving {part.headroom_kg:g} kg of headroom against the "
+        f"{part.budget_kg:g} kg budget.",
+        "# Capacity is Player::m_maxCarryWeight (ldc.r4 300 in Player..ctor) times",
+        "# Game::m_carryWeightRate (1, no preset sets GlobalKey 0x10), with no status",
+        "# effect and nothing equipped on a fresh character. IsEncumbered is a STRICT",
+        "# greater-than, so the budget exists to leave room to pick things up, not to",
+        "# dodge a rounding error. Per-item weights: tools/jumpstart/data/item_weights.json.",
+        "# NOTHING EQUIPPED IS BUDGETED FOR, deliberately, and two levers are left on the",
+        "# table to keep it that way:",
+        "#   BeltStrength      +150 carry (MEASURED, SE_Stats.m_addMaxCarryWeight). It is",
+        "#                     Utility (m_itemType 18), the same slot as Demister and",
+        "#                     Wishbone, which five of the nine presets need; and no kit",
+        "#                     needs the 150 kg. Not granted anywhere.",
+        "#   AdventureBackpacks +5..30 carry per item level and a 0.5 multiplier on",
+        "#                     CONTENTS (MEASURED from the live, server-enforced",
+        "#                     vapok.mods.adventurebackpacks.cfg). The multiplier applies",
+        "#                     to nothing at spawn: AB keeps backpack contents in the",
+        "#                     item's m_customData and neither string overload of",
+        "#                     Inventory::AddItem takes custom data, so a template-granted",
+        "#                     backpack is necessarily EMPTY. It is granted and equipped as",
+        "#                     pure headroom, never as budget.",
+        "# The 95Shade-CarryWeightSkill +3/level bonus is likewise NOT budgeted for:",
+        "# MEASURED, its DLL reaches the client tree only and never the server, so it",
+        "# cannot be guaranteed for a player whose client lacks the package.",
         "#",
         "# Which of these skills actually move yield (MEASURED by YieldDesign). Five",
         "# skills drive the gathering economy and three of them are custom skills",
@@ -1326,7 +1958,11 @@ def render_template(world: World, preset, part: Partition, spawn: list[dict]) ->
     if part.carried:
         for prefab in sorted(part.carried):
             lines.append(f"  {prefab}: {part.carried[prefab]}")
-        lines.append(f"# {part.carried_slots} of {world.slots} inventory slots used.")
+        lines.append(
+            f"# {part.carried_slots} of {world.slots} inventory slots used, "
+            f"{part.carried_kg:g} of {part.capacity_kg:g} kg carried "
+            f"({part.load_fraction:.0%}), {part.headroom_kg:g} kg free."
+        )
         if part.dupes:
             lines.append(
                 "# Summed across buckets (the preset lists these twice, and `items` is a map): "
@@ -1334,6 +1970,42 @@ def render_template(world: World, preset, part: Partition, spawn: list[dict]) ->
             )
     else:
         lines.append("  {}")
+
+    lines.append("quality:")
+    if quality:
+        for prefab, level in quality.items():
+            lines.append(f"  {prefab}: {level}")
+        maxed = [p for p, level in quality.items() if table.max_quality.get(p) == level]
+        lines.append(
+            f"# {len(quality)} entries above the default 1; everything else is 1 by"
+            " omission."
+        )
+        if maxed:
+            lines.append(
+                f"# {len(maxed)} of them sit at the item's measured m_maxQuality: "
+                + ", ".join(f"{p} {quality[p]}" for p in maxed)
+                + "."
+            )
+    else:
+        lines.append("  {}")
+        lines.append("# Nothing in this kit asks for more than quality 1.")
+
+    lines.append("equip:")
+    if part.equip.order:
+        for prefab in part.equip.order:
+            lines.append(f"  - {prefab}")
+        lines.append(
+            f"# {len(part.equip.worn)} slots filled, replayed through the game's own"
+            " arbitration:"
+        )
+        for slot, prefab in worn_by_slot.items():
+            lines.append(
+                f"#   {slot:11} {prefab} (m_itemType {table.type_name(prefab)},"
+                f" quality {part.quality.get(prefab, 1)})"
+            )
+    else:
+        lines.append("  []")
+        lines.append("# Nothing is equipped: this preset lists no `equip:` entries.")
 
     lines.append("spawn:")
     if spawn:
@@ -1384,24 +2056,27 @@ def render_template(world: World, preset, part: Partition, spawn: list[dict]) ->
 # drive
 # ==========================================================================
 def generate(
-    world: World, preset, policy: dict, measured, fallbacks, spawn: list[dict]
-) -> dict[str, str]:
+    world: World, preset, policy: dict, measured, fallbacks, table: ItemTable, spawn: list[dict]
+) -> tuple[dict[str, str], list[str]]:
+    """(files, kit problems). Problems are returned, never printed here."""
     preset_dir = world.root / preset.name
-    part = partition(preset, world, measured, fallbacks)
+    part = partition(preset, world, measured, fallbacks, table)
     capacity = load_container_capacity(load_placements(preset_dir))
-    return {
+    files = {
         "settings/world-modifiers.env": render_modifiers(world, preset, policy),
         "settings/overrides.yaml": render_overrides(world, preset, policy),
         "settings/chest-manifest.yaml": render_chest_manifest(world, preset, part, capacity),
         "keys.yaml": render_keys(world, preset, policy),
-        "charactertemplate.yml": render_template(world, preset, part, spawn),
+        "charactertemplate.yml": render_template(world, preset, part, spawn, table),
     }
+    return files, kit_problems(world, preset, part, table)
 
 
 def run(world_name: str, preset_names: list[str] | None, write: bool) -> int:
     world = load_world(world_name)
     policy = load_policy()
     measured, fallbacks = load_stacks(world)
+    table = load_item_table(world)
     if not measured:
         print(
             f"warning: stack table {world.stack_table_path} not readable; "
@@ -1416,16 +2091,30 @@ def run(world_name: str, preset_names: list[str] | None, write: bool) -> int:
         preset_dir = world.root / name
         placements = load_placements(preset_dir)
         spawn, problems = audit_spawn(world, preset, placements, load_spawn_file(preset_dir))
-        files = generate(world, preset, policy, measured, fallbacks, spawn)
+        files, overweight = generate(
+            world, preset, policy, measured, fallbacks, table, spawn
+        )
         if problems:
             # The template is the only file that carries a coordinate, so it is
             # the only one held back: shipping a spawn whose terrain verdict no
             # longer applies is the failure this check exists to stop.
-            files.pop("charactertemplate.yml")
+            files.pop("charactertemplate.yml", None)
             for problem in problems:
                 print(f"SPAWN    {problem}", file=sys.stderr)
             drift += len(problems)
             print(f"{'HELD':8s} {world.name}/{name}/charactertemplate.yml")
+        if overweight:
+            # Same rule, different limit. A template that would spawn the player
+            # overburdened -- or wearing nothing, or wearing one of two items it
+            # names -- is worse than a missing one: the missing one is a visible
+            # gap, the wrong one reaches the player and is only found in game.
+            held = "charactertemplate.yml" in files
+            files.pop("charactertemplate.yml", None)
+            for problem in overweight:
+                print(f"KIT      {problem}", file=sys.stderr)
+            drift += len(overweight)
+            if held:
+                print(f"{'HELD':8s} {world.name}/{name}/charactertemplate.yml")
         for rel, content in files.items():
             path = preset_dir / rel
             current = path.read_text("utf-8") if path.exists() else None

@@ -11,6 +11,13 @@
 #   world_modifiers  the -modifier <key> <value> pairs this preset implies.
 #                    NOT applied by the driver: they are launch arguments.
 #   kit              worn/carried gear, tools, ammunition, consumables.
+#   equip            ORDERED list of `kit` prefabs the character spawns WEARING
+#                    or HOLDING, highest priority first. Everything else stays
+#                    in the bag. Slots are NOT named here: an item's slot is
+#                    m_shared.m_itemType and naming it again would create a
+#                    second source of truth. derive.py replays the game's own
+#                    Humanoid::EquipItem over this list and refuses to render a
+#                    template in which any listed entry is displaced.
 #   materials        biome material stock. Doubles as the recipe-unlock
 #                    mechanism: Valheim discovers a recipe when the player
 #                    first holds its materials.
@@ -73,21 +80,43 @@ kit:
 - prefab: CapeDeerHide
   quality: 2
   count: 1
+- prefab: BackpackMeadows
+  quality: 4
+  count: 1
 - prefab: Tankard
   quality: 1
   count: 1
 - prefab: ArrowFlint
   quality: 1
-  count: 100
+  count: 50
 - prefab: ArrowWood
   quality: 1
-  count: 100
+  count: 50
 - prefab: MeadHealthMinor
   quality: 1
-  count: 10
+  count: 5
 - prefab: MeadStaminaMinor
   quality: 1
-  count: 10
+  count: 5
+equip:
+# WORN. The whole leather set, which is the only armour granted.
+- HelmetLeather
+- ArmorLeatherChest
+- ArmorLeatherLegs
+# BackpackMeadows (Satchel) takes the Shoulder slot from CapeDeerHide. MEASURED:
+# both are m_itemType 17, both 1 armour + 1 per level, and CapeDeerHide's
+# m_damageModifiers is EMPTY and its m_equipStatusEffect is null -- it is pure
+# armour, and at quality 4 the two are armour-identical. The satchel adds a 3x1
+# grid rising to 6x1 and, from the live server-enforced config, +5 carry per item
+# level. The cape stays in the bag.
+- BackpackMeadows
+# HELD. AxeFlint over SpearFlint because a tier-1 character's job is to walk out
+# and gather: the axe fights AND fells trees, and Lumberjacking is the only skill
+# that moves wood yield on this mod set. ShieldWood coexists with it -- MEASURED,
+# the OneHandedWeapon arm of EquipItem keeps a Shield in the left hand.
+- AxeFlint
+- ShieldWood
+- ArrowFlint
 materials:
 - prefab: Wood
   count: 300

@@ -12,8 +12,14 @@ coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGe
   straddling 30, and every land location type in the ZoneSystem dump floors at 30.50..31.11 because Valheim
   places land locations with minAltitude 1. `freeboard_m` in each solved block is the metres the footprint''s
   LOWEST cell clears y=30 by, measured on a 1 m river-inclusive sample; negative means part of the pad
-  is under water. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is
-  dropped exactly onto y.'
+  is under water. `align: floor-center` means the blueprint is centred on x/z and its FLOOR PLANE is dropped
+  exactly onto y. The floor plane is measured from the game''s own piece colliders by tools/jumpstart/blueprints/base_geometry.py
+  and recorded per placement in `blueprint_datum`; the placement Y emitted to the server is `flatten_cost.target_y
+  - blueprint_datum.base_y`. The previous `align: ground-center` dropped the lowest PIVOT onto y instead,
+  which is not a surface: MEASURED, `stone_floor_2x2` is a 2x2x1 m solid whose pivot sits at mid-thickness,
+  and 99 of the 157 non-empty corpus bodies are normalised so that min pivot Y == 0, on which that shift
+  was always exactly 0.0. That is why every structure floated while loose props spawned at the same pad
+  height sat correctly.'
 constraint_note: 'Constraints come in two classes and the solver treats them differently. HARD -- biome,
   min_biome_purity, min_height_m (freeboard over the WHOLE footprint above the y=30 water plane), location_clearance_m,
   coastal/coastal_within_m, within_m, and require_overland when declared -- are things no amount of building
@@ -38,7 +44,7 @@ placements:
   - 16.8
   creator: BjOrN
   viability: PLACES_WITH_GAPS
-  align: ground-center
+  align: floor-center
   requirement:
     biome: BlackForest
     footprint_m: 70
@@ -603,3 +609,64 @@ placements:
         flat_spread_coarse_m: 17.45
         flat_p5_p95_m: 12.71
         refined_moved_m: 1.6
+  blueprint_datum:
+    base_y: 1.5
+    method: lowest_walkable_surface
+    placeable: true
+    bottom_solid_y: -0.5
+    support_bottom_y: 1.546
+    lowest_station_y: 2.119
+    lowest_ground_resting_y: 1.764
+    floor_pieces: 452
+    pieces: 1908
+    walkable_levels:
+    - y: 1.5
+      above_pad_m: 0.0
+      pieces: 7
+      area_m2: 28.0
+    - y: 1.84
+      above_pad_m: 0.34
+      pieces: 31
+      area_m2: 124.0
+    - y: 2.06
+      above_pad_m: 0.56
+      pieces: 17
+      area_m2: 68.0
+    - y: 2.14
+      above_pad_m: 0.64
+      pieces: 40
+      area_m2: 61.0
+    - y: 2.42
+      above_pad_m: 0.92
+      pieces: 7
+      area_m2: 28.0
+    - y: 2.5
+      above_pad_m: 1.0
+      pieces: 7
+      area_m2: 28.0
+    - y: 2.84
+      above_pad_m: 1.34
+      pieces: 4
+      area_m2: 16.0
+    - y: 3.0
+      above_pad_m: 1.5
+      pieces: 3
+      area_m2: 3.0
+    - y: 3.14
+      above_pad_m: 1.64
+      pieces: 3
+      area_m2: 3.0
+    - y: 3.94
+      above_pad_m: 2.44
+      pieces: 3
+      area_m2: 3.0
+    - y: 4.14
+      above_pad_m: 2.64
+      pieces: 6
+      area_m2: 6.0
+    - y: 4.94
+      above_pad_m: 3.44
+      pieces: 28
+      area_m2: 70.0
+    walkable_levels_total: 27
+    violations: []

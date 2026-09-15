@@ -231,6 +231,136 @@ half-applied window by hand with `manage_mods.sh <WORLD> deploy --apply`, then
 `start_valheim_server.sh <WORLD>` and `wait_valheim_server_ready.sh <WORLD>`; that is the
 command the failure message names.
 
+### Generated per-world server config lives in `<world>/mods/generated/`
+
+`portal_mod_admin.sh WORLD PROFILE deploy` rebuilds
+`<world>/config_merged/bepinex/plugins` from its sources and renames the rebuilt tree
+over the live one. The sources, in the order they are layered (measured in
+`cmd_deploy`, 2026-09-15):
+
+| order | source | scope |
+|---|---|---|
+| 1 | `profiles/<P>/manager-cache/server/BepInEx/plugins` | per profile |
+| 2 | `profiles/<P>/manual-mods/` | per profile |
+| 3 | `<world>/mods/admin-mode/` | per world, maintenance window only |
+| 4 | `<world>/mods/generated/` | per world, durable |
+
+Because the tree is replaced wholesale, **a file that exists only in the live tree is
+deleted by the next deploy.** That is what happened to ServerCharacters'
+`CharacterTemplate.yml` on Ulfsland on 2026-09-15: `tools/jumpstart` generates it per
+world *and* per preset, so it is in no Thunderstore package, and its durable home was
+`profiles/ulfsland-dn/manual-mods/ServerCharacters/CharacterTemplate.yml` — per
+*profile*. Ulfsland links to `ulfsland-dn`, but the admin-mode window deploys
+`ulfsland-admin`, whose `manual-mods/` has no `ServerCharacters/` at all. The deploy
+rebuilt the plugin directory with the DLL, `README.md` and `manifest.json` and no
+template, silently, and the symptom appeared much later as new characters with no
+starting kit and no spawn point.
+
+Layer 4 is the fix and the answer to "who owns this file": generated per-world server
+config is a deploy **source**, held under the world's own `mods/`, so no choice of
+profile can leave it out and no deploy has to remember to preserve it. It holds
+plugin-relative paths, so the template is
+`<world>/mods/generated/ServerCharacters/CharacterTemplate.yml`. It is layered last, and
+therefore beats a package-shipped file of the same name — a per-world statement is more
+specific than a shared one.
+
+The trade-off, stated plainly: this does **not** preserve files someone placed into the
+live plugin tree by hand. Preserving those would have meant an allow-list, which loses
+any file nobody remembered to declare, and would make a stale hand-edit permanent.
+Instead the deploy reports every removal it cannot explain:
+
+| line | meaning |
+|---|---|
+| `generated=<path>` | where layer 4 was read from |
+| `generated_placed=<Plugin>/<file>` | a file layer 4 contributed to this deploy |
+| `generated_file=<Plugin>/<file>` | `deploy-plan` only: what a deploy would carry, read-only |
+| `deploy_removed=<Package>` | a whole plugin directory no source carries — a package removal taking effect |
+| `deploy_dropped=<Plugin>/<file>` | **a file removed from a plugin directory the deploy kept.** Nobody asked for this one |
+| `deploy_dropped_files=<n>`, `deploy_dropped_backup=<path>` | the count, and the backup the files are recoverable from |
+
+A `deploy_dropped=` line also prints a `warning:` on stderr naming the backup and this
+directory. `deploy-plan` answers the same question without writing anything, which is the
+only check available while a world is being played.
+
+### A deploy refuses a cache entry that disagrees with its own archive
+
+`deploy --apply` compares every cached server package against the archive the profile
+manifest pins — computed from the zip index, so nothing is inflated and it costs one
+central-directory read per package — and refuses when a file the archive carries is not
+where the extractor would have written it. `deploy-plan` reports the same thing as
+`cache_stale=<identifier> missing=<paths>` without writing anything.
+
+Found 2026-09-15 while fixing the `CharacterTemplate.yml` loss. `profiles/ulfsland-dn`
+held `ImpactfulSkills` with its DLL at `ImpactfulSkills/plugins/ImpactfulSkills.dll`,
+while `profiles/ulfsland-admin` held the **identical** archive extracted flat (same
+`ImpactfulSkills-0.16.0.zip`, same DLL, md5 `7bb26d398b1f`). `.active-mod-profile` names
+`ulfsland-dn`, so an ordinary deploy of that world would have moved the mod's DLL into a
+subdirectory — reported by `deploy_dropped=`, but still moved. Re-extracting that archive
+with the current extractor produces the flat layout, so the entry was **stale**: written
+before `plugins/` joined the prefix strip list in `extract_package`.
+
+The distribution decided the design. Measured across all seven profiles, both cache sides
+and every pinned package (14 caches, 86–94 packages each): **exactly one** entry failed,
+`ulfsland-dn/server/ImpactfulSkills`. Five packages per profile do hold nested files —
+`BepInExPack_Valheim`'s `BepInEx/core/`, the three `patchers/` packages
+(`EverybodyShim`, `ServersideQoL`, `Valheim10Compatibility`), and `Ravenwood_Currency`'s
+and `Venture_Area_Repair`'s own subfolders — and all five reproduce exactly from their
+archives, so all five pass.
+
+So this is a corrupt cache entry, not a layout the deploy has never handled, and it is
+**refused rather than normalised**. Flattening `<Package>/plugins/*` at compose time would
+be wrong three ways: `<Package>/plugins/` is a legitimate author subfolder in some packages
+and an unflattened prefix in others, and only the archive says which; the cache would stay
+wrong for every other consumer of it (the client publish path,
+`republish-profiles.sh`'s drift check); and the two profiles of one world would keep
+disagreeing about the same archive forever. The repair is the one the codebase already
+documents for a cache that disagrees with the manifest — `valheim_mods.py --profile <P>
+sync <identifier>` re-extracts from the archive on disk — and the refusal names it.
+
+### A deploy names what it does to a hand-patched mod assembly
+
+`tools/modpatches/` holds Cecil patchers for defects no configuration switch can avoid —
+today exactly one, `blacksmithing_expanded_null_key.cs` against
+`OdinPlus-BlacksmithingExpanded` 1.1.7. A patcher verifies the IL shape it expects and
+refuses to write when that shape changed, which is a safety feature with a silent failure
+mode: the deploy rebuilds the plugin tree from package sources, so the world gets stock
+bytes back and nothing said the repair was gone. Same shape as the `CharacterTemplate.yml`
+loss — invisible at deploy time, visible later in a player's game, here as the crash the
+patch prevents.
+
+The signal is the `.stock-<version>` sidecar `tools/modpatches/README.md` already requires
+beside a patched DLL, not a second declaration file that could drift out of agreement with
+the patchers. Measured read-only 2026-09-15 on the live fleet: `Vangard`'s plugin tree
+carries `BlacksmithingExpanded.dll` (md5 `79133afef773`) beside
+`BlacksmithingExpanded.dll.stock-1.1.7` (md5 `9bf9b3435f76`), and **every** profile's
+server cache carries exactly those stock bytes — so the next Vangard deploy reverts the
+patch today, not only after a version bump. Ulfsland, Hrafnheim, Doggerland and Storgard
+have no sidecar and produce no patch lines.
+
+| line | meaning |
+|---|---|
+| `patch_applied=<Plugin>/<dll> version=<v>` | a deploy source carries the patched assembly, so the deployed tree ends up patched |
+| `patch_reverted=<Plugin>/<dll> version=<v>` | the incoming bytes are the stock build the patch was made against: rebuild and reapply it |
+| `patch_stale=<Plugin>/<dll> stock_version=<v>` | the incoming bytes are neither — the package moved, so the patcher must be **revalidated** against the new build before it can be reapplied |
+| `patch_would_be_reverted=`, `patch_would_be_stale=` | `deploy-plan` only: the same verdict, read-only |
+
+`patch_reverted=` and `patch_stale=` also print one `warning:` on stderr naming the files
+and `tools/modpatches/README.md`.
+
+**Reported, not refused**, and unlike the stale-cache entry above that is the deliberate
+asymmetry. A deploy is the documented way this patch is reverted
+(`tools/modpatches/README.md`, "Scope and lifetime"); reapplying it is a manual `mcs`/`mono`
+build, not a one-command repair; and the crash it prevents is reached through
+`ZDOMan.ConvertContainers`, which only runs on a `WorldVersion 37` save — all five worlds
+are 41. Refusing would turn a maintenance window into a stop no operator could clear from
+the portal. The stale cache entry refuses precisely because one `sync` clears it.
+
+To make a patch survive deploys, put the patched assembly **and its sidecar** in
+`<world>/mods/generated/<Package>/`; the deploy then reports `patch_applied=`. That is a
+deliberate per-world decision, not a default: a patched assembly carried forward against a
+bumped package is exactly what the patchers refuse to produce.
+
+
 ## The world root (`VALHEIM_ROOT`)
 
 `hostops/lib/common.sh` is the single place the world root is resolved. Every script

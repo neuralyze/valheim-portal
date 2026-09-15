@@ -595,7 +595,7 @@ func TestLocalBuildPackagePublishesTheEmbeddedDigestWithoutFetching(t *testing.T
 	output := filepath.Join(dir, "profile.zip")
 	if err := buildProfileDefinition(context.Background(), builderOptions{
 		SourceManifestPath: writeManagedManifest(t, dir,
-			`{"schema_version":2,"packages":[{"identifier":"Smoothbrain-ServerCharacters","version":"1.4.17","source":"local-build"}]}`),
+			`{"schema_version":2,"packages":[{"identifier":"Smoothbrain-ServerCharacters","version":"1.4.17.1","source":"local-build"}]}`),
 		World:          "world-one",
 		Profile:        "world-one-non-vr",
 		ClientType:     "flat",

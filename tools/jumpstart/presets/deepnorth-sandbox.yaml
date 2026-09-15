@@ -11,6 +11,13 @@
 #   world_modifiers  the -modifier <key> <value> pairs this preset implies.
 #                    NOT applied by the driver: they are launch arguments.
 #   kit              worn/carried gear, tools, ammunition, consumables.
+#   equip            ORDERED list of `kit` prefabs the character spawns WEARING
+#                    or HOLDING, highest priority first. Everything else stays
+#                    in the bag. Slots are NOT named here: an item's slot is
+#                    m_shared.m_itemType and naming it again would create a
+#                    second source of truth. derive.py replays the game's own
+#                    Humanoid::EquipItem over this list and refuses to render a
+#                    template in which any listed entry is displaced.
 #   materials        biome material stock. Doubles as the recipe-unlock
 #                    mechanism: Valheim discovers a recipe when the player
 #                    first holds its materials.
@@ -81,13 +88,22 @@ kit:
   quality: 4
   count: 1
 - prefab: ShieldGold
-  quality: 4
+  # quality 3, not 4: MEASURED m_maxQuality is 3 for this prefab.
+  # Shields cap one level below weapons and armour, and asking for 4 was an
+  # authoring error that was invisible while ServerCharacters hardcoded quality to 1.
+  quality: 3
   count: 1
 - prefab: ShieldGoldTower
-  quality: 4
+  # quality 3, not 4: MEASURED m_maxQuality is 3 for this prefab.
+  # Shields cap one level below weapons and armour, and asking for 4 was an
+  # authoring error that was invisible while ServerCharacters hardcoded quality to 1.
+  quality: 3
   count: 1
 - prefab: ShieldGoldBuckler
-  quality: 4
+  # quality 3, not 4: MEASURED m_maxQuality is 3 for this prefab.
+  # Shields cap one level below weapons and armour, and asking for 4 was an
+  # authoring error that was invisible while ServerCharacters hardcoded quality to 1.
+  quality: 3
   count: 1
 - prefab: ArmorDeepNorthHeavyChest
   quality: 4
@@ -122,6 +138,9 @@ kit:
 - prefab: CapeDeepNorthMage
   quality: 4
   count: 1
+- prefab: BackpackMistlands
+  quality: 4
+  count: 1
 - prefab: StaffFrostOrbs
   quality: 4
   count: 1
@@ -148,28 +167,28 @@ kit:
   count: 1
 - prefab: ArrowBloodGold
   quality: 1
-  count: 200
+  count: 50
 - prefab: BoltBloodGold
   quality: 1
-  count: 200
+  count: 50
 - prefab: ArrowCharred
   quality: 1
-  count: 200
+  count: 50
 - prefab: BoltCharred
   quality: 1
-  count: 200
+  count: 50
 - prefab: MeadFrostResist
   quality: 1
-  count: 20
+  count: 5
 - prefab: MeadHealthMajor
   quality: 1
-  count: 20
+  count: 5
 - prefab: MeadEitrLingering
   quality: 1
-  count: 20
+  count: 5
 - prefab: MeadBzerker
   quality: 1
-  count: 20
+  count: 5
 - prefab: TrinketBloodGoldHealth
   quality: 1
   count: 1
@@ -179,6 +198,30 @@ kit:
 - prefab: SaddleAsksvin
   quality: 1
   count: 1
+equip:
+# WORN. The Deep North heavy set: MEASURED at quality 4, 50/50/50 armour against
+# the medium set's 40 and the mage set's 28. ArmorDeepNorthHeavyChest also
+# carries [Frost Resistant] in its m_damageModifiers, which is what makes the
+# shoulder slot free in this preset and not in pre-kall: MEASURED from
+# Player::UpdateEnvStatusEffects, that one modifier is enough to suppress both
+# Freezing and Cold, so the freezing gate is held by VANILLA gear here.
+- HelmetDNHeavy
+- ArmorDeepNorthHeavyChest
+- ArmorDeepNorthHeavylegs
+# BackpackMistlands takes the Shoulder slot from CapeDeepNorth. MEASURED cost: 14
+# armour (CapeDeepNorth is 12 + 2 per level = 18 at quality 4, the pack is 4),
+# and no effect, because the cape's only modifier is [Frost Resistant] and the
+# chest piece above already supplies it. In exchange: a 5x4 grid rising to 7x4
+# and +30 carry per item level. Both Deep North capes are in the bag.
+- BackpackMistlands
+# HELD. MaceGold in the right hand, ShieldGold in the left. This is a SANDBOX
+# preset with eleven weapons in it; the mace and round shield are a starting
+# stance, not a recommendation.
+- MaceGold
+- ShieldGold
+- ArrowBloodGold
+- Demister
+- TrinketBloodGoldHealth
 materials:
 - prefab: GoldOre
   count: 100
@@ -250,22 +293,22 @@ chain_items:
   count: 1
 - prefab: FaderEmber
   quality: 1
-  count: 50
+  count: 10
 - prefab: BombDynamite
   quality: 1
-  count: 20
+  count: 10
 - prefab: SealHide
   quality: 1
-  count: 50
+  count: 10
 - prefab: FrostCore
   quality: 1
-  count: 50
+  count: 5
 - prefab: GrapplingHook
   quality: 1
   count: 1
 - prefab: MeadFrostResist
   quality: 1
-  count: 20
+  count: 5
 - prefab: CapeDeepNorth
   quality: 4
   count: 1

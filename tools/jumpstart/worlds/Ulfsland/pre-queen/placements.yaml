@@ -12,8 +12,14 @@ coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGe
   straddling 30, and every land location type in the ZoneSystem dump floors at 30.50..31.11 because Valheim
   places land locations with minAltitude 1. `freeboard_m` in each solved block is the metres the footprint''s
   LOWEST cell clears y=30 by, measured on a 1 m river-inclusive sample; negative means part of the pad
-  is under water. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is
-  dropped exactly onto y.'
+  is under water. `align: floor-center` means the blueprint is centred on x/z and its FLOOR PLANE is dropped
+  exactly onto y. The floor plane is measured from the game''s own piece colliders by tools/jumpstart/blueprints/base_geometry.py
+  and recorded per placement in `blueprint_datum`; the placement Y emitted to the server is `flatten_cost.target_y
+  - blueprint_datum.base_y`. The previous `align: ground-center` dropped the lowest PIVOT onto y instead,
+  which is not a surface: MEASURED, `stone_floor_2x2` is a 2x2x1 m solid whose pivot sits at mid-thickness,
+  and 99 of the 157 non-empty corpus bodies are normalised so that min pivot Y == 0, on which that shift
+  was always exactly 0.0. That is why every structure floated while loose props spawned at the same pad
+  height sat correctly.'
 constraint_note: 'Constraints come in two classes and the solver treats them differently. HARD -- biome,
   min_biome_purity, min_height_m (freeboard over the WHOLE footprint above the y=30 water plane), location_clearance_m,
   coastal/coastal_within_m, within_m, and require_overland when declared -- are things no amount of building
@@ -38,7 +44,7 @@ placements:
   - 78.2
   creator: PuP
   viability: PLACES_CLEAN
-  align: ground-center
+  align: floor-center
   requirement:
     biome: Mistlands
     footprint_m: 80
@@ -64,8 +70,12 @@ placements:
     facing: entrance faces away from the Dvergr boss entrance
   flatten_required: true
   note: 'Black-marble and Dvergr Mistlands base: black forge, blast furnace, galdr table, artisan, smelter,
-    spinning wheel, oven, prep. It has a 42 m basement below its origin, so ground-center alignment sinks
-    the whole build - check the site is not on a ridge.'
+    spinning wheel, oven, prep. MEASURED from its piece colliders: the body spans 72.5 m in Y and its
+    lowest walkable floor levels are at local -7.000 (80 m2, nothing standing on it, read as a sump and
+    skipped) and -6.000 (1216 m2, 22 furnishings, and every one of its 13 crafting stations). `blueprint_datum`
+    therefore aligns -6.000 to the pad, which places the origin 6.00 m ABOVE the pad and leaves the 0.000
+    level 6 m above it - this is the one Ulfsland placement whose datum raises the structure rather than
+    lowering it, because its forge hall IS its lowest storey.'
   solved:
     seed: Pirate68
     x: 5523.3
@@ -586,3 +596,67 @@ placements:
         flat_spread_coarse_m: 24.57
         flat_p5_p95_m: 22.32
         refined_moved_m: 8.2
+  blueprint_datum:
+    base_y: -6.0
+    method: lowest_walkable_surface_above_cellar
+    placeable: true
+    bottom_solid_y: -75.911
+    support_bottom_y: -6.0
+    lowest_station_y: -6.043
+    lowest_ground_resting_y: -6.043
+    floor_pieces: 484
+    pieces: 6262
+    walkable_levels:
+    - y: -7.0
+      above_pad_m: -1.0
+      pieces: 20
+      area_m2: 80.0
+    - y: -6.0
+      above_pad_m: 0.0
+      pieces: 19
+      area_m2: 1216.0
+    - y: -2.0
+      above_pad_m: 4.0
+      pieces: 3
+      area_m2: 12.0
+    - y: 0.0
+      above_pad_m: 6.0
+      pieces: 23
+      area_m2: 1292.0
+    - y: 1.0
+      above_pad_m: 7.0
+      pieces: 4
+      area_m2: 16.0
+    - y: 2.0
+      above_pad_m: 8.0
+      pieces: 5
+      area_m2: 320.0
+    - y: 2.1
+      above_pad_m: 8.1
+      pieces: 4
+      area_m2: 4.0
+    - y: 2.6
+      above_pad_m: 8.6
+      pieces: 2
+      area_m2: 2.0
+    - y: 3.1
+      above_pad_m: 9.1
+      pieces: 32
+      area_m2: 32.0
+    - y: 3.7
+      above_pad_m: 9.7
+      pieces: 4
+      area_m2: 4.0
+    - y: 4.8
+      above_pad_m: 10.8
+      pieces: 4
+      area_m2: 4.0
+    - y: 5.9
+      above_pad_m: 11.9
+      pieces: 4
+      area_m2: 4.0
+    walkable_levels_total: 31
+    violations:
+    - code: suspect_below_grade_floor
+      detail: walkable level y=-7.000 holds 80.0 m2 of 4036.0 m2 (2.0%) and nothing stands on it; read
+        as a sump or sub-cellar and skipped in favour of y=-6.000

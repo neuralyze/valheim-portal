@@ -461,8 +461,19 @@ func managedManifestPackage(entry managedPackage) (packageManifest, error) {
 	if !found || !validPackageIdentity(entry.Identifier) {
 		return packageManifest{}, fmt.Errorf("invalid package identity %q", entry.Identifier)
 	}
+	// Thunderstore versions are strictly MAJOR.MINOR.PATCH, and a package fetched from a
+	// CDN must match that or its URL cannot exist. A `local-build` package is never
+	// fetched - it is embedded - so it carries a FOURTH component to say "upstream's
+	// 1.4.17, plus our patch". That distinguishability is the point: our ServerCharacters
+	// build is no longer byte-equal to the author's, and giving it the author's version
+	// string would make the two indistinguishable in a support report. Tonight already
+	// cost an hour to exactly that - three client builds sharing one version and one size.
 	parts := strings.Split(entry.Version, ".")
-	if len(parts) != 3 {
+	maxParts := 3
+	if entry.Source == sourceLocalBuild {
+		maxParts = 4
+	}
+	if len(parts) < 3 || len(parts) > maxParts {
 		return packageManifest{}, fmt.Errorf("invalid package version for %q", entry.Identifier)
 	}
 	for _, part := range parts {

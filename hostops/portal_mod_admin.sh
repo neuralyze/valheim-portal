@@ -1,4 +1,24 @@
 #!/usr/bin/env bash
+# One world's mod-set operations, delegated to tools/valheim_mods.py.
+#
+# `deploy` rebuilds <world>/config_merged/bepinex/plugins from four layered sources -
+# the profile's manager-cache/server, its manual-mods/, <world>/mods/admin-mode/ and
+# <world>/mods/generated/ - and renames the result over the live tree. Anything that is
+# only in the live tree is therefore deleted, which is why generated per-world config
+# (ServerCharacters' CharacterTemplate.yml) belongs in mods/generated/ and nowhere else;
+# see "Generated per-world server config" in docs/script-reference.md. A removal the
+# sources do not explain is reported as deploy_dropped=<file>, never silently.
+#
+# `deploy` also refuses a cached package whose files are not where its own pinned archive
+# puts them, because deploying it would move a plugin's DLL without saying so; the refusal
+# names the missing file and the `sync` that repairs the cache. `deploy-plan` reports the
+# same as cache_stale=<identifier> and writes nothing, so it is safe while a world is live.
+#
+# A hand-patched mod assembly (tools/modpatches/, detected by its .stock-<version> sidecar)
+# is replaced by package bytes like anything else, so `deploy` names that too:
+# patch_reverted= when the stock build it was made against comes back, patch_stale= when
+# the package moved and the patcher needs revalidating, patch_applied= when a source
+# carries the patched bytes. Reported and not refused - see docs/script-reference.md.
 set -euo pipefail
 
 WORLD=${1:-}

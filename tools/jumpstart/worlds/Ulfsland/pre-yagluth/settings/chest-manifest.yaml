@@ -11,6 +11,12 @@
 # ignores the return -- so anything past the last free slot vanishes silently.
 # This world's grid is 32 slots (world.yaml inventory.slots).
 #
+# TWO limits push items into this file, not one. The second is WEIGHT: a kit
+# that fits in the grid can still spawn the character OVERBURDENED, so materials
+# are also trimmed to keep the template under 210 kg -- 70% of the
+# MEASURED 300 kg carry capacity. `dropped_for_weight` below is
+# what the grid could have held and the budget could not.
+#
 # Delivery is headless and does not need the player online, per BlueprintHunt:
 #   findObjects -prefab piece_chest -near <x> <y> <z> <r>   -> ZDO ids
 #   addItemToContainer <id:userid> <item_name> -count <n>   -> stock each chest
@@ -25,21 +31,20 @@ preset: pre-yagluth
 tier: 5
 carried_by_template_slots: 32
 inventory_slots: 32
-overflow_slots: 66
-implied_chests_at_32_slots: 3
+carried_by_template_kg: 155.7
+carry_capacity_kg: 300.0
+carry_budget_kg: 210.0
+headroom_kg: 144.3
+dropped_for_weight: []
+overflow_slots: 60
+implied_chests_at_32_slots: 2
 items:
-  Barley: 50
-  BarleyFlour: 50
   BlackMetal: 100
   BlackMetalScrap: 100
-  Cloudberry: 50
   Coal: 300
   Crystal: 100
-  DragonTear: 10
   FineWood: 300
-  Flax: 50
   FreezeGland: 50
-  GoblinTotem: 3
   Iron: 100
   IronScrap: 100
   JuteBlue: 50

@@ -11,6 +11,13 @@
 #   world_modifiers  the -modifier <key> <value> pairs this preset implies.
 #                    NOT applied by the driver: they are launch arguments.
 #   kit              worn/carried gear, tools, ammunition, consumables.
+#   equip            ORDERED list of `kit` prefabs the character spawns WEARING
+#                    or HOLDING, highest priority first. Everything else stays
+#                    in the bag. Slots are NOT named here: an item's slot is
+#                    m_shared.m_itemType and naming it again would create a
+#                    second source of truth. derive.py replays the game's own
+#                    Humanoid::EquipItem over this list and refuses to render a
+#                    template in which any listed entry is displaced.
 #   materials        biome material stock. Doubles as the recipe-unlock
 #                    mechanism: Valheim discovers a recipe when the player
 #                    first holds its materials.
@@ -52,10 +59,16 @@ kit:
   quality: 4
   count: 1
 - prefab: ShieldCarapace
-  quality: 4
+  # quality 3, not 4: MEASURED m_maxQuality is 3 for this prefab.
+  # Shields cap one level below weapons and armour, and asking for 4 was an
+  # authoring error that was invisible while ServerCharacters hardcoded quality to 1.
+  quality: 3
   count: 1
 - prefab: ShieldCarapaceBuckler
-  quality: 4
+  # quality 3, not 4: MEASURED m_maxQuality is 3 for this prefab.
+  # Shields cap one level below weapons and armour, and asking for 4 was an
+  # authoring error that was invisible while ServerCharacters hardcoded quality to 1.
+  quality: 3
   count: 1
 - prefab: CrossbowArbalest
   quality: 4
@@ -79,6 +92,9 @@ kit:
   quality: 4
   count: 1
 - prefab: CapeFeather
+  quality: 4
+  count: 1
+- prefab: BackpackMistlands
   quality: 4
   count: 1
 - prefab: ArmorMageChest
@@ -107,34 +123,66 @@ kit:
   count: 1
 - prefab: ArrowCarapace
   quality: 1
-  count: 200
+  count: 50
 - prefab: BoltCarapace
   quality: 1
-  count: 200
+  count: 50
 - prefab: BoltBlackmetal
   quality: 1
-  count: 200
+  count: 50
 - prefab: MeadEitrMinor
   quality: 1
-  count: 15
+  count: 5
 - prefab: MeadHealthMajor
   quality: 1
-  count: 15
+  count: 5
 - prefab: MeadStaminaLingering
   quality: 1
-  count: 15
+  count: 5
 - prefab: MeadBzerker
   quality: 1
-  count: 15
+  count: 5
 - prefab: MeadFrostResist
   quality: 1
-  count: 15
+  count: 5
 - prefab: TrinketCarapaceEitr
   quality: 1
   count: 1
 - prefab: TrinketScaleStaminaDamage
   quality: 1
   count: 1
+equip:
+# WORN. The carapace set over the mage set: MEASURED at quality 4, carapace is
+# 38/38/38 armour against the mage set's 25-ish, and this preset's point is to be
+# standing in front of the Queen.
+- HelmetCarapace
+- ArmorCarapaceChest
+- ArmorCarapaceLegs
+# BackpackMistlands (Explorers Wisppack) takes the Shoulder slot from
+# CapeFeather. This one is a strict upgrade and the measurement says so:
+# CapeFeather's m_damageModifiers are [Frost Resistant] AND [Fire VeryWeak] --
+# it burns -- with 4 armour at quality 4 and a $se_slowfall_name equip effect.
+# The quality-4 pack has 4 armour, NO damage modifiers at all, and from the live
+# config picks up [Effect: Feather Fall] Mistlands = 3 (the same slow fall),
+# [Effect: Frost Resistance] Mistlands = 2 and [Effect: Demister] Mistlands = 4,
+# plus a 5x4 grid rising to 7x4 and +30 carry per item level. So the pack keeps
+# both cape effects, drops the fire weakness, and adds a bag. CapeFeather is in
+# the bag.
+- BackpackMistlands
+# HELD. AxeJotunBane in the right hand, ShieldCarapace in the left. Jotun Bane is
+# the Mistlands one-hander and it coexists with a shield; the Krom, Demolisher,
+# Himminafl, both bows and all four staves are two-handed (MEASURED m_itemType 14
+# or 22, both of which clear BOTH hands) and are granted and bagged.
+- AxeJotunBane
+- ShieldCarapace
+- ArrowCarapace
+# UTILITY. The Demister ITEM, not just the backpack's effect: in the Mistlands
+# not being able to see is the whole difficulty, and the vanilla item does not
+# depend on a mod being loaded.
+- Demister
+# TRINKET. m_itemType 24, its own slot; TrinketCarapaceEitr is the caster option
+# and stays in the bag with the staves.
+- TrinketScaleStaminaDamage
 materials:
 - prefab: BlackMarble
   count: 300

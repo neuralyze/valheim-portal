@@ -12,8 +12,14 @@ coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGe
   straddling 30, and every land location type in the ZoneSystem dump floors at 30.50..31.11 because Valheim
   places land locations with minAltitude 1. `freeboard_m` in each solved block is the metres the footprint''s
   LOWEST cell clears y=30 by, measured on a 1 m river-inclusive sample; negative means part of the pad
-  is under water. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is
-  dropped exactly onto y.'
+  is under water. `align: floor-center` means the blueprint is centred on x/z and its FLOOR PLANE is dropped
+  exactly onto y. The floor plane is measured from the game''s own piece colliders by tools/jumpstart/blueprints/base_geometry.py
+  and recorded per placement in `blueprint_datum`; the placement Y emitted to the server is `flatten_cost.target_y
+  - blueprint_datum.base_y`. The previous `align: ground-center` dropped the lowest PIVOT onto y instead,
+  which is not a surface: MEASURED, `stone_floor_2x2` is a 2x2x1 m solid whose pivot sits at mid-thickness,
+  and 99 of the 157 non-empty corpus bodies are normalised so that min pivot Y == 0, on which that shift
+  was always exactly 0.0. That is why every structure floated while loose props spawned at the same pad
+  height sat correctly.'
 constraint_note: 'Constraints come in two classes and the solver treats them differently. HARD -- biome,
   min_biome_purity, min_height_m (freeboard over the WHOLE footprint above the y=30 water plane), location_clearance_m,
   coastal/coastal_within_m, within_m, and require_overland when declared -- are things no amount of building
@@ -38,7 +44,7 @@ placements:
   - 7.2
   creator: ''
   viability: PLACES_CLEAN
-  align: ground-center
+  align: floor-center
   requirement:
     biome: DeepNorth
     footprint_m: 32
@@ -465,6 +471,21 @@ placements:
           required: 0.5
           actual: 0.32
           over_by: 0.18
+  blueprint_datum:
+    base_y: 0.066
+    method: lowest_build_solid_no_floor
+    placeable: true
+    bottom_solid_y: -3.024
+    support_bottom_y: 0.139
+    lowest_station_y: null
+    lowest_ground_resting_y: null
+    floor_pieces: 0
+    pieces: 133
+    walkable_levels: []
+    walkable_levels_total: 0
+    violations:
+    - code: no_floor_used_lowest_solid
+      detail: no floor-role piece among 133 pieces; datum falls back to the lowest build-piece solid y=0.066
 - id: deepnorth-landing-camp
   blueprint: wagon-camp.blueprint
   sha256: a3affe60acfffa35a745b313a51f6e1b10ecd65d3e2cd7040353392a294e7547
@@ -475,7 +496,7 @@ placements:
   - 5.3
   creator: Cooties
   viability: PLACES_CLEAN
-  align: ground-center
+  align: floor-center
   requirement:
     biome: DeepNorth
     footprint_m: 32
@@ -1042,3 +1063,28 @@ placements:
         flat_spread_coarse_m: 1.34
         flat_p5_p95_m: 2.21
         refined_moved_m: 5.4
+  blueprint_datum:
+    base_y: 0.039
+    method: lowest_station_below_floor
+    placeable: true
+    bottom_solid_y: -49.498
+    support_bottom_y: 1.99
+    lowest_station_y: 0.039
+    lowest_ground_resting_y: 0.018
+    floor_pieces: 21
+    pieces: 160
+    walkable_levels:
+    - y: 1.56
+      above_pad_m: 1.521
+      pieces: 2
+      area_m2: 2.0
+    - y: 2.46
+      above_pad_m: 2.421
+      pieces: 19
+      area_m2: 19.0
+    walkable_levels_total: 2
+    violations:
+    - code: station_below_floor
+      detail: a crafting station stands at y=0.039, 1.52 m below the lowest walkable surface y=1.560.
+        A buried station cannot be used, so the station plane wins; the floor above it stands proud by
+        that much, which is cosmetic.

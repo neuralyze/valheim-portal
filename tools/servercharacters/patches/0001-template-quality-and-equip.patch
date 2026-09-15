@@ -1,0 +1,412 @@
+diff --git a/ServerCharacters/ClientSide.cs b/ServerCharacters/ClientSide.cs
+index 85ed922..c82d940 100644
+--- a/ServerCharacters/ClientSide.cs
++++ b/ServerCharacters/ClientSide.cs
+@@ -17,6 +17,7 @@ using Steamworks;
+ using TMPro;
+ using UnityEngine;
+ using YamlDotNet.Serialization;
++using YamlDotNet.Core;
+ using Debug = UnityEngine.Debug;
+ using Object = UnityEngine.Object;
+ using Random = UnityEngine.Random;
+@@ -26,6 +27,21 @@ namespace ServerCharacters;
+ public static class ClientSide
+ {
+ 	public static bool serverCharacter = false;
++
++	// One shared deserialiser for every CharacterTemplate.yml read. IgnoreUnmatchedProperties
++	// is deliberate: upstream's strict builder throws YamlException on an unknown top-level
++	// key, upstream's `catch (SerializationException)` (System.Runtime.Serialization) does not
++	// catch it, and the escaping exception discards the ENTIRE template - skills, items and
++	// spawn - leaving a naked character at the world default spawn. Tolerating unknown keys
++	// turns a schema change into a logged warning instead of a ruined character.
++	private static readonly IDeserializer templateDeserializer =
++		new DeserializerBuilder().IgnoreFields().IgnoreUnmatchedProperties().Build();
++
++	private static readonly HashSet<string> knownTemplateKeys = new() { "skills", "items", "quality", "equip", "contents", "spawn" };
++
++	// Equips the game refused at spawn, retried on Player.Update. See equipFromTemplate.
++	private static readonly List<ItemDrop.ItemData> deferredEquip = new();
++	private static Player? deferredEquipPlayer;
+ 	private static bool currentlySaving = false;
+ 	private static bool forceSynchronousSaving = false;
+ 	private static bool acquireCharacterFromTemplate = false;
+@@ -635,7 +651,9 @@ public static class ClientSide
+ 
+ 			try
+ 			{
+-				PlayerTemplate? template = new DeserializerBuilder().IgnoreFields().Build().Deserialize<PlayerTemplate?>(ServerCharacters.playerTemplate.Value);
++				string templateText = ServerCharacters.playerTemplate.Value;
++				reportUnknownTemplateKeys(templateText);
++				PlayerTemplate? template = templateDeserializer.Deserialize<PlayerTemplate?>(templateText);
+ 				if (template != null)
+ 				{
+ 					foreach (KeyValuePair<string, float> skillKv in template.skills)
+@@ -644,11 +662,18 @@ public static class ClientSide
+ 					}
+ 
+ 					Inventory inventory = Player.m_localPlayer.m_inventory;
++					Dictionary<string, ItemDrop.ItemData> granted = new();
+ 					foreach (KeyValuePair<string, int> item in template.items)
+ 					{
+-						inventory.AddItem(item.Key, item.Value, 1, 0, 0, "", false);
++						if (inventory.AddItem(item.Key, item.Value, templateItemQuality(template, item.Key), 0, 0, "", false) is { } added)
++						{
++							granted[item.Key] = added;
++						}
+ 					}
+ 
++					equipFromTemplate(template, granted);
++					fillContainersFromTemplate(template, granted);
++
+ 					if (template.spawn is { Count: > 0 } spawnPos)
+ 					{
+ 						Random.State oldState = Random.state;
+@@ -659,8 +684,12 @@ public static class ClientSide
+ 					}
+ 				}
+ 			}
+-			catch (SerializationException)
++			catch (Exception e) when (e is SerializationException or YamlException)
+ 			{
++				// Upstream swallowed this silently, and only caught SerializationException,
++				// which YamlDotNet never throws - so a malformed template surfaced as an
++				// opaque Harmony error with the whole template discarded. Log it instead.
++				ServerCharacters.logger.LogError($"CharacterTemplate.yml could not be applied, character left at vanilla defaults: {e.Message}");
+ 			}
+ 
+ 			Game.instance.SavePlayerProfile(true);
+@@ -675,6 +704,246 @@ public static class ClientSide
+ 		}
+ 	}
+ 
++	// Quality the template asks for, clamped to what the item can actually hold.
++	// MEASURED in assembly_valheim: Inventory.AddItem stores m_quality straight from the
++	// argument (stfld ItemDrop/ItemData::m_quality) and never reads m_maxQuality, so an
++	// out-of-range request is passed through to an item the upgrade UI cannot represent.
++	// Clamp rather than refuse: a lower-quality item is a far better outcome for the player
++	// than a missing one, and the clamp is logged so a bad template is diagnosable.
++	private static int templateItemQuality(PlayerTemplate template, string prefab)
++	{
++		if (!template.quality.TryGetValue(prefab, out int requested) || requested == 1)
++		{
++			return 1;
++		}
++
++		int max = 1;
++		if (ObjectDB.instance?.GetItemPrefab(prefab)?.GetComponent<ItemDrop>() is { } itemDrop)
++		{
++			max = Mathf.Max(1, itemDrop.m_itemData.m_shared.m_maxQuality);
++		}
++
++		int clamped = Mathf.Clamp(requested, 1, max);
++		if (clamped != requested)
++		{
++			ServerCharacters.logger.LogWarning($"CharacterTemplate.yml asks for {prefab} at quality {requested}, but its maximum quality is {max}; granting quality {clamped} instead.");
++		}
++		return clamped;
++	}
++
++	// Equip the template's `equip` list, which is ordered highest priority first.
++	//
++	// MEASURED in assembly_valheim, Humanoid.EquipItem: every slot branch calls
++	// UnequipItem on whatever holds the slot before storing the new item, so for any one
++	// slot the LAST successful equip wins. This loop therefore walks the list backwards,
++	// which makes the FIRST name win - the order a preset author writes when a kit
++	// contains two chest pieces or two shields.
++	//
++	// triggerEquipEffects is false because it gates only Humanoid.TriggerEquipEffect
++	// (the equip sound and VFX). SetupEquipment -> UpdateEquipmentStatusEffects runs
++	// regardless, which is what applies m_shared.m_equipStatusEffect - so an equipped
++	// BeltStrength still contributes its SE_Stats.m_addMaxCarryWeight through
++	// SEMan.ModifyMaxCarryWeight in Player.GetMaxCarryWeight.
++	//
++	// Equipping here is safe: vanilla Humanoid.GiveDefaultItem, called by the
++	// GiveDefaultItems() on the line above, itself calls EquipItem(item, false) at exactly
++	// this point in the lifecycle.
++	private static void equipFromTemplate(PlayerTemplate template, Dictionary<string, ItemDrop.ItemData> granted)
++	{
++		deferredEquip.Clear();
++		deferredEquipPlayer = null;
++
++		for (int i = template.equip.Count - 1; i >= 0; --i)
++		{
++			string prefab = template.equip[i];
++			if (!granted.TryGetValue(prefab, out ItemDrop.ItemData item))
++			{
++				ServerCharacters.logger.LogWarning($"CharacterTemplate.yml lists {prefab} under equip, but its items list does not grant it; nothing to equip.");
++				continue;
++			}
++
++			if (!item.IsEquipable())
++			{
++				ServerCharacters.logger.LogWarning($"CharacterTemplate.yml lists {prefab} under equip, but that item is not equipable; skipped.");
++				continue;
++			}
++
++			if (!Player.m_localPlayer.EquipItem(item, triggerEquipEffects: false))
++			{
++				// MEASURED: the only guard in Humanoid.EquipItem that can be transiently
++				// true at this point is `IsPlayer() && !IsDead() && IsSwimming() &&
++				// !IsOnGround()`, which refuses every equip while the player is in deep
++				// water off the ground - a spawn point on open water, for instance. Retry
++				// those on Player.Update once that predicate clears. Items that merely
++				// LOST their slot to a higher-priority entry returned true here, so they
++				// are not in this list and are not retried.
++				deferredEquip.Add(item);
++				deferredEquipPlayer = Player.m_localPlayer;
++			}
++		}
++
++		foreach (string prefab in template.equip)
++		{
++			if (granted.TryGetValue(prefab, out ItemDrop.ItemData item) && !Player.m_localPlayer.IsItemEquiped(item) && !deferredEquip.Contains(item))
++			{
++				ServerCharacters.logger.LogInfo($"{prefab} is in the kit but its slot went to an item listed before it.");
++			}
++		}
++
++		if (deferredEquip.Count > 0)
++		{
++			ServerCharacters.logger.LogWarning($"{deferredEquip.Count} kit item(s) could not be equipped yet - the character is in water and off the ground. Retrying every frame until it is not.");
++		}
++	}
++
++	// Second attempt for equips the game refused at spawn. Ordered lowest priority first,
++	// same as equipFromTemplate's loop, so a slot contested inside this list still resolves
++	// to the entry the template listed earliest.
++	[HarmonyPatch(typeof(Player), "Update")]
++	private static class RetryDeferredTemplateEquips
++	{
++		[UsedImplicitly]
++		private static void Postfix(Player __instance)
++		{
++			if (deferredEquip.Count == 0 || __instance != deferredEquipPlayer)
++			{
++				return;
++			}
++
++			if (__instance.IsSwimming() && !__instance.IsOnGround())
++			{
++				return;
++			}
++
++			foreach (ItemDrop.ItemData item in deferredEquip)
++			{
++				if (!__instance.EquipItem(item, triggerEquipEffects: false))
++				{
++					ServerCharacters.logger.LogWarning($"Equipping {item.m_shared.m_name} was refused by the game a second time; leaving it in the inventory.");
++				}
++			}
++
++			deferredEquip.Clear();
++			deferredEquipPlayer = null;
++		}
++	}
++
++	// Put items INSIDE a granted container item - in practice a Vapok-AdventureBackpacks
++	// backpack. A backpack's contents do not live in the player's inventory; they live in
++	// the backpack ItemData's m_customData under a key AdventureBackpacks owns, so
++	// Inventory.AddItem cannot put anything in one. AdventureBackpacks does however expose
++	// the live Inventory object:
++	//
++	//   AdventureBackpacks.API.ABAPI.GetBackpack(ItemDrop.ItemData) -> Nullable<ABAPI.Backpack>
++	//   ABAPI.Backpack.Inventory  (public field, the component's own Inventory, not a copy)
++	//
++	// MEASURED in AdventureBackpacks 2.0.1: ABAPI.GetBackpack calls
++	// ItemExtensions.Data(itemData).GetOrCreate<BackpackComponent>(""), which on a fresh
++	// item runs BackpackComponent.FirstLoad() - allocating a correctly sized Inventory for
++	// the item's quality and writing an initial valid payload. So this is the mod's own
++	// initialisation path, not a bypass of it, and the resulting pack is the same one the
++	// player would get by crafting and equipping. Adding to that Inventory then persists
++	// through Vapok.Common.Managers.ItemInfo's Inventory.Save prefix, which the
++	// SavePlayerProfile call at the end of this postfix triggers.
++	//
++	// Reached ENTIRELY by reflection, deliberately. AdventureBackpacks ships no ServerSync
++	// version handshake (MEASURED: no ConfigSync/ModRequired/MinimumRequiredVersion in its
++	// assembly), so its version is free to differ across the fleet with no error - and
++	// ServerCharacters also has to load on worlds where AdventureBackpacks is not
++	// installed at all. A compile-time reference would turn both of those into a plugin
++	// that fails to load. Missing mod, changed API, or a non-container item all degrade to
++	// a logged warning and an EMPTY container, never a corrupt one.
++	private static void fillContainersFromTemplate(PlayerTemplate template, Dictionary<string, ItemDrop.ItemData> granted)
++	{
++		if (template.contents.Count == 0)
++		{
++			return;
++		}
++
++		// AccessTools.TypeByName searches every loaded assembly, which is what is needed
++		// here: ABAPI lives inside AdventureBackpacks.dll itself, not in the separately
++		// distributed AdventureBackpacksAPI.dll (that one is a compile-time shim).
++		Type? abapi = AccessTools.TypeByName("AdventureBackpacks.API.ABAPI");
++		MethodInfo? getBackpack = abapi is null ? null : AccessTools.Method(abapi, "GetBackpack", new[] { typeof(ItemDrop.ItemData) });
++		if (getBackpack is null)
++		{
++			ServerCharacters.logger.LogWarning($"CharacterTemplate.yml wants to fill {template.contents.Count} container(s), but AdventureBackpacks.API.ABAPI.GetBackpack is not available - is AdventureBackpacks installed? The container(s) are granted empty.");
++			return;
++		}
++
++		foreach (KeyValuePair<string, Dictionary<string, int>> container in template.contents)
++		{
++			if (!granted.TryGetValue(container.Key, out ItemDrop.ItemData item))
++			{
++				ServerCharacters.logger.LogWarning($"CharacterTemplate.yml lists contents for {container.Key}, but its items list does not grant it; nothing to fill.");
++				continue;
++			}
++
++			if (containerInventory(getBackpack, item) is not { } inventory)
++			{
++				ServerCharacters.logger.LogWarning($"CharacterTemplate.yml lists contents for {container.Key}, but AdventureBackpacks does not recognise it as a backpack; it is granted empty.");
++				continue;
++			}
++
++			foreach (KeyValuePair<string, int> content in container.Value)
++			{
++				if (inventory.AddItem(content.Key, content.Value, 1, 0, 0, "", false) is null)
++				{
++					ServerCharacters.logger.LogWarning($"{container.Key} had no room for {content.Value}x {content.Key}.");
++				}
++			}
++
++			ServerCharacters.logger.LogInfo($"Filled {container.Key} with {container.Value.Count} entry type(s), {inventory.GetTotalWeight():0.#} kg of contents.");
++		}
++	}
++
++	// ABAPI.Backpack is a struct, so GetBackpack returns Nullable<Backpack>; through
++	// reflection that boxes to null, or to a boxed Backpack whose public Inventory field
++	// is the live object. A null Inventory means the item is not a backpack as far as
++	// AdventureBackpacks is concerned (its IsBackpack test is m_shared.m_name based), and
++	// filling must not be attempted.
++	private static Inventory? containerInventory(MethodInfo getBackpack, ItemDrop.ItemData item)
++	{
++		try
++		{
++			if (getBackpack.Invoke(null, new object[] { item }) is not { } backpack)
++			{
++				return null;
++			}
++			return AccessTools.Field(backpack.GetType(), "Inventory")?.GetValue(backpack) as Inventory;
++		}
++		catch (Exception e)
++		{
++			ServerCharacters.logger.LogWarning($"AdventureBackpacks.API.ABAPI.GetBackpack threw for {item.m_shared.m_name}: {e.InnerException?.Message ?? e.Message}");
++			return null;
++		}
++	}
++
++	// An unknown top-level key is IGNORED by this build, but an older ServerCharacters
++	// throws on it and discards the whole template, so name it loudly.
++	private static void reportUnknownTemplateKeys(string templateText)
++	{
++		try
++		{
++			if (templateDeserializer.Deserialize<Dictionary<string, object>?>(templateText) is not { } top)
++			{
++				return;
++			}
++
++			foreach (string key in top.Keys)
++			{
++				if (!knownTemplateKeys.Contains(key))
++				{
++					ServerCharacters.logger.LogWarning($"CharacterTemplate.yml has an unknown top-level key '{key}'; this build ignores it, but ServerCharacters 1.4.17 and older treat it as fatal and discard the entire template.");
++				}
++			}
++		}
++		catch (Exception e) when (e is SerializationException or YamlException)
++		{
++			// the typed deserialisation reports the real parse error
++		}
++	}
++
+ 	[HarmonyPatch(typeof(Valkyrie), nameof(Valkyrie.Awake))]
+ 	private class ChangeValkyrieTarget
+ 	{
+@@ -687,7 +956,7 @@ public static class ClientSide
+ 
+ 			try
+ 			{
+-				PlayerTemplate? template = new DeserializerBuilder().IgnoreFields().Build().Deserialize<PlayerTemplate?>(ServerCharacters.playerTemplate.Value);
++				PlayerTemplate? template = templateDeserializer.Deserialize<PlayerTemplate?>(ServerCharacters.playerTemplate.Value);
+ 				if (template == null)
+ 				{
+ 					return;
+@@ -702,8 +971,10 @@ public static class ClientSide
+ 					Player.m_localPlayer.transform.position = new Vector3(spawnPos[index].x, spawnPos[index].y, spawnPos[index].z);
+ 				}
+ 			}
+-			catch (SerializationException)
++			catch (Exception e) when (e is SerializationException or YamlException)
+ 			{
++				// A template YamlDotNet cannot parse must not escape a Harmony prefix and
++				// take Valkyrie.Awake / Game.FindSpawnPoint with it.
+ 			}
+ 		}
+ 	}
+@@ -736,7 +1007,7 @@ public static class ClientSide
+ 		{
+ 			try
+ 			{
+-				PlayerTemplate? template = new DeserializerBuilder().IgnoreFields().Build().Deserialize<PlayerTemplate?>(ServerCharacters.playerTemplate.Value);
++				PlayerTemplate? template = templateDeserializer.Deserialize<PlayerTemplate?>(ServerCharacters.playerTemplate.Value);
+ 				if (template == null)
+ 				{
+ 					pos = Vector3.zero;
+@@ -753,7 +1024,7 @@ public static class ClientSide
+ 					return true;
+ 				}
+ 			}
+-			catch (SerializationException)
++			catch (Exception e) when (e is SerializationException or YamlException)
+ 			{
+ 			}
+ 
+diff --git a/ServerCharacters/PlayerTemplate.cs b/ServerCharacters/PlayerTemplate.cs
+index e53f972..7ad9a48 100644
+--- a/ServerCharacters/PlayerTemplate.cs
++++ b/ServerCharacters/PlayerTemplate.cs
+@@ -8,6 +8,9 @@ public class PlayerTemplate
+ {
+ 	public Dictionary<string, float> skills { get; set; } = new();
+ 	public Dictionary<string, int> items { get; set; } = new();
++	public Dictionary<string, int> quality { get; set; } = new();
++	public List<string> equip { get; set; } = new();
++	public Dictionary<string, Dictionary<string, int>> contents { get; set; } = new();
+ 	public List<Position> spawn { get; set; } = new();
+ 
+ 	[PublicAPI]
+diff --git a/ServerCharacters/ServerCharacters.cs b/ServerCharacters/ServerCharacters.cs
+index ba4caa3..6bfd217 100644
+--- a/ServerCharacters/ServerCharacters.cs
++++ b/ServerCharacters/ServerCharacters.cs
+@@ -17,7 +17,13 @@ namespace ServerCharacters;
+ public class ServerCharacters : BaseUnityPlugin
+ {
+ 	private const string ModName = "Server Characters";
+-	private const string ModVersion = "1.4.17";
++	// 1.4.17.1: upstream 1.4.17 (blaxxun-boop/ServerCharacters@bb7d3cd6) plus the local
++	// CharacterTemplate.yml `quality` and `equip` support. A fourth version component is
++	// used deliberately: upstream only ever publishes three, so this string can never
++	// collide with an upstream release, it sorts above 1.4.17, and - MEASURED in
++	// ServerSync.VersionCheck.IsVersionOk, which does `new System.Version(string)` and
++	// op_GreaterThanOrEqual - it parses, which a semver pre-release suffix would not.
++	private const string ModVersion = "1.4.17.1";
+ 	private const string ModGUID = "org.bepinex.plugins.servercharacters";
+ 
+ 	public static ServerCharacters selfReference = null!;
+@@ -32,7 +38,12 @@ public class ServerCharacters : BaseUnityPlugin
+ 	public const int CharacterNameDisconnectMagic = 498209834;
+ 	public const int SingleCharacterModeDisconnectMagic = 845979243;
+ 
+-	public static readonly ConfigSync configSync = new(ModGUID) { DisplayName = ModName, CurrentVersion = ModVersion, MinimumRequiredVersion = "1.4.17", ModRequired = true};
++	// MinimumRequiredVersion tracks ModVersion on purpose. IsVersionOk is symmetric
++	// (ours >= their minimum AND theirs >= our minimum), so this refuses a 1.4.17 client
++	// outright instead of letting it join and then receive a template whose `quality` and
++	// `equip` keys its deserialiser treats as fatal. A refused connection is a clear
++	// error message; the alternative is a silently ruined new character.
++	public static readonly ConfigSync configSync = new(ModGUID) { DisplayName = ModName, CurrentVersion = ModVersion, MinimumRequiredVersion = ModVersion, ModRequired = true};
+ 
+ 	private static ConfigEntry<Toggle> serverConfigLocked = null!;
+ 	public static ConfigEntry<Toggle> singleCharacterMode = null!;

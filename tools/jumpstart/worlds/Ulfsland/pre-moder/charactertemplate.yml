@@ -11,29 +11,87 @@
 # 1.4.17 server.
 # STATUS: LIVE -- see world.yaml servercharacters.status_note.
 #
-# Install: copy this file to
-#   profiles/ulfsland-dn/manual-mods/ServerCharacters/CharacterTemplate.yml
-# The server watches it and live-reloads; no restart. One server holds ONE
-# template, so exactly one preset is active at a time.
+# Install: copy this file to the world's GENERATED deploy layer,
+#   Ulfsland/mods/generated/ServerCharacters/CharacterTemplate.yml
+# then deploy. That layer is the fourth and last source the plugin tree is
+# assembled from (cache -> manual-mods -> admin-mode -> generated), so it
+# survives an admin-mode profile swap. It is deliberately NOT the profile's
+# manual-mods overlay: manual-mods is PER PROFILE and this template is PER
+# WORLD, so deploying a different profile left the file in no deploy source at
+# all and the rebuild deleted it -- MEASURED tonight, and the operator met it as
+# a new character with no kit and no preset spawn.
+# The server watches the installed file and live-reloads; no restart. One server
+# holds ONE template, so exactly one preset is active at a time.
 #
 # APPLIES TO NEW CHARACTERS ONLY. The client wipes inventory, skills, known
 # recipes and stations, calls GiveDefaultItems(), then applies this. An existing
 # character sees nothing.
 #
-# Exactly three top-level keys are permitted. The deserializer is built with
-# IgnoreFields() and the only catch is for SerializationException, which does not
-# catch YamlDotNet's YamlException -- so an unknown top-level key throws out of a
-# Harmony prefix. Comments are safe; extra keys are not.
+# FIVE top-level keys are permitted by the build this world runs, and unknown
+# keys are no longer fatal: the deserializer ignores unmatched properties and
+# logs their names. The OLD 1.4.17 build is a different story -- it catches only
+# SerializationException, which does not catch YamlDotNet's YamlException, so an
+# unknown top-level key escapes a Harmony postfix and the WHOLE template is
+# discarded: no skills, no items, no spawn. The DLL therefore has to reach the
+# server and every client BEFORE this file is installed.
 #
 # What this format drops, and where it went instead:
-#   quality     AddItem hardcodes 1. 15 kit entries ask for quality > 1 and
-#               arrive unupgraded; they must be upgraded at the station.
-#   overflow    22 prefabs (68 slots) do not fit in 32 inventory slots
+#   overflow    18 prefabs (64 slots) do not fit in 32 inventory slots
+#               or the 210 kg weight budget (7 dropped for weight alone)
 #               and are in settings/chest-manifest.yaml instead.
 #   stations    buildings, not inventory -- blueprints/ and placements.yaml.
 #   keys        world state, not character state -- keys.yaml.
 #   modifiers   launch arguments -- settings/world-modifiers.env.
-#   equipping   nothing is auto-equipped; the kit arrives in the bag.
+#
+# EQUIPPING. `equip:` is an ordered list, highest priority first, and every entry
+# MUST also appear in `items:` because the mod can only equip what AddItem put in
+# the inventory. Slot arbitration is the GAME's: the template names no slots,
+# because m_itemType already decides which slot an item takes and a second source
+# of truth could only ever disagree with the first. derive.py replays
+# Humanoid::EquipItem over the list and REFUSES to render a template in which any
+# listed item is displaced, so what is below is what the character wears:
+#   helmet      HelmetDrake
+#   chest       ArmorWolfChest
+#   legs        ArmorWolfLegs
+#   shoulder    BackpackMountains
+#   utility     Wishbone
+#   right hand  MaceSilver
+#   left hand   ShieldSilver
+#   ammo        ArrowSilver
+# Everything else stays in the bag, which is correct -- a player switches to the
+# sledge when they want the sledge.
+#
+# QUALITY. Honoured now, and clamped at runtime to [1, m_shared.m_maxQuality] read
+# live from the ObjectDB. 16 entries ask for more than 1. Quality does NOT
+# change carried weight for any of them: MEASURED from ItemData::GetWeight, the
+# quality term is gated on m_scaleWeightByQuality != 0, and across all 2,481 priced
+# prefabs that field is nonzero for exactly 21 -- 20 fish variants at 1.0 and
+# AsksvinEgg at 0.2. No weapon, shield, armour piece, tool or cape scales.
+#
+# CARRY LOAD: 189 kg of a MEASURED 300 kg capacity = 63%,
+# leaving 111 kg of headroom against the 210 kg budget.
+# Capacity is Player::m_maxCarryWeight (ldc.r4 300 in Player..ctor) times
+# Game::m_carryWeightRate (1, no preset sets GlobalKey 0x10), with no status
+# effect and nothing equipped on a fresh character. IsEncumbered is a STRICT
+# greater-than, so the budget exists to leave room to pick things up, not to
+# dodge a rounding error. Per-item weights: tools/jumpstart/data/item_weights.json.
+# NOTHING EQUIPPED IS BUDGETED FOR, deliberately, and two levers are left on the
+# table to keep it that way:
+#   BeltStrength      +150 carry (MEASURED, SE_Stats.m_addMaxCarryWeight). It is
+#                     Utility (m_itemType 18), the same slot as Demister and
+#                     Wishbone, which five of the nine presets need; and no kit
+#                     needs the 150 kg. Not granted anywhere.
+#   AdventureBackpacks +5..30 carry per item level and a 0.5 multiplier on
+#                     CONTENTS (MEASURED from the live, server-enforced
+#                     vapok.mods.adventurebackpacks.cfg). The multiplier applies
+#                     to nothing at spawn: AB keeps backpack contents in the
+#                     item's m_customData and neither string overload of
+#                     Inventory::AddItem takes custom data, so a template-granted
+#                     backpack is necessarily EMPTY. It is granted and equipped as
+#                     pure headroom, never as budget.
+# The 95Shade-CarryWeightSkill +3/level bonus is likewise NOT budgeted for:
+# MEASURED, its DLL reaches the client tree only and never the server, so it
+# cannot be guaranteed for a player whose client lacks the package.
 #
 # Which of these skills actually move yield (MEASURED by YieldDesign). Five
 # skills drive the gathering economy and three of them are custom skills
@@ -124,28 +182,70 @@ items:
   ArmorFenringLegs: 1
   ArmorWolfChest: 1
   ArmorWolfLegs: 1
-  ArrowFrost: 150
-  ArrowObsidian: 150
-  ArrowSilver: 150
+  ArrowFrost: 50
+  ArrowObsidian: 50
+  ArrowSilver: 50
+  BackpackMountains: 1
   BattleaxeCrystal: 1
   BowDraugrFang: 1
   CapeWolf: 1
-  Chain: 50
+  FreezeGland: 50
+  Guck: 50
   HelmetDrake: 1
   HelmetFenring: 1
   KnifeSilver: 1
   MaceSilver: 1
-  MeadFrostResist: 15
-  MeadHealthMedium: 15
-  MeadPoisonResist: 15
-  MeadStaminaMedium: 15
+  MeadFrostResist: 5
+  MeadHealthMedium: 5
+  MeadPoisonResist: 5
+  MeadStaminaMedium: 5
+  Onion: 50
   PickaxeIron: 1
   ShieldSilver: 1
   SilverRing: 1
   SpearWolfFang: 1
   SwordSilver: 1
+  Thistle: 50
   Wishbone: 1
-# 32 of 32 inventory slots used.
+  WolfFang: 50
+# 30 of 32 inventory slots used, 189 of 300 kg carried (63%), 111 kg free.
+quality:
+  ArmorFenringChest: 3
+  ArmorFenringLegs: 3
+  ArmorWolfChest: 3
+  ArmorWolfLegs: 3
+  BackpackMountains: 4
+  BattleaxeCrystal: 3
+  BowDraugrFang: 3
+  CapeWolf: 3
+  HelmetDrake: 3
+  HelmetFenring: 3
+  KnifeSilver: 3
+  MaceSilver: 3
+  PickaxeIron: 3
+  ShieldSilver: 3
+  SpearWolfFang: 3
+  SwordSilver: 3
+# 16 entries above the default 1; everything else is 1 by omission.
+# 2 of them sit at the item's measured m_maxQuality: BackpackMountains 4, ShieldSilver 3.
+equip:
+  - HelmetDrake
+  - ArmorWolfChest
+  - ArmorWolfLegs
+  - BackpackMountains
+  - MaceSilver
+  - ShieldSilver
+  - ArrowSilver
+  - Wishbone
+# 8 slots filled, replayed through the game's own arbitration:
+#   helmet      HelmetDrake (m_itemType Helmet, quality 3)
+#   chest       ArmorWolfChest (m_itemType Chest, quality 3)
+#   legs        ArmorWolfLegs (m_itemType Legs, quality 3)
+#   shoulder    BackpackMountains (m_itemType Shoulder, quality 4)
+#   utility     Wishbone (m_itemType Utility, quality 1)
+#   right hand  MaceSilver (m_itemType OneHandedWeapon, quality 3)
+#   left hand   ShieldSilver (m_itemType Shield, quality 3)
+#   ammo        ArrowSilver (m_itemType Ammo, quality 1)
 spawn:
   - {x: -7, y: 110, z: 3920}
 # MEASURED against Valheim's own generator at 1 m, water plane y=30:

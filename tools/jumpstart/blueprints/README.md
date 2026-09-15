@@ -138,16 +138,53 @@ Valheim building actually uses. (The gimbal-lock fold is a real trap: a naive
 `asin` decomposition silently produces a ~52-degree error on roughly one
 rotation in twenty thousand.)
 
-## Origin alignment
+## Origin alignment and the floor datum
 
-Corpus blueprints disagree about their own origin: some are corner-origin with
-their minimum at `(0,0,0)`, some are centred, and their lowest piece sits
-anywhere from **−42.45** to **0** on Y (`PuP_black_house_full` has a 42 m
-basement). So a bare coordinate is ambiguous.
+Corpus blueprints disagree about their own origin. Of the 157 non-empty
+`.blueprint` bodies, **99 are normalised so that `min(pivot Y)` is exactly 0**
+and 58 are not, the latter spanning `min(pivot Y)` from **−5064.42** to
+**+4.49** m. So a bare coordinate is ambiguous, and so is the minimum pivot.
 
-`align: ground-center` (the default) centres the blueprint on the target X/Z
-and drops its **lowest** piece exactly onto the target Y. `raw`, `ground` and
-`center` are also available.
+`align: floor-center` (the default) centres the blueprint on the target X/Z and
+drops its **floor plane** exactly onto the target Y. `floor` does the Y half
+only; `raw` and `center` are also available. `ground` and `ground-center` are
+the OLD rule and are kept only so the difference can be measured.
+
+### Why the old rule was wrong
+
+`ground-center` computed `dy = -min(pivot Y)` and called it "drop the lowest
+piece onto the pad". Two defects, both MEASURED:
+
+* **A pivot is not a surface.** From the game's own colliders, dumped by
+  `PieceGeometry.cs` into `data/piece_geometry.json`, `stone_floor_2x2` is a
+  2 × 2 × 1 m solid whose pivot sits at **mid-thickness** — its walkable top is
+  `pivot + 0.500` and its underside `pivot − 0.500`. `stone_wall_1x1` is a 1 m
+  cube pivoted at its centre. `wood_floor` is 0.130 m thick with its top at
+  `pivot + 0.097`. `iron_floor_1x1`'s slab sits **below** its pivot entirely,
+  top at `pivot − 0.450`. None of that is guessable.
+* **On most of the corpus the shift did nothing at all.** Where
+  `min(pivot Y) == 0` — 99 of 157 bodies — `dy` was exactly `0.0`, every time.
+
+In live play on Ulfsland the `pre-bonemass/iron-era-workshop` pad was flattened
+to 70.91 and the blueprint's local Y = 0 plane was dropped there, which put its
+lowest walkable floor **1.50 m** above the pad, its main floor (124 m² at local
+1.834) **1.83 m** above, and the median air gap under the structure — the
+lowest solid in each 2 m column, over 337 occupied columns — **2.05 m**, with
+the most common column value 2.1 m and the rear terrace at 6.02 m. Loose props
+spawned by `terraform/stock.py` at the same 70.91 sat correctly, which is the
+tell: the props used the pad datum and the structure did not.
+
+### What the datum is
+
+`base_geometry.floor_datum(objects)` returns a `FloorDatum` whose `base_y` is
+the blueprint-local Y of the **lowest walkable floor surface**, computed from
+each piece's real collider with the row's own rotation and scale applied. The
+placement Y is then `pad_height − base_y`. Read the module header for the
+alternatives considered (`lowest solid`, `support bottom`), what each would do
+instead, the cases where the rule defers to a buried crafting station or skips a
+sub-cellar slab, and what it refuses. Across the 174 catalogued bodies: 162
+resolve, 12 refuse (all of them zero-piece files), and 101 have supports
+correctly left below the chosen plane.
 
 ## Coordinates, the water plane, and freeboard
 

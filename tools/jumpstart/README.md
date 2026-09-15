@@ -66,6 +66,36 @@ Claims below are marked **MEASURED** (observed on this box) or **INFERRED**.
 * **`notes.withholds` / `notes.gaps`** — what the preset deliberately does not
   give, and what is known-unresolved.
 
+### Counts are bounded by WEIGHT, not just by slots
+
+A Valheim character carries 300 kg — MEASURED from `assembly_valheim.dll`:
+`Player..ctor` sets `m_maxCarryWeight = 300f`, `GetMaxCarryWeight()` multiplies
+it by `Game::m_carryWeightRate` (1 unless a global key moves it), and
+`IsEncumbered()` is `Inventory.GetTotalWeight() > GetMaxCarryWeight()`. Nothing
+is equipped on spawn and a new character has no status effects, so 300 kg is the
+whole budget.
+
+Slots alone therefore do not bound a kit. On 2026-09-15 `pre-bonemass` rendered
+30 prefabs into 32 of 32 slots weighing **426.8 kg**, and the operator found it
+by being unable to walk away from the spawn. `worlds/derive.py` now refuses to
+render a template over `inventory.carry_budget_fraction` of that capacity, and
+per-prefab weights live in `data/item_weights.json` (regenerate with
+`extract_item_weights.py`).
+
+The authoring rule that follows, applied to all nine presets:
+
+* A **stackable `kit` or `chain_items` entry** is sized so its stack weighs no
+  more than **5 kg**. That is what turns 150 arrows into 50, 20 meads into 5 and
+  a 50-stack of `FrostCore` into 5. Every item *class* is kept — the kit still
+  teaches the tier — only the depth of each stack comes down. The base has a
+  forge and the stock to make more.
+* **`materials` counts are left at bulk.** They are the recipe-unlock mechanism
+  and their natural home is the placed base's chests, so `derive.py` carries as
+  many material *kinds* as the weight budget allows (lightest first, so the
+  player gets breadth) and routes the rest to `settings/chest-manifest.yaml`.
+* Count-1 entries are exempt: a single iron chestpiece weighs 15 kg and cannot
+  be made lighter without removing it.
+
 ### World modifiers
 
 MEASURED from `assembly_valheim.dll`: `WorldModifiers = {Default, Combat,

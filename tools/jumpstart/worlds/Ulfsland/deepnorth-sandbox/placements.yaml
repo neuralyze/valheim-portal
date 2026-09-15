@@ -12,8 +12,14 @@ coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGe
   straddling 30, and every land location type in the ZoneSystem dump floors at 30.50..31.11 because Valheim
   places land locations with minAltitude 1. `freeboard_m` in each solved block is the metres the footprint''s
   LOWEST cell clears y=30 by, measured on a 1 m river-inclusive sample; negative means part of the pad
-  is under water. `align: ground-center` means the blueprint is centred on x/z and its LOWEST piece is
-  dropped exactly onto y.'
+  is under water. `align: floor-center` means the blueprint is centred on x/z and its FLOOR PLANE is dropped
+  exactly onto y. The floor plane is measured from the game''s own piece colliders by tools/jumpstart/blueprints/base_geometry.py
+  and recorded per placement in `blueprint_datum`; the placement Y emitted to the server is `flatten_cost.target_y
+  - blueprint_datum.base_y`. The previous `align: ground-center` dropped the lowest PIVOT onto y instead,
+  which is not a surface: MEASURED, `stone_floor_2x2` is a 2x2x1 m solid whose pivot sits at mid-thickness,
+  and 99 of the 157 non-empty corpus bodies are normalised so that min pivot Y == 0, on which that shift
+  was always exactly 0.0. That is why every structure floated while loose props spawned at the same pad
+  height sat correctly.'
 constraint_note: 'Constraints come in two classes and the solver treats them differently. HARD -- biome,
   min_biome_purity, min_height_m (freeboard over the WHOLE footprint above the y=30 water plane), location_clearance_m,
   coastal/coastal_within_m, within_m, and require_overland when declared -- are things no amount of building
@@ -38,7 +44,7 @@ placements:
   - 13.8
   creator: Randominis
   viability: PLACES_CLEAN
-  align: ground-center
+  align: floor-center
   requirement:
     biome: Meadows
     footprint_m: 56
@@ -362,6 +368,47 @@ placements:
         flat_spread_coarse_m: 46.36
         flat_p5_p95_m: 39.59
         refined_moved_m: 5.7
+  blueprint_datum:
+    base_y: 3.264
+    method: lowest_station_below_floor
+    placeable: true
+    bottom_solid_y: -96.261
+    support_bottom_y: 2.764
+    lowest_station_y: 3.264
+    lowest_ground_resting_y: 3.264
+    floor_pieces: 448
+    pieces: 1820
+    walkable_levels:
+    - y: 3.76
+      above_pad_m: 0.496
+      pieces: 290
+      area_m2: 1160.0
+    - y: 3.86
+      above_pad_m: 0.596
+      pieces: 4
+      area_m2: 16.0
+    - y: 4.86
+      above_pad_m: 1.596
+      pieces: 23
+      area_m2: 92.0
+    - y: 5.86
+      above_pad_m: 2.596
+      pieces: 6
+      area_m2: 18.0
+    - y: 6.86
+      above_pad_m: 3.596
+      pieces: 12
+      area_m2: 30.0
+    - y: 7.86
+      above_pad_m: 4.596
+      pieces: 113
+      area_m2: 116.0
+    walkable_levels_total: 6
+    violations:
+    - code: station_below_floor
+      detail: a crafting station stands at y=3.264, 0.50 m below the lowest walkable surface y=3.760.
+        A buried station cannot be used, so the station plane wins; the floor above it stands proud by
+        that much, which is cosmetic.
 - id: sandbox-portal-hub
   blueprint: god-portaaoo.blueprint
   sha256: e249c441d846199c05c6bdba5c74213c4aeedb30a8c94d5622a777f01bc3e154
@@ -372,7 +419,7 @@ placements:
   - 23.0
   creator: God
   viability: PLACES_CLEAN
-  align: ground-center
+  align: floor-center
   requirement:
     biome: Meadows
     footprint_m: 50
@@ -570,6 +617,43 @@ placements:
         error_deg: 137.8
         best_cardinal_yaw: 0
         verdict: declared yaw is 138 deg off the anchor; bearing is 357
+  blueprint_datum:
+    base_y: 1.0
+    method: lowest_walkable_surface
+    placeable: true
+    bottom_solid_y: -0.002
+    support_bottom_y: -0.0
+    lowest_station_y: null
+    lowest_ground_resting_y: null
+    floor_pieces: 62
+    pieces: 2191
+    walkable_levels:
+    - y: 1.0
+      above_pad_m: 0.0
+      pieces: 22
+      area_m2: 88.0
+    - y: 3.1
+      above_pad_m: 2.1
+      pieces: 2
+      area_m2: 8.0
+    - y: 5.1
+      above_pad_m: 4.1
+      pieces: 14
+      area_m2: 56.0
+    - y: 7.1
+      above_pad_m: 6.1
+      pieces: 2
+      area_m2: 8.0
+    - y: 9.0
+      above_pad_m: 8.0
+      pieces: 8
+      area_m2: 32.0
+    - y: 9.1
+      above_pad_m: 8.1
+      pieces: 14
+      area_m2: 56.0
+    walkable_levels_total: 6
+    violations: []
 - id: sandbox-harbour
   blueprint: dock.blueprint
   sha256: 4157326c69a0157df45f96bbcf1c56c6e85fd81e66020006171cdb9ef79de9b9
@@ -580,7 +664,7 @@ placements:
   - 23.5
   creator: Olivanderr
   viability: PLACES_CLEAN
-  align: ground-center
+  align: floor-center
   requirement:
     biome: Meadows
     footprint_m: 48
@@ -1062,3 +1146,56 @@ placements:
           required: -2.0
           actual: -2.76
           over_by: 0.76
+  blueprint_datum:
+    base_y: 1.5
+    method: lowest_walkable_surface
+    placeable: true
+    bottom_solid_y: -1.5
+    support_bottom_y: -1.5
+    lowest_station_y: null
+    lowest_ground_resting_y: 5.43
+    floor_pieces: 201
+    pieces: 2036
+    walkable_levels:
+    - y: 1.5
+      above_pad_m: 0.0
+      pieces: 19
+      area_m2: 76.0
+    - y: 5.5
+      above_pad_m: 4.0
+      pieces: 126
+      area_m2: 504.0
+    - y: 5.6
+      above_pad_m: 4.1
+      pieces: 22
+      area_m2: 28.0
+    - y: 6.38
+      above_pad_m: 4.88
+      pieces: 2
+      area_m2: 2.0
+    - y: 6.74
+      above_pad_m: 5.24
+      pieces: 2
+      area_m2: 2.0
+    - y: 7.38
+      above_pad_m: 5.88
+      pieces: 2
+      area_m2: 2.0
+    - y: 8.6
+      above_pad_m: 7.1
+      pieces: 2
+      area_m2: 2.0
+    - y: 9.66
+      above_pad_m: 8.16
+      pieces: 3
+      area_m2: 6.0
+    - y: 10.6
+      above_pad_m: 9.1
+      pieces: 20
+      area_m2: 80.0
+    - y: 10.66
+      above_pad_m: 9.16
+      pieces: 3
+      area_m2: 3.0
+    walkable_levels_total: 10
+    violations: []
