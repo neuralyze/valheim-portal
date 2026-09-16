@@ -948,12 +948,32 @@ def _staged(srv: Server, wire: list[str]) -> dict:
     """Upgrade World's staged operations need `start`, and they run across
     frames -- the answer immediately after `start` is not the answer.  MEASURED:
     querying too early made a 69-object pad look empty and the removal then ran
-    against nothing."""
+    against nothing.
+
+    THE BRACKET GOES OVER THE SOCKET AND ITS REPLY IS RECORDED RATHER THAN
+    MATCHED, and both halves of that are measured.  Routing `stop`/`start`
+    through the LOG-reading transport killed T4's clearing emit one cylinder
+    in: the container log chain had stalled, `console("stop")` raised
+    `OutputNotFound`, and the pass died holding a `stop` whose `start` it could
+    not confirm.  Matching the reply byte-for-byte with `console_echo` fails
+    too, and for an instructive reason -- MEASURED, `consoleCommand start`
+    answers `routine is null` on an idle queue instead of ValheimRcon's stock
+    `Command 'start' executed.`, so a strict comparison refuses a command that
+    ran correctly.
+
+    What makes recording sufficient here is that neither command has an
+    OUTPUT this function needs and neither is the thing being verified: a
+    reply of any kind proves the main thread ran the command (every
+    ValheimRcon reply is main-thread-gated), and whether the staged operation
+    actually did its work is decided afterwards by the op's own postcondition.
+    The staged COMMAND itself keeps the log transport, because its output is
+    the thing being read.
+    """
     out = {}
     for cmd in wire:
-        srv.console("stop")
+        out["stop"] = srv.command("consoleCommand stop")
         out[cmd] = srv.console(cmd)
-        out["start"] = srv.console("start")
+        out["start"] = srv.command("consoleCommand start")
     return {k: (v if isinstance(v, dict) else [str(x)[:120] for x in v])
             for k, v in out.items()}
 

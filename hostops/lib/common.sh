@@ -565,6 +565,70 @@ world_env_dir() {
 game_build_anchor_path() { printf '%s' "$VALHEIM_ROOT/$1/mods/.game-build-anchor"; }
 game_build_hold_path() { printf '%s' "$VALHEIM_ROOT/$1/mods/.game-build-hold"; }
 
+# rcon_answers succeeds when the WORLD ITSELF replies, and it deliberately does
+# not read a log, a status file or a save timestamp. Those are all downstream of
+# the container's log sink, and this host has a measured failure mode that stops
+# the sink dead while the game keeps running: a burst of console replies makes
+# the container's syslogd lose its stdout pipe, after which not one further line
+# is written. MEASURED 2026-09-16: a build's object census killed the sink, the
+# watchdog read a frozen log plus a stale save and SIGTERMed a perfectly healthy
+# world in the middle of a terrain write. The server answered `players` in 0.03 s
+# the entire time.
+#
+# An RCON round trip is 8 bytes and ~35 ms, it touches nothing this fault can
+# reach, and a reply proves a frame actually ran - which is the only question a
+# wedge test is really asking. Absent config, an unreachable container or a
+# missing python3 all return non-zero: the caller must treat "cannot ask" as
+# "no answer" rather than as proof of health.
+rcon_answers() {
+  local world=$1 cfg pass ip
+  cfg="$VALHEIM_ROOT/$world/config_merged/bepinex/org.tristan.rcon.cfg"
+  [[ -r $cfg ]] || return 1
+  pass=$(sed -n 's/^Password *= *//p' "$cfg" | tail -1)
+  [[ -n $pass ]] || return 1
+  ip=$(docker inspect "valheim-server-$world" \
+        --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null)
+  [[ -n $ip ]] || return 1
+  command -v python3 >/dev/null 2>&1 || return 1
+  RCON_HOST="$ip" RCON_PASS="$pass" timeout 20 python3 - <<'PY' >/dev/null 2>&1
+import os, socket, struct, sys
+
+def pkt(pid, ptype, body):
+    payload = struct.pack("<ii", pid, ptype) + body.encode() + b"\x00\x00"
+    return struct.pack("<i", len(payload)) + payload
+
+def read(sock):
+    head = b""
+    while len(head) < 4:
+        chunk = sock.recv(4 - len(head))
+        if not chunk:
+            raise EOFError
+        head += chunk
+    (length,) = struct.unpack("<i", head)
+    body = b""
+    while len(body) < length:
+        chunk = sock.recv(length - len(body))
+        if not chunk:
+            raise EOFError
+        body += chunk
+    return body
+
+try:
+    with socket.create_connection((os.environ["RCON_HOST"], 2458), timeout=8) as sock:
+        sock.settimeout(8)
+        sock.sendall(pkt(1, 3, os.environ["RCON_PASS"]))
+        read(sock)
+        # `players` is the smallest reply the server can give and it is produced on
+        # the game thread, so a reply is evidence a frame ran - not merely that the
+        # socket is bound.
+        sock.sendall(pkt(2, 2, "players"))
+        read(sock)
+except Exception:
+    sys.exit(1)
+sys.exit(0)
+PY
+}
+
 # anchor_field prints one value out of a key=value file, or nothing. A missing
 # file is not an error here: the caller decides what absence means, and the two
 # callers mean different things by it.

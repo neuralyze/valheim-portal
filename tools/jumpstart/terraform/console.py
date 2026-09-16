@@ -106,12 +106,77 @@ class OutputNotFound(RuntimeError):
     """
 
 
+# THE CONSOLE OUTPUT IS READ FROM THE CONTAINER'S OWN FILE, NOT FROM
+# `docker logs`, AND THAT IS THE FOURTH FAILURE MODE OF THIS SUBSYSTEM.
+#
+# MEASURED twice on 2026-09-16, once mid-census on T4 and once 42 seconds into
+# T4's clearing emit on a FRESHLY RESTARTED container: `docker logs` stopped
+# returning anything at all while the game answered `players` in 34 ms, both
+# supervisord and syslogd sat in their normal event loops (`do_poll` /
+# `__skb_wait_for_more_packets`, so not the drainable circular wait), and the
+# container's json log file simply stopped growing -- 44,891,528 bytes at
+# 08:44:46, and nothing after it.  The read end belongs to containerd-shim,
+# which was in `futex_wait_queue`, so the break is DOWNSTREAM of everything
+# this project can reach: not the game, not the sink, not drainable, and a
+# restart bought seven minutes and four calls before it happened again.
+#
+# AND THE SAME CONTENT WAS AVAILABLE ALL ALONG.  supervisord captures the
+# server's stdout into `/var/log/supervisor/valheim-server-stdout---*.log`
+# before forwarding a copy to its own stdout, and MEASURED at the moment
+# `docker logs` was dead that file was still growing -- same `Console:` lines,
+# same `Command '<cmd>' executed.` echoes, minus the syslog prefix.  So the
+# console path's dependency on the docker log stream was never necessary, and
+# with it gone the console is as robust as the socket.
+#
+# THE WINDOW IS A BYTE OFFSET, NOT A CLOCK AND NOT A LINE COUNT.  The offset
+# is taken BEFORE the command is sent and the read starts there, so the slice
+# cannot contain a stale echo of the same command from an earlier call -- which
+# a line-based tail can, and which would attribute one cylinder's census to
+# another.  If the file rotated in between (supervisord rotates at ~1 MB) the
+# size goes DOWN, and the reader falls back to the rotated file plus the new
+# one rather than reading a wrong offset.
+SUP_LOG_GLOB = "/var/log/supervisor/valheim-server-stdout---supervisor-*.log"
+
+
+def _exec(script: str, timeout: float = 30.0) -> str:
+    out = subprocess.run(["sudo", "-n", "docker", "exec", CONTAINER, "bash",
+                          "-c", script], capture_output=True, text=True,
+                         timeout=timeout)
+    return out.stdout
+
+
+def sup_log_size() -> tuple[str, int] | None:
+    """(path, byte size) of the container's live server-stdout log."""
+    got = _exec(f"f=$(ls -t {SUP_LOG_GLOB} 2>/dev/null | head -1); "
+                f"[ -n \"$f\" ] && echo \"$f $(wc -c < \"$f\")\"").strip()
+    if not got:
+        return None
+    path, _, size = got.rpartition(" ")
+    try:
+        return path.strip(), int(size)
+    except ValueError:
+        return None
+
+
+def sup_log_since(path: str, offset: int) -> list[str]:
+    """Everything appended to `path` after `offset`, rotation-aware."""
+    got = _exec(
+        f"sz=$(wc -c < '{path}' 2>/dev/null || echo 0); "
+        f"if [ \"$sz\" -lt {offset} ]; then "
+        f"  cat '{path}.1' 2>/dev/null; cat '{path}' 2>/dev/null; "
+        f"else tail -c +{offset + 1} '{path}' 2>/dev/null; fi")
+    return got.splitlines()
+
+
 def logs_window(seconds: int = WINDOW_S) -> list[str]:
     """The last `seconds` of container log, by docker's own relative window.
 
-    Relative rather than absolute: `--since 5m` is resolved by docker against
-    the same clock it stamped the records with, so it cannot disagree with
-    itself the way an externally-generated timestamp can.
+    Kept as the FALLBACK for a container whose supervisor log cannot be read
+    (a different image layout, or `docker exec` refused).  Relative rather
+    than absolute: `--since 5m` is resolved by docker against the same clock it
+    stamped the records with, so it cannot disagree with itself the way an
+    externally-generated timestamp can.  What it cannot survive is the docker
+    log stream itself stopping, which is what the file reader above is for.
     """
     out = subprocess.run(["sudo", "-n", "docker", "logs", "--since", f"{seconds}s", CONTAINER],
                          capture_output=True, text=True)
@@ -175,10 +240,50 @@ def slice_for(lines: list[str], cmd: str) -> list[str]:
     return console_output(lines[start:end])
 
 
-def run_console(rc: Rcon, cmd: str, settle: float = 1.2) -> list[str]:
+def run_console(rc: Rcon, cmd: str, settle: float = 1.2,
+                waits: int = 4) -> list[str]:
+    """Send a console command and return what the console printed.
+
+    The window is the container log FILE from the byte offset taken before the
+    command was sent, so the slice is exactly this run's output.  The echo can
+    lag the reply -- `Log.Message` runs on the main thread and the file is
+    written by supervisord afterwards -- so a missing echo is re-read a few
+    times before it is called missing.  `OutputNotFound` still means UNKNOWN,
+    never empty.
+    """
+    got = sup_log_size()
+    if got is None:
+        rc.console(cmd)
+        time.sleep(settle)
+        return slice_for(logs_window(), cmd)
+    path, offset = got
     rc.console(cmd)
-    time.sleep(settle)
-    return slice_for(logs_window(), cmd)
+    last = None
+    for i in range(waits):
+        time.sleep(settle if i == 0 else 1.0)
+        try:
+            return slice_for(sup_log_since(path, offset), cmd)
+        except OutputNotFound as exc:
+            last = exc
+            # A MISSING ECHO IS USUALLY THE SINK, SO REPAIR THE SINK AND LOOK
+            # AGAIN.  MEASURED on T4's clearing emit: `console("stop")` inside
+            # a STAGED op refused because supervisord had entered
+            # `unix_wait_for_peer` with syslogd in `pipe_write` -- the
+            # drainable circular wait -- and that path, unlike `count_star`,
+            # had no repair.  One clearing pass died 1 cylinder in for a
+            # condition a two-second host-side drain clears.
+            #
+            # The drain consumes supervisord's copy of syslogd's stdout, which
+            # is what `docker logs` carries -- and NOT this file, which
+            # supervisord writes before forwarding.  So draining cannot eat
+            # the output being read here.  That is what makes repairing the
+            # sink from inside the reader safe rather than self-defeating.
+            try:
+                import rcon as _rc  # noqa: PLC0415
+                _rc.keep_sink_clear(note=f"console echo missing for `{cmd}`")
+            except Exception:  # noqa: BLE001 -- diagnosis must not mask this
+                pass
+    raise last
 
 
 def main() -> int:

@@ -89,6 +89,7 @@ import argparse
 import json
 import math
 import re
+import socket
 import sys
 import time
 from pathlib import Path
@@ -470,8 +471,29 @@ def count_star(srv, x: float, z: float, r: float, attempts: int = 5,
             total, per = srv.count("*", x, z, r)
             time.sleep(space_s)
             return {"total": total, "per_prefab": per, "attempts": i + 1}
-        except OutputNotFound as exc:
+        except (OutputNotFound, TimeoutError, socket.timeout,
+                ConnectionError, OSError) as exc:
             last = exc
+            # A MISSING ECHO IS THE SINK'S SYMPTOM, SO REPAIR THE SINK BEFORE
+            # RE-ASKING.  This answer comes back through the container log, so
+            # the one failure mode that eats it is the same circular wait the
+            # host drain releases -- and a drain can itself eat an in-flight
+            # console answer, which is exactly why a missing answer is
+            # re-asked instead of read as a zero.
+            note = f"objects_count retry {i + 1} at ({x:.0f},{z:.0f})"
+            try:
+                sink_watch(note)
+            except RuntimeError as sexc:
+                raise SystemExit(
+                    f"objects_count at ({x:.1f}, {z:.1f}) has no answer and "
+                    f"the log sink cannot be repaired in place: {sexc}") from exc
+            rc = getattr(srv, "rc", None)
+            if rc is not None and isinstance(exc, (TimeoutError, OSError)):
+                try:
+                    rc.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                rc.connect()
             time.sleep(1.0 + 1.5 * i)
     raise SystemExit(
         f"objects_count id=* at ({x:.1f}, {z:.1f}) r={r:.1f} did not answer in "
@@ -496,8 +518,50 @@ def count_star(srv, x: float, z: float, r: float, attempts: int = 5,
 # than wedging: a census that halts is restartable, a wedged main thread is a
 # four minute restart and a lost save.
 CENSUS_SPACING_S = 0.08
-CENSUS_SINK_EVERY = 150
+# WAS 150, AND THE COST OF A CHECK IS WHY IT MOVED.  `sink_ok` probes through
+# `docker exec`, which costs two seconds and cannot be trusted while the sink
+# is stalled -- the exact case it exists to detect.  `rcon.host_sink_state`
+# reads the same two `/proc/<pid>/wchan` entries from the HOST in 0.5 s and
+# tells the drainable circular wait apart from the shape that needs a restart,
+# so the check is cheap enough to run four times as often and its remedy is a
+# two-second drain instead of a four-minute restart.
+CENSUS_SINK_EVERY = 40
 _census_calls = 0
+# WHAT THE CENSUS COSTS THE ONE FRAGILE SUBSYSTEM, COUNTED RATHER THAN
+# ESTIMATED.  The hazard is not the number of calls, it is the number of LINES
+# the server writes to its own stdout, because `RconProxy` logs the FULL reply
+# text inline on the Unity main thread.  Both census shapes -- per station and
+# per cell -- go through `list_prefab`, so counting here counts them on the
+# same instrument and the comparison between them is a measurement rather than
+# an argument.
+_ECHO = {"socket_calls": 0, "socket_reply_lines": 0,
+         "console_calls": 0, "console_reply_lines": 0}
+
+
+def echo_reset() -> dict:
+    for k in _ECHO:
+        _ECHO[k] = 0
+    return dict(_ECHO)
+
+
+def sink_watch(note: str = "") -> dict:
+    """MEASURE the sink from the host and DRAIN it if it is in the drainable
+    wait.  Raises for the shape a drain cannot fix.
+
+    This replaces "stop with a named verdict" with "repair and continue"
+    wherever the repair is real, and it is: MEASURED three times on this
+    world, supervisord in `unix_wait_for_peer` with syslogd in `pipe_write`
+    releases in under two seconds of sustained reading from supervisord's own
+    read end, with the game process untouched.  Stopping instead would cost a
+    restart per segment and there are thirteen segments left.
+
+    The bytes drained are container log lines, so this is safe for the
+    socket-only half of the census (where the echoes are pure cost) and a
+    `consoleCommand` whose OUTPUT is read must re-ask after a drain.
+    """
+    import rcon as RC  # noqa: PLC0415
+
+    return RC.keep_sink_clear(note=note)
 
 
 def _throttle(srv) -> None:
@@ -507,48 +571,118 @@ def _throttle(srv) -> None:
         return
     time.sleep(CENSUS_SPACING_S)
     if _census_calls % CENSUS_SINK_EVERY == 0:
-        sink_ok(f"census call {_census_calls}")
+        sink_watch(f"census call {_census_calls}")
+
+
+# How many times one READ-ONLY question may be re-asked after the transport
+# times out.  A `findObjects` is idempotent, and a timeout means the main
+# thread was blocked on a log write rather than that the answer is unknowable,
+# so re-asking after draining the sink is the correct response.  MEASURED: the
+# first T10 census attempt died on exactly this, with the sink in the
+# drainable wait and the in-container probe misreporting it as `fds_lost`.
+ASK_ATTEMPTS = 4
+
+
+def ask(srv, cmd: str) -> str:
+    """One socket round trip that survives a stalled sink.
+
+    THE SOCKET IS RECONNECTED AFTER A TIMEOUT rather than reused.  The reply
+    to a timed-out command can still arrive later, and `RconPeer` parses one
+    packet per receive and clears the buffer, so a reused socket would read
+    the LATE reply as the answer to the NEXT question -- every position after
+    that would be attributed to the wrong prefab.  A fresh connection cannot
+    inherit that.
+    """
+    last = None
+    for i in range(ASK_ATTEMPTS):
+        try:
+            return srv.command(cmd)
+        except (TimeoutError, socket.timeout, ConnectionError, OSError) as exc:
+            last = exc
+            got = sink_watch(f"timeout on `{cmd[:70]}`")
+            rc = getattr(srv, "rc", None)
+            if rc is not None:
+                try:
+                    rc.close()
+                except Exception:  # noqa: BLE001 -- closing a dead socket
+                    pass
+                time.sleep(1.0 + 2.0 * i)
+                rc.connect()
+            print(f"    [sink] {type(exc).__name__} on attempt {i + 1}; "
+                  f"{got.get('action')} -> {got.get('verdict')}; retrying",
+                  flush=True)
+    raise SystemExit(
+        f"`{cmd}` did not answer in {ASK_ATTEMPTS} attempts ({last}) even "
+        f"after draining the log sink. Refusing to treat an unanswered "
+        f"question as an empty answer.")
+
+
+# HOW MUCH A SUBDIVIDED BOX OVERLAPS ITS SIBLINGS, and this number was 1.4143.
+# Eight sub-boxes of half `hh/2` centred at `+/-hh/2` TILE the parent box
+# exactly -- there is no gap to close -- so the old half-diagonal expansion was
+# covering a gap that does not exist and paying 2.83x the parent's VOLUME for
+# it: every object inside a subdivided box was echoed about three times per
+# level, and the children reached 0.41*hh OUTSIDE the parent, pulling in
+# objects that belong to the neighbouring cell and breaking the disjointness
+# the per-cell census is built on.  1.02 is float safety on an inclusive
+# comparison and nothing more; the result is still keyed by ZDO id.
+LIST_OVERLAP = 1.02
 
 
 def list_prefab(srv, prefab: str, x: float, y: float, z: float,
                 half: float) -> tuple[dict, list, int]:
     """Positions of one prefab inside the CUBE, subdividing until every reply
-    is small.  Returns (by ZDO id, discs that stayed too dense, socket calls).
+    is small.  Returns (by ZDO id, boxes that stayed too dense, socket calls).
 
-    THE BINDING LIMIT IS THE CLIENT'S 4096-BYTE BUFFER, not the server's
-    patience: `RconPeer.TryReceive` parses one packet and clears it, so an
-    oversized reply desynchronises the stream and the NEXT agent's `connect()`
-    inherits the desync.  MEASURED here: 24 rows came back as 1,404 bytes and
-    47 rows as 3,040, i.e. ~62 bytes a row, so 18 rows is the fleet cap with a
-    wide margin and even a surprise at 3x it stays inside the buffer.
+    `findObjects -near x y z r` IS A CUBE IN ALL THREE AXES, and that is not a
+    footnote -- it is a defect this function shipped with.  MEASURED on T10 at
+    the spawn hall: the same prefab answered 2 rows for a 7.42 m disc centred
+    on the road profile and 8 rows for a 16 m one, because six `wood_beam_1`
+    stand at y 84-85 and the small box's ceiling is 83.15.  So the old
+    per-station census, whose discs are 7-17 m, was BLIND TO EVERYTHING MORE
+    THAN A DISC RADIUS ABOVE THE ROAD -- i.e. blind to exactly the structures
+    whose presence is supposed to skip a removal cylinder.  The y extent is
+    therefore part of the question and `census_zoned` stacks boxes to cover it.
 
-    The quadrants deliberately OVERLAP -- each carries its quadrant's
-    half-diagonal so their union cannot leave a gap -- which double-counts, so
-    the result is keyed by ZDO id.  MEASURED elsewhere tonight: the raw
-    concatenation read 72 rows for 29 objects, and someone counted it.
+    THE REPLY IS CAPPED AT 4050 BYTES BY `ValidatePayloadLength`, which runs
+    when the packet is built and truncates: rows run ~62 bytes (MEASURED: 24
+    rows = 1,404 bytes, 47 = 3,040), so a reply over ~65 rows loses rows with
+    no error.  The subdivision trigger is the `Found n objects` HEADER rather
+    than the rows parsed, so truncation can never be read as a short list --
+    18 rows is the cap with a 3x margin, and anything denser is asked again
+    smaller.
     """
     found: dict[str, dict] = {}
     unlisted: list[dict] = []
     calls = 0
-    stack = [(x, z, half)]
+    stack = [(x, y, z, half)]
     while stack:
-        cx, cz, hh = stack.pop()
+        cx, cy, cz, hh = stack.pop()
         _throttle(srv)
-        reply = srv.command(f"findObjects -prefab {prefab} "
-                            f"-near {cx:.2f} {y:.2f} {cz:.2f} {hh:.2f}")
+        reply = ask(srv, f"findObjects -prefab {prefab} "
+                         f"-near {cx:.2f} {cy:.2f} {cz:.2f} {hh:.2f}")
         calls += 1
+        # The SERVER logged exactly these lines on its main thread.  `n` rows
+        # plus the "Found n objects" header when there is anything, one line
+        # when there is not.
+        _ECHO["socket_calls"] += 1
+        _ECHO["socket_reply_lines"] += len(
+            [ln for ln in reply.splitlines() if ln.strip()]) or 1
         m = FOUND_RE.search(reply)
         n = int(m.group(1)) if m else 0
         if n == 0:
             continue
         if n > MAX_LIST_ROWS:
             if hh <= MIN_LIST_HALF_M:
-                unlisted.append({"prefab": prefab, "centre": [cx, cz],
+                unlisted.append({"prefab": prefab, "centre": [cx, cy, cz],
                                  "half_m": hh, "rows": n})
                 continue
             h = hh / 2.0
-            for dx, dz in ((-h, -h), (-h, h), (h, -h), (h, h)):
-                stack.append((cx + dx, cz + dz, h * 1.4143))
+            for dx in (-h, h):
+                for dy in (-h, h):
+                    for dz in (-h, h):
+                        stack.append((cx + dx, cy + dy, cz + dz,
+                                      h * LIST_OVERLAP))
             continue
         for mm in POS_RE.finditer(reply):
             found[mm.group("id")] = {
@@ -614,16 +748,7 @@ def census(srv, seg: dict, names: list[str]) -> dict:
               f"objects so far {len(objects)} ({calls} socket calls)",
               flush=True)
 
-    for o in objects.values():
-        got = lat_of(o["x"], o["z"])
-        o["lat_m"] = None if got is None else round(got[0], 3)
-        o["road_y"] = None if got is None else round(got[1], 3)
-        k = nearest_station(seg, o["x"], o["z"])
-        o["station"] = k
-        o["clear_half_m"] = round(float(per_station[k]), 3)
-        o["clearable"] = is_clearable(o["prefab"])
-        o["in_clear_width"] = bool(o["lat_m"] is not None
-                                   and o["lat_m"] <= o["clear_half_m"])
+    annotate(seg, objects, per_station, lat_of)
     return {
         "segment": seg["id"],
         "width_m": seg["width_m"], "shoulder_m": RB.SHOULDER_M,
@@ -656,6 +781,307 @@ def census(srv, seg: dict, names: list[str]) -> dict:
         "tool": "tools/jumpstart/roads/clear.py::census",
     }
 
+# ---------------------------------------------------------------------------
+# THE CENSUS, PER CELL RATHER THAN PER STATION, AND OVER THE SOCKET ONLY
+# ---------------------------------------------------------------------------
+#
+# THE DEFECT THIS REPLACES, MEASURED THREE TIMES.  `census` above asks its
+# questions on the REMOVAL discs, which are spaced `1.80h` apart and have
+# radius `1.35h`, so consecutive discs overlap by about two thirds and every
+# trunk in the corridor is returned -- and therefore ECHOED TO THE CONTAINER
+# LOG ON THE MAIN THREAD -- roughly ten times.  T12 cost 2,014 calls for 650
+# objects, T3 4,500 for 1,200, and T10 (569 m, 45 discs, 139 names) never
+# finished: it died at ~300 calls with the sink already gone.  It also asks
+# BY NAME, 139 names per region, so the cost is names x regions and the answer
+# is bounded by a list somebody wrote down.
+#
+# THREE CHANGES, and each one is about a measured failure:
+#
+#   1. THE QUERY REGIONS ARE DISJOINT.  A 16 m cell on a global 16 m lattice,
+#      which divides the zone grid exactly (zone boundaries are at 64k +/- 32),
+#      so the cells tile the plane and a `findObjects` cube of half 8 centred
+#      on a cell IS that cell.  Each object is echoed ONCE instead of ~10
+#      times.  Cells are kept only where the cell square actually intersects
+#      the corridor swath, so the census covers everywhere the earthwork
+#      writes and no further.
+#
+#   2. NO PREFAB LIST AT ALL.  One UNSCOPED `findObjects -near cx cy cz 8`
+#      returns every ZDO in the box with its prefab and position, so the cost
+#      is one call per box instead of 139, and the answer cannot be blind to a
+#      prefab nobody wrote down -- including the ~190 More_World_Locations POI
+#      types `corridor_prefabs.json` cannot name.  `rcon.guard` allows the
+#      unscoped form only inside `UNSCOPED_NEAR_MAX_M`, which is where the
+#      reply stays two orders of magnitude below the outage.
+#
+#   3. NOTHING GOES THROUGH THE CONSOLE.  The first version of this census
+#      took the per-cell prefab list from `objects_count id=*`, whose table
+#      comes back through the CONTAINER LOG.  MEASURED on T4: that census died
+#      at cell 50 of 66 because the log path stopped carrying anything --
+#      `docker logs` went silent while the game itself answered `players` in
+#      34 ms -- so the name list was unreadable and the census refused, 11
+#      minutes in.  The socket survives that failure; the log does not.  The
+#      clearing EMIT still needs the console (its per-cylinder census and its
+#      postcondition are `objects_count`), but the long phase no longer does.
+#
+# THE CELL SIZE IS BOUNDED BY TWO MEASURED LIMITS, not by taste.  Upward:
+# `ValidatePayloadLength` truncates the reply at 4050 bytes and a row is ~62
+# bytes (MEASURED: 24 rows = 1,404 bytes, 47 = 3,040), so a reply over ~65
+# rows loses rows with no error, and the full untruncated text is what the
+# main thread writes to the log.  The densest 32 m cell measured on these
+# corridors holds 334 objects (the stathub end of T4), i.e. ~0.33 per square
+# metre, so a 16 m cell is ~85 objects and ~5 KB at the worst place a road
+# touches.  Downward: every cell costs a call per y level, so halving the cell
+# again would quadruple the count for no completeness gain.
+CENSUS_CELL_M = 16.0
+CENSUS_CELL_HALF_M = CENSUS_CELL_M / 2.0
+# How far past the clear half-width a cell still counts as "on the corridor".
+# One metre, and it is `TERRAIN_SPREAD_M`: the reach of a terrain edit past the
+# written lattice, i.e. the last place ground can move at all.
+CENSUS_MARGIN_M = TERRAIN_SPREAD_M
+# THE VERTICAL EXTENT OF THE QUESTION, and it exists because the wire takes
+# ONE radius for all three axes.  MEASURED on T10 at the spawn hall: six
+# `wood_beam_1` stand at y 84-85 and a 7.42 m box centred on the road profile
+# at 75.73 cannot contain them, so the old per-station census was blind to
+# everything more than a disc radius above the road -- i.e. blind to exactly
+# the structures whose presence is supposed to skip a removal cylinder.  So
+# the box is STACKED in y: five cubes of half 8 at -32, -16, 0, +16, +32 cover
+# y-40..y+40 over exactly the same 16 m square, they are disjoint in y so an
+# object is still echoed once, and 40 m is five times the earthwork's own
+# +/-8 m apply clamp.  Ground variation inside one 16 m cell cannot exceed
+# ~12 m at the 0.781 batter grade, so the stack covers the cell's own relief
+# with margin.
+CENSUS_Y_LEVELS = (0.0, -2.0 * CENSUS_CELL_HALF_M, 2.0 * CENSUS_CELL_HALF_M,
+                   -4.0 * CENSUS_CELL_HALF_M, 4.0 * CENSUS_CELL_HALF_M)
+# Prefabs the census RECORDS but never treats as corridor content: the
+# engine's own per-zone objects.  `_*` is exactly what every removal wire
+# passes as `ignore`, so a removal can never touch them, and counting them as
+# blockers would skip every cylinder in every generated zone.  They are kept
+# in a separate tally because `_ZoneCtrl` per zone is independently useful:
+# one per zone is the generation signal the terrain write depends on.
+ENGINE_PREFIX = "_"
+
+
+def census_cells(seg: dict, per_station) -> list[tuple[float, float]]:
+    """The disjoint 16 m cells that cover this segment's corridor swath.
+
+    A cell is kept when its SQUARE intersects the disc of radius
+    `clear_half(station) + CENSUS_MARGIN_M` around any non-bridge station --
+    square-to-point distance, not centre-to-centre, because a cell whose corner
+    clips the corridor holds trees that stand in the road.
+    """
+    nodes = np.asarray(seg["nodes"], dtype=np.float64)
+    br = np.asarray(seg["is_bridge"], dtype=bool)
+    per = np.asarray(per_station, dtype=np.float64)
+    h = CENSUS_CELL_HALF_M
+    keep: dict[tuple[int, int], tuple[float, float]] = {}
+    for k in range(len(nodes)):
+        if br[k]:
+            continue
+        sx, sz = float(nodes[k, 0]), float(nodes[k, 1])
+        R = float(per[k]) + CENSUS_MARGIN_M
+        i0 = int(math.floor((sx - R) / CENSUS_CELL_M))
+        i1 = int(math.floor((sx + R) / CENSUS_CELL_M))
+        j0 = int(math.floor((sz - R) / CENSUS_CELL_M))
+        j1 = int(math.floor((sz + R) / CENSUS_CELL_M))
+        for i in range(i0, i1 + 1):
+            for j in range(j0, j1 + 1):
+                cx = i * CENSUS_CELL_M + h
+                cz = j * CENSUS_CELL_M + h
+                dx = max(abs(sx - cx) - h, 0.0)
+                dz = max(abs(sz - cz) - h, 0.0)
+                if dx * dx + dz * dz <= R * R:
+                    keep[(i, j)] = (cx, cz)
+    return [keep[k] for k in sorted(keep)]
+
+
+def list_box(srv, cx: float, cy: float, cz: float,
+             half: float = CENSUS_CELL_HALF_M) -> tuple[dict, list, int, dict]:
+    """EVERY ZDO in one box, by ZDO id -- no prefab filter, one call.
+
+    Returns (corridor objects, boxes that stayed too dense, socket calls,
+    engine objects).  Subdivides into eight sub-boxes that TILE the parent
+    whenever the `Found n objects` header exceeds `MAX_LIST_ROWS`, so no reply
+    approaches the 4050-byte truncation and a dense cell costs calls rather
+    than completeness.  The header, not the rows parsed, drives the
+    subdivision: a truncated reply must never be read as a short list.
+    """
+    found: dict[str, dict] = {}
+    engine: dict[str, dict] = {}
+    unlisted: list[dict] = []
+    calls = 0
+    stack = [(cx, cy, cz, half)]
+    while stack:
+        bx, by, bz, hh = stack.pop()
+        _throttle(srv)
+        reply = ask(srv, f"findObjects -near {bx:.2f} {by:.2f} {bz:.2f} "
+                         f"{hh:.2f}")
+        calls += 1
+        _ECHO["socket_calls"] += 1
+        _ECHO["socket_reply_lines"] += len(
+            [ln for ln in reply.splitlines() if ln.strip()]) or 1
+        m = FOUND_RE.search(reply)
+        n = int(m.group(1)) if m else 0
+        if n == 0:
+            continue
+        if n > MAX_LIST_ROWS:
+            if hh <= MIN_LIST_HALF_M:
+                unlisted.append({"centre": [bx, by, bz], "half_m": hh,
+                                 "rows": n})
+                continue
+            h = hh / 2.0
+            for dx in (-h, h):
+                for dy in (-h, h):
+                    for dz in (-h, h):
+                        stack.append((bx + dx, by + dy, bz + dz,
+                                      h * LIST_OVERLAP))
+            continue
+        for mm in POS_RE.finditer(reply):
+            rec = {"prefab": mm.group("prefab"), "id": mm.group("id"),
+                   "x": float(mm.group("x")), "y": float(mm.group("y")),
+                   "z": float(mm.group("z"))}
+            if rec["prefab"].startswith(ENGINE_PREFIX):
+                engine[rec["id"]] = rec
+            else:
+                found[rec["id"]] = rec
+    return found, unlisted, calls, engine
+
+
+def annotate(seg: dict, objects: dict, per_station, lat_of) -> None:
+    """Per-object road geometry, computed LOCALLY from the returned position.
+
+    The whole saving of the per-cell census is that distance-to-ribbon is
+    arithmetic on a position we already have rather than another question to
+    the server.  Same function the per-station census used, factored out so the
+    two shapes cannot annotate differently and make an equivalence proof
+    meaningless.
+    """
+    for o in objects.values():
+        got = lat_of(o["x"], o["z"])
+        o["lat_m"] = None if got is None else round(got[0], 3)
+        o["road_y"] = None if got is None else round(got[1], 3)
+        k = nearest_station(seg, o["x"], o["z"])
+        o["station"] = k
+        o["clear_half_m"] = round(float(per_station[k]), 3)
+        o["clearable"] = is_clearable(o["prefab"])
+        o["in_clear_width"] = bool(o["lat_m"] is not None
+                                   and o["lat_m"] <= o["clear_half_m"])
+
+
+def census_zoned(srv, seg: dict, cells: list | None = None,
+                 progress: bool = True, partial: Path | None = None) -> dict:
+    """WHAT IS STANDING IN THIS ROAD, censused once per object, socket only.
+
+    Same output shape as `census` -- including `tiles`, which stay the REMOVAL
+    discs, because the removal geometry is not what changed.  What changed is
+    where the questions are asked and what they cost.
+
+    RESUMABLE, and the reason is a measured loss rather than tidiness: T4's
+    first census reached cell 50 of 66 -- eleven minutes and 2,900 calls -- and
+    then refused, and every object it had already found went with it.  The
+    census is read-only and idempotent, so a partial file costs one write per
+    cell and turns "start again" into "carry on".
+    """
+    per_station, widest = clear_half_width(seg)
+    lat_of = lateral_fn(seg)
+    disc_list = tiles_local(seg, per_station)
+    cell_list = cells if cells is not None else census_cells(seg, per_station)
+    objects: dict[str, dict] = {}
+    engine: dict[str, dict] = {}
+    unlisted: list[dict] = []
+    calls = 0
+    done_cells: set[str] = set()
+    if partial and partial.exists():
+        prev = json.loads(partial.read_text())
+        if prev.get("segment") == seg["id"]:
+            objects = {o["id"]: o for o in prev.get("objects", [])}
+            engine = {o["id"]: o for o in prev.get("engine", [])}
+            unlisted = prev.get("unlisted_boxes", [])
+            calls = int(prev.get("socket_calls", 0))
+            done_cells = set(prev.get("cells_done", []))
+            print(f"  resuming: {len(done_cells)} cells already censused, "
+                  f"{len(objects)} objects carried forward", flush=True)
+    for i, (cx, cz) in enumerate(cell_list):
+        key = f"{cx:.1f},{cz:.1f}"
+        if key in done_cells:
+            continue
+        got = lat_of(cx, cz)
+        y = got[1] if got else 0.0
+        for dy in CENSUS_Y_LEVELS:
+            f, un, n, eng = list_box(srv, cx, y + dy, cz)
+            objects.update(f)
+            engine.update(eng)
+            unlisted += un
+            calls += n
+        done_cells.add(key)
+        if progress:
+            print(f"  cell {i + 1}/{len(cell_list)} ({cx:.0f},{cz:.0f}) "
+                  f"objects so far {len(objects)} ({calls} socket calls, "
+                  f"{_ECHO['socket_reply_lines']} echoed lines)", flush=True)
+        if partial:
+            partial.write_text(json.dumps(
+                {"segment": seg["id"], "cells_done": sorted(done_cells),
+                 "socket_calls": calls,
+                 "objects": list(objects.values()),
+                 "engine": list(engine.values()),
+                 "unlisted_boxes": unlisted}))
+    annotate(seg, objects, per_station, lat_of)
+    zone_ctrl: dict[str, int] = {}
+    for o in engine.values():
+        if o["prefab"] == "_ZoneCtrl":
+            import tcdata as _tc  # noqa: PLC0415
+            zx, zz = _tc.zone_of(o["x"], o["z"])
+            k = f"{zx},{zz}"
+            zone_ctrl[k] = zone_ctrl.get(k, 0) + 1
+    return {
+        "segment": seg["id"],
+        "width_m": seg["width_m"], "shoulder_m": RB.SHOULDER_M,
+        "batter_m": RB.BATTER_MAX_M, "batter_grade": round(RB.BATTER_GRADE, 4),
+        "terrain_spread_m": TERRAIN_SPREAD_M,
+        "clear_half_m_min": round(float(per_station.min()), 3),
+        "clear_half_m_max": round(widest, 3),
+        "tiles": [[round(a, 2), round(b, 2), round(c, 2)]
+                  for a, b, c in disc_list],
+        "cells": [[round(a, 2), round(b, 2)] for a, b in cell_list],
+        "cell_m": CENSUS_CELL_M,
+        "y_levels": list(CENSUS_Y_LEVELS),
+        "prefabs_asked": ["*  (unscoped findObjects: no name list at all)"],
+        "prefabs_found": sorted({o["prefab"] for o in objects.values()}),
+        "socket_calls": calls,
+        "echo": dict(_ECHO),
+        "objects": sorted(objects.values(),
+                          key=lambda o: (o["prefab"], o["id"])),
+        "engine_objects": sorted(engine.values(),
+                                 key=lambda o: (o["prefab"], o["id"])),
+        "zone_ctrl_seen": zone_ctrl,
+        "unlisted_discs": unlisted,
+        "method": (
+            "MEASURED live over the RCON SOCKET ONLY, PER CELL rather than per "
+            "station, and with NO PREFAB LIST. The corridor is covered by "
+            "DISJOINT 16 m cells on a global 16 m lattice that divides the "
+            "zone grid exactly, kept where the cell square intersects "
+            "clear_half(station) + 1 m of any non-bridge station. Per cell, "
+            "one UNSCOPED `findObjects -near cx y cz 8` at each of FIVE y "
+            "levels (-32, -16, 0, +16, +32) returns every ZDO in that box with "
+            "its prefab and position -- so the census cannot be blind to a "
+            "prefab nobody wrote down, including the ~190 mod POI types "
+            "corridor_prefabs.json cannot name. The y stack exists because "
+            "`findObjects -near` is a CUBE IN ALL THREE AXES: MEASURED, the "
+            "old per-station census missed six `wood_beam_1` at the T10 spawn "
+            "hall because they stand at y 84-85 and its box, centred on the "
+            "road profile at 75.73 with a 7.42 m half, could not contain "
+            "them. A box answering more than 18 rows is re-asked as eight "
+            "sub-boxes that TILE it (half/2 at +/-half/2, 1.02 float margin), "
+            "so no reply approaches the 4050-byte truncation. Deduplicated by "
+            "ZDO id; `_*` engine objects are tallied separately because a "
+            "removal wire can never touch them. Nothing goes through the "
+            "container console: the log path died mid-census on T4 and the "
+            "socket did not. Distance to the ribbon, station, clear "
+            "half-width and in_clear_width are computed LOCALLY from the "
+            "returned position by ribbon.lateral_and_y -- the same function "
+            "that decided where the road went -- so no distance costs a call."),
+        "tool": "tools/jumpstart/roads/clear.py::census_zoned",
+    }
+
 
 def placed_objects(censuses: list[dict]) -> dict:
     """The batter's gate input: every object we did NOT put there and will NOT
@@ -685,6 +1111,87 @@ def placed_objects(censuses: list[dict]) -> dict:
         "tool": "tools/jumpstart/roads/clear.py::placed_objects",
     }
 
+
+def removed_ids(cen: dict, emitted: list[dict]) -> dict:
+    """Which censused ZDOs this session's VERIFIED removals actually deleted.
+
+    DERIVED, NOT RE-MEASURED.  Each `objects_clear` record is a cylinder plus
+    the prefab names on its wire, and its postcondition -- `objects_count` for
+    exactly those names in exactly that cylinder, total 0, tolerance 0 -- was
+    verified in the same call before the record was accepted.  So "every
+    censused object whose prefab is on that wire and whose position is inside
+    that cylinder" is not an estimate of what went: it is what the
+    postcondition proved went.  A live re-census would be the alternative, and
+    it is the thing that killed the console sink twice.
+    """
+    gone: dict[str, dict] = {}
+    for cyl in emitted:
+        cx, cz = cyl["centre"]
+        r = float(cyl["radius_m"])
+        ids = set(cyl["ids"])
+        for o in cen["objects"]:
+            if o["prefab"] in ids and math.hypot(o["x"] - cx,
+                                                 o["z"] - cz) <= r:
+                gone[o["id"]] = o
+    return gone
+
+
+def placed_after(cen: dict, emitted: list[dict]) -> dict:
+    """THE BATTER'S GATE INPUT AFTER A CLEARING PASS: everything still
+    standing in the corridor, by position.
+
+    WHY THIS EXISTS RATHER THAN `placed_objects`, and it is a defect that one
+    measured T10 case exposed.  `placed_objects` keeps an object only when it
+    is off CLEARABLE or outside the clear width, i.e. it ASSUMES every
+    clearable object inside the width was removed.  On T10 twelve were not: a
+    `RockDolmen_1` with its skeleton spawner and location music stands at
+    (394.31, 16.99) beside the carriageway, so `plan_removals` correctly pulled
+    two cylinders in to 3.29 m and 6.45 m and five `Rock_4`/`Rock_7` and a
+    `Pickable_Stone` are still standing 2.5-6.3 m from the centreline -- inside
+    the earthwork.  Under the old predicate the batter would have been told
+    those positions are free and would have moved the ground out from under
+    them, which is EXACTLY the buried/floating defect this whole pass repairs,
+    re-created by the repair.
+
+    So the set is the census MINUS the verified removals, and nothing else.
+    """
+    gone = removed_ids(cen, emitted)
+    keep: list[list[float]] = []
+    per_prefab: dict[str, int] = {}
+    standing_in_width: list[dict] = []
+    for o in cen["objects"]:
+        if o["id"] in gone:
+            continue
+        keep.append([round(o["x"], 2), round(o["z"], 2)])
+        per_prefab[o["prefab"]] = per_prefab.get(o["prefab"], 0) + 1
+        if o["clearable"] and o["in_clear_width"]:
+            standing_in_width.append(
+                {"prefab": o["prefab"], "id": o["id"],
+                 "xz": [round(o["x"], 2), round(o["z"], 2)],
+                 "y": round(o["y"], 2), "lat_m": o.get("lat_m"),
+                 "clear_half_m": o.get("clear_half_m"),
+                 "station": o.get("station")})
+    return {
+        "objects": keep, "per_prefab": per_prefab,
+        "segments": [cen["segment"]],
+        "left_standing_inside_clear_width": standing_in_width,
+        "derived_from": {"before_count": len(cen["objects"]),
+                         "deleted_matched": len(gone),
+                         "after_count": len(keep),
+                         "cylinders": len(emitted)},
+        "method": (
+            "DERIVED, not re-measured: the pre-clearing per-cell census MINUS "
+            "every object this session's own `objects_clear` records name as "
+            "deleted -- prefab on that cylinder's wire and position inside "
+            "that cylinder -- each of whose postconditions (`objects_count` "
+            "for those names in that cylinder, total 0, tolerance 0) was "
+            "verified in the same call. Everything else is still standing and "
+            "its ground must not move, INCLUDING clearable objects inside the "
+            "clear width that a POI-shrunk cylinder could not reach: those are "
+            "listed separately because they are the ones the old predicate "
+            "wrongly assumed gone."),
+        "tool": "tools/jumpstart/roads/clear.py::placed_after",
+    }
 
 # ---------------------------------------------------------------------------
 # plan
@@ -1019,11 +1526,12 @@ def location_gate(cen: dict, plan: dict) -> dict:
     return v
 
 
-def emit(seg: dict, cen: dict, plan: dict, gate: dict, *, dry: bool) -> dict:
+def emit(seg: dict, cen: dict, plan: dict, gate: dict, *, dry: bool,
+         actor: str) -> dict:
     from live import LiveBuilder  # noqa: PLC0415
 
     done, skipped, removed_total = [], [], 0
-    with LiveBuilder(actor=ACTOR, dry=dry) as b:
+    with LiveBuilder(actor=actor, dry=dry) as b:
         b.observe(
             "road_surface_clearing_plan",
             method=cen["method"],
@@ -1051,8 +1559,14 @@ def emit(seg: dict, cen: dict, plan: dict, gate: dict, *, dry: bool) -> dict:
             # the console sink.  A removal cylinder here averages 20 objects,
             # so five cylinders is ~100 lines -- the same order as the burst
             # that killed it, and the right place to look.
+            # ...AND REPAIRED RATHER THAN MERELY REPORTED.  `sink_ok` stopped
+            # the pass with a named verdict, which is right when the only
+            # remedy is a restart -- but the drainable circular wait is the
+            # shape this actually hits, and the host drain clears it in two
+            # seconds without touching the game.  A clearing pass stopped
+            # halfway leaves a half-cleared road until someone re-runs it.
             if i and i % 5 == 0:
-                sink_ok(f"{seg['id']} cylinder {i}")
+                sink_watch(f"{seg['id']} cylinder {i}")
             # THE CENSUS THAT DECIDES, taken HERE and nowhere earlier.
             live = count_star(b.srv, cx, cz, r)
             clearable = {k: v for k, v in live["per_prefab"].items()
@@ -1203,6 +1717,16 @@ def main() -> int:
     ap.add_argument("--census-glob")
     ap.add_argument("--out")
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--actor", required=True,
+                    help="the agent id that is ACTUALLY running this pass. "
+                         "Stated rather than defaulted because a module-level "
+                         "constant once recorded seq 933 under RoadClear's "
+                         "name for RoadEmit's work, and provenance that is "
+                         "wrong reads as evidence.")
+    ap.add_argument("--per-station", action="store_true",
+                    help="census on the removal discs with the 139-name "
+                         "universe -- the OLD shape, kept only so the cheap "
+                         "one can be measured against it (census_equiv.py)")
     args = ap.parse_args()
 
     if args.op == "placed":
@@ -1217,22 +1741,34 @@ def main() -> int:
     seg = load_segment(args.segment, Path(args.segments))
     per_station, widest = clear_half_width(seg)
     names = universe()
+    cells = census_cells(seg, per_station)
     print(f"{seg['id']}: {seg['length_m']} m, clear half-width "
-          f"{per_station.min():.2f}..{widest:.2f} m, cylinder radius "
-          f"{widest + REMOVAL_OVERREACH_M:.2f} m "
-          f"({len(tiles_local(seg, per_station))} cylinders), "
-          f"{len(names)} prefab names asked")
+          f"{per_station.min():.2f}..{widest:.2f} m "
+          f"({len(tiles_local(seg, per_station))} removal cylinders), "
+          f"census over {len(cells)} disjoint {CENSUS_CELL_M:g} m cells "
+          f"x {len(CENSUS_Y_LEVELS)} y levels"
+          + (f", {len(names)} prefab names asked" if args.per_station
+             else ", UNSCOPED (no prefab list, no console)"))
 
     if args.op == "census":
         import replay as R  # noqa: PLC0415
         with R.Server(dry=False) as srv:
             srv.probe()
-            doc = census(srv, seg, names)
+            echo_reset()
+            doc = (census(srv, seg, names) if args.per_station
+                   else census_zoned(srv, seg, cells,
+                                     partial=(Path(str(args.out) + ".partial")
+                                              if args.out else None)))
+            doc["echo"] = dict(_ECHO)
         Path(args.out).write_text(json.dumps(doc, indent=1))
         clearable = [o for o in doc["objects"]
                      if o["clearable"] and o["in_clear_width"]]
         print(f"censused {len(doc['objects'])} objects, "
-              f"{len(clearable)} clearable inside the clear width -> {args.out}")
+              f"{len(clearable)} clearable inside the clear width; "
+              f"{_ECHO['socket_calls']} socket calls / "
+              f"{_ECHO['socket_reply_lines']} echoed lines, "
+              f"{_ECHO['console_calls']} console calls / "
+              f"{_ECHO['console_reply_lines']} table lines -> {args.out}")
         return 0
 
     cen = json.loads(Path(args.census).read_text())
@@ -1256,7 +1792,7 @@ def main() -> int:
         print(json.dumps(gate.get("violations", []), indent=1))
         print("REFUSING: a removal cylinder is inside a location's hard radius.")
         return 3
-    out = emit(seg, cen, plan, gate, dry=args.dry)
+    out = emit(seg, cen, plan, gate, dry=args.dry, actor=args.actor)
     print(json.dumps({k: v for k, v in out.items()
                       if k != "cylinders_emitted"}, indent=1)[:3000])
     if args.out:

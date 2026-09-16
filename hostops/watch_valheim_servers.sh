@@ -142,7 +142,23 @@ while read -r container; do
     [[ -n $save_age && -n $log_age ]] || { note "$world skipped (save or log not present yet)"; continue; }
 
     if (( save_age > save_stale && log_age > log_stale )); then
-        note "$world WEDGED: no save for ${save_age}s, no output for ${log_age}s"
+        # BOTH inputs above are LOG-DERIVED in effect, and this host has a failure mode that
+        # freezes the log while the game is perfectly healthy: a burst of console replies makes
+        # the container's syslogd lose its stdout pipe, after which no line is ever written again.
+        # MEASURED 2026-09-16: a build's object census killed the sink, the log aged past
+        # log_stale, a long clearing pass pushed save_age past save_stale, and this branch
+        # SIGTERMed the container in the middle of a terrain write - losing two ledger records
+        # whose wires had already been sent. The world answered `players` in 0.03 s throughout.
+        #
+        # So the log is evidence about the LOG SINK, not about the game. Before restarting,
+        # ask the game directly: an RCON round trip is 8 bytes and ~35 ms, it does not touch
+        # the sink, and a reply proves a frame ran. Only a server that will not answer is wedged.
+        if rcon_answers "$world"; then
+            note "$world log frozen for ${log_age}s but RCON answers - sink fault, NOT a wedge; left running"
+            note "$world remedy is the log sink, not a restart: see hostops/lib/common.sh rcon_answers"
+            continue
+        fi
+        note "$world WEDGED: no save for ${save_age}s, no output for ${log_age}s, and RCON does not answer"
         restart_world "$world"
     fi
 done < <(docker ps --filter 'name=valheim-server-' --format '{{.Names}}')

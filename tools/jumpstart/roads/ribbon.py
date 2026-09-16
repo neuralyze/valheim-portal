@@ -2119,6 +2119,13 @@ def main() -> int:
                          "repair has a verifiable baseline rather than a "
                          "claim -- the same shape the T12 pothole census took "
                          "before its repair.")
+    ap.add_argument("--actor", required=True,
+                    help="the agent id that is ACTUALLY running this pass, "
+                         "used for every ledger record this run appends. "
+                         "Stated rather than defaulted: the module constant "
+                         "is the PatchScan sandbox's name and reusing it for "
+                         "provenance records work under the name of an agent "
+                         "that yielded hours earlier.")
     args = ap.parse_args()
 
     doc = yaml.safe_load(Path(args.segments).read_text())
@@ -2643,7 +2650,7 @@ def main() -> int:
     sys.path.insert(0, str(JUMPSTART / "ledger"))
     from live import LiveBuilder
 
-    with LiveBuilder(actor=ACTOR, dry=args.dry) as b:
+    with LiveBuilder(actor=args.actor, dry=args.dry) as b:
         b.observe(
             "road_segment_plan", 
             method="MEASURED: A* over a 1 m PatchScan field (rivers included) "

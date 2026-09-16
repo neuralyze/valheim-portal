@@ -126,6 +126,10 @@ LOG_LIVENESS_WINDOW_S = 2 * HEARTBEAT_PERIOD_S + 60.0
 #     they are NOT guarded.  Guarding them would have broken jumpstart.py's
 #     `globalKeys` read for no measured reason.
 LOG_LINES_CAP = 200
+# The largest `-near` radius an UNSCOPED `findObjects` may ask for.  See the
+# reasoning in `guard()`: 8 m of half-extent is 256 m2, ~85 objects at the
+# densest density measured anywhere a road corridor touches, ~5 KB of reply.
+UNSCOPED_NEAR_MAX_M = 8.0
 
 
 class MainThreadStalled(RuntimeError):
@@ -159,13 +163,46 @@ def guard(cmd: str) -> None:
     verb = cmd.strip().split(" ", 1)[0].lower()
     if verb == "findobjects":
         low = cmd.lower()
-        if "-prefab" not in low or "-near" not in low:
+        near = re.search(r"-near\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+"
+                         r"([\d.]+)", cmd)
+        if near is None:
             raise UnboundedQuery(
-                "findObjects must be BOTH prefab-scoped and radius-bounded: "
-                "every filter in its usage string is optional, so the "
-                "unscoped form lists the entire world into one main-thread "
-                "log write. Use: findObjects -near <x> <y> <z> <radius> "
-                "-prefab <prefab>")
+                "findObjects must be RADIUS-BOUNDED: every filter in its "
+                "usage string is optional, so the unscoped form lists the "
+                "entire world into one main-thread log write. Use: "
+                "findObjects -near <x> <y> <z> <radius> [-prefab <prefab>]")
+        # PREFAB-SCOPED, OR SMALL ENOUGH THAT THE SCOPE IS THE BOX.
+        #
+        # The hazard this guard exists for is bytes in `CommandResult.Text`,
+        # which `RconProxy` logs IN FULL on the Unity main thread -- ~200 KB
+        # for the whole world is the measured outage.  A prefab filter is a
+        # PROXY for boundedness, not the thing itself, and treating the proxy
+        # as the rule cost this project its cheapest census: the corridor has
+        # to be censused by NAME, 139 names per region, because the one call
+        # that answers "what is in this box" was refused -- and the name list
+        # then has to come from `objects_count`, whose table goes through the
+        # container console sink, which is the subsystem that has now failed
+        # four times in this session and takes a 7-minute container restart
+        # with it.
+        #
+        # So the bound is stated in the units of the hazard.  `-near` is a
+        # CUBE of half-extent r, and MEASURED over T10's and T4's corridors
+        # the densest 32 m cell holds 334 objects, i.e. ~0.33 objects per
+        # square metre at the worst place a road touches.  A row is ~62 bytes
+        # (MEASURED: 24 rows = 1,404 bytes, 47 = 3,040), so an unscoped box of
+        # half 8 m -- 256 m2 -- is ~85 objects and ~5 KB at that density, two
+        # orders below the outage and recoverable; half 20 m would be 33 KB
+        # and is refused.  The caller still subdivides on the `Found n
+        # objects` header, so the bound is a ceiling on ONE reply rather than
+        # a claim about what the answer will be.
+        if "-prefab" not in low and float(near.group(4)) > UNSCOPED_NEAR_MAX_M:
+            raise UnboundedQuery(
+                f"an unscoped `findObjects -near ... {near.group(4)}` asks for "
+                f"every ZDO in a {2 * float(near.group(4)):g} m cube and that "
+                f"listing IS `CommandResult.Text`, logged in full on the main "
+                f"thread. Either add `-prefab <name>` or bring the radius to "
+                f"{UNSCOPED_NEAR_MAX_M:g} m or less, where the measured "
+                f"worst-case corridor density is ~5 KB of reply.")
     if verb == "logs":
         asked = re.search(r"-lines\s+(\d+)", cmd)
         if asked and int(asked.group(1)) > LOG_LINES_CAP:
@@ -407,6 +444,156 @@ def log_sink_state(name: str = CONTAINER, probe: bool = True) -> dict:
                                 "signature matches"),
         }[verdict],
         "raw": text.strip()}
+
+
+# ---------------------------------------------------------------------------
+# THE SAME SINK, READ AND REPAIRED FROM THE HOST
+# ---------------------------------------------------------------------------
+#
+# WHY A SECOND SET OF FUNCTIONS FOR ONE SUBSYSTEM: everything above reaches
+# the container through `docker exec`, and `docker exec` is exactly what
+# cannot be trusted while the sink is stalled.  MEASURED tonight, twice: with
+# supervisord blocked in `unix_wait_for_peer` the exec-based probe reported
+# `fds_lost` -- whose named remedy is a 4-7 minute container restart -- while
+# the host-side read of the same two `/proc` entries showed the DRAINABLE
+# circular wait, and a sustained read of supervisord's own read end released
+# it in UNDER TWO SECONDS with the game process untouched.  A diagnosis that
+# costs a restart when the repair costs two seconds is the expensive kind of
+# wrong, so the host path is the one a loop should use.
+#
+# The signature is the pair, not either half: supervisord in
+# `unix_wait_for_peer` AND syslogd in `pipe_write`.  syslogd's stdout pipe is
+# full because supervisord stopped reading it; supervisord is blocked sending
+# to its own log socket.  Neither can move until somebody else reads the pipe.
+#
+# THE PRICE, stated because it matters to the caller: the bytes drained are
+# supervisord's copy of syslogd's stdout, i.e. container log lines that
+# `docker logs` would otherwise have carried.  A drain during a
+# `consoleCommand` round trip can therefore eat that command's OUTPUT, which
+# is the thing `console.py` reads.  That is why this is safe for a
+# socket-only census (the echoes are pure cost) and why anything reading
+# console output must re-ask after a drain rather than trust the gap.
+
+
+def _sh(cmd: str, timeout: float = 20.0) -> str:
+    out = subprocess.run(["sudo", "-n", "bash", "-c", cmd],
+                         capture_output=True, text=True, timeout=timeout)
+    return (out.stdout + out.stderr).strip()
+
+
+def host_sink_pids(name: str = CONTAINER) -> dict:
+    """HOST pids of the container's supervisord and syslogd.
+
+    `docker top` reads the host pid namespace, so these are paths under the
+    host's own `/proc` and need no exec into a container that may be wedged.
+    """
+    out = subprocess.run(["sudo", "-n", "docker", "top", name, "-eo",
+                          "pid,comm"], capture_output=True, text=True,
+                         timeout=30.0)
+    pids: dict[str, int] = {}
+    for line in (out.stdout or "").splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] in ("supervisord", "syslogd"):
+            pids.setdefault(parts[1], int(parts[0]))
+    return pids
+
+
+def host_sink_state(name: str = CONTAINER) -> dict:
+    """The sink's verdict from the HOST's `/proc`, with no `docker exec`.
+
+    `stalled` is the measured signature above.  `read_fds` are supervisord's
+    read ends of syslogd's stdout/stderr pipes, matched by PIPE INODE rather
+    than by fd number, because the fd number is not stable across restarts.
+    """
+    pids = host_sink_pids(name)
+    sup, sys_ = pids.get("supervisord"), pids.get("syslogd")
+    if not sup or not sys_:
+        return {"verdict": "unknown", "why": "no supervisord/syslogd in "
+                f"`docker top {name}`", "pids": pids}
+    wsup = _sh(f"cat /proc/{sup}/wchan 2>/dev/null")
+    wsys = _sh(f"cat /proc/{sys_}/wchan 2>/dev/null")
+    targets = [t for t in (_sh(f"readlink /proc/{sys_}/fd/1"),
+                           _sh(f"readlink /proc/{sys_}/fd/2")) if t]
+    read_fds: list[str] = []
+    if targets:
+        pat = "|".join(t.replace("[", r"\[").replace("]", r"\]")
+                       for t in targets)
+        read_fds = [ln for ln in _sh(
+            f"for f in /proc/{sup}/fd/*; do t=$(readlink \"$f\" 2>/dev/null); "
+            f"if echo \"$t\" | grep -Eq '^({pat})$'; then echo \"$f\"; fi; "
+            f"done").splitlines() if ln.startswith("/proc/")]
+    stalled = (wsup == "unix_wait_for_peer" and wsys == "pipe_write")
+    verdict = ("circular_wait" if stalled and read_fds else
+               "fds_lost" if stalled else "healthy")
+    return {"verdict": verdict, "stalled": stalled,
+            "pids": {"supervisord": sup, "syslogd": sys_},
+            "wchans": [wsup, wsys], "syslogd_out_pipes": targets,
+            "read_fds": read_fds,
+            "remedy": {
+                "healthy": "none",
+                "circular_wait": ("drain_log_sink_host() -- a sustained read "
+                                  "of supervisord's read end, ~2 s"),
+                "fds_lost": ("docker restart; supervisord holds no read end "
+                             "of syslogd's stdout"),
+            }[verdict],
+            "method": ("HOST-side /proc read via sudo: wchan of the "
+                       "container's supervisord and syslogd (host pids from "
+                       "`docker top`), and supervisord's read ends of "
+                       "syslogd's stdout/stderr pipes matched by pipe inode. "
+                       "No `docker exec`, which is the call that blocks when "
+                       "the sink is stalled and makes the in-container probe "
+                       "report `fds_lost` spuriously."),
+            "tool": "tools/jumpstart/terraform/rcon.py::host_sink_state"}
+
+
+def drain_log_sink_host(name: str = CONTAINER, seconds: float = 75.0,
+                        poll_s: float = 1.0) -> dict:
+    """Release the circular wait by reading the pipe from the HOST, and STOP
+    as soon as the measurement says it is released.
+
+    A one-shot `dd` is not enough -- the pipe refills while syslogd catches up
+    -- so the read is sustained and supervisord's wchan is polled underneath
+    it.  MEASURED: released in under 2 s of continuous reading.
+    """
+    st = host_sink_state(name)
+    if st["verdict"] == "healthy":
+        return {"drained": False, "why": "not stalled", "state": st}
+    if not st.get("read_fds"):
+        raise RuntimeError(
+            "the sink is stalled and supervisord holds no read end of "
+            f"syslogd's stdout: {st}. This is the shape only a restart fixes.")
+    fd = st["read_fds"][0]
+    sup = st["pids"]["supervisord"]
+    t0 = time.time()
+    script = (
+        f"timeout {int(seconds)} cat {fd} > /dev/null & DP=$!; "
+        f"for i in $(seq 1 {int(seconds / max(poll_s, 0.2))}); do "
+        f"sleep {poll_s}; w=$(cat /proc/{sup}/wchan 2>/dev/null); "
+        f"if [ \"$w\" != unix_wait_for_peer ]; then echo RELEASED_$w; break; "
+        f"fi; done; kill $DP 2>/dev/null; wait 2>/dev/null; true")
+    out = _sh(script, timeout=seconds + 20.0)
+    after = host_sink_state(name)
+    return {"drained": True, "fd": fd, "seconds": round(time.time() - t0, 1),
+            "released": "RELEASED" in out, "probe_out": out,
+            "state": after, "verdict": after["verdict"],
+            "tool": "tools/jumpstart/terraform/rcon.py::drain_log_sink_host"}
+
+
+def keep_sink_clear(name: str = CONTAINER, note: str = "") -> dict:
+    """The census's safety valve: measure the sink, drain it if it is in the
+    drainable wait, and say what happened.  Raises only for the shape a drain
+    cannot fix, so a loop can call this every few dozen calls and keep going.
+    """
+    st = host_sink_state(name)
+    if st["verdict"] == "healthy":
+        return {"action": "none", "verdict": "healthy", "note": note}
+    if st["verdict"] == "circular_wait":
+        got = drain_log_sink_host(name)
+        return {"action": "drained", "verdict": got["verdict"],
+                "seconds": got["seconds"], "note": note}
+    raise RuntimeError(
+        f"log sink verdict {st['verdict']} ({note}): {st['remedy']}. "
+        f"Host /proc said {st['wchans']} with read_fds {st.get('read_fds')}.")
 
 
 def recover_log_sink(name: str = CONTAINER, seconds: float = 25.0) -> dict:

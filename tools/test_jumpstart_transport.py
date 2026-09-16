@@ -50,9 +50,28 @@ import rcon as RC  # noqa: E402
 
 class TheGuardRefusesTheQueryThatWedgedUs(unittest.TestCase):
     def test_bare_findobjects_is_refused(self):
-        with self.assertRaises(RC.UnboundedQuery) as caught:
+        # The raise IS the contract. This deliberately does NOT assert the
+        # message text: the wording moved once already, when the guard learned
+        # that a SMALL unscoped box is safe and the requirement became
+        # radius-bounded rather than prefab-scoped. A test that pins prose
+        # fails on a correct change and teaches the next reader to re-pin it.
+        with self.assertRaises(RC.UnboundedQuery):
             RC.guard("findObjects")
-        self.assertIn("prefab-scoped", str(caught.exception))
+
+    def test_a_small_unscoped_box_is_allowed_and_one_metre_more_is_not(self):
+        """The boundary the corridor census actually rides on.
+
+        MEASURED: the per-cell census asks ONE unscoped `findObjects -near cx y
+        cz 8` per 16 m cell at five y levels, and that is what took a segment
+        from 588 socket calls and 988 echoed log lines down to 107 and 645 for
+        an identical ZDO id set.  So the 8 m unscoped form is not a tolerated
+        edge case, it is the shape in production, and a guard that refused it
+        would push every caller back onto the per-station discs that wedged the
+        server.  The pair is the point: allowed at the bound, refused past it.
+        """
+        RC.guard(f"findObjects -near 100 37 -100 {RC.UNSCOPED_NEAR_MAX_M:g}")
+        with self.assertRaises(RC.UnboundedQuery):
+            RC.guard(f"findObjects -near 100 37 -100 {RC.UNSCOPED_NEAR_MAX_M + 1:g}")
 
     def test_prefab_without_radius_is_refused(self):
         """The filter that feels sufficient and is not: a prefab filter alone
