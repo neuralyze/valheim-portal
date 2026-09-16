@@ -1337,16 +1337,39 @@ class Ledger:
         # applied to the priors instead of to the candidate.
         prior_state: dict[tuple, tuple] = {}
         prior_owner: dict[tuple, dict] = {}
-        # AND WHAT EACH PAD ITSELF LAID, per pad.  Inside a pad's footprint
-        # the question is not "does this write disagree with whoever wrote
-        # last" but "does it hold ground that differs from the PAD'S FLOOR" --
-        # the pad wins there, so the pad is the datum, and a third claim that
-        # paved the foundation in between does not become the new reference
-        # just by being later.  MEASURED on T8: against the last writer its
-        # 28 contested samples read as a disagreement with T4 seq 1158;
-        # against the floor seq 121 laid at 47.15 m they are a foundation two
-        # roads have since been over.
+        # AND WHAT EACH PAD ITSELF LAID, per pad -- BUT ONLY WHERE THAT PAD IS
+        # STILL THE EFFECTIVE AUTHOR OF THE SAMPLE.
+        #
+        # The first form kept every pad's authored value forever, on the
+        # reasoning that "a third claim that paved the foundation in between
+        # does not become the new reference just by being later".  That is
+        # right about a ROAD paving a foundation and wrong about a later PAD
+        # relaying the same ground, and the difference is not academic: it
+        # made the check UNSATISFIABLE.
+        #
+        # MEASURED on T4, samples (480, 908), (481, 908), (482, 908):
+        # `stenvik-cottage-2` seq 265 authored -0.3026 / -0.0843 / -0.1069,
+        # and `stenvik-stonehouse-2` seq 279 then authored +1.0974 / +1.3157 /
+        # +1.2931 -- bit for bit `stenvik-hall-1` seq 61's values, i.e. it
+        # composed from a base that predated cottage-2 and REVERTED it.  Both
+        # are pads, both "authored" the same square metre, and their values
+        # differ by 1.4 m.  A road carrying either one is refused by the
+        # other, so T4 could not be written at all -- and the guard's own
+        # docstring says PAD-VERSUS-PAD IS OUT OF SCOPE, deliberately,
+        # because settlement pads overlap by design and later pad wins per
+        # sample by the same file-order rule the live compiler uses.
+        #
+        # So authorship is resolved to the EFFECTIVE author: the LAST claim to
+        # change a sample.  A superseded pad's floor is ground that NO LONGER
+        # EXISTS, and judging a road against ground that is not there is the
+        # same defect as every other one in this file -- a check answering a
+        # question about a world that has moved on.  What the rule still
+        # catches, unchanged, is the case it was written for: where a ROAD
+        # paved a pad's floor and is the effective author, the pad is not, so
+        # the reference falls back to `prior_state` -- the ground that IS
+        # there -- and a write that moves it is still refused.
         pad_authored: dict[int, dict] = {}
+        authored_at: dict[tuple, int] = {}
         pad_lines = {q["file_line"]: q for q in pads}
         for line, r in enumerate(prior):
             if r.get("op") != "terrain_write":
@@ -1384,6 +1407,16 @@ class Ledger:
                                           "name": rp.get("name"),
                                           "role": rp.get("role"),
                                           "file_line": line}
+                        # THE PREVIOUS AUTHOR IS SUPERSEDED.  Dropping the
+                        # sample from whichever pad held it is what makes
+                        # "the effective author" true rather than merely
+                        # intended -- without it the old set survives and the
+                        # unsatisfiable pair comes back.
+                        prev = authored_at.get(k)
+                        if prev is not None and prev != line \
+                                and prev in pad_authored:
+                            pad_authored[prev].pop(k, None)
+                        authored_at[k] = line
                         if line in pad_lines:
                             pad_authored.setdefault(line, {})[k] = v
                     prior_state[k] = v

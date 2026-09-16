@@ -55,6 +55,8 @@ import base64
 import hashlib
 import json
 import math
+import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -539,6 +541,303 @@ PROTECT_CLEAR_M = 1.0
 PLACED_CLEAR_M = 1.0
 
 
+class PadKeepOut:
+    """WHERE THE CARRIAGEWAY MAY NOT BE PAVED, and it is a set of PER-BUILDING
+    FOUNDATIONS rather than one circle per settlement.
+
+    THE DEFECT THIS EXISTS FOR, MEASURED.  `settlements/sites.yaml` records one
+    `pad_radius_m` per site and this module read it as a pad footprint.  For a
+    watchtower or a castle that is true and the two numbers agree: wt-spawn's
+    disc is 16.1 m against a 20 x 20 m pad, hognest's 33.1 m against 44 x 44 m,
+    i.e. the half-diagonal plus a margin.  For a TOWN it is false, and
+    `plan.py` says so in its own docstring -- "taken from the district or the
+    pad plus its own margin".  `stenvik` and `vestvik` are `pad_radius_m:
+    100.0`, a DISTRICT radius, and stenvik's own `why` field states the
+    consequence outright: "The district is NOT levelled -- no 176 m district of
+    <= 12 m relief on this seed is both dry and coastal, so the town follows
+    the ground on individual pads."
+
+    So a 100 m disc was refusing the carriageway over ground nobody had built
+    or ever would.  MEASURED on T4-meadhall-stathub: 293.9 m of centreline
+    written NOTHING, a -8.491 m step across the gap at (544.8, 809.2), and the
+    trunk road into the town ending at a wall.  The foundations it was standing
+    in for are 15 per-building `site_pad` rectangles whose WORST half-extent is
+    13.05 m (`stenvik-hall-1`), so the disc was 7.7x the thing it protected.
+    `stenvik-house-3` at (606.5, 938.8) is 113 m from the centre and OUTSIDE
+    the disc entirely -- the circle was both too big and in the wrong place.
+
+    THE FOOTPRINTS ARE ASKED OF THE WRITE-TIME GUARD, NOT RE-DERIVED HERE.
+    `writer._pad_claims` is the function `writer._pad_footprint_check` itself
+    uses to decide whether a `terrain_write` authors a sample inside a
+    foundation, and it is the authority that will refuse this write at append
+    time.  Modelling its geometry here -- half-extents from `pad_w / 2 +
+    apron_m`, one claim per site, latest in file order, position resolved from
+    the site's sibling records -- is how a closed-form shrink radius silently
+    skipped 6 cylinders the gate itself passes.  So the rasteriser asks the
+    guard and gets the same rectangles the guard will judge it against.
+
+    THE RECTANGLE IS A TRIGGER, NOT THE WHOLE FOUNDATION, and the fine gate is
+    already in place.  A pad levels its rectangle and FEATHERS PAST IT:
+    MEASURED, `stenvik-stonehouse-1` seq 272 authored 165 samples and only 60
+    lie inside its 11.0 x 15.0 m rectangle.  Those outer 105 are caught by
+    `refusal`'s per-sample `foreign` gate, which reads the AUTHOR of each
+    sample off the live blobs (`applied.Applied`) and is blind to radii by
+    design -- it is what caught the original T4 clobber OUTSIDE every circle.
+    Per-sample authorship is the authority; this rectangle set is the cheap
+    planning stand-off that keeps the road off a foundation the pad has not
+    finished laying.
+
+    THE NOMINAL DISC SURVIVES FOR A SITE WITH NO LIVE PAD, because there the
+    question cannot be asked: nothing is written, so authorship answers
+    nothing, and the declared radius is the only statement of where Settlements
+    intends to build.  MEASURED on this chain: all 16 road sites have at least
+    one live pad claim, so no site takes this path today -- it is here so that
+    a site planned and not yet built is still protected rather than paved.
+    """
+
+    __slots__ = ("rects", "discs", "by_id", "levelled", "undecodable")
+
+    def __init__(self, rects: list[tuple[str, float, float, float, float]],
+                 discs: list[tuple[str, float, float, float]],
+                 by_id: dict[str, dict] | None = None,
+                 levelled: dict[tuple[int, int], str] | None = None,
+                 undecodable: list[dict] | None = None):
+        self.rects = rects
+        self.discs = discs
+        # THE FOUNDATION'S OWN RECORD, for the junction report.  Kept beside
+        # the hot tuple list rather than in it: `contains` is asked once per
+        # lattice sample over a 1.5 km ribbon and has no business unpacking a
+        # dict, while the report is asked once per gap.
+        self.by_id = by_id or {}
+        # EVERY WORLD SAMPLE A PAD ACTUALLY LEVELLED, `{(sx, sz): site_id}`.
+        # A dict keyed on the integer sample is an O(1) test and it is the
+        # same set `writer._pad_footprint_check` judges against, so the
+        # rasteriser and the write-time guard cannot disagree about what a
+        # foundation is.
+        self.levelled = levelled or {}
+        self.undecodable = undecodable or []
+
+    def contains(self, x: float, z: float) -> str | None:
+        """The site whose foundation covers `(x, z)`, or None.
+
+        RECTANGLE **OR** LEVELLED SET, because the pad's own write is the
+        foundation and it does not stop at the rectangle -- see
+        `pad_keepouts_from_chain`.  The levelled set is asked first: it is an
+        O(1) dict hit against an O(n) scan of the rectangles.
+
+        `EDGE_EPS_M` on the rectangle for the same reason the carriageway edge
+        carries it: a half-extent is a sum of floats and a sample sitting
+        exactly on the boundary must land on one definite side of it.
+        """
+        if self.levelled:
+            sid = self.levelled.get((int(math.floor(x)), int(math.floor(z))))
+            if sid is None and (x != math.floor(x) or z != math.floor(z)):
+                # An off-lattice point renders as a BLEND of the four samples
+                # around it, so a pad owning any of them owns the ground here.
+                # `delta_at`'s docstring is the measurement: a piece 0.9 m
+                # outside a written sample still settles.
+                x0, z0 = int(math.floor(x)), int(math.floor(z))
+                for dx in (0, 1):
+                    for dz in (0, 1):
+                        sid = self.levelled.get((x0 + dx, z0 + dz))
+                        if sid is not None:
+                            break
+                    if sid is not None:
+                        break
+            if sid is not None:
+                return sid
+        for sid, cx, cz, hw, hd in self.rects:
+            if abs(x - cx) <= hw + EDGE_EPS_M and abs(z - cz) <= hd + EDGE_EPS_M:
+                return sid
+        for sid, cx, cz, r in self.discs:
+            dx, dz = x - cx, z - cz
+            if dx * dx + dz * dz <= r * r:
+                return sid
+        return None
+
+    def pad_at(self, x: float, z: float) -> dict | None:
+        """The FOUNDATION RECORD covering `(x, z)` -- id, seq, centre,
+        half-extents and the datum it was LEVELLED TO -- or None.
+
+        THE DATUM HAS TO BE THE BUILDING'S, NOT THE TOWN'S, and this is the
+        district defect wearing its third hat.  The junction report used to
+        find a gap's site by `pad_radius_m` and quote that site's `pad_y`: for
+        every one of T4's six Stenvik gaps that answered "stenvik, pad datum
+        45.57 m, pad_levelled_yet False" -- a datum no ground in the town is
+        at, on foundations that were levelled hours ago.  MEASURED: the gap at
+        (584.3, 954.0) terminates on `stenvik-beehive-1` seq 286, whose
+        `target_y` is 47.11 and whose floor reads 47.110 on the live surface,
+        1.54 m above the town figure.  `sites.yaml`'s own `why` says the
+        district is not levelled and the town follows the ground on individual
+        pads, so quoting the district datum reports somebody's intention as
+        the ground the operator will stand on.
+        """
+        sid = self.contains(x, z)
+        return None if sid is None else self.by_id.get(sid)
+
+    def __len__(self) -> int:
+        return len(self.rects) + len(self.discs)
+
+    def describe(self) -> str:
+        worst = max((max(hw, hd) for _s, _x, _z, hw, hd in self.rects),
+                    default=0.0)
+        return (f"{len(self.rects)} per-building pad rectangle(s) "
+                f"(worst half-extent {worst:.2f} m) + "
+                f"{len(self.levelled)} sample(s) those pads actually levelled "
+                f"+ {len(self.discs)} nominal disc(s) for site(s) with no live "
+                f"pad"
+                + (f"; {len(self.undecodable)} pad entry(ies) COULD NOT BE "
+                   f"DECODED" if self.undecodable else ""))
+
+
+def pad_keepouts_from_chain(sites: list[dict], records: list[dict],
+                            ledger=None) -> PadKeepOut:
+    """Build the carriageway keep-out by ASKING `writer._pad_claims`.
+
+    `sites` is `settlements/sites.yaml`'s site list -- the fallback keep-out
+    and fallback datum for a site with nothing written yet.  `records` is the
+    live chain, and for anything already built it is the authority for BOTH
+    the footprint and the datum: a pad's `terrain_write` carries the
+    `target_y` it levelled to, which is the height the road must arrive at.
+
+    A pad claim is attributed to a site by its `site_id` prefix, which is the
+    convention `settlements/build.py` writes: `stenvik-hall-1` belongs to
+    `stenvik`.  A claim matching no site is still a foundation and still kept,
+    under its own id -- the keep-out is a union of foundations, not a directory
+    of settlements.
+
+    THE FOOTPRINT IS THE RECTANGLE **OR** THE PAD'S OWN LEVELLED SET, and the
+    second half is not optional -- MEASURED, it is what refused T4 at append
+    time when this function returned rectangles alone.  A pad levels its
+    rectangle and FEATHERS PAST IT: `stenvik-cottage-2` seq 265 levelled
+    (480, 908), which is 0.1 m outside its own 10.4 x 12.4 m rectangle, and
+    T4's batter authored a +1.400 m move there.  `writer._pad_footprint_check`
+    tests rectangle OR levelled set and neither contains the other, so a
+    keep-out built from one of them is refused by the other.
+
+    THE LEVELLED SET IS READ WITH THE GUARD'S OWN DECODER, `_entry_samples`,
+    rather than re-derived from the blob here.  A pad's entry is a 65x65
+    lattice over a 64 m zone whose boundary row is SHARED with the next zone,
+    so the set has to be keyed by WORLD SAMPLE and not by lattice index --
+    which is the one thing that decoder already gets right and an
+    index-arithmetic copy of it would not.
+
+    THE LEVELLED SET IS SCOPED TO EFFECTIVE AUTHORSHIP, by the same ruling
+    that fixed the guard.  `_entry_samples` lists every sample a pad's blob
+    MODIFIED, which includes ground a later claim has since re-authored --
+    and `writer._pad_footprint_check` now resolves a sample to the LAST claim
+    that changed it, so a pad that has been built over no longer owns it.
+    Keeping those samples in the keep-out refuses the road ground the guard
+    would let it write: MEASURED on T4, the unscoped set skipped 2,079
+    samples against 588, the road stopped writing around
+    `stenvik-beehive-1`, the union restored seq 1158's old profile there and
+    the 8 m gradient went back to 0.8849 -- the original defect, reintroduced
+    by protecting a foundation that is no longer under that square metre.
+    A superseded floor is ground that no longer exists.
+
+    FAIL LOUD, NOT OPEN.  A pad whose blob cannot be read or decoded is
+    reported in `undecodable`: the guard fails CLOSED on exactly that case, so
+    silently protecting less here buys a refusal at append time instead of a
+    warning now.
+    """
+    claims = writer_pad_claims(records)
+    target_of = {r["seq"]: r["params"].get("target_y")
+                 for r in records if r.get("op") == "terrain_write"}
+    rec_of = {r["seq"]: r for r in records if r.get("op") == "terrain_write"}
+    rects = [(q["site_id"], q["x"], q["z"], q["hw"], q["hd"]) for q in claims]
+    levelled: dict[tuple[int, int], str] = {}
+    undecodable: list[dict] = []
+    if ledger is not None:
+        import writer as writermod  # noqa: PLC0415
+        pad_seqs = {q["seq"] for q in claims}
+        touched: dict[tuple[int, int], str] = {}
+        for q in claims:
+            rec = rec_of.get(q["seq"])
+            if rec is None:
+                continue
+            for e in rec["params"].get("entries", []):
+                got = writermod._entry_samples(e, ledger)
+                if got is None:
+                    undecodable.append({"site_id": q["site_id"],
+                                        "seq": q["seq"],
+                                        "zone": e.get("zone")})
+                    continue
+                for sxz in got:
+                    touched[sxz] = q["site_id"]
+        # THE EFFECTIVE AUTHOR, by the guard's own disagreement test over the
+        # chain in FILE ORDER.  Scoped to the samples some pad touched, so
+        # this is a few tens of thousands of lookups rather than a whole-world
+        # composition.
+        state: dict[tuple[int, int], tuple[float, float]] = {}
+        owner: dict[tuple[int, int], int] = {}
+        for rec in records:
+            if rec.get("op") != "terrain_write":
+                continue
+            sq = rec["seq"]
+            for e in rec["params"].get("entries", []):
+                got = writermod._entry_samples(e, ledger)
+                if got is None:
+                    continue
+                for k, v in got.items():
+                    if k not in touched:
+                        continue
+                    was = state.get(k)
+                    if was is None or abs((v[0] + v[1]) - (was[0] + was[1])) \
+                            > writermod.FLATTEN_TOLERANCE_M:
+                        owner[k] = sq
+                    state[k] = v
+        for k, sid in touched.items():
+            if owner.get(k) in pad_seqs:
+                levelled[k] = sid
+    by_id: dict[str, dict] = {}
+    for q in claims:
+        by_id[q["site_id"]] = {
+            "site_id": q["site_id"], "seq": q["seq"], "name": q["name"],
+            "xz": [round(q["x"], 2), round(q["z"], 2)],
+            "half_extents_m": [round(q["hw"], 2), round(q["hd"], 2)],
+            "pad_y": target_of.get(q["seq"]), "levelled": True,
+            "datum_source": "the pad's own terrain_write target_y"}
+    claimed_sites = {q["site_id"] for q in claims}
+    discs = []
+    for s in sites:
+        sid = str(s["id"])
+        if any(c == sid or c.startswith(sid + "-") for c in claimed_sites):
+            continue
+        discs.append((sid, float(s["xz"][0]), float(s["xz"][1]),
+                      float(s["pad_radius_m"])))
+        by_id[sid] = {
+            "site_id": sid, "seq": None, "name": None,
+            "xz": [float(s["xz"][0]), float(s["xz"][1])],
+            "half_extents_m": None,
+            "pad_y": (None if s.get("pad_y") is None else float(s["pad_y"])),
+            "levelled": False,
+            "datum_source": ("settlements/sites.yaml pad_y -- DECLARED, this "
+                             "site has no pad in the chain yet")}
+    return PadKeepOut(rects, discs, by_id, levelled, undecodable)
+
+
+def writer_entry_samples(entry: dict, ledger):
+    """`writer._entry_samples`, for the same reason `writer_pad_claims` is
+    wrapped: the ledger is imported where it is used.  Returns
+    `{(sx, sz): (level, smooth)}` keyed by WORLD sample, or None when the blob
+    cannot be read or decoded.
+    """
+    sys.path.insert(0, str(JUMPSTART / "ledger"))
+    import writer as writermod  # noqa: PLC0415
+    return writermod._entry_samples(entry, ledger)
+
+
+def writer_pad_claims(records: list[dict]) -> list[dict]:
+    """`writer._pad_claims`, imported where it is used rather than at module
+    scope: `roads/` is importable without the ledger on the path (the census
+    and equivalence tools do exactly that), and a keep-out is only ever built
+    by a driver that already has a chain in hand.
+    """
+    sys.path.insert(0, str(JUMPSTART / "ledger"))
+    import writer as writermod  # noqa: PLC0415
+    return writermod._pad_claims(records)
+
+
 def _clip(st: dict, cause: str, is_road: bool, road_key: str | None,
           wx: float, wz: float, lat: float, full: float,
           residual: float | None = None) -> None:
@@ -595,7 +894,7 @@ def _clip(st: dict, cause: str, is_road: bool, road_key: str | None,
 
 
 def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
-          pad_keepouts: list[tuple[float, float, float]],
+          pad_keepouts: "PadKeepOut",
           protected_pieces: list[tuple[float, float]] | None = None,
           protected_discs: list[tuple[float, float, float]] | None = None,
           placed_objects: list[tuple[float, float]] | None = None,
@@ -744,21 +1043,33 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
         sample inside a pad is the pad's whatever else is true of it, and
         recording it under a softer cause would misattribute the wall.
         """
-        # THE PAD RADIUS STOPS THE CARRIAGEWAY AND NOT THE BATTER, and the
-        # asymmetry is the point.  A pad radius is a PLANNING STAND-OFF -- it
-        # is where Settlements may level ground and put buildings -- so paving
-        # into it is the defect the ribbon exists to avoid.  But refusing the
-        # BATTER there leaves the road's own wall standing at the pad
-        # boundary, and MEASURED on T12 that wall is 4.1 m once the approach
-        # ramps up to meet the pad: the operator meets a cliff exactly where
-        # he arrives at a settlement.  What must not move is what is actually
-        # THERE -- the pad's own written samples (`foreign`), a protected
-        # piece, a live placed object, water -- and every one of those is
-        # gated separately and live.  So the batter may taper into the
-        # stand-off, bounded by its 10.5 m reach, and the pad's own write
-        # unions over it and wins if it ever comes.
-        if is_road and any(math.hypot(wx - px, wz - pz) <= pr
-                           for px, pz, pr in pad_keepouts):
+        # THE FOUNDATION STOPS BOTH BANDS, and the asymmetry that used to live
+        # here was an artefact of what the keep-out USED to be.
+        #
+        # It was a PLANNING STAND-OFF -- a district or nominal circle, 100 m at
+        # a town, 16.1 m at a watchtower -- and refusing the batter inside
+        # something that large left the road's own wall standing far from any
+        # building: MEASURED on T12, 4.1 m of it once the approach ramped up.
+        # So the batter was allowed to taper into the stand-off and only the
+        # carriageway was refused.
+        #
+        # THE KEEP-OUT IS NOW THE FOUNDATION ITSELF -- each pad's rectangle and
+        # the samples that pad actually levelled -- and for a foundation the
+        # ruling has no asymmetry in it: inside a per-building pad the pad
+        # wins, because it is a building's footing.  MEASURED when this still
+        # read `is_road`: T4's batter authored 28 samples inside
+        # `stenvik-house-3`'s 20.3 x 15.2 m rectangle and 3 on ground
+        # `stenvik-cottage-2` had levelled 0.1 m outside its own rectangle, and
+        # `writer._pad_footprint_check` REFUSED the whole write at append time
+        # -- it does not care which band a sample came from.  A rasteriser that
+        # writes what the guard will refuse is not a rasteriser, it is a
+        # 47-second way of finding out.
+        #
+        # The wall this used to prevent is now prevented by the thing that
+        # should prevent it: the approach ramp grades the road to the pad's own
+        # datum at its EDGE (`grade_into_foreign`), which is the ruling's other
+        # half and is measured per pad in the junction report.
+        if pad_keepouts.contains(wx, wz) is not None:
             return "pad"
         if any(abs(wx - px) <= PROTECT_CLEAR_M
                and abs(wz - pz) <= PROTECT_CLEAR_M
@@ -1026,8 +1337,7 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
             comps[(zx, zz)].set_height(gx, gy, delta)
             written.append((wx, wz))
             st["samples_batter"] += 1
-            if any(math.hypot(wx - px, wz - pz) <= pr
-                   for px, pz, pr in pad_keepouts):
+            if pad_keepouts.contains(wx, wz) is not None:
                 st["samples_batter_in_pad_standoff"] += 1
             st["max_cut_m"] = min(st["max_cut_m"], delta)
             st["max_fill_m"] = max(st["max_fill_m"], delta)
@@ -1357,8 +1667,187 @@ def approach_reach_m(worst_step_m: float, design_grade: float,
                min(want, APPROACH_RUN_CAP_M, max(available_run_m, 1e-9)))
 
 
+# HOW MANY REACHES THE SOLVE ASKS ABOUT, and it is a ladder rather than a
+# bisection because the quantity being minimised is NOT monotone in the reach.
+# MEASURED on T4 across the full ladder: the worst 8 m gradient runs 0.9219,
+# 0.7763, 0.6798, 0.6230, 0.5890, 0.5322, 0.4963, 0.4717, 0.4826, 0.4583,
+# 0.5021, 0.5093, 0.5144, 0.4847, 0.4686 -- it falls, flattens, and rises
+# again.  A bisection on a non-monotone objective finds a local answer and
+# reports it as the answer.
+APPROACH_LADDER_STEPS = 14
+# Two reaches whose worst 8 m gradient differ by less than this are the same
+# road as far as the operator is concerned -- 0.02 is 2.6 % of the 0.781 slide
+# limit -- so the tie is broken toward the LONGER reach, which is the gentler
+# ramp and the smaller earthwork.
+APPROACH_G8_TIE = 0.02
+
+
+def solve_approach(seg: dict, patches: dict, live, pad_keepouts: "PadKeepOut",
+                   rasterise) -> tuple[dict, dict, dict, dict]:
+    """CHOOSE THE APPROACH REACH BY ASKING THE CLAMP, not by deriving it.
+
+    THE DEFECT THIS EXISTS FOR, MEASURED, AND IT IS `APPROACH_MAX_M`'s DEFECT
+    WEARING THE OPPOSITE HAT.  That constant was 11.5 m on a false premise
+    about the apply clamp, and the fix replaced it with a run DERIVED from the
+    step at the design grade -- `step / design`, bounded by the segment's own
+    length and `APPROACH_RUN_CAP_M`.  That derivation is about GRADE and
+    LENGTH, and the quantity that actually binds is neither: it is the FILL
+    the write is allowed to deliver.
+
+    MEASURED on T4 the first time it rasterised through Stenvik's district:
+    the derived reach is 79.9 m (a 6.391 m step at 8 %), the cone that reach
+    imposes lifts 175 profile nodes by up to 6.861 m, and five samples at
+    (583-584, 998-1000) land 8.01-8.13 m above the generated ground -- past
+    `tcdata.CLAMP_M` 8.0, which `TerrainComp::ApplyToHeightmap` silently
+    discards.  The write is REFUSED, correctly, and a gentler ramp is the
+    cause: a long approach holds the road high far from the claim, so it fills
+    a valley 40 m out that a shorter, steeper approach simply walks down.  At
+    67.9 m the same segment is inside the clamp; at 18.5 m its worst 8 m
+    gradient is 0.4583 against the 0.781 limit.
+
+    So the reach is SOLVED against the instrument that decides it.  The
+    alternative is to predict which reaches clamp, and this project has paid
+    for that shape three times over: a closed-form shrink radius skipped six
+    cylinders the gate itself passes, and `APPROACH_MAX_M` was a number
+    justified by a proof about a different quantity.  `rasterise(seg)` must
+    return `(comps, st, walk)` for the profile currently on `seg`.
+
+    THE RULE, in order, every term measured by the call:
+      1. HARD -- `st["over_clamp"]` must be 0.  This is not a preference: a
+         write past the clamp is refused at validation and the road would not
+         be where the plan says.
+      2. Among those, MINIMISE `walk["max_gradient_8m"]`.  That is the
+         operator's reported defect ("slides back down") and one of the two
+         acceptance criteria.
+      3. Tie inside `APPROACH_G8_TIE` -> the LONGER reach.
+
+    THE STEP AT THE PAD IS RECORDED PER CANDIDATE AND IS NOT THE OBJECTIVE,
+    and the measurement is why.  MEASURED on T4 over the whole ladder, the two
+    acceptance criteria move in OPPOSITE directions: the worst 8 m gradient
+    falls from 0.9219 to 0.4583 as the reach shortens, while the worst step at
+    a pad edge RISES from 1.078 m (at 67.9 m of reach) to 1.408 m and beyond.
+    No reach on the ladder brings the step under `BATTER_GRADE`, because it is
+    set by the DATUM DIFFERENCE between adjacent foundations -- `stenvik-hut-1`
+    at 47.95 m and `stenvik-longhouse-2` at 46.20 m, 17.7 m of centreline
+    apart -- and a ramp cannot move a foundation.  So the solve optimises the
+    criterion it CAN meet, records the floor of the one it cannot, and the
+    tie-break toward the longer reach is also the direction that reduces the
+    pad step.  Optimising a knob against a quantity it does not control is how
+    a repair reports success and changes nothing.
+
+    Returns `(approach, comps, st, solve)`; `seg["profile_y"]` is left holding
+    the winning profile.
+    """
+    base_profile = list(seg["profile_y"])
+    design = float(seg.get("grade_limit") or 0.08)
+
+    def attempt(reach_m: float | None):
+        seg["profile_y"] = list(base_profile)
+        ap = grade_into_foreign(seg, patches, live, pad_keepouts,
+                                reach_m=reach_m)
+        comps, st, walk = rasterise(seg)
+        return ap, comps, st, walk
+
+    # The derived reach is the TOP of the ladder: there is no merit in a ramp
+    # gentler than the step needs at design grade.
+    ap0, comps0, st0, walk0 = attempt(None)
+    if not ap0["claims"]:
+        return ap0, comps0, st0, {
+            "reaches_tried": 0, "chosen_m": None,
+            "why": "no claim on this segment, so there is no approach to solve",
+            "tool": "tools/jumpstart/roads/ribbon.py::solve_approach"}
+    hi = float(ap0["reach_m"])
+    # The BOTTOM is the shortest reach that can still remove the step at the
+    # batter's own grade: below it the ramp cannot arrive at all, so the
+    # residual is structural rather than chosen.
+    lo = max(abs(ap0["worst_step_before_m"]) / BATTER_GRADE, 1.0)
+    if lo >= hi:
+        rows = [{"reach_m": round(hi, 1), "over_clamp": st0["over_clamp"],
+                 "g8": walk0.get("max_gradient_8m"),
+                 "ramp_grade": ap0.get("ramp_grade"),
+                 "step_after_m": ap0["worst_step_after_m"]}]
+        return ap0, comps0, st0, {
+            "reaches_tried": 1, "chosen_m": round(hi, 1), "rows": rows,
+            "why": ("the derived reach is already the shortest that can remove "
+                    "this step at BATTER_GRADE, so there is no ladder"),
+            "tool": "tools/jumpstart/roads/ribbon.py::solve_approach"}
+
+    ladder = sorted({round(hi * (lo / hi) ** (i / APPROACH_LADDER_STEPS), 1)
+                     for i in range(APPROACH_LADDER_STEPS + 1)}, reverse=True)
+
+    def worst_pad_step(walk: dict):
+        """The worst step between the road at a pad boundary and that pad's
+        own levelled datum -- the second acceptance criterion, recorded per
+        candidate so the trade-off against the gradient is visible."""
+        steps = [(g["terminates_at"]["step_road_to_pad_m"],
+                  g["terminates_at"]["site_id"])
+                 for g in walk.get("gaps", [])
+                 if g.get("terminates_at")
+                 and g["terminates_at"].get("step_road_to_pad_m") is not None]
+        if not steps:
+            return None, None, 0
+        s, sid = max(steps, key=lambda t: abs(t[0]))
+        return s, sid, sum(1 for v, _ in steps if abs(v) > BATTER_GRADE)
+    rows = []
+    best = None
+    for reach in ladder:
+        if abs(reach - hi) < 1e-9:
+            ap, comps, st, walk = ap0, comps0, st0, walk0
+        else:
+            ap, comps, st, walk = attempt(reach)
+        g8 = float(walk.get("max_gradient_8m") or 0.0)
+        row = {"reach_m": reach, "ramp_grade": ap.get("ramp_grade"),
+               "nodes_regraded": ap["nodes_regraded"],
+               "max_profile_move_m": ap.get("max_profile_move_m"),
+               "step_after_m": ap["worst_step_after_m"],
+               "over_clamp": st["over_clamp"],
+               "max_fill_m": st["max_fill_m"], "max_cut_m": st["max_cut_m"],
+               "g8": round(g8, 4), "verdict": walk.get("verdict"),
+               "stations_on_road": walk.get("stations_on_road")}
+        row["worst_pad_step_m"], row["worst_pad_step_at"], \
+            row["pads_over_batter_grade"] = worst_pad_step(walk)
+        rows.append(row)
+        if st["over_clamp"]:
+            continue
+        if best is None:
+            best = (g8, reach, ap, comps, st, walk)
+            continue
+        # Rule 2 then rule 3: strictly better gradient wins; a gradient inside
+        # the tie band yields to the longer reach.  The ladder descends, so the
+        # incumbent is always the longer of any tied pair.
+        if g8 < best[0] - APPROACH_G8_TIE:
+            best = (g8, reach, ap, comps, st, walk)
+
+    if best is None:
+        # EVERY REACH CLAMPS.  The tightest is returned so the caller can
+        # report the refusal against the smallest earthwork that produced it,
+        # rather than against the largest.
+        ap, comps, st, walk = attempt(ladder[-1])
+        return ap, comps, st, {
+            "reaches_tried": len(rows), "chosen_m": ladder[-1], "rows": rows,
+            "feasible": False,
+            "why": ("NO reach keeps this segment inside the +/-8 m apply "
+                    "clamp; the shortest is returned so the refusal names the "
+                    "smallest earthwork that still fails"),
+            "tool": "tools/jumpstart/roads/ribbon.py::solve_approach"}
+
+    g8, reach, ap, comps, st, walk = best
+    seg["profile_y"] = list(base_profile)
+    ap, comps, st, walk = attempt(reach)
+    return ap, comps, st, {
+        "reaches_tried": len(rows), "chosen_m": reach, "rows": rows,
+        "feasible": True,
+        "derived_reach_m": round(hi, 1), "shortest_reach_m": round(lo, 1),
+        "design_grade": design, "clamp_m": tcdata.CLAMP_M,
+        "chosen_g8": round(g8, 4),
+        "why": ("the longest reach, inside the gradient tie band, whose "
+                "rasterisation the +/-8 m apply clamp accepts -- asked of "
+                "`stamp` per candidate, never predicted"),
+        "tool": "tools/jumpstart/roads/ribbon.py::solve_approach"}
+
+
 def grade_into_foreign(seg: dict, patches: dict, live,
-                       pad_keepouts: list[tuple[float, float, float]],
+                       pad_keepouts: "PadKeepOut",
                        grade: float | None = None,
                        station_step_m: float = 1.0,
                        reach_m: float | None = None) -> dict:
@@ -1447,11 +1936,12 @@ def grade_into_foreign(seg: dict, patches: dict, live,
         z = nodes[k][1] + (nodes[k + 1][1] - nodes[k][1]) * f
         y = prof[k] + (prof[k + 1] - prof[k]) * f
         cause = None
-        for px, pz, pr in pad_keepouts:
-            if math.hypot(x - px, z - pz) <= pr:
-                cause = "pad_keepout"
-                break
-        owner = None
+        owner = pad_keepouts.contains(x, z)
+        if owner is not None:
+            # NAMED, because "pad_keepout" alone cannot say WHICH foundation,
+            # and a district's name is no longer the answer -- the claim is a
+            # per-building rectangle and the report has to say which building.
+            cause = "pad_keepout"
         if cause is None and live is not None:
             w = live.foreign_at(x, z)
             if w is not None:
@@ -1951,8 +2441,7 @@ def applied_at(comps: dict, patches: dict, x: float, z: float,
 
 
 def walkability(seg: dict, comps: dict, patches: dict,
-                pad_keepouts: list[tuple[float, float, float]],
-                pad_sites: list[dict] | None = None,
+                pad_keepouts: "PadKeepOut",
                 protected_pieces: list[tuple[float, float]] | None = None,
                 protected_discs: list[tuple[float, float, float]] | None = None,
                 road_clips: list[tuple] | None = None,
@@ -2031,9 +2520,8 @@ def walkability(seg: dict, comps: dict, patches: dict,
         # segment. Testing the corners is exact and needs no margin constant.
         x0, z0 = math.floor(st["x"]), math.floor(st["z"])
         st["in_pad"] = any(
-            math.hypot(x0 + dx - px, z0 + dz - pz) <= pr
-            for dx in (0, 1) for dz in (0, 1)
-            for px, pz, pr in pad_keepouts)
+            pad_keepouts.contains(x0 + dx, z0 + dz) is not None
+            for dx in (0, 1) for dz in (0, 1))
         # The same reasoning for the other two things that stop the rasteriser:
         # a station is not on road BECAUSE of a protected piece, or BECAUSE the
         # ground there is seabed, and both are explanations rather than holes.
@@ -2168,30 +2656,35 @@ def walkability(seg: dict, comps: dict, patches: dict,
                  "rasteriser_refused_worst": refused_worst}
         # WHAT THE JUNCTION WILL ACTUALLY BE.  A pad gap is the road stopping
         # at somebody else's earthwork, so the step the operator meets is
-        # road-surface against PAD DATUM, not against the generated ground
-        # that happens to be there until the pad is levelled.
-        site = None
-        for cand in (pad_sites or []):
-            for k in range(i, j + 1):
-                if math.hypot(stations[k]["x"] - cand["xz"][0],
-                              stations[k]["z"] - cand["xz"][1]) <= cand["pad_radius_m"]:
-                    site = cand
-                    break
-            if site is not None:
+        # road-surface against that FOUNDATION'S OWN DATUM.
+        #
+        # THE FOUNDATION, NOT THE SETTLEMENT.  Matching a gap to a site by
+        # `pad_radius_m` and quoting the site's `pad_y` answered all six of
+        # T4's Stenvik gaps "stenvik, 45.57 m, pad_levelled_yet False" -- one
+        # number for a district `sites.yaml` itself says is NOT levelled, on
+        # foundations that were levelled at seqs 61-311.  `pad_at` answers
+        # with the building whose rectangle the gap is in and the `target_y`
+        # that building's own write levelled it to.
+        pad = None
+        for k in range(i, j + 1):
+            pad = pad_keepouts.pad_at(stations[k]["x"], stations[k]["z"])
+            if pad is not None:
                 break
-        if site is not None and site.get("pad_y") is not None:
+        if pad is not None and pad.get("pad_y") is not None:
             edge = before if before is not None else after
             road_y = edge["y"] if edge is not None else None
             entry["terminates_at"] = {
-                "site_id": site["id"], "pad_y": site["pad_y"],
-                "pad_radius_m": site["pad_radius_m"],
+                "site_id": pad["site_id"], "pad_seq": pad["seq"],
+                "pad_y": pad["pad_y"], "pad_xz": pad["xz"],
+                "pad_half_extents_m": pad["half_extents_m"],
                 "road_y_at_pad_edge": None if road_y is None else round(road_y, 3),
                 "step_road_to_pad_m": (None if road_y is None
-                                       else round(site["pad_y"] - road_y, 3)),
-                "pad_levelled_yet": site.get("pad_written", False),
+                                       else round(pad["pad_y"] - road_y, 3)),
+                "pad_levelled_yet": pad["levelled"],
+                "datum_source": pad["datum_source"],
                 "why": "the road surface at the pad boundary against the height "
-                       "Settlements levels that pad to. Positive means the pad "
-                       "floor stands ABOVE the road and the operator has to "
+                       "that pad's OWN write levelled it to. Positive means the "
+                       "pad floor stands ABOVE the road and the operator has to "
                        "climb it; a step over ~0.5 m cannot be walked up.",
             }
         gaps.append(entry)
@@ -2302,40 +2795,47 @@ def main() -> int:
     seg = segs[0]
 
     pois = poimod.load()
-    # PAD RADII COME FROM Settlements' OWN FILE, not from my copy of its
-    # coordinates.  Main ruled tools/jumpstart/settlements/sites.yaml
-    # authoritative and it is the boundary: town/village 100 m, castle 33.1,
-    # watchtower 16.1, lighthouse 17.6, treehouse 13.3 -- all LARGER than the
-    # provisional numbers I was handed over `hub` (12 and 10 for the small
-    # types), so reading my own copy would have paved inside three pads.  One
-    # source of truth, and it is the producer's.
+    # SETTLEMENTS' OWN FILE IS THE AUTHORITY FOR THE DATUM, AND THE LEDGER IS
+    # THE AUTHORITY FOR THE FOOTPRINT.  Main ruled
+    # tools/jumpstart/settlements/sites.yaml authoritative and it is the
+    # boundary -- but the two things it carries are not the same kind of fact.
+    #
+    # `pad_y` is a DECLARATION: 45.57 m is the height stenvik's pads will be
+    # levelled to and the height T4 has to arrive at, and before a pad is
+    # written that file is the only place the number exists.  It stays.
+    #
+    # `pad_radius_m` is a PLANNING STAND-OFF and `plan.py`'s own docstring
+    # says it is "taken from the district or the pad plus its own margin" --
+    # two different quantities behind one name.  Reading it as a foundation
+    # cost T4 293.9 m of unwritten centreline; see `PadKeepOut`.  So the
+    # keep-out is now built from the pad claims the WRITE-TIME GUARD will
+    # judge this write against, with the declared radius kept only for a site
+    # that has no live pad at all.
     sites_path = JUMPSTART / "settlements" / "sites.yaml"
-    pad_keepouts = []
-    # The same file also carries the DATUM each pad will be levelled to, which
-    # is what the road has to meet at a junction.  Keeping it beside the
-    # keep-out means the junction report is measured against the height that
-    # will be there rather than the generated ground that is there now.
-    pad_sites = []
-    pad_source = "none"
     if sites_path.exists():
-        sdoc = yaml.safe_load(sites_path.read_text())
-        for site in sdoc["sites"]:
-            pad_keepouts.append((float(site["xz"][0]), float(site["xz"][1]),
-                                 float(site["pad_radius_m"])))
-            pad_sites.append({"id": site["id"],
-                              "xz": [float(site["xz"][0]), float(site["xz"][1])],
-                              "pad_radius_m": float(site["pad_radius_m"]),
-                              "pad_y": (None if site.get("pad_y") is None
-                                        else float(site["pad_y"]))})
+        site_list = [dict(s) for s in
+                     yaml.safe_load(sites_path.read_text())["sites"]]
         pad_source = str(sites_path)
     else:
-        for sid, site in specmod.SETTLEMENT_SITES.items():
-            pad_keepouts.append((site["xz"][0], site["xz"][1], site["pad_radius_m"]))
-            pad_sites.append({"id": sid, "xz": list(site["xz"]),
-                              "pad_radius_m": site["pad_radius_m"],
-                              "pad_y": site.get("pad_y")})
+        site_list = [{"id": sid, "xz": list(s["xz"]),
+                      "pad_radius_m": s["pad_radius_m"], "pad_y": s.get("pad_y")}
+                     for sid, s in specmod.SETTLEMENT_SITES.items()]
         pad_source = "spec.SETTLEMENT_SITES (PROVISIONAL fallback)"
-    print(f"pad keep-outs: {len(pad_keepouts)} from {pad_source}")
+    sys.path.insert(0, str(JUMPSTART / "ledger"))
+    from writer import Ledger  # noqa: PLC0415
+    _led_for_pads = Ledger.open("Ulfsland", actor=args.actor)
+    pad_keepouts = pad_keepouts_from_chain(
+        site_list, _led_for_pads.records(), ledger=_led_for_pads)
+    if pad_keepouts.undecodable:
+        raise SystemExit(
+            f"REFUSING: {len(pad_keepouts.undecodable)} pad terrain_write "
+            f"entry(ies) could not be decoded, so the ground those pads "
+            f"levelled is unknown: {pad_keepouts.undecodable[:6]}. "
+            f"`writer._pad_footprint_check` fails CLOSED on exactly this, so "
+            f"rasterising now buys a refusal at append time. Fix the blob "
+            f"store first.")
+    print(f"pad keep-outs: {pad_keepouts.describe()}; "
+          f"datums from {pad_source}")
     batter_m = 0.0 if args.no_batter else BATTER_MAX_M
     zones = segment_zones(seg["nodes"], seg["is_bridge"], seg["width_m"],
                           batter_m=batter_m)
@@ -2431,16 +2931,6 @@ def main() -> int:
           f"not the last whose blob holds it), so the union cannot launder a "
           f"pad's floor into a road's name nor a road's carriageway into a "
           f"pad's")
-    approach = grade_into_foreign(seg, patches, live, pad_keepouts)
-    print(f"approach grading: {approach['claims']} stations claimed by "
-          f"{approach.get('claims_by_cause', {})}"
-          + (f" owners {approach['owners']}" if approach.get("owners") else "")
-          + f"; regraded {approach['nodes_regraded']} profile nodes "
-          f"(worst move {approach.get('max_profile_move_m')} m); step into the "
-          f"claim {approach['worst_step_before_m']} -> "
-          f"{approach['worst_step_after_m']} m")
-    for c in approach.get("conflicts", [])[:5]:
-        print("   CONFLICT", c)
 
     def foreign_at(x: float, z: float):
         return live.foreign_at(x, z)
@@ -2460,10 +2950,45 @@ def main() -> int:
         if w["name"] == my_name:
             return None
         return (d, f"{w['name']}#{w['seq']}")
-    comps, st = stamp(seg, patches, zones, pad_keepouts, prot["pieces"],
-                      prot["discs"], placed_objects=placed,
-                      poi_keepouts=poi_keepouts, batter_m=batter_m,
-                      foreign_at=foreign_at, road_claim_at=road_claim_at)
+
+    # THE RASTERISER, AS A FUNCTION OF THE PROFILE, so the approach solve can
+    # ASK the clamp and the gradient about a candidate reach instead of
+    # predicting them.  Identical inputs to the single call it replaces --
+    # this is the same rasterisation, run once per candidate.
+    def rasterise(sg: dict):
+        cmps, stt = stamp(sg, patches, zones, pad_keepouts, prot["pieces"],
+                          prot["discs"], placed_objects=placed,
+                          poi_keepouts=poi_keepouts, batter_m=batter_m,
+                          foreign_at=foreign_at, road_claim_at=road_claim_at)
+        wlk = walkability(sg, cmps, patches, pad_keepouts,
+                          prot["pieces"], prot["discs"],
+                          road_clips=stt["road_clip_at"])
+        return cmps, stt, wlk
+
+    approach, comps, st, reach_solve = solve_approach(
+        seg, patches, live, pad_keepouts, rasterise)
+    print(f"approach grading: {approach['claims']} stations claimed by "
+          f"{approach.get('claims_by_cause', {})}"
+          + (f" owners {approach['owners']}" if approach.get("owners") else "")
+          + f"; regraded {approach['nodes_regraded']} profile nodes "
+          f"(worst move {approach.get('max_profile_move_m')} m); step into the "
+          f"claim {approach['worst_step_before_m']} -> "
+          f"{approach['worst_step_after_m']} m")
+    print(f"approach reach SOLVED against the clamp: "
+          f"{reach_solve.get('reaches_tried')} candidate(s) between "
+          f"{reach_solve.get('shortest_reach_m')} and "
+          f"{reach_solve.get('derived_reach_m')} m, chose "
+          f"{reach_solve.get('chosen_m')} m "
+          f"(ramp grade {approach.get('ramp_grade')}, 8 m gradient "
+          f"{reach_solve.get('chosen_g8')}); {reach_solve.get('why')}")
+    for r in (reach_solve.get("rows") or []):
+        print(f"     reach {r['reach_m']:>7} grade {r['ramp_grade']:<7} "
+              f"over_clamp {r['over_clamp']:<4} fill {r['max_fill_m']:<7} "
+              f"g8 {r['g8']:<7} pad_step {str(r.get('worst_pad_step_m')):<7} "
+              f"({r.get('pads_over_batter_grade')} over {BATTER_GRADE:.3f}) "
+              f"{r['verdict']}")
+    for c in approach.get("conflicts", [])[:5]:
+        print("   CONFLICT", c)
     # THE SAMPLES THIS WRITE WROTE, snapshotted BEFORE the union carries
     # anybody else's in.  Without it every neighbour's wall is attributed to
     # this segment -- measured: T3's carriageway edge reads as a 3.676 m wall
@@ -2588,79 +3113,96 @@ def main() -> int:
     # a settlement pad radius. The union is recorded per entry so a replay
     # reproduces the same bytes in the same order.
     prior_by_zone: dict[tuple[int, int], list[dict]] = {}
-    if not args.validate:
-        sys.path.insert(0, str(JUMPSTART / "ledger"))
-        from writer import Ledger
-        led_ro = Ledger.open("Ulfsland", actor=ACTOR)
-        for line, rec in enumerate(led_ro.records()):
-            if rec.get("op") != "terrain_write":
-                continue
-            for e in rec["params"]["entries"]:
-                z = tuple(e["zone"])
-                if z in comps:
-                    # SEQ IS AMBIGUOUS PAST FILE LINE 47 -- the chain forked
-                    # tonight and the repair left duplicate seq labels, so
-                    # `merged_from` (which the clobber guard matches on seq, and
-                    # must keep matching on) is recorded alongside the FILE
-                    # LINE, the only total order this artefact has.  The merge
-                    # itself keys on the BLOB DIGEST, so an ambiguous label
-                    # cannot corrupt the bytes -- only the human trail.
-                    prior_by_zone.setdefault(z, []).append(
-                        {"seq": rec["seq"], "sha": e["blob_sha256"],
-                         "file_line": line,
-                         "name": rec["params"].get("name")})
-        for z, plist in prior_by_zone.items():
-            comp = comps[z]
-            carried = 0
-            # THE UNION CARRIES THE LATEST PRIOR CLAIM, NOT THE FIRST, and the
-            # first version of this loop had it backwards: it stopped at the
-            # first prior blob holding a sample, which on a zone with five
-            # prior writes is the OLDEST.  That is Main's T4 ruling inverted --
-            # it would restore `RoadBuild` seq 213's road delta over
-            # `SiteFinish` seq 286's pad inside the pad's own footprint,
-            # re-breaking the foundation this repair exists to respect.  So
-            # the priors are resolved amongst themselves in FILE ORDER first
-            # (later wins, which is what the live compiler holds), and only
-            # then filled in where THIS write wrote nothing.
-            merged_h: dict[int, tuple[float, float]] = {}
-            merged_p: dict[int, tuple] = {}
-            for pr in sorted(plist, key=lambda p: p["file_line"]):
-                old = tcdata.parse(led_ro.read_blob(pr["sha"]))
-                for i, (lvl, sm) in old["heights"].items():
-                    merged_h[i] = (lvl, sm)
-                for i, col in old["paints"].items():
-                    merged_p[i] = col
-            for i, (lvl, sm) in merged_h.items():
-                if not comp.modified_height[i]:
-                    comp.modified_height[i] = True
-                    comp.level_delta[i] = lvl
-                    comp.smooth_delta[i] = sm
-                    carried += 1
-            for i, col in merged_p.items():
-                if not comp.modified_paint[i]:
-                    comp.modified_paint[i] = True
-                    comp.paint[i] = col
-            print(f"  zone {list(z)}: unioned {carried} samples forward from "
-                  f"seq {[pr['seq'] for pr in plist]} "
-                  f"(file lines {[pr['file_line'] for pr in plist]}, "
-                  f"{sorted({pr['name'] for pr in plist})})")
-        # Which pads have actually been levelled yet: a site whose name
-        # prefixes an existing terrain_write. It changes what a junction step
-        # MEANS -- against a levelled pad it is the real step today, against an
-        # unlevelled one it is the step the operator will meet once
-        # Settlements gets there, and those are different claims.
-        written_names = [r["params"].get("name") or ""
-                         for r in led_ro.records() if r["op"] == "terrain_write"]
-        for site in pad_sites:
-            site["pad_written"] = any(n.startswith(site["id"])
-                                      for n in written_names)
+    # RUN UNCONDITIONALLY, INCLUDING UNDER `--validate`, and the reason is a
+    # measured lie.  This block used to be skipped when validating, so the
+    # record the pre-flight validated was NOT the record the live path builds:
+    # the live one carries every prior claim's samples unioned into its own
+    # blob.  MEASURED on T4 -- the offline pad-guard check PASSED and
+    # `Ledger.append` then REFUSED the same write for 59 authored samples
+    # inside three Stenvik pads, because the samples it objected to were the
+    # UNIONED ones the validate path had never created.  A pre-flight that
+    # validates different bytes from the ones that get sent is worse than no
+    # pre-flight: it converts a caught defect into a confident one.  The union
+    # is a pure read of the ledger and costs nothing to run twice.
+    sys.path.insert(0, str(JUMPSTART / "ledger"))
+    from writer import Ledger
+    led_ro = Ledger.open("Ulfsland", actor=ACTOR)
+    for line, rec in enumerate(led_ro.records()):
+        if rec.get("op") != "terrain_write":
+            continue
+        for e in rec["params"]["entries"]:
+            z = tuple(e["zone"])
+            if z in comps:
+                # SEQ IS AMBIGUOUS PAST FILE LINE 47 -- the chain forked
+                # tonight and the repair left duplicate seq labels, so
+                # `merged_from` (which the clobber guard matches on seq, and
+                # must keep matching on) is recorded alongside the FILE
+                # LINE, the only total order this artefact has.  The merge
+                # itself keys on the BLOB DIGEST, so an ambiguous label
+                # cannot corrupt the bytes -- only the human trail.
+                prior_by_zone.setdefault(z, []).append(
+                    {"seq": rec["seq"], "sha": e["blob_sha256"],
+                     "file_line": line,
+                     "name": rec["params"].get("name")})
+    for z, plist in prior_by_zone.items():
+        comp = comps[z]
+        carried = 0
+        # THE UNION CARRIES THE LATEST PRIOR CLAIM, NOT THE FIRST, and the
+        # first version of this loop had it backwards: it stopped at the
+        # first prior blob holding a sample, which on a zone with five
+        # prior writes is the OLDEST.  That is Main's T4 ruling inverted --
+        # it would restore `RoadBuild` seq 213's road delta over
+        # `SiteFinish` seq 286's pad inside the pad's own footprint,
+        # re-breaking the foundation this repair exists to respect.  So
+        # the priors are resolved amongst themselves in FILE ORDER first
+        # (later wins, which is what the live compiler holds), and only
+        # then filled in where THIS write wrote nothing.
+        merged_h: dict[int, tuple[float, float]] = {}
+        merged_p: dict[int, tuple] = {}
+        for pr in sorted(plist, key=lambda p: p["file_line"]):
+            old = tcdata.parse(led_ro.read_blob(pr["sha"]))
+            for i, (lvl, sm) in old["heights"].items():
+                merged_h[i] = (lvl, sm)
+            for i, col in old["paints"].items():
+                merged_p[i] = col
+        # NO PAD-FLOOR RESTORATION HERE, and the reason is the same ruling
+        # that unblocked this write.  A previous form of this loop looked up
+        # each sample's pad floor and restored it over the later claim's
+        # value, because `writer._pad_footprint_check` used to judge a road
+        # against EVERY pad that had ever authored a sample.  That check was
+        # the defect: a superseded pad's floor is ground that NO LONGER
+        # EXISTS, and two pads that authored the same square metre made it
+        # unsatisfiable (T4 at (480-482, 908)).  The guard now resolves to the
+        # EFFECTIVE author, so the correct union is the plain one -- FILE
+        # ORDER, later wins, which is what the live compiler holds -- and
+        # restoring a dead floor would now be the thing that gets refused.
+        for i, (lvl, sm) in merged_h.items():
+            if not comp.modified_height[i]:
+                comp.modified_height[i] = True
+                comp.level_delta[i] = lvl
+                comp.smooth_delta[i] = sm
+                carried += 1
+        for i, col in merged_p.items():
+            if not comp.modified_paint[i]:
+                comp.modified_paint[i] = True
+                comp.paint[i] = col
+        print(f"  zone {list(z)}: unioned {carried} samples forward from "
+              f"seq {[pr['seq'] for pr in plist]} "
+              f"(file lines {[pr['file_line'] for pr in plist]}, "
+              f"{sorted({pr['name'] for pr in plist})})")
+    # `pad_levelled_yet` used to be derived here, by name-prefixing every
+    # `terrain_write` against a site id.  It is now a property of the
+    # keep-out itself: a foundation in `pad_claims` IS levelled and
+    # carries the `target_y` it was levelled to, and a site that only
+    # exists in `sites.yaml` is not and carries its declared `pad_y`.
+    # Deriving it twice from two sources is how they disagree.
 
     # THE OPERATOR'S OWN TEST, on the surface that will exist after the union.
     # Run here rather than before the merge because a junction zone's carried
     # samples are part of the rendered mesh: at the temple the T3 ribbon meets
     # T12's, and continuity across that joint is a property of the union, not
     # of this segment alone.
-    walk = walkability(seg, comps, patches, pad_keepouts, pad_sites,
+    walk = walkability(seg, comps, patches, pad_keepouts,
                        prot["pieces"], prot["discs"],
                        road_clips=st["road_clip_at"])
     walk["skipped"] = {"settlement_pad": st["skipped_pad"],
@@ -2686,6 +3228,10 @@ def main() -> int:
                           "by_cause": st["walls_left_by_cause"],
                           "listed": st["walls_left"]}
     walk["approach_grading"] = approach
+    # THE SOLVE, NOT ONLY ITS ANSWER.  A chosen reach with no ladder beside it
+    # is a constant again: the row per candidate is what lets a later reader
+    # see that the clamp, not a derivation, picked it.
+    walk["approach_reach_solve"] = reach_solve
     walk["edge_inclusive"] = {"samples_at_exactly_edge":
                               st["edge_exact_samples"],
                               "eps_m": st["edge_eps_m"],
@@ -2911,7 +3457,107 @@ def main() -> int:
               f"{'OK' if not zbad else str(len(zbad)) + ' problems'}")
         for b in zbad:
             print("   ", b)
-        return 0 if not (bad or zbad) else 4
+        # ---- THE WRITE-TIME PAD GUARD, ASKED HERE RATHER THAN DISCOVERED
+        # AT APPEND TIME.
+        #
+        # `schema.validate` is not the whole gate.  `Ledger.append` also runs
+        # `_pad_footprint_check`, which refuses any `terrain_write` that
+        # AUTHORS a sample inside another claim's pad footprint -- the
+        # rectangle or the ground that pad itself levelled.  It is the check
+        # that will reject this write, it is not in `roads/`, and it is not
+        # waivable.  This flag's whole purpose is that "finding that out while
+        # holding the console is how a staged operation gets left half-sent",
+        # so it is asked offline, against the real chain, before anything is
+        # appended.
+        #
+        # IN A SANDBOX CHAIN, because the guard must DECODE the candidate's
+        # blobs to find its authored samples and those blobs are not in the
+        # store until the write happens.  A copy of `ledger.jsonl` plus
+        # HARDLINKED blobs costs no bytes and keeps the shared store free of
+        # digests belonging to a write that may never be made.
+        sys.path.insert(0, str(JUMPSTART / "ledger"))
+        from writer import Ledger as _Ledger
+        sandbox = Path(f"/tmp/{args.actor.lower()}/guardcheck")
+        if sandbox.exists():
+            shutil.rmtree(sandbox)
+        (sandbox / "blobs").mkdir(parents=True)
+        real = _Ledger.open("Ulfsland", actor=args.actor)
+        shutil.copy2(real.path, sandbox / real.path.name)
+        if real._index_path.exists():
+            shutil.copy2(real._index_path, sandbox / real._index_path.name)
+        # SYMLINKS, not hardlinks: `/tmp` is a different filesystem from the
+        # repo that holds the blob store, so `os.link` fails with EXDEV.  A
+        # symlink costs the same nothing and `read_blob` resolves it -- it
+        # reads bytes and re-digests them, so a link that pointed at the
+        # wrong payload would be caught rather than trusted.
+        linked = 0
+        for blobfile in real.blobs.iterdir():
+            if blobfile.is_file():
+                os.symlink(blobfile, sandbox / "blobs" / blobfile.name)
+                linked += 1
+        sand = _Ledger.open("Ulfsland", actor=args.actor, root=sandbox)
+        for e in entries:
+            sand.blob(e["blob"], note=f"guardcheck {seg['id']}")
+        prior = sand.records()
+        guard = sand._pad_footprint_check(rec, prior)
+        print(f"write-time pad guard (writer.py::_pad_footprint_check) over "
+              f"{len(prior)} prior record(s) and {linked} linked blob(s) "
+              f"in {sandbox}: {'PASSES' if not guard else 'REFUSES'}")
+        for g in guard:
+            print("   ", g)
+        if guard:
+            # WHICH SAMPLES, AND WHAT THIS WRITE PUT THERE.  The guard names a
+            # count, a worst move and the first six positions; that is enough
+            # to know it refused and not enough to know WHY this write differs
+            # from the composition.  The rasteriser refuses every sample the
+            # keep-out covers, so a disagreement here is NOT a paved
+            # foundation -- it is this write's blob carrying a different value
+            # at a sample it never wrote, which is a UNION defect and reads
+            # identically in the refusal message.  So the two values are
+            # printed side by side.
+            composed: dict[tuple[int, int], tuple[float, int]] = {}
+            for line, pr in enumerate(prior):
+                if pr.get("op") != "terrain_write":
+                    continue
+                for e in pr["params"].get("entries", []):
+                    got = writer_entry_samples(e, sand)
+                    if got is None:
+                        continue
+                    for sxz, val in got.items():
+                        composed[sxz] = (val[0], pr["seq"])
+            shown = 0
+            for e in rec["params"]["entries"]:
+                got = writer_entry_samples(e, sand)
+                if got is None:
+                    print(f"    entry zone {e['zone']}: BLOB WOULD NOT DECODE")
+                    continue
+                for sxz, val in sorted(got.items()):
+                    sid = pad_keepouts.contains(float(sxz[0]), float(sxz[1]))
+                    if sid is None:
+                        continue
+                    was, was_seq = composed.get(sxz, (None, None))
+                    if was is not None and abs(was - val[0]) <= 1e-6:
+                        continue
+                    if shown < 12:
+                        zx, zz = int(e["zone"][0]), int(e["zone"][1])
+                        cmp_ = comps.get((zx, zz))
+                        mh = (None if cmp_ is None else
+                              cmp_.modified_height[
+                                  tcdata.vertex_mask_index(
+                                      float(e["centre"][0]),
+                                      float(e["centre"][1]), sxz[0], sxz[1])[1]
+                                  * tcdata.PITCH
+                                  + tcdata.vertex_mask_index(
+                                      float(e["centre"][0]),
+                                      float(e["centre"][1]), sxz[0], sxz[1])[0]])
+                        print(f"    sample {sxz} in {sid}: prior "
+                              f"{'None' if was is None else f'{was:+.4f}'} "
+                              f"(seq {was_seq}) -> mine {val[0]:+.4f} "
+                              f"[zone {e['zone']}, my rasteriser wrote it: "
+                              f"{mh}]")
+                    shown += 1
+            print(f"    {shown} disagreeing sample(s) inside a pad footprint")
+        return 0 if not (bad or zbad or guard) else 4
 
     # ---- live, through the ledger --------------------------------------
     sys.path.insert(0, str(JUMPSTART / "ledger"))
