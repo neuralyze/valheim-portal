@@ -4,10 +4,20 @@
   "first_seen_seq": 32,
   "note": "boathouse-temple-strait spawn_object plan, 95 commands"
  },
+ "04251d3957de582044e006086e17b3e69bf568b465852f49f323a78c1059bad3": {
+  "bytes": 1198,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [5, 6]"
+ },
  "068f3358ed61d1d37b961c0ec32fef1e71118f3dc114fca93822ff735724bd0d": {
   "bytes": 4898,
   "first_seen_seq": 158,
   "note": "TCData stenvik_manor_1_z8_14 zone 8,14"
+ },
+ "0d96b25147690696cba70a5c7b943c024eea9277f15c6ea72b09a95c82657518": {
+  "bytes": 4010,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [0, 0]"
  },
  "1334151807f4027cf902a42f1c84cd0e6ca9bbc292d7edf988088660c5a7c558": {
   "bytes": 17410,
@@ -38,6 +48,11 @@
   "bytes": 15954,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-longhouse-2"
+ },
+ "162654e89aa60554eb7dbd66e411f88e24b51fce514a70112fe419e8c5a6f10f": {
+  "bytes": 2219,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [3, 4]"
  },
  "16e3c3dc29549240631c130083cb7a613f51cfa9a33de10b2730e8b65a064def": {
   "bytes": 854,
@@ -169,10 +184,20 @@
   "first_seen_seq": 143,
   "note": "TCData stenvik_cottage_4_z8_14 zone 8,14"
  },
+ "63e5c1cb344f9218b61a99878915c106a920b5184de5e7cc9f82f6351f906fa5": {
+  "bytes": 3085,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [4, 5]"
+ },
  "6afb7cf6a95d25c0b6244504cece85913ef0c34ce6f4765d2b63302a439aaa82": {
   "bytes": 2111,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-hut-1"
+ },
+ "7425292ab7e28ed3e7138e6bb31cf0d201d54ba8581dcc8d0f504a30089ce3c5": {
+  "bytes": 1067,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [4, 6]"
  },
  "7812f03c36f08fcd27c7028e0c4a071b2668c1e951832a309c26c5211d9ae759": {
   "bytes": 3660,
@@ -234,10 +259,25 @@
   "first_seen_seq": 26,
   "note": "harbour-temple-south spawn_object plan, 69 commands"
  },
+ "97a2f7df86c88a4e07d3ee5cbcb2790c6f3ae5f6b77bc5b9c408f90fcc1e5a68": {
+  "bytes": 381,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [2, 0]"
+ },
  "9d1fdbfe5015e408380e99cefa87327210e4b13ef024c4bd54a8c869af6f71c5": {
   "bytes": 1633,
   "first_seen_seq": 136,
   "note": "TCData stenvik_cottage_3_z9_14 zone 9,14"
+ },
+ "9ea3742395c4ec684aa99d1d6072426c0c8fff8aa47382bbd5608889840bac2f": {
+  "bytes": 965,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [2, 2]"
+ },
+ "a0d7f019319d128f6f8c789a9d4276beb1fe94ac4a6272052f286148432e6694": {
+  "bytes": 623,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [-1, 0]"
  },
  "a147c7647aafaa7792d94199c1f1c13c3d729f8e237fd7c16d66b6c7df6c0f34": {
   "bytes": 167,
@@ -248,6 +288,11 @@
   "bytes": 763,
   "first_seen_seq": 38,
   "note": "TCData stenvik_manor_1_z8_14 zone 8,14"
+ },
+ "a4d12807841bf95e23edb205c4b55209c8fe9351f8bc5f7cb06ac69e84a6a9aa": {
+  "bytes": 2459,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [3, 2]"
  },
  "a92dc717aa29cef9480499dd78ca94d58c3acbd2e067ae5301504ec018709c9f": {
   "bytes": 1469,
@@ -274,10 +319,20 @@
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-cottage-3"
  },
+ "bcea9cf21b6e78f3952db35d2006770e9ce72c37b5b57fee71829266810f9a9c": {
+  "bytes": 1180,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [4, 4]"
+ },
  "be83a5375332f13a988a4a5305d2ef71c9d1e50e7c2fbd834ee14a54535efd20": {
   "bytes": 665,
   "first_seen_seq": 136,
   "note": "TCData stenvik_cottage_3_z8_15 zone 8,15"
+ },
+ "bee5088e3f1f31453bb57ade4e13e98d9128e328875da9ca2b188d3c0f6ed5b2": {
+  "bytes": 1155,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [-1, -1]"
  },
  "bfad6dfc4de5e9abdeb156eae07c2b742e8491823f96af6176e26b2fbc4ed63a": {
   "bytes": 834,
@@ -288,6 +343,11 @@
   "bytes": 17485,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-house-1"
+ },
+ "c3c6aee2a9b55f9cefcb613610036fe4741953d71203984f93b10c856a819649": {
+  "bytes": 4450,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [1, 0]"
  },
  "c6d3bfc721217d9e06c2b0639c6dc68b784a655ddaa7975a4f4a0a511b0058bf": {
   "bytes": 906,
@@ -314,15 +374,30 @@
   "first_seen_seq": 104,
   "note": "TCData stenvik_longhouse_2_z8_14 zone 8,14"
  },
+ "d70622c11d921b8a0d4a5e0efc27d28ece02b99d3605073bcc39142d862ecfff": {
+  "bytes": 184,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [0, -1]"
+ },
  "db30d0f3b7de20d41d4666de19e20aeaf71a9c5ef992403be4fd7946821b1728": {
   "bytes": 3608,
   "first_seen_seq": 136,
   "note": "TCData stenvik_cottage_3_z8_14 zone 8,14"
  },
+ "dcd2944ca7eb9bf7147c32c0a7538e6e270e459653e6de2f20e1687bdf7cbaf2": {
+  "bytes": 659,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [1, 1]"
+ },
  "e7022d0e6c618c987203728516d15fe5736d48036fa17bd9d6975d831c881f9f": {
   "bytes": 17485,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-house-2"
+ },
+ "ec45e6f9283d3ed7b575907c5b22d7c7e4b49228ae3b6b4c3394519791412009": {
+  "bytes": 2791,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [3, 3]"
  },
  "edd4192241f48af40e68992c9dd2fc5d53beffe44ac0c7cc7ca333e173089706": {
   "bytes": 1861,
@@ -348,6 +423,11 @@
   "bytes": 653,
   "first_seen_seq": 38,
   "note": "TCData stenvik_manor_1_z8_13 zone 8,13"
+ },
+ "fe696b0462a753fe4ca463f63995791b25605ff8da421be10950e4a452f6ccc2": {
+  "bytes": 3722,
+  "first_seen_seq": 185,
+  "note": "TCData T3-temple-meadhall zone [2, 1]"
  },
  "ff610caf79a38be07fc9e6851caad08900bd233770f04f6f010efe5bfce1bcd0": {
   "bytes": 1479,

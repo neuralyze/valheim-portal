@@ -79,6 +79,9 @@ except ImportError:  # run as a script
 
 TOTAL_RE = re.compile(r"^Total:?\s*(\d+)\s*$", re.M)
 COUNT_LINE_RE = re.compile(r"^(\S+):\s*(\d+)\s*$", re.M)
+# One `findObjects -detailed` row's ZDO id, for de-duplicating
+# overlapping subdivision leaves.
+OBJECT_ID_RE = re.compile(r"Id:\s*(-?\d+:-?\d+)")
 # Which transport each verb needs.  Three of them, and picking the wrong one
 # fails QUIETLY, which is why this is a table rather than a condition at the
 # callsite.
@@ -101,6 +104,11 @@ STAGED_VERBS = {"zones_generate", "objects_remove", "objects_reset",
 # on its behalf silently drops a piece.
 GUARD_EPS_M = 0.5
 
+# How long a staged Upgrade World operation is given to finish before its
+# postcondition is called failed.  MEASURED costs to size it against:
+# `clear.py apply` is 36.97 s for a 40 m pad WITH generation, 22.57 s
+# without, and a ribbon segment generates many more zones than a pad.
+STAGED_SETTLE_S = 180.0
 
 def blob_reader(store):
     """A `read(sha) -> bytes` callable from either legitimate carrier.
@@ -120,6 +128,75 @@ def blob_reader(store):
             f"{type(store).__name__} carries neither `read` nor `read_blob`; "
             f"a blob source is required to materialise a terrain write")
     return read
+
+# A `-detailed` listing is not banned, it is BOUNDED.  MEASURED by
+# SiteFinish: a 39-row / ~4.4 KB reply desynchronised the RCON CLIENT and
+# deadlocked the console sink.  `RconPeer.TryReceive` parses ONE packet out
+# of a 4096-byte buffer and then CLEARS it, so an oversized reply is parsed
+# against a zero-padded tail and the stream is poisoned FOR THE NEXT CALLER
+# -- RoadNet's run died inside `Rcon.connect()` before sending anything,
+# inheriting another agent's desync.  The binding limit is the CLIENT's
+# 4096-byte buffer, not the server's 4050-byte payload cap, and the server
+# ran the query fine.  Half the buffer is the working budget; at ~110 bytes
+# per row that is 18 rows.
+MAX_DETAILED_ROWS = 18
+
+# Below this the disc cannot usefully be quartered again.
+MIN_DETAILED_RADIUS_M = 0.25
+
+
+def bounded_detailed(srv, prefab: str, x: float, y: float, z: float,
+                     radius: float) -> tuple[str, int, list]:
+    """`findObjects -detailed` over a disc, subdivided until every reply fits.
+
+    Counts with the cheap `objects_count` FIRST, and quarters the disc until
+    each leaf holds at most `MAX_DETAILED_ROWS`.  Returns the concatenated
+    listings, the number of leaves queried, and any disc that could not be
+    made small enough -- which is reported rather than sent, because "I could
+    not measure it" is not "it is fine" and a desynced stream costs the next
+    agent their window, not this one.
+
+    In code rather than in a docstring on purpose: a rule about reply size is
+    a rule the fourth agent breaks.
+    """
+    # Deduplicated by ZDO id: the quadrant discs deliberately OVERLAP (each
+    # carries its quadrant's half-diagonal so the union cannot leave a gap
+    # between them), so the same object is listed by more than one leaf.
+    # Returning the raw concatenation would make a row count read as a
+    # census, and someone would eventually count it.
+    seen_ids: set[str] = set()
+    out: list[str] = []
+    unlisted: list[dict] = []
+    leaves = 0
+    stack = [(x, z, radius)]
+    while stack:
+        cx, cz, r = stack.pop()
+        n, _ = srv.count(prefab, cx, cz, r)
+        if n == 0:
+            continue
+        if n <= MAX_DETAILED_ROWS:
+            leaves += 1
+            reply = srv.command(
+                f"findObjects -prefab {prefab} -near {cx:.2f} {y:.2f} "
+                f"{cz:.2f} {r:.2f} -detailed")
+            for line in reply.splitlines():
+                m = OBJECT_ID_RE.search(line)
+                key = m.group(1) if m else line.strip()
+                if key and key not in seen_ids:
+                    seen_ids.add(key)
+                    out.append(line.strip())
+            continue
+        if r <= MIN_DETAILED_RADIUS_M:
+            unlisted.append({"centre": [cx, cz], "radius_m": r, "rows": n})
+            continue
+        # Quarter it: four discs at the quadrant centres, each with a radius
+        # that still covers its corner (half-diagonal), so the union cannot
+        # leave a gap between them.
+        h = r / 2.0
+        cover = h * 1.4143
+        for dx, dz in ((-h, -h), (-h, h), (h, -h), (h, h)):
+            stack.append((cx + dx, cz + dz, cover))
+    return "\n".join(out), leaves, unlisted
 
 
 def chain_report(path: Path) -> dict:
@@ -555,18 +632,34 @@ def check_expect(srv: Server, rec: dict) -> list[dict]:
                                    "written"})
 
     if "tag_readback" in exp:
+        # COUNT BEFORE YOU LIST.  MEASURED by SiteFinish: a `-detailed`
+        # listing of 39 rows / ~4.4 KB desynchronised the RCON client AND
+        # deadlocked the console sink -- `RconPeer.TryReceive` parses ONE
+        # packet out of a 4096-byte buffer and then clears it, so an
+        # oversized reply is parsed against a zero-padded tail and the stream
+        # is poisoned for the NEXT caller; `docker restart` then timed out at
+        # 180 s because the process could not be signalled.
+        #
+        # A 3 m radius is not a row bound: in a dense build a single prefab
+        # can have twenty pieces inside it.  So the row count is measured
+        # with the cheap `objects_count` first, the radius is tightened once,
+        # and if it still cannot be listed safely this check FAILS rather
+        # than sending the query -- "I could not measure it" is not "it is
+        # fine", and a wedged server costs everyone the token.
         p = rec["params"]
         x, y, z = p["pos"]
-        reply = srv.command(
-            f"findObjects -prefab {p['prefab']} -near {x:.2f} {y:.2f} {z:.2f} "
-            f"3.0 -detailed")
         tag = p["tag"]
-        results.append({"check": "tag_readback", "want": tag,
-                        "ok": (tag in reply) if not srv.dry else True,
-                        "got": reply[:400],
-                        "why": "spawn_object goes through consoleCommand, "
-                               "whose reply is a fixed echo, so the tag is "
-                               "read back FROM THE WORLD or not at all"})
+        listed, leaves, unlisted = bounded_detailed(
+            srv, p["prefab"], x, y, z, 3.0)
+        results.append({
+            "check": "tag_readback", "want": tag, "leaves": leaves,
+            "unlisted_discs": unlisted,
+            "ok": (not unlisted and tag in listed) if not srv.dry else True,
+            "got": listed[:400],
+            "why": "spawn_object goes through consoleCommand, whose reply is "
+                   "a fixed echo, so the tag is read back FROM THE WORLD or "
+                   "not at all -- over a disc subdivided until every listing "
+                   "fits well inside the client's 4096-byte buffer"})
 
     if not results:
         results.append({"check": "none", "ok": False,
@@ -668,18 +761,59 @@ def apply_record(srv: Server, blobs, rec: dict) -> dict:
         read(sha)
 
     if spec.idempotent == "guard":
+        # THE GUARD IS ADVISORY; THE POSTCONDITION DECIDES.
+        #
+        # A bare presence count is one measurement with no corroboration, and
+        # its two failure directions are not symmetric: a false NEGATIVE
+        # duplicates a building, which is visible and repairable, while a
+        # false POSITIVE silently omits one and reports success -- the
+        # silent-skip class that has cost this build three separate bugs
+        # tonight.  OBSERVED during the round-trip regression: the guard
+        # reported two spawns already present at a site a direct probe showed
+        # empty moments later, and I could not reproduce the cause.  Rather
+        # than trust an unreproducible presence claim, the op's own declared
+        # postcondition is now what authorises the skip: if `expect` ALREADY
+        # HOLDS the work is genuinely done, and if it does not, the guard was
+        # wrong and the op is applied.  That is the same principle the rest
+        # of this driver runs on -- measure the thing you actually care
+        # about, not a proxy for it.
         present, probe = already_present(srv, rec)
         out["guard"] = probe
         if present:
-            out["status"] = "skipped-already-present"
-            return out
+            confirm = check_expect(srv, rec)
+            out["guard_confirmation"] = confirm
+            if all(c["ok"] for c in confirm):
+                out["status"] = "skipped-already-present"
+                out["checks"] = confirm
+                return out
+            out["guard"]["overruled"] = (
+                "presence was reported but the op's postcondition does NOT "
+                "hold, so the guard was wrong and the op is being applied")
 
     if op == "terrain_write":
         _materialise_data_entries(blobs, rec)
 
     out["replies"] = [str(r)[:200] for r in send_wire(srv, rec["wire"])]
 
+    # A staged Upgrade World operation runs ACROSS FRAMES -- `zones_generate`
+    # reports progress as a percentage -- so the answer immediately after
+    # `start` is not the answer.  MEASURED by the clearing work: querying too
+    # early made a 69-object pad look empty and the removal then ran against
+    # nothing.  Measuring once, immediately, would therefore report a
+    # correct operation as failed; polling to a deadline converts that into
+    # a wait, while a genuine failure still fails when the deadline passes.
+    staged = any((c.split()[0] if c.split() else "") in STAGED_VERBS
+                 for c in rec["wire"])
     out["checks"] = check_expect(srv, rec)
+    if staged and not all(c["ok"] for c in out["checks"]) and not srv.dry:
+        deadline = time.time() + STAGED_SETTLE_S
+        while time.time() < deadline:
+            time.sleep(5.0)
+            out["checks"] = check_expect(srv, rec)
+            if all(c["ok"] for c in out["checks"]):
+                out["settled_after_s"] = round(
+                    STAGED_SETTLE_S - (deadline - time.time()), 1)
+                break
     out["status"] = "applied" if all(c["ok"] for c in out["checks"]) \
         else "VERIFICATION FAILED"
     return out
@@ -873,7 +1007,7 @@ class Replay:
     # -- apply -------------------------------------------------------------
 
     def apply(self, *, first: int = 0, last: int | None = None,
-              skip_preamble: bool = False) -> dict:
+              skip_preamble: bool = False, trust_progress: bool = False) -> dict:
         pre = self.preflight(probe_prefabs=not self.dry)
         if pre["verdict"] == "REFUSE":
             raise Drift(
@@ -911,7 +1045,27 @@ class Replay:
                 if rec["op"] not in schema.MUTATING:
                     continue
                 if str(i) in applied:
-                    continue
+                    # THE PROGRESS FILE IS A CACHED VERDICT, and it skips work
+                    # on exactly the asymmetry that just cost us the presence
+                    # guard: a stale or wrong "applied" SILENTLY OMITS an op
+                    # and reports success, while re-doing one is visible and
+                    # repairable.  The file also cannot know what happened to
+                    # the world between two runs -- a crash mid-op, a manual
+                    # delete, another agent's build.  So on resume the op's
+                    # own postcondition arbitrates, and the cache is only
+                    # trusted when it is corroborated.
+                    if trust_progress or rec.get("expect") is None:
+                        continue
+                    recheck = check_expect(srv, rec)
+                    if all(c["ok"] for c in recheck):
+                        continue
+                    results.append({
+                        "line": i, "op": rec["op"], "actor": rec["actor"],
+                        "status": "progress-overruled",
+                        "checks": recheck,
+                        "why": "the progress file recorded this as applied "
+                               "but its postcondition does not hold; "
+                               "re-applying"})
                 res = apply_record(srv, self.blobs, rec)
                 res["line"] = i
                 results.append(res)
@@ -947,6 +1101,12 @@ def main() -> int:
                 help="last FILE LINE to apply")
     ap.add_argument("--dry-run", action="store_true",
                     help="resolve, guard and print, send nothing")
+    ap.add_argument("--trust-progress", action="store_true",
+                    help="resume WITHOUT re-checking each already-applied "
+                         "op's postcondition. Faster, and it reintroduces the "
+                         "silent-omission risk the default exists to remove: "
+                         "the progress file cannot know what happened to the "
+                         "world between two runs.")
     ap.add_argument("--skip-preamble", action="store_true",
                     help="the server has already been restarted since the "
                          "world was created and RCON is proven live")
@@ -962,7 +1122,9 @@ def main() -> int:
             print(json.dumps(rp.plan(), indent=1))
             return 0
         print(json.dumps(rp.apply(first=args.first, last=args.last,
-                                  skip_preamble=args.skip_preamble), indent=1))
+                                  skip_preamble=args.skip_preamble,
+                                  trust_progress=args.trust_progress),
+                         indent=1))
         return 0
     except (Drift, LedgerError) as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)

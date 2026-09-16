@@ -123,6 +123,23 @@ def lateral_and_y(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
     Projects onto each TERRAIN polyline segment and keeps the nearest.  A
     bridged segment is skipped, so the ribbon stops at the bank and the deck is
     Crossings' -- which is also how the ribbon avoids paving the riverbed.
+
+    THE PROJECTION PARAMETER IS CLAMPED, NOT REJECTED, and that is a DEFECT FIX
+    rather than a refinement.  MEASURED on T3-temple-meadhall: rejecting `tt`
+    outside [0, 1] leaves the WEDGE on the outside of every polyline vertex
+    claimed by NO segment, so 61 of 1,795 centreline stations -- 22 separate
+    notches, one at each turn -- were skipped by the rasteriser while sitting
+    0.0 to 1.0 m from the centreline.  An unwritten sample keeps its GENERATED
+    height, so each notch is a 1 m hole in the middle of the carriageway as
+    deep as the fill there, up to 3.31 m on T3.  Worse, `min` over the segments
+    that DID accept the projection then answered with a far branch of the same
+    road: the sample at (-31, -34) came back as 58.69 m from the centreline
+    while standing 1 m from it, so the check reported a lateral distance for a
+    place the road does not go.  Clamping makes the measure the true distance
+    to the POLYLINE, and at a vertex both adjacent segments agree on the same
+    clamped point and the same profile height, so the surface stays continuous.
+    The end behaviour is unchanged: clamping caps a ribbon end at the distance
+    to its last station, which is exactly what the old fallback below computed.
     """
     best = None
     for k in range(len(nodes) - 1):
@@ -135,15 +152,14 @@ def lateral_and_y(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
         if L2 <= 1e-12:
             continue
         tt = ((x - ax) * dx + (z - az) * dz) / L2
-        if tt < 0.0 or tt > 1.0:
-            continue
+        tt = 0.0 if tt < 0.0 else (1.0 if tt > 1.0 else tt)
         px, pz = ax + dx * tt, az + dz * tt
         d = math.hypot(x - px, z - pz)
         if best is None or d < best[0]:
             best = (d, prof[k] + (prof[k + 1] - prof[k]) * tt)
     if best is None:
-        # Beyond both ends of every segment: fall back to the nearest terrain
-        # station, so a ribbon END is square rather than tapering to a point.
+        # Every segment is bridged (or there are none): the terrain part of the
+        # ribbon is the bank only, measured to the nearest terrain station.
         idx = [k for k in range(len(nodes)) if not br[k]]
         if not idx:
             return None
@@ -452,6 +468,214 @@ def location_check(comps: dict, written: list[tuple[float, float]],
     return v
 
 
+# ---------------------------------------------------------------------------
+# the thing the operator judges: is it CONTINUOUS and WALKABLE
+# ---------------------------------------------------------------------------
+
+# Player::UpdateMovement slides the character when the ground normal is steeper
+# than 38 deg, so the hard limit on a walkable surface is tan(38 deg).  A road
+# the operator slides down is not a road.
+SLIDE_ANGLE_DEG = 38.0
+SLIDE_GRADIENT = math.tan(math.radians(SLIDE_ANGLE_DEG))
+# The BASELINE THE VERDICT IS TAKEN OVER.  The 1 m figure is a DIFFERENT
+# QUANTITY: it is the slope of one lattice edge, and a 1 m rise between two
+# adjacent samples on a fitted 8% profile is a rounding artefact of the integer
+# lattice, not a wall.  Measuring the verdict at 1 m produced a false
+# NOT WALKABLE earlier tonight, so both are reported and the verdict is taken
+# over 8 m -- roughly the run the capsule actually traverses while the collider
+# averages the mesh under it.
+VERDICT_BASELINE_M = 8.0
+
+
+def applied_at(comps: dict, patches: dict, x: float, z: float):
+    """The height the game will RENDER at (x, z), and how much of it is road.
+
+    Returns (applied_y, generated_y, corners_modified) or None when the
+    generated lattice around the point is not in hand.  This is
+    `generated bilinear + delta_at`, which is exactly `Heightmap`'s own
+    composition: the mesh interpolates linearly between 1 m samples and an
+    unwritten sample contributes zero delta.  Reading the PROFILE instead would
+    answer what the plan intended rather than what the player stands on -- and
+    the difference IS the edge, the pad gap and the ribbon end.
+    """
+    x0, z0 = math.floor(x), math.floor(z)
+    tx, tz = x - x0, z - z0
+    gen = 0.0
+    modified = 0
+    for dx, dz, w in ((0, 0, (1 - tx) * (1 - tz)), (1, 0, tx * (1 - tz)),
+                      (0, 1, (1 - tx) * tz), (1, 1, tx * tz)):
+        sx, sz = x0 + dx, z0 + dz
+        zx, zz = tcdata.zone_of(sx, sz)
+        patch = patches.get(f"z_{zx}_{zz}")
+        if patch is None:
+            return None
+        cx, cz = tcdata.zone_centre(zx, zz)
+        gx, gy = tcdata.vertex_mask_index(cx, cz, sx, sz)
+        if not (0 <= gx < tcdata.PITCH and 0 <= gy < tcdata.PITCH):
+            return None
+        gen += w * float(patch.at(gy, gx))
+        comp = comps.get((zx, zz))
+        if comp is not None and comp.modified_height[gy * tcdata.PITCH + gx]:
+            modified += 1
+    return gen + delta_at(comps, x, z), gen, modified
+
+
+def walkability(seg: dict, comps: dict, patches: dict,
+                pad_keepouts: list[tuple[float, float, float]],
+                step_m: float = 0.5) -> dict:
+    """Walk the centreline on the APPLIED surface and report the two numbers
+    the operator's own test produces: is the ribbon CONTINUOUS, and is every
+    part of it WALKABLE.
+
+    Continuity is measured as the set of RUNS where the centreline is not on
+    written road, each classified by cause, with the height STEP across it.  A
+    bridged run is expected -- the deck is Crossings' and the ribbon stops at
+    the bank by construction.  A pad run is expected too: the ribbon stops at a
+    Settlements pad edge rather than levelling ground under a building, and the
+    step there is the thing to look at, because it is a step the operator walks
+    over.  Anything else is a hole in the road.
+    """
+    nodes = np.array(seg["nodes"], dtype=np.float64)
+    br = np.array(seg["is_bridge"], dtype=bool)
+
+    # Densify the centreline by arclength, carrying each station's cause tags.
+    stations: list[dict] = []
+    s = 0.0
+    for k in range(len(nodes) - 1):
+        ax, az = nodes[k]
+        bx, bz = nodes[k + 1]
+        seglen = math.hypot(bx - ax, bz - az)
+        if seglen <= 1e-9:
+            continue
+        n = max(1, int(math.ceil(seglen / step_m)))
+        bridged = bool(br[k] or br[k + 1])
+        for j in range(n):
+            t = j / n
+            x, z = ax + (bx - ax) * t, az + (bz - az) * t
+            stations.append({"s": s + seglen * t, "x": x, "z": z,
+                             "bridged": bridged})
+        s += seglen
+    ax, az = nodes[-1]
+    stations.append({"s": s, "x": float(ax), "z": float(az),
+                     "bridged": bool(br[-1])})
+
+    off_lattice = 0
+    for st in stations:
+        got = applied_at(comps, patches, st["x"], st["z"])
+        if got is None:
+            st["y"] = None
+            off_lattice += 1
+        else:
+            st["y"], st["gen"], st["mod"] = got
+        st["in_pad"] = any(math.hypot(st["x"] - px, st["z"] - pz) <= pr
+                           for px, pz, pr in pad_keepouts)
+        # ON ROAD means all four samples under the point are ones this write
+        # set: that is where the rendered surface IS the fitted profile rather
+        # than a blend of road and untouched ground.
+        st["on_road"] = st["y"] is not None and st.get("mod") == 4
+
+    def grade_over(baseline: float) -> dict:
+        """Worst |rise/run| between two ON-ROAD stations `baseline` apart."""
+        worst = {"gradient": 0.0, "at": None, "rise_m": 0.0, "run_m": baseline,
+                 "pairs": 0}
+        j = 0
+        for i, a in enumerate(stations):
+            if not a["on_road"]:
+                continue
+            if j < i:
+                j = i
+            while j + 1 < len(stations) and stations[j]["s"] - a["s"] < baseline:
+                j += 1
+            b = stations[j]
+            run = b["s"] - a["s"]
+            if run < baseline * 0.9 or not b["on_road"]:
+                continue
+            # A pair that straddles a gap is not a slope, it is a step, and it
+            # is reported as a step below.  Require the whole run to be road.
+            if any(not stations[k]["on_road"] for k in range(i, j + 1)):
+                continue
+            worst["pairs"] += 1
+            g = abs(b["y"] - a["y"]) / run
+            if g > worst["gradient"]:
+                worst.update({"gradient": round(g, 4),
+                              "rise_m": round(b["y"] - a["y"], 3),
+                              "run_m": round(run, 2),
+                              "at": [round(a["x"], 1), round(a["z"], 1)]})
+        return worst
+
+    g8 = grade_over(VERDICT_BASELINE_M)
+    g1 = grade_over(1.0)
+
+    # Runs of centreline that are NOT on written road.
+    gaps = []
+    i = 0
+    while i < len(stations):
+        if stations[i]["on_road"]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < len(stations) and not stations[j + 1]["on_road"]:
+            j += 1
+        before = stations[i - 1] if i > 0 and stations[i - 1]["on_road"] else None
+        after = (stations[j + 1]
+                 if j + 1 < len(stations) and stations[j + 1]["on_road"] else None)
+        run = stations[j]["s"] - stations[i]["s"] + step_m
+        cause = ("bridge" if any(stations[k]["bridged"] for k in range(i, j + 1))
+                 else "settlement_pad" if any(stations[k]["in_pad"]
+                                              for k in range(i, j + 1))
+                 else "ribbon_end" if i == 0 or j == len(stations) - 1
+                 else "HOLE")
+        step = None
+        if before is not None and after is not None:
+            step = round(after["y"] - before["y"], 3)
+        # The step a walker actually meets is at the SHOULDER EDGE, between the
+        # last road station and the untouched ground half a metre on: report the
+        # applied-vs-generated difference at the boundary stations, which is the
+        # height the ground moves there.
+        lip = []
+        for st in (before, after):
+            if st is not None:
+                lip.append(round(st["y"] - st["gen"], 3))
+        gaps.append({"cause": cause,
+                     "from_s_m": round(stations[i]["s"], 1),
+                     "length_m": round(run, 1),
+                     "xz": [round(stations[i]["x"], 1), round(stations[i]["z"], 1)],
+                     "step_across_m": step,
+                     "fill_at_edges_m": lip})
+        i = j + 1
+
+    holes = [g for g in gaps if g["cause"] == "HOLE"]
+    on_road = sum(1 for st in stations if st["on_road"])
+    verdict = ("WALKABLE" if g8["gradient"] <= SLIDE_GRADIENT and not holes
+               else "NOT WALKABLE")
+    return {
+        "verdict": verdict,
+        "max_gradient_8m": g8["gradient"],
+        "max_gradient_8m_at": g8["at"],
+        "max_gradient_8m_rise_m": g8["rise_m"],
+        "baselines_8m_pairs": g8["pairs"],
+        "max_gradient_1m": g1["gradient"],
+        "max_gradient_1m_at": g1["at"],
+        "slide_limit": round(SLIDE_GRADIENT, 3),
+        "centreline_stations": len(stations),
+        "stations_on_road": on_road,
+        "stations_off_generated_lattice": off_lattice,
+        "gaps": gaps,
+        "holes": len(holes),
+        "method": (
+            "MEASURED on the APPLIED surface, not the plan: the centreline is "
+            f"walked at {step_m} m and each station's height is the bilinear "
+            "blend of the four generated samples around it PLUS this write's "
+            "bilinear delta (unwritten samples contribute zero), which is how "
+            "Heightmap composes the mesh. The VERDICT gradient is taken over a "
+            f"{VERDICT_BASELINE_M} m baseline between two stations whose whole "
+            "run is on written road; the 1 m figure is reported beside it and "
+            "is a DIFFERENT QUANTITY -- one lattice edge -- which is why it is "
+            "not the verdict. Limit is tan(38 deg), the MEASURED slide angle."),
+        "tool": "tools/jumpstart/roads/ribbon.py::walkability",
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("op", choices=["plan", "build"])
@@ -547,6 +771,90 @@ def main() -> int:
               "the plan says. Re-plan the segment.")
         return 2
 
+    # UNION WITH ANY EARLIER TERRAIN WRITE TO THE SAME ZONE.
+    #
+    # A zone holds exactly ONE `_TerrainCompiler`
+    # (`Heightmap::GetAndCreateTerrainCompiler` returns the first it finds, so a
+    # second is dead weight), and this op does `deleteObjects -zone` before it
+    # spawns -- so writing a zone someone already wrote DESTROYS their terrain.
+    # On a 33 km network crossing 470 zones alongside 50 building pads that is
+    # the normal case, not a corner case, which is why the ledger REFUSES it
+    # unless the earlier write is named.  MEASURED here: T3-temple-meadhall
+    # shares five zones with T12-wtspawn-temple, built minutes earlier at
+    # seq 181, and the guard refused rather than quietly erasing 2,051 samples
+    # of finished road.
+    #
+    # The merge is per SAMPLE INDEX: every sample the earlier blob wrote and
+    # this one does not is carried forward verbatim, both its height delta and
+    # its paint. Samples both wrote are MINE -- last writer wins per sample --
+    # and in practice that set is empty, because two ribbons meeting at a node
+    # share a zone but not a square metre, and a ribbon skips everything inside
+    # a settlement pad radius. The union is recorded per entry so a replay
+    # reproduces the same bytes in the same order.
+    prior_by_zone: dict[tuple[int, int], list[dict]] = {}
+    if not args.validate:
+        sys.path.insert(0, str(JUMPSTART / "ledger"))
+        from writer import Ledger
+        led_ro = Ledger.open("Ulfsland", actor="RoadNet")
+        for line, rec in enumerate(led_ro.records()):
+            if rec.get("op") != "terrain_write":
+                continue
+            for e in rec["params"]["entries"]:
+                z = tuple(e["zone"])
+                if z in comps:
+                    # SEQ IS AMBIGUOUS PAST FILE LINE 47 -- the chain forked
+                    # tonight and the repair left duplicate seq labels, so
+                    # `merged_from` (which the clobber guard matches on seq, and
+                    # must keep matching on) is recorded alongside the FILE
+                    # LINE, the only total order this artefact has.  The merge
+                    # itself keys on the BLOB DIGEST, so an ambiguous label
+                    # cannot corrupt the bytes -- only the human trail.
+                    prior_by_zone.setdefault(z, []).append(
+                        {"seq": rec["seq"], "sha": e["blob_sha256"],
+                         "file_line": line,
+                         "name": rec["params"].get("name")})
+        for z, plist in prior_by_zone.items():
+            comp = comps[z]
+            carried = 0
+            for pr in plist:
+                old = tcdata.parse(led_ro.read_blob(pr["sha"]))
+                for i, (lvl, sm) in old["heights"].items():
+                    if not comp.modified_height[i]:
+                        comp.modified_height[i] = True
+                        comp.level_delta[i] = lvl
+                        comp.smooth_delta[i] = sm
+                        carried += 1
+                for i, col in old["paints"].items():
+                    if not comp.modified_paint[i]:
+                        comp.modified_paint[i] = True
+                        comp.paint[i] = col
+            print(f"  zone {list(z)}: unioned {carried} samples forward from "
+                  f"seq {[pr['seq'] for pr in plist]} "
+                  f"(file lines {[pr['file_line'] for pr in plist]}, "
+                  f"{sorted({pr['name'] for pr in plist})})")
+
+    # THE OPERATOR'S OWN TEST, on the surface that will exist after the union.
+    # Run here rather than before the merge because a junction zone's carried
+    # samples are part of the rendered mesh: at the temple the T3 ribbon meets
+    # T12's, and continuity across that joint is a property of the union, not
+    # of this segment alone.
+    walk = walkability(seg, comps, patches, pad_keepouts)
+    print(f"walkability: {walk['verdict']} max gradient over "
+          f"{VERDICT_BASELINE_M:g} m baseline {walk['max_gradient_8m']} "
+          f"(limit {walk['slide_limit']}, 38 deg slide angle) at "
+          f"{walk['max_gradient_8m_at']} over {walk['baselines_8m_pairs']} "
+          f"baselines; the 1 m figure, a DIFFERENT QUANTITY, is "
+          f"{walk['max_gradient_1m']}; {walk['stations_on_road']}/"
+          f"{walk['centreline_stations']} centreline stations on written road")
+    for g in walk["gaps"]:
+        print(f"   gap {g['cause']:14s} {g['length_m']:6.1f} m at {g['xz']} "
+              f"step {g['step_across_m']} m, fill at edges {g['fill_at_edges_m']}")
+    if walk["holes"]:
+        print(f"REFUSING: {walk['holes']} gap(s) in the ribbon with no cause "
+              f"-- a hole in the road is the one defect the operator is "
+              f"guaranteed to walk into.")
+        return 5
+
     entries = []
     for (zx, zz), comp in sorted(comps.items()):
         cx, cz = comp.centre
@@ -567,6 +875,10 @@ def main() -> int:
                           "last_op_radius": opr},
             "counts": comp.counts(),
         })
+        if (zx, zz) in prior_by_zone:
+            entries[-1]["merged_from"] = [pr["seq"] for pr
+                                          in prior_by_zone[(zx, zz)]]
+            entries[-1]["merge_policy"] = "union"
 
     plan = {
         "segment": seg["id"], "zones": len(entries),
@@ -576,6 +888,7 @@ def main() -> int:
         "paved_m2": st["samples_paved"] * 1.0,
         "location_check": {k: v for k, v in loc.items() if k != "violations"},
         "over_clamp": st["over_clamp"],
+        "walkability": walk,
     }
     if args.op == "plan":
         print(json.dumps(plan, indent=1))
@@ -800,6 +1113,13 @@ def main() -> int:
                   "abutments": seg["abutments"],
                   "paved_samples": st["samples_paved"],
                   "shoulder_samples": st["samples_shoulder"],
+                  "walkability": walk,
+                  "merged_from_file_lines": {
+                      f"{z[0]},{z[1]}": [{"file_line": pr["file_line"],
+                                          "seq": pr["seq"],
+                                          "name": pr["name"]}
+                                         for pr in plist]
+                      for z, plist in sorted(prior_by_zone.items())},
                   "why": "roads are terrain, not pieces: piece_pavedroad has no "
                          "persistent ZNetView and zero road pieces exist in any "
                          "fleet save"})

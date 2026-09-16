@@ -27,6 +27,8 @@ than by date.
 
 from __future__ import annotations
 
+import gzip
+import math
 import hashlib
 import json
 import os
@@ -277,6 +279,163 @@ def fingerprint(world: str = "Ulfsland", *, game_build_anchor: str | None = None
         "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
+
+# How far the ground may move inside a protected structure's footprint before
+# the write is refused.  Not zero: a bilinear blend of unwritten samples is
+# exactly 0.0, so anything above float noise means real samples were written
+# under the structure.
+FLATTEN_TOLERANCE_M = 0.01
+
+# Probe pitch across a protected disc.  The sample lattice is 1 m, so a 0.5 m
+# probe cannot step over a written sample.
+FLATTEN_PROBE_M = 0.5
+
+
+def _record_xz(p: dict) -> tuple | None:
+    """A record's world XZ, whatever shape its op uses to carry it.
+
+    THE POSITION FIELD IS NOT ONE SHAPE, and assuming it was made this guard
+    CRASH rather than refuse.  MEASURED: `spawn` and `portal` carry `pos` as
+    [x, y, z], `zones_generate` carries it as [x, z], `objects_clear` calls it
+    `centre`, and `spawn_plan` has no `pos` at all -- it has an `anchor`.
+    Every one of those can carry `flatten: "FORBIDDEN"`, and Crossings'
+    zones_generate records do, so indexing pos[2] unconditionally raised
+    IndexError and took down every terrain_write on this world instead of
+    answering the question.
+    """
+    pos = p.get("pos") or p.get("centre")
+    if isinstance(pos, (list, tuple)) and len(pos) == 3:
+        return (pos[0], pos[2])
+    if isinstance(pos, (list, tuple)) and len(pos) == 2:
+        return (pos[0], pos[1])
+    anchor = p.get("anchor")
+    if isinstance(anchor, dict):
+        x, z = anchor.get("x"), anchor.get("z")
+        if x is not None and z is not None:
+            return (x, z)
+    return None
+
+
+def _protected_discs(rec: dict) -> list[tuple]:
+    """(x, z, radius) discs a protected structure actually occupies.
+
+    Read from the structure's OWN `expect.prefab_count`, which carries `pos`
+    and `max` per probed prefab -- evidence the protecting agent already
+    recorded for its own verification, not a new declaration invented for
+    this check and not a number supplied by the writer being checked.
+    """
+    discs = []
+    for c in (rec.get("expect") or {}).get("prefab_count", []) or []:
+        pos, radius = c.get("pos"), c.get("max")
+        if (isinstance(pos, (list, tuple)) and len(pos) == 2
+                and isinstance(radius, (int, float)) and radius > 0):
+            discs.append((float(pos[0]), float(pos[1]), float(radius)))
+    return discs
+
+
+class _DeltaField:
+    """The height change one `terrain_write` applies, at any world position.
+
+    Decoded from the write's OWN blobs, so the guard measures the bytes that
+    are about to land rather than a summary of them.
+
+    Bilinear, because `Heightmap` renders a mesh that interpolates LINEARLY
+    between adjacent samples at a 1 m pitch: the ground under an off-lattice
+    point moves by the blend of the four samples around it, and an UNWRITTEN
+    sample contributes zero.  Same primitive as the road rasteriser's
+    `delta_at`; reimplemented here rather than imported so that `writer.py`
+    does not depend on another agent's module.
+    """
+
+    def __init__(self, ledger: "Ledger", rec: dict):
+        self.zones: dict[tuple, tuple] = {}
+        # Zones whose bytes could not be read or decoded.  FAIL CLOSED on
+        # these: an undecodable blob means the guard does not know what the
+        # write does there, and treating "I could not measure it" as "it is
+        # fine" is the substitution this whole design refuses.  MEASURED by
+        # the guard suite: without this, a terrain_write referencing a blob
+        # that is not in the store passed a FORBIDDEN footprint it overlapped,
+        # because an unreadable zone contributes a delta of zero.
+        self.unreadable: set[tuple] = set()
+        for e in rec["params"]["entries"]:
+            key = (int(e["zone"][0]), int(e["zone"][1]))
+            try:
+                blob = ledger.read_blob(e["blob_sha256"])
+            except LedgerError:
+                self.unreadable.add(key)
+                continue
+            decoded = _decode_tcdata(blob)
+            if decoded is None:
+                self.unreadable.add(key)
+                continue
+            self.zones[key] = (tuple(e["centre"]), decoded)
+
+    def delta_at(self, x: float, z: float) -> float:
+        x0, z0 = math.floor(x), math.floor(z)
+        tx, tz = x - x0, z - z0
+        total = 0.0
+        for dx, dz, w in ((0, 0, (1 - tx) * (1 - tz)), (1, 0, tx * (1 - tz)),
+                          (0, 1, (1 - tx) * tz), (1, 1, tx * tz)):
+            if w == 0.0:
+                continue
+            sx, sz = x0 + dx, z0 + dz
+            key = (math.floor((sx + 32.0) / 64.0), math.floor((sz + 32.0) / 64.0))
+            entry = self.zones.get(key)
+            if entry is None:
+                continue
+            (cx, cz), (modified, level) = entry
+            gx = math.floor((sx - cx) / 1.0 + 0.5) + 32
+            gy = math.floor((sz - cz) / 1.0 + 0.5) + 32
+            if not (0 <= gx < 65 and 0 <= gy < 65):
+                continue
+            k = gy * 65 + gx
+            if modified[k]:
+                total += w * level[k]
+        return total
+
+    def worst_delta_over_disc(self, x: float, z: float,
+                              radius: float) -> tuple:
+        worst, at = 0.0, (x, z)
+        steps = max(1, int((2 * radius) / FLATTEN_PROBE_M))
+        for i in range(steps + 1):
+            px = x - radius + i * FLATTEN_PROBE_M
+            for j in range(steps + 1):
+                pz = z - radius + j * FLATTEN_PROBE_M
+                if (px - x) ** 2 + (pz - z) ** 2 > radius * radius:
+                    continue
+                d = abs(self.delta_at(px, pz))
+                if d > worst:
+                    worst, at = d, (px, pz)
+        return worst, at
+
+
+def _decode_tcdata(blob: bytes):
+    """(modified_height[], level_delta[]) out of a gzip'd TCData payload.
+
+    The inverse of `tcdata.Compiler.plain`: int32 version, int32 operations,
+    4 floats of op record, int32 count then a flag+2-float record per sample.
+    Only the height half is read; paint cannot move the ground.
+    """
+    try:
+        plain = gzip.decompress(blob)
+    except OSError:
+        return None
+    off = 0
+    _version, _ops = struct.unpack_from("<ii", plain, off)
+    off += 8
+    off += 16  # last_op_point (3f) + last_op_radius (f)
+    (count,) = struct.unpack_from("<i", plain, off)
+    off += 4
+    modified = bytearray(count)
+    level = [0.0] * count
+    for i in range(count):
+        flag = plain[off]
+        off += 1
+        if flag:
+            level[i], _smooth = struct.unpack_from("<ff", plain, off)
+            off += 8
+            modified[i] = 1
+    return modified, level
 
 def retired_seqs(records: list[dict]) -> set[int]:
     """Every seq a later `retire` removed.
@@ -574,52 +733,92 @@ class Ledger:
         levelled ground and read as the floating defect.  Over-water pads are
         the exception to the flatten step, not a variant of it.
 
-        The test is deliberately coarse -- a zone-level overlap against any
-        structure that declared `flatten: "FORBIDDEN"` -- because a terrain
-        write is zone-granular and a false refusal costs a `merge_policy`
-        argument while a false pass costs the operator's trust again.
+        FOOTPRINT-GRANULAR, not zone-granular.  The coarse version was right
+        when the only writers were pads -- a false refusal cost one argument.
+        A 20 km ribbon inverts that: it crosses hundreds of zones and would be
+        refused for passing 60 m from a bridge in the same 64 m cell, and a
+        guard that is refused-around stops being a guard.
+
+        The real verdict is computed from evidence BOTH sides already record,
+        never declared by the writer being checked: the protected structure's
+        own disc comes from its `expect.prefab_count` (pos + max radius), and
+        the applied height change comes from THIS write's own TCData blobs,
+        bilinearly blended exactly as `Heightmap` renders them.  Zone overlap
+        is only the trigger.
+
+        FAIL CLOSED.  A protected structure whose extent cannot be read falls
+        back to refusing the whole zone: "I could not measure it" is not "it
+        is fine", and that substitution is this project's signature defect.
         """
+        import math
+
         bad = []
         forbidden = [r for r in prior
                      if r["params"].get("flatten") == "FORBIDDEN"]
         if not forbidden:
             return bad
         zones = {tuple(e["zone"]) for e in rec["params"]["entries"]}
+        field = None  # decoded lazily: only needed once a trigger fires
+
         for r in forbidden:
             p = r["params"]
-            # THE POSITION FIELD IS NOT ONE SHAPE, and assuming it was made
-            # this guard CRASH rather than refuse. MEASURED: `spawn` and
-            # `portal` carry `pos` as [x, y, z], `zones_generate` carries it
-            # as [x, z], `objects_clear` calls it `centre` ([x, z]), and
-            # `spawn_plan` has no `pos` at all -- it has an `anchor`. Every
-            # one of those op kinds can carry `flatten: "FORBIDDEN"`, and
-            # Crossings' zones_generate records do, so indexing pos[2]
-            # unconditionally raised IndexError and took down every
-            # terrain_write on this world instead of answering the question.
-            # A guard that cannot read one of its inputs is not strict, it is
-            # broken.
-            xz = None
-            pos = p.get("pos") or p.get("centre")
-            if isinstance(pos, (list, tuple)) and len(pos) == 3:
-                xz = (pos[0], pos[2])
-            elif isinstance(pos, (list, tuple)) and len(pos) == 2:
-                xz = (pos[0], pos[1])
-            elif isinstance(p.get("anchor"), dict):
-                xz = (p["anchor"].get("x"), p["anchor"].get("z"))
-            if xz is None or xz[0] is None or xz[1] is None:
+            discs = _protected_discs(r)
+            if not discs:
+                # No readable extent -> zone-granular refusal, as before.
+                xz = _record_xz(p)
+                if xz is None:
+                    continue
+                zx = math.floor((float(xz[0]) + 32.0) / 64.0)
+                zz = math.floor((float(xz[1]) + 32.0) / 64.0)
+                if (zx, zz) in zones:
+                    bad.append(
+                        f"terrain_write touches zone {[zx, zz]}, which holds "
+                        f"the over-water structure at seq {r['seq']} "
+                        f"({p.get('role')}) declared flatten=FORBIDDEN: "
+                        f"{p.get('flatten_reason', 'no reason recorded')}. "
+                        f"That record carries NO measurable extent (no "
+                        f"`expect.prefab_count` with pos+max), so the precise "
+                        f"test cannot run and the whole zone is refused. Add "
+                        f"the structure's disc to its record to get a "
+                        f"footprint-granular answer.")
                 continue
-            import math
-            zx = math.floor((float(xz[0]) + 32.0) / 64.0)
-            zz = math.floor((float(xz[1]) + 32.0) / 64.0)
-            if (zx, zz) in zones:
-                bad.append(
-                    f"terrain_write touches zone {[zx, zz]}, which holds the "
-                    f"over-water structure at seq {r['seq']} "
-                    f"({p.get('role')}) declared flatten=FORBIDDEN: "
-                    f"{p.get('flatten_reason', 'no reason recorded')}. "
-                    f"Levelling there removes the water the structure stands "
-                    f"over -- the early-dock defect. Move the ribbon, or "
-                    f"exclude those samples and say so in meta.")
+
+            for disc in discs:
+                dx, dz, radius = disc
+                zx = math.floor((float(dx) + 32.0) / 64.0)
+                zz = math.floor((float(dz) + 32.0) / 64.0)
+                # Trigger on any zone the disc can reach, not just its centre's.
+                reach = {(zx + i, zz + j)
+                         for i in range(-1, 2) for j in range(-1, 2)}
+                if not (reach & zones):
+                    continue
+                if field is None:
+                    field = _DeltaField(self, rec)
+                blind = field.unreadable & reach
+                if blind:
+                    bad.append(
+                        f"terrain_write cannot be checked against the "
+                        f"over-water structure at seq {r['seq']} "
+                        f"({p.get('role')}): the TCData for zone(s) "
+                        f"{sorted(blind)} could not be read or decoded, so "
+                        f"the applied height change inside its "
+                        f"{radius:.1f} m footprint is UNKNOWN. Refusing "
+                        f"rather than assuming zero -- an unreadable blob is "
+                        f"not a flat one.")
+                    continue
+                worst, at = field.worst_delta_over_disc(dx, dz, radius)
+                if worst > FLATTEN_TOLERANCE_M:
+                    bad.append(
+                        f"terrain_write would move the ground by {worst:.3f} m "
+                        f"at ({at[0]:.1f}, {at[1]:.1f}), inside the "
+                        f"{radius:.1f} m footprint of the over-water structure "
+                        f"at seq {r['seq']} ({p.get('role')}) declared "
+                        f"flatten=FORBIDDEN: "
+                        f"{p.get('flatten_reason', 'no reason recorded')}. "
+                        f"Levelling there removes the water the structure "
+                        f"stands over -- the early-dock defect. Move the "
+                        f"route, or stop writing samples inside that disc; "
+                        f"there is no flag that waives this.")
         return bad
 
     # -- close -------------------------------------------------------------
