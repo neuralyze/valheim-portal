@@ -215,29 +215,44 @@ OPS: dict[str, Op] = {
     "zones_generate": Op(
         "zones_generate", mutating=True, idempotent="yes",
         required=("pos", "max_m", "zones"),
-        optional=_ROLE + ("timeout_s",),
+        optional=_ROLE + ("timeout_s", "empty", "fault"),
         why="Upgrade World `zones_generate pos=X,Z max=M` + `start`.  Creates "
             "the vegetation and locations that do not otherwise exist on a "
             "dedicated server with no peers.  Idempotent: SpawnZone skips a "
-            "zone that IsZoneGenerated."),
+            "zone that IsZoneGenerated.  WITH `params.empty` the wire carries "
+            "Upgrade World's `empty` flag, which is a DIFFERENT operation "
+            "wearing the same verb: `Generate.ExecuteZone` then does "
+            "`m_generatedZones.Add(zone)` and returns, spawning NOTHING.  It "
+            "deletes no ZDO, so it is not destructive, but it PERMANENTLY "
+            "forfeits that zone's ungenerated content -- its vegetation and "
+            "any location registered there will never be placed -- so "
+            "`empty` requires `fault`, the MEASURED reason ordinary "
+            "generation cannot be used, and its postcondition is "
+            "`expect.zone_marked_generated` rather than `zone_ctrl`: an "
+            "empty-marked zone has no `_ZoneCtrl` until `zones_restore` puts "
+            "one there, and a check for one would fail for the right reason "
+            "at the wrong time."),
 
-    # THE PHANTOM-GENERATED ZONE, and why this is its own op rather than a
-    # relabelled `zones_generate`.  MEASURED on Ulfsland zone (37,-52):
-    # `zones_generate` answered "1 zones: skipped by the command" twice --
-    # once site-wide at max=78.37 and once scoped at max=1 -- while the same
-    # command generated (36,-52) beside it from 0 to 27 objects.  The save's
-    # generated-zone set contains the zone, so `SpawnZone` skips it, and the
-    # zone holds ZERO ZDOs: no `_ZoneCtrl`, so every downstream step that
-    # probes for one (`flatten.py`'s refusal, `terrain_write`'s
-    # `zone_generated_probe`) correctly refuses, and `zones_generate` can
-    # never satisfy them because it is a no-op there BY DESIGN.
+    # A GENERATED ZONE WITH NO CONTROL OBJECT, and why this is its own op
+    # rather than a relabelled `zones_generate`.  The two commands do not
+    # even look at the same zones: `ZonesGenerate` sets
+    # `TargetZones = Ungenerated` and `RestoreZones` sets
+    # `TargetZones = Generated` (Upgrade World 1.82 sources, verified against
+    # the deployed DLL's command table), so `Zones.GetZones` hands them
+    # DISJOINT candidate sets and neither can ever do the other's work.
+    # MEASURED on Ulfsland: `zones_restore pos=2368,-3328 max=1` answered
+    # "0 zones: 448 skipped by the command" -- 448 being the whole generated
+    # set, distance-filtered to nothing -- which is also the cleanest live
+    # proof that zone (37,-52) was NOT in that set.
     #
-    # Upgrade World has the matching repair -- `zones_restore`, "Restores
-    # missing zone control objects" (v1.82, verified in the deployed DLL's
-    # command table) -- and it is a DIFFERENT operation with a DIFFERENT
-    # postcondition, so it gets its own kind.  Recording it under
-    # `zones_generate` would make the ledger a record of a command that was
-    # never sent, which is the one thing this artefact exists to prevent.
+    # So the fault this repairs is precise: a zone that IS generated and
+    # holds no `_ZoneCtrl`.  `RestoreZones.ExecuteZone` reads the zone's ZDOs,
+    # and if none carries `m_zoneCtrlPrefab`'s hash it calls
+    # `ZDOMan.CreateNewZDO(zonePos, hash)` -- one object, at the zone
+    # position, nothing removed.  That is the state an `empty`-marked zone is
+    # in by construction (see `zones_generate params.empty`), and the state
+    # `locations_add` used to leave behind, which is the bug the command was
+    # written for.
     #
     # NON-DESTRUCTIVE, stated rather than implied: it ADDS a missing control
     # object and removes nothing, so it does not spend the destructive budget
@@ -250,9 +265,10 @@ OPS: dict[str, Op] = {
         optional=_ROLE + ("timeout_s",),
         why="Upgrade World `zones_restore pos=X,Z max=M` + `start`, staged in "
             "a `stop`/cmd/`start` bracket like every other Upgrade World "
-            "operation.  Repairs a GENERATED zone that holds no `_ZoneCtrl` "
-            "-- the phantom-generated zone `zones_generate` skips and can "
-            "therefore never fix.  Non-destructive: it adds the missing "
+            "operation.  Repairs a zone that IS in the save's generated set "
+            "and holds no `_ZoneCtrl` -- which `zones_generate` can never do, "
+            "because it only ever looks at UNGENERATED zones.  "
+            "Non-destructive: it adds the missing "
             "control object, deletes nothing, and spends no destructive "
             "budget.  Idempotent: a zone that already has its control object "
             "gains nothing.  Postcondition is its own and is the whole point "
@@ -586,9 +602,51 @@ def validate(record: dict) -> list[str]:
         if not record["wire"]:
             bad.append(f"{op}: a mutating op with no `wire` cannot be "
                        f"replayed.  Record the literal commands as sent.")
+        # A TRAILING LITERAL `start` IS REFUSED ON AN OPERATION THAT FINISHES
+        # IN ONE FRAME.  `replay.send_wire` already brackets a staged verb
+        # with `stop`/cmd/`start`, so the extra line is a SECOND `start` --
+        # harmless while a generate is still running across frames, which is
+        # why the existing `zones_generate` records carry it, and fatal for
+        # an instant one.  MEASURED tonight on the first `zones_restore`
+        # emit: the command ran, the second `start` found no coroutine to
+        # resume and ValheimRcon answered `routine is null`, so
+        # `console_echo` correctly refused the reply and `emit` aborted
+        # BEFORE measuring a postcondition that had in fact already been
+        # decided.
+        if op == "zones_restore" or (op == "zones_generate"
+                                     and p.get("empty")):
+            if any(str(w).strip() == "start" for w in record["wire"]):
+                bad.append(
+                    f"{op}: drop the literal `start` line from `wire`. "
+                    f"`send_wire` brackets this staged verb with "
+                    f"stop/cmd/start itself, and this operation completes in "
+                    f"one frame, so the extra `start` finds a null coroutine "
+                    f"and the reply is `routine is null` -- an op that "
+                    f"WORKED, reported as unconfirmed.")
         if op == "zones_restore":
             bad += _zones_restore_expect(p, exp if isinstance(exp, dict)
                                          else {})
+        if op == "zones_generate" and p.get("empty"):
+            e = (exp if isinstance(exp, dict) else {})
+            if "zone_ctrl" in e:
+                bad.append(
+                    "zones_generate params.empty with `expect.zone_ctrl`: an "
+                    "empty mark spawns NOTHING -- `Generate.ExecuteZone` "
+                    "returns straight after `m_generatedZones.Add` -- so a "
+                    "_ZoneCtrl count is a postcondition this command cannot "
+                    "satisfy. It is `zones_restore` that puts the control "
+                    "object there, and that op carries the count.")
+            if not isinstance(e.get("zone_marked_generated"), dict):
+                bad.append(
+                    "zones_generate params.empty requires "
+                    "`expect.zone_marked_generated` -- the ONLY thing this "
+                    "command changes is the save's generated-zone set, so "
+                    "that set is what has to be measured. The probe re-sends "
+                    "`zones_generate pos=<cx>,<cz> max=1` WITHOUT `start` "
+                    "and requires the init line to report 0 zones: that "
+                    "command targets UNGENERATED zones, so 0 selected is "
+                    "exactly 'this zone is now in the generated set', and it "
+                    "is the inverse of the '1 zones' that proved it was not.")
 
     bad += _validate_params(op, p)
     return bad
@@ -699,6 +757,20 @@ def _validate_params(op: str, p: dict) -> list[str]:
                        "[zx, zz] -- the set whose CENTRE is within max_m of "
                        "pos, which is what makes the _ZoneCtrl count in "
                        "`expect` a real completion signal rather than a guess")
+        if "empty" in p:
+            if p["empty"] is not True:
+                bad.append("zones_generate: params.empty is a FLAG on the "
+                           "wire -- record it as True or leave it out, never "
+                           "as False, or the params and the wire disagree "
+                           "about which of two different operations ran")
+            if not str(p.get("fault", "")).strip():
+                bad.append(
+                    "zones_generate params.empty requires `fault`: the "
+                    "MEASURED reason ordinary generation cannot be used "
+                    "here. An empty mark forfeits that zone's vegetation and "
+                    "any location registered in it FOREVER -- it deletes no "
+                    "ZDO, but the zone is never generated again -- so the "
+                    "log carries why, not just that.")
 
     elif op == "zones_restore":
         if not _xz(p.get("pos")):

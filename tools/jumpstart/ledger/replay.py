@@ -83,6 +83,12 @@ COUNT_LINE_RE = re.compile(r"^(\S+):\s*(\d+)\s*$", re.M)
 # One `findObjects -detailed` row's ZDO id, for de-duplicating
 # overlapping subdivision leaves.
 OBJECT_ID_RE = re.compile(r"Id:\s*(-?\d+:-?\d+)")
+# The zone count an Upgrade World zone operation prints WHEN IT IS QUEUED,
+# out of `ZoneOperation::OnInit`: "... No player base detection. 1 zones:
+# 85134 skipped by the command."  It is the operation's own statement of how
+# many zones its target set and its filters left, and it is available before
+# `start` executes anything.
+ZONE_SELECTED_RE = re.compile(r"(\d+)\s+zones\b")
 # Which transport each verb needs.  Three of them, and picking the wrong one
 # fails QUIETLY, which is why this is a table rather than a condition at the
 # callsite.
@@ -646,6 +652,46 @@ def check_expect(srv: Server, rec: dict) -> list[dict]:
                 "why": "EXACTLY one _ZoneCtrl per repaired zone, counted by a "
                        "disc wholly inside that zone's 64 m square so the "
                        "answer is that zone's and nobody else's"})
+
+    if "zone_marked_generated" in exp:
+        # THE POSTCONDITION OF AN `empty` MARK, and the only live query that
+        # reads the save's generated-zone set.
+        #
+        # `ZonesGenerate` sets `TargetZones = Ungenerated`, so
+        # `Zones.GetZones` hands it only zones NOT in `m_generatedZones`, and
+        # the operation PRINTS its selected count when it is QUEUED -- before
+        # any `start`, MEASURED: "Generate zones less than 1 meters away from
+        # the coordinates 2368,-3328. No player base detection. 1 zones:
+        # 85134 skipped by the command."  So re-sending the scoped command
+        # and reading that count answers "is this zone in the generated set"
+        # directly: 1 means no, 0 means yes.  It is the exact inverse of the
+        # reading that diagnosed the fault, which is why it is trusted here.
+        #
+        # NOTHING IS EXECUTED.  The probe queues and then `stop`s, and the
+        # queue is read back with `uw_check` -- because a queued Upgrade
+        # World operation sits there waiting for the next `start` ANYBODY
+        # sends, and leaving one behind would make a later op do two things.
+        zones = [tuple(z) for z in rec["params"].get("zones", [])]
+        per, leftover = {}, []
+        for zx, zz in zones:
+            cx, cz = zx * 64.0, zz * 64.0
+            lines = srv.console(f"zones_generate pos={cx:g},{cz:g} max=1")
+            m = ZONE_SELECTED_RE.search("\n".join(lines))
+            per[f"{zx},{zz}"] = int(m.group(1)) if m else None
+            srv.console("stop")
+            queue = "\n".join(srv.console("uw_check"))
+            if "No operations queued." not in queue:
+                leftover.append(queue[:120])
+        results.append({
+            "check": "zone_marked_generated", "want": 0,
+            "got": per, "queue_left_behind": leftover,
+            "ok": (all(n == 0 for n in per.values()) and not leftover)
+                  or srv.dry,
+            "probe": [f"zones_generate pos={zx * 64:g},{zz * 64:g} max=1 "
+                      f"(QUEUED ONLY, then stop)" for zx, zz in zones],
+            "why": "zones_generate selects only UNGENERATED zones, so a "
+                   "selected count of 0 for a scoped probe is the save's "
+                   "generated-zone set answering that this zone is now in it"})
 
     if "objects_count" in exp:
         c = exp["objects_count"]

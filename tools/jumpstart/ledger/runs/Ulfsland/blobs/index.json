@@ -39,6 +39,11 @@
   "first_seen_seq": 158,
   "note": "TCData stenvik_manor_1_z8_14 zone 8,14"
  },
+ "0759fa3b1b322e53bede9609430342022a50a11fad6e2a30ba6e64f95bd47c5b": {
+  "bytes": 3534,
+  "first_seen_seq": 748,
+  "note": "TCData sudrberg_keep_z38__52 zone 38,-52"
+ },
  "077a1c945c140501d88b1a86e640221da0c2a5d85142ca5a9b0f59fcf3e8e871": {
   "bytes": 4984,
   "first_seen_seq": 213,
@@ -188,6 +193,11 @@
   "bytes": 1228,
   "first_seen_seq": 136,
   "note": "TCData stenvik_cottage_3_z9_15 zone 9,15"
+ },
+ "1d7d9d7518981aaa89be459332d2d47628d2a608c78bc60af4725270a748c78b": {
+  "bytes": 316056,
+  "first_seen_seq": 748,
+  "note": "spawn plan sudrberg-keep"
  },
  "1dd9465cf124ab8f451714e8a63536e51e9ac7ece8cc5d926a93e483220aef2c": {
   "bytes": 1065,
@@ -349,6 +359,11 @@
   "first_seen_seq": 207,
   "note": "TCData T10-wtspawn-wtsouth zone [5, 0]"
  },
+ "396ebad4983e7f472b1e5323028fb79affff6ef3401aa70f984c7df186f129ba": {
+  "bytes": 1348,
+  "first_seen_seq": 748,
+  "note": "TCData sudrberg_keep_z37__53 zone 37,-53"
+ },
  "3a006e0ee940ca194056b0ea435a46ed61b493a07226b525c1ddfedf94aceb9e": {
   "bytes": 4197,
   "first_seen_seq": 218,
@@ -438,6 +453,11 @@
   "bytes": 2572,
   "first_seen_seq": 234,
   "note": "TCData T9-wttown-dockshore zone [14, 10]"
+ },
+ "43be7c865bc508e9dc241f188151218ba4691b9efe116142e5f42562cf2cfeeb": {
+  "bytes": 2166,
+  "first_seen_seq": 748,
+  "note": "TCData sudrberg_keep_z37__52 zone 37,-52"
  },
  "4445c418d38d7f26d7716a18efcd3e48abe0b653ae52585ed772aaf480f14d80": {
   "bytes": 17909,
@@ -1443,6 +1463,11 @@
   "bytes": 580,
   "first_seen_seq": 38,
   "note": "TCData stenvik_hut_1_z8_14 zone 8,14"
+ },
+ "cd65a44534fd29882ad670a340450cb4ae6d1b7aaee3be8c4dcc9d5f5b4fd3dd": {
+  "bytes": 2144,
+  "first_seen_seq": 748,
+  "note": "TCData sudrberg_keep_z38__53 zone 38,-53"
  },
  "cdfe5396bee9542622c57338d7d263e314ce79f61860c01352cafe15ee44c559": {
   "bytes": 4835,
