@@ -1640,39 +1640,39 @@
      "role": "villa",
      "body": "hs_meadows_villa.blueprint",
      "sha256": "e2093627c21eaf055387c016c8aa4fa6b129fa62dca8999000380b2225d2af72",
-     "x": -883.2,
-     "z": 1945.9,
+     "x": -885.2,
+     "z": 1947.9,
      "yaw_deg": 70.0,
      "footprint": [
       12.4,
       10.4
      ],
      "pad": {
-      "target_y": 35.93,
-      "cut_m3": 74.5,
-      "fill_m3": 94.3,
-      "moved_m3": 168.8,
-      "mean_move_m": 0.561,
-      "rms_m": 0.698,
-      "max_cut_m": 1.48,
-      "max_fill_m": 1.79,
+      "target_y": 36.05,
+      "cut_m3": 94.2,
+      "fill_m3": 82.1,
+      "moved_m3": 176.3,
+      "mean_move_m": 0.582,
+      "rms_m": 0.713,
+      "max_cut_m": 1.75,
+      "max_fill_m": 1.56,
       "yaw_deg": 70.0,
       "width_m": 18.4,
       "depth_m": 16.4,
       "apron_m": 0.0,
-      "samples": 301,
+      "samples": 303,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 6.21,
-      "worst_delta_m": -1.79,
+      "clamp_headroom_m": 6.25,
+      "worst_delta_m": 1.75,
       "wet_samples": 0,
-      "freeboard_m": 5.93,
+      "freeboard_m": 6.05,
       "biome_counts": {
-       "Meadows": 301
+       "Meadows": 303
       },
       "patch": "westisle",
-      "x": -883.1506477077605,
-      "z": 1945.9103953541628
+      "x": -885.2,
+      "z": 1947.9
      },
      "street": "vestvik-main",
      "side": "north",
@@ -1698,21 +1698,21 @@
      "body": "hs_meadows_villa.blueprint",
      "sha256": "e2093627c21eaf055387c016c8aa4fa6b129fa62dca8999000380b2225d2af72",
      "x": -882.5,
-     "z": 1873.3,
+     "z": 1876.3,
      "yaw_deg": 70.0,
      "footprint": [
       12.4,
       10.4
      ],
      "pad": {
-      "target_y": 35.92,
-      "cut_m3": 61.2,
-      "fill_m3": 110.9,
-      "moved_m3": 172.2,
-      "mean_move_m": 0.57,
-      "rms_m": 0.719,
-      "max_cut_m": 1.33,
-      "max_fill_m": 1.78,
+      "target_y": 35.81,
+      "cut_m3": 58.4,
+      "fill_m3": 105.9,
+      "moved_m3": 164.2,
+      "mean_move_m": 0.544,
+      "rms_m": 0.68,
+      "max_cut_m": 1.06,
+      "max_fill_m": 1.82,
       "yaw_deg": 70.0,
       "width_m": 18.4,
       "depth_m": 16.4,
@@ -1720,16 +1720,16 @@
       "samples": 302,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 6.21,
-      "worst_delta_m": -1.79,
+      "clamp_headroom_m": 6.18,
+      "worst_delta_m": -1.82,
       "wet_samples": 0,
-      "freeboard_m": 5.92,
+      "freeboard_m": 5.81,
       "biome_counts": {
        "Meadows": 302
       },
       "patch": "westisle",
-      "x": -882.5398248859439,
-      "z": 1873.3239855002491
+      "x": -882.5,
+      "z": 1876.3
      },
      "street": "vestvik-main",
      "side": "south",
@@ -1754,39 +1754,39 @@
      "role": "stonehouse",
      "body": "hs_meadows_stone_cottage.blueprint",
      "sha256": "8c7b052641de15b112678579bcf6a96e5f085cb068c727109ddfea31c08a22eb",
-     "x": -989.4,
-     "z": 1806.5,
+     "x": -990.4,
+     "z": 1808.5,
      "yaw_deg": 150.0,
      "footprint": [
       5.0,
       7.0
      ],
      "pad": {
-      "target_y": 35.52,
-      "cut_m3": 34.2,
-      "fill_m3": 32.4,
-      "moved_m3": 66.6,
-      "mean_move_m": 0.466,
-      "rms_m": 0.568,
-      "max_cut_m": 1.02,
-      "max_fill_m": 1.35,
+      "target_y": 35.69,
+      "cut_m3": 33.8,
+      "fill_m3": 30.3,
+      "moved_m3": 64.1,
+      "mean_move_m": 0.451,
+      "rms_m": 0.526,
+      "max_cut_m": 1.09,
+      "max_fill_m": 1.05,
       "yaw_deg": 150.0,
       "width_m": 11.0,
       "depth_m": 13.0,
       "apron_m": 0.0,
-      "samples": 143,
+      "samples": 142,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 6.65,
-      "worst_delta_m": -1.35,
+      "clamp_headroom_m": 6.91,
+      "worst_delta_m": 1.09,
       "wet_samples": 0,
-      "freeboard_m": 5.52,
+      "freeboard_m": 5.69,
       "biome_counts": {
-       "Meadows": 143
+       "Meadows": 142
       },
       "patch": "westisle",
-      "x": -989.4422863405995,
-      "z": 1806.4737205583713
+      "x": -990.4,
+      "z": 1808.5
      },
      "street": "vestvik-cross",
      "side": "north",
@@ -1925,22 +1925,22 @@
      "role": "hut",
      "body": "hs_meadows_hut.blueprint",
      "sha256": "83385eeee9cb1f66f327eff8100887609f1adaa805b9a86fb4fcc27f67a4943c",
-     "x": -901.6,
-     "z": 1886.5,
+     "x": -899.6,
+     "z": 1889.5,
      "yaw_deg": 70.0,
      "footprint": [
       4.4,
       4.4
      ],
      "pad": {
-      "target_y": 34.25,
-      "cut_m3": 33.5,
-      "fill_m3": 15.5,
-      "moved_m3": 49.0,
-      "mean_move_m": 0.454,
-      "rms_m": 0.575,
-      "max_cut_m": 1.39,
-      "max_fill_m": 0.69,
+      "target_y": 34.37,
+      "cut_m3": 34.3,
+      "fill_m3": 22.5,
+      "moved_m3": 56.9,
+      "mean_move_m": 0.526,
+      "rms_m": 0.622,
+      "max_cut_m": 1.26,
+      "max_fill_m": 0.88,
       "yaw_deg": 70.0,
       "width_m": 10.4,
       "depth_m": 10.4,
@@ -1948,16 +1948,16 @@
       "samples": 108,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 6.61,
-      "worst_delta_m": 1.39,
+      "clamp_headroom_m": 6.74,
+      "worst_delta_m": 1.26,
       "wet_samples": 0,
-      "freeboard_m": 4.25,
+      "freeboard_m": 4.37,
       "biome_counts": {
        "Meadows": 108
       },
       "patch": "westisle",
-      "x": -901.5710207459268,
-      "z": 1886.5294231733808
+      "x": -899.6,
+      "z": 1889.5
      },
      "street": "vestvik-main",
      "side": "north",
@@ -2541,7 +2541,44 @@
     "same_landmass_as_spawn": true,
     "evidence": "MEASURED: 4-connected land (h > 30, the measured c_WaterLevel) at 1 m puts this site in the same component as the StartTemple"
    },
-   "cluster": 1
+   "cluster": 1,
+   "nudged": {
+    "wt-north": {
+     "x": 146.0,
+     "z": 1181.0,
+     "pad": {
+      "target_y": 32.42,
+      "cut_m3": 120.2,
+      "fill_m3": 114.6,
+      "moved_m3": 234.7,
+      "mean_move_m": 0.587,
+      "rms_m": 0.794,
+      "max_cut_m": 2.14,
+      "max_fill_m": 2.37,
+      "yaw_deg": 0,
+      "width_m": 20.0,
+      "depth_m": 20.0,
+      "apron_m": 0.0,
+      "samples": 400,
+      "over_clamp": 0,
+      "clamp_ok": true,
+      "clamp_headroom_m": 5.63,
+      "worst_delta_m": -2.37,
+      "wet_samples": 0,
+      "freeboard_m": 2.42,
+      "biome_counts": {
+       "Meadows": 236,
+       "BlackForest": 164
+      },
+      "patch": "mainland",
+      "x": 146.0,
+      "z": 1181.0,
+      "offsets_tried": 289,
+      "cleared_offsets": 285
+     },
+     "move_m": 12.53
+    }
+   }
   },
   {
    "id": "wt-east",
@@ -2616,7 +2653,43 @@
     "same_landmass_as_spawn": false,
     "evidence": "MEASURED: 4-connected land at 1 m puts this site in a DIFFERENT component from the StartTemple -- it is not walkable from spawn and needs a portal or a boat"
    },
-   "cluster": 1
+   "cluster": 1,
+   "nudged": {
+    "wt-east": {
+     "x": 1858.0,
+     "z": 145.0,
+     "pad": {
+      "target_y": 55.33,
+      "cut_m3": 111.6,
+      "fill_m3": 101.1,
+      "moved_m3": 212.7,
+      "mean_move_m": 0.532,
+      "rms_m": 0.644,
+      "max_cut_m": 1.56,
+      "max_fill_m": 1.35,
+      "yaw_deg": 0,
+      "width_m": 20.0,
+      "depth_m": 20.0,
+      "apron_m": 0.0,
+      "samples": 400,
+      "over_clamp": 0,
+      "clamp_ok": true,
+      "clamp_headroom_m": 6.44,
+      "worst_delta_m": 1.56,
+      "wet_samples": 0,
+      "freeboard_m": 25.33,
+      "biome_counts": {
+       "BlackForest": 400
+      },
+      "patch": "mainland",
+      "x": 1858.0,
+      "z": 145.0,
+      "offsets_tried": 289,
+      "cleared_offsets": 289
+     },
+     "move_m": 1.0
+    }
+   }
   },
   {
    "id": "lh-south",
@@ -2916,6 +2989,76 @@
     "landmass_area_m2": 2833397.0,
     "same_landmass_as_spawn": true,
     "evidence": "MEASURED: 4-connected land (h > 30, the measured c_WaterLevel) at 1 m puts this site in the same component as the StartTemple"
+   },
+   "nudged": {
+    "tree-sth-2": {
+     "x": 535.2,
+     "z": 471.2,
+     "pad": {
+      "target_y": 76.19,
+      "cut_m3": 63.5,
+      "fill_m3": 110.7,
+      "moved_m3": 174.2,
+      "mean_move_m": 0.683,
+      "rms_m": 0.837,
+      "max_cut_m": 1.09,
+      "max_fill_m": 1.93,
+      "yaw_deg": 120,
+      "width_m": 16.0,
+      "depth_m": 16.0,
+      "apron_m": 0.0,
+      "samples": 255,
+      "over_clamp": 0,
+      "clamp_ok": true,
+      "clamp_headroom_m": 6.06,
+      "worst_delta_m": -1.94,
+      "wet_samples": 0,
+      "freeboard_m": 46.19,
+      "biome_counts": {
+       "BlackForest": 255
+      },
+      "patch": "mainland",
+      "x": 535.2,
+      "z": 471.2,
+      "offsets_tried": 289,
+      "cleared_offsets": 157
+     },
+     "move_m": 10.77
+    },
+    "tree-sth-3": {
+     "x": 552.9,
+     "z": 476.0,
+     "pad": {
+      "target_y": 75.0,
+      "cut_m3": 61.4,
+      "fill_m3": 67.8,
+      "moved_m3": 129.1,
+      "mean_move_m": 0.504,
+      "rms_m": 0.611,
+      "max_cut_m": 1.27,
+      "max_fill_m": 1.18,
+      "yaw_deg": 240,
+      "width_m": 16.0,
+      "depth_m": 16.0,
+      "apron_m": 0.0,
+      "samples": 256,
+      "over_clamp": 0,
+      "clamp_ok": true,
+      "clamp_headroom_m": 6.73,
+      "worst_delta_m": 1.27,
+      "wet_samples": 0,
+      "freeboard_m": 45.0,
+      "biome_counts": {
+       "BlackForest": 256
+      },
+      "patch": "mainland",
+      "x": 552.9,
+      "z": 476.0,
+      "offsets_tried": 289,
+      "cleared_offsets": 157
+     },
+     "move_m": 9.9
+    }
    }
   },
   {
@@ -2991,6 +3134,42 @@
     "landmass_area_m2": 2682363.0,
     "same_landmass_as_spawn": false,
     "evidence": "MEASURED: 4-connected land at 1 m puts this site in a DIFFERENT component from the StartTemple -- it is not walkable from spawn and needs a portal or a boat"
+   },
+   "nudged": {
+    "tree-west-1": {
+     "x": -509.7,
+     "z": 857.3,
+     "pad": {
+      "target_y": 40.82,
+      "cut_m3": 92.3,
+      "fill_m3": 61.6,
+      "moved_m3": 153.8,
+      "mean_move_m": 0.601,
+      "rms_m": 0.756,
+      "max_cut_m": 2.2,
+      "max_fill_m": 1.34,
+      "yaw_deg": 0,
+      "width_m": 16.0,
+      "depth_m": 16.0,
+      "apron_m": 0.0,
+      "samples": 256,
+      "over_clamp": 0,
+      "clamp_ok": true,
+      "clamp_headroom_m": 5.79,
+      "worst_delta_m": 2.21,
+      "wet_samples": 0,
+      "freeboard_m": 10.82,
+      "biome_counts": {
+       "BlackForest": 256
+      },
+      "patch": "westisle",
+      "x": -509.7,
+      "z": 857.3,
+      "offsets_tried": 289,
+      "cleared_offsets": 289
+     },
+     "move_m": 10.2
+    }
    }
   },
   {
@@ -3066,6 +3245,42 @@
     "landmass_area_m2": 2682363.0,
     "same_landmass_as_spawn": false,
     "evidence": "MEASURED: 4-connected land at 1 m puts this site in a DIFFERENT component from the StartTemple -- it is not walkable from spawn and needs a portal or a boat"
+   },
+   "nudged": {
+    "tree-near-2": {
+     "x": -629.0,
+     "z": -240.3,
+     "pad": {
+      "target_y": 36.16,
+      "cut_m3": 60.6,
+      "fill_m3": 86.7,
+      "moved_m3": 147.3,
+      "mean_move_m": 0.576,
+      "rms_m": 0.703,
+      "max_cut_m": 1.51,
+      "max_fill_m": 1.66,
+      "yaw_deg": 120,
+      "width_m": 16.0,
+      "depth_m": 16.0,
+      "apron_m": 0.0,
+      "samples": 256,
+      "over_clamp": 0,
+      "clamp_ok": true,
+      "clamp_headroom_m": 6.34,
+      "worst_delta_m": -1.66,
+      "wet_samples": 0,
+      "freeboard_m": 6.16,
+      "biome_counts": {
+       "BlackForest": 256
+      },
+      "patch": "westisle",
+      "x": -629.0,
+      "z": -240.3,
+      "offsets_tried": 289,
+      "cleared_offsets": 86
+     },
+     "move_m": 9.85
+    }
    }
   }
  ],

@@ -196,15 +196,15 @@ placements:
     - 16.4
   solved:
     seed: Pirate68
-    x: -883.2
-    z: 1945.9
-    y: 35.93
+    x: -885.2
+    z: 1947.9
+    y: 36.05
     footprint_orientation: 18.4 m along x by 16.4 m along z
     flatten_cost:
-      target_y: 35.93
+      target_y: 36.05
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 37.4
+    nearest_location_m: 39.8
     nearest_location: Dolmen03
     nearest_location_standoff_m: 22.0
   settlement:
@@ -227,14 +227,14 @@ placements:
   solved:
     seed: Pirate68
     x: -882.5
-    z: 1873.3
-    y: 35.92
+    z: 1876.3
+    y: 35.81
     footprint_orientation: 18.4 m along x by 16.4 m along z
     flatten_cost:
-      target_y: 35.92
+      target_y: 35.81
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 36.2
+    nearest_location_m: 33.3
     nearest_location: Dolmen03
     nearest_location_standoff_m: 22.0
   settlement:
@@ -256,17 +256,17 @@ placements:
     - 13.0
   solved:
     seed: Pirate68
-    x: -989.4
-    z: 1806.5
-    y: 35.52
+    x: -990.4
+    z: 1808.5
+    y: 35.69
     footprint_orientation: 11 m along x by 13 m along z
     flatten_cost:
-      target_y: 35.52
+      target_y: 35.69
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 39.9
-    nearest_location: WoodHouse12
-    nearest_location_standoff_m: 18.0
+    nearest_location_m: 39.3
+    nearest_location: WoodHouse3
+    nearest_location_standoff_m: 22.0
   settlement:
     site: vestvik
     role: stonehouse
@@ -346,15 +346,15 @@ placements:
     - 10.4
   solved:
     seed: Pirate68
-    x: -901.6
-    z: 1886.5
-    y: 34.25
+    x: -899.6
+    z: 1889.5
+    y: 34.37
     footprint_orientation: 10.4 m along x by 10.4 m along z
     flatten_cost:
-      target_y: 34.25
+      target_y: 34.37
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 33.6
+    nearest_location_m: 30.1
     nearest_location: Dolmen03
     nearest_location_standoff_m: 22.0
   settlement:

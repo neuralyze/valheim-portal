@@ -221,6 +221,47 @@ OPS: dict[str, Op] = {
             "dedicated server with no peers.  Idempotent: SpawnZone skips a "
             "zone that IsZoneGenerated."),
 
+    # THE PHANTOM-GENERATED ZONE, and why this is its own op rather than a
+    # relabelled `zones_generate`.  MEASURED on Ulfsland zone (37,-52):
+    # `zones_generate` answered "1 zones: skipped by the command" twice --
+    # once site-wide at max=78.37 and once scoped at max=1 -- while the same
+    # command generated (36,-52) beside it from 0 to 27 objects.  The save's
+    # generated-zone set contains the zone, so `SpawnZone` skips it, and the
+    # zone holds ZERO ZDOs: no `_ZoneCtrl`, so every downstream step that
+    # probes for one (`flatten.py`'s refusal, `terrain_write`'s
+    # `zone_generated_probe`) correctly refuses, and `zones_generate` can
+    # never satisfy them because it is a no-op there BY DESIGN.
+    #
+    # Upgrade World has the matching repair -- `zones_restore`, "Restores
+    # missing zone control objects" (v1.82, verified in the deployed DLL's
+    # command table) -- and it is a DIFFERENT operation with a DIFFERENT
+    # postcondition, so it gets its own kind.  Recording it under
+    # `zones_generate` would make the ledger a record of a command that was
+    # never sent, which is the one thing this artefact exists to prevent.
+    #
+    # NON-DESTRUCTIVE, stated rather than implied: it ADDS a missing control
+    # object and removes nothing, so it does not spend the destructive budget
+    # and needs no clearing census.  Its sibling `zones_reset` IS destructive
+    # -- it makes zones ungenerated and defaults to 412 of them on this world
+    # -- and is deliberately NOT modelled here.
+    "zones_restore": Op(
+        "zones_restore", mutating=True, idempotent="yes",
+        required=("pos", "max_m", "zones", "fault"),
+        optional=_ROLE + ("timeout_s",),
+        why="Upgrade World `zones_restore pos=X,Z max=M` + `start`, staged in "
+            "a `stop`/cmd/`start` bracket like every other Upgrade World "
+            "operation.  Repairs a GENERATED zone that holds no `_ZoneCtrl` "
+            "-- the phantom-generated zone `zones_generate` skips and can "
+            "therefore never fix.  Non-destructive: it adds the missing "
+            "control object, deletes nothing, and spends no destructive "
+            "budget.  Idempotent: a zone that already has its control object "
+            "gains nothing.  Postcondition is its own and is the whole point "
+            "-- `expect.zone_ctrl_exact`, EXACTLY ONE `_ZoneCtrl` per "
+            "declared zone, probed by a disc wholly inside that zone's 64 m "
+            "square so no neighbour can answer on its behalf.  `fault` is "
+            "the measurement that says why the zone needed repairing, "
+            "because an op that mutates a zone on a hunch is a guess."),
+
     "objects_clear": Op(
         "objects_clear", mutating=True, idempotent="yes",
         required=("centre", "radius_m", "ids", "ignore"),
@@ -545,8 +586,57 @@ def validate(record: dict) -> list[str]:
         if not record["wire"]:
             bad.append(f"{op}: a mutating op with no `wire` cannot be "
                        f"replayed.  Record the literal commands as sent.")
+        if op == "zones_restore":
+            bad += _zones_restore_expect(p, exp if isinstance(exp, dict)
+                                         else {})
 
     bad += _validate_params(op, p)
+    return bad
+
+
+# The widest probe disc that is still WHOLLY INSIDE a 64 m zone square
+# centred on the zone centre.  Half-extent is 32 m, so 32 touches the edge
+# and anything beyond it counts a neighbour's control object -- which is how
+# a check comes to confidently answer a question it is not measuring.
+ZONE_INSIDE_MAX_R_M = 31.9
+
+
+def _zones_restore_expect(p: dict, exp: dict) -> list[str]:
+    """`zones_restore`'s own postcondition, refused at WRITE time.
+
+    The op exists to put exactly one `_ZoneCtrl` back into a generated zone
+    that has none, so the only postcondition worth recording is that count,
+    measured where nothing else can supply it.  `>= 1` is not good enough
+    here: two control objects in one zone is a different fault, and the
+    diagnosis this op repairs was produced by discs drawn strictly inside the
+    zone square precisely because a 64 m-wide answer is a neighbour's answer.
+    """
+    bad: list[str] = []
+    c = exp.get("zone_ctrl_exact")
+    if not isinstance(c, dict):
+        return ["zones_restore: `expect.zone_ctrl_exact` is REQUIRED -- "
+                "{count: 1, probe_radius_m: R}. A `zone_ctrl` count that "
+                "passes on >= 1 is the postcondition of `zones_generate`, "
+                "and it cannot tell this op's repair from the neighbouring "
+                "zones that were already fine."]
+    if c.get("count") != 1:
+        bad.append(f"zones_restore: expect.zone_ctrl_exact.count is "
+                   f"{c.get('count')!r}, and the only measurable meaning of "
+                   f"'the control object is back' is EXACTLY 1. "
+                   f"PlaceZoneCtrl places one per zone at the zone centre.")
+    r = c.get("probe_radius_m")
+    if not isinstance(r, (int, float)) or not 0 < float(r) <= ZONE_INSIDE_MAX_R_M:
+        bad.append(f"zones_restore: expect.zone_ctrl_exact.probe_radius_m is "
+                   f"{r!r}; it must be > 0 and <= {ZONE_INSIDE_MAX_R_M} so "
+                   f"the disc is WHOLLY INSIDE the zone's 64 m square and no "
+                   f"neighbour's `_ZoneCtrl` can answer for the zone under "
+                   f"repair.")
+    zones = p.get("zones")
+    if isinstance(zones, list) and zones and "zone_ctrl" in exp:
+        bad.append("zones_restore: carrying `expect.zone_ctrl` beside "
+                   "`zone_ctrl_exact` records two postconditions for one "
+                   "fact, and the weaker one (>= 1) is the one that would "
+                   "pass on a zone this op did not repair. Drop it.")
     return bad
 
 
@@ -609,6 +699,51 @@ def _validate_params(op: str, p: dict) -> list[str]:
                        "[zx, zz] -- the set whose CENTRE is within max_m of "
                        "pos, which is what makes the _ZoneCtrl count in "
                        "`expect` a real completion signal rather than a guess")
+
+    elif op == "zones_restore":
+        if not _xz(p.get("pos")):
+            bad.append("zones_restore: pos must be [x, z]")
+        zones = p.get("zones")
+        if not isinstance(zones, list) or not zones:
+            bad.append("zones_restore: zones must be a non-empty list of "
+                       "[zx, zz] -- the zones this repairs, one postcondition "
+                       "probe each")
+        try:
+            max_m = float(p.get("max_m"))
+        except (TypeError, ValueError):
+            max_m = None
+            bad.append("zones_restore: max_m must be the number sent as "
+                       "`max=`, in metres from pos")
+        # THE DECLARED SET MUST BE THE SET THE COMMAND SELECTS.  Upgrade
+        # World picks zones by the distance from `pos` to the ZONE CENTRE
+        # (MEASURED: `pos=-318,-64 max=82` answered "5 zones generated" and
+        # exactly five zone centres lie within 82 m).  A declared zone the
+        # command cannot reach would give the postcondition a zone the
+        # operation never touched to pass or fail on, which is the same
+        # defect as a check measuring the wrong question -- and this op's
+        # whole value is that its postcondition is exact.
+        if max_m is not None and _xz(p.get("pos")) and isinstance(zones, list):
+            px, pz = float(p["pos"][0]), float(p["pos"][1])
+            for z in zones:
+                if not (_xz(z) and all(isinstance(c, int) for c in z)):
+                    bad.append(f"zones_restore: zone {z!r} must be [zx, zz] "
+                               f"integers")
+                    continue
+                d = ((z[0] * 64.0 - px) ** 2 + (z[1] * 64.0 - pz) ** 2) ** 0.5
+                if d > max_m:
+                    bad.append(
+                        f"zones_restore: declared zone {z} has its centre "
+                        f"{d:.2f} m from pos ({px:g}, {pz:g}) but max_m is "
+                        f"{max_m:g}, so `zones_restore` will not select it "
+                        f"and its postcondition would measure a zone this "
+                        f"command never touched")
+        if not str(p.get("fault", "")).strip():
+            bad.append("zones_restore: `fault` must state the MEASURED reason "
+                       "this zone needs its control object restored -- the "
+                       "census that found zero `_ZoneCtrl` and the "
+                       "`zones_generate` that was skipped. This op mutates a "
+                       "zone; a mutation with no measured fault behind it is "
+                       "a guess with a record.")
 
     elif op == "objects_clear":
         if not _xz(p.get("centre")):

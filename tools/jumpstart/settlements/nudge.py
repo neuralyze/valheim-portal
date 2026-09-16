@@ -208,13 +208,48 @@ def clearing_area_for(plan: dict, site: str, unit_id: str):
     return clear_area.clearing_area(place, apron=B.APRON_M), place, doc
 
 
+def building_of(plan: dict, site: str, unit_id: str) -> dict:
+    """The candidate's geometry in ONE shape, town or outlier.
+
+    A town building carries `x`, `z`, `footprint`, `yaw_deg`, `pad` and a
+    `street`; an outlier carries `body_footprint` and `pad.yaw_deg` and has
+    no street, and a treehouse member's x/z/yaw are DERIVED from the cluster
+    rather than stored. Rather than branch at every use, the derived unit
+    record supplies position and yaw and the site record supplies the rest.
+    """
+    if site in plan["towns"]:
+        return next(b for b in plan["towns"][site]["buildings"]
+                    if b["id"] == unit_id)
+    rec = next(r for r in plan["outliers"] if r["id"] == site)
+    unit = next(u for u in B.unit_records(plan, site) if u["id"] == unit_id)
+    return {"id": unit_id, "x": unit["x"], "z": unit["z"],
+            "yaw_deg": unit["yaw"],
+            "footprint": [unit["foot_w"], unit["foot_d"]],
+            "pad": rec["pad"], "street": None}
+
+
 def patched_plan(plan: dict, site: str, unit_id: str, x: float, z: float,
                  pad: dict) -> dict:
     out = json.loads(json.dumps(plan))
-    for b in out["towns"][site]["buildings"]:
-        if b["id"] == unit_id:
-            b["x"], b["z"] = round(x, 1), round(z, 1)
-            b["pad"] = {**b["pad"], **pad, "x": x, "z": z}
+    if site in out["towns"]:
+        for b in out["towns"][site]["buildings"]:
+            if b["id"] == unit_id:
+                b["x"], b["z"] = round(x, 1), round(z, 1)
+                b["pad"] = {**b["pad"], **pad, "x": x, "z": z}
+        return out
+    # OUTLIERS ARE OVERRIDDEN, NOT REWRITTEN -- see `build.unit_records`: a
+    # cluster member's position is derived from the site centre, so writing
+    # the site's x/z would move every member including ones already standing.
+    for rec in out["outliers"]:
+        if rec["id"] != site:
+            continue
+        base = next(r for r in plan["outliers"] if r["id"] == site)
+        rec.setdefault("nudged", {})[unit_id] = {
+            "x": round(x, 1), "z": round(z, 1),
+            "pad": {**base["pad"], **pad, "x": x, "z": z},
+            "move_m": round(math.hypot(
+                x - building_of(plan, site, unit_id)["x"],
+                z - building_of(plan, site, unit_id)["z"]), 2)}
     return out
 
 
@@ -246,11 +281,19 @@ def terrain_gate(plan: dict, site: str, unit_id: str, loc) -> dict:
 def solve_one(plan: dict, site: str, unit_id: str, fields, loc,
               standing: list[dict], shortlist: int = 6) -> dict:
     """Ranked candidate offsets for one refused pad, offline filters only."""
-    town = plan["towns"][site]
-    building = next(b for b in town["buildings"] if b["id"] == unit_id)
-    street = street_of(town, building)
+    town = plan["towns"].get(site)
+    building = building_of(plan, site, unit_id)
+    street = street_of(town, building) if town else None
     base_off = signed_offset(street, building["x"], building["z"]) if street \
         else 0.0
+    # THE BIOME GATE IS "DO NOT CHANGE BIOME", NOT "BE MEADOWS". Hard-coding
+    # Meadows is right for the two towns and wrong for every outlier that was
+    # deliberately sited elsewhere: MEASURED, tree-sth's planned pad is
+    # BlackForest on all 256 samples, so a Meadows test rejects all 288
+    # candidate cells and the pad reads as unmovable when nothing is wrong
+    # with it. The planned pad's own dominant biome is the datum.
+    want_biome = max(building["pad"]["biome_counts"],
+                     key=building["pad"]["biome_counts"].get)
     rejected = {"street_side": 0, "street_window": 0, "pad_unsolvable": 0,
                 "clamp": 0, "wet": 0, "biome": 0, "sibling_overlap": 0,
                 "sibling_in_count_disc": 0, "piece_reach": 0}
@@ -276,7 +319,7 @@ def solve_one(plan: dict, site: str, unit_id: str, fields, loc,
         if pad["wet_samples"]:
             rejected["wet"] += 1
             continue
-        if max(pad["biome_counts"], key=pad["biome_counts"].get) != "Meadows":
+        if max(pad["biome_counts"], key=pad["biome_counts"].get) != want_biome:
             rejected["biome"] += 1
             continue
         mine = (x, z, building["footprint"][0], building["footprint"][1],
@@ -321,14 +364,16 @@ def solve_one(plan: dict, site: str, unit_id: str, fields, loc,
 
 
 def standing_rects(plan: dict, site: str, built: list[str]) -> list[dict]:
-    town = plan["towns"][site]
-    out = []
-    for b in town["buildings"]:
-        if b["id"] in built:
-            out.append({"id": b["id"],
-                        "rect": (b["x"], b["z"], b["footprint"][0],
-                                 b["footprint"][1], b["yaw_deg"])})
-    return out
+    """The footprints already on the ground at this site, at BUILD YAW.
+
+    A treehouse hamlet is three bodies 12 m apart, so an outlier site needs
+    this every bit as much as a town does -- nudging member 3 into member 1
+    is the same defect as nudging a cottage into a hall.
+    """
+    units = B.unit_records(plan, site)
+    return [{"id": u["id"],
+             "rect": (u["x"], u["z"], u["foot_w"], u["foot_d"], u["yaw"])}
+            for u in units if u["id"] in built]
 
 
 def census(srv, cx: float, cz: float, radius_m: float) -> dict:
@@ -354,6 +399,11 @@ def main() -> int:
                          "live census starts choosing")
     ap.add_argument("--probes", type=int, default=40,
                     help="live censuses per pad; each is one round trip")
+    # WHO THE LEDGER SAYS DID IT. `SiteFinish` solved Stenvik's five nudges
+    # and yielded; the outlying sites are nudged by `OutlierBuild`. Crediting
+    # one agent's measurements to another in the only log that survives the
+    # session is the same defect `build.py --actor` exists to prevent.
+    ap.add_argument("--actor", default="SiteFinish")
     a = ap.parse_args()
 
     plan_path = Path(a.plan_json)
@@ -371,7 +421,7 @@ def main() -> int:
               "refused": units, "solved": {}, "dropped": {}}
 
     from live import LiveBuilder  # noqa: E402
-    with LiveBuilder(actor="SiteFinish") as b:
+    with LiveBuilder(actor=a.actor) as b:
         b.srv.probe()
         for unit_id in units:
             sol = solve_one(plan, a.site, unit_id, fields, loc, standing,
@@ -441,18 +491,12 @@ def main() -> int:
                                     chosen["z"], chosen["pad"])
                 # The standing set grows as pads are accepted, so two nudged
                 # pads cannot be given the same ground.
+                acc = building_of(plan, a.site, unit_id)
                 standing.append({
                     "id": unit_id,
                     "rect": (chosen["x"], chosen["z"],
-                             next(bb["footprint"][0] for bb in
-                                  plan["towns"][a.site]["buildings"]
-                                  if bb["id"] == unit_id),
-                             next(bb["footprint"][1] for bb in
-                                  plan["towns"][a.site]["buildings"]
-                                  if bb["id"] == unit_id),
-                             next(bb["yaw_deg"] for bb in
-                                  plan["towns"][a.site]["buildings"]
-                                  if bb["id"] == unit_id))})
+                             acc["footprint"][0], acc["footprint"][1],
+                             acc["yaw_deg"])})
 
     if a.op == "accept":
         plan_path.write_text(json.dumps(plan, indent=1))

@@ -46,15 +46,15 @@ placements:
     - 16.0
   solved:
     seed: Pirate68
-    x: -620.0
-    z: -236.3
-    y: 35.27
+    x: -629.0
+    z: -240.3
+    y: 36.16
     footprint_orientation: 16 m along x by 16 m along z
     flatten_cost:
-      target_y: 35.27
+      target_y: 36.16
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 34.2
+    nearest_location_m: 30.9
     nearest_location: StoneTowerRuins03
     nearest_location_standoff_m: 23.470001220703125
   settlement:

@@ -9,6 +9,16 @@
   "first_seen_seq": 218,
   "note": "TCData T8-stenvik-wttown zone [12, 12]"
  },
+ "015f6d6049c70c69d6f2b1082865fb0009a16d50723252a9a6533a280ad9d8dd": {
+  "bytes": 1592,
+  "first_seen_seq": 425,
+  "note": "TCData vestvik_hall_1_z_14_29 zone -14,29"
+ },
+ "020fd1ac023373be09ae074c1e0df115708aa1050b3360a91b9ea5f19b8666a0": {
+  "bytes": 3649,
+  "first_seen_seq": 734,
+  "note": "TCData tree_near_2_z_10__4 zone -10,-4"
+ },
  "04251d3957de582044e006086e17b3e69bf568b465852f49f323a78c1059bad3": {
   "bytes": 1198,
   "first_seen_seq": 185,
@@ -18,6 +28,11 @@
   "bytes": 1375,
   "first_seen_seq": 240,
   "note": "TCData T5-temple-dockshore zone [0, -1]"
+ },
+ "0611c74b52f311af338ba0dc2715af03db970c867d2ad1b1cbb6b599f7d8f4a1": {
+  "bytes": 525,
+  "first_seen_seq": 495,
+  "note": "TCData vestvik_villa_2_z_14_31 zone -14,31"
  },
  "068f3358ed61d1d37b961c0ec32fef1e71118f3dc114fca93822ff735724bd0d": {
   "bytes": 4898,
@@ -139,6 +154,11 @@
   "first_seen_seq": 38,
   "note": "TCData stenvik_house_1_z8_14 zone 8,14"
  },
+ "178154584a33c7f8c054291772898a78cb4fde25c66e6d886dc3e1639301bbb3": {
+  "bytes": 5185,
+  "first_seen_seq": 687,
+  "note": "spawn plan tree-west-2"
+ },
  "18bee0a560299f3114aadcb224fb9304c902a28fd6e3e41c6317b665641e3acd": {
   "bytes": 433,
   "first_seen_seq": 213,
@@ -148,6 +168,11 @@
   "bytes": 616,
   "first_seen_seq": 38,
   "note": "TCData stenvik_hut_2_z8_14 zone 8,14"
+ },
+ "1a4596d20f4a50440e96198355e7cfaa6a4c37bd9f7926f9cdfb09b26f001022": {
+  "bytes": 98277,
+  "first_seen_seq": 600,
+  "note": "spawn plan lh-east"
  },
  "1cdf279f0c7036aa8809847a29d20bfc1a6370b14d00a9c106c8275e87fbec25": {
   "bytes": 3660,
@@ -169,6 +194,21 @@
   "first_seen_seq": 196,
   "note": "TCData T3-temple-meadhall zone [4, 6]"
  },
+ "1dff1ef67a3b0f2cf6eda3292237b79fa379bdb03e9ec1460d9742d4fece0d31": {
+  "bytes": 1225,
+  "first_seen_seq": 387,
+  "note": "TCData wt_town_z12_11 zone 12,11"
+ },
+ "1f1737447fb9f58c16da34b9ed033e23748223f4ce9d5fe1aa7da0b24433c0e4": {
+  "bytes": 13893,
+  "first_seen_seq": 503,
+  "note": "spawn plan vestvik-villa-3"
+ },
+ "1f9fc74fe87eb09a51b3e0633f778bd03dc25554b1adc5ed5df0557cab87931e": {
+  "bytes": 261,
+  "first_seen_seq": 633,
+  "note": "TCData tree_sth_2_z9_7 zone 9,7"
+ },
  "21ea04f7edca5f81cbc1388ea063503d240afca1fadf44e5e799ce56211e7a02": {
   "bytes": 2241,
   "first_seen_seq": 196,
@@ -184,6 +224,11 @@
   "first_seen_seq": 240,
   "note": "TCData T5-temple-dockshore zone [2, -4]"
  },
+ "2451b8361a7bf4638a60c987313e381e133ae6fd2f4eacae1ff692c11475e9b7": {
+  "bytes": 1126,
+  "first_seen_seq": 626,
+  "note": "TCData tree_sth_1_z9_8 zone 9,8"
+ },
  "24caf6ce9b1ecda0d0a791af2149ac060d3226d9aedeb6d8c11150f036eac825": {
   "bytes": 2519,
   "first_seen_seq": 317,
@@ -198,6 +243,11 @@
   "bytes": 5965,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-stonehouse-1"
+ },
+ "2716959ab919680feb374aaca53c1d1efb66f46d8d18a164b984a24d72219fc2": {
+  "bytes": 5127,
+  "first_seen_seq": 641,
+  "note": "spawn plan tree-sth-3"
  },
  "27f66cb7ade4f803e3269ccc86483df2adf68c097af7f7fe153073b99369a5d6": {
   "bytes": 3554,
@@ -234,6 +284,11 @@
   "first_seen_seq": 23,
   "note": "bridge-s2-portalhall-strait spawn_object plan, 156 commands"
  },
+ "2fa5d34004137e9a9dc03cbaf0a8c5c44679786c5d2b49591316da04a06f68b0": {
+  "bytes": 16427,
+  "first_seen_seq": 426,
+  "note": "spawn plan vestvik-hall-1"
+ },
  "3090d0a58183a1b0a6eb25ebbf9eb2447026b7923b0a32b83827b14be8ec8284": {
   "bytes": 176,
   "first_seen_seq": 240,
@@ -248,6 +303,11 @@
   "bytes": 4180,
   "first_seen_seq": 245,
   "note": "TCData S8-wtsouth-treesth zone [8, 7]"
+ },
+ "3158340b1fb9c4c97f2fee8a51d6b720ea452d50fd9a8c91144349dc913c9326": {
+  "bytes": 2308,
+  "first_seen_seq": 599,
+  "note": "TCData lh_east_z37_2 zone 37,2"
  },
  "317567dc9136f8da7f07535492ddfd92ce8094965aa4a8e67f5949111e4c1f5f": {
   "bytes": 11461,
@@ -268,6 +328,11 @@
   "bytes": 2912,
   "first_seen_seq": 181,
   "note": "TCData T12-wtspawn-temple zone [1, -1]"
+ },
+ "3642d454b84b10cfd207dbb8a7309b52826ab4bed5b19edadcb5752387077f24": {
+  "bytes": 17909,
+  "first_seen_seq": 453,
+  "note": "spawn plan vestvik-house-3"
  },
  "36f23ecb196af19e4608f8f1cca2ba100b02bbb3351c595f2ea73975df7a87c3": {
   "bytes": 9925,
@@ -293,6 +358,16 @@
   "bytes": 231,
   "first_seen_seq": 218,
   "note": "TCData T8-stenvik-wttown zone [13, 11]"
+ },
+ "3af0035fba84803b9923a3006418073ab4dd0dd3a9c203e4f161580131e48979": {
+  "bytes": 1377,
+  "first_seen_seq": 569,
+  "note": "TCData wt_north_z2_18 zone 2,18"
+ },
+ "3ba7e9d4016168ba485441977e5a4f93ca3ad5747aa6dbb2b3628bf2f979543d": {
+  "bytes": 24532,
+  "first_seen_seq": 587,
+  "note": "spawn plan wt-east"
  },
  "3c77b9b5adfe77d16dd927435e489fcbede01ed69bbf43f50c8476353e8937d7": {
   "bytes": 2561,
@@ -329,6 +404,11 @@
   "first_seen_seq": 213,
   "note": "TCData T4-meadhall-stathub zone [9, 9]"
  },
+ "40ebff65873e1e6963e7cfdaf6003194079c4e9bce2160d1b721970fad64a78e": {
+  "bytes": 5253,
+  "first_seen_seq": 735,
+  "note": "spawn plan tree-near-2"
+ },
  "418c9da5b11164f059ccabbd75f8a88fffe1327601ec1adac1d2b60cd2bd7a68": {
   "bytes": 332,
   "first_seen_seq": 240,
@@ -339,6 +419,16 @@
   "first_seen_seq": 207,
   "note": "TCData T10-wtspawn-wtsouth zone [4, -1]"
  },
+ "429c6f42ae6a8a351d88799c9109b181cceb243b4b685c351dcccbc24865e35d": {
+  "bytes": 510090,
+  "first_seen_seq": 532,
+  "note": "spawn plan hognest-castle"
+ },
+ "4329d0c956831e3065aeb62d307de28a51d2fdd141126ebc6d28263d81dede3b": {
+  "bytes": 1454,
+  "first_seen_seq": 516,
+  "note": "TCData vestvik_hut_2_z_14_30 zone -14,30"
+ },
  "4373975acecf9041589018664acdd8f470f26d5202a891d6118ff83f0dec57e9": {
   "bytes": 2151,
   "first_seen_seq": 38,
@@ -348,6 +438,11 @@
   "bytes": 2572,
   "first_seen_seq": 234,
   "note": "TCData T9-wttown-dockshore zone [14, 10]"
+ },
+ "4445c418d38d7f26d7716a18efcd3e48abe0b653ae52585ed772aaf480f14d80": {
+  "bytes": 17909,
+  "first_seen_seq": 446,
+  "note": "spawn plan vestvik-house-2"
  },
  "480eca85a11a33a5a319a77c7c7f739d0f65c99b0dda200ea17bec324dbdb84e": {
   "bytes": 686,
@@ -369,10 +464,20 @@
   "first_seen_seq": 38,
   "note": "TCData stenvik_cottage_1_z8_14 zone 8,14"
  },
+ "4c11d02ed5040a995e8423ed89c3b25b8b37a886d0b48b69a2bc8c0846a4f452": {
+  "bytes": 24532,
+  "first_seen_seq": 570,
+  "note": "spawn plan wt-north"
+ },
  "4d45169bec28a21c0c26ba134e9037c57dd8192ca4ee4236adb0412959092a0e": {
   "bytes": 1260,
   "first_seen_seq": 202,
   "note": "TCData T12-wtspawn-temple zone [-1, -1]"
+ },
+ "4df7a8c15ac765b10b8f46a8bdaf554192cb56ea092da86bc5cadad296635d6b": {
+  "bytes": 24956,
+  "first_seen_seq": 546,
+  "note": "spawn plan wt-peak"
  },
  "4ea3d517b96fd69f181f07dc3711c26bf38d8458aee1e2986e3e54746b583251": {
   "bytes": 3540,
@@ -414,6 +519,11 @@
   "first_seen_seq": 218,
   "note": "TCData T8-stenvik-wttown zone [10, 14]"
  },
+ "53348ef41871cf84d2eafa76781969b2144ae45d75765a24bd2f893ebcfac1c0": {
+  "bytes": 213,
+  "first_seen_seq": 545,
+  "note": "TCData wt_peak_z23_24 zone 23,24"
+ },
  "53c824c6b852aba9ecd3ff17e77eb76df2230dfc0d682f3b9c99e1d89c99333b": {
   "bytes": 948,
   "first_seen_seq": 213,
@@ -434,10 +544,20 @@
   "first_seen_seq": 338,
   "note": "TCData T13-temple-harboursouth zone [-1, -2]"
  },
+ "562f8cda37c2303e5a83f8e28bdd4d8d4eeec553c93f4356dabe4dd765ca5ed6": {
+  "bytes": 5117,
+  "first_seen_seq": 670,
+  "note": "spawn plan tree-sth-2"
+ },
  "57f47e37e894dc34108cfccd4f9c682f814f35036367a5c7a743bb1a41a45250": {
   "bytes": 1224,
   "first_seen_seq": 38,
   "note": "TCData stenvik_beehive_1_z9_15 zone 9,15"
+ },
+ "584478cef4307912159f4b67fbb24c5ab44ea49a29485761ba9a74afa5b5fe40": {
+  "bytes": 3033,
+  "first_seen_seq": 417,
+  "note": "TCData S1-portalhub-brgs2 zone [-5, 3]"
  },
  "58b16047b4dd7c0f332e522f99cda4c419e180da43cbee1258e74b2f10eb542b": {
   "bytes": 3709,
@@ -489,6 +609,11 @@
   "first_seen_seq": 234,
   "note": "TCData T9-wttown-dockshore zone [11, -1]"
  },
+ "5e13b14006967ee0db35b4eb0cfa3cd5ac6f8db5abda19b557790e9fcbf12c84": {
+  "bytes": 1361,
+  "first_seen_seq": 438,
+  "note": "TCData vestvik_house_1_z_15_28 zone -15,28"
+ },
  "5e1cb805a1ef70ad4e41d8e92c3b3ddf85743eca41f2b46ed6a3b392ea86c2ee": {
   "bytes": 17851,
   "first_seen_seq": 38,
@@ -503,6 +628,21 @@
   "bytes": 1294,
   "first_seen_seq": 218,
   "note": "TCData T8-stenvik-wttown zone [10, 13]"
+ },
+ "602ff5b32d6bf1dd9b771086ddde6051eebcb87c7439d689948b68b680048bd0": {
+  "bytes": 944,
+  "first_seen_seq": 676,
+  "note": "TCData tree_sth_3_z9_7 zone 9,7"
+ },
+ "60fc583aa42280db4625dcb02dfc3cdf2e68a350bdc45da437086b2fc0a46320": {
+  "bytes": 5506,
+  "first_seen_seq": 502,
+  "note": "TCData vestvik_villa_3_z_14_29 zone -14,29"
+ },
+ "61f6088256110fca78370f129cba43772a74ebae3dca61127c248e8c0ea0cae6": {
+  "bytes": 126,
+  "first_seen_seq": 626,
+  "note": "TCData tree_sth_1_z9_7 zone 9,7"
  },
  "62ea36d8dc17c3a9aceea1be2afc5a432c68ce3c3c5187d8cd338e30ed575e11": {
   "bytes": 3572,
@@ -519,10 +659,40 @@
   "first_seen_seq": 185,
   "note": "TCData T3-temple-meadhall zone [4, 5]"
  },
+ "63ea7a2ce008177268dbea6e01e09e53ea1ac96d76b08be06d3fc72f7677c209": {
+  "bytes": 400,
+  "first_seen_seq": 509,
+  "note": "TCData vestvik_stonehouse_1_z_16_28 zone -16,28"
+ },
+ "63f65fd7ba8f9ee3ed3d77c75b610a6e669a04e19e3a2f50decbafa0e74127d9": {
+  "bytes": 1727,
+  "first_seen_seq": 478,
+  "note": "TCData vestvik_stonehouse_2_z_14_28 zone -14,28"
+ },
+ "6799eb19d2fe035fb8ed5ac6ec0b508c27c35424a87be55bc67358213dcea230": {
+  "bytes": 3662,
+  "first_seen_seq": 387,
+  "note": "TCData wt_town_z13_11 zone 13,11"
+ },
+ "69510d32fa6dfca408fb7fe97157eaa9f02114544886e2eac0521fa84ddc8018": {
+  "bytes": 4588,
+  "first_seen_seq": 633,
+  "note": "TCData tree_sth_2_z8_7 zone 8,7"
+ },
  "6afb7cf6a95d25c0b6244504cece85913ef0c34ce6f4765d2b63302a439aaa82": {
   "bytes": 2111,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-hut-1"
+ },
+ "6bcd3119170334de4b57bf7b07be9ac4a6e5804d27ca1986cf0350179e894ff6": {
+  "bytes": 2010,
+  "first_seen_seq": 485,
+  "note": "TCData vestvik_hut_1_z_15_28 zone -15,28"
+ },
+ "6bfd7e2eb40754de9fe287ed4ecdaaa50242dc98c77f7f6ee54c1ec47c73601a": {
+  "bytes": 4854,
+  "first_seen_seq": 510,
+  "note": "spawn plan vestvik-stonehouse-1"
  },
  "6c28b4575304ace50b56c6c2c64fa30a641b7e6b32c218d088fe0b1cadcc4e58": {
   "bytes": 2835,
@@ -533,6 +703,11 @@
   "bytes": 2735,
   "first_seen_seq": 279,
   "note": "TCData stenvik_stonehouse_2_z7_14 zone 7,14"
+ },
+ "6d6f6172780183c8dfd5044f2ecb92cfd408adade959723419c1892ad26b249f": {
+  "bytes": 5419,
+  "first_seen_seq": 669,
+  "note": "TCData tree_sth_2_z8_7 zone 8,7"
  },
  "6d8b0679030ad444e90c35f7d0cefe7cd97ca62497e5e5e1361c65775ddea4f4": {
   "bytes": 2140,
@@ -548,6 +723,16 @@
   "bytes": 5797,
   "first_seen_seq": 234,
   "note": "TCData T9-wttown-dockshore zone [12, 5]"
+ },
+ "6ed7f0ff62b875b8941218f565eaa01a6de55c275d95441df859da8d151a123c": {
+  "bytes": 3700,
+  "first_seen_seq": 626,
+  "note": "TCData tree_sth_1_z8_8 zone 8,8"
+ },
+ "7075078ec161dad8ca868d4376d415ba6c6f2e88a1782324d188970aadce722f": {
+  "bytes": 2343,
+  "first_seen_seq": 612,
+  "note": "TCData lh_west_z_21_37 zone -21,37"
  },
  "7081df045039ef2ec71a7c24e94dff6aa9f5aff5b5ca26ab3b12e071f6471bc6": {
   "bytes": 2142,
@@ -569,6 +754,11 @@
   "first_seen_seq": 213,
   "note": "TCData T4-meadhall-stathub zone [9, 13]"
  },
+ "7379a8b12b5133a05c28ea1453025076b9f113d67df46dd553eb4e1d8943b230": {
+  "bytes": 4232,
+  "first_seen_seq": 626,
+  "note": "TCData tree_sth_1_z8_7 zone 8,7"
+ },
  "740a5776e46086b7f07883aa130bd4714ee9c4ce45b7f25fb579e4b985862916": {
   "bytes": 2265,
   "first_seen_seq": 265,
@@ -579,6 +769,26 @@
   "first_seen_seq": 185,
   "note": "TCData T3-temple-meadhall zone [4, 6]"
  },
+ "748bf80cce35aa7ac4feb6f14e31b24acb6de75d38f4c3498e2c69fafc010bc3": {
+  "bytes": 5686,
+  "first_seen_seq": 516,
+  "note": "TCData vestvik_hut_2_z_14_29 zone -14,29"
+ },
+ "74f6df507107940f2048c0d8fa24a79858197043f9c10eca7188cc15a51cfd97": {
+  "bytes": 2215,
+  "first_seen_seq": 698,
+  "note": "TCData tree_west_1_z_8_13 zone -8,13"
+ },
+ "757ddd5ffff5cc134edb3d7094d522682a62da488d2d5cc66eccd4b5e7589cd3": {
+  "bytes": 17865,
+  "first_seen_seq": 439,
+  "note": "spawn plan vestvik-house-1"
+ },
+ "761a8e8e4c091bd716acbbdb9cdb5b81e55e0a245e9a6ece2fa25982d7cb8458": {
+  "bytes": 562,
+  "first_seen_seq": 445,
+  "note": "TCData vestvik_house_2_z_15_29 zone -15,29"
+ },
  "7652f381a95118af8e75cda17a8aebc4fa2918c3121a3dabdc46be6851f200cd": {
   "bytes": 2672,
   "first_seen_seq": 234,
@@ -588,6 +798,16 @@
   "bytes": 759,
   "first_seen_seq": 202,
   "note": "TCData T12-wtspawn-temple zone [-1, 0]"
+ },
+ "76a678aa360c09b307ac64cf018b424301c77162d2c83e251ab3a9e8bbfce2b1": {
+  "bytes": 7163,
+  "first_seen_seq": 413,
+  "note": "TCData T1-portalhub-temple zone [-1, -1]"
+ },
+ "76e97ee827c6e93102228081aaef7f688e16f15989bdd8309a35485626c145cf": {
+  "bytes": 6572,
+  "first_seen_seq": 531,
+  "note": "TCData hognest_castle_z8_21 zone 8,21"
  },
  "7812f03c36f08fcd27c7028e0c4a071b2668c1e951832a309c26c5211d9ae759": {
   "bytes": 3660,
@@ -634,10 +854,25 @@
   "first_seen_seq": 179,
   "note": "TCData S1-portalhub-brgs2 zone [-5, 4]"
  },
+ "7f642363a8ad7c624f556d6560aba851971ef790ef25781552a04e108dc26f05": {
+  "bytes": 1115,
+  "first_seen_seq": 452,
+  "note": "TCData vestvik_house_3_z_14_28 zone -14,28"
+ },
  "7f75d5c298ec53f609273da2cb196255ad9c305ba3383e1863809368617d3ab7": {
   "bytes": 2820,
   "first_seen_seq": 234,
   "note": "TCData T9-wttown-dockshore zone [12, 3]"
+ },
+ "8044a0847d0fe0351f7e3b9b7c45c00ca19a45f09fe85612108ab60690aab46f": {
+  "bytes": 1984,
+  "first_seen_seq": 586,
+  "note": "TCData wt_east_z29_2 zone 29,2"
+ },
+ "805bb9f033708f70b92dca1bafe11e8436d0bf723b364191196d9cd4c2fa04b9": {
+  "bytes": 14865,
+  "first_seen_seq": 433,
+  "note": "spawn plan vestvik-workshop-1"
  },
  "82232bd571cb96cd9cd3671fc8c5154a64707c5f8c5962e25587d6aea3209bb2": {
   "bytes": 1709,
@@ -659,10 +894,20 @@
   "first_seen_seq": 234,
   "note": "TCData T9-wttown-dockshore zone [13, 11]"
  },
+ "8349e0922215bab433a77071cde97e4619c6f7618b1794be73729abb2f52c6cf": {
+  "bytes": 1113,
+  "first_seen_seq": 495,
+  "note": "TCData vestvik_villa_2_z_14_30 zone -14,30"
+ },
  "84690c65feae84f66c8eceda201d94f9a908cbc3deab999099bbeb8ee0541346": {
   "bytes": 24532,
   "first_seen_seq": 360,
   "note": "spawn plan wt-spawn"
+ },
+ "8586244ce5f56daa3f0150fff6c1d41566240fa26b365e6c22d1c6f933c3d8c5": {
+  "bytes": 368,
+  "first_seen_seq": 400,
+  "note": "TCData lh_south_z_1__14 zone -1,-14"
  },
  "866926ffbe1e19c3ca64bda6b3f41018c501d14a74a4a380f80928692e7d6f20": {
   "bytes": 170,
@@ -683,6 +928,11 @@
   "bytes": 5830,
   "first_seen_seq": 295,
   "note": "TCData stenvik_hut_1_z8_14 zone 8,14"
+ },
+ "89c8038e9a75fa955c11ff5a508d9ed203929c0f2157bdd77301c4cc19f36efb": {
+  "bytes": 1298,
+  "first_seen_seq": 686,
+  "note": "TCData tree_west_2_z_8_13 zone -8,13"
  },
  "89cc6f776f589d902094df6cdac479d0ba25624c97a907a0bd42ee26d0760f47": {
   "bytes": 2779,
@@ -789,6 +1039,11 @@
   "first_seen_seq": 26,
   "note": "harbour-temple-south spawn_object plan, 69 commands"
  },
+ "96d83f94c7055be77e13ce84b99374409989fd8ad8acf99117f5d2374fc8db37": {
+  "bytes": 2283,
+  "first_seen_seq": 400,
+  "note": "TCData lh_south_z_2__14 zone -2,-14"
+ },
  "9730d129ccba44e11f71157ca79ea28141c37524c285564ebfc9e1bf913e8a11": {
   "bytes": 2235,
   "first_seen_seq": 317,
@@ -808,6 +1063,11 @@
   "bytes": 1865,
   "first_seen_seq": 240,
   "note": "TCData T5-temple-dockshore zone [1, -2]"
+ },
+ "9acef3a33a45b52cbaaa66d364c2bc115c6cfa901e88e097ae89443b09ce32fd": {
+  "bytes": 4903,
+  "first_seen_seq": 713,
+  "note": "spawn plan tree-near-1"
  },
  "9b2ef756e4554073572aaafe66dc6294415c0c818b93b9b66ec1c8e6bf675e8f": {
   "bytes": 2105,
@@ -844,10 +1104,20 @@
   "first_seen_seq": 38,
   "note": "TCData stenvik_cottage_3_z8_14 zone 8,14"
  },
+ "a1f2b6ea12fa111dab18bf6bcb46dcdcdcce7ff655e6d2251bd4e8cf99638296": {
+  "bytes": 1512,
+  "first_seen_seq": 445,
+  "note": "TCData vestvik_house_2_z_15_28 zone -15,28"
+ },
  "a22a400be0ccefd8026a00ae27817cb2f55ea4fa85faa846b45d29867e43c823": {
   "bytes": 3084,
   "first_seen_seq": 196,
   "note": "TCData T3-temple-meadhall zone [4, 5]"
+ },
+ "a22e76659b2f2076c1c1a3248a8c5f272b383885a44ef16b4e59116ac18208c1": {
+  "bytes": 1434,
+  "first_seen_seq": 676,
+  "note": "TCData tree_sth_3_z9_8 zone 9,8"
  },
  "a25bab60a766d8f7986279253b0b40358c3e713cb9a9ea9df640d7dda8b27970": {
   "bytes": 763,
@@ -884,6 +1154,11 @@
   "first_seen_seq": 196,
   "note": "TCData T3-temple-meadhall zone [-1, -1]"
  },
+ "a656e406bba5d4c6803cd462793f57c649864c977c9a22ddfbf4a47319daf58a": {
+  "bytes": 873,
+  "first_seen_seq": 569,
+  "note": "TCData wt_north_z2_19 zone 2,19"
+ },
  "a67572446f08a6bb1aa2181e4eba7983dd3b6edd05af5b64b2cf7131b96cf17d": {
   "bytes": 3820,
   "first_seen_seq": 213,
@@ -909,6 +1184,11 @@
   "first_seen_seq": 213,
   "note": "TCData T4-meadhall-stathub zone [8, 8]"
  },
+ "a915a997c41238e9d047bbf9e141542979dbf51c19c5d76290ecab11f32156ac": {
+  "bytes": 1804,
+  "first_seen_seq": 531,
+  "note": "TCData hognest_castle_z9_21 zone 9,21"
+ },
  "a92dc717aa29cef9480499dd78ca94d58c3acbd2e067ae5301504ec018709c9f": {
   "bytes": 1469,
   "first_seen_seq": 37,
@@ -928,6 +1208,11 @@
   "bytes": 6053,
   "first_seen_seq": 280,
   "note": "spawn plan stenvik-stonehouse-2"
+ },
+ "ad5a8761612764c0ef822758f78e4423fa8e93da8d7247eb27fa35b3c92ab35b": {
+  "bytes": 99519,
+  "first_seen_seq": 401,
+  "note": "spawn plan lh-south"
  },
  "ae7b11ff2c95811beaa397ac5f6f52d6b16db4308da2f149de0b8099d8842708": {
   "bytes": 1362,
@@ -958,6 +1243,11 @@
   "bytes": 1041,
   "first_seen_seq": 331,
   "note": "TCData W10-brgs1-treenear zone [-9, -4]"
+ },
+ "b592a4dbb672fc0783642fc70bdccdc5faf00965260a8e80f6cfb273c6e10b55": {
+  "bytes": 4251,
+  "first_seen_seq": 452,
+  "note": "TCData vestvik_house_3_z_14_29 zone -14,29"
  },
  "b609db3d5dc13e614a0be20e5006adfac1c6d9a9d34bf39e1790e2ca05f3b19d": {
   "bytes": 2853,
@@ -1029,6 +1319,11 @@
   "first_seen_seq": 240,
   "note": "TCData T5-temple-dockshore zone [10, -1]"
  },
+ "be175620edb5a2c9758f879438b201bcf9628fcb82449af463436b9049d2a298": {
+  "bytes": 1217,
+  "first_seen_seq": 712,
+  "note": "TCData tree_near_1_z_9__4 zone -9,-4"
+ },
  "be2ea6247a8891d81da914b69ba48a83038ba650c8959b912433baa628e86e1c": {
   "bytes": 3801,
   "first_seen_seq": 245,
@@ -1049,6 +1344,16 @@
   "first_seen_seq": 38,
   "note": "TCData stenvik_stonehouse_1_z9_14 zone 9,14"
  },
+ "bff090ceb97929c51c835bef950ecaff18d7e77cf0233efd2bc672f2c5c1da18": {
+  "bytes": 4854,
+  "first_seen_seq": 479,
+  "note": "spawn plan vestvik-stonehouse-2"
+ },
+ "c063baa90f9573fcd5e4e4c9a0575b8a59ed501e4b651668342f4e9166856372": {
+  "bytes": 105162,
+  "first_seen_seq": 613,
+  "note": "spawn plan lh-west"
+ },
  "c1641d49e3eec94f57c2d928edd064b3357dbfab624e855f18bda463921339a1": {
   "bytes": 2212,
   "first_seen_seq": 338,
@@ -1068,6 +1373,11 @@
   "bytes": 17485,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-house-1"
+ },
+ "c29e9872b94a158d1a8fd8a964399d66079fe96214d334f3e285e47f6bc3c710": {
+  "bytes": 2210,
+  "first_seen_seq": 517,
+  "note": "spawn plan vestvik-hut-2"
  },
  "c38ad7e2d68629b482e93e8595188a24804618344cab2bdbac2c411b8fcd3c08": {
   "bytes": 685,
@@ -1104,6 +1414,11 @@
   "first_seen_seq": 273,
   "note": "spawn plan stenvik-stonehouse-1"
  },
+ "c6fb1ef5fc762722eda537061e8f62dcca942232bc791a3744a67c7bada0a1dd": {
+  "bytes": 3743,
+  "first_seen_seq": 633,
+  "note": "TCData tree_sth_2_z8_8 zone 8,8"
+ },
  "c774ad9d0b1deccf04cb894c86b94fd95e5881ab8b74b081db6e34e310805103": {
   "bytes": 2724,
   "first_seen_seq": 317,
@@ -1129,6 +1444,11 @@
   "first_seen_seq": 38,
   "note": "TCData stenvik_hut_1_z8_14 zone 8,14"
  },
+ "cdfe5396bee9542622c57338d7d263e314ce79f61860c01352cafe15ee44c559": {
+  "bytes": 4835,
+  "first_seen_seq": 699,
+  "note": "spawn plan tree-west-1"
+ },
  "ce853fe04fccd671efc5035657fbfb3990d998a9948f9317286b99f83480856a": {
   "bytes": 1189,
   "first_seen_seq": 37,
@@ -1153,6 +1473,11 @@
   "bytes": 2151,
   "first_seen_seq": 305,
   "note": "spawn plan stenvik-hut-2"
+ },
+ "d00ee2669882a2887e00d8de0d7afb9e00955f537f388cbe68792760d7b6332e": {
+  "bytes": 342,
+  "first_seen_seq": 599,
+  "note": "TCData lh_east_z37_3 zone 37,3"
  },
  "d18db86003418b232d6c936c03e13922f260b18058f8ee44dc9f838d3ced0ab7": {
   "bytes": 2389,
@@ -1184,6 +1509,11 @@
   "first_seen_seq": 240,
   "note": "TCData T5-temple-dockshore zone [10, -2]"
  },
+ "d6d8caf8a88f0f2139f4e7da48642acb91ae69d0b012064e0611793689b29395": {
+  "bytes": 413,
+  "first_seen_seq": 640,
+  "note": "TCData tree_sth_3_z9_7 zone 9,7"
+ },
  "d70622c11d921b8a0d4a5e0efc27d28ece02b99d3605073bcc39142d862ecfff": {
   "bytes": 184,
   "first_seen_seq": 185,
@@ -1208,6 +1538,11 @@
   "bytes": 4813,
   "first_seen_seq": 338,
   "note": "TCData T13-temple-harboursouth zone [-1, -1]"
+ },
+ "da44dc4b23236e0ff1ce5e21988f24050c4411d9ba3cfa567d925f529742cd99": {
+  "bytes": 2537,
+  "first_seen_seq": 712,
+  "note": "TCData tree_near_1_z_10__4 zone -10,-4"
  },
  "db30d0f3b7de20d41d4666de19e20aeaf71a9c5ef992403be4fd7946821b1728": {
   "bytes": 3608,
@@ -1234,6 +1569,11 @@
   "first_seen_seq": 185,
   "note": "TCData T3-temple-meadhall zone [1, 1]"
  },
+ "dd6acda755e08198f697424138a205785372237cf05c6fef16b791d60f5b3cca": {
+  "bytes": 1934,
+  "first_seen_seq": 545,
+  "note": "TCData wt_peak_z22_24 zone 22,24"
+ },
  "dfabb515f62961c097f5903ad7bfc5890a8d5954acdf031aece014530c1e1df1": {
   "bytes": 2624,
   "first_seen_seq": 320,
@@ -1254,10 +1594,20 @@
   "first_seen_seq": 320,
   "note": "TCData T1-portalhub-temple zone [-3, 1]"
  },
+ "e3bfc8c1b94d595b304927829252587e26032d9ad8f802b27994e2a5e4e83d3e": {
+  "bytes": 5117,
+  "first_seen_seq": 634,
+  "note": "spawn plan tree-sth-2"
+ },
  "e7022d0e6c618c987203728516d15fe5736d48036fa17bd9d6975d831c881f9f": {
   "bytes": 17485,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-house-2"
+ },
+ "e7732bc5f9f725cac0d920ceb2931708b815e8837eff8698390302d51202269a": {
+  "bytes": 2421,
+  "first_seen_seq": 509,
+  "note": "TCData vestvik_stonehouse_1_z_15_28 zone -15,28"
  },
  "e78522018d20c9e3a318422a4c0676f380de78498a09a0c51d2a6878f63a8086": {
   "bytes": 5765,
@@ -1304,10 +1654,25 @@
   "first_seen_seq": 234,
   "note": "TCData T9-wttown-dockshore zone [12, -1]"
  },
+ "ecd6cb4f65a27932577da82fe7e63e129f626d87f5c7c544b739fe19dc6ee42e": {
+  "bytes": 13893,
+  "first_seen_seq": 496,
+  "note": "spawn plan vestvik-villa-2"
+ },
  "edd4192241f48af40e68992c9dd2fc5d53beffe44ac0c7cc7ca333e173089706": {
   "bytes": 1861,
   "first_seen_seq": 111,
   "note": "TCData stenvik_house_1_z7_14 zone 7,14"
+ },
+ "ee33a25e8678e1e676a835dabeeddc1fee2be3cb340d35ba15f6ffaadf8ff9dd": {
+  "bytes": 1306,
+  "first_seen_seq": 640,
+  "note": "TCData tree_sth_3_z9_8 zone 9,8"
+ },
+ "ef204a4a00bc4031456fe11bcf057b708ccbbfc8578e0e0018cca817487bbb7b": {
+  "bytes": 210,
+  "first_seen_seq": 478,
+  "note": "TCData vestvik_stonehouse_2_z_14_27 zone -14,27"
  },
  "ef706b5e63f2db7a97e4506eef89f788462706c922915d5561246e49975090ef": {
   "bytes": 811,
@@ -1324,6 +1689,11 @@
   "first_seen_seq": 320,
   "note": "TCData T1-portalhub-temple zone [-3, -1]"
  },
+ "f1c1f360e9e48edc14560c27d2904d7e3e5928a1d1d75e9b0f0ac11861359ecb": {
+  "bytes": 2155,
+  "first_seen_seq": 486,
+  "note": "spawn plan vestvik-hut-1"
+ },
  "f566c4e628209793bb98f4e783ef0f2ff996f80b005ce99fbda3456dc771abb4": {
   "bytes": 2509,
   "first_seen_seq": 213,
@@ -1339,6 +1709,11 @@
   "first_seen_seq": 317,
   "note": "TCData S7-stathub-wtnorth zone [7, 17]"
  },
+ "f747293aeee096805635b390ff97084485f76189452c394ce3c9856857c69515": {
+  "bytes": 348,
+  "first_seen_seq": 445,
+  "note": "TCData vestvik_house_2_z_14_28 zone -14,28"
+ },
  "f7d2de3ed4c74b378aa1eef9efef1e3f3a96ee602fd4416ef66ad42848c9e0bf": {
   "bytes": 1895,
   "first_seen_seq": 213,
@@ -1349,30 +1724,60 @@
   "first_seen_seq": 38,
   "note": "TCData stenvik_hut_3_z8_13 zone 8,13"
  },
+ "f82d1c18afd3497d639699b3ea65ca1b0bee125dc346e97b1c7d94a151327100": {
+  "bytes": 4631,
+  "first_seen_seq": 627,
+  "note": "spawn plan tree-sth-1"
+ },
  "f839f3108137e7e26db77ad2efd1d8271b5d0db3714d275b679ae421ad10bdf8": {
   "bytes": 5064,
   "first_seen_seq": 265,
   "note": "TCData stenvik_cottage_2_z8_14 zone 8,14"
+ },
+ "f9747d915c5e12ce464460f00495a38f524845d97b3e10e94898d98b89e17095": {
+  "bytes": 24317,
+  "first_seen_seq": 388,
+  "note": "spawn plan wt-town"
  },
  "f9a4f64e2fabccacb0b66f7012048facb2e7c15c2b5b838975789a898a48ee66": {
   "bytes": 653,
   "first_seen_seq": 38,
   "note": "TCData stenvik_manor_1_z8_13 zone 8,13"
  },
+ "fafbc154f187c3f4921896b9f7cf60a3c10e1303a502d1259f04915faecf557b": {
+  "bytes": 2933,
+  "first_seen_seq": 432,
+  "note": "TCData vestvik_workshop_1_z_14_29 zone -14,29"
+ },
  "fc600f57d4d7f53a9606b8fd41a983fc3034382889790fe3d4e014730226a3d0": {
   "bytes": 5399,
   "first_seen_seq": 279,
   "note": "TCData stenvik_stonehouse_2_z8_14 zone 8,14"
+ },
+ "fca3bf13d0940d933ab2621570f18bdb12c57d703b710e82c2227ec367d2631b": {
+  "bytes": 3639,
+  "first_seen_seq": 445,
+  "note": "TCData vestvik_house_2_z_14_29 zone -14,29"
  },
  "fcdf4641df5757675c3e2f6dcfd8e709102669503563068d598b55ad539b5005": {
   "bytes": 3054,
   "first_seen_seq": 207,
   "note": "TCData T10-wtspawn-wtsouth zone [6, 0]"
  },
+ "fd570113c3b5843a2e81088c9eaae9eab5299f4afff2fb371e2f35228f828bcf": {
+  "bytes": 268,
+  "first_seen_seq": 698,
+  "note": "TCData tree_west_1_z_8_14 zone -8,14"
+ },
  "fe696b0462a753fe4ca463f63995791b25605ff8da421be10950e4a452f6ccc2": {
   "bytes": 3722,
   "first_seen_seq": 185,
   "note": "TCData T3-temple-meadhall zone [2, 1]"
+ },
+ "fe83ac631c488ac00b17c16358922adc9721552b68da7943e5074a97e202f38d": {
+  "bytes": 5127,
+  "first_seen_seq": 677,
+  "note": "spawn plan tree-sth-3"
  },
  "ff610caf79a38be07fc9e6851caad08900bd233770f04f6f010efe5bfce1bcd0": {
   "bytes": 1479,

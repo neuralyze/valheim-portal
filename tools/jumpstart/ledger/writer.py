@@ -457,13 +457,34 @@ def _site_evidence(protected: dict, prior: list[dict],
     pieces: list = []
     discs: list = []
     key = _site_key(protected.get("params", {}))
+    # An EXPLICIT association, keyed by FILE LINE, for members a site cannot
+    # be inferred to own.  MEASURED on the live ledger: the spawn portal
+    # ring's `zones_generate` carries site_id "portal-ring" and finds ZERO
+    # pieces, because the four portals standing in the ring are the hub ENDS
+    # of pairs belonging to other sites -- they carry site_id "stenvik",
+    # "harbour-temple-south" and "ferry-terminal-eastisle".  No rule over
+    # site_id, role or distance can group those correctly, so the link is
+    # declared and measured rather than guessed, and it is keyed by file
+    # line because after the fork `seq` is not unique.
+    associated = set()
+    if key is not None:
+        for r in prior:
+            if r.get("op") != "observe":
+                continue
+            rp = r.get("params", {})
+            if rp.get("what") != "site_association":
+                continue
+            v = rp.get("value") or {}
+            if v.get("site_id") != key[1]:
+                continue
+            associated.update(int(n) for n in (v.get("lines") or []))
     role = protected.get("params", {}).get("role")
     here = _record_xz(protected.get("params", {}))
 
-    for r in prior + [protected]:
+    for line_no, r in enumerate(prior + [protected]):
         rp = r.get("params", {})
-        same = False
-        if key is not None and _site_key(rp) == key:
+        same = line_no in associated
+        if not same and key is not None and _site_key(rp) == key:
             same = True
         elif key is None and role and rp.get("role") == role:
             there = _record_xz(rp)

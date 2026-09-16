@@ -43,6 +43,7 @@ refused by this module before it reaches the wire.
 
 IDEMPOTENCE, honestly stated per op, because resume depends on it:
   zones_generate  yes    SpawnZone skips a zone that IsZoneGenerated
+  zones_restore   yes    a zone that already holds its _ZoneCtrl gains none
   objects_clear   yes    removing nothing is a no-op
   terrain_write   yes    it deletes the zone's compiler before spawning
   save            yes
@@ -96,7 +97,7 @@ NATIVE_VERBS = {"save", "players", "deleteObjects"}
 # in the queue waiting for the next `start` ANYBODY sends.  `uw_check` lists
 # the queue and `stop` clears it.
 STAGED_VERBS = {"zones_generate", "objects_remove", "objects_reset",
-                "zones_reset", "terrain_reset"}
+                "zones_reset", "terrain_reset", "zones_restore"}
 
 # The guard radius for a non-idempotent single spawn.  Smaller than the
 # closest spacing any two same-prefab pieces will ever have, because the
@@ -602,6 +603,49 @@ def check_expect(srv: Server, rec: dict) -> list[dict]:
                                "each zone centre with max=1 -- exact, and a "
                                "real completion signal for a staged "
                                "operation rather than a sleep"})
+
+    if "zone_ctrl_exact" in exp:
+        # `zones_restore`'s OWN postcondition, and a stricter question than
+        # `zone_ctrl` above deliberately.  That one passes on `>= 1` per
+        # zone, which is the right completion signal for a generate that
+        # touches eight zones at once; it is the WRONG one here, because this
+        # op exists to turn exactly-zero into exactly-one in a zone that the
+        # generate skips, and ">= 1" would also pass on a second stray
+        # control object.
+        #
+        # The disc is drawn at the zone centre and is REFUSED at >= 32 m,
+        # which is where a 64 m zone square ends: the census that diagnosed
+        # the fault used discs strictly inside each zone precisely so that no
+        # neighbour could answer, and a postcondition that reads a
+        # neighbour's `_ZoneCtrl` would report the repair as done on a zone
+        # nothing was written to.
+        c = exp["zone_ctrl_exact"]
+        want = int(c.get("count", 1))
+        radius = float(c.get("probe_radius_m", 0.0))
+        zones = [tuple(z) for z in rec["params"].get("zones", [])]
+        if not 0 < radius <= schema.ZONE_INSIDE_MAX_R_M:
+            results.append({
+                "check": "zone_ctrl_exact", "ok": False, "want": want,
+                "probe_radius_m": radius,
+                "why": f"probe radius {radius} m is not inside a 64 m zone "
+                       f"square (0 < r <= {schema.ZONE_INSIDE_MAX_R_M}); "
+                       f"refusing to measure this with a disc that can see "
+                       f"another zone's control object"})
+        else:
+            per = {}
+            for zx, zz in zones:
+                got, _ = srv.count("_ZoneCtrl", zx * 64.0, zz * 64.0, radius,
+                                   ignore="")
+                per[f"{zx},{zz}"] = got
+            results.append({
+                "check": "zone_ctrl_exact", "want": want, "got": per,
+                "probe_radius_m": radius,
+                "ok": all(n == want for n in per.values()) or srv.dry,
+                "probe": [f"objects_count id=_ZoneCtrl pos={zx * 64:g},"
+                          f"{zz * 64:g} max={radius:g}" for zx, zz in zones],
+                "why": "EXACTLY one _ZoneCtrl per repaired zone, counted by a "
+                       "disc wholly inside that zone's 64 m square so the "
+                       "answer is that zone's and nobody else's"})
 
     if "objects_count" in exp:
         c = exp["objects_count"]
