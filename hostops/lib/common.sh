@@ -580,8 +580,31 @@ game_build_hold_path() { printf '%s' "$VALHEIM_ROOT/$1/mods/.game-build-hold"; }
 # wedge test is really asking. Absent config, an unreachable container or a
 # missing python3 all return non-zero: the caller must treat "cannot ask" as
 # "no answer" rather than as proof of health.
+# RCON_BIND_GRACE_S is how long after container start a world may legitimately
+# fail to answer.  MEASURED on this host: RCON binds anywhere from 20 s to 200 s
+# after boot - 200 s on a cold start with 117 plugins - because the port is only
+# opened once a Harmony finalizer on world load runs.  A BOOTING SERVER IS
+# INDISTINGUISHABLE FROM A WEDGED ONE to a socket probe, so without this the
+# wedge test could restart a world that was already restarting, which is a loop
+# that never converges and which writes over a save every time round.
+RCON_BIND_GRACE_S=${VALHEIM_RCON_BIND_GRACE_S:-300}
+
 rcon_answers() {
-  local world=$1 cfg pass ip
+  local world=$1 cfg pass ip started age
+  # The boot window FIRST, before any socket work: a world that started seconds
+  # ago has not opened its RCON port yet and must not be judged wedged.  Proven
+  # live 2026-09-16: the probe answered "no answer" in 59 ms for a perfectly
+  # healthy Ulfsland because the container was 60 s old and port 2458 was still
+  # refusing - the correct reading of the socket, and the wrong verdict about
+  # the world.
+  started=$(docker inspect "valheim-server-$world" \
+             --format '{{.State.StartedAt}}' 2>/dev/null)
+  if [[ -n $started ]]; then
+    age=$(( $(date +%s) - $(date -d "$started" +%s 2>/dev/null || echo 0) ))
+    if (( age >= 0 && age < RCON_BIND_GRACE_S )); then
+      return 0
+    fi
+  fi
   cfg="$VALHEIM_ROOT/$world/config_merged/bepinex/org.tristan.rcon.cfg"
   [[ -r $cfg ]] || return 1
   pass=$(sed -n 's/^Password *= *//p' "$cfg" | tail -1)

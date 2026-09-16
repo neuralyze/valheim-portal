@@ -220,17 +220,68 @@ class UnblockedDiscsAreUntouched(unittest.TestCase):
                "nodes": [[0.0, 0.0], [40.0, 0.0]],
                "profile_y": [10.0, 10.0], "terrain_y": [10.0, 10.0],
                "is_bridge": [False, False], "length_m": 40.0}
+        # The DERIVED radius, asked of the geometry rather than written down:
+        # `plan_removals` derives its own discs (a census recorded before
+        # `cover_gaps` existed carries the marched cover alone), so a literal
+        # here would pin the fixture's invented tile list instead of the
+        # contract -- which is that an unblocked tile is neither shrunk nor
+        # split.
+        per, _widest = CL.clear_half_width(seg)
+        derived = {r for _x, _z, r in CL.tiles_local(seg, per)}
         cen = {"segment": "synthetic",
                "tiles": [[10.0, 0.0, 9.0], [30.0, 0.0, 9.0]],
                "objects": [obj("Beech1", 10.0, 3.0, "a"),
                            obj("Rock_4", 30.0, -2.0, "b")]}
         plan = CL.plan_removals(seg, cen)
-        self.assertEqual(len(plan["cylinders_clear"]), 2)
+        self.assertTrue(plan["cylinders_clear"])
         for c in plan["cylinders_clear"]:
-            self.assertEqual(c["radius_m"], 9.0)
+            self.assertIn(c["radius_m"], derived,
+                          "an unblocked tile must keep the radius the width "
+                          "derivation gives it")
             self.assertIsNone(c.get("split_of"))
+            self.assertIsNone(c.get("shrunk_from_m"))
         self.assertEqual(plan["left_standing"], 0)
         self.assertEqual(plan["left_standing_objects"], [])
+
+    def test_the_derived_cover_reaches_the_object_the_march_walked_past(self):
+        """THE COVERING ARGUMENT IS PLANE GEOMETRY ABOUT A STRAIGHT STRIP and
+        the march steps along ARC, so a bend tighter than one step walks past
+        the outside of it and the union has a hole there.
+
+        The fixture is the MEASURED case, not an invented bend: T4's own nodes
+        300..350, which carry the hairpin whose apex is node 328 at
+        (539.99, 706.01), and the probe is a real censused Beech_small2 at
+        (548.97, 705.91) -- lateral 8.981 m against that station's derived
+        half width of 9.001 m, so INSIDE the clearing width, and 4.84 m
+        outside the nearest marched disc.  A synthetic right angle does NOT
+        reproduce it (checked: the marched cover closes a 90 degree corner at
+        this width), which is exactly why the fixture is the road.
+        """
+        import math as _m
+
+        import yaml as _yaml
+        doc = _yaml.safe_load(
+            (JUMPSTART / "roads" / "segments.yaml").read_text())
+        t4 = [s for s in doc["segments"]
+              if s["id"] == "T4-meadhall-stathub"][0]
+        a, b = 300, 350
+        seg = {"id": "t4-hairpin", "width_m": t4["width_m"],
+               "nodes": t4["nodes"][a:b], "profile_y": t4["profile_y"][a:b],
+               "terrain_y": t4["terrain_y"][a:b],
+               "is_bridge": t4["is_bridge"][a:b]}
+        seg["length_m"] = sum(_m.dist(seg["nodes"][i], seg["nodes"][i + 1])
+                              for i in range(len(seg["nodes"]) - 1))
+        per, _widest = CL.clear_half_width(seg)
+        px, pz = 548.97, 705.91
+        discs = CL.tiles_local(seg, per)
+        near = min(_m.hypot(px - cx, pz - cz) - r for cx, cz, r in discs)
+        self.assertLessEqual(
+            near, 0.0,
+            f"the censused Beech_small2 at ({px}, {pz}) is inside its "
+            f"station's derived clearing width and the nearest removal disc "
+            f"still falls {near:.2f} m short of it: the cover is argued "
+            f"rather than measured, which is the T4 tiling hole that left 11 "
+            f"objects standing with no recorded reason")
 
 
 if __name__ == "__main__":

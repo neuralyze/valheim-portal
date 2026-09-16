@@ -340,6 +340,28 @@ def tiles_local(seg: dict, per_station, frac: float = REMOVAL_OVERREACH_FRAC
     `2h*sqrt(2f + f^2)`.  Where the batter runs 10 m the disc follows it; where
     the profile sits on grade and there is no batter at all the disc shrinks to
     the carriageway plus its 1 m of measured terrain spread.
+
+    ...AND THE COVERING ARGUMENT IS THEN ASKED RATHER THAN BELIEVED, because
+    IT IS ONLY TRUE ON A STRAIGHT CENTRELINE.  `(s/2)^2 + h^2 <= R^2` is plane
+    geometry about a straight strip; the step is marched along ARC, so where
+    the centreline turns tighter than one step the march walks straight past
+    the outside of the bend and the union has a hole there.  MEASURED on T4,
+    which is why this exists: 11 objects stood INSIDE their own station's
+    derived clearing width and outside EVERY derived disc, worst 4.84 m short,
+    clustered at the hairpin whose apex is node 328 -- the march stepped 16.3 m
+    of arc from one side of the apex to the other and placed no disc on it.
+    They were reported as `left_standing` with the reason "no derived disc
+    contains it, which is a tiling defect rather than a refusal", which is the
+    census telling the truth about a cover that was argued instead of
+    measured.
+
+    So the march is followed by `cover_gaps`, which tests the census's OWN
+    predicate -- `lat <= per_station[nearest node]` -- on a half-metre lattice
+    and adds centreline discs until nothing inside the strip is outside every
+    disc.  The added discs are the same kind as the marched ones (centred ON
+    the centreline, radius `h(1 + frac)` from that station's own footprint), so
+    nothing about the removal width changes -- only whether the union actually
+    achieves it.
     """
     nodes = np.asarray(seg["nodes"], dtype=np.float64)
     br = np.asarray(seg["is_bridge"], dtype=bool)
@@ -378,7 +400,105 @@ def tiles_local(seg: dict, per_station, frac: float = REMOVAL_OVERREACH_FRAC
                         float(nodes[k, 1] + (nodes[k + 1, 1] - nodes[k, 1]) * f),
                         round(h * (1.0 + frac), 2)))
             d += step
-    return out
+    return out + cover_gaps(seg, per, out, frac)
+
+
+# HOW FINELY THE STRIP IS TESTED FOR HOLES.  Half the terrain lattice pitch:
+# the cover has to hold for a tree at any float position, so the test lattice
+# is finer than the ground the road is written on rather than equal to it, and
+# a hole narrower than this cannot hold a trunk whose own collider is wider.
+COVER_PROBE_M = 0.5
+
+
+def cover_gaps(seg: dict, per_station, discs: list, frac: float
+               ) -> list[tuple[float, float, float]]:
+    """The discs the marched cover MISSES, measured against the census's own
+    in-width predicate rather than against the plane geometry that produced
+    the march.
+
+    THE PREDICATE IS COPIED FROM `annotate`, NOT RE-DERIVED: an object is
+    inside the clearing width when `lateral_and_y(...)[0] <= per_station[
+    nearest node]`, so that is exactly what is tested here.  A cover checked
+    against a different strip than the census reports is a cover that passes
+    while the census still names objects it did not reach -- which is the
+    defect this repairs, one level up.
+
+    BRIDGED STATIONS ARE OUT OF SCOPE BY CONSTRUCTION and that is not a gap:
+    a deck writes no terrain, so nothing beside it was buried by this
+    segment's earthwork and there is no derived width to clear.  An object
+    whose nearest station is a bridge is reported with that reason instead.
+    """
+    nodes = np.asarray(seg["nodes"], dtype=np.float64)
+    br = np.asarray(seg["is_bridge"], dtype=bool)
+    per = np.asarray(per_station, dtype=np.float64)
+    prof = np.asarray(seg["profile_y"], dtype=np.float64)
+    # The probe points: the 16 m census cells already bound the corridor, so
+    # the lattice is built inside them instead of over the segment's bounding
+    # box -- on T4 that is 168k probes rather than 840k for the same strip.
+    half = CENSUS_CELL_M / 2.0
+    off = np.arange(-half + COVER_PROBE_M / 2.0, half, COVER_PROBE_M)
+    px_l, pz_l = [], []
+    for cx, cz in census_cells(seg, per):
+        gx, gz = np.meshgrid(cx + off, cz + off)
+        px_l.append(gx.ravel())
+        pz_l.append(gz.ravel())
+    if not px_l:
+        return []
+    px = np.concatenate(px_l)
+    pz = np.concatenate(pz_l)
+    # Nearest node per probe, the same `argmin` over nodes `nearest_station`
+    # uses, chunked so the node x probe matrix never has to exist whole.
+    near = np.empty(px.size, dtype=np.int32)
+    for s in range(0, px.size, 8192):
+        e = min(s + 8192, px.size)
+        d2 = ((nodes[:, 0][None, :] - px[s:e, None]) ** 2
+              + (nodes[:, 1][None, :] - pz[s:e, None]) ** 2)
+        near[s:e] = d2.argmin(axis=1)
+    # THE VECTORISED LATERAL, AND IT IS THE SAME ARITHMETIC AS THE CENSUS'S --
+    # `lateral_and_y_grid` is `lateral_and_y` over a lattice, which is why the
+    # batter can afford it at all.  The scalar form is O(stations) per probe:
+    # on T4 that is 168k probes x 764 segments in Python, which would make a
+    # cover test cost more than the census it protects.  Checked against the
+    # scalar form below rather than assumed equal.
+    lat = RB.lateral_and_y_grid(nodes, prof, br, px, pz,
+                                float(per.max()) * (1.0 + frac)
+                                + CENSUS_CELL_M)[0]
+    inside = (lat <= per[near]) & ~br[near]
+    px, pz = px[inside], pz[inside]
+    if not px.size:
+        return []
+    covered = np.zeros(px.size, dtype=bool)
+    for cx, cz, r in discs:
+        covered |= ((px - cx) ** 2 + (pz - cz) ** 2) <= r * r
+    extra: list[tuple[float, float, float]] = []
+    # Candidate centres are the non-bridge NODES: a disc on the centreline
+    # with that station's own derived radius, which is the only kind of disc
+    # this module places.  Greedy by how much of the hole each one closes, so
+    # the repair costs the fewest extra cylinders -- and every cylinder is one
+    # `objects_count id=*`, the call that killed the console sink at 160.
+    cand = np.flatnonzero(~br)
+    while True:
+        gap = np.flatnonzero(~covered)
+        if not gap.size:
+            break
+        best, best_n, best_hit = None, 0, None
+        for k in cand:
+            r = float(per[k]) * (1.0 + frac)
+            hit = (((px[gap] - nodes[k, 0]) ** 2
+                    + (pz[gap] - nodes[k, 1]) ** 2) <= r * r)
+            n = int(hit.sum())
+            if n > best_n:
+                best, best_n, best_hit = k, n, hit
+        if best is None:
+            # Nothing on the centreline reaches what is left.  Reported by
+            # `plan_removals` per object rather than swallowed here: a hole no
+            # derived disc can close is a fact about the geometry, and the
+            # object standing in it is the thing the operator can see.
+            break
+        covered[gap[best_hit]] = True
+        extra.append((float(nodes[best, 0]), float(nodes[best, 1]),
+                      round(float(per[best]) * (1.0 + frac), 2)))
+    return extra
 
 
 def tiles(seg: dict, half_m: float, overreach_m: float
@@ -1416,7 +1536,15 @@ def plan_removals(seg: dict, cen: dict) -> dict:
     targeted: set[str] = set()
     want = [o for o in cen["objects"] if o["clearable"] and o["in_clear_width"]]
     deferred: list[tuple] = []
-    for cx, cz, r0 in [tuple(t) for t in cen["tiles"]]:
+    # THE DISCS ARE DERIVED HERE, NOT READ OFF THE CENSUS.  `cen["tiles"]` is
+    # what the census RECORDED, and a census taken before `cover_gaps` existed
+    # recorded the marched cover alone -- which on T4 left 11 in-width objects
+    # outside every disc.  The census's own object set does not depend on the
+    # tiles at all (`census_cells` is derived from `per_station`), so taking
+    # the corrected cover here re-plans a pre-fix census correctly instead of
+    # inheriting its hole.  The recorded list is kept beside it as provenance.
+    discs = tiles_local(seg, per_station)
+    for cx, cz, r0 in discs:
         # Blockers out to TWICE the parent radius, because a sub-disc centred
         # near the parent's rim can otherwise reach one the parent does not
         # contain -- and a standoff computed against an incomplete blocker set
@@ -1496,6 +1624,15 @@ def plan_removals(seg: dict, cen: dict) -> dict:
                                     "each one")})
     left = [o for o in want if o["id"] not in targeted]
     un_by_id = {u["id"]: u for u in unreachable}
+    # THE ONE REASON THE COVER CANNOT GIVE, and it is a real one rather than a
+    # hole: a station carried on a BRIDGE writes no terrain, so it has no
+    # written footprint to derive a clearing width from and nothing beside it
+    # was buried by this segment's earthwork.  `annotate` still marks such an
+    # object `in_clear_width`, because it reads the half width off the nearest
+    # station without asking whether that station is a deck.  MEASURED on T4:
+    # after `cover_gaps` closed the 11 real holes, exactly 5 in-width objects
+    # remain outside every disc and all 5 have a bridged nearest station.
+    br_flags = np.asarray(seg["is_bridge"], dtype=bool)
     return {
         "segment": seg["id"],
         "cylinders": by_tile,
@@ -1511,9 +1648,21 @@ def plan_removals(seg: dict, cen: dict) -> dict:
                 "xz": [round(o["x"], 2), round(o["z"], 2)],
                 "y": round(o["y"], 2), "lat_m": o.get("lat_m"),
                 "clear_half_m": o.get("clear_half_m"),
-                "why": ("NO REASON RECORDED: this object is inside the "
-                        "derived clearing width and no derived disc contains "
-                        "it, which is a tiling defect rather than a refusal")})
+                "station": o.get("station"),
+                "station_is_bridge": bool(br_flags[o["station"]]),
+                "why": (
+                    "this object's nearest station is carried on a BRIDGE, "
+                    "which writes no terrain: there is no written footprint "
+                    "to derive a clearing width from and this segment's "
+                    "earthwork never moved the ground it stands on. "
+                    "`annotate` calls it in-width because it reads the half "
+                    "width off the nearest station without asking whether "
+                    "that station is a deck."
+                    if bool(br_flags[o["station"]]) else
+                    "NO REASON RECORDED: this object is inside the "
+                    "derived clearing width, its station is not a bridge and "
+                    "no derived disc contains it even after `cover_gaps`, "
+                    "which is a tiling defect rather than a refusal")})
             for o in left],
         "unreachable": unreachable,
         "blocker_standoff_m": BLOCKER_STANDOFF_M,

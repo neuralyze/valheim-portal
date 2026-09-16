@@ -139,6 +139,16 @@ PAINT_SHOULDER = "dirt_cleared"
 # bounds.
 BATTER_GRADE = math.tan(math.radians(38.0))
 BATTER_MAX_M = 10.5
+# THE LATTICE'S OWN DIAGONAL, and it is the yardstick for "was the reach
+# actually spent".  A ray walks OUTWARD along its transverse normal over the
+# compiler's `SCALE` m lattice, so the outermost sample a ray can hold before
+# the band `LAT <= edge + batter_m` cuts it off is within one diagonal of the
+# cap; a ray whose outermost sample is FURTHER inside than that did not spend
+# its reach, its station bin simply held no more samples.  Derived from the
+# lattice rather than chosen, because the two cases are different facts and
+# recording one as the other is how a silent termination becomes a false
+# `reach` clip.
+LATTICE_DIAGONAL_M = math.sqrt(2.0) * tcdata.SCALE
 # A batter sample is EARTHWORK, not road: it keeps the biome's own ground
 # texture so the visible road stays 8 m wide.  Writing paint here would read
 # as a 29 m wide dirt highway.
@@ -1029,6 +1039,11 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
           "walls_left_by_cause": {},
           "rays": 0, "rays_clipped": 0,
           "rays_without_road": 0,
+          # A RAY WHOSE OWN SAMPLE LIST ENDED INSIDE ITS CAP.  Counted
+          # separately from `rays_clipped` because nothing refused it and it
+          # left no wall of its own: the samples outboard of it at that arc
+          # were binned to the neighbouring station and are written there.
+          "rays_bin_exhausted": 0,
           "samples_batter_in_pad_standoff": 0,
           "interstice_rays": 0, "interstice_apron": 0,
           "interstice_left_ungraded": 0, "interstice": [],
@@ -1314,19 +1329,21 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
         # it takes.  `end` is the lateral the earthwork reaches, which for a
         # clipped ray is the REFUSED sample (the last one written is inside
         # it) and for a ray that met ground is where the plane arrived.
+        #
+        # `lattice_end` is the SENTINEL for "no exit has been taken yet" and
+        # is never the recorded answer: the block after this loop resolves it
+        # into `reach` or `bin_exhausted`.  It used to BE the answer, for 1 to
+        # 90 rays per segment, because the reach exit that belongs here was
+        # gated on `lat - edge > batter_m` while the member list is built from
+        # `LAT <= edge + batter_m` -- the same bound, so no member could ever
+        # satisfy it.  A dead guard reads as a live one, so the branch was
+        # deleted rather than repaired in place: the reach is spent when the
+        # MEMBER LIST ends at the cap, which is a fact about the last member
+        # and is therefore decided once, after the walk, instead of tested
+        # against every sample on every ray.
         end_lat, end_cause = members[-1][0], "lattice_end"
         for lat, zx, zz, gx, gy, wx, wz, y, generated, _fx, _fz in members:
             run = lat - edge
-            if run > batter_m:
-                # Reach spent.  Not a clip with a cause somebody owns: the
-                # taper simply has not met ground inside its cap, and what is
-                # left is a wall like any other.
-                target = y - sign * batter_grade * (lat - edge)
-                _clip(st, "reach", False, None, wx, wz, lat, full_edge,
-                      residual=target - generated)
-                st["rays_clipped"] += 1
-                end_lat, end_cause = lat, "reach"
-                break
             cause = refusal(wx, wz, generated, False)
             if cause is not None:
                 target = y - sign * batter_grade * run
@@ -1369,6 +1386,49 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
             st["max_fill_m"] = max(st["max_fill_m"], delta)
             _clamp_check(st, delta, zx, zz, gx, gy, wx, wz, generated, target,
                          "batter")
+        if end_cause == "lattice_end":
+            # THE FIFTH EXIT, AND IT WAS UNREACHABLE.  The `reach` clip above
+            # is gated on `lat - edge > batter_m`, i.e. `lat > reach`, and the
+            # member list is built from `LAT <= reach` -- so no member can
+            # ever satisfy it and a ray that spends its whole reach without
+            # meeting ground falls out of this loop with NO clip, NO residual
+            # and nothing for `edge_step_census` to consult.  MEASURED across
+            # the twelve battered segments before this block existed: `reach`
+            # occurs ZERO times and `lattice_end` 1 to 90 times per segment,
+            # and T8's 9.192 m termination reversal at station 223 is one of
+            # them.  A SHRINK IS SILENT: this is the batter narrowing its own
+            # request and saying nothing, which is the same defect class as
+            # the concentric removal-disc shrink.
+            #
+            # The two mechanisms are DIFFERENT FACTS and are recorded apart:
+            #   * the outermost member sits within one lattice diagonal of the
+            #     cap -> THE REACH IS SPENT, the plane is still `delta` above
+            #     or below natural ground out there, and that residual is a
+            #     wall like any other -- a `reach` clip, exactly as the source
+            #     above already describes it;
+            #   * the outermost member sits further inside -> this station's
+            #     BIN ran out of samples (`int(round(arc))` scatters a
+            #     diagonal centreline's transect across adjacent stations), so
+            #     nothing refused this ray and it left no wall of its own: the
+            #     ground outboard of it at this arc belongs to a neighbouring
+            #     ray and is written there.  Recorded in `ray_skip_at` -- the
+            #     same place a ray with no carriageway is recorded, and for
+            #     the same reason: the neighbour's earthwork ends at this
+            #     ray's boundary, so the census must be able to name it.
+            lat_, _zx, _zz, _gx, _gy, wx_, wz_, y_, gen_, _fx_, _fz_ = (
+                members[-1])
+            residual_ = (y_ - sign * batter_grade * (lat_ - edge)) - gen_
+            if reach - lat_ < LATTICE_DIAGONAL_M + EDGE_EPS_M:
+                _clip(st, "reach", False, None, wx_, wz_, lat_, full_edge,
+                      residual=residual_)
+                st["rays_clipped"] += 1
+                end_cause = "reach"
+            else:
+                st["rays_bin_exhausted"] += 1
+                st["ray_skip_at"].append(
+                    (wx_, wz_, "ray_bin_exhausted", round(abs(residual_), 3)))
+                end_cause = "bin_exhausted"
+            end_lat = lat_
         st["ray_end_at"].append((round(float(key[1]), 2), int(key[0]),
                                  round(float(end_lat), 3), end_cause))
 
