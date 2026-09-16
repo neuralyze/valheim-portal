@@ -400,7 +400,20 @@ def _sat(box, obb: OBB) -> tuple[float, float]:
         for j in range(3):
             rb += abs(L[0] * axb[j][0] + L[1] * axb[j][1] + L[2] * axb[j][2]) * eb[j]
         dist = abs(L[0] * d[0] + L[1] * d[1] + L[2] * d[2])
-        o = ra + rb - dist
+        # The overlap of the two PROJECTED intervals, clamped by each interval's
+        # own length. `ra + rb - dist` alone is the overlap only when the
+        # intervals partially cross; when one CONTAINS the other it overstates,
+        # and it overstates by however much the containing box is longer.
+        #
+        # MEASURED, and it is a number the operator reads: a `fire_pit` box
+        # spanning y 65.43..68.16 against a `rug_fur` collider spanning
+        # 66.135..66.185 reported `penetration 0.755 m` where the true
+        # penetration is the rug's own 0.05 m thickness -- a 15x overstatement
+        # in the exact message that is supposed to say how badly a fixture is
+        # buried. The intersection DECISION is unaffected (a separating axis is
+        # still `o <= 0`), so this changes only the depth, which is the half
+        # that gets quoted.
+        o = min(ra + rb - dist, 2.0 * ra, 2.0 * rb)
         if o <= 0.0:
             if -o > sep:
                 sep = -o
@@ -462,13 +475,27 @@ def probe(box, index: SolidIndex, tol: float = PIERCE_TOL_M,
             "overlap_m": [round(ox, 3), round(oy, 3), round(oz, 3)],
             "penetration_m": round(worst, 3),
         }
-        # The slab you stand on has its TOP at your feet. Stated as the solid's
-        # own top rather than as the overlap's top so that `clearance()` can
-        # apply the identical rule -- MEASURED consequence of the two differing:
-        # a spot reported clear by `pierced` came back with clearance 0.000 m,
-        # which is a report contradicting itself.
-        if (stand_y is not None and g.is_floor(s[6])
-                and s[3] <= stand_y + tol):
+        # UNDERFOOT: the solid's own TOP is at or below the plane this fixture
+        # stands on, so the only way the fixture's box can reach it is DOWNWARD,
+        # past its own feet. A prop cannot be embedded in something that is
+        # entirely below the surface it rests on.
+        #
+        # Geometric, and no longer gated on `is_floor`. The name gate was a
+        # narrowing with no measured basis once `stand_y` is known, and MEASURED
+        # it cost a site its fire pit: `hs_mistlands_thrad_workshop` carries
+        # three `rug_fur` whose colliders span y 66.135..66.185 on a floor whose
+        # top -- and therefore `stand_y` -- is 66.160. The rug's top is 0.025 m
+        # above the standing plane, well inside `tol`, but `rug_fur` is
+        # deliberately NOT a floor prefab (a rug lies ON a floor and would
+        # report a datum 25 mm too high), so every one of the 60 indoor cells
+        # over those rugs was refused for "piercing" a 50 mm mat. The fixture
+        # was then not placed at all.
+        #
+        # Stated as the solid's own top rather than as the overlap's top so that
+        # `clearance()` can apply the identical rule -- MEASURED consequence of
+        # the two differing: a spot reported clear by `pierced` came back with
+        # clearance 0.000 m, which is a report contradicting itself.
+        if stand_y is not None and s[3] <= stand_y + tol:
             row["role"] = "support"
             supports.append(row)
         else:
@@ -487,23 +514,45 @@ def pierced(box, index: SolidIndex, tol: float = PIERCE_TOL_M,
     return probe(box, index, tol, stand_y, geom)[0]
 
 
+def free_above(box, index: SolidIndex, search_m: float = 6.0) -> float:
+    """Metres of air above this box before the first solid overhead, bounded.
+
+    The number the indoor headroom veto used to hide. Computed from solid AABBs
+    whose footprint overlaps the box and whose underside is at or above the
+    box's top, which UNDERSTATES the free height for a sloped roof (its AABB
+    reaches lower than its underside does) -- the same direction every bounded
+    figure in this module leans, and stated rather than rounded off.
+    """
+    top = box[3]
+    col = (box[0], box[1], top, top + search_m, box[4], box[5])
+    best = search_m
+    for s in index.near(col):
+        if s[2] < top - 1e-6:
+            continue                      # straddles or sits below the top
+        if s[1] <= box[0] or s[0] >= box[1] or s[5] <= box[4] or s[4] >= box[5]:
+            continue                      # not overhead
+        if s[2] - top < best:
+            best = s[2] - top
+    return best
+
+
 def clearance(box, index: SolidIndex, search_m: float = 6.0,
-              stand_y: float | None = None,
-              geom: base_geometry.Geometry | None = None) -> float:
+              stand_y: float | None = None) -> float:
     """Distance from this fixture box to the nearest body solid; 0.0 if it
     intersects one. Bounded by `search_m` so it stays a local query.
 
-    The floor a fixture STANDS ON is excluded when `stand_y` says which plane
-    that is -- otherwise every indoor clearance reads 0.000 m and the figure
-    stops meaning anything.
+    Everything UNDERFOOT is excluded when `stand_y` says which plane the
+    fixture stands on -- the identical rule `probe()` uses, for the identical
+    reason: otherwise every indoor clearance reads 0.000 m against the slab the
+    prop is resting on and the figure stops meaning anything. The two rules are
+    the same line of code twice on purpose; when they differed, a spot reported
+    CLEAR by `pierced` came back with clearance 0.000 m.
     """
-    g = geom or base_geometry.geometry()
     probe_box = (box[0] - search_m, box[1] + search_m, box[2] - search_m,
                  box[3] + search_m, box[4] - search_m, box[5] + search_m)
     best = search_m
     for s in index.near(probe_box):
-        if (stand_y is not None and g.is_floor(s[6])
-                and s[3] <= stand_y + PIERCE_TOL_M):
+        if stand_y is not None and s[3] <= stand_y + PIERCE_TOL_M:
             continue
         if gap(box, s) >= best:
             continue                      # broad phase
@@ -1138,13 +1187,50 @@ def free_spot(prefab: str, body: PlacedBody, index: SolidIndex,
             if want == WANT_INDOOR and any(
                     abs(m.stand_y(*c) - stand) > PIERCE_TOL_M for c in spanned):
                 continue
-            probe_box = (box[0], box[1], box[2], max(box[3], stand + headroom_m),
+            # HOW MUCH AIR ABOVE THIS FIXTURE IS REQUIRED.
+            #
+            # `headroom_m` is PLAYER STANDING ROOM, and applying it to an
+            # INDOOR fixture's own footprint asks a question the placement does
+            # not depend on. A fixture is used from the cell BESIDE it, and the
+            # mask has already proven this cell is enclosed, roofed and
+            # reachable -- reachability itself measured at 0.3/1.0/1.7 m, so a
+            # player can walk here.
+            #
+            # MEASURED cost of asking anyway, per body, over every
+            # (indoor cell x yaw) pair: `fox-0123456` 150 indoor cells and ZERO
+            # legal spots for a 0.60 m tall `hearth`, vetoed by
+            # `wood_wall_roof_top`, `wood_beam_45` and `wood_roof_icorner_45`
+            # -- the ROOF of the room, 2.0 m up, which is what makes the cell
+            # indoor-covered in the first place. `hs_mistlands_thrad_workshop`
+            # 60 cells and zero for a `fire_pit`. So the 2 m band vetoes indoor
+            # placement for being indoors, and the hearth and the fire pit ended
+            # up unplaced -- one step better than the yard and still not a
+            # furnished house.
+            #
+            # The game imposes no headroom of its own: placement is a collider
+            # test, and `spawn_object` does not even run that. So indoors the
+            # requirement is the fixture's OWN volume, exactly, and the air
+            # above it is MEASURED and reported (`free_above_m`) rather than
+            # turned into a veto nobody can see.
+            head = 0.0 if want == WANT_INDOOR else headroom_m
+            probe_box = (box[0], box[1], box[2], max(box[3], stand + head),
                          box[4], box[5])
             if pierced(probe_box, index, stand_y=stand, geom=g):
                 continue
             if taken and any(all(o > 1e-6 for o in overlap(box, t)) for t in taken):
                 continue
             tight = fixture_box(prefab, x, stand, z, angle, g)
+            # NO `stand_y` here, and it is a deliberate difference from the
+            # REPORTED figure in `audit()`. This call RANKS candidates, and the
+            # positions it has already chosen are live in the world: `stock.py
+            # --repair` re-solves a site and spawns whatever it cannot find, so
+            # changing this key would move every indoor fixture and re-spawn it
+            # beside the one already standing. MEASURED consequence of leaving
+            # it: on a body whose ground floor sits on a foundation course --
+            # `pre-elder#early-dock` -- every candidate scores 0.000 against
+            # that course and the wall-hugging objective degenerates to its
+            # distance tie-break. Worth changing on a run that re-places from
+            # scratch; not worth duplicating nine stocked sites for.
             wall_gap = _wall_gap(tight, index)
             # WANT_INDOOR wants the wall; everything else wants the preference
             # point. Both are then tie-broken by the other, so the search is
@@ -1160,9 +1246,11 @@ def free_spot(prefab: str, body: PlacedBody, index: SolidIndex,
                 "yaw": angle,
                 "offset": [round(x - cx, 3), round(z - cz, 3)],
                 "from_prefer_m": round(d, 3),
-                "clearance_m": round(clearance(tight, index, stand_y=stand,
-                                               geom=g), 3),
+                "clearance_m": round(clearance(tight, index,
+                                               stand_y=stand), 3),
                 "wall_gap_m": round(wall_gap, 3),
+                "free_above_m": round(free_above(tight, index), 3),
+                "height_m": round(tight[3] - stand, 3),
                 "want": want,
                 "class": klass,
                 "stands_on_m_above_pad": round(stand - m.pad_y, 3),
@@ -1174,17 +1262,31 @@ def free_spot(prefab: str, body: PlacedBody, index: SolidIndex,
     return best
 
 
-def _wall_gap(box, index: SolidIndex, search_m: float = 6.0) -> float:
+def _wall_gap(box, index: SolidIndex, search_m: float = 6.0,
+              stand_y: float | None = None) -> float:
     """Distance from this box to the nearest WALL-role solid, bounded.
 
     `search_m` when there is no wall in range, which for the indoor objective
     means "as far from a wall as the search can tell" and therefore sorts last.
+
+    `stand_y` excludes everything UNDERFOOT, by the same rule `probe()` and
+    `clearance()` use, and it is REQUIRED for the figure to be a fact rather
+    than an artefact. MEASURED on `pre-elder#early-dock`: the audit reported
+    `min_wall_clearance_m: 0.000` -- which reads as "a fixture is standing in a
+    wall" -- while no fixture there pierces anything at all. The 0.000 was the
+    body's own `stone_wall_2x1` FOUNDATION course, beneath the floor slab the
+    fixtures stand on, being counted as the nearest wall. The true figure is
+    0.023 m.
+
+    Callers that RANK candidates deliberately pass nothing: see `free_spot`.
     """
     probe_box = (box[0] - search_m, box[1] + search_m, box[2] - search_m,
                  box[3] + search_m, box[4] - search_m, box[5] + search_m)
     best = search_m
     for s in index.near(probe_box):
         if not _WALL_NAME.search(s[6]):
+            continue
+        if stand_y is not None and s[3] <= stand_y + PIERCE_TOL_M:
             continue
         if gap(box, s) >= best:
             continue
@@ -1211,7 +1313,7 @@ def _min_wall_clearance(fixture_rows, body: PlacedBody, index: SolidIndex,
     for row in fixture_rows:
         prefab, x, y, z, yaw = row[:5]
         box = fixture_box(prefab, x, y, z, yaw, geom)
-        d = _wall_gap(box, index)
+        d = _wall_gap(box, index, stand_y=y)
         if d < best:
             best = d
     return None if best is math.inf else round(best, 3)
@@ -1269,7 +1371,7 @@ def audit(fixtures, body: PlacedBody, index: SolidIndex | None = None,
             unmeasured.append(prefab)
         box = fixture_box(prefab, x, y, z, yaw, g)
         hits, rests = probe(box, idx, stand_y=y, geom=g)
-        clear = 0.0 if hits else clearance(box, idx, stand_y=y, geom=g)
+        clear = 0.0 if hits else clearance(box, idx, stand_y=y)
         worst = min(worst, clear)
         want = preference(prefab)
         klass = mask.at(x, z)
@@ -1286,7 +1388,7 @@ def audit(fixtures, body: PlacedBody, index: SolidIndex | None = None,
             "pierces": len(hits), "worst": hits[0] if hits else None,
             "rests_on": [r["prefab"] for r in rests],
             "clearance_m": round(clear, 3),
-            "wall_gap_m": round(_wall_gap(box, idx), 3),
+            "wall_gap_m": round(_wall_gap(box, idx, stand_y=y), 3),
             "want": want, "class": klass,
             "spans": sorted(spanned),
             "tag": tag,
@@ -1416,7 +1518,21 @@ def audit(fixtures, body: PlacedBody, index: SolidIndex | None = None,
 # guarantees the one thing a blank tag cannot: our portal can NEVER pair with a
 # world-location portal, because those are blank and `"" != "u-workshop"`.
 
-PORTAL_PREFABS = frozenset(("portal_wood", "portal"))
+# EVERY prefab in this corpus that teleports a player. `portal_stone` is in the
+# set because leaving it out made `is_portal` answer FALSE for a working portal,
+# and MEASURED by FinishBuild over the 13 emitted plans for this world, exactly
+# one piece anywhere carries a `ZDOVars.s_tag` string -- StableHashCode("tag")
+# = 696029674, bytes `ea917c29` in the column-13 payload -- and it is a
+# `portal_stone` in `pre-fader#ashlands-forward-base` holding the tag `mon1`.
+# Only a `TeleportWorld` component writes that field, so the piece is a portal
+# by the game's own evidence and not by its name. The consequence of the
+# omission was concrete: `audit()`'s carried-portal warning and
+# `solve_placement`'s untagged-portal refusal both went silent for it, so a
+# portal tagged outside this world's ledger would have been placed without a
+# word. The cost of including it is only that an UNTAGGED `portal_stone` is
+# refused instead of spawned, which is the safe direction of the same rule.
+# `portal` is retained and appears in zero plans; nothing here places either.
+PORTAL_PREFABS = frozenset(("portal_wood", "portal", "portal_stone"))
 
 # The in-game tag field's character limit. MEASURED: `TeleportWorld::Interact`
 # calls `TextInput::RequestText(this, "$piece_portal_tag", 10)` -- `ldc.i4.s

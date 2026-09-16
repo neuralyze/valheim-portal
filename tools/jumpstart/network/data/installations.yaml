@@ -675,7 +675,7 @@ installations:
   blueprint: {name: Ultimate_OutPost.blueprint, sha256: 2f984f3b649bcac1ee3e83cd704791b5080aefd9b57ac3c3d0c20be739bad33c}
   biome: Meadows
   requirement: {biome: Meadows, footprint_m: 68, max_flat_m: 3.5, min_biome_purity: 0.85, coastal: false, location_clearance_m: 60}
-  stations: [{prefab: piece_workbench, level: 5, extensions: [piece_workbench_ext1, piece_workbench_ext2, piece_workbench_ext3, piece_workbench_ext4]}, {prefab: forge, level: 7, extensions: [forge_ext1, forge_ext2, forge_ext3, forge_ext4, forge_ext5, forge_ext6]}, {prefab: blackforge, level: 6, extensions: [blackforge_ext1, blackforge_ext2, blackforge_ext3, blackforge_ext4, blackforge_ext5]}, {prefab: piece_magetable, level: 3, extensions: [magetable_ext1, magetable_ext2]}, {prefab: piece_cauldron, level: 4, extensions: [cauldron_ext1_spice, cauldron_ext3_butchertable, cauldron_ext4_pots]}]
+  stations: [{prefab: piece_workbench, level: 5, extensions: [piece_workbench_ext1, piece_workbench_ext2, piece_workbench_ext3, piece_workbench_ext4]}, {prefab: forge, level: 7, extensions: [forge_ext1, forge_ext2, forge_ext3, forge_ext4, forge_ext5, forge_ext6]}, {prefab: blackforge, level: 5, extensions: [blackforge_ext1, blackforge_ext2_vise, blackforge_ext3_metalcutter, blackforge_ext4_gemcutter]}, {prefab: piece_magetable, level: 3, extensions: [magetable_ext1, magetable_ext2]}, {prefab: piece_cauldron, level: 4, extensions: [cauldron_ext1_spice, cauldron_ext3_butchertable, cauldron_ext4_pots]}]
   portal: true
   portal_pieces: 1
   is_spawn_home: true

@@ -483,7 +483,16 @@ class FixturesGoWhereAPersonWouldPutThem(unittest.TestCase):
                          "second is reported, not stood in the yard")
         bed = beds[0]
         self.assertEqual(bed["class"], fixtures.INDOOR_COVERED)
-        self.assertEqual(bed["spans"], [fixtures.INDOOR_COVERED])
+        # EVERY cell the bed's box spans must be DRY, and its anchor cell must
+        # be indoors. Not "spans indoor_covered only": a bed beside a wall is
+        # 1.2 x 2.8 m and legitimately reaches into an adjoining
+        # `covered_unenclosed` cell - under the same roof, outside the enclosure
+        # set that ENCLOSURE deliberately computes separately from
+        # traversability. The operator's complaint was a bed IN THE RAIN, so
+        # dryness is the contract; demanding a single class failed a dry bed.
+        self.assertTrue(
+            set(bed["spans"]) <= {fixtures.INDOOR_COVERED, fixtures.COVERED_UNENCLOSED},
+            f"bed spans a cell that is not covered: {bed['spans']}")
         # near but NOT touching: the objective minimises wall distance subject
         # to the clearance floor, so it has to be both.
         self.assertGreater(bed["wall_gap_m"], 0.0)

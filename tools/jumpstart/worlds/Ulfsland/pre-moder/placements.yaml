@@ -72,6 +72,20 @@ placements:
   requirement:
     biome: Mountain
     footprint_m: 40
+    footprint_xz_m:
+    - 20.3
+    - 30.8
+    footprint_xz_note: 'The pad is the BODY''s rectangle, not the 40 m square. MEASURED 2026-09-15: `hs_swamp_vrolok_caba_a_2`
+      is 20.3 x 30.8 m in the library manifest and stands at yaw 180, so those are its world axes unchanged,
+      and its collider box after that yaw is 21.7 x 33.48 m -- a 19.95 m reach. The 40 m square was requirement
+      padding; levelling and clearing it costs a cylinder of radius hypot(44,44)/2 + 2 = 33.11 m, while
+      the LIVE world holds a generated LocationProxy 23.05 m from this pad centre, measured over RCON.
+      `clearing/clear.py` refuses to clear a cylinder containing a generated marker, and that refusal
+      is correct. Shrinking the pad to the body''s own rectangle brings the cylinder to 22.53 m at apron
+      1.5 m -- inside the marker by 0.52 m and still 0.58 m outside `verify_site.py`''s 21.95 m verification
+      circle, which is the number that has to be covered or surviving vegetation counts as strays. footprint_m
+      stays at 40 as the durable declaration of what the site was chosen for; this is the shape actually
+      built on it.'
     max_flat_m: 4.0
     min_biome_purity: 0.6
     coastal: false
@@ -103,7 +117,7 @@ placements:
     anchor: Dragonqueen @ (-137.5,203.5,3702.7)
     anchor_dist_m: 270.0
     near_biome_dist_m: 0.0
-    footprint_orientation: 40.0 m along x by 40.0 m along z
+    footprint_orientation: 20.3 m along x by 30.8 m along z
     nearest_location_m: 178.0
     score: 0.261
     scores:
@@ -116,14 +130,14 @@ placements:
     overland_from_spawn: true
     satisfies_requirement: true
     flatten_cost:
-      target_y: 109.52
-      cut_m3: 619.2
-      fill_m3: 1021.8
-      moved_m3: 1641.0
-      mean_move_m: 1.026
-      rms_m: 1.267
-      max_cut_m: 1.96
-      max_fill_m: 4.01
+      target_y: 110.14
+      cut_m3: 124.0
+      fill_m3: 169.5
+      moved_m3: 293.6
+      mean_move_m: 0.489
+      rms_m: 0.656
+      max_cut_m: 1.18
+      max_fill_m: 2.22
       resolution_m: 1.0
       estimated: false
     flat_spread_coarse_m: 4.36
@@ -350,12 +364,13 @@ placements:
       by: network/recost_pad.py
       reason: body changed; flatten_cost and footprint_orientation belong to the body's rectangle, not
         the previous body's
-      rectangle_source: square requirement.footprint_m
-      samples: 1600
+      rectangle_source: body rectangle (requirement declares footprint_xz_m)
+      samples: 600
       generated_range_m:
-      - 105.51
-      - 111.48
-      min_freeboard_m: 75.51
+      - 107.91
+      - 111.32
+      min_freeboard_m: 77.91
+      target_freeboard_m: 80.14
       over_clamp_samples: 0
       height_source: blueprints/run_patchscan.sh, step 1 m, rivers included
   containers:

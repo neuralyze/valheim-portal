@@ -373,14 +373,21 @@ stations:
   - forge_ext5
   - forge_ext6
 - prefab: blackforge
-  level: 6
-  max_level: 6
+  # 5, not 6, and the extension list is four long because that is how many the
+  # game has. MEASURED against data/prefab_evidence.json: the Black Forge's
+  # extensions are blackforge_ext1, blackforge_ext2_vise,
+  # blackforge_ext3_metalcutter and blackforge_ext4_gemcutter -- there is no
+  # blackforge_ext5. Left at 6 with a five-long list, `stock.solve_placement`
+  # needs level-1 = 5 extensions from a 4-long list and `exts[i % len(exts)]`
+  # wraps, so the site got a SECOND blackforge_ext1 and no fifth tier existed
+  # to get.
+  level: 5
+  max_level: 5
   extensions:
   - blackforge_ext1
-  - blackforge_ext2
-  - blackforge_ext3
-  - blackforge_ext4
-  - blackforge_ext5
+  - blackforge_ext2_vise
+  - blackforge_ext3_metalcutter
+  - blackforge_ext4_gemcutter
 - prefab: piece_magetable
   level: 3
   max_level: 3
@@ -391,14 +398,14 @@ stations:
   level: 2
   max_level: 2
   extensions:
-  - piece_artisan_ext1
+  - artisan_ext1
 - prefab: piece_cauldron
   level: 4
   max_level: 5
   extensions:
-  - piece_cauldron_ext1_spice
-  - piece_cauldron_ext3_butchertable
-  - piece_cauldron_ext4_pans
+  - cauldron_ext1_spice
+  - cauldron_ext3_butchertable
+  - cauldron_ext4_pots
 - prefab: eitrrefinery
   level: 1
   max_level: 1

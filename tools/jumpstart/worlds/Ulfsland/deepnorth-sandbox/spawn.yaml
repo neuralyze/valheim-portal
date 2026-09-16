@@ -33,32 +33,32 @@ criteria:
   approach_max_step_m: 1.5
   y_clearance_m: 1.0
 points:
-- x: 771
-  y: 39
-  z: 1151
+- x: 647
+  y: 36
+  z: 1077
   base: complete-station-hub
   base_xz:
-  - 789.5
-  - 1168.5
-  base_y: 58.42
-  base_freeboard_m: 14.91
-  terrain_y: 37.35
-  spawn_freeboard_m: 7.35
-  disc_min_freeboard_m: 6.2
-  dist_to_base_m: 25.5
-  dist_to_footprint_edge_m: 6.2
+  - 661.5
+  - 1088.5
+  base_y: 37.18
+  base_freeboard_m: 2.1
+  terrain_y: 34.04
+  spawn_freeboard_m: 4.04
+  disc_min_freeboard_m: 2.98
+  dist_to_base_m: 18.5
+  dist_to_footprint_edge_m: 6.4
   footprint_half_extents_m:
-  - 18.5
-  - 19.3
-  yaw: 225.0
-  facade_agreement: 1.0
-  score: 0.999
+  - 8.15
+  - 11.0
+  yaw: 180.0
+  facade_agreement: 0.811
+  score: 0.942
   approach:
-    length_m: 6.2
-    min_freeboard_m: 7.35
-    max_step_m: 0.41
+    length_m: 6.4
+    min_freeboard_m: 2.75
+    max_step_m: 0.45
     dry_to_footprint_edge: true
-  candidates_considered: 30532
+  candidates_considered: 28530
 - x: 703
   y: 36
   z: -55
@@ -85,18 +85,18 @@ points:
     max_step_m: 0.54
     dry_to_footprint_edge: true
   candidates_considered: 29941
-- x: -256
-  y: 40
-  z: 197
+- x: -278
+  y: 42
+  z: 199
   base: sandbox-portal-hub
   base_xz:
-  - -270.5
-  - 211.5
-  base_y: 44.66
-  base_freeboard_m: 7.75
-  terrain_y: 38.71
-  spawn_freeboard_m: 8.71
-  disc_min_freeboard_m: 7.1
+  - -292.5
+  - 213.5
+  base_y: 40.6
+  base_freeboard_m: 7.5
+  terrain_y: 40.01
+  spawn_freeboard_m: 10.01
+  disc_min_freeboard_m: 9.54
   dist_to_base_m: 20.5
   dist_to_footprint_edge_m: 6.5
   footprint_half_extents_m:
@@ -107,7 +107,7 @@ points:
   score: 0.998
   approach:
     length_m: 6.5
-    min_freeboard_m: 7.44
-    max_step_m: 0.49
+    min_freeboard_m: 9.42
+    max_step_m: 0.41
     dry_to_footprint_edge: true
-  candidates_considered: 33358
+  candidates_considered: 33415

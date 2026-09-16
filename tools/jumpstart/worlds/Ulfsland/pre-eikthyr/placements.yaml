@@ -72,6 +72,19 @@ placements:
   requirement:
     biome: Meadows
     footprint_m: 24
+    footprint_xz_m:
+    - 17.45
+    - 17.49
+    footprint_xz_note: 'WORLD-AXIS rectangle, MEASURED 2026-09-15, replacing the 24 m square. The body
+      is 8.0 x 16.8 m unrotated and stands at yaw 225, so its world footprint is neither of those numbers:
+      `to_rcon_plan.py --verify` measures the piece collider corners after the rotation and reports footprint@yaw225=17.45x17.49,
+      a 12.35 m reach. Why it changed: the LIVE world holds a generated LocationProxy 11.08 m from the
+      solved centre (241.5, 353.5), and two more at 25.41 and 77.44 m. The solver recorded nearest_location_m
+      77.0 and found only the third - see this preset''s location_clearance_note, the dump is mod-free
+      by construction. 11.08 m is INSIDE the building''s own 12.35 m reach, so no pad shrink can save
+      this centre: the structure itself would stand on the location. The pad therefore MOVES as well as
+      shrinks; see solved.relocation. footprint_m stays 24 as the durable statement of the site that was
+      searched for, and within_m 700 is untouched.'
     max_flat_m: 3.0
     min_biome_purity: 0.85
     coastal: false
@@ -101,19 +114,19 @@ placements:
     and a workbench costs 10 wood.'
   solved:
     seed: Pirate68
-    x: 241.5
-    y: 78.36
-    z: 353.5
-    freeboard_m: 46.24
+    x: 303.5
+    y: 84.28
+    z: 385.5
+    freeboard_m: 49.59
     flat_spread_m: 2.12
     flat_resolution_m: 1.0
     y_centre_m: 77.72
     biome_purity: 1.0
     water_dist_m: 271.8
     anchor: StartTemple @ (-64.7,75.0,3.3)
-    anchor_dist_m: 465.0
+    anchor_dist_m: 530.7
     near_biome_dist_m: 0.0
-    footprint_orientation: 24.0 m along x by 24.0 m along z
+    footprint_orientation: 17.4 m along x by 17.5 m along z
     nearest_location_m: 77.0
     score: 0.465
     scores:
@@ -126,14 +139,14 @@ placements:
     overland_from_spawn: true
     satisfies_requirement: true
     flatten_cost:
-      target_y: 77.47
-      cut_m3: 98.4
-      fill_m3: 132.0
-      moved_m3: 230.4
-      mean_move_m: 0.369
-      rms_m: 0.453
-      max_cut_m: 0.89
-      max_fill_m: 1.23
+      target_y: 81.4
+      cut_m3: 200.7
+      fill_m3: 84.8
+      moved_m3: 285.5
+      mean_move_m: 0.881
+      rms_m: 1.104
+      max_cut_m: 2.88
+      max_fill_m: 1.44
       resolution_m: 1.0
       estimated: false
     flat_spread_coarse_m: 1.11
@@ -356,6 +369,51 @@ placements:
       flat_spread_coarse_m: 2.24
       flat_p5_p95_m: 2.66
       refined_moved_m: 8.5
+    relocation:
+      by: network/relocate_pad.py
+      reason: a LIVE generated location marker stood inside the clearing cylinder at the solved centre;
+        solved.nearest_location_m is a vanilla-only figure and could not see it (see this preset's location_clearance_note)
+      moved_from:
+      - 241.5
+      - 353.5
+      displacement_m: 69.77
+      search_radius_m: 140.0
+      search_step_m: 2.0
+      pad_rect_m:
+      - 17.45
+      - 17.49
+      pad_rect_source: requirement.footprint_xz_m
+      clearing_radius_m: 14.35
+      clearing_apron_m: 0.0
+      clearing_margin_m: 2.0
+      verification_radius_m: 14.35
+      verification_radius_source: collider box after yaw 17.45x17.49 m plus verify_site.py's 2.0 m
+      live_marker_dist_m: 72.84
+      live_marker_clearance_over_cylinder_m: 58.49
+      live_markers_seen: 17
+      marker_source: findObjects -prefab LocationProxy over RCON, 2026-09-15
+      marker_standoff_required_m: 58.0
+      marker_standoff_basis: requirement.location_clearance_m minus the clearing margin, which reproduces
+        site_finder's own gate exactly
+      satisfies_declared_location_clearance: true
+      rechecked:
+      - biome
+      - min_biome_purity
+      - min_height_m
+      - max_height_m
+      - max_grade_pct
+      - within_m
+      - flatten_cost
+      - clamp
+      not_rechecked:
+      - overland_from_spawn
+      - route_from_spawn
+      - route_to_anchor
+      - facing_check
+      not_rechecked_basis: whole-world graph searches; a move of 69.77 m cannot change landmass, and the
+        search radius is bounded so that stays true
+      grid_source: tools/seedscan/run_scan.sh STEP=8 HEIGHT=1, seed Pirate68
+      height_source: blueprints/run_patchscan.sh, step 1 m, rivers included
   containers:
     by_prefab:
       piece_chest_barrel: 5

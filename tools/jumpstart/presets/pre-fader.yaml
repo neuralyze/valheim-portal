@@ -305,7 +305,7 @@ stations:
   max_level: 6
   extensions:
   - blackforge_ext1
-  - blackforge_ext2
+  - blackforge_ext2_vise
 - prefab: piece_magetable
   level: 2
   max_level: 3
@@ -315,14 +315,14 @@ stations:
   level: 2
   max_level: 2
   extensions:
-  - piece_artisan_ext1
+  - artisan_ext1
 - prefab: piece_cauldron
   level: 4
   max_level: 5
   extensions:
-  - piece_cauldron_ext1_spice
-  - piece_cauldron_ext3_butchertable
-  - piece_cauldron_ext4_pans
+  - cauldron_ext1_spice
+  - cauldron_ext3_butchertable
+  - cauldron_ext4_pots
 - prefab: eitrrefinery
   level: 1
   max_level: 1

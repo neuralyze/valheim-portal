@@ -250,7 +250,7 @@ stations:
   level: 2
   max_level: 5
   extensions:
-  - piece_cauldron_ext1_spice
+  - cauldron_ext1_spice
 - prefab: smelter
   level: 1
   max_level: 1

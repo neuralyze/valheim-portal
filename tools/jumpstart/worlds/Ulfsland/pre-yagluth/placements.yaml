@@ -72,6 +72,19 @@ placements:
   requirement:
     biome: Plains
     footprint_m: 60
+    footprint_xz_m:
+    - 47.62
+    - 41.96
+    footprint_xz_note: 'WORLD-AXIS rectangle, MEASURED 2026-09-15, replacing the 60 m square. The body
+      is 30.3 x 39.5 m unrotated at yaw 315, so `to_rcon_plan.py --verify` measures its collider corners
+      after the rotation as footprint@yaw315=47.62x41.96 - a 31.73 m reach. Why it changed: the LIVE world
+      holds a generated LocationProxy 23.64 m from the solved centre (718.5, -4310.5) and a second at
+      74.04 m. `solved.nearest_location_m` recorded 109.0 and could not see either, because the location
+      dump is mod-free by construction - see this preset''s location_clearance_note. This site was counted
+      as merely un-attempted tonight and it is in fact BLOCKED: 23.64 m is well inside the building''s
+      own 31.73 m reach, so the structure itself would stand on the location and no pad shrink saves this
+      centre. The pad therefore moves as well as shrinks; see solved.relocation. footprint_m stays 60
+      as the durable statement of the site that was searched for.'
     max_flat_m: 3.0
     min_biome_purity: 0.7
     coastal: false
@@ -99,19 +112,19 @@ placements:
   - rug_Bjorn
   solved:
     seed: Pirate68
-    x: 718.5
-    y: 36.67
-    z: -4310.5
-    freeboard_m: 1.49
+    x: 750.5
+    y: 37.15
+    z: -4278.5
+    freeboard_m: 2.11
     flat_spread_m: 5.18
     flat_resolution_m: 1.0
     y_centre_m: 34.49
     biome_purity: 1.0
     water_dist_m: 43.1
     anchor: GoblinKing @ (448.0,33.4,-4096.0)
-    anchor_dist_m: 345.0
+    anchor_dist_m: 353.3
     near_biome_dist_m: 0.0
-    footprint_orientation: 60.0 m along x by 60.0 m along z
+    footprint_orientation: 47.6 m along x by 42.0 m along z
     nearest_location_m: 109.0
     score: 0.007
     scores:
@@ -124,14 +137,14 @@ placements:
     overland_from_spawn: false
     satisfies_requirement: true
     flatten_cost:
-      target_y: 34.71
-      cut_m3: 1286.8
-      fill_m3: 2187.8
-      moved_m3: 3474.6
-      mean_move_m: 0.934
-      rms_m: 1.161
-      max_cut_m: 1.96
-      max_fill_m: 3.22
+      target_y: 33.83
+      cut_m3: 973.1
+      fill_m3: 1125.9
+      moved_m3: 2099.1
+      mean_move_m: 1.041
+      rms_m: 1.343
+      max_cut_m: 3.32
+      max_fill_m: 4.52
       resolution_m: 1.0
       estimated: false
     flat_spread_coarse_m: 5.0
@@ -353,6 +366,97 @@ placements:
       flat_spread_coarse_m: 6.13
       flat_p5_p95_m: 3.99
       refined_moved_m: 8.3
+    relocation:
+      by: network/relocate_pad.py
+      reason: a LIVE generated location marker stood inside the clearing cylinder at the solved centre;
+        solved.nearest_location_m is a vanilla-only figure and could not see it (see this preset's location_clearance_note)
+      moved_from:
+      - 758.5
+      - -4250.5
+      displacement_m: 29.12
+      search_radius_m: 200.0
+      search_step_m: 4.0
+      pad_rect_m:
+      - 47.62
+      - 41.96
+      pad_rect_source: requirement.footprint_xz_m
+      clearing_radius_m: 33.73
+      clearing_apron_m: 0.0
+      clearing_margin_m: 2.0
+      verification_radius_m: 33.73
+      verification_radius_source: collider box after yaw 47.62x41.96 m plus verify_site.py's 2.0 m
+      live_marker_dist_m: 54.34
+      live_marker_clearance_over_cylinder_m: 20.61
+      live_markers_seen: 6
+      marker_source: findObjects -prefab LocationProxy over RCON, 2026-09-15
+      marker_standoff_required_m: 20.0
+      marker_standoff_basis: declared on the command line
+      satisfies_declared_location_clearance: false
+      rechecked:
+      - biome
+      - min_biome_purity
+      - min_height_m
+      - max_height_m
+      - max_grade_pct
+      - within_m
+      - flatten_cost
+      - clamp
+      not_rechecked:
+      - overland_from_spawn
+      - route_from_spawn
+      - route_to_anchor
+      - facing_check
+      not_rechecked_basis: whole-world graph searches; a move of 29.12 m cannot change landmass, and the
+        search radius is bounded so that stays true
+      grid_source: tools/seedscan/run_scan.sh STEP=8 HEIGHT=1, seed Pirate68
+      height_source: blueprints/run_patchscan.sh, step 1 m, rivers included
+      supersedes:
+        by: network/relocate_pad.py
+        reason: a LIVE generated location marker stood inside the clearing cylinder at the solved centre;
+          solved.nearest_location_m is a vanilla-only figure and could not see it (see this preset's location_clearance_note)
+        moved_from: &id001
+        - 718.5
+        - -4310.5
+        displacement_m: 72.11
+        search_radius_m: 140.0
+        search_step_m: 2.0
+        pad_rect_m:
+        - 47.62
+        - 41.96
+        pad_rect_source: requirement.footprint_xz_m
+        clearing_radius_m: 33.73
+        clearing_apron_m: 0.0
+        clearing_margin_m: 2.0
+        verification_radius_m: 33.73
+        verification_radius_source: collider box after yaw 47.62x41.96 m plus verify_site.py's 2.0 m
+        live_marker_dist_m: 92.76
+        live_marker_clearance_over_cylinder_m: 59.03
+        live_markers_seen: 2
+        marker_source: findObjects -prefab LocationProxy over RCON, 2026-09-15
+        marker_standoff_required_m: 58.0
+        marker_standoff_basis: requirement.location_clearance_m minus the clearing margin, which reproduces
+          site_finder's own gate exactly
+        satisfies_declared_location_clearance: true
+        rechecked:
+        - biome
+        - min_biome_purity
+        - min_height_m
+        - max_height_m
+        - max_grade_pct
+        - within_m
+        - flatten_cost
+        - clamp
+        not_rechecked:
+        - overland_from_spawn
+        - route_from_spawn
+        - route_to_anchor
+        - facing_check
+        not_rechecked_basis: whole-world graph searches; a move of 72.11 m cannot change landmass, and
+          the search radius is bounded so that stays true
+        grid_source: tools/seedscan/run_scan.sh STEP=8 HEIGHT=1, seed Pirate68
+        height_source: blueprints/run_patchscan.sh, step 1 m, rivers included
+      moved_from_solved: *id001
+      displacement_from_solved_m: 45.25
   containers:
     by_prefab:
       piece_chest: 53

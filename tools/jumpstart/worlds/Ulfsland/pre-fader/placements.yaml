@@ -288,7 +288,19 @@ placements:
     tag: u-ashland
     peer: deepnorth-sandbox#sandbox-portal-hub
     pieces_to_place: 1
-    pieces_in_body_dropped: 0
+    pieces_in_body_dropped: 1
+    carried_portal_note: 'MEASURED 2026-09-15 by FinishBuild, and it is why this count is 1 rather than
+      0. The body carries no `portal_wood`, so the portal_wood rule never fired here -- but line 108 of
+      the emitted plan (/tmp/terraform/plans_wb/pre-fader__ashlands-forward-base.txt) was `spawn_object
+      portal_stone ... data=<base64>`, and decoding that ZDO payload shows a string field under key
+      696029674 = StableHashCode("tag") = ZDOVars.s_tag, with the value "mon1". A piece can only carry
+      an s_tag string if the instance it was captured from had a TeleportWorld writing that field, so
+      `portal_stone` is a working portal and this body carries one with its AUTHOR''s tag. Placed as an
+      ordinary structural piece it would have stood an unmanaged portal tagged "mon1" inside the Ashlands
+      base, outside the tag ledger entirely. `blueprints/fixtures.py` cannot see it either:
+      PORTAL_PREFABS is frozenset(("portal_wood","portal")), so is_portal("portal_stone") answers False
+      and the carried-portal audit passes a site that carries one. Hence drop_prefabs below. The same
+      decode over all 13 plans in this world found exactly this one carried tag and no other.'
     tag_max_len: 10
     note: 'Vanilla pairs portals BY TAG, and MEASURED by FixtureHome from the deployed assembly, Game::FindRandomUnconnectedPortal
       draws UNIFORMLY AT RANDOM among same-tag unconnected portals and re-draws whenever either end loses
@@ -306,6 +318,8 @@ placements:
       ZDOs, worst case two hops between any two sites. Any portal_wood the BODY carries is DROPPED, because
       a captured tag is an unknown tag.'
   portal_tag: u-ashland
+  drop_prefabs:
+  - portal_stone
   blueprint_datum:
     base_y: 1.0
     method: lowest_walkable_surface

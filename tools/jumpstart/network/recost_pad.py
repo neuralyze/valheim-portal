@@ -69,21 +69,32 @@ def manifest_rows() -> dict[str, dict]:
 
 
 def body_rect(place: dict, rows: dict[str, dict]) -> tuple[float, float, str]:
-    """The rectangle to level, and where that shape came from.
+    """The rectangle to level, in WORLD axes, and where that shape came from.
 
-    A placement that declares `requirement.footprint_xz_m` is asking for the
-    BODY's own rectangle -- that is how the four rectangle-padded sites on this
-    world are written. A placement that does not is asking for the square
+    A placement that declares `requirement.footprint_xz_m` is declaring the
+    rectangle, and the DECLARED NUMBERS WIN. Re-deriving them from the library
+    manifest -- which this used to do -- silently substitutes the body's
+    UNROTATED PIVOT box for a world-axis rectangle, and MEASURED on this world
+    those are not the same thing: `salty-dick-portal-hub-final` is 28.2 x 28.1 m
+    by pivot and stands at yaw 135, where its measured collider corners span
+    34.11 x 34.08 m in world axes. Levelling 28.2 x 28.1 m for that body leaves
+    3 m of its footprint on unlevelled ground at each corner, and
+    `network/relocate_pad.py` -- which sizes the clearing cylinder from the same
+    declaration -- would have been sizing it against the wrong shape too.
+
+    A placement that declares no rectangle is asking for the square
     `requirement.footprint_m`, and MEASURED across this tree six of the nine
     presets are written that way, which is why most body swaps do not move the
-    pad at all.
+    pad at all. `rows` is retained because that fallback path still reports the
+    body it was costed for.
     """
     req = place["requirement"]
-    if "footprint_xz_m" in req:
-        row = rows[place["blueprint"]]
-        fx, fz, _fy = (float(v) for v in row["footprint"].split("x"))
-        return fx, fz, "body rectangle (requirement declares footprint_xz_m)"
+    rect = req.get("footprint_xz_m")
+    if rect:
+        return (float(rect[0]), float(rect[1]),
+                "declared requirement.footprint_xz_m (world axes)")
     side = float(req["footprint_m"])
+    _ = rows
     return side, side, "square requirement.footprint_m"
 
 

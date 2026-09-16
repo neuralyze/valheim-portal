@@ -217,7 +217,9 @@ def load_body(place: dict, cx: float, cz: float, pad_y: float, yaw: float):
 def solve_placement(place: dict, preset: dict, n_chests: int,
                     cx: float, cz: float, pad_y: float, yaw: float,
                     pad_half: float, portal_tag: str | None = None,
-                    portal_tag_source: str = "none") -> dict:
+                    portal_tag_source: str = "none",
+                    extra_portal_tags: tuple[str, ...] = (),
+                    props=None) -> dict:
     """Decide WHERE everything goes, before anything is spawned.
 
     Offline and total: every station, extension, prop and chest is either
@@ -229,7 +231,19 @@ def solve_placement(place: dict, preset: dict, n_chests: int,
     `portal_tag` is REQUIRED for a portal to be placed at all. Without it no
     portal is placed and the refusal is in the report: MEASURED from
     assembly_valheim.dll, a blank tag pairs at random with any other blank-tag
-    portal in the world, and this world holds 26 of them in mod world locations.
+    portal, and this world holds 26 of them in mod world locations.
+
+    `extra_portal_tags` are ADDITIONAL portals to stand at THIS site, one per
+    tag, on top of the site's own spoke portal. They exist because a tag with
+    one member is a portal that leads nowhere -- MEASURED from
+    `Game::ConnectPortals`, an unpaired portal simply stays unconnected -- and
+    the far end of every spoke edge in this world is a portal in the HUB's
+    portal room. So the hub site is stocked with its own tag plus one extra per
+    spoke, and every tag in the world then has exactly two members.
+
+    They are solved LAST, after the props and the chest bank, so the `taken`
+    list already holds every other fixture's box and free_spot cannot stand a
+    portal on a bed.
     """
     body = load_body(place, cx, cz, pad_y, yaw)
     index = body.index() if body else None
@@ -247,7 +261,7 @@ def solve_placement(place: dict, preset: dict, n_chests: int,
         "portal": {"tag": portal_tag, "tag_source": portal_tag_source,
                    "problem": fixtures.portal_tag_problem(portal_tag)},
         "stations": [], "props": [], "chests": [], "skipped": [],
-        "preference_unplaceable": [],
+        "extra_portals": [], "preference_unplaceable": [],
     }
 
     def indoor_prefer() -> tuple[float, float] | None:
@@ -473,7 +487,7 @@ def solve_placement(place: dict, preset: dict, n_chests: int,
     # 14 m apart -- MEASURED on pre-bonemass/iron-era-workshop. `carried`
     # could not catch it because neither copy is carried; both are stock's.
     placed_stations = {r["prefab"] for r in out["stations"] if r.get("place")}
-    for prefab, offset, extra_yaw in PROPS:
+    for prefab, offset, extra_yaw in (PROPS if props is None else props):
         if carried.get(prefab):
             out["skipped"].append({"prefab": prefab, "reason": "carried by the blueprint",
                                    "count_in_body": carried[prefab]})
@@ -500,6 +514,65 @@ def solve_placement(place: dict, preset: dict, n_chests: int,
             "place": spot(CHEST_PREFAB,
                           (-((n_chests - 1) * 0.8) + i * 1.6, 12.0), yaw),
         })
+    # --- the far ends of other sites' edges, standing HERE.
+    #
+    # TWO ATTEMPTS, and the order is the design's own words: the hub end belongs
+    # in "the hub's portal room", so it is searched as an INDOOR fixture first
+    # and only then as a WANT_ANY one. A portal is WANT_ANY by declaration
+    # (`PLACEMENT_PREFERENCE`) because a doorway outdoors is not a defect, so
+    # the one-attempt version put every hub end on bare ground -- MEASURED on
+    # `salty-dick-portal-hub-final`, all 11 of them, even though that body has
+    # 305 m2 of indoor covered floor under 4.66-13.45 m of cover and 197
+    # (cell x yaw) spots that take a 3.294 m tall `portal_wood` outright. The
+    # nearest-legal-cell rule simply found open ground first, because the
+    # centroid of a ring-shaped interior is in the courtyard.
+    #
+    # The FALLBACK is deliberate and is not the yard defect: a hub end that is
+    # refused leaves the spoke it answers with a single-member tag, i.e. a
+    # portal that leads nowhere, which is strictly worse than a portal on a
+    # pad. Which of the two happened is recorded per portal.
+    for tag in extra_portal_tags:
+        prefab = "portal_wood"
+        problem = fixtures.portal_tag_problem(tag)
+        if problem:
+            out["extra_portals"].append({"prefab": prefab, "tag": tag,
+                                         "place": None, "refused": problem})
+            out["skipped"].append({"prefab": prefab, "reason": problem,
+                                   "role": "hub_portal", "tag": tag})
+            continue
+        placed = None
+        if body is not None and mask is not None and mask.of_class(
+                fixtures.INDOOR_COVERED):
+            # `prefer` is left at the pad centre ON PURPOSE, and it is the one
+            # knob that matters here. Fitting eleven identical 4.23 x 1.18 m
+            # portals into one room is a PACKING problem, and this search is
+            # greedy: its objective is `wall_gap` and `prefer` only breaks
+            # ties -- of which there are many, because a room has a lot of wall
+            # at the same 0.09 m. MEASURED on `salty-dick-portal-hub-final`,
+            # 305 m2 of interior, eleven tags: tie-breaking from the pad centre
+            # seats 10 indoors, tie-breaking from the interior CENTROID seats 4
+            # and spills 7 onto the pad. Same objective, same constraints, 2.5x
+            # the result -- so the tie-break is chosen by measurement and the
+            # count achieved is reported per portal rather than assumed.
+            placed = fixtures.free_spot(
+                prefab, body, index, (cx, cz), pad_y, pad_half,
+                yaw_deg=yaw, step_m=1.0,
+                yaws=(0.0, 90.0, 180.0, 270.0), headroom_m=0.0,
+                taken=taken, want=fixtures.WANT_INDOOR, mask=mask)
+            if placed and placed.get("box"):
+                taken.append(tuple(placed["box"]))
+        if placed is None:
+            placed = spot(prefab, (0.0, 0.0), yaw,
+                          centre=indoor_prefer() or (cx, cz))
+        if placed is not None:
+            placed["tag"] = tag
+        out["extra_portals"].append({"prefab": prefab, "tag": tag,
+                                     "place": placed,
+                                     "in_portal_room":
+                                         bool(placed)
+                                         and placed.get("class")
+                                         == fixtures.INDOOR_COVERED})
+
     return out
 
 
@@ -527,6 +600,74 @@ def show_container(rc: Rcon, zid: str) -> tuple[int, dict[str, int], int]:
     return slots, totals, int(header.group(1)) if header else slots
 
 
+# One `findObjects` listing line. MEASURED on Ulfsland tonight:
+#
+#   -Prefab: portal_wood Id: 91870:1 Position: (-4672.5 70.91 -325.5) Creator: 0
+#    Health: 400 Portal tag:  (author )
+#
+# The portal's TAG is printed, so the world can be ASKED what a portal holds
+# rather than told. That line was the instrument that proved the pre-existing
+# workshop portal was blank-tagged, and it is the only read-back this pipeline
+# has for a tag: `spawn_object` goes through `consoleCommand`, whose reply is a
+# fixed echo. The tag group is optional so the same pattern reads any prefab.
+OBJECT_LINE_RE = re.compile(
+    r"Prefab:\s*(\S+)\s+Id:\s*(-?\d+:-?\d+)\s+Position:\s*\(([^)]*)\)")
+TAG_FIELD_RE = re.compile(r"Portal tag:\s*(.*?)\s*\(author")
+
+# The resolved prefab names the game can actually spawn, as
+# `to_rcon_plan.py` uses to refuse an unspawnable body piece. Stock had no such
+# check, and MEASURED that cost `pre-queen#mistlands-blackforge-base` three of
+# its four cauldron tiers: the preset asked for `piece_cauldron_ext1_spice`,
+# `piece_cauldron_ext3_butchertable` and `piece_cauldron_ext4_pans`, the real
+# prefabs are `cauldron_ext1_spice`, `cauldron_ext3_butchertable` and
+# `cauldron_ext4_pots`, and `spawn` answered nothing while the report recorded
+# `"id": null` and carried on. A name the game does not know is a station the
+# site silently never gets.
+EVIDENCE_PATH = JUMPSTART / "blueprints" / "data" / "prefab_evidence.json"
+
+
+def unspawnable(prefabs) -> list[str]:
+    """Which of these names the prefab evidence cannot resolve.
+
+    Empty when the evidence file is absent: this is a guard against typos, not
+    a licence to refuse work when the evidence has not been generated, and
+    saying so is cheaper than a mysterious refusal.
+    """
+    if not EVIDENCE_PATH.exists():
+        return []
+    doc = json.loads(EVIDENCE_PATH.read_text())
+    known = doc.get("resolution") or {}
+    return sorted({p for p in prefabs
+                   if known.get(p, "MISSING") == "MISSING"})
+
+
+def find_at(rc: Rcon, prefab: str, x: float, y: float, z: float,
+            half: float = 2.0) -> list[dict]:
+    """Every object of `prefab` inside a `half`-metre cube of this point, with
+    its ZDOID, its position and -- for a portal -- the tag the ZDO holds.
+
+    `half` is small ON PURPOSE. `findObjects`' per-object listing IS the text
+    the plugin hands to `Log.Message` on the Unity main thread BEFORE the
+    4050-byte reply cap applies, so the bounded thing has to be the QUERY: a 2 m
+    cube around a point one fixture was spawned at holds that fixture, and one
+    line cannot wedge anything. `guard()` refuses the unscoped form outright.
+    """
+    reply = rc.command(f"findObjects -prefab {prefab} -near {x:.2f} {y:.2f} "
+                       f"{z:.2f} {half:.2f}")
+    out: list[dict] = []
+    for line in reply.splitlines():
+        found = OBJECT_LINE_RE.search(line)
+        if not found:
+            continue
+        px, py, pz = (float(v) for v in found.group(3).replace(",", " ").split())
+        tag = TAG_FIELD_RE.search(line)
+        out.append({"prefab": found.group(1), "id": found.group(2),
+                    "at": [round(px, 2), round(py, 2), round(pz, 2)],
+                    "tag": tag.group(1) if tag else None,
+                    "distance_m": round(math.dist((x, y, z), (px, py, pz)), 3)})
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--world", default="Ulfsland")
@@ -544,7 +685,48 @@ def main() -> int:
                          "uniformly random other blank-tag portal in the world, and "
                          "Ulfsland holds 26 of them in mod world locations. Falls "
                          "back to the placement's own `portal_tag:` key.")
+    ap.add_argument("--hub-portal-tag", action="append", default=[],
+                    metavar="TAG",
+                    help="an ADDITIONAL portal to stand at this site, carrying "
+                         "this tag; repeatable. This is how the FAR END of "
+                         "another site's edge gets built: every spoke tag needs "
+                         "exactly two members or the spoke leads nowhere.")
+    ap.add_argument("--skip-portals", action="store_true",
+                    help="solve exactly as normal -- so every other fixture lands "
+                         "in the same place it otherwise would -- but spawn no "
+                         "portal piece. For when the far end of the edge does not "
+                         "exist yet: a one-ended tag is the defect, so the portal "
+                         "waits rather than shipping half a pair.")
+    ap.add_argument("--only-portals", action="store_true",
+                    help="the other half of --skip-portals: same solve, spawn ONLY "
+                         "the portal pieces, place and fill no chests. Run once "
+                         "both ends can be built. The solve is deterministic for a "
+                         "given site, so the position a portal gets here is the one "
+                         "the earlier --skip-portals run reserved for it.")
+    ap.add_argument("--repair", action="store_true",
+                    help="solve as normal, then READ THE WORLD at every solved "
+                         "position and spawn only what is not already there. For "
+                         "a site already stocked: re-running plain would double "
+                         "every fixture, and doing nothing leaves whatever failed "
+                         "to spawn missing. Chests are never re-placed or "
+                         "re-filled in this mode.")
+    ap.add_argument("--probe-half", type=float, default=1.5,
+                    help="half-edge of the cube --repair looks in for an already "
+                         "placed fixture. Small because findObjects' listing is "
+                         "logged on the Unity main thread before truncation.")
+    ap.add_argument("--scope", choices=("full", "portal_only"), default=None,
+                    help="what this SITE gets, as opposed to what this RUN "
+                         "spawns. `portal_only` is for a terminus: a site whose "
+                         "body is a portal shack and which should never carry a "
+                         "station ladder. MEASURED case: "
+                         "pre-kall#deepnorth-landing-portal is a 133-piece 4x7 m "
+                         "shack, and the pre-kall ladder would stand 16 stations, "
+                         "13 extensions, two beds, a fire pit, a maypole and six "
+                         "chests in the snow around it. Defaults to the "
+                         "placement's own `stock_scope:` key, then to `full`.")
     args = ap.parse_args()
+    if args.skip_portals and args.only_portals:
+        ap.error("--skip-portals and --only-portals are opposites; pick one")
 
     place = load_placement(args.world, args.preset, args.id)
     solved = place["solved"]
@@ -557,6 +739,20 @@ def main() -> int:
     items = dict(manifest.get("items") or {})
     pad_half = float((place.get("requirement") or {}).get("footprint_m") or 70.0) / 2.0
 
+    # SCOPE, resolved before anything is solved. `portal_only` empties the
+    # station ladder and the prop list rather than filtering at spawn time, so
+    # the PLAN and the audit describe what the site gets -- a report that
+    # solves 30 fixtures and then spawns one is a report nobody can read.
+    scope = args.scope or place.get("stock_scope") or "full"
+    if scope not in ("full", "portal_only"):
+        raise SystemExit(f"placement {args.id} declares stock_scope={scope!r}, "
+                         f"which is neither `full` nor `portal_only`")
+    if scope == "portal_only":
+        preset = dict(preset, stations=[
+            s for s in (preset.get("stations") or [])
+            if fixtures.is_portal(s["prefab"])])
+        items = {}
+
     report: dict = {"site": args.id, "preset": args.preset, "centre": [cx, cz],
                     "y": base_y, "yaw": yaw, "stations": [], "props": [], "chests": []}
 
@@ -564,7 +760,8 @@ def main() -> int:
     # needs one slot per max-stack, so the bank is sized on estimated STACKS (50 units
     # is the common material stack) and not on the number of item kinds.
     est_stacks = sum(max(1, -(-int(c) // 50)) for c in items.values())
-    n_chests = args.chests or max(2, -(-est_stacks // 18))
+    n_chests = (0 if scope == "portal_only"
+                else args.chests or max(2, -(-est_stacks // 18)))
 
     # Decide everything first, then audit the decision, then spawn. The audit is
     # the guard the operator had to act as: 12 of the 18 fixtures this file used
@@ -579,7 +776,10 @@ def main() -> int:
     # the guard the operator had to act as: 12 of the 18 fixtures this file used
     # to place stood inside the building, and no check said so.
     plan = solve_placement(place, preset, n_chests, cx, cz, base_y, yaw, pad_half,
-                           portal_tag=portal_tag, portal_tag_source=portal_tag_source)
+                           portal_tag=portal_tag, portal_tag_source=portal_tag_source,
+                           extra_portal_tags=tuple(args.hub_portal_tag),
+                           props=[] if scope == "portal_only" else None)
+    report["scope"] = scope
     report["plan"] = plan
     report["portal_tag"] = portal_tag
     to_place: list[tuple[str, dict]] = []
@@ -624,7 +824,35 @@ def main() -> int:
             to_place.append(("chest", dict(row["place"], prefab=row["prefab"])))
         else:
             cannot_place(row["prefab"], "chest")
+    for row in plan["extra_portals"]:
+        if row["place"]:
+            to_place.append(("hub_portal",
+                             dict(row["place"], prefab=row["prefab"])))
+        else:
+            # FATAL regardless of preference: a hub end that does not get built
+            # leaves the spoke it answers with a single-member tag, and a
+            # single-member tag is a portal that leads nowhere.
+            unplaceable.append({"prefab": row["prefab"], "role": "hub_portal",
+                                "want": fixtures.preference(row["prefab"]),
+                                "tag": row["tag"], "fatal": True,
+                                **({"refused": row["refused"]}
+                                   if row.get("refused") else {})})
     report["unplaceable"] = unplaceable
+
+    # A NAME THE GAME DOES NOT KNOW, caught offline. Refused rather than
+    # warned, because the failure mode it replaces is silence: `spawn` answers
+    # nothing, `spawn()` returns None, the report records `"id": null`, and the
+    # site is simply missing a station nobody notices until a player tries to
+    # cook with it.
+    report["unspawnable_prefabs"] = unspawnable(p["prefab"] for _r, p in to_place)
+    if report["unspawnable_prefabs"]:
+        print(json.dumps(report, indent=1))
+        for name in report["unspawnable_prefabs"]:
+            print(f"  PREFAB THE GAME CANNOT SPAWN: {name} is not resolvable in "
+                  f"{EVIDENCE_PATH.name}", file=sys.stderr)
+        raise SystemExit("refusing to spawn: a fixture names a prefab the game "
+                         "does not have, so it would be silently absent from the "
+                         "site. Fix the name in the preset.")
 
     body = load_body(place, cx, cz, base_y, yaw)
     if body is not None:
@@ -684,30 +912,100 @@ def main() -> int:
             Path(args.report).write_text(json.dumps(report, indent=1))
         return 0
 
+    # WHICH of the solved fixtures this run actually spawns. The SOLVE is
+    # untouched by the phase -- every position, including the portal's, is
+    # decided from the same deterministic search over the same `taken` list --
+    # so a `--skip-portals` run and a later `--only-portals` run agree on where
+    # everything stands. Filtering at spawn time rather than at solve time is
+    # the whole reason the two halves compose.
+    def in_phase(prefab: str) -> bool:
+        if args.skip_portals:
+            return not fixtures.is_portal(prefab)
+        if args.only_portals:
+            return fixtures.is_portal(prefab)
+        return True
+
+    report["phase"] = ("skip_portals" if args.skip_portals
+                       else "only_portals" if args.only_portals else "all")
+    report["not_spawned_this_phase"] = [
+        {"prefab": p["prefab"], "role": role, "tag": p.get("tag"),
+         "at": [round(p["x"], 2), round(p["y"], 2), round(p["z"], 2)]}
+        for role, p in to_place if not in_phase(p["prefab"])]
+    spawn_list = [(role, p) for role, p in to_place if in_phase(p["prefab"])]
+
     with Rcon(timeout=30.0) as rc:
         chest_ids: list[str] = []
-        for role, p in to_place:
+        portals_spawned: list[dict] = []
+        spawn_failures: list[dict] = []
+
+        # --- REPAIR: ask the world what is already standing, and spawn only the
+        #     rest. The alternative to this mode is a choice between doubling a
+        #     site's fixtures and leaving a failed spawn missing forever, and
+        #     both of those have happened.
+        if args.repair:
+            already: list[dict] = []
+            keep: list = []
+            for role, p in spawn_list:
+                if role == "chest":
+                    already.append({"prefab": p["prefab"], "role": role,
+                                    "skipped": "chests are never re-placed by "
+                                               "--repair"})
+                    continue
+                found = find_at(rc, p["prefab"], p["x"], p["y"], p["z"],
+                                args.probe_half)
+                if found:
+                    already.append({
+                        "prefab": p["prefab"], "role": role,
+                        "id": found[0]["id"], "at": found[0]["at"],
+                        "tag": found[0]["tag"],
+                        "distance_m": found[0]["distance_m"]})
+                else:
+                    keep.append((role, p))
+                time.sleep(0.15)
+            report["repair_already_present"] = already
+            report["repair_to_spawn"] = [
+                {"prefab": p["prefab"], "role": role, "tag": p.get("tag"),
+                 "at": [round(p["x"], 2), round(p["y"], 2), round(p["z"], 2)]}
+                for role, p in keep]
+            spawn_list = keep
+            print(f"repair: {len(already)} already standing, "
+                  f"{len(keep)} to spawn", file=sys.stderr)
+
+        for role, p in spawn_list:
             if fixtures.is_portal(p["prefab"]) and p.get("tag"):
                 # A TAGGED portal cannot go through ValheimRcon's `spawn` verb:
                 # it takes no data payload, so it can only ever produce the
                 # blank-tag portal that caused the defect. `spawn_object` does,
                 # and MEASURED by BulkPlace this is the bounded-reply shape --
                 # `consoleCommand` answers a fixed "executed." string, so it is
-                # also the reason the ZDOID is not read back here.
+                # also the reason the ZDOID is not read back here. The tag is
+                # read back from the WORLD after the batch instead.
                 rc.console(fixtures.portal_spawn_command(
                     p["prefab"], p["x"], p["y"], p["z"], p.get("yaw", 0.0),
                     p["tag"]))
-                report["props"].append({
+                entry = {
                     "prefab": p["prefab"], "id": None, "tag": p["tag"],
+                    "role": role,
                     "at": [round(p["x"], 2), round(p["y"], 2), round(p["z"], 2)],
                     "offset": p.get("offset"), "clearance_m": p.get("clearance_m"),
                     "note": "spawn_object carries the tag; consoleCommand's reply is "
-                            "a fixed echo, so no ZDOID is read back"})
+                            "a fixed echo, so the tag is read back from the world"}
+                report["props"].append(entry)
+                portals_spawned.append(dict(entry, want_x=p["x"], want_y=p["y"],
+                                            want_z=p["z"]))
                 continue
             oid = spawn(rc, p["prefab"], p["x"], p["y"], p["z"], p.get("yaw", 0.0))
             entry = {"prefab": p["prefab"], "id": oid,
                      "at": [round(p["x"], 2), round(p["y"], 2), round(p["z"], 2)],
                      "offset": p.get("offset"), "clearance_m": p.get("clearance_m")}
+            if oid is None:
+                # `spawn` answered without a ZDOID, so nothing was created. Only
+                # the CHEST branch used to notice, which is how three cauldron
+                # extensions came back `"id": null` at
+                # `mistlands-blackforge-base` and stayed absent from the world
+                # with a zero exit status.
+                entry["spawn_failed"] = True
+                spawn_failures.append(dict(entry, role=role))
             if role == "chest":
                 if oid:
                     chest_ids.append(oid)
@@ -717,6 +1015,57 @@ def main() -> int:
                 report["stations"].append(dict(entry, role=role))
         report["owned_by_blueprint"] = plan["carried_by_blueprint"]
         report["not_placed_because_the_blueprint_carries_them"] = plan["skipped"]
+        report["spawn_failures"] = spawn_failures
+        for f in spawn_failures:
+            print(f"  SPAWN PRODUCED NO OBJECT: {f['prefab']} ({f['role']}) at "
+                  f"{f['at']} -- the verb answered with no ZDOID, so nothing was "
+                  f"created", file=sys.stderr)
+
+        # --- read every spawned portal's tag OUT OF THE WORLD.
+        #
+        # The acceptance question is not "did we send the right base64" but
+        # "what does the ZDO hold", and MEASURED on Ulfsland tonight
+        # `findObjects` prints it: `-Prefab: portal_wood Id: 91870:1 Position:
+        # (...) Creator: 0 Health: 400 Portal tag:  (author )`. A 2 m cube
+        # around a known point matches exactly one portal, so the reply is one
+        # line -- which matters, because `findObjects`' listing IS the logged
+        # text and an unbounded one wedges the main thread.
+        if portals_spawned:
+            checks = []
+            for entry in portals_spawned:
+                found = find_at(rc, entry["prefab"], entry["want_x"],
+                                entry["want_y"], entry["want_z"])
+                mine = [f for f in found if f["distance_m"] <= 1.0]
+                checks.append({
+                    "prefab": entry["prefab"], "wanted_tag": entry["tag"],
+                    "at": entry["at"], "role": entry["role"],
+                    "found": found,
+                    "tag_in_world": mine[0]["tag"] if mine else None,
+                    "id": mine[0]["id"] if mine else None,
+                    "matches": bool(mine) and mine[0]["tag"] == entry["tag"],
+                    "tag_len": len(entry["tag"]),
+                    "within_tag_cap": len(entry["tag"]) <= fixtures.PORTAL_TAG_MAX_CHARS,
+                })
+                time.sleep(0.2)
+            report["portal_verification"] = checks
+            bad = [c for c in checks if not c["matches"]]
+            for c in bad:
+                print(f"  PORTAL TAG NOT IN THE WORLD: wanted {c['wanted_tag']!r} at "
+                      f"{c['at']}, world holds {c['tag_in_world']!r}", file=sys.stderr)
+            report["portal_verification_ok"] = not bad
+
+        if args.only_portals or args.repair or scope == "portal_only":
+            # Nothing else belongs here. For the two PHASES the chests were
+            # placed and filled by the run that stocked the site, and re-placing
+            # them would double the bank. For `portal_only` SCOPE there is no
+            # bank at all and no manifest to fill it from, so an empty
+            # `chest_ids` is the correct answer rather than a failure.
+            rc.command("save")
+            time.sleep(1)
+            print(json.dumps(report, indent=1))
+            if args.report:
+                Path(args.report).write_text(json.dumps(report, indent=1))
+            return 1 if spawn_failures else 0
         if not chest_ids:
             raise SystemExit("no chests placed")
 
@@ -730,33 +1079,43 @@ def main() -> int:
         # size that item actually took, then repeat until the manifest figure is met.
         # Capacity is discovered the same way - the chest refuses when it is full.
         pending = [(name, int(count)) for name, count in sorted(items.items())]
-        chest = 0
+        # A PER-ITEM SEARCH OVER EVERY CHEST, not one advancing cursor. The
+        # cursor was monotonic: the first item that filled a chest moved it on
+        # permanently, so every later item started from the new chest and the
+        # earlier ones were never offered another line. MEASURED on
+        # `pre-elder#blackforest-walled-base` and `pre-elder#early-dock`: 300
+        # Wood reported as overflow while all three chests held 19, 22 and 19
+        # slots -- none of them full. A chest that refuses ONE item is not a
+        # chest that is full, it is a chest with no free slot for THAT stack.
         requested: dict[str, dict[str, int]] = {z: {} for z in chest_ids}
         overflow: list[list] = []
         errors: list[list] = []
         for name, target in pending:
             remaining = target
             guard = 0
+            full: set[str] = set()
             while remaining > 0 and guard < 64:
                 guard += 1
-                if chest >= len(chest_ids):
+                open_chests = [z for z in chest_ids if z not in full]
+                if not open_chests:
                     overflow.append([name, remaining])
                     break
-                zid = chest_ids[chest]
+                zid = open_chests[0]
                 before = show_container(rc, zid)[1].get(name, 0)
                 reply = rc.command(
                     f"addItemToContainer {zid} {name} -count {remaining}").strip()
                 if not ADDED_RE.search(reply):
                     if "Failed to add item" in reply:
-                        chest += 1
+                        full.add(zid)
                         continue
                     errors.append([name, reply.splitlines()[0][:140]])
                     break
                 after = show_container(rc, zid)[1].get(name, 0)
                 gained = after - before
                 if gained <= 0:
-                    # Reported success but nothing landed: the grid is full.
-                    chest += 1
+                    # Reported success but nothing landed: no free slot here for
+                    # this item. Another chest may still have one.
+                    full.add(zid)
                     continue
                 requested[zid][name] = requested[zid].get(name, 0) + gained
                 remaining -= gained

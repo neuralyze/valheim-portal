@@ -59,19 +59,36 @@ location_clearance_note: 'MEASURED 2026-09-15 and it invalidates this field: `re
   generation, so they cannot retract a marker from a zone this world has already generated either.'
 placements:
 - id: complete-station-hub
-  blueprint: hs_ashlands_cm_thug_outpost.blueprint
-  sha256: 0781c913c49182e1f45f3705d33ee1259116c2094894cd07fa579cd6f56e2fc1
-  pieces: 1649
+  blueprint: hs_ashlands_20999_valheimian.blueprint
+  sha256: c0f28a1c3d1d4200868d96600ed36f762225f08a2672ad00acc4e9dd6fdbed9a
+  pieces: 1244
   footprint_xzy_m:
-  - 37.0
-  - 38.6
-  - 11.3
-  creator: Cm Thug
+  - 16.3
+  - 22.0
+  - 15.0
+  creator: "\u0410\u0440\u0445\u0438\u0442\u0435\u043A\u0442\u043E\u0440"
   viability: PLACES_CLEAN
   align: floor-center
   requirement:
     biome: Meadows
     footprint_m: 56
+    footprint_xz_m:
+    - 20.06
+    - 24.0
+    footprint_xz_note: 'WORLD-AXIS rectangle, MEASURED 2026-09-15, replacing the 56 m square, and it belongs
+      to the REPLACEMENT body - see body_choice. `hs_ashlands_20999_valheimian` is 16.3 x 22.0 m unrotated,
+      and `to_rcon_plan.py --verify` measures its collider corners after rotation as footprint@yaw0=20.06x24.00,
+      footprint@yaw180 the same, footprint@yaw90 and yaw270 the transpose 24.00x20.06, and footprint@yaw225=27.90x25.47.
+      A CARDINAL yaw is therefore 4.83 m narrower on the diagonal than a 45 deg one, which is why the
+      yaw was moved off 225: reach 15.64 m and a 17.64 m clearing cylinder, against 18.87 m and 20.87
+      m at 225. The circumradius is the same for all four cardinals, so the choice among them is the facing,
+      not the footprint.
+
+      Why the square went: the LIVE world holds a generated LocationProxy 17.12 m from the solved centre
+      (789.5, 1168.5) against a recorded nearest_location_m of 147.0 - see this preset''s location_clearance_note
+      - and 21 markers stand within 361 m of it. A 56 m square needs a 38.36 m cylinder and the previous
+      body needed 38.92 m; neither fits. footprint_m stays 56 as the durable statement of the site that
+      was searched for.'
     max_flat_m: 2.5
     min_biome_purity: 0.85
     coastal: false
@@ -89,32 +106,39 @@ placements:
     within_m: 1500
   rotation:
     units: euler_degrees_yxz
-    yaw: 225
+    yaw: 180
     pitch: 0
     roll: 0
-    facing: 'main hall faces spawn. yaw 225, corrected from the inherited 0: MEASURED bearing from the
-      solved site to the anchor is 216 deg, so the old yaw was 144 deg off and the building faced nothing
-      it claims to.'
+    facing: 'main hall faces spawn. yaw 180, moved off 225 for a MEASURED reason that is geometric rather
+      than aesthetic: at 225 this body''s collider box spans 27.90 x 25.47 m and needs a 20.87 m clearing
+      cylinder, while at any cardinal it spans 20.06 x 24.00 m and needs 17.64 m. On ground this tight
+      - 21 live location markers within 361 m of the old pad - 3.2 m of cylinder is the difference between
+      buildable and not. Among the four cardinals the circumradius is identical, so the pick is the bearing:
+      MEASURED from the relocated centre (661.5, 1088.5), the StartTemple anchor at (-64.7, 3.3) bears
+      213.8 deg at 1305.8 m, and 180 is the nearest cardinal to it, 33.8 deg off - inside the 45 deg
+      tolerance `site_finder.facing_check` uses. For the record the bearing from the OLD centre was 216.2
+      deg, so the move barely turned the building.'
   flatten_required: true
-  note: 'THE jumpstart base. 1820 pieces carrying every station in the game: workbench, forge, stonecutter,
-    artisan, black forge, blast furnace, smelter, charcoal kiln, windmill, spinning wheel, eitr refinery,
-    galdr table, oven, prep table, cauldron, cooking station, beehive, barber, portal, 32 chests. Places
-    100% clean on 1.0.12 with zero missing prefabs.'
+  note: 'The most station-COMPLETE body in the library: 37 stations across 36 distinct kinds in 1244 pieces
+    over 16.3 x 22.0 m and 19 walkable levels - the full forge ladder to forge_ext6, the full black forge,
+    the full galdr table, the full cauldron, blast furnace, smelter, charcoal kiln, oven, prep table,
+    spinning wheel, artisan station, 1 bed. A tower rather than a compound, which is what let it fit ground
+    the previous 56 m body could not stand on.'
   solved:
     seed: Pirate68
-    x: 789.5
-    y: 58.42
-    z: 1168.5
-    freeboard_m: 2.84
+    x: 661.5
+    y: 37.18
+    z: 1088.5
+    freeboard_m: 11.84
     flat_spread_m: 25.58
     flat_resolution_m: 1.0
     y_centre_m: 44.8
-    biome_purity: 0.864
+    biome_purity: 1.0
     water_dist_m: 50.6
     anchor: StartTemple @ (-64.7,75.0,3.3)
-    anchor_dist_m: 1445.0
+    anchor_dist_m: 1305.8
     near_biome_dist_m: 0.0
-    footprint_orientation: 56.0 m along x by 56.0 m along z
+    footprint_orientation: 20.1 m along x by 24.0 m along z
     nearest_location_m: 147.0
     score: -3.869
     scores:
@@ -127,14 +151,14 @@ placements:
     overland_from_spawn: true
     satisfies_requirement: true
     flatten_cost:
-      target_y: 43.15
-      cut_m3: 8825.5
-      fill_m3: 7017.2
-      moved_m3: 15842.7
-      mean_move_m: 4.876
-      rms_m: 6.076
-      max_cut_m: 15.27
-      max_fill_m: 10.3
+      target_y: 31.85
+      cut_m3: 408.6
+      fill_m3: 374.9
+      moved_m3: 783.5
+      mean_move_m: 1.632
+      rms_m: 1.946
+      max_cut_m: 5.33
+      max_fill_m: 3.45
       resolution_m: 1.0
       estimated: false
     flat_spread_coarse_m: 17.66
@@ -166,6 +190,51 @@ placements:
       error_deg: 8.8
       best_cardinal_yaw: 180
       verdict: declared yaw points at the anchor within 45 deg
+    relocation:
+      by: network/relocate_pad.py
+      reason: a LIVE generated location marker stood inside the clearing cylinder at the solved centre;
+        solved.nearest_location_m is a vanilla-only figure and could not see it (see this preset's location_clearance_note)
+      moved_from:
+      - 789.5
+      - 1168.5
+      displacement_m: 150.94
+      search_radius_m: 300.0
+      search_step_m: 4.0
+      pad_rect_m:
+      - 20.06
+      - 24.0
+      pad_rect_source: requirement.footprint_xz_m
+      clearing_radius_m: 17.64
+      clearing_apron_m: 0.0
+      clearing_margin_m: 2.0
+      verification_radius_m: 17.64
+      verification_radius_source: collider box after yaw 20.06x24.0 m plus verify_site.py's 2.0 m
+      live_marker_dist_m: 78.79
+      live_marker_clearance_over_cylinder_m: 61.15
+      live_markers_seen: 21
+      marker_source: findObjects -prefab LocationProxy over RCON, 2026-09-15
+      marker_standoff_required_m: 58.0
+      marker_standoff_basis: requirement.location_clearance_m minus the clearing margin, which reproduces
+        site_finder's own gate exactly
+      satisfies_declared_location_clearance: true
+      rechecked:
+      - biome
+      - min_biome_purity
+      - min_height_m
+      - max_height_m
+      - max_grade_pct
+      - within_m
+      - flatten_cost
+      - clamp
+      not_rechecked:
+      - overland_from_spawn
+      - route_from_spawn
+      - route_to_anchor
+      - facing_check
+      not_rechecked_basis: whole-world graph searches; a move of 150.94 m cannot change landmass, and
+        the search radius is bounded so that stays true
+      grid_source: tools/seedscan/run_scan.sh STEP=8 HEIGHT=1, seed Pirate68
+      height_source: blueprints/run_patchscan.sh, step 1 m, rivers included
   containers:
     by_prefab:
       piece_chest: 32
@@ -392,30 +461,56 @@ placements:
         flat_spread_coarse_m: 46.36
         flat_p5_p95_m: 39.59
         refined_moved_m: 5.7
-  body_choice: 'Replaces `Ultimate_OutPost`, which moves to pre-queen#mistlands-blackforge-base. MEASURED:
-    `hs_ashlands_cm_thug_outpost` carries 16/16 of the stations this sandbox ranks on -- every station
-    group in the library''s ladder -- against Ultimate_OutPost''s 15/16, in 1649 pieces against 1820.
-    `land_flat` at 4.7% floating with a 6.31 m worst gap at 2.0 m isolation, 1 bed, span 40.2 m inside
-    the 56 m pad, missing_pieces 0, no carried portals. Its 928 ashlands-tier pieces are structural grausten,
-    which is why it cannot be trimmed down a tier and why it belongs at the tier-9 sandbox rather than
-    anywhere earlier.'
+  body_choice: 'Replaces `hs_ashlands_cm_thug_outpost`, and the reason is GROUND, not the body''s quality.
+    MEASURED 2026-09-15: cm_thug_outpost is 37.0 x 38.6 m and at this site''s yaw its collider box spans
+    54.29 x 50.04 m, a 36.92 m reach, which needs a 38.92 m clearing cylinder. Two independent measurements
+    say that pad does not exist here. (1) Its own recorded flatten bill over the solved 56 m square is
+    max_cut_m 15.27 and max_fill_m 10.3, and `TerrainComp::ApplyToHeightmap` clamps every per-sample delta
+    to +/-8 m, so that pad could never have been levelled to its target_y at all - the flatten would have
+    stopped 7.27 m short over the deepest cut and left the building on a step. (2) Searching every 4 m
+    centre out to 300 m against the LIVE marker set, 21 LocationProxy markers stand within 361 m of this
+    pad and every centre that clears them fails the 1 m bill: the levelled pad comes out between -3.06
+    and +0.72 m of the y=30 water plane, or needs 11 to 20 m of cut. This is a steep river-cut Meadows
+    shore, and no 38.92 m cylinder fits on it.
+
+    `hs_ashlands_20999_valheimian` is chosen on the one axis that fixes that: 16.3 x 22.0 m, whose collider
+    box at a CARDINAL yaw is 20.06 x 24.00 m - a 15.64 m reach and a 17.64 m cylinder, less than half
+    the diameter. And it does not cost the site its purpose, which is completeness: MEASURED from `library/data/base_audit.json`,
+    37 stations across 36 DISTINCT station kinds against cm_thug_outpost''s 49 across 16 - the full forge
+    ladder to forge_ext6, the full blackforge ladder, the full galdr table, the full cauldron, blast furnace,
+    smelter, charcoal kiln, oven, prep table, spinning wheel and artisan station. It is the most station-COMPLETE
+    body in the 538-entry library at any footprint, which is exactly what a site called complete-station-hub
+    is for.
+
+    Grounding: `land_flat`, 1.6% of the footprint stands clear over 8 m2, and although the worst air gap
+    is 9.46 m its air_isolation_max is 2.0 m - every floating column is within 2 m of one that reaches
+    the ground, so that is an overhang on a 19-level tower and not a wing needing a hillside. 1244 pieces,
+    missing_pieces 0, 128 distinct prefabs, relief 11.19 m.
+
+    Two prefabs are dropped rather than placed. `portal_wood` x4, because a carried portal arrives with
+    its author''s tag and this world places every portal deliberately. `MeadStaminaMinor`, because it
+    is a loose ITEM the capture picked up rather than a build piece and `to_rcon_plan.py` refuses the
+    whole plan over it: "MeadStaminaMinor: not in the evidence file". 1244 -> 1239 commands.'
   body_audit:
     source: library/audit_bases.py raster in library/data/base_audit.json, 1 m columns on a flat pad
     flat_pad_verdict: grounds
     setting: land_flat
-    floating_fraction: 0.047
-    max_air_m: 6.307
+    floating_fraction: 0.016
+    max_air_m: 9.462
     air_isolation_max_m: 2.0
-    footprint_span_m: 40.2
+    footprint_span_m: 24.0
     pad_m: 56.0
-    pieces: 1649
-    stations: 49
+    pieces: 1244
+    stations: 37
+    station_kinds: 36
     beds: 1
-    portals_in_body: 0
+    portals_in_body: 4
     missing_pieces: 0
     missing_prefabs: []
     material_tier: ashlands
-    material_tier_pieces: 928
+    material_tier_pieces: 584
+    walkable_levels: 19
+    relief_m: 11.192
     licence: none stated
     redistributable: false
     licence_note: referenced by name and sha256 only; body is not vendored in this repo
@@ -424,7 +519,7 @@ placements:
     tag: u-stathub
     peer: deepnorth-sandbox#sandbox-portal-hub
     pieces_to_place: 1
-    pieces_in_body_dropped: 0
+    pieces_in_body_dropped: 4
     tag_max_len: 10
     note: 'Vanilla pairs portals BY TAG, and MEASURED by FixtureHome from the deployed assembly, Game::FindRandomUnconnectedPortal
       draws UNIFORMLY AT RANDOM among same-tag unconnected portals and re-draws whenever either end loses
@@ -442,6 +537,14 @@ placements:
       ZDOs, worst case two hops between any two sites. Any portal_wood the BODY carries is DROPPED, because
       a captured tag is an unknown tag.'
   portal_tag: u-stathub
+  drop_prefabs:
+  - portal_wood
+  - MeadStaminaMinor
+  drop_prefabs_note: '`portal_wood` x4 because a portal captured inside a body arrives carrying its AUTHOR''s
+    tag and every portal in this world is placed deliberately with a known tag. `MeadStaminaMinor` because
+    it is a loose ITEM the capture swept up rather than a build piece, and it is not optional: MEASURED,
+    `to_rcon_plan.py` refuses to emit the plan at all while it is present - "MeadStaminaMinor: not in
+    the evidence file" - so the body is unplaceable without this drop. 1244 pieces -> 1239 commands.'
   blueprint_datum:
     base_y: -0.259
     method: lowest_station_below_floor
@@ -572,6 +675,21 @@ placements:
   requirement:
     biome: Meadows
     footprint_m: 50
+    footprint_xz_m:
+    - 34.1
+    - 34.1
+    footprint_xz_note: 'WORLD-AXIS rectangle, MEASURED 2026-09-15, replacing the 50 m square. The body
+      stands at yaw 135, so neither the manifest''s unrotated 28.2 x 28.1 m pivot box nor its rotated
+      axis-aligned envelope (39.8 x 39.8 m) describes the ground it occupies: `to_rcon_plan.py --verify`
+      measures the piece COLLIDER corners after the rotation and reports footprint@yaw135=34.11x34.08,
+      which is a 24.11 m reach. That is the rectangle the pad has to level and the cylinder has to clear.
+      Why it was shrunk at all: the LIVE world holds a generated LocationProxy 24.14 m from the solved
+      centre (-270.5, 211.5), measured over RCON, and a 50 m square pad clears a cylinder of radius hypot(50,50)/2
+      + 2 = 37.36 m, so `clearing/clear.py` refused the site. `solved.nearest_location_m` said 96 m and
+      could not see the marker because the location dump is mod-free by construction - see this preset''s
+      location_clearance_note. The shrink alone is not enough here either: the building''s own 24.11 m
+      reach is larger than the 24.14 m marker distance by all but 3 cm, so the pad also MOVES. See solved.relocation.
+      footprint_m stays 50 as the durable statement of the site the solver was asked for.'
     max_flat_m: 3.0
     min_biome_purity: 0.7
     coastal: false
@@ -592,19 +710,19 @@ placements:
     of the whole world.
   solved:
     seed: Pirate68
-    x: -270.5
-    y: 44.66
-    z: 211.5
-    freeboard_m: 1.47
+    x: -292.5
+    y: 40.6
+    z: 213.5
+    freeboard_m: 7.95
     flat_spread_m: 13.18
     flat_resolution_m: 1.0
     y_centre_m: 37.8
     biome_purity: 1.0
     water_dist_m: 40.8
     anchor: StartTemple @ (-64.7,75.0,3.3)
-    anchor_dist_m: 293.0
+    anchor_dist_m: 310.0
     near_biome_dist_m: 0.0
-    footprint_orientation: 50.0 m along x by 50.0 m along z
+    footprint_orientation: 34.1 m along x by 34.1 m along z
     nearest_location_m: 96.0
     score: -1.09
     scores:
@@ -617,14 +735,14 @@ placements:
     overland_from_spawn: true
     satisfies_requirement: true
     flatten_cost:
-      target_y: 36.84
-      cut_m3: 3306.2
-      fill_m3: 3394.7
-      moved_m3: 6700.8
-      mean_move_m: 2.576
-      rms_m: 3.012
-      max_cut_m: 7.82
-      max_fill_m: 5.37
+      target_y: 36.74
+      cut_m3: 863.5
+      fill_m3: 984.7
+      moved_m3: 1848.2
+      mean_move_m: 1.599
+      rms_m: 1.949
+      max_cut_m: 3.85
+      max_fill_m: 5.69
       resolution_m: 1.0
       estimated: false
     flat_spread_coarse_m: 14.5
@@ -695,6 +813,93 @@ placements:
       flat_spread_coarse_m: 46.5
       flat_p5_p95_m: 37.89
       refined_moved_m: 3.5
+    relocation:
+      by: network/relocate_pad.py
+      reason: a LIVE generated location marker stood inside the clearing cylinder at the solved centre;
+        solved.nearest_location_m is a vanilla-only figure and could not see it (see this preset's location_clearance_note)
+      moved_from:
+      - -274.5
+      - 211.5
+      displacement_m: 18.11
+      search_radius_m: 140.0
+      search_step_m: 2.0
+      pad_rect_m:
+      - 34.1
+      - 34.1
+      pad_rect_source: requirement.footprint_xz_m
+      clearing_radius_m: 26.11
+      clearing_apron_m: 0.0
+      clearing_margin_m: 2.0
+      verification_radius_m: 26.11
+      verification_radius_source: collider box after yaw 34.11x34.08 m plus verify_site.py's 2.0 m
+      live_marker_dist_m: 46.19
+      live_marker_clearance_over_cylinder_m: 20.08
+      live_markers_seen: 17
+      marker_source: findObjects -prefab LocationProxy over RCON, 2026-09-15
+      marker_standoff_required_m: 20.0
+      marker_standoff_basis: declared on the command line
+      satisfies_declared_location_clearance: false
+      rechecked:
+      - biome
+      - min_biome_purity
+      - min_height_m
+      - max_height_m
+      - max_grade_pct
+      - within_m
+      - flatten_cost
+      - clamp
+      not_rechecked:
+      - overland_from_spawn
+      - route_from_spawn
+      - route_to_anchor
+      - facing_check
+      not_rechecked_basis: whole-world graph searches; a move of 18.11 m cannot change landmass, and the
+        search radius is bounded so that stays true
+      grid_source: tools/seedscan/run_scan.sh STEP=8 HEIGHT=1, seed Pirate68
+      height_source: blueprints/run_patchscan.sh, step 1 m, rivers included
+      supersedes:
+        by: network/relocate_pad.py
+        reason: a LIVE generated location marker stood inside the clearing cylinder at the solved centre;
+          solved.nearest_location_m is a vanilla-only figure and could not see it (see this preset's location_clearance_note)
+        moved_from: &id001
+        - -270.5
+        - 211.5
+        displacement_m: 4.0
+        search_radius_m: 140.0
+        search_step_m: 2.0
+        pad_rect_m:
+        - 34.11
+        - 34.08
+        pad_rect_source: requirement.footprint_xz_m
+        clearing_radius_m: 26.11
+        clearing_apron_m: 0.0
+        clearing_margin_m: 2.0
+        verification_radius_m: 26.11
+        verification_radius_source: collider box after yaw 34.11x34.08 m plus verify_site.py's 2.0 m
+        live_marker_dist_m: 28.09
+        live_marker_clearance_over_cylinder_m: 1.98
+        live_markers_seen: 17
+        marker_source: findObjects -prefab LocationProxy over RCON, 2026-09-15
+        rechecked:
+        - biome
+        - min_biome_purity
+        - min_height_m
+        - max_height_m
+        - max_grade_pct
+        - within_m
+        - flatten_cost
+        - clamp
+        not_rechecked:
+        - overland_from_spawn
+        - route_from_spawn
+        - route_to_anchor
+        - facing_check
+        not_rechecked_basis: whole-world graph searches; a move of 4.0 m cannot change landmass, and the
+          search radius is bounded so that stays true
+        grid_source: tools/seedscan/run_scan.sh STEP=8 HEIGHT=1, seed Pirate68
+        height_source: blueprints/run_patchscan.sh, step 1 m, rivers included
+      moved_from_solved: *id001
+      displacement_from_solved_m: 22.09
   containers:
     by_prefab: {}
     containers: 0

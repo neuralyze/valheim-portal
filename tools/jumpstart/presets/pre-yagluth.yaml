@@ -257,8 +257,8 @@ stations:
   level: 3
   max_level: 5
   extensions:
-  - piece_cauldron_ext1_spice
-  - piece_cauldron_ext3_butchertable
+  - cauldron_ext1_spice
+  - cauldron_ext3_butchertable
 - prefab: piece_stonecutter
   level: 1
   max_level: 1

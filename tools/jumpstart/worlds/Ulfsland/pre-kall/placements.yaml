@@ -105,6 +105,20 @@ placements:
       yaw faced 0% of it.'
   flatten_required: true
   note: 'Small stone-and-wood portal shelter, 133 pieces. Deliberately tiny: a landing camp, not a base.'
+  stock_scope: portal_only
+  stock_scope_note: 'Read by `terraform/stock.py --scope`, and it exists because the tier ladder and
+    this body disagree about what this site is. `network/data/installations.yaml` declares this installation
+    `role: portal_hub`, `stations: []`, purpose "a portal shack, which is all a terminus needs", and
+    the body matches that intent exactly: Portal13.vbuild is 133 pieces over 3.9 x 6.5 m and MEASURED
+    by FixtureHome''s occupancy mask it has ZERO indoor-covered cells - 374 outdoor, 25 blocked, and no
+    floor-role piece anywhere in it. Stocking it from the pre-kall CRAFTING LADDER instead would stand
+    16 stations, 13 extensions, two beds, a fire pit, a maypole and six chests in the open snow around
+    a hut. So the scope is declared here, in the placement, rather than left to whoever remembers a command-line
+    flag. This is also why the body is NOT swapped: the site was solved on a 3.9 x 6.5 m rectangle because
+    a shoreline is a line - MEASURED, a 48 x 48 m square finds 0 qualifying shelves within 1400 m at
+    ANY radius out to 6 km - so a body big enough to have an interior would have no site to stand on.
+    The bed and the ladder live 350 m away at `deepnorth-landing-camp`, which declares its own bed and
+    has the interior for it.'
   solved:
     seed: Pirate68
     x: 3957.3

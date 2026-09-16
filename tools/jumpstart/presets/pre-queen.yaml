@@ -316,9 +316,9 @@ stations:
   level: 4
   max_level: 5
   extensions:
-  - piece_cauldron_ext1_spice
-  - piece_cauldron_ext3_butchertable
-  - piece_cauldron_ext4_pans
+  - cauldron_ext1_spice
+  - cauldron_ext3_butchertable
+  - cauldron_ext4_pots
 - prefab: eitrrefinery
   level: 1
   max_level: 1
