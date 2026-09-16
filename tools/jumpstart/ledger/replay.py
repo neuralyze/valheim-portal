@@ -96,10 +96,89 @@ STAGED_VERBS = {"zones_generate", "objects_remove", "objects_reset",
                 "zones_reset", "terrain_reset"}
 
 # The guard radius for a non-idempotent single spawn.  Smaller than the
-# closest spacing any two same-prefab pieces will ever have, because the guard
-# answers "is THIS op's output present", and a neighbour answering yes on its
-# behalf silently drops a piece.
+# closest spacing any two same-prefab pieces will ever have, because the
+# guard answers "is THIS op's output present", and a neighbour answering yes
+# on its behalf silently drops a piece.
 GUARD_EPS_M = 0.5
+
+
+def chain_report(path: Path) -> dict:
+    """Walk the ledger in FILE ORDER and report its integrity as DATA.
+
+    Local to the replay side on purpose: `writer.Ledger` raises when the
+    chain is broken, because appending to a damaged log is a different
+    decision from replaying one, and a replay needs the FACTS about the
+    damage rather than an exception.  It reads only `schema.digest`, so it
+    does not depend on how the writer chooses to expose this.
+
+    FILE POSITION IS THE ORDER.  MEASURED tonight: three concurrent appends
+    raced inside the writer's read-head-compute-prev-write window, two
+    branches were written carrying the same `prev`, and seqs 43-46 each
+    appear TWICE.  So `seq` is an advisory LABEL from the fork onward and the
+    only total order the artefact has is the order its lines were written in
+    -- which is also the true causal order here.
+    """
+    records: list[dict] = []
+    if path.exists():
+        for raw in path.read_text("utf-8").splitlines():
+            raw = raw.strip()
+            if raw:
+                records.append(json.loads(raw))
+
+    documented: dict[int, dict] = {}
+    for rec in records:
+        if rec.get("op") == "chain_reset":
+            p = rec.get("params", {})
+            if "broken_at_line" in p:
+                documented[int(p["broken_at_line"])] = p
+
+    head = schema.GENESIS_PREV
+    forks: list[dict] = []
+    seen: dict = {}
+    for i, rec in enumerate(records):
+        claimed = rec.get("prev")
+        if claimed != head:
+            reset = documented.get(i)
+            # A reset is a confession and it has to be checkable: one whose
+            # stated digests do not match what the file actually holds at
+            # that offset would turn a detectable fork into a clean lie.
+            ok = bool(reset
+                      and reset.get("expected_prev") == claimed
+                      and reset.get("actual_prev") == head)
+            forks.append({"line": i, "seq": rec.get("seq"),
+                          "actor": rec.get("actor"), "op": rec.get("op"),
+                          "ts": rec.get("ts"), "declared_prev": claimed,
+                          "actual_prev": head, "documented": ok,
+                          "reset_present": bool(reset)})
+        seen.setdefault(rec.get("seq"), []).append(i)
+        head = schema.digest(rec)
+
+    return {"records": records, "count": len(records), "head": head,
+            "forks": forks,
+            "duplicate_seqs": {s: ls for s, ls in seen.items() if len(ls) > 1}}
+
+
+class BlobStore:
+    """Content-addressed payload reads, verified on the way out."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+
+    def read(self, sha: str) -> bytes:
+        target = self.path / sha
+        if not target.exists():
+            raise LedgerError(
+                f"blob {sha} is referenced by the ledger and missing from "
+                f"{self.path}. The replay cannot reproduce that operation and "
+                f"will not guess at a substitute.")
+        data = target.read_bytes()
+        import hashlib
+        got = hashlib.sha256(data).hexdigest()
+        if got != sha:
+            raise LedgerError(
+                f"blob {sha} digests to {got}: the stored payload has been "
+                f"modified. Refusing to replay it.")
+        return data
 
 
 
@@ -500,7 +579,7 @@ def send_wire(srv: Server, wire: list[str]) -> list:
     return replies
 
 
-def apply_record(srv: Server, led: Ledger, rec: dict) -> dict:
+def apply_record(srv: Server, blobs: "BlobStore", rec: dict) -> dict:
     """Send one op's recorded wire, then measure its postcondition."""
     op = rec["op"]
     spec = schema.OPS[op]
@@ -514,7 +593,7 @@ def apply_record(srv: Server, led: Ledger, rec: dict) -> dict:
     # Blobs the op needs must exist and must digest correctly BEFORE anything
     # is sent: a half-applied terrain write is worse than an unstarted one.
     for sha in rec.get("requires", {}).get("blobs", []):
-        led.read_blob(sha)
+        blobs.read(sha)
 
     if spec.idempotent == "guard":
         present, probe = already_present(srv, rec)
@@ -524,7 +603,7 @@ def apply_record(srv: Server, led: Ledger, rec: dict) -> dict:
             return out
 
     if op == "terrain_write":
-        _materialise_data_entries(led, rec)
+        _materialise_data_entries(blobs, rec)
 
     out["replies"] = [str(r)[:200] for r in send_wire(srv, rec["wire"])]
 
@@ -548,7 +627,7 @@ def _staged(srv: Server, wire: list[str]) -> dict:
             for k, v in out.items()}
 
 
-def _materialise_data_entries(led: Ledger, rec: dict) -> None:
+def _materialise_data_entries(blobs: "BlobStore", rec: dict) -> None:
     """Write the World Edit Commands data entries a terrain_write's
     `spawn_object ... data=<entry>` refers to.
 
@@ -565,7 +644,7 @@ def _materialise_data_entries(led: Ledger, rec: dict) -> None:
         "/media/big4/projects/game/valheim/Ulfsland/config_merged/bepinex/data"))
     doc = []
     for e in rec["params"]["entries"]:
-        blob = led.read_blob(e["blob_sha256"])
+        blob = blobs.read(e["blob_sha256"])
         doc.append({"name": e["data_entry"],
                     "bytes": ["TCData, " + base64.b64encode(blob).decode()]})
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -583,12 +662,34 @@ def _materialise_data_entries(led: Ledger, rec: dict) -> None:
 class Replay:
     def __init__(self, root: Path, *, dry: bool = False):
         self.root = root
-        self.led = Ledger(root, actor="replay")
-        self.records = self.led.records()
+        self.blobs = BlobStore(root / "blobs")
+        self.chain = chain_report(root / "ledger.jsonl")
+        self.records = self.chain["records"]
         if not self.records:
             raise LedgerError(f"{root}/ledger.jsonl is empty")
         if self.records[0]["op"] != "world_manifest":
-            raise LedgerError("seq 0 must be the world_manifest")
+            raise LedgerError("the first line must be the world_manifest")
+
+        # STRICTNESS LIVES HERE, not in `open`.  Opening a log to APPEND and
+        # opening it to REPLAY are different questions: a reader that refuses
+        # to open a damaged log cannot even record that the log is damaged,
+        # but a replay from an ambiguous order is not a replay of what was
+        # built.  So appending tolerates a labelled wart and replaying does
+        # not.
+        undocumented = [f for f in self.chain["forks"] if not f["documented"]]
+        if undocumented:
+            raise Drift(
+                f"the chain FORKS and the fork is not documented: "
+                f"{json.dumps(undocumented, indent=1)}\n"
+                f"Two branches carry the same `prev`, so the log records two "
+                f"possible pasts and a replay cannot know which one built the "
+                f"world. Append a `chain_reset` naming both digests, or fix "
+                f"the log's producer. Nothing is guessed here.")
+        if self.chain["forks"]:
+            self.crossed_forks = self.chain["forks"]
+        else:
+            self.crossed_forks = []
+
         self.manifest = self.records[0]["params"]
         self.dry = dry
         self.progress_path = root / "replay.progress.json"
@@ -598,10 +699,10 @@ class Replay:
     def progress(self) -> dict:
         if self.progress_path.exists():
             return json.loads(self.progress_path.read_text("utf-8"))
-        return {"ledger_head": self.led.head, "applied": {}, "preamble": None}
+        return {"ledger_head": self.chain["head"], "applied": {}, "preamble": None}
 
     def save_progress(self, prog: dict) -> None:
-        prog["ledger_head"] = self.led.head
+        prog["ledger_head"] = self.chain["head"]
         tmp = self.progress_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(prog, indent=1))
         os.replace(tmp, self.progress_path)
@@ -618,7 +719,7 @@ class Replay:
         for rec in self.records:
             for sha in rec.get("requires", {}).get("blobs", []):
                 try:
-                    self.led.read_blob(sha)
+                    self.blobs.read(sha)
                     blobs["ok"] += 1
                 except LedgerError as exc:
                     key = "missing" if "missing" in str(exc) else "corrupt"
@@ -664,7 +765,7 @@ class Replay:
         report = {
             "root": str(self.root),
             "records": len(self.records),
-            "ledger_head": self.led.head,
+            "ledger_head": self.chain["head"],
             "recorded_world": {k: self.manifest.get(k) for k in
                                ("world", "seed_name", "seed", "world_version",
                                 "world_gen_version", "game_build_anchor")},
@@ -683,15 +784,17 @@ class Replay:
 
     def plan(self) -> dict:
         prog = self.progress()
-        done = set(int(s) for s in prog.get("applied", {}))
-        pending = [r for r in self.records
-                   if r["op"] in schema.MUTATING and r["seq"] not in done]
+        done = set(int(k) for k in prog.get("applied", {}))
+        pending = [(i, r) for i, r in enumerate(self.records)
+                   if r["op"] in schema.MUTATING and i not in done]
         by_op: dict[str, int] = {}
-        for r in pending:
+        for _i, r in pending:
             by_op[r["op"]] = by_op.get(r["op"], 0) + 1
         return {"total": len(self.records), "already_applied": len(done),
                 "pending": len(pending), "pending_by_op": by_op,
-                "next_seq": pending[0]["seq"] if pending else None,
+                "next_line": pending[0][0] if pending else None,
+                "next_seq_label": pending[0][1]["seq"] if pending else None,
+                "duplicate_seqs": self.chain["duplicate_seqs"],
                 "preamble_done": bool(prog.get("preamble"))}
 
     # -- apply -------------------------------------------------------------
@@ -706,11 +809,11 @@ class Replay:
                             ("drift", "blobs", "bodies", "prefabs")}, indent=1))
 
         prog = self.progress()
-        if prog.get("ledger_head") != self.led.head and prog.get("applied"):
+        if prog.get("ledger_head") != self.chain["head"] and prog.get("applied"):
             raise Drift(
                 f"the progress file was written against ledger head "
                 f"{prog.get('ledger_head')} but the ledger now heads at "
-                f"{self.led.head}. The ledger changed under a partially "
+                f"{self.chain['head']}. The ledger changed under a partially "
                 f"applied replay; resuming would apply a different build on "
                 f"top of a half-built one.")
 
@@ -722,32 +825,42 @@ class Replay:
         results = []
         with Server(dry=self.dry) as srv:
             srv.probe()
-            for rec in self.records:
-                if rec["seq"] < first or (last is not None and rec["seq"] > last):
+            # BY FILE INDEX, NOT BY `seq`.  MEASURED: a concurrent-append
+            # fork duplicated seqs 43-46 across two branches -- four
+            # record-only notes on one, four VERIFIED spawns on the other.
+            # Keyed by `seq`, a resume would have seen the notes' labels in
+            # the progress file and silently skipped a ferry terminal, its
+            # sign, its portal and a Longship, then reported success. File
+            # position is the only total order the artefact has.
+            for i, rec in enumerate(self.records):
+                if i < first or (last is not None and i > last):
                     continue
                 if rec["op"] not in schema.MUTATING:
                     continue
-                if str(rec["seq"]) in applied:
+                if str(i) in applied:
                     continue
-                res = apply_record(srv, self.led, rec)
+                res = apply_record(srv, self.blobs, rec)
+                res["line"] = i
                 results.append(res)
                 if res["status"] == "VERIFICATION FAILED":
                     self.save_progress(prog)
                     raise Drift(
-                        f"seq {rec['seq']} ({rec['op']}, {rec['actor']}) was "
-                        f"sent and its postcondition does NOT hold: "
-                        f"{json.dumps(res['checks'], indent=1)}\n"
+                        f"file line {i} (seq label {rec['seq']}, {rec['op']}, "
+                        f"{rec['actor']}) was sent and its postcondition does "
+                        f"NOT hold: {json.dumps(res['checks'], indent=1)}\n"
                         f"Stopping. The world is now partially built and the "
-                        f"progress file records everything before this seq as "
+                        f"progress file records every earlier line as "
                         f"applied; fix the cause, then resume.")
-                applied[str(rec["seq"])] = {"status": res["status"],
-                                            "ts": time.strftime("%FT%TZ",
-                                                                time.gmtime())}
+                applied[str(i)] = {"status": res["status"],
+                                   "seq_label": rec["seq"], "op": rec["op"],
+                                   "ts": time.strftime("%FT%TZ",
+                                                       time.gmtime())}
                 self.save_progress(prog)
             if not self.dry:
                 srv.command("save")
         return {"applied": len(results), "results": results,
-                "commands_sent": len(srv.sent)}
+                "commands_sent": len(srv.sent),
+                "crossed_forks": self.crossed_forks}
 
 
 def main() -> int:
@@ -755,8 +868,10 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("op", choices=["preflight", "plan", "apply"])
     ap.add_argument("--root", required=True)
-    ap.add_argument("--from", dest="first", type=int, default=0)
-    ap.add_argument("--to", dest="last", type=int)
+    ap.add_argument("--from", dest="first", type=int, default=0,
+                help="first FILE LINE to apply (not a seq: seq is an advisory label after a fork)")
+    ap.add_argument("--to", dest="last", type=int,
+                help="last FILE LINE to apply")
     ap.add_argument("--dry-run", action="store_true",
                     help="resolve, guard and print, send nothing")
     ap.add_argument("--skip-preamble", action="store_true",

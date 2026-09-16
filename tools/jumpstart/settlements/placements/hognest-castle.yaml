@@ -1,0 +1,33 @@
+world: Ulfsland
+settlement: hognest-castle
+placements:
+- id: hognest-castle
+  blueprint: hs_ashlands_neletit_portalhubtower.blueprint
+  sha256: 830e025878072bb3ab9ba313390afc385a1d0b4813eebf72ab51d5c034082fbe
+  pieces: 5565
+  align: floor-center
+  rotation:
+    yaw: 0
+  requirement:
+    biome: Meadows
+    footprint_m: 44.0
+    footprint_xz_m:
+    - 44.0
+    - 44.0
+  solved:
+    seed: Pirate68
+    x: 530.0
+    z: 1348.0
+    y: 110.95
+    footprint_orientation: 44 m along x by 44 m along z
+    flatten_cost:
+      target_y: 110.95
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 75.6
+    nearest_location: MountainCave02
+    nearest_location_standoff_m: 44.0
+  settlement:
+    site: hognest-castle
+    role: castle
+    patch: mainland

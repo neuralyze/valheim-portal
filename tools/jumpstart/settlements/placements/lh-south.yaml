@@ -1,0 +1,33 @@
+world: Ulfsland
+settlement: lh-south
+placements:
+- id: lh-south
+  blueprint: drake-lighthouse.blueprint
+  sha256: 8f531ce29c330c7bc8d367047c2bfcde31bfb5afa42f499cdedc3f4c3eee2fac
+  pieces: 1255
+  align: floor-center
+  rotation:
+    yaw: 0
+  requirement:
+    biome: Meadows
+    footprint_m: 22.0
+    footprint_xz_m:
+    - 22.0
+    - 22.0
+  solved:
+    seed: Pirate68
+    x: -106.0
+    z: -900.0
+    y: 33.12
+    footprint_orientation: 22 m along x by 22 m along z
+    flatten_cost:
+      target_y: 33.12
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 119.5
+    nearest_location: Greydwarf_camp1
+    nearest_location_standoff_m: 22.0
+  settlement:
+    site: lh-south
+    role: lighthouse
+    patch: mainland

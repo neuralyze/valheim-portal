@@ -88,6 +88,22 @@ MARGIN_M = 12.0
 # TASTE PICK, not measured: extra stand-off for a location the generator treats
 # as load bearing (a boss altar, the trader, a dungeon entrance, the temple).
 PROTECTED_EXTRA_M = 90.0
+# DERIVED, not picked: how far past its own written samples a TERRAIN write can
+# still move ground.  `TerrainComp::ApplyToHeightmap` applies each sample's
+# delta to that sample only -- there is no spatial falloff, and RoadNet's
+# ribbon writer leaves `smoothDelta` at 0 -- so the only spreading is the
+# heightmap MESH, which interpolates linearly between adjacent samples at
+# `Heightmap`'s 1 m pitch (SCALE = 1.0, pitch = m_width + 1 = 65 over a 64 m
+# zone, MEASURED).  A written sample therefore tilts the surface out to the
+# next UNWRITTEN sample and no further: exactly one sample pitch.
+TERRAIN_SPREAD_M = 1.0
+# The non-destructive hazard is not deletion, it is a location piece left
+# FLOATING or BURIED because the ground under it moved.  A piece whose ground
+# does not move is unaffected at any distance; one whose ground moves is
+# damaged at any distance.  So the gate on a non-destructive write is a
+# per-piece height-delta tolerance, and this is its starting value -- 0.10 m,
+# to be MEASURED against what actually reads as a visible step underfoot.
+DELTA_TOL_M = 0.10
 
 
 @dataclass
@@ -149,6 +165,172 @@ class Locations:
     def clear(self, x: float, z: float, own_half_diagonal_m: float,
               protected_only: bool = False) -> bool:
         return not self.violations(x, z, own_half_diagonal_m, protected_only)
+
+    def violations_for_samples(self, samples, protected_only: bool = False,
+                               half_width_m: float = 0.0, chunk: int = 4096,
+                               destructive: bool = True) -> list[dict]:
+        """Every location whose own reach is entered by ANY of these samples.
+
+        `samples` is an iterable of (x, z) -- the sample centres a write will
+        actually touch: a pad's 1 m lattice, a ribbon's centreline, a bridge
+        deck's tiles. This is strictly better than a half-diagonal disc, which
+        over-states a long thin footprint (a 6 m x 200 m ribbon has a 100 m
+        half-diagonal and would refuse everything) and under-states nothing.
+
+        `half_width_m` is YOUR OWN geometry's half-extent about those samples
+        and is added to each instance's own radius -- `RoadNet`'s idea and the
+        right question, because what must not overlap is the ribbon or the deck
+        rather than its centreline. Zero when the samples already ARE the
+        footprint, as a pad lattice is.
+
+        Per violation it reports the MINIMUM distance from the written set to
+        that instance, so the number in the log is the one that decides the
+        verdict rather than a summary of the footprint. Empty list is the pass
+        condition.
+        """
+        pts = np.asarray(list(samples), dtype=np.float32).reshape(-1, 2)
+        if not len(pts):
+            return []
+        best = np.full(len(self.names), np.inf, np.float32)
+        for i in range(0, len(pts), chunk):
+            block = pts[i:i + chunk]
+            d = np.hypot(self.xz[:, 0][:, None] - block[None, :, 0],
+                         self.xz[:, 1][:, None] - block[None, :, 1]).min(axis=1)
+            np.minimum(best, d, out=best)
+        # `destructive` picks the budget, and the distinction is the operation
+        # rather than the geometry.  The unrepairable damage this stand-off
+        # exists to prevent came from `objects_remove` DELETING a location's
+        # ZDOs.  An operation that emits only `zones_generate` + `terrain_write`
+        # cannot perform that deletion at all, so `MARGIN_M` (taste) and
+        # `PROTECTED_EXTRA_M` (taste) are budgeting against a hazard it does not
+        # have -- and MEASURED, applying them to a 6 m road refused 25 of 34
+        # segments on a world with 12,301 instances, including every segment out
+        # of StartTemple.  A non-destructive write is bounded instead by the
+        # location's own measured reach plus the caller's own half-extent plus
+        # the DERIVED terrain spread.
+        #
+        # THAT IS NOT THE WHOLE GUARD.  A non-destructive write still has one
+        # real hazard -- levelling ground under a piece that stays standing
+        # leaves it FLOATING or BURIED, which is the defect the operator
+        # condemned a world for -- and distance does not measure it.  The caller
+        # MUST also pass the per-piece delta gate (`delta_gate` below); this
+        # function deliberately cannot check that, because only the caller holds
+        # the per-sample deltas.  Default stays True so no existing caller
+        # changes behaviour.
+        if destructive:
+            need = self.standoff + float(half_width_m)
+        else:
+            need = (self.reach.astype(np.float64) + float(half_width_m)
+                    + TERRAIN_SPREAD_M)
+        room = need - best
+        if protected_only:
+            room = np.where(self.protected, room, -np.inf)
+        out = []
+        for i in np.nonzero(room > 0)[0][np.argsort(-room[room > 0])]:
+            out.append({"name": self.names[i], "prefab": self.prefabs[i],
+                        "min_dist_m": round(float(best[i]), 1),
+                        "reach_m": float(self.reach[i]),
+                        "required_m": round(float(need[i]), 1),
+                        "short_by_m": round(float(room[i]), 1),
+                        "protected": bool(self.protected[i]),
+                        "budget": "destructive" if destructive
+                                  else "non_destructive"})
+        return out
+
+    def clear_samples(self, samples, protected_only: bool = False,
+                      half_width_m: float = 0.0,
+                      destructive: bool = True) -> bool:
+        return not self.violations_for_samples(
+            samples, protected_only, half_width_m, destructive=destructive)
+
+    def instances_near(self, samples, radius_m: float, chunk: int = 4096
+                       ) -> list[dict]:
+        """Every instance within `radius_m` of the written set, for the delta
+        gate.  Returns position and reach so the caller can sample its own
+        deltas at the piece positions it might be standing on."""
+        pts = np.asarray(list(samples), dtype=np.float32).reshape(-1, 2)
+        if not len(pts):
+            return []
+        best = np.full(len(self.names), np.inf, np.float32)
+        for i in range(0, len(pts), chunk):
+            block = pts[i:i + chunk]
+            d = np.hypot(self.xz[:, 0][:, None] - block[None, :, 0],
+                         self.xz[:, 1][:, None] - block[None, :, 1]).min(axis=1)
+            np.minimum(best, d, out=best)
+        out = []
+        for i in np.nonzero(best <= radius_m)[0]:
+            out.append({"name": self.names[i], "prefab": self.prefabs[i],
+                        "xz": [float(self.xz[i, 0]), float(self.xz[i, 1])],
+                        "reach_m": float(self.reach[i]),
+                        "protected": bool(self.protected[i]),
+                        "min_dist_m": round(float(best[i]), 2)})
+        return sorted(out, key=lambda r: r["min_dist_m"])
+
+    def verdict_for_samples(self, samples, half_width_m: float = 0.0,
+                            protected_only: bool = False,
+                            destructive: bool = True,
+                            delta_gate: dict | None = None) -> dict:
+        """The same measurement, packaged so a caller cannot lose the caveats.
+
+        `method`, `tool` and `mod_free_caveat` travel IN THE RESULT rather than
+        in this docstring -- `RoadNet`'s idea and the best one in either
+        implementation. A caveat that lives in the return value cannot be
+        forgotten by the caller, and this project has lost hours to caveats
+        that lived in somebody's head. `method` is also exactly what the
+        ledger's `observe` and `terrain_write.location_check` require, so a
+        result can be handed to the log unmodified.
+        """
+        pts = list(samples)
+        v = self.violations_for_samples(pts, protected_only, half_width_m,
+                                        destructive=destructive)
+        near = self.nearest(*pts[0]) if pts else None
+        # A non-destructive write is only clear when BOTH gates pass: the
+        # distance gate above and the caller's own per-piece delta gate.  A
+        # missing delta gate on a non-destructive call is a REFUSAL, not a
+        # pass -- the loosened distance budget was granted on the strength of
+        # the delta measurement, so accepting the loosening without it would be
+        # a check answering a question it is not measuring.
+        gate_bad = []
+        if not destructive:
+            if delta_gate is None:
+                gate_bad = [{"reason": "destructive=False requires delta_gate: "
+                                       "the loosened distance budget is granted "
+                                       "ONLY against a measured per-piece "
+                                       "height-delta result"}]
+            elif delta_gate.get("verdict") != "clear":
+                gate_bad = delta_gate.get("violations") or [
+                    {"reason": "delta_gate verdict is not clear"}]
+        return {
+            "verdict": "clear" if not (v or gate_bad) else "VIOLATION",
+            "budget": "destructive" if destructive else "non_destructive",
+            "delta_gate": delta_gate,
+            "delta_gate_violations": gate_bad,
+            "violations": v,
+            "samples_tested": len(pts),
+            "half_width_m": float(half_width_m),
+            "scope": "protected-only" if protected_only else "all instances",
+            "nearest": near,
+            "standoff_m": (near or {}).get("standoff_m"),
+            "method": ("MEASURED per location TYPE: "
+                       "max(exteriorRadius, interiorRadius, znviewReachM) from the "
+                       "LocScan.cs dump, plus a 12 m margin (taste) and a 90 m extra "
+                       "(taste) where the generator treats the instance as load "
+                       "bearing -- prioritized OR centerFirst OR quantity <= 5. "
+                       "Compared against the MINIMUM distance from the caller's own "
+                       "written samples, plus half_width_m for the caller's geometry. "
+                       "The declared radius is kept in the max() because 28 of 177 "
+                       "types carry <= 2 ZNetView children and their measured reach "
+                       "understates them."),
+            "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+            "mod_free_caveat": (
+                "This dump is MOD-FREE by construction (run_locscan.sh excludes "
+                "BepInEx/), so it CANNOT see More_World_Locations' ~190 POI types. "
+                "MEASURED: three of four live markers in GroundTruth's test zones were "
+                "invisible to it. A live LocationProxy sweep after zones_generate is "
+                "the only complete test -- live positions for POSITION, this dump for "
+                "per-type RADIUS. Clearing this check is NECESSARY, NOT SUFFICIENT."),
+        }
+        return not self.violations_for_samples(samples, protected_only)
 
 
 def is_protected(rec: dict) -> bool:

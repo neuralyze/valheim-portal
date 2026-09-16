@@ -47,6 +47,12 @@ def _bbox(entries: list[dict]) -> tuple[float, float, float]:
     return cx, cz, r
 
 
+def plain(obj):
+    """numpy scalars out of the POI gate are not JSON-serialisable and the
+    ledger writer canonicalises with json. Coerce once, here."""
+    return json.loads(json.dumps(obj, default=float))
+
+
 def ops_for(rec: dict, commands: list[str], piece_entries: list[dict],
             *, fixture_cmds: dict[str, str], plan_ref: str,
             pair_ends: dict[str, str]) -> list[dict]:
@@ -129,7 +135,8 @@ def ops_for(rec: dict, commands: list[str], piece_entries: list[dict],
             dict(prefab=p, pos=[round(cx, 1), round(cz, 1)],
                  max=round(radius + 4.0, 1), count=n, tolerance=0)
             for p, n in sorted(prefabs.items())]),
-        meta=dict(structural_verdict=rec["structural"],
+        meta=dict(poi_check=plain(rec.get("poi_check")),
+                  structural_verdict=rec["structural"],
                   measured=rec.get("measured"),
                   continuity=rec.get("continuity"),
                   why=rec["why"]),

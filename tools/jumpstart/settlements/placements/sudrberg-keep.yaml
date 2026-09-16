@@ -1,0 +1,33 @@
+world: Ulfsland
+settlement: sudrberg-keep
+placements:
+- id: sudrberg-keep
+  blueprint: hs_mistlands_sheepshank_trophytowerv2.blueprint
+  sha256: b2563cfb50c8ef33143f17fc1dbcf15ceda64ff13d609daf050f356fa1e3d64b
+  pieces: 3577
+  align: floor-center
+  rotation:
+    yaw: 0
+  requirement:
+    biome: Meadows
+    footprint_m: 44.0
+    footprint_xz_m:
+    - 44.0
+    - 44.0
+  solved:
+    seed: Pirate68
+    x: 2406.0
+    z: -3354.0
+    y: 121.84
+    footprint_orientation: 44 m along x by 44 m along z
+    flatten_cost:
+      target_y: 121.84
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 52.2
+    nearest_location: Runestone_Mountains
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: sudrberg-keep
+    role: castle
+    patch: south33

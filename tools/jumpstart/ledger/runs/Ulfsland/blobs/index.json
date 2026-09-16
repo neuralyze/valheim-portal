@@ -1,0 +1,262 @@
+{
+ "00d1f49393df3c004b56edc09112c3acb4681766e4bf70f57b685a1ab8586e5f": {
+  "bytes": 7412,
+  "first_seen_seq": 32,
+  "note": "boathouse-temple-strait spawn_object plan, 95 commands"
+ },
+ "1334151807f4027cf902a42f1c84cd0e6ca9bbc292d7edf988088660c5a7c558": {
+  "bytes": 17410,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-house-3"
+ },
+ "137da4d12ac287c33cb756d74856c3aaa686417aa0a90cbce6750d37f40253d1": {
+  "bytes": 6053,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-stonehouse-2"
+ },
+ "148500c96276465adc080a4d057ce75944f34ebaf3b08af3f1e6cd1208b086dc": {
+  "bytes": 48770,
+  "first_seen_seq": 37,
+  "note": "spawn plan stenvik-hall-1"
+ },
+ "1531d441ecfb78b71d284dfdac44a2d50ab5b3547da7ec554800d052ef41e335": {
+  "bytes": 737,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_house_3_z10_15 zone 10,15"
+ },
+ "15eb992d05198fd95484ddc0482190cadb30cf6952286430dc622f5672f06e71": {
+  "bytes": 15954,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-longhouse-2"
+ },
+ "16e3c3dc29549240631c130083cb7a613f51cfa9a33de10b2730e8b65a064def": {
+  "bytes": 854,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_house_1_z8_14 zone 8,14"
+ },
+ "19238e0e14e8e8bd15462c75dcf257efcb10f397fcd6c99851d2bb652b1ee17e": {
+  "bytes": 616,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_hut_2_z8_14 zone 8,14"
+ },
+ "1ced2f1200b63052200630a2e2c7ae7bdc81e87bc6d8e4b42d61be2dda2fb017": {
+  "bytes": 3598,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-cottage-1"
+ },
+ "26d5b6baebea96cfa01e2cbc50d929a0c0a991bbf30b0881ec7edfa2c12d4528": {
+  "bytes": 5965,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-stonehouse-1"
+ },
+ "2cdf2a235ef18c5b50aa6c75e886d4dda3c8055cc545bf7872588b83501ccaf3": {
+  "bytes": 533,
+  "first_seen_seq": 37,
+  "note": "TCData stenvik_hall_1_z8_15 zone 8,15"
+ },
+ "2e203a4cfb8499752328b33d3878f10206094af41e630ec9ba2b17cfac588d93": {
+  "bytes": 802,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_house_1_z7_14 zone 7,14"
+ },
+ "2f3c573b2cc665c6bc0cb6e852ea3dcb1a56ec8c8f9797f9674251a9bc6d775d": {
+  "bytes": 12236,
+  "first_seen_seq": 23,
+  "note": "bridge-s2-portalhall-strait spawn_object plan, 156 commands"
+ },
+ "317567dc9136f8da7f07535492ddfd92ce8094965aa4a8e67f5949111e4c1f5f": {
+  "bytes": 11461,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-manor-1"
+ },
+ "36f23ecb196af19e4608f8f1cca2ba100b02bbb3351c595f2ea73975df7a87c3": {
+  "bytes": 9925,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-beehive-1"
+ },
+ "4373975acecf9041589018664acdd8f470f26d5202a891d6118ff83f0dec57e9": {
+  "bytes": 2151,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-hut-2"
+ },
+ "4be3329aa7c4c784084b24669dedc749556900171ffb21969c2e6ffb98f33765": {
+  "bytes": 715,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_cottage_1_z8_14 zone 8,14"
+ },
+ "507a89c93e487f7d2c5541c76c26167c5b81a47a7df525ac76640860acbee1a0": {
+  "bytes": 440,
+  "first_seen_seq": 37,
+  "note": "TCData stenvik_hall_1_z7_15 zone 7,15"
+ },
+ "57f47e37e894dc34108cfccd4f9c682f814f35036367a5c7a743bb1a41a45250": {
+  "bytes": 1224,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_beehive_1_z9_15 zone 9,15"
+ },
+ "58b16047b4dd7c0f332e522f99cda4c419e180da43cbee1258e74b2f10eb542b": {
+  "bytes": 3709,
+  "first_seen_seq": 42,
+  "note": "ferry-terminal-eastisle spawn_object plan, 48 commands"
+ },
+ "5a38db298e533d16117d62f833ea3de90d64f827f63fe4644a031338081d1baf": {
+  "bytes": 2151,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-hut-3"
+ },
+ "5b032a13ed13d06e312bfbd154315d080fc870202318e3e54612f969ff2fa9b9": {
+  "bytes": 658,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_cottage_2_z8_14 zone 8,14"
+ },
+ "5c054619b74e3385fbeae75a124d40a39a71151ea4a6b77763b36b8c1f967a1c": {
+  "bytes": 669,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_stonehouse_2_z7_14 zone 7,14"
+ },
+ "5e1cb805a1ef70ad4e41d8e92c3b3ddf85743eca41f2b46ed6a3b392ea86c2ee": {
+  "bytes": 17851,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-workshop-1"
+ },
+ "6afb7cf6a95d25c0b6244504cece85913ef0c34ce6f4765d2b63302a439aaa82": {
+  "bytes": 2111,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-hut-1"
+ },
+ "7812f03c36f08fcd27c7028e0c4a071b2668c1e951832a309c26c5211d9ae759": {
+  "bytes": 3660,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-cottage-2"
+ },
+ "8c011456174b9f5c34ade0b476ad5c50ac62ebc0d1849309849ee56c2047a1dc": {
+  "bytes": 466,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_stonehouse_2_z8_14 zone 8,14"
+ },
+ "8c435e96481e02dd9c5d734af36ef22e5b0ce5a779477bab2046d850656761ff": {
+  "bytes": 2358,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_workshop_1_z8_14 zone 8,14"
+ },
+ "8cf08d5a782350a9c446370ede24f9bae76d837e704aa492557b172ffaaf2e4c": {
+  "bytes": 449,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_cottage_3_z9_15 zone 9,15"
+ },
+ "92c28ce16e85cc93638b6637263ac7e135fa83eb8643542f437abc1b142471c0": {
+  "bytes": 4431,
+  "first_seen_seq": 20,
+  "note": "bridge-s1-temple-strait spawn_object plan, 66 commands"
+ },
+ "949c364f3d4ba075bd2a73cf80a5bdfd83f44f9fb34993f623e111ed15a6a80e": {
+  "bytes": 883,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_house_3_z9_15 zone 9,15"
+ },
+ "94e30bcc6ebbe2c4dc7521a2befb5d5cd6222081a06b06578b8929fa50548d03": {
+  "bytes": 3598,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-cottage-4"
+ },
+ "9658913eff9de63082b702e86f73c38de494d73536666af18c7d14d256140cd7": {
+  "bytes": 170,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_cottage_2_z7_14 zone 7,14"
+ },
+ "96ce4ec3f83c1b762c7c1dcd7416c28ec9d35c72bf0a4e2d02213d0575d2a652": {
+  "bytes": 5228,
+  "first_seen_seq": 26,
+  "note": "harbour-temple-south spawn_object plan, 69 commands"
+ },
+ "a147c7647aafaa7792d94199c1f1c13c3d729f8e237fd7c16d66b6c7df6c0f34": {
+  "bytes": 167,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_cottage_3_z8_14 zone 8,14"
+ },
+ "a25bab60a766d8f7986279253b0b40358c3e713cb9a9ea9df640d7dda8b27970": {
+  "bytes": 763,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_manor_1_z8_14 zone 8,14"
+ },
+ "a92dc717aa29cef9480499dd78ca94d58c3acbd2e067ae5301504ec018709c9f": {
+  "bytes": 1469,
+  "first_seen_seq": 37,
+  "note": "TCData stenvik_hall_1_z8_14 zone 8,14"
+ },
+ "ae7b11ff2c95811beaa397ac5f6f52d6b16db4308da2f149de0b8099d8842708": {
+  "bytes": 1362,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_house_2_z8_14 zone 8,14"
+ },
+ "af4a01fe87a017ed699b0e465adc0d63849deec1cf9bd652fc0a4745e20835c5": {
+  "bytes": 761,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_cottage_4_z8_14 zone 8,14"
+ },
+ "b7aba39dd07183a4f55945397b5e1fdbaebcbb93feca7c7fed57d798a45a1f32": {
+  "bytes": 256,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_cottage_3_z8_15 zone 8,15"
+ },
+ "b998f5ab7f1beb98bbbd94db7ee434b7971ff19f3c1a702a7468effe2f1d19ba": {
+  "bytes": 3598,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-cottage-3"
+ },
+ "bfad6dfc4de5e9abdeb156eae07c2b742e8491823f96af6176e26b2fbc4ed63a": {
+  "bytes": 834,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_stonehouse_1_z9_14 zone 9,14"
+ },
+ "c2890f479550de9ea8a350b72951c01ececcd047f56aa333aea04ce53ec5e2d3": {
+  "bytes": 17485,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-house-1"
+ },
+ "cd57946754c3ab56369cf2074ca8e8a33ba2937d15ebe0a9325da41a0449c199": {
+  "bytes": 580,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_hut_1_z8_14 zone 8,14"
+ },
+ "ce853fe04fccd671efc5035657fbfb3990d998a9948f9317286b99f83480856a": {
+  "bytes": 1189,
+  "first_seen_seq": 37,
+  "note": "TCData stenvik_hall_1_z7_14 zone 7,14"
+ },
+ "cecb2f3eedfb35a74707fd93d5749f4802fb53a04c4ae7d6cb9271c8d28bf623": {
+  "bytes": 269,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_cottage_3_z9_14 zone 9,14"
+ },
+ "e7022d0e6c618c987203728516d15fe5736d48036fa17bd9d6975d831c881f9f": {
+  "bytes": 17485,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-house-2"
+ },
+ "f0054cfdb90570e52c3dcebbb57c6e083553acfc1540924d5531badc42239c43": {
+  "bytes": 15959,
+  "first_seen_seq": 38,
+  "note": "spawn plan stenvik-longhouse-1"
+ },
+ "f5cafd9f0b6f6f466371bfb980f5a20cadd2e097d2d12a4d4743c9ac6d85bd52": {
+  "bytes": 1450,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_longhouse_2_z8_14 zone 8,14"
+ },
+ "f821252cb08fc928e83ff2273c47329abfa0ac4241026bfb6c66058b68a9ab1a": {
+  "bytes": 622,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_hut_3_z8_13 zone 8,13"
+ },
+ "f9a4f64e2fabccacb0b66f7012048facb2e7c15c2b5b838975789a898a48ee66": {
+  "bytes": 653,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_manor_1_z8_13 zone 8,13"
+ },
+ "ff610caf79a38be07fc9e6851caad08900bd233770f04f6f010efe5bfce1bcd0": {
+  "bytes": 1479,
+  "first_seen_seq": 38,
+  "note": "TCData stenvik_longhouse_1_z9_14 zone 9,14"
+ }
+}

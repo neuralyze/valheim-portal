@@ -58,6 +58,7 @@ import math
 from dataclasses import dataclass, field as dc_field
 
 import numpy as np
+from scipy import ndimage
 
 from field import WATER_LEVEL, BIOME_NAMES, Field
 
@@ -150,6 +151,14 @@ class Corridor:
     # road freeboard: buildable as a levelled causeway, dearer than dry ground,
     # far cheaper than a bridge.  Taste pick, stated as one.
     shore_cost_mult: float = 3.5
+    # Crossings' MEASURED absolute span ceiling: 96 m (72 m free span at a 3x
+    # safety factor on an iron stringer under the deck), from its own
+    # implementation of WearNTear::UpdateSupport.
+    max_span_m: float = 96.0
+    # When set, water is not traversable at any price.  Used for the land-only
+    # RETRY of a segment whose first route produced a bridged run longer than
+    # any bridge can be: see network.build_segment.
+    forbid_all_water: bool = False
 
     def __post_init__(self) -> None:
         f = self.fld
@@ -209,6 +218,27 @@ class Corridor:
         self.water = self.Hmax <= WATER_LEVEL + 0.5
         self.fillable = (~self.water) & (self.H <= WATER_LEVEL + ROAD_FREEBOARD_M)
         self.wet = self.water
+        # THE SPAN CEILING, ENCODED GEOMETRICALLY INSTEAD OF AS A PRICE.
+        #
+        # Pricing water per metre cannot express "no bridge longer than 96 m",
+        # and trying made the router absurd in both directions, MEASURED both
+        # times: at 10 road-metres per water metre it took shoreline shortcuts
+        # and produced six spans of 103-562 m, all unbuildable; at 400 it walked
+        # 3.8 km to reach a dock 236 m away rather than cross 10 m of channel.
+        # A price is the wrong instrument because the constraint is not "water is
+        # costly", it is "a span has a maximum length".
+        #
+        # So: the distance from a water cell to the nearest land is at least half
+        # the span of any crossing through it, which makes
+        #     forbid water where dist_to_land > max_span / 2
+        # an exact encoding of Crossings' MEASURED 96 m absolute ceiling (72 m
+        # free span at a 3x safety factor on an iron stringer, 96 m absolute).
+        # Narrow channels stay crossable at a moderate price; wide water is not
+        # traversable at any price, so the search cannot propose a bridge that
+        # cannot be built.
+        d_land = ndimage.distance_transform_edt(self.water) * self.cell_m
+        self.dist_to_land_m = d_land
+        self.water_forbidden = self.water & (d_land > self.max_span_m / 2.0)
         # Roughness: how much local relief the ribbon has to chew through,
         # expressed as a fraction of the cut/fill the clamp permits.
         self.rough = np.clip((self.Hmax - self.Hmin) / CUT_FILL_MAX, 0.0, 4.0)
@@ -271,6 +301,12 @@ class Corridor:
         ai, aj = a
         bi, bj = b
         if self.blocked(bi, bj):
+            return None
+        if self.water[bi, bj] and self.forbid_all_water:
+            return None
+        if self.water_forbidden[bi, bj]:
+            # Wider than half the maximum buildable span from any land: no
+            # bridge can reach across here, so the cell is not traversable.
             return None
         if self.water[bi, bj]:
             # Open water is not forbidden -- it is EXPENSIVE, so the search can
@@ -529,6 +565,7 @@ def find_crossings(route_id: str, pts: list[tuple[float, float]], s: np.ndarray,
                    merge_gap_m: float = 2.0 * 6.0 + 4.0,
                    ford_max_m: float = 8.0,
                    ford_max_depth_m: float = 1.0,
+                   max_merged_m: float = 60.0,
                    ) -> tuple[list[dict], np.ndarray, list[dict]]:
     """Turn wet runs and infeasible runs into crossing records.
 
@@ -561,7 +598,17 @@ def find_crossings(route_id: str, pts: list[tuple[float, float]], s: np.ndarray,
             j = k
             while j + 1 < n and flag[j + 1]:
                 j += 1
-            if runs and k - runs[-1][1] <= gap_stations:
+            # Merge only while the MERGED run stays buildable.  Two narrow
+            # channels 16 m apart are one crossing; six narrow channels strung
+            # along 200 m of broken shoreline are SIX crossings, and merging
+            # them reported a single 200.6 m span that no bridge can reach
+            # across -- MEASURED on W1, plus 174.7 m on W4 and 114.8 m on T2,
+            # all three of which the search itself had already proved
+            # crossable (it forbids water more than half the maximum span from
+            # land, so every channel it used is under 96 m). The defect was
+            # purely in how the runs were REPORTED.
+            merged_m = float(s[j] - s[runs[-1][0]]) if runs else 0.0
+            if runs and k - runs[-1][1] <= gap_stations and merged_m <= max_merged_m:
                 runs[-1][1] = j
             else:
                 runs.append([k, j])

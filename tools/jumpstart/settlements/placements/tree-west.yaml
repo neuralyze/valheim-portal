@@ -1,0 +1,93 @@
+world: Ulfsland
+settlement: tree-west
+placements:
+- id: tree-west-1
+  blueprint: hs_meadows_stilt_house.blueprint
+  sha256: 9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4
+  pieces: 68
+  align: floor-center
+  rotation:
+    yaw: 0
+  requirement:
+    biome: Meadows
+    footprint_m: 16.0
+    footprint_xz_m:
+    - 16.0
+    - 16.0
+  solved:
+    seed: Pirate68
+    x: -510.0
+    z: 844.0
+    y: 40.83
+    footprint_orientation: 16 m along x by 16 m along z
+    flatten_cost:
+      target_y: 40.83
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 43.7
+    nearest_location: Greydwarf_camp1
+    nearest_location_standoff_m: 22.0
+  settlement:
+    site: tree-west
+    role: treehouse
+    patch: westisle
+- id: tree-west-2
+  blueprint: hs_meadows_stilt_house.blueprint
+  sha256: 9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4
+  pieces: 68
+  align: floor-center
+  rotation:
+    yaw: 120
+  requirement:
+    biome: Meadows
+    footprint_m: 16.0
+    footprint_xz_m:
+    - 16.0
+    - 16.0
+  solved:
+    seed: Pirate68
+    x: -516.0
+    z: 847.5
+    y: 40.83
+    footprint_orientation: 16 m along x by 16 m along z
+    flatten_cost:
+      target_y: 40.83
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 50.0
+    nearest_location: Greydwarf_camp1
+    nearest_location_standoff_m: 22.0
+  settlement:
+    site: tree-west
+    role: treehouse
+    patch: westisle
+- id: tree-west-3
+  blueprint: hs_meadows_stilt_house.blueprint
+  sha256: 9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4
+  pieces: 68
+  align: floor-center
+  rotation:
+    yaw: 240
+  requirement:
+    biome: Meadows
+    footprint_m: 16.0
+    footprint_xz_m:
+    - 16.0
+    - 16.0
+  solved:
+    seed: Pirate68
+    x: -516.0
+    z: 840.5
+    y: 40.83
+    footprint_orientation: 16 m along x by 16 m along z
+    flatten_cost:
+      target_y: 40.83
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 49.6
+    nearest_location: Greydwarf_camp1
+    nearest_location_standoff_m: 22.0
+  settlement:
+    site: tree-west
+    role: treehouse
+    patch: westisle

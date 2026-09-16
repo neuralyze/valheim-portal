@@ -119,86 +119,86 @@
     {
      "id": "stenvik-hall-1",
      "role": "hall",
-     "body": "hs_blackforest_crimsonchaostownhall.blueprint",
-     "sha256": "ede89b6a04ea2f02835609023d2feb4b313b328bbdf5008b71b87996f745b9f8",
-     "x": 476.3,
-     "z": 917.5,
+     "body": "hs_meadows_madzobuild_modernstarterhouse.blueprint",
+     "sha256": "557efb39834f49f670059da3d2efeb8eb2b3d1a66ba0793941d93cb61c07b034",
+     "x": 481.1,
+     "z": 920.4,
      "yaw_deg": 80.0,
      "footprint": [
-      25.4,
-      28.4
+      20.1,
+      20.1
      ],
      "pad": {
-      "target_y": 46.92,
-      "cut_m3": 460.8,
-      "fill_m3": 467.1,
-      "moved_m3": 928.0,
-      "mean_move_m": 0.858,
-      "rms_m": 1.063,
-      "max_cut_m": 3.38,
-      "max_fill_m": 2.2,
+      "target_y": 47.03,
+      "cut_m3": 204.9,
+      "fill_m3": 252.2,
+      "moved_m3": 457.1,
+      "mean_move_m": 0.67,
+      "rms_m": 0.848,
+      "max_cut_m": 3.11,
+      "max_fill_m": 2.15,
       "yaw_deg": 80.0,
-      "width_m": 31.4,
-      "depth_m": 34.4,
+      "width_m": 26.1,
+      "depth_m": 26.1,
       "apron_m": 0.0,
-      "samples": 1081,
+      "samples": 682,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 4.62,
-      "worst_delta_m": 3.38,
+      "clamp_headroom_m": 4.89,
+      "worst_delta_m": 3.11,
       "wet_samples": 0,
-      "freeboard_m": 16.92,
+      "freeboard_m": 17.03,
       "biome_counts": {
-       "Meadows": 1081
+       "Meadows": 682
       },
       "patch": "mainland",
-      "x": 476.3487887185377,
-      "z": 917.5177622101932
+      "x": 481.07823915090603,
+      "z": 920.4409109590206
      },
      "street": "stenvik-main",
      "side": "north",
-     "pieces": 1058,
+     "pieces": 612,
      "grounded": "grounds",
-     "floating_fraction": 0.1,
+     "floating_fraction": 0.077,
      "stations": 0,
      "beds": 0,
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
-      "name": "Dolmen03",
-      "prefab": "Dolmen03",
-      "dist_m": 55.8,
-      "reach_m": 10.0,
+      "name": "ShipSetting01",
+      "prefab": "ShipSetting01",
+      "dist_m": 54.8,
+      "reach_m": 24.0,
       "protected": false,
-      "standoff_m": 22.0
+      "standoff_m": 36.0
      }
     },
     {
      "id": "stenvik-workshop-1",
      "role": "workshop",
-     "body": "hs_blackforest_mister_basestart_simple.blueprint",
-     "sha256": "6af1d71eee98c3fd0563702a448358998970f5b67fadfe7fec77551638ab6247",
-     "x": 513.3,
+     "body": "creator-looney-swamp-starter-home.blueprint",
+     "sha256": "6421f91354f582b48879b36794680e74e54b4b874dfc6e2182dae80044c09d39",
+     "x": 513.1,
      "z": 908.4,
      "yaw_deg": 80.0,
      "footprint": [
       17.8,
-      17.5
+      17.2
      ],
      "pad": {
       "target_y": 46.05,
-      "cut_m3": 230.7,
-      "fill_m3": 115.2,
-      "moved_m3": 345.9,
-      "mean_move_m": 0.619,
-      "rms_m": 0.815,
-      "max_cut_m": 2.46,
+      "cut_m3": 222.4,
+      "fill_m3": 114.3,
+      "moved_m3": 336.7,
+      "mean_move_m": 0.609,
+      "rms_m": 0.802,
+      "max_cut_m": 2.47,
       "max_fill_m": 1.31,
       "yaw_deg": 80.0,
       "width_m": 23.8,
-      "depth_m": 23.5,
+      "depth_m": 23.2,
       "apron_m": 0.0,
-      "samples": 559,
+      "samples": 553,
       "over_clamp": 0,
       "clamp_ok": true,
       "clamp_headroom_m": 5.53,
@@ -206,25 +206,25 @@
       "wet_samples": 0,
       "freeboard_m": 16.05,
       "biome_counts": {
-       "Meadows": 559
+       "Meadows": 553
       },
       "patch": "mainland",
-      "x": 513.270757683417,
-      "z": 908.3673137099015
+      "x": 513.1230365204651,
+      "z": 908.3933609365515
      },
      "street": "stenvik-main",
      "side": "south",
-     "pieces": 270,
+     "pieces": 218,
      "grounded": "grounds",
-     "floating_fraction": 0.044,
+     "floating_fraction": 0.0,
      "stations": 12,
-     "beds": 1,
+     "beds": 2,
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
       "name": "ShipSetting01",
       "prefab": "ShipSetting01",
-      "dist_m": 55.0,
+      "dist_m": 54.9,
       "reach_m": 24.0,
       "protected": false,
       "standoff_m": 36.0
@@ -577,6 +577,63 @@
      "role": "cottage",
      "body": "hs_meadows_cottage.blueprint",
      "sha256": "64c0fc8263989af22c0d1d9dab8200bc7dedac5033b164130ef3483da2c11ea9",
+     "x": 484.7,
+     "z": 901.7,
+     "yaw_deg": 80.0,
+     "footprint": [
+      4.4,
+      6.4
+     ],
+     "pad": {
+      "target_y": 45.38,
+      "cut_m3": 15.7,
+      "fill_m3": 25.7,
+      "moved_m3": 41.4,
+      "mean_move_m": 0.319,
+      "rms_m": 0.377,
+      "max_cut_m": 0.58,
+      "max_fill_m": 0.82,
+      "yaw_deg": 80.0,
+      "width_m": 10.4,
+      "depth_m": 12.4,
+      "apron_m": 0.0,
+      "samples": 130,
+      "over_clamp": 0,
+      "clamp_ok": true,
+      "clamp_headroom_m": 7.17,
+      "worst_delta_m": -0.83,
+      "wet_samples": 0,
+      "freeboard_m": 15.38,
+      "biome_counts": {
+       "Meadows": 130
+      },
+      "patch": "mainland",
+      "x": 484.7332346965683,
+      "z": 901.7218429383848
+     },
+     "street": "stenvik-main",
+     "side": "north",
+     "pieces": 48,
+     "grounded": "grounds",
+     "floating_fraction": 0.05,
+     "stations": 0,
+     "beds": 0,
+     "indoor_covered_m2": null,
+     "npc_ok": null,
+     "poi_clearance": {
+      "name": "ShipSetting01",
+      "prefab": "ShipSetting01",
+      "dist_m": 68.7,
+      "reach_m": 24.0,
+      "protected": false,
+      "standoff_m": 36.0
+     }
+    },
+    {
+     "id": "stenvik-cottage-3",
+     "role": "cottage",
+     "body": "hs_meadows_cottage.blueprint",
+     "sha256": "64c0fc8263989af22c0d1d9dab8200bc7dedac5033b164130ef3483da2c11ea9",
      "x": 546.8,
      "z": 930.7,
      "yaw_deg": 30.0,
@@ -624,63 +681,6 @@
       "name": "WoodHouse7",
       "prefab": "WoodHouse7",
       "dist_m": 31.1,
-      "reach_m": 8.0,
-      "protected": false,
-      "standoff_m": 20.0
-     }
-    },
-    {
-     "id": "stenvik-cottage-3",
-     "role": "cottage",
-     "body": "hs_meadows_cottage.blueprint",
-     "sha256": "64c0fc8263989af22c0d1d9dab8200bc7dedac5033b164130ef3483da2c11ea9",
-     "x": 501.0,
-     "z": 870.8,
-     "yaw_deg": 80.0,
-     "footprint": [
-      4.4,
-      6.4
-     ],
-     "pad": {
-      "target_y": 47.32,
-      "cut_m3": 47.9,
-      "fill_m3": 24.7,
-      "moved_m3": 72.6,
-      "mean_move_m": 0.563,
-      "rms_m": 0.716,
-      "max_cut_m": 1.61,
-      "max_fill_m": 1.14,
-      "yaw_deg": 80.0,
-      "width_m": 10.4,
-      "depth_m": 12.4,
-      "apron_m": 0.0,
-      "samples": 129,
-      "over_clamp": 0,
-      "clamp_ok": true,
-      "clamp_headroom_m": 6.39,
-      "worst_delta_m": 1.61,
-      "wet_samples": 0,
-      "freeboard_m": 17.32,
-      "biome_counts": {
-       "Meadows": 129
-      },
-      "patch": "mainland",
-      "x": 501.0154309074222,
-      "z": 870.8250779531755
-     },
-     "street": "stenvik-main",
-     "side": "south",
-     "pieces": 48,
-     "grounded": "grounds",
-     "floating_fraction": 0.05,
-     "stations": 0,
-     "beds": 0,
-     "indoor_covered_m2": null,
-     "npc_ok": null,
-     "poi_clearance": {
-      "name": "Dolmen02",
-      "prefab": "Dolmen02",
-      "dist_m": 38.0,
       "reach_m": 8.0,
       "protected": false,
       "standoff_m": 20.0
@@ -862,42 +862,42 @@
      "role": "manor",
      "body": "hs_meadows_stone_manor.blueprint",
      "sha256": "e1ca47138288a0b2dabe04aed80a3cbce2ec5a7860fb87efcad3c874ef2de908",
-     "x": 592.1,
-     "z": 959.5,
-     "yaw_deg": 30.0,
+     "x": 502.4,
+     "z": 865.3,
+     "yaw_deg": 80.0,
      "footprint": [
       9.0,
       11.0
      ],
      "pad": {
-      "target_y": 47.2,
-      "cut_m3": 96.7,
-      "fill_m3": 158.6,
-      "moved_m3": 255.3,
-      "mean_move_m": 1.005,
-      "rms_m": 1.294,
-      "max_cut_m": 1.94,
-      "max_fill_m": 3.85,
-      "yaw_deg": 30.0,
+      "target_y": 48.54,
+      "cut_m3": 110.2,
+      "fill_m3": 109.3,
+      "moved_m3": 219.6,
+      "mean_move_m": 0.858,
+      "rms_m": 1.098,
+      "max_cut_m": 3.17,
+      "max_fill_m": 2.18,
+      "yaw_deg": 80.0,
       "width_m": 15.0,
       "depth_m": 17.0,
       "apron_m": 0.0,
-      "samples": 254,
+      "samples": 256,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 4.15,
-      "worst_delta_m": -3.85,
+      "clamp_headroom_m": 4.83,
+      "worst_delta_m": 3.17,
       "wet_samples": 0,
-      "freeboard_m": 17.2,
+      "freeboard_m": 18.54,
       "biome_counts": {
-       "Meadows": 254
+       "Meadows": 256
       },
       "patch": "mainland",
-      "x": 592.124010348456,
-      "z": 959.5083302491977
+      "x": 502.3775182154823,
+      "z": 865.3046868288782
      },
-     "street": "stenvik-cross",
-     "side": "north",
+     "street": "stenvik-main",
+     "side": "south",
      "pieces": 152,
      "grounded": "grounds",
      "floating_fraction": 0.048,
@@ -906,9 +906,9 @@
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
-      "name": "WoodHouse7",
-      "prefab": "WoodHouse7",
-      "dist_m": 32.5,
+      "name": "Dolmen02",
+      "prefab": "Dolmen02",
+      "dist_m": 33.4,
       "reach_m": 8.0,
       "protected": false,
       "standoff_m": 20.0
@@ -919,22 +919,22 @@
      "role": "beehive",
      "body": "hs_meadows_aodi_the_hive_1_0.blueprint",
      "sha256": "0240fc19daa8f09e69033c5f93321075fc66c8b930a368d66b0d2d81a0678e7c",
-     "x": 464.3,
-     "z": 885.0,
+     "x": 593.3,
+     "z": 959.5,
      "yaw_deg": 30.0,
      "footprint": [
       10.0,
       9.8
      ],
      "pad": {
-      "target_y": 46.07,
-      "cut_m3": 35.4,
-      "fill_m3": 33.0,
-      "moved_m3": 68.3,
-      "mean_move_m": 0.27,
-      "rms_m": 0.328,
-      "max_cut_m": 0.78,
-      "max_fill_m": 0.76,
+      "target_y": 47.11,
+      "cut_m3": 98.9,
+      "fill_m3": 154.1,
+      "moved_m3": 253.0,
+      "mean_move_m": 1.0,
+      "rms_m": 1.257,
+      "max_cut_m": 2.03,
+      "max_fill_m": 3.54,
       "yaw_deg": 30.0,
       "width_m": 16.0,
       "depth_m": 15.8,
@@ -942,16 +942,16 @@
       "samples": 253,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 7.22,
-      "worst_delta_m": 0.78,
+      "clamp_headroom_m": 4.45,
+      "worst_delta_m": -3.55,
       "wet_samples": 0,
-      "freeboard_m": 16.07,
+      "freeboard_m": 17.11,
       "biome_counts": {
        "Meadows": 253
       },
       "patch": "mainland",
-      "x": 464.25225058835906,
-      "z": 884.988715006927
+      "x": 593.2900357522403,
+      "z": 959.488715006927
      },
      "street": "stenvik-cross",
      "side": "north",
@@ -963,12 +963,12 @@
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
-      "name": "ShipSetting01",
-      "prefab": "ShipSetting01",
-      "dist_m": 60.6,
-      "reach_m": 24.0,
+      "name": "WoodHouse7",
+      "prefab": "WoodHouse7",
+      "dist_m": 33.6,
+      "reach_m": 8.0,
       "protected": false,
-      "standoff_m": 36.0
+      "standoff_m": 20.0
      }
     },
     {
@@ -1033,21 +1033,21 @@
      "role": "hut",
      "body": "hs_meadows_hut.blueprint",
      "sha256": "83385eeee9cb1f66f327eff8100887609f1adaa805b9a86fb4fcc27f67a4943c",
-     "x": 498.3,
-     "z": 861.2,
+     "x": 504.5,
+     "z": 896.1,
      "yaw_deg": 80.0,
      "footprint": [
       4.4,
       4.4
      ],
      "pad": {
-      "target_y": 49.22,
-      "cut_m3": 44.7,
-      "fill_m3": 22.4,
-      "moved_m3": 67.1,
-      "mean_move_m": 0.621,
-      "rms_m": 0.843,
-      "max_cut_m": 2.6,
+      "target_y": 45.56,
+      "cut_m3": 15.4,
+      "fill_m3": 20.8,
+      "moved_m3": 36.2,
+      "mean_move_m": 0.335,
+      "rms_m": 0.394,
+      "max_cut_m": 0.62,
       "max_fill_m": 0.84,
       "yaw_deg": 80.0,
       "width_m": 10.4,
@@ -1056,16 +1056,16 @@
       "samples": 108,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 5.4,
-      "worst_delta_m": 2.6,
+      "clamp_headroom_m": 7.17,
+      "worst_delta_m": -0.83,
       "wet_samples": 0,
-      "freeboard_m": 19.22,
+      "freeboard_m": 15.56,
       "biome_counts": {
        "Meadows": 108
       },
       "patch": "mainland",
-      "x": 498.31150619550743,
-      "z": 861.2491293760216
+      "x": 504.45865168491673,
+      "z": 896.1113238326539
      },
      "street": "stenvik-main",
      "side": "south",
@@ -1079,7 +1079,7 @@
      "poi_clearance": {
       "name": "Dolmen02",
       "prefab": "Dolmen02",
-      "dist_m": 34.7,
+      "dist_m": 56.4,
       "reach_m": 8.0,
       "protected": false,
       "standoff_m": 20.0
@@ -1090,42 +1090,42 @@
      "role": "hut",
      "body": "hs_meadows_hut.blueprint",
      "sha256": "83385eeee9cb1f66f327eff8100887609f1adaa805b9a86fb4fcc27f67a4943c",
-     "x": 540.2,
-     "z": 925.7,
-     "yaw_deg": 30.0,
+     "x": 496.9,
+     "z": 853.4,
+     "yaw_deg": 80.0,
      "footprint": [
       4.4,
       4.4
      ],
      "pad": {
-      "target_y": 49.02,
-      "cut_m3": 17.2,
-      "fill_m3": 19.2,
-      "moved_m3": 36.4,
-      "mean_move_m": 0.337,
-      "rms_m": 0.399,
-      "max_cut_m": 0.8,
-      "max_fill_m": 0.82,
-      "yaw_deg": 30.0,
+      "target_y": 51.34,
+      "cut_m3": 25.6,
+      "fill_m3": 54.7,
+      "moved_m3": 80.3,
+      "mean_move_m": 0.737,
+      "rms_m": 0.967,
+      "max_cut_m": 1.08,
+      "max_fill_m": 2.7,
+      "yaw_deg": 80.0,
       "width_m": 10.4,
       "depth_m": 10.4,
       "apron_m": 0.0,
-      "samples": 108,
+      "samples": 109,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 7.17,
-      "worst_delta_m": -0.83,
+      "clamp_headroom_m": 5.3,
+      "worst_delta_m": -2.7,
       "wet_samples": 0,
-      "freeboard_m": 19.02,
+      "freeboard_m": 21.34,
       "biome_counts": {
-       "Meadows": 108
+       "Meadows": 109
       },
       "patch": "mainland",
-      "x": 540.1670378541992,
-      "z": 925.700446416709
+      "x": 496.92232077417196,
+      "z": 853.370667351924
      },
-     "street": "stenvik-cross",
-     "side": "north",
+     "street": "stenvik-main",
+     "side": "south",
      "pieces": 28,
      "grounded": "grounds",
      "floating_fraction": 0.062,
@@ -1134,9 +1134,9 @@
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
-      "name": "WoodHouse7",
-      "prefab": "WoodHouse7",
-      "dist_m": 38.5,
+      "name": "Dolmen02",
+      "prefab": "Dolmen02",
+      "dist_m": 33.3,
       "reach_m": 8.0,
       "protected": false,
       "standoff_m": 20.0
@@ -1145,13 +1145,13 @@
    ],
    "totals": {
     "buildings": 18,
-    "pieces_total": 3104,
-    "zdo_estimate": 3122,
-    "earthwork_m3": 3276.5,
-    "pad_area_m2": 5481.7,
-    "clamp_headroom_min_m": 4.15,
-    "clamp_headroom_max_m": 7.22,
-    "beds": 8,
+    "pieces_total": 2606,
+    "zdo_estimate": 2624,
+    "earthwork_m3": 2927.2,
+    "pad_area_m2": 5075.6,
+    "clamp_headroom_min_m": 4.45,
+    "clamp_headroom_max_m": 7.2,
+    "beds": 9,
     "stations": 61,
     "all_clamp_ok": true
    },
@@ -1353,55 +1353,55 @@
     {
      "id": "vestvik-workshop-1",
      "role": "workshop",
-     "body": "hs_blackforest_mister_basestart_simple.blueprint",
-     "sha256": "6af1d71eee98c3fd0563702a448358998970f5b67fadfe7fec77551638ab6247",
-     "x": -882.8,
-     "z": 1862.3,
+     "body": "hs_meadows_the_neck_nook.blueprint",
+     "sha256": "865053dd210c98fb3a6e48dcfe5b2bdffa9345d6242d3d85add2d44687cb4cf8",
+     "x": -887.7,
+     "z": 1857.6,
      "yaw_deg": 70.0,
      "footprint": [
-      17.8,
-      17.5
+      11.6,
+      11.4
      ],
      "pad": {
-      "target_y": 35.95,
-      "cut_m3": 195.7,
-      "fill_m3": 189.2,
-      "moved_m3": 384.9,
-      "mean_move_m": 0.687,
-      "rms_m": 0.862,
-      "max_cut_m": 2.22,
-      "max_fill_m": 1.82,
+      "target_y": 35.4,
+      "cut_m3": 72.9,
+      "fill_m3": 86.8,
+      "moved_m3": 159.8,
+      "mean_move_m": 0.524,
+      "rms_m": 0.622,
+      "max_cut_m": 1.06,
+      "max_fill_m": 1.35,
       "yaw_deg": 70.0,
-      "width_m": 23.8,
-      "depth_m": 23.5,
+      "width_m": 17.6,
+      "depth_m": 17.4,
       "apron_m": 0.0,
-      "samples": 560,
+      "samples": 305,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 5.78,
-      "worst_delta_m": 2.22,
+      "clamp_headroom_m": 6.65,
+      "worst_delta_m": -1.35,
       "wet_samples": 0,
-      "freeboard_m": 5.95,
+      "freeboard_m": 5.4,
       "biome_counts": {
-       "Meadows": 560
+       "Meadows": 305
       },
       "patch": "westisle",
-      "x": -882.7609255727409,
-      "z": 1862.3370107352696
+      "x": -887.747512954757,
+      "z": 1857.55407792354
      },
      "street": "vestvik-main",
      "side": "south",
-     "pieces": 270,
+     "pieces": 183,
      "grounded": "grounds",
-     "floating_fraction": 0.044,
-     "stations": 12,
-     "beds": 1,
+     "floating_fraction": 0.0,
+     "stations": 5,
+     "beds": 0,
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
       "name": "Dolmen03",
       "prefab": "Dolmen03",
-      "dist_m": 47.1,
+      "dist_m": 52.7,
       "reach_m": 10.0,
       "protected": false,
       "standoff_m": 22.0
@@ -1583,39 +1583,39 @@
      "role": "house",
      "body": "hs_blackforest_kin_01_woodhouse.blueprint",
      "sha256": "19d4b35a177f0e69c096a35da974968588e3c1563e9955909821a1329de626e9",
-     "x": -893.4,
-     "z": 1845.2,
+     "x": -894.8,
+     "z": 1841.5,
      "yaw_deg": 70.0,
      "footprint": [
       14.3,
       9.2
      ],
      "pad": {
-      "target_y": 34.58,
-      "cut_m3": 72.7,
-      "fill_m3": 80.2,
-      "moved_m3": 152.9,
-      "mean_move_m": 0.495,
-      "rms_m": 0.592,
-      "max_cut_m": 1.36,
-      "max_fill_m": 1.42,
+      "target_y": 34.48,
+      "cut_m3": 70.6,
+      "fill_m3": 75.3,
+      "moved_m3": 145.9,
+      "mean_move_m": 0.471,
+      "rms_m": 0.571,
+      "max_cut_m": 1.47,
+      "max_fill_m": 1.32,
       "yaw_deg": 70.0,
       "width_m": 20.3,
       "depth_m": 15.2,
       "apron_m": 0.0,
-      "samples": 309,
+      "samples": 310,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 6.58,
-      "worst_delta_m": -1.42,
+      "clamp_headroom_m": 6.53,
+      "worst_delta_m": 1.47,
       "wet_samples": 0,
-      "freeboard_m": 4.58,
+      "freeboard_m": 4.48,
       "biome_counts": {
-       "Meadows": 309
+       "Meadows": 310
       },
       "patch": "westisle",
-      "x": -893.398446772518,
-      "z": 1845.2444497005886
+      "x": -894.7665273458207,
+      "z": 1841.485679217445
      },
      "street": "vestvik-main",
      "side": "south",
@@ -1629,238 +1629,124 @@
      "poi_clearance": {
       "name": "WoodHouse7",
       "prefab": "WoodHouse7",
-      "dist_m": 56.0,
+      "dist_m": 52.2,
       "reach_m": 8.0,
       "protected": false,
       "standoff_m": 20.0
      }
     },
     {
-     "id": "vestvik-quickhouse-2",
-     "role": "quickhouse",
-     "body": "Rocket Raccoon_Quick_House.blueprint",
-     "sha256": "56ef5e1e6f73c1156f34a6b6146efdcb22ff6e7e64d82fa2cef5bc1d4d82c42b",
-     "x": -884.7,
-     "z": 1942.6,
+     "id": "vestvik-villa-2",
+     "role": "villa",
+     "body": "hs_meadows_villa.blueprint",
+     "sha256": "e2093627c21eaf055387c016c8aa4fa6b129fa62dca8999000380b2225d2af72",
+     "x": -883.2,
+     "z": 1945.9,
      "yaw_deg": 70.0,
      "footprint": [
-      11.2,
-      11.0
+      12.4,
+      10.4
      ],
      "pad": {
-      "target_y": 36.23,
-      "cut_m3": 70.1,
-      "fill_m3": 87.6,
-      "moved_m3": 157.6,
-      "mean_move_m": 0.54,
-      "rms_m": 0.684,
-      "max_cut_m": 1.31,
-      "max_fill_m": 1.93,
+      "target_y": 35.93,
+      "cut_m3": 74.5,
+      "fill_m3": 94.3,
+      "moved_m3": 168.8,
+      "mean_move_m": 0.561,
+      "rms_m": 0.698,
+      "max_cut_m": 1.48,
+      "max_fill_m": 1.79,
       "yaw_deg": 70.0,
-      "width_m": 17.2,
-      "depth_m": 17.0,
+      "width_m": 18.4,
+      "depth_m": 16.4,
       "apron_m": 0.0,
-      "samples": 292,
+      "samples": 301,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 6.07,
-      "worst_delta_m": -1.93,
+      "clamp_headroom_m": 6.21,
+      "worst_delta_m": -1.79,
       "wet_samples": 0,
-      "freeboard_m": 6.23,
+      "freeboard_m": 5.93,
       "biome_counts": {
-       "Meadows": 292
+       "Meadows": 301
       },
       "patch": "westisle",
-      "x": -884.6638280099687,
-      "z": 1942.6301079623313
+      "x": -883.1506477077605,
+      "z": 1945.9103953541628
      },
      "street": "vestvik-main",
      "side": "north",
-     "pieces": 157,
+     "pieces": 178,
      "grounded": "grounds",
-     "floating_fraction": 0.0,
-     "stations": 2,
-     "beds": 2,
+     "floating_fraction": 0.036,
+     "stations": 0,
+     "beds": 0,
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
       "name": "Dolmen03",
       "prefab": "Dolmen03",
-      "dist_m": 34.5,
+      "dist_m": 37.4,
       "reach_m": 10.0,
       "protected": false,
       "standoff_m": 22.0
      }
     },
     {
-     "id": "vestvik-quickhouse-3",
-     "role": "quickhouse",
-     "body": "Rocket Raccoon_Quick_House.blueprint",
-     "sha256": "56ef5e1e6f73c1156f34a6b6146efdcb22ff6e7e64d82fa2cef5bc1d4d82c42b",
-     "x": -994.3,
-     "z": 1806.9,
-     "yaw_deg": 150.0,
+     "id": "vestvik-villa-3",
+     "role": "villa",
+     "body": "hs_meadows_villa.blueprint",
+     "sha256": "e2093627c21eaf055387c016c8aa4fa6b129fa62dca8999000380b2225d2af72",
+     "x": -882.5,
+     "z": 1873.3,
+     "yaw_deg": 70.0,
      "footprint": [
-      11.2,
-      11.0
+      12.4,
+      10.4
      ],
      "pad": {
-      "target_y": 35.39,
-      "cut_m3": 107.0,
-      "fill_m3": 72.0,
-      "moved_m3": 179.0,
-      "mean_move_m": 0.611,
-      "rms_m": 0.766,
-      "max_cut_m": 2.22,
-      "max_fill_m": 1.04,
-      "yaw_deg": 150.0,
-      "width_m": 17.2,
-      "depth_m": 17.0,
+      "target_y": 35.92,
+      "cut_m3": 61.2,
+      "fill_m3": 110.9,
+      "moved_m3": 172.2,
+      "mean_move_m": 0.57,
+      "rms_m": 0.719,
+      "max_cut_m": 1.33,
+      "max_fill_m": 1.78,
+      "yaw_deg": 70.0,
+      "width_m": 18.4,
+      "depth_m": 16.4,
       "apron_m": 0.0,
-      "samples": 293,
+      "samples": 302,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 5.77,
-      "worst_delta_m": 2.23,
+      "clamp_headroom_m": 6.21,
+      "worst_delta_m": -1.79,
       "wet_samples": 0,
-      "freeboard_m": 5.39,
+      "freeboard_m": 5.92,
       "biome_counts": {
-       "Meadows": 293
+       "Meadows": 302
       },
       "patch": "westisle",
-      "x": -994.252798117251,
-      "z": 1806.9416697508022
+      "x": -882.5398248859439,
+      "z": 1873.3239855002491
      },
-     "street": "vestvik-cross",
-     "side": "north",
-     "pieces": 157,
-     "grounded": "grounds",
-     "floating_fraction": 0.0,
-     "stations": 2,
-     "beds": 2,
-     "indoor_covered_m2": null,
-     "npc_ok": null,
-     "poi_clearance": {
-      "name": "WoodHouse3",
-      "prefab": "WoodHouse3",
-      "dist_m": 38.7,
-      "reach_m": 10.0,
-      "protected": false,
-      "standoff_m": 22.0
-     }
-    },
-    {
-     "id": "vestvik-cottage-1",
-     "role": "cottage",
-     "body": "hs_meadows_cottage.blueprint",
-     "sha256": "64c0fc8263989af22c0d1d9dab8200bc7dedac5033b164130ef3483da2c11ea9",
-     "x": -915.9,
-     "z": 1764.3,
-     "yaw_deg": 150.0,
-     "footprint": [
-      4.4,
-      6.4
-     ],
-     "pad": {
-      "target_y": 32.41,
-      "cut_m3": 46.2,
-      "fill_m3": 23.6,
-      "moved_m3": 69.8,
-      "mean_move_m": 0.541,
-      "rms_m": 0.704,
-      "max_cut_m": 1.73,
-      "max_fill_m": 1.17,
-      "yaw_deg": 150.0,
-      "width_m": 10.4,
-      "depth_m": 12.4,
-      "apron_m": 0.0,
-      "samples": 129,
-      "over_clamp": 0,
-      "clamp_ok": true,
-      "clamp_headroom_m": 6.28,
-      "worst_delta_m": 1.72,
-      "wet_samples": 0,
-      "freeboard_m": 2.41,
-      "biome_counts": {
-       "Meadows": 129
-      },
-      "patch": "westisle",
-      "x": -915.853332099679,
-      "z": 1764.3335281795064
-     },
-     "street": "vestvik-cross",
-     "side": "north",
-     "pieces": 48,
-     "grounded": "grounds",
-     "floating_fraction": 0.05,
-     "stations": 0,
-     "beds": 0,
-     "indoor_covered_m2": null,
-     "npc_ok": null,
-     "poi_clearance": {
-      "name": "WoodHouse7",
-      "prefab": "WoodHouse7",
-      "dist_m": 31.2,
-      "reach_m": 8.0,
-      "protected": false,
-      "standoff_m": 20.0
-     }
-    },
-    {
-     "id": "vestvik-cottage-2",
-     "role": "cottage",
-     "body": "hs_meadows_cottage.blueprint",
-     "sha256": "64c0fc8263989af22c0d1d9dab8200bc7dedac5033b164130ef3483da2c11ea9",
-     "x": -877.4,
-     "z": 1766.9,
-     "yaw_deg": 150.0,
-     "footprint": [
-      4.4,
-      6.4
-     ],
-     "pad": {
-      "target_y": 32.14,
-      "cut_m3": 24.1,
-      "fill_m3": 13.6,
-      "moved_m3": 37.8,
-      "mean_move_m": 0.29,
-      "rms_m": 0.35,
-      "max_cut_m": 0.91,
-      "max_fill_m": 0.55,
-      "yaw_deg": 150.0,
-      "width_m": 10.4,
-      "depth_m": 12.4,
-      "apron_m": 0.0,
-      "samples": 130,
-      "over_clamp": 0,
-      "clamp_ok": true,
-      "clamp_headroom_m": 7.09,
-      "worst_delta_m": 0.91,
-      "wet_samples": 0,
-      "freeboard_m": 2.14,
-      "biome_counts": {
-       "Meadows": 130
-      },
-      "patch": "westisle",
-      "x": -877.440519178577,
-      "z": 1766.8664718204934
-     },
-     "street": "vestvik-cross",
+     "street": "vestvik-main",
      "side": "south",
-     "pieces": 48,
+     "pieces": 178,
      "grounded": "grounds",
-     "floating_fraction": 0.05,
+     "floating_fraction": 0.036,
      "stations": 0,
      "beds": 0,
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
-      "name": "WoodHouse7",
-      "prefab": "WoodHouse7",
-      "dist_m": 29.9,
-      "reach_m": 8.0,
+      "name": "Dolmen03",
+      "prefab": "Dolmen03",
+      "dist_m": 36.2,
+      "reach_m": 10.0,
       "protected": false,
-      "standoff_m": 20.0
+      "standoff_m": 22.0
      }
     },
     {
@@ -1868,41 +1754,41 @@
      "role": "stonehouse",
      "body": "hs_meadows_stone_cottage.blueprint",
      "sha256": "8c7b052641de15b112678579bcf6a96e5f085cb068c727109ddfea31c08a22eb",
-     "x": -902.0,
-     "z": 1889.2,
-     "yaw_deg": 70.0,
+     "x": -989.4,
+     "z": 1806.5,
+     "yaw_deg": 150.0,
      "footprint": [
       5.0,
       7.0
      ],
      "pad": {
-      "target_y": 34.77,
-      "cut_m3": 47.6,
-      "fill_m3": 45.5,
-      "moved_m3": 93.2,
-      "mean_move_m": 0.652,
-      "rms_m": 0.722,
-      "max_cut_m": 1.36,
-      "max_fill_m": 1.22,
-      "yaw_deg": 70.0,
+      "target_y": 35.52,
+      "cut_m3": 34.2,
+      "fill_m3": 32.4,
+      "moved_m3": 66.6,
+      "mean_move_m": 0.466,
+      "rms_m": 0.568,
+      "max_cut_m": 1.02,
+      "max_fill_m": 1.35,
+      "yaw_deg": 150.0,
       "width_m": 11.0,
       "depth_m": 13.0,
       "apron_m": 0.0,
       "samples": 143,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 6.64,
-      "worst_delta_m": 1.36,
+      "clamp_headroom_m": 6.65,
+      "worst_delta_m": -1.35,
       "wet_samples": 0,
-      "freeboard_m": 4.77,
+      "freeboard_m": 5.52,
       "biome_counts": {
        "Meadows": 143
       },
       "patch": "westisle",
-      "x": -901.9717728089669,
-      "z": 1889.2293116495905
+      "x": -989.4422863405995,
+      "z": 1806.4737205583713
      },
-     "street": "vestvik-main",
+     "street": "vestvik-cross",
      "side": "north",
      "pieces": 64,
      "grounded": "grounds",
@@ -1912,12 +1798,12 @@
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
-      "name": "Dolmen03",
-      "prefab": "Dolmen03",
-      "dist_m": 32.1,
-      "reach_m": 10.0,
+      "name": "WoodHouse12",
+      "prefab": "WoodHouse12",
+      "dist_m": 39.8,
+      "reach_m": 6.0,
       "protected": false,
-      "standoff_m": 22.0
+      "standoff_m": 18.0
      }
     },
     {
@@ -1925,41 +1811,41 @@
      "role": "stonehouse",
      "body": "hs_meadows_stone_cottage.blueprint",
      "sha256": "8c7b052641de15b112678579bcf6a96e5f085cb068c727109ddfea31c08a22eb",
-     "x": -919.8,
-     "z": 1840.4,
-     "yaw_deg": 70.0,
+     "x": -918.4,
+     "z": 1765.5,
+     "yaw_deg": 150.0,
      "footprint": [
       5.0,
       7.0
      ],
      "pad": {
-      "target_y": 34.94,
-      "cut_m3": 15.2,
-      "fill_m3": 39.5,
-      "moved_m3": 54.7,
-      "mean_move_m": 0.383,
-      "rms_m": 0.519,
-      "max_cut_m": 0.51,
-      "max_fill_m": 1.56,
-      "yaw_deg": 70.0,
+      "target_y": 32.46,
+      "cut_m3": 52.8,
+      "fill_m3": 33.2,
+      "moved_m3": 86.0,
+      "mean_move_m": 0.601,
+      "rms_m": 0.739,
+      "max_cut_m": 1.58,
+      "max_fill_m": 1.29,
+      "yaw_deg": 150.0,
       "width_m": 11.0,
       "depth_m": 13.0,
       "apron_m": 0.0,
       "samples": 143,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 6.43,
-      "worst_delta_m": -1.57,
+      "clamp_headroom_m": 6.42,
+      "worst_delta_m": 1.58,
       "wet_samples": 0,
-      "freeboard_m": 4.94,
+      "freeboard_m": 2.46,
       "biome_counts": {
        "Meadows": 143
       },
       "patch": "westisle",
-      "x": -919.7568202619017,
-      "z": 1840.365295368723
+      "x": -918.4282032302755,
+      "z": 1765.4737205583713
      },
-     "street": "vestvik-main",
+     "street": "vestvik-cross",
      "side": "north",
      "pieces": 64,
      "grounded": "grounds",
@@ -1969,12 +1855,12 @@
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
-      "name": "ShipSetting01",
-      "prefab": "ShipSetting01",
-      "dist_m": 46.5,
-      "reach_m": 24.0,
+      "name": "WoodHouse7",
+      "prefab": "WoodHouse7",
+      "dist_m": 32.0,
+      "reach_m": 8.0,
       "protected": false,
-      "standoff_m": 36.0
+      "standoff_m": 20.0
      }
     },
     {
@@ -1982,41 +1868,41 @@
      "role": "hut",
      "body": "hs_meadows_hut.blueprint",
      "sha256": "83385eeee9cb1f66f327eff8100887609f1adaa805b9a86fb4fcc27f67a4943c",
-     "x": -883.3,
-     "z": 1879.9,
-     "yaw_deg": 70.0,
+     "x": -964.5,
+     "z": 1816.0,
+     "yaw_deg": 150.0,
      "footprint": [
       4.4,
       4.4
      ],
      "pad": {
-      "target_y": 35.67,
-      "cut_m3": 13.1,
-      "fill_m3": 32.4,
-      "moved_m3": 45.4,
-      "mean_move_m": 0.424,
-      "rms_m": 0.551,
-      "max_cut_m": 0.56,
-      "max_fill_m": 1.48,
-      "yaw_deg": 70.0,
+      "target_y": 34.47,
+      "cut_m3": 21.1,
+      "fill_m3": 22.8,
+      "moved_m3": 43.9,
+      "mean_move_m": 0.403,
+      "rms_m": 0.48,
+      "max_cut_m": 0.85,
+      "max_fill_m": 1.16,
+      "yaw_deg": 150.0,
       "width_m": 10.4,
       "depth_m": 10.4,
       "apron_m": 0.0,
-      "samples": 107,
+      "samples": 109,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 6.51,
-      "worst_delta_m": -1.49,
+      "clamp_headroom_m": 6.84,
+      "worst_delta_m": -1.16,
       "wet_samples": 0,
-      "freeboard_m": 5.67,
+      "freeboard_m": 4.47,
       "biome_counts": {
-       "Meadows": 107
+       "Meadows": 109
       },
       "patch": "westisle",
-      "x": -883.3409839026803,
-      "z": 1879.894232392863
+      "x": -964.5430595570209,
+      "z": 1816.0004464167089
      },
-     "street": "vestvik-main",
+     "street": "vestvik-cross",
      "side": "south",
      "pieces": 28,
      "grounded": "grounds",
@@ -2026,12 +1912,12 @@
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
-      "name": "Dolmen03",
-      "prefab": "Dolmen03",
-      "dist_m": 29.9,
-      "reach_m": 10.0,
+      "name": "Runestone_Boars",
+      "prefab": "Runestone_Boars",
+      "dist_m": 34.2,
+      "reach_m": 13.520000457763672,
       "protected": false,
-      "standoff_m": 22.0
+      "standoff_m": 25.520000457763672
      }
     },
     {
@@ -2039,41 +1925,41 @@
      "role": "hut",
      "body": "hs_meadows_hut.blueprint",
      "sha256": "83385eeee9cb1f66f327eff8100887609f1adaa805b9a86fb4fcc27f67a4943c",
-     "x": -906.8,
-     "z": 1760.2,
-     "yaw_deg": 150.0,
+     "x": -901.6,
+     "z": 1886.5,
+     "yaw_deg": 70.0,
      "footprint": [
       4.4,
       4.4
      ],
      "pad": {
-      "target_y": 31.67,
-      "cut_m3": 43.9,
-      "fill_m3": 26.3,
-      "moved_m3": 70.1,
-      "mean_move_m": 0.655,
-      "rms_m": 0.795,
-      "max_cut_m": 2.19,
-      "max_fill_m": 0.92,
-      "yaw_deg": 150.0,
+      "target_y": 34.25,
+      "cut_m3": 33.5,
+      "fill_m3": 15.5,
+      "moved_m3": 49.0,
+      "mean_move_m": 0.454,
+      "rms_m": 0.575,
+      "max_cut_m": 1.39,
+      "max_fill_m": 0.69,
+      "yaw_deg": 70.0,
       "width_m": 10.4,
       "depth_m": 10.4,
       "apron_m": 0.0,
-      "samples": 107,
+      "samples": 108,
       "over_clamp": 0,
       "clamp_ok": true,
-      "clamp_headroom_m": 5.8,
-      "worst_delta_m": 2.2,
+      "clamp_headroom_m": 6.61,
+      "worst_delta_m": 1.39,
       "wet_samples": 0,
-      "freeboard_m": 1.67,
+      "freeboard_m": 4.25,
       "biome_counts": {
-       "Meadows": 107
+       "Meadows": 108
       },
       "patch": "westisle",
-      "x": -906.7796806022131,
-      "z": 1760.2495535832911
+      "x": -901.5710207459268,
+      "z": 1886.5294231733808
      },
-     "street": "vestvik-cross",
+     "street": "vestvik-main",
      "side": "north",
      "pieces": 28,
      "grounded": "grounds",
@@ -2083,25 +1969,25 @@
      "indoor_covered_m2": null,
      "npc_ok": null,
      "poi_clearance": {
-      "name": "WoodHouse7",
-      "prefab": "WoodHouse7",
-      "dist_m": 30.7,
-      "reach_m": 8.0,
+      "name": "Dolmen03",
+      "prefab": "Dolmen03",
+      "dist_m": 33.6,
+      "reach_m": 10.0,
       "protected": false,
-      "standoff_m": 20.0
+      "standoff_m": 22.0
      }
     }
    ],
    "totals": {
-    "buildings": 14,
-    "pieces_total": 1935,
-    "zdo_estimate": 1949,
-    "earthwork_m3": 2077.8,
-    "pad_area_m2": 4045.8,
+    "buildings": 12,
+    "pieces_total": 1794,
+    "zdo_estimate": 1806,
+    "earthwork_m3": 1724.6,
+    "pad_area_m2": 3553.5,
     "clamp_headroom_min_m": 5.57,
     "clamp_headroom_max_m": 7.11,
-    "beds": 11,
-    "stations": 43,
+    "beds": 6,
+    "stations": 32,
     "all_clamp_ok": true
    },
    "why": "MEASURED: 100% Meadows at 33.99 m with 13.3 m of district relief on the west isle, the other half of the largest landmass in the world. Waterfront CORRECTED by Crossings and re-measured here: 93.8 m to the nearest wet cell but 137.9 m to navigable water, and the nearest shoreline that takes a 22 m pier is 227.3 m away at (-1031.5,1656.5). The village does not move; the quay is Crossings' harbour-vestvik.",
@@ -2962,66 +2848,67 @@
    "kind": "treehouse",
    "tag": "u-treesth",
    "patch": "mainland",
-   "x": 548.0,
-   "z": 466.0,
-   "pad_m": 32.0,
-   "body": "hs_ashlands_swampytreehouse.blueprint",
+   "x": 542.0,
+   "z": 484.0,
+   "pad_m": 16.0,
+   "body": "hs_meadows_stilt_house.blueprint",
    "road_priority": "spur",
-   "why": "MEASURED: 100% BlackForest over the pad at 75.46 m, 776 m from spawn. The body is a genuine raised house -- MEASURED base_y 11.02 m, 15 walkable levels -- rather than a hut on the ground.",
+   "cluster": 3,
+   "why": "MEASURED: 100% BlackForest over the pad at 75.46 m, 776 m from spawn -- the nearest canopy hamlet to the temple on the spawn island. `hs_ashlands_swampytreehouse.blueprint` was chosen first and is OUT: MEASURED, `to_rcon_plan.py` refuses it on 22 unspawnable prefabs (Eyescream, FeastAshlands, MeadBzerker, QueensJam and 18 more consumables on item stands), and a body needing --drop-prefab is a worse choice than one that does not. The library has no large treehouse that spawns clean, so the flagship is three stilt bodies rather than one big one, and that is stated rather than quietly substituted.",
    "pad": {
-    "target_y": 75.61,
-    "cut_m3": 295.9,
-    "fill_m3": 352.9,
-    "moved_m3": 648.8,
-    "mean_move_m": 0.634,
-    "rms_m": 0.774,
-    "max_cut_m": 2.2,
-    "max_fill_m": 1.79,
+    "target_y": 75.7,
+    "cut_m3": 32.9,
+    "fill_m3": 44.3,
+    "moved_m3": 77.3,
+    "mean_move_m": 0.302,
+    "rms_m": 0.374,
+    "max_cut_m": 0.76,
+    "max_fill_m": 1.16,
     "yaw_deg": 0.0,
-    "width_m": 32.0,
-    "depth_m": 32.0,
+    "width_m": 16.0,
+    "depth_m": 16.0,
     "apron_m": 0.0,
-    "samples": 1024,
+    "samples": 256,
     "over_clamp": 0,
     "clamp_ok": true,
-    "clamp_headroom_m": 5.8,
-    "worst_delta_m": 2.2,
+    "clamp_headroom_m": 6.84,
+    "worst_delta_m": -1.16,
     "wet_samples": 0,
-    "freeboard_m": 45.61,
+    "freeboard_m": 45.7,
     "biome_counts": {
-     "BlackForest": 1024
+     "BlackForest": 256
     },
     "patch": "mainland",
-    "x": 548.0,
-    "z": 466.0,
+    "x": 542.0,
+    "z": 484.0,
     "offsets_tried": 289,
-    "cleared_offsets": 40
+    "cleared_offsets": 157
    },
    "body_footprint": [
-    25.4,
-    23.6
+    4.4,
+    8.4
    ],
-   "body_sha256": "4effd633e01f5e5f204176a56b37e66d0a55d011011b37376f35685248c6b180",
-   "pieces": 1792,
+   "body_sha256": "9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4",
+   "pieces": 68,
    "grounded": "grounds",
-   "floating_fraction": 0.098,
+   "floating_fraction": 0.042,
    "missing_prefabs": [],
-   "stations": 22,
+   "stations": 0,
    "beds": 0,
-   "walkable_levels": 15,
-   "base_y": 11.023,
-   "ground_y": 75.21,
-   "rise_160m_m": 41.5,
-   "dist_wet_cell_m": 255.5,
-   "dist_navigable_water_m": 334.8,
-   "dist_spawn_m": 767.8,
+   "walkable_levels": 1,
+   "base_y": 1.097,
+   "ground_y": 75.59,
+   "rise_160m_m": 39.8,
+   "dist_wet_cell_m": 272.3,
+   "dist_navigable_water_m": 350.1,
+   "dist_spawn_m": 774.0,
    "nearest_location": {
-    "name": "Greydwarf_camp1",
-    "prefab": "Greydwarf_camp1",
-    "dist_m": 50.2,
-    "reach_m": 10.0,
+    "name": "Crypt2",
+    "prefab": "Crypt2",
+    "dist_m": 44.6,
+    "reach_m": 21.0,
     "protected": false,
-    "standoff_m": 22.0
+    "standoff_m": 33.0
    },
    "poi_violations": [],
    "island": {
@@ -3029,8 +2916,7 @@
     "landmass_area_m2": 2833397.0,
     "same_landmass_as_spawn": true,
     "evidence": "MEASURED: 4-connected land (h > 30, the measured c_WaterLevel) at 1 m puts this site in the same component as the StartTemple"
-   },
-   "cluster": 1
+   }
   },
   {
    "id": "tree-west",
@@ -3184,49 +3070,53 @@
   }
  ],
  "bodies": {
-  "Rocket Raccoon_Quick_House.blueprint": {
-   "count": 2,
-   "sha256": "56ef5e1e6f73c1156f34a6b6146efdcb22ff6e7e64d82fa2cef5bc1d4d82c42b",
-   "pieces": 157,
+  "creator-looney-swamp-starter-home.blueprint": {
+   "count": 1,
+   "sha256": "6421f91354f582b48879b36794680e74e54b4b874dfc6e2182dae80044c09d39",
+   "pieces": 218,
    "footprint": [
-    11.2,
-    11.0
+    17.8,
+    17.2
    ],
    "grounded": "grounds",
    "floating_fraction": 0.0,
    "missing_prefabs": [],
-   "base_y": 3.097,
-   "relief_m": 3.967,
-   "max_buried_m": 4.097,
-   "stations": 2,
+   "base_y": 8.097,
+   "relief_m": 8.045,
+   "max_buried_m": 8.175,
+   "stations": 12,
    "beds": 2,
-   "walkable_levels": 2,
+   "walkable_levels": 3,
    "is_town_dwelling": true,
    "interior": {
-    "name": "Rocket Raccoon_Quick_House.blueprint",
+    "name": "creator-looney-swamp-starter-home.blueprint",
     "yaw_deg": 0.0,
-    "pieces": 157,
-    "indoor_covered_m2": 18.0,
+    "pieces": 218,
+    "indoor_covered_m2": 33.0,
     "counts": {
-     "outdoor": 544,
-     "blocked": 49,
-     "covered_unenclosed": 13,
-     "unreachable": 1,
-     "indoor_covered": 18
+     "outdoor": 843,
+     "blocked": 82,
+     "indoor_covered": 33,
+     "covered_unenclosed": 2,
+     "unreachable": 1
     },
     "cover_height_m": {
-     "min": 3.65,
-     "max": 5.65
+     "min": 2.0,
+     "max": 3.85
     },
-    "interior_floor_above_pad_m": {
-     "min": 0.01,
-     "max": 0.01
-    },
+    "interior_floor_above_pad_m": null,
     "npc_ok": true,
-    "npc_verdict": "MEASURED 18.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
+    "npc_verdict": "MEASURED 33.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "hard gate: this body houses a town dwelling"
+   "npc_gate_scope": "hard gate: this body houses a town dwelling",
+   "spawnable": {
+    "ok": true,
+    "commands": 218,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "drake-lighthouse.blueprint": {
    "count": 2,
@@ -3263,7 +3153,14 @@
     "npc_verdict": "MEASURED only 0.0 m2 of covered, enclosed, reachable floor (< 4 m2): nothing could stand in this body, it is scenery"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect"
+   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect",
+   "spawnable": {
+    "ok": true,
+    "commands": 1255,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_ashlands_neletit_portalhubtower.blueprint": {
    "count": 1,
@@ -3306,96 +3203,14 @@
     "npc_verdict": "MEASURED 435.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect"
-  },
-  "hs_ashlands_swampytreehouse.blueprint": {
-   "count": 1,
-   "sha256": "4effd633e01f5e5f204176a56b37e66d0a55d011011b37376f35685248c6b180",
-   "pieces": 1792,
-   "footprint": [
-    25.4,
-    23.6
-   ],
-   "grounded": "grounds",
-   "floating_fraction": 0.098,
-   "missing_prefabs": [],
-   "base_y": 11.023,
-   "relief_m": 58.942,
-   "max_buried_m": 49.23,
-   "stations": 22,
-   "beds": 0,
-   "walkable_levels": 15,
-   "is_town_dwelling": false,
-   "interior": {
-    "name": "hs_ashlands_swampytreehouse.blueprint",
-    "yaw_deg": 0.0,
-    "pieces": 1792,
-    "indoor_covered_m2": 92.0,
-    "counts": {
-     "outdoor": 1163,
-     "blocked": 162,
-     "indoor_covered": 92,
-     "covered_unenclosed": 25,
-     "unreachable": 1
-    },
-    "cover_height_m": {
-     "min": 2.17,
-     "max": 9.87
-    },
-    "interior_floor_above_pad_m": {
-     "min": 1.0,
-     "max": 1.0
-    },
-    "npc_ok": true,
-    "npc_verdict": "MEASURED 92.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
-   },
-   "npc_gate": "PASS",
-   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect"
-  },
-  "hs_blackforest_crimsonchaostownhall.blueprint": {
-   "count": 1,
-   "sha256": "ede89b6a04ea2f02835609023d2feb4b313b328bbdf5008b71b87996f745b9f8",
-   "pieces": 1058,
-   "footprint": [
-    25.4,
-    28.4
-   ],
-   "grounded": "grounds",
-   "floating_fraction": 0.1,
-   "missing_prefabs": [],
-   "base_y": 1.097,
-   "relief_m": 7.861,
-   "max_buried_m": 1.17,
-   "stations": 0,
-   "beds": 0,
-   "walkable_levels": 18,
-   "is_town_dwelling": true,
-   "interior": {
-    "name": "hs_blackforest_crimsonchaostownhall.blueprint",
-    "yaw_deg": 0.0,
-    "pieces": 1058,
-    "indoor_covered_m2": 140.0,
-    "counts": {
-     "outdoor": 1264,
-     "blocked": 197,
-     "covered_unenclosed": 73,
-     "indoor_covered": 140,
-     "unreachable": 2,
-     "indoor_uncovered": 1
-    },
-    "cover_height_m": {
-     "min": 2.0,
-     "max": 9.83
-    },
-    "interior_floor_above_pad_m": {
-     "min": 1.0,
-     "max": 1.0
-    },
-    "npc_ok": true,
-    "npc_verdict": "MEASURED 140.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
-   },
-   "npc_gate": "PASS",
-   "npc_gate_scope": "hard gate: this body houses a town dwelling"
+   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect",
+   "spawnable": {
+    "ok": true,
+    "commands": 5565,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_blackforest_kin_01_woodhouse.blueprint": {
    "count": 7,
@@ -3438,48 +3253,14 @@
     "npc_verdict": "MEASURED 15.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "hard gate: this body houses a town dwelling"
-  },
-  "hs_blackforest_mister_basestart_simple.blueprint": {
-   "count": 2,
-   "sha256": "6af1d71eee98c3fd0563702a448358998970f5b67fadfe7fec77551638ab6247",
-   "pieces": 270,
-   "footprint": [
-    17.8,
-    17.5
-   ],
-   "grounded": "grounds",
-   "floating_fraction": 0.044,
-   "missing_prefabs": [],
-   "base_y": 0.597,
-   "relief_m": 2.257,
-   "max_buried_m": 1.097,
-   "stations": 12,
-   "beds": 1,
-   "walkable_levels": 3,
-   "is_town_dwelling": true,
-   "interior": {
-    "name": "hs_blackforest_mister_basestart_simple.blueprint",
-    "yaw_deg": 0.0,
-    "pieces": 270,
-    "indoor_covered_m2": 18.0,
-    "counts": {
-     "outdoor": 797,
-     "blocked": 137,
-     "unreachable": 5,
-     "covered_unenclosed": 4,
-     "indoor_covered": 18
-    },
-    "cover_height_m": {
-     "min": 2.0,
-     "max": 3.85
-    },
-    "interior_floor_above_pad_m": null,
-    "npc_ok": true,
-    "npc_verdict": "MEASURED 18.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
-   },
-   "npc_gate": "PASS",
-   "npc_gate_scope": "hard gate: this body houses a town dwelling"
+   "npc_gate_scope": "hard gate: this body houses a town dwelling",
+   "spawnable": {
+    "ok": true,
+    "commands": 216,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_blackforest_tester_meadows_log_cabin.blueprint": {
    "count": 3,
@@ -3519,7 +3300,14 @@
     "npc_verdict": "MEASURED 53.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "hard gate: this body houses a town dwelling"
+   "npc_gate_scope": "hard gate: this body houses a town dwelling",
+   "spawnable": {
+    "ok": true,
+    "commands": 207,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_meadows_aodi_the_hive_1_0.blueprint": {
    "count": 1,
@@ -3556,10 +3344,17 @@
     "npc_verdict": "MEASURED only 0.0 m2 of covered, enclosed, reachable floor (< 4 m2): nothing could stand in this body, it is scenery"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect"
+   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect",
+   "spawnable": {
+    "ok": true,
+    "commands": 126,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_meadows_cottage.blueprint": {
-   "count": 6,
+   "count": 4,
    "sha256": "64c0fc8263989af22c0d1d9dab8200bc7dedac5033b164130ef3483da2c11ea9",
    "pieces": 48,
    "footprint": [
@@ -3596,7 +3391,14 @@
     "npc_verdict": "MEASURED 11.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "hard gate: this body houses a town dwelling"
+   "npc_gate_scope": "hard gate: this body houses a town dwelling",
+   "spawnable": {
+    "ok": true,
+    "commands": 48,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_meadows_hut.blueprint": {
    "count": 5,
@@ -3636,10 +3438,64 @@
     "npc_verdict": "MEASURED 7.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "hard gate: this body houses a town dwelling"
+   "npc_gate_scope": "hard gate: this body houses a town dwelling",
+   "spawnable": {
+    "ok": true,
+    "commands": 28,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
+  },
+  "hs_meadows_madzobuild_modernstarterhouse.blueprint": {
+   "count": 1,
+   "sha256": "557efb39834f49f670059da3d2efeb8eb2b3d1a66ba0793941d93cb61c07b034",
+   "pieces": 612,
+   "footprint": [
+    20.1,
+    20.1
+   ],
+   "grounded": "grounds",
+   "floating_fraction": 0.077,
+   "missing_prefabs": [],
+   "base_y": 1.096,
+   "relief_m": 8.028,
+   "max_buried_m": 2.17,
+   "stations": 0,
+   "beds": 0,
+   "walkable_levels": 18,
+   "is_town_dwelling": true,
+   "interior": {
+    "name": "hs_meadows_madzobuild_modernstarterhouse.blueprint",
+    "yaw_deg": 0.0,
+    "pieces": 612,
+    "indoor_covered_m2": 17.0,
+    "counts": {
+     "outdoor": 1026,
+     "blocked": 23,
+     "covered_unenclosed": 159,
+     "indoor_covered": 17
+    },
+    "cover_height_m": {
+     "min": 4.53,
+     "max": 5.61
+    },
+    "interior_floor_above_pad_m": null,
+    "npc_ok": true,
+    "npc_verdict": "MEASURED 17.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
+   },
+   "npc_gate": "PASS",
+   "npc_gate_scope": "hard gate: this body houses a town dwelling",
+   "spawnable": {
+    "ok": true,
+    "commands": 612,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_meadows_stilt_house.blueprint": {
-   "count": 6,
+   "count": 9,
    "sha256": "9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4",
    "pieces": 68,
    "footprint": [
@@ -3675,7 +3531,14 @@
     "npc_verdict": "MEASURED 21.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect"
+   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect",
+   "spawnable": {
+    "ok": true,
+    "commands": 68,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_meadows_stone_cottage.blueprint": {
    "count": 2,
@@ -3718,7 +3581,14 @@
     "npc_verdict": "MEASURED 11.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "hard gate: this body houses a town dwelling"
+   "npc_gate_scope": "hard gate: this body houses a town dwelling",
+   "spawnable": {
+    "ok": true,
+    "commands": 64,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_meadows_stone_house.blueprint": {
    "count": 2,
@@ -3761,7 +3631,14 @@
     "npc_verdict": "MEASURED 15.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "hard gate: this body houses a town dwelling"
+   "npc_gate_scope": "hard gate: this body houses a town dwelling",
+   "spawnable": {
+    "ok": true,
+    "commands": 80,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_meadows_stone_manor.blueprint": {
    "count": 1,
@@ -3804,7 +3681,112 @@
     "npc_verdict": "MEASURED 47.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "hard gate: this body houses a town dwelling"
+   "npc_gate_scope": "hard gate: this body houses a town dwelling",
+   "spawnable": {
+    "ok": true,
+    "commands": 152,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
+  },
+  "hs_meadows_the_neck_nook.blueprint": {
+   "count": 1,
+   "sha256": "865053dd210c98fb3a6e48dcfe5b2bdffa9345d6242d3d85add2d44687cb4cf8",
+   "pieces": 183,
+   "footprint": [
+    11.6,
+    11.4
+   ],
+   "grounded": "grounds",
+   "floating_fraction": 0.0,
+   "missing_prefabs": [],
+   "base_y": -0.019,
+   "relief_m": 2.078,
+   "max_buried_m": 2.059,
+   "stations": 5,
+   "beds": 0,
+   "walkable_levels": 2,
+   "is_town_dwelling": true,
+   "interior": {
+    "name": "hs_meadows_the_neck_nook.blueprint",
+    "yaw_deg": 0.0,
+    "pieces": 183,
+    "indoor_covered_m2": 9.0,
+    "counts": {
+     "outdoor": 522,
+     "blocked": 68,
+     "unreachable": 20,
+     "indoor_covered": 9,
+     "indoor_uncovered": 6
+    },
+    "cover_height_m": {
+     "min": 2.75,
+     "max": 3.97
+    },
+    "interior_floor_above_pad_m": {
+     "min": 1.0,
+     "max": 1.0
+    },
+    "npc_ok": true,
+    "npc_verdict": "MEASURED 9.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
+   },
+   "npc_gate": "PASS",
+   "npc_gate_scope": "hard gate: this body houses a town dwelling",
+   "spawnable": {
+    "ok": true,
+    "commands": 183,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
+  },
+  "hs_meadows_villa.blueprint": {
+   "count": 2,
+   "sha256": "e2093627c21eaf055387c016c8aa4fa6b129fa62dca8999000380b2225d2af72",
+   "pieces": 178,
+   "footprint": [
+    12.4,
+    10.4
+   ],
+   "grounded": "grounds",
+   "floating_fraction": 0.036,
+   "missing_prefabs": [],
+   "base_y": 0.097,
+   "relief_m": 5.932,
+   "max_buried_m": 0.297,
+   "stations": 0,
+   "beds": 0,
+   "walkable_levels": 1,
+   "is_town_dwelling": false,
+   "interior": {
+    "name": "hs_meadows_villa.blueprint",
+    "yaw_deg": 0.0,
+    "pieces": 178,
+    "indoor_covered_m2": 75.0,
+    "counts": {
+     "outdoor": 532,
+     "blocked": 44,
+     "indoor_covered": 75,
+     "indoor_uncovered": 24
+    },
+    "cover_height_m": {
+     "min": 5.85,
+     "max": 7.85
+    },
+    "interior_floor_above_pad_m": null,
+    "npc_ok": true,
+    "npc_verdict": "MEASURED 75.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
+   },
+   "npc_gate": "PASS",
+   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect",
+   "spawnable": {
+    "ok": true,
+    "commands": 178,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_mistlands_sheepshank_trophytowerv2.blueprint": {
    "count": 1,
@@ -3848,7 +3830,14 @@
     "npc_verdict": "MEASURED 13.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect"
+   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect",
+   "spawnable": {
+    "ok": true,
+    "commands": 3577,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "hs_plains_ulf_the_builder_lighthouse.blueprint": {
    "count": 1,
@@ -3884,7 +3873,14 @@
     "npc_verdict": "MEASURED only 0.0 m2 of covered, enclosed, reachable floor (< 4 m2): nothing could stand in this body, it is scenery"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect"
+   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect",
+   "spawnable": {
+    "ok": true,
+    "commands": 1267,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   },
   "outposttower.blueprint": {
    "count": 6,
@@ -3925,19 +3921,26 @@
     "npc_verdict": "MEASURED 13.0 m2 of covered, enclosed, reachable floor (>= 4 m2): a villager can stand inside"
    },
    "npc_gate": "PASS",
-   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect"
+   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect",
+   "spawnable": {
+    "ok": true,
+    "commands": 212,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
   }
  },
  "totals": {
   "sites": 16,
   "buildings": 50,
-  "pieces_total": 21430,
+  "pieces_total": 19203,
   "portals": 16,
   "signs": 16,
-  "zdo_estimate": 21462,
-  "earthwork_m3": 14474.9,
-  "beds": 20,
-  "stations": 130,
+  "zdo_estimate": 19235,
+  "earthwork_m3": 13355.5,
+  "beds": 16,
+  "stations": 97,
   "all_clamp_ok": true,
   "bodies_distinct": 18,
   "bodies_with_missing_prefabs": 0,

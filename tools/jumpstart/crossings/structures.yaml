@@ -127,7 +127,31 @@ structures:
       - -64.0
       radius_m: 12.5
       reason: landward end of an over-water structure; the wet part has no vegetation to remove
+      poi_clipped: false
+      poi_limit_reason: binding instance WoodHouse7 at 47.9 m with its own measured reach 8.0 m, so its
+        pieces can come within 39.9 m of the clear centre; a larger radius would delete POI content, the
+        one damage class this project recorded as unrepairable. Reach is clearance.py's per-type max(exteriorRadius,
+        interiorRadius, znviewReachM).
     flatten: FORBIDDEN
+  poi_check:
+    tool: tools/jumpstart/settlements/clearance.py via crossings/plan.py
+    method: 'MEASURED. Every piece position of this structure tested against every one of the 12,301 location
+      instances, each with its own per-type max(exteriorRadius, interiorRadius, znviewReachM). Verdict
+      is the NON-DESTRUCTIVE rule: this structure writes no terrain (flatten FORBIDDEN, so every height
+      delta is zero) and its only destructive op, objects_clear, is hard-limited by clear_radius_limit()
+      to stay 1 m clear of the nearest POI piece. So the binding question is geometric overlap only.'
+    mod_free_caveat: the dump is MOD-FREE and cannot see More_World_Locations' ~190 POI types; a live
+      LocationProxy sweep after zones_generate is the only complete test
+    half_width_m: 3
+    min_slack_m: 28.85
+    binding_instance:
+      name: WoodHouse7
+      dist_m: 39.85
+      reach_m: 8.0
+    verdict: clear
+    destructive_rule_violations: []
+    destructive_rule_note: these are the MARGIN_M=12 / PROTECTED_EXTRA_M=90 taste budgets, which apply
+      to an operation that DELETES; reported unsuppressed rather than hidden
   patch: mainland
   fixtures:
     sign_text: null
@@ -232,7 +256,31 @@ structures:
       - 236.8
       radius_m: 24.8
       reason: landward end of an over-water structure; the wet part has no vegetation to remove
+      poi_clipped: false
+      poi_limit_reason: binding instance WoodHouse5 at 46.2 m with its own measured reach 8.0 m, so its
+        pieces can come within 38.2 m of the clear centre; a larger radius would delete POI content, the
+        one damage class this project recorded as unrepairable. Reach is clearance.py's per-type max(exteriorRadius,
+        interiorRadius, znviewReachM).
     flatten: FORBIDDEN
+  poi_check:
+    tool: tools/jumpstart/settlements/clearance.py via crossings/plan.py
+    method: 'MEASURED. Every piece position of this structure tested against every one of the 12,301 location
+      instances, each with its own per-type max(exteriorRadius, interiorRadius, znviewReachM). Verdict
+      is the NON-DESTRUCTIVE rule: this structure writes no terrain (flatten FORBIDDEN, so every height
+      delta is zero) and its only destructive op, objects_clear, is hard-limited by clear_radius_limit()
+      to stay 1 m clear of the nearest POI piece. So the binding question is geometric overlap only.'
+    mod_free_caveat: the dump is MOD-FREE and cannot see More_World_Locations' ~190 POI types; a live
+      LocationProxy sweep after zones_generate is the only complete test
+    half_width_m: 3
+    min_slack_m: 29.86
+    binding_instance:
+      name: WoodHouse5
+      dist_m: 40.86
+      reach_m: 8.0
+    verdict: clear
+    destructive_rule_violations: []
+    destructive_rule_note: these are the MARGIN_M=12 / PROTECTED_EXTRA_M=90 taste budgets, which apply
+      to an operation that DELETES; reported unsuppressed rather than hidden
   patch: mainland
   fixtures:
     sign_text: null
@@ -343,7 +391,31 @@ structures:
       - -257.7
       radius_m: 9.2
       reason: landward end of an over-water structure; the wet part has no vegetation to remove
+      poi_clipped: false
+      poi_limit_reason: binding instance Dolmen01 at 58.5 m with its own measured reach 8.0 m, so its
+        pieces can come within 50.5 m of the clear centre; a larger radius would delete POI content, the
+        one damage class this project recorded as unrepairable. Reach is clearance.py's per-type max(exteriorRadius,
+        interiorRadius, znviewReachM).
     flatten: FORBIDDEN
+  poi_check:
+    tool: tools/jumpstart/settlements/clearance.py via crossings/plan.py
+    method: 'MEASURED. Every piece position of this structure tested against every one of the 12,301 location
+      instances, each with its own per-type max(exteriorRadius, interiorRadius, znviewReachM). Verdict
+      is the NON-DESTRUCTIVE rule: this structure writes no terrain (flatten FORBIDDEN, so every height
+      delta is zero) and its only destructive op, objects_clear, is hard-limited by clear_radius_limit()
+      to stay 1 m clear of the nearest POI piece. So the binding question is geometric overlap only.'
+    mod_free_caveat: the dump is MOD-FREE and cannot see More_World_Locations' ~190 POI types; a live
+      LocationProxy sweep after zones_generate is the only complete test
+    half_width_m: 3
+    min_slack_m: 45.06
+    binding_instance:
+      name: Dolmen01
+      dist_m: 56.06
+      reach_m: 8.0
+    verdict: clear
+    destructive_rule_violations: []
+    destructive_rule_note: these are the MARGIN_M=12 / PROTECTED_EXTRA_M=90 taste budgets, which apply
+      to an operation that DELETES; reported unsuppressed rather than hidden
   patch: mainland
 - id: boathouse-temple-strait
   role: boathouse_place
@@ -461,7 +533,31 @@ structures:
       - -105.7
       radius_m: 14.0
       reason: landward end of an over-water structure; the wet part has no vegetation to remove
+      poi_clipped: false
+      poi_limit_reason: binding instance Runestone_Meadows at 44.4 m with its own measured reach 8.0 m,
+        so its pieces can come within 36.4 m of the clear centre; a larger radius would delete POI content,
+        the one damage class this project recorded as unrepairable. Reach is clearance.py's per-type max(exteriorRadius,
+        interiorRadius, znviewReachM).
     flatten: FORBIDDEN
+  poi_check:
+    tool: tools/jumpstart/settlements/clearance.py via crossings/plan.py
+    method: 'MEASURED. Every piece position of this structure tested against every one of the 12,301 location
+      instances, each with its own per-type max(exteriorRadius, interiorRadius, znviewReachM). Verdict
+      is the NON-DESTRUCTIVE rule: this structure writes no terrain (flatten FORBIDDEN, so every height
+      delta is zero) and its only destructive op, objects_clear, is hard-limited by clear_radius_limit()
+      to stay 1 m clear of the nearest POI piece. So the binding question is geometric overlap only.'
+    mod_free_caveat: the dump is MOD-FREE and cannot see More_World_Locations' ~190 POI types; a live
+      LocationProxy sweep after zones_generate is the only complete test
+    half_width_m: 2
+    min_slack_m: 33.35
+    binding_instance:
+      name: Runestone_Meadows
+      dist_m: 43.35
+      reach_m: 8.0
+    verdict: clear
+    destructive_rule_violations: []
+    destructive_rule_note: these are the MARGIN_M=12 / PROTECTED_EXTRA_M=90 taste budgets, which apply
+      to an operation that DELETES; reported unsuppressed rather than hidden
   patch: mainland
 - id: dock-stationhub
   role: dock_place
@@ -562,9 +658,39 @@ structures:
       centre:
       - 505.2
       - 1061.1
-      radius_m: 13.1
+      radius_m: 10.3
       reason: landward end of an over-water structure; the wet part has no vegetation to remove
+      poi_clipped: true
+      poi_limit_reason: binding instance Runestone_Meadows at 19.3 m with its own measured reach 8.0 m,
+        so its pieces can come within 11.3 m of the clear centre; a larger radius would delete POI content,
+        the one damage class this project recorded as unrepairable. Reach is clearance.py's per-type max(exteriorRadius,
+        interiorRadius, znviewReachM).
     flatten: FORBIDDEN
+  poi_check:
+    tool: tools/jumpstart/settlements/clearance.py via crossings/plan.py
+    method: 'MEASURED. Every piece position of this structure tested against every one of the 12,301 location
+      instances, each with its own per-type max(exteriorRadius, interiorRadius, znviewReachM). Verdict
+      is the NON-DESTRUCTIVE rule: this structure writes no terrain (flatten FORBIDDEN, so every height
+      delta is zero) and its only destructive op, objects_clear, is hard-limited by clear_radius_limit()
+      to stay 1 m clear of the nearest POI piece. So the binding question is geometric overlap only.'
+    mod_free_caveat: the dump is MOD-FREE and cannot see More_World_Locations' ~190 POI types; a live
+      LocationProxy sweep after zones_generate is the only complete test
+    half_width_m: 2
+    min_slack_m: 5.1
+    binding_instance:
+      name: Runestone_Meadows
+      dist_m: 15.1
+      reach_m: 8.0
+    verdict: clear
+    destructive_rule_violations:
+    - name: Runestone_Meadows
+      min_dist_m: 15.1
+      reach_m: 8.0
+      required_m: 20.0
+      short_by_m: 4.9
+      protected: false
+    destructive_rule_note: these are the MARGIN_M=12 / PROTECTED_EXTRA_M=90 taste budgets, which apply
+      to an operation that DELETES; reported unsuppressed rather than hidden
   patch: mainland
 - id: ferry-terminal-east
   role: ferry_terminal_place
@@ -576,7 +702,7 @@ structures:
   bearing_deg: 110.0
   length_m: 20.0
   deck_y: 30.6
-  head_xz: &id001
+  head_xz:
   - 1765.3
   - 648.7
   aim:
@@ -678,7 +804,31 @@ structures:
       - 655.6
       radius_m: 6.0
       reason: landward end of an over-water structure; the wet part has no vegetation to remove
+      poi_clipped: false
+      poi_limit_reason: binding instance TrollCave02 at 89.1 m with its own measured reach 35.8 m, so
+        its pieces can come within 53.3 m of the clear centre; a larger radius would delete POI content,
+        the one damage class this project recorded as unrepairable. Reach is clearance.py's per-type max(exteriorRadius,
+        interiorRadius, znviewReachM).
     flatten: FORBIDDEN
+  poi_check:
+    tool: tools/jumpstart/settlements/clearance.py via crossings/plan.py
+    method: 'MEASURED. Every piece position of this structure tested against every one of the 12,301 location
+      instances, each with its own per-type max(exteriorRadius, interiorRadius, znviewReachM). Verdict
+      is the NON-DESTRUCTIVE rule: this structure writes no terrain (flatten FORBIDDEN, so every height
+      delta is zero) and its only destructive op, objects_clear, is hard-limited by clear_radius_limit()
+      to stay 1 m clear of the nearest POI piece. So the binding question is geometric overlap only.'
+    mod_free_caveat: the dump is MOD-FREE and cannot see More_World_Locations' ~190 POI types; a live
+      LocationProxy sweep after zones_generate is the only complete test
+    half_width_m: 2
+    min_slack_m: 49.48
+    binding_instance:
+      name: TrollCave02
+      dist_m: 87.25
+      reach_m: 35.77
+    verdict: clear
+    destructive_rule_violations: []
+    destructive_rule_note: these are the MARGIN_M=12 / PROTECTED_EXTRA_M=90 taste budgets, which apply
+      to an operation that DELETES; reported unsuppressed rather than hidden
   patch: mainland
 - id: harbour-vestvik
   role: harbour_place
@@ -788,7 +938,31 @@ structures:
       - 1654.7
       radius_m: 8.4
       reason: landward end of an over-water structure; the wet part has no vegetation to remove
+      poi_clipped: false
+      poi_limit_reason: binding instance WoodHouse1 at 25.8 m with its own measured reach 8.0 m, so its
+        pieces can come within 17.8 m of the clear centre; a larger radius would delete POI content, the
+        one damage class this project recorded as unrepairable. Reach is clearance.py's per-type max(exteriorRadius,
+        interiorRadius, znviewReachM).
     flatten: FORBIDDEN
+  poi_check:
+    tool: tools/jumpstart/settlements/clearance.py via crossings/plan.py
+    method: 'MEASURED. Every piece position of this structure tested against every one of the 12,301 location
+      instances, each with its own per-type max(exteriorRadius, interiorRadius, znviewReachM). Verdict
+      is the NON-DESTRUCTIVE rule: this structure writes no terrain (flatten FORBIDDEN, so every height
+      delta is zero) and its only destructive op, objects_clear, is hard-limited by clear_radius_limit()
+      to stay 1 m clear of the nearest POI piece. So the binding question is geometric overlap only.'
+    mod_free_caveat: the dump is MOD-FREE and cannot see More_World_Locations' ~190 POI types; a live
+      LocationProxy sweep after zones_generate is the only complete test
+    half_width_m: 3
+    min_slack_m: 10.43
+    binding_instance:
+      name: WoodHouse1
+      dist_m: 21.43
+      reach_m: 8.0
+    verdict: clear
+    destructive_rule_violations: []
+    destructive_rule_note: these are the MARGIN_M=12 / PROTECTED_EXTRA_M=90 taste budgets, which apply
+      to an operation that DELETES; reported unsuppressed rather than hidden
   patch: westisle
 - id: ferry-terminal-eastisle
   role: ferry_terminal_place
@@ -800,7 +974,7 @@ structures:
   bearing_deg: 295.0
   length_m: 20.0
   deck_y: 30.6
-  head_xz: &id002
+  head_xz:
   - 1933.4
   - 565.0
   aim:
@@ -908,14 +1082,48 @@ structures:
       - 554.9
       radius_m: 7.8
       reason: landward end of an over-water structure; the wet part has no vegetation to remove
+      poi_clipped: false
+      poi_limit_reason: binding instance TrollCave02 at 48.1 m with its own measured reach 35.8 m, so
+        its pieces can come within 12.4 m of the clear centre; a larger radius would delete POI content,
+        the one damage class this project recorded as unrepairable. Reach is clearance.py's per-type max(exteriorRadius,
+        interiorRadius, znviewReachM).
     flatten: FORBIDDEN
+  poi_check:
+    tool: tools/jumpstart/settlements/clearance.py via crossings/plan.py
+    method: 'MEASURED. Every piece position of this structure tested against every one of the 12,301 location
+      instances, each with its own per-type max(exteriorRadius, interiorRadius, znviewReachM). Verdict
+      is the NON-DESTRUCTIVE rule: this structure writes no terrain (flatten FORBIDDEN, so every height
+      delta is zero) and its only destructive op, objects_clear, is hard-limited by clear_radius_limit()
+      to stay 1 m clear of the nearest POI piece. So the binding question is geometric overlap only.'
+    mod_free_caveat: the dump is MOD-FREE and cannot see More_World_Locations' ~190 POI types; a live
+      LocationProxy sweep after zones_generate is the only complete test
+    half_width_m: 2
+    min_slack_m: 7.48
+    binding_instance:
+      name: TrollCave02
+      dist_m: 45.25
+      reach_m: 35.77
+    verdict: clear
+    destructive_rule_violations:
+    - name: TrollCave02
+      min_dist_m: 45.3
+      reach_m: 35.77
+      required_m: 47.8
+      short_by_m: 2.5
+      protected: false
+    destructive_rule_note: these are the MARGIN_M=12 / PROTECTED_EXTRA_M=90 taste budgets, which apply
+      to an operation that DELETES; reported unsuppressed rather than hidden
   patch: mainland
 ferry_routes:
 - id: ferry-east-isle
   a: ferry-terminal-east
   b: ferry-terminal-eastisle
-  head_a: *id001
-  head_b: *id002
+  head_a:
+  - 1765.3
+  - 648.7
+  head_b:
+  - 1933.4
+  - 565.0
   water_route_m: 187.8
   wet_fraction: 1.0
   wet_runs: 1

@@ -103,7 +103,8 @@ def straighten(pts, s, a: int, b: int):
     return out
 
 
-def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list) -> dict:
+def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
+                  land_only: bool = False) -> dict:
     a_node = specmod.NODES[edge["a"]]
     b_node = specmod.NODES[edge["b"]]
     cls = edge["cls"]
@@ -121,7 +122,11 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list) -> dict:
     # Overrides are recorded per segment and are never silent.
     g_max = float(edge.get("grade_max") or routemod.GRADE[cls])
 
-    raw = corr.search(a_node["xz"], b_node["xz"])
+    corr.forbid_all_water = land_only
+    try:
+        raw = corr.search(a_node["xz"], b_node["xz"])
+    finally:
+        corr.forbid_all_water = False
     # Simplify tolerance is DELIBERATELY tight.  A* returns one node per 4 m
     # cell, i.e. a staircase, and the ribbon is rasterised from segments, so a
     # staircase shows as a scalloped edge from the first step.  But every metre
@@ -480,7 +485,14 @@ def main() -> int:
                 # when the land detour is longer than that, while the 12 m
                 # channel Crossings measured still costs only 1,120 -- so real
                 # short crossings survive and shoreline shortcuts do not.
-                bridge_entry_cost_m=400.0, bridge_per_m_cost=60.0)
+                # Water is priced MODERATELY now that the span ceiling is a
+                # geometric constraint rather than a price (see
+                # Corridor.water_forbidden).  A crossing the search can still
+                # propose is one a bridge can physically reach across, so the
+                # price only has to express "prefer land, and cross at the
+                # flattest place rather than the narrowest" -- which is exactly
+                # what Crossings asked for.
+                bridge_entry_cost_m=300.0, bridge_per_m_cost=15.0)
             forbid, soft, touched = poimod.masks(
                 pois, corr.x0, corr.z0, corr.cell_m, corr.m, WIDTH_M[edge["cls"]] / 2.0)
             corr.forbid, corr.soft = forbid, soft
@@ -494,6 +506,30 @@ def main() -> int:
             corridors[key] = corr
         try:
             seg = build_segment(flds[patch], edge, corridors[key], pois)
+            worst = max((c["span_m"] for c in seg["crossings"]), default=0.0)
+            if worst > MAX_BRIDGE_SPAN_M:
+                # LAND-ONLY RETRY.  The span ceiling is already encoded
+                # geometrically (water further than half the maximum span from
+                # land is not traversable), but that bounds a crossing's WIDTH,
+                # not its LENGTH: a route running 200 m parallel to the coast
+                # 20 m offshore is inside the width bound at every step and is
+                # still a 200 m "bridge".  MEASURED on three segments (114.8 m,
+                # 174.7 m, 200.6 m).  Rather than add water-run length to the
+                # search state -- which would multiply a 640,000-cell grid by
+                # the run bound -- re-route the offending segment with water
+                # forbidden outright.  If a land route exists it is the right
+                # answer anyway; if none exists the rejection is a proof rather
+                # than a tuning artefact.
+                land = build_segment(flds[patch], edge, corridors[key], pois,
+                                     land_only=True)
+                land["land_only_retry"] = {
+                    "first_attempt_worst_span_m": worst,
+                    "why": "first route proposed a bridged run past Crossings' "
+                           "96 m absolute span ceiling; re-routed with water "
+                           "forbidden",
+                    "length_penalty_m": round(land["length_m"] - seg["length_m"], 1),
+                }
+                seg = land
         except ValueError as exc:
             # An unroutable edge is a FINDING, not a crash.  A destination on a
             # different landmass, or one whose every approach is inside a
@@ -623,9 +659,6 @@ def main() -> int:
             "worst_grade": worst_grade,
             "stations_over_clamp": over,
             "stations_over_design_margin": over_m,
-        "stations_over_design_margin": over_margin,
-        "design_margin_m": CF,
-        "grade_limit_is_override": bool(edge.get("grade_max")),
             "detected_crossings": len(detected),
             "declared_crossings": len(specmod.DECLARED_CROSSINGS),
             "unroutable_edges": len(unroutable),

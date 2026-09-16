@@ -366,26 +366,81 @@ def digest(record: dict) -> str:
     return hashlib.sha256(canonical(record)).hexdigest()
 
 
-def chain_head(path_lines: Iterable[str]) -> tuple[int, str]:
-    """(last seq, digest of the last line) for an existing ledger file."""
+def scan(raw_lines: Iterable[str]) -> dict:
+    """Walk the ledger in FILE ORDER and report its integrity AS DATA.
+
+    THIS DOES NOT RAISE ON A FORKED LINKAGE, and that is a deliberate
+    correction. MEASURED tonight: `Ledger._append_raw` read the chain head,
+    computed `prev` and wrote, with no lock and with the head CACHED at open,
+    so two concurrent appenders wrote two branches carrying the same `prev`
+    (file line 47, seqs 43-46 duplicated). The old `chain_head` raised, which
+    meant `Ledger.__init__` raised, which meant EVERY agent lost the ability
+    to append -- including the ability to append a record SAYING the log was
+    damaged. An integrity check whose only failure mode is total refusal
+    cannot record its own finding.
+
+    So: opening to APPEND tolerates a labelled fork; opening to REPLAY must
+    refuse one, because a replay from an ambiguous order is not a replay of
+    what was built. Two different questions, and the same function was
+    answering both with the stricter answer.
+
+    A `prev` that matches NO line's digest is still fatal here: that is an
+    edit, a truncation or a reorder rather than a race, and nothing about it
+    is recoverable by labelling.
+
+    `seq` is ADVISORY from the first fork onward -- it is no longer unique --
+    so the resume order and the head are taken from FILE POSITION and from the
+    LAST LINE, never from a maximum or a count.
+    """
+    seen: dict[str, int] = {GENESIS_PREV: -1}
     seq, head = -1, GENESIS_PREV
-    for raw in path_lines:
+    forks: list[dict] = []
+    seq_lines: dict[int, list[int]] = {}
+    count = 0
+    documented: set[int] = set()
+    for index, raw in enumerate(raw_lines):
         raw = raw.strip()
         if not raw:
             continue
         rec = json.loads(raw)
-        if rec.get("prev") != head:
-            raise LedgerError(
-                f"chain break at seq {rec.get('seq')}: prev={rec.get('prev')} "
-                f"but the previous line digests to {head}.  The ledger has "
-                f"been edited, truncated or reordered; a replay from it would "
-                f"not be a replay of what was built.")
-        if rec.get("seq") != seq + 1:
-            raise LedgerError(
-                f"seq gap: expected {seq + 1}, found {rec.get('seq')}")
-        seq = rec["seq"]
+        prev = rec.get("prev")
+        if prev != head:
+            if prev not in seen:
+                raise LedgerError(
+                    f"chain break at file line {index} (seq {rec.get('seq')}): "
+                    f"prev={prev} matches NO line in this ledger.  That is an "
+                    f"edit, a truncation or a reorder rather than a concurrent "
+                    f"append, and a replay from it would not be a replay of "
+                    f"what was built.")
+            forks.append({"line": index, "seq": rec.get("seq"),
+                          "actor": rec.get("actor"), "op": rec.get("op"),
+                          "ts": rec.get("ts"), "declared_prev": prev,
+                          "actual_prev": head})
+        if rec.get("op") == "note" and "fork" in str(
+                (rec.get("params") or {}).get("text", "")).lower():
+            documented.add(len(forks))
+        seq = rec.get("seq", seq)
+        seq_lines.setdefault(seq, []).append(index)
         head = digest(rec)
-    return seq, head
+        seen[head] = index
+        count = index + 1
+    for n, f in enumerate(forks, 1):
+        f["documented"] = n in documented or len(documented) >= len(forks)
+    return {"count": count, "last_seq": seq, "head": head, "forks": forks,
+            "duplicate_seqs": {s: ls for s, ls in seq_lines.items()
+                               if len(ls) > 1},
+            "undocumented_forks": [f for f in forks if not f["documented"]]}
+
+
+def chain_head(path_lines: Iterable[str]) -> tuple[int, str]:
+    """(last seq, digest of the last line) for an existing ledger file.
+
+    The seq comes from the LAST LINE rather than from a count, because after a
+    fork the numbers are duplicated and a count would hand the next appender a
+    seq that already exists twice.
+    """
+    s = scan(path_lines)
+    return s["last_seq"], s["head"]
 
 
 # --------------------------------------------------------------------------

@@ -1,0 +1,543 @@
+world: Ulfsland
+settlement: stenvik
+placements:
+- id: stenvik-hall-1
+  blueprint: hs_meadows_madzobuild_modernstarterhouse.blueprint
+  sha256: 557efb39834f49f670059da3d2efeb8eb2b3d1a66ba0793941d93cb61c07b034
+  pieces: 612
+  align: floor-center
+  rotation:
+    yaw: 80.0
+  requirement:
+    biome: Meadows
+    footprint_m: 26.1
+    footprint_xz_m:
+    - 26.1
+    - 26.1
+  solved:
+    seed: Pirate68
+    x: 481.1
+    z: 920.4
+    y: 47.03
+    footprint_orientation: 26.1 m along x by 26.1 m along z
+    flatten_cost:
+      target_y: 47.03
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 54.8
+    nearest_location: ShipSetting01
+    nearest_location_standoff_m: 36.0
+  settlement:
+    site: stenvik
+    role: hall
+    patch: mainland
+- id: stenvik-workshop-1
+  blueprint: creator-looney-swamp-starter-home.blueprint
+  sha256: 6421f91354f582b48879b36794680e74e54b4b874dfc6e2182dae80044c09d39
+  pieces: 218
+  align: floor-center
+  rotation:
+    yaw: 80.0
+  requirement:
+    biome: Meadows
+    footprint_m: 23.8
+    footprint_xz_m:
+    - 23.8
+    - 23.2
+  solved:
+    seed: Pirate68
+    x: 513.1
+    z: 908.4
+    y: 46.05
+    footprint_orientation: 23.8 m along x by 23.2 m along z
+    flatten_cost:
+      target_y: 46.05
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 54.9
+    nearest_location: ShipSetting01
+    nearest_location_standoff_m: 36.0
+  settlement:
+    site: stenvik
+    role: workshop
+    patch: mainland
+- id: stenvik-longhouse-1
+  blueprint: hs_blackforest_tester_meadows_log_cabin.blueprint
+  sha256: 362fa6df7ca5b324d211663f30a89667b07c931380167e035e34c450a70272b9
+  pieces: 207
+  align: floor-center
+  rotation:
+    yaw: 30.0
+  requirement:
+    biome: Meadows
+    footprint_m: 23.0
+    footprint_xz_m:
+    - 14.4
+    - 23.0
+  solved:
+    seed: Pirate68
+    x: 555.5
+    z: 904.9
+    y: 49.87
+    footprint_orientation: 14.4 m along x by 23 m along z
+    flatten_cost:
+      target_y: 49.87
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 41.4
+    nearest_location: Runestone_Boars
+    nearest_location_standoff_m: 25.520000457763672
+  settlement:
+    site: stenvik
+    role: longhouse
+    patch: mainland
+- id: stenvik-longhouse-2
+  blueprint: hs_blackforest_tester_meadows_log_cabin.blueprint
+  sha256: 362fa6df7ca5b324d211663f30a89667b07c931380167e035e34c450a70272b9
+  pieces: 207
+  align: floor-center
+  rotation:
+    yaw: 30.0
+  requirement:
+    biome: Meadows
+    footprint_m: 23.0
+    footprint_xz_m:
+    - 14.4
+    - 23.0
+  solved:
+    seed: Pirate68
+    x: 523.5
+    z: 886.4
+    y: 46.2
+    footprint_orientation: 14.4 m along x by 23 m along z
+    flatten_cost:
+      target_y: 46.2
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 41.4
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: longhouse
+    patch: mainland
+- id: stenvik-house-1
+  blueprint: hs_blackforest_kin_01_woodhouse.blueprint
+  sha256: 19d4b35a177f0e69c096a35da974968588e3c1563e9955909821a1329de626e9
+  pieces: 216
+  align: floor-center
+  rotation:
+    yaw: 80.0
+  requirement:
+    biome: Meadows
+    footprint_m: 20.3
+    footprint_xz_m:
+    - 20.3
+    - 15.2
+  solved:
+    seed: Pirate68
+    x: 480.6
+    z: 886.6
+    y: 46.29
+    footprint_orientation: 20.3 m along x by 15.2 m along z
+    flatten_cost:
+      target_y: 46.29
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 63.7
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: house
+    patch: mainland
+- id: stenvik-house-2
+  blueprint: hs_blackforest_kin_01_woodhouse.blueprint
+  sha256: 19d4b35a177f0e69c096a35da974968588e3c1563e9955909821a1329de626e9
+  pieces: 216
+  align: floor-center
+  rotation:
+    yaw: 80.0
+  requirement:
+    biome: Meadows
+    footprint_m: 20.3
+    footprint_xz_m:
+    - 20.3
+    - 15.2
+  solved:
+    seed: Pirate68
+    x: 504.5
+    z: 882.4
+    y: 46.05
+    footprint_orientation: 20.3 m along x by 15.2 m along z
+    flatten_cost:
+      target_y: 46.05
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 44.5
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: house
+    patch: mainland
+- id: stenvik-house-3
+  blueprint: hs_blackforest_kin_01_woodhouse.blueprint
+  sha256: 19d4b35a177f0e69c096a35da974968588e3c1563e9955909821a1329de626e9
+  pieces: 216
+  align: floor-center
+  rotation:
+    yaw: 30.0
+  requirement:
+    biome: Meadows
+    footprint_m: 20.3
+    footprint_xz_m:
+    - 20.3
+    - 15.2
+  solved:
+    seed: Pirate68
+    x: 606.5
+    z: 938.8
+    y: 47.15
+    footprint_orientation: 20.3 m along x by 15.2 m along z
+    flatten_cost:
+      target_y: 47.15
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 40.0
+    nearest_location: Runestone_Boars
+    nearest_location_standoff_m: 25.520000457763672
+  settlement:
+    site: stenvik
+    role: house
+    patch: mainland
+- id: stenvik-cottage-1
+  blueprint: hs_meadows_cottage.blueprint
+  sha256: 64c0fc8263989af22c0d1d9dab8200bc7dedac5033b164130ef3483da2c11ea9
+  pieces: 48
+  align: floor-center
+  rotation:
+    yaw: 30.0
+  requirement:
+    biome: Meadows
+    footprint_m: 12.4
+    footprint_xz_m:
+    - 10.4
+    - 12.4
+  solved:
+    seed: Pirate68
+    x: 530.1
+    z: 896.3
+    y: 46.69
+    footprint_orientation: 10.4 m along x by 12.4 m along z
+    flatten_cost:
+      target_y: 46.69
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 50.9
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: cottage
+    patch: mainland
+- id: stenvik-cottage-2
+  blueprint: hs_meadows_cottage.blueprint
+  sha256: 64c0fc8263989af22c0d1d9dab8200bc7dedac5033b164130ef3483da2c11ea9
+  pieces: 48
+  align: floor-center
+  rotation:
+    yaw: 80.0
+  requirement:
+    biome: Meadows
+    footprint_m: 12.4
+    footprint_xz_m:
+    - 10.4
+    - 12.4
+  solved:
+    seed: Pirate68
+    x: 484.7
+    z: 901.7
+    y: 45.38
+    footprint_orientation: 10.4 m along x by 12.4 m along z
+    flatten_cost:
+      target_y: 45.38
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 68.7
+    nearest_location: ShipSetting01
+    nearest_location_standoff_m: 36.0
+  settlement:
+    site: stenvik
+    role: cottage
+    patch: mainland
+- id: stenvik-cottage-3
+  blueprint: hs_meadows_cottage.blueprint
+  sha256: 64c0fc8263989af22c0d1d9dab8200bc7dedac5033b164130ef3483da2c11ea9
+  pieces: 48
+  align: floor-center
+  rotation:
+    yaw: 30.0
+  requirement:
+    biome: Meadows
+    footprint_m: 12.4
+    footprint_xz_m:
+    - 10.4
+    - 12.4
+  solved:
+    seed: Pirate68
+    x: 546.8
+    z: 930.7
+    y: 48.34
+    footprint_orientation: 10.4 m along x by 12.4 m along z
+    flatten_cost:
+      target_y: 48.34
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 31.0
+    nearest_location: WoodHouse7
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: cottage
+    patch: mainland
+- id: stenvik-cottage-4
+  blueprint: hs_meadows_cottage.blueprint
+  sha256: 64c0fc8263989af22c0d1d9dab8200bc7dedac5033b164130ef3483da2c11ea9
+  pieces: 48
+  align: floor-center
+  rotation:
+    yaw: 30.0
+  requirement:
+    biome: Meadows
+    footprint_m: 12.4
+    footprint_xz_m:
+    - 10.4
+    - 12.4
+  solved:
+    seed: Pirate68
+    x: 495.2
+    z: 900.9
+    y: 45.54
+    footprint_orientation: 10.4 m along x by 12.4 m along z
+    flatten_cost:
+      target_y: 45.54
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 65.1
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: cottage
+    patch: mainland
+- id: stenvik-stonehouse-1
+  blueprint: hs_meadows_stone_house.blueprint
+  sha256: 0aa3540242b6af66d9508de759f5df5b4014a25a6b4dc67e420062ce3f3f4da2
+  pieces: 80
+  align: floor-center
+  rotation:
+    yaw: 30.0
+  requirement:
+    biome: Meadows
+    footprint_m: 15.0
+    footprint_xz_m:
+    - 11.0
+    - 15.0
+  solved:
+    seed: Pirate68
+    x: 564.8
+    z: 914.9
+    y: 49.61
+    footprint_orientation: 11 m along x by 15 m along z
+    flatten_cost:
+      target_y: 49.61
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 35.1
+    nearest_location: Runestone_Boars
+    nearest_location_standoff_m: 25.520000457763672
+  settlement:
+    site: stenvik
+    role: stonehouse
+    patch: mainland
+- id: stenvik-stonehouse-2
+  blueprint: hs_meadows_stone_house.blueprint
+  sha256: 0aa3540242b6af66d9508de759f5df5b4014a25a6b4dc67e420062ce3f3f4da2
+  pieces: 80
+  align: floor-center
+  rotation:
+    yaw: 80.0
+  requirement:
+    biome: Meadows
+    footprint_m: 15.0
+    footprint_xz_m:
+    - 11.0
+    - 15.0
+  solved:
+    seed: Pirate68
+    x: 478.5
+    z: 873.6
+    y: 47.13
+    footprint_orientation: 11 m along x by 15 m along z
+    flatten_cost:
+      target_y: 47.13
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 58.0
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: stonehouse
+    patch: mainland
+- id: stenvik-manor-1
+  blueprint: hs_meadows_stone_manor.blueprint
+  sha256: e1ca47138288a0b2dabe04aed80a3cbce2ec5a7860fb87efcad3c874ef2de908
+  pieces: 152
+  align: floor-center
+  rotation:
+    yaw: 80.0
+  requirement:
+    biome: Meadows
+    footprint_m: 17.0
+    footprint_xz_m:
+    - 15.0
+    - 17.0
+  solved:
+    seed: Pirate68
+    x: 502.4
+    z: 865.3
+    y: 48.54
+    footprint_orientation: 15 m along x by 17 m along z
+    flatten_cost:
+      target_y: 48.54
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 33.4
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: manor
+    patch: mainland
+- id: stenvik-beehive-1
+  blueprint: hs_meadows_aodi_the_hive_1_0.blueprint
+  sha256: 0240fc19daa8f09e69033c5f93321075fc66c8b930a368d66b0d2d81a0678e7c
+  pieces: 126
+  align: floor-center
+  rotation:
+    yaw: 30.0
+  requirement:
+    biome: Meadows
+    footprint_m: 16.0
+    footprint_xz_m:
+    - 16.0
+    - 15.8
+  solved:
+    seed: Pirate68
+    x: 593.3
+    z: 959.5
+    y: 47.11
+    footprint_orientation: 16 m along x by 15.8 m along z
+    flatten_cost:
+      target_y: 47.11
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 33.6
+    nearest_location: WoodHouse7
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: beehive
+    patch: mainland
+- id: stenvik-hut-1
+  blueprint: hs_meadows_hut.blueprint
+  sha256: 83385eeee9cb1f66f327eff8100887609f1adaa805b9a86fb4fcc27f67a4943c
+  pieces: 28
+  align: floor-center
+  rotation:
+    yaw: 30.0
+  requirement:
+    biome: Meadows
+    footprint_m: 10.4
+    footprint_xz_m:
+    - 10.4
+    - 10.4
+  solved:
+    seed: Pirate68
+    x: 538.3
+    z: 902.2
+    y: 48.35
+    footprint_orientation: 10.4 m along x by 10.4 m along z
+    flatten_cost:
+      target_y: 48.35
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 57.5
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: hut
+    patch: mainland
+- id: stenvik-hut-2
+  blueprint: hs_meadows_hut.blueprint
+  sha256: 83385eeee9cb1f66f327eff8100887609f1adaa805b9a86fb4fcc27f67a4943c
+  pieces: 28
+  align: floor-center
+  rotation:
+    yaw: 80.0
+  requirement:
+    biome: Meadows
+    footprint_m: 10.4
+    footprint_xz_m:
+    - 10.4
+    - 10.4
+  solved:
+    seed: Pirate68
+    x: 504.5
+    z: 896.1
+    y: 45.56
+    footprint_orientation: 10.4 m along x by 10.4 m along z
+    flatten_cost:
+      target_y: 45.56
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 56.4
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: hut
+    patch: mainland
+- id: stenvik-hut-3
+  blueprint: hs_meadows_hut.blueprint
+  sha256: 83385eeee9cb1f66f327eff8100887609f1adaa805b9a86fb4fcc27f67a4943c
+  pieces: 28
+  align: floor-center
+  rotation:
+    yaw: 80.0
+  requirement:
+    biome: Meadows
+    footprint_m: 10.4
+    footprint_xz_m:
+    - 10.4
+    - 10.4
+  solved:
+    seed: Pirate68
+    x: 496.9
+    z: 853.4
+    y: 51.34
+    footprint_orientation: 10.4 m along x by 10.4 m along z
+    flatten_cost:
+      target_y: 51.34
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 33.3
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: stenvik
+    role: hut
+    patch: mainland

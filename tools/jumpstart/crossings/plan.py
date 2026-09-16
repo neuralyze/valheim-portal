@@ -35,7 +35,9 @@ sys.path.insert(0, str(HERE))
 import numpy as np  # noqa: E402
 
 sys.path.insert(0, str(JUMPSTART / "blueprints"))
+sys.path.insert(0, str(JUMPSTART / "settlements"))
 
+import clearance as CLR  # noqa: E402
 import data_entry as DE  # noqa: E402
 import fixtures as FX  # noqa: E402
 
@@ -361,6 +363,125 @@ def zone_of(x: float, z: float) -> tuple[int, int]:
     return (math.floor(x / ZONE_SIZE + 0.5), math.floor(z / ZONE_SIZE + 0.5))
 
 
+
+POI_DUMP = "/tmp/settle/loc3/f6fe167f4fcd.json"
+_POI = None
+
+
+def poi():
+    """Settlements' per-type clearance instrument. ONE implementation, theirs.
+
+    Called with the positions this build ACTUALLY TOUCHES -- every piece origin,
+    not a centre and a radius. MEASURED by Settlements why that distinction
+    matters: a single-point check from an abutment and a sample-level check over
+    the whole written set can differ by an ORDER OF MAGNITUDE against the same
+    instance. My own first pass at S1/S2 was a hand computation from the
+    abutment, which no code would have re-checked if a coordinate moved; this is
+    a gate, so it re-checks every run.
+    """
+    global _POI
+    if _POI is None:
+        _POI = CLR.load(POI_DUMP)
+    return _POI
+
+
+def clear_radius_limit(centre: tuple[float, float]) -> tuple[float, str]:
+    """The largest `objects_remove` radius that cannot reach any POI's PIECES.
+
+    This is the gate the old world did not have, and its absence produced the
+    only damage this project recorded as UNREPAIRABLE: clearing at three sites
+    deleted mod POI content because the stand-off was computed from the
+    LocationProxy MARKER while a location's pieces were MEASURED reaching far
+    past it. `objects_remove id=* ignore=_*` deletes every non-underscore ZDO in
+    a cylinder, so the binding limit is the MINIMUM over every instance of
+    (distance to its marker - that type's own reach) minus a metre of slack --
+    a minimum over all instances, not the nearest marker, because a nearer
+    marker with a small reach is not the constraint and a further one with a 36 m
+    reach is. Reach per type is `clearance.py`'s
+    max(exteriorRadius, interiorRadius, znviewReachM), which is MEASURED per
+    type over all 177 types of this seed rather than one inferred constant.
+    """
+    import numpy as _np
+    L = poi()
+    d = _np.hypot(L.xz[:, 0] - centre[0], L.xz[:, 1] - centre[1])
+    slack = d - _np.asarray(L.reach, dtype=float)
+    k = int(_np.argmin(slack))
+    limit = max(0.0, float(slack[k]) - 1.0)
+    why = (f"binding instance {L.names[k]} at {d[k]:.1f} m with its own measured "
+           f"reach {float(L.reach[k]):.1f} m, so its pieces can come within "
+           f"{float(slack[k]):.1f} m of the clear centre; a larger radius would "
+           f"delete POI content, the one damage class this project recorded as "
+           f"unrepairable. Reach is clearance.py's per-type "
+           f"max(exteriorRadius, interiorRadius, znviewReachM).")
+    return limit, why
+
+
+
+def poi_check(pieces, half_width_m: float = 2.0) -> dict:
+    """The canonical POI gate, run over the positions this structure ACTUALLY
+    OCCUPIES, under BOTH rules, with the non-destructive one as my verdict.
+
+    Why the non-destructive rule is the right one for a Crossings structure, and
+    this is a claim about my operation rather than a preference:
+      * I write NO TERRAIN ANYWHERE. Every record carries flatten: "FORBIDDEN",
+        so the hazard Main identified for `destructive=False` -- levelling ground
+        under a location piece that stays standing, leaving it floating or buried
+        -- cannot occur here at all. The per-piece height-delta gate is trivially
+        satisfied because every delta is exactly zero.
+      * My one destructive operation is `objects_clear`, and its radius is now
+        HARD-LIMITED by `clear_radius_limit()` to stay a metre clear of the
+        nearest POI piece, so it cannot delete POI content either.
+    So what remains is purely geometric: do my pieces overlap a location's
+    pieces? That is `dist - reach - half_width >= 0`, and it is reported per
+    structure as `min_slack_m` rather than as a pass/fail with no number.
+
+    The destructive-rule violations are reported too, unsuppressed, because a
+    number I chose not to be bound by should still be visible to whoever reads
+    this. They are the MARGIN_M = 12 and PROTECTED_EXTRA_M = 90 taste budgets,
+    both labelled as taste in clearance.py.
+    """
+    import numpy as _np
+    L = poi()
+    samples = [(p.x, p.z) for p in pieces]
+    destructive = L.violations_for_samples(samples)
+    xs = _np.array([s[0] for s in samples])
+    zs = _np.array([s[1] for s in samples])
+    reach = _np.asarray(L.reach, dtype=float)
+    best = None
+    for i in range(len(reach)):
+        d = float(_np.min(_np.hypot(xs - L.xz[i, 0], zs - L.xz[i, 1])))
+        slack = d - reach[i] - half_width_m
+        if best is None or slack < best[0]:
+            best = (slack, L.names[i], d, float(reach[i]))
+    slack, name, dist, reach_m = best
+    return dict(
+        tool="tools/jumpstart/settlements/clearance.py via crossings/plan.py",
+        method=("MEASURED. Every piece position of this structure tested against "
+                "every one of the 12,301 location instances, each with its own "
+                "per-type max(exteriorRadius, interiorRadius, znviewReachM). "
+                "Verdict is the NON-DESTRUCTIVE rule: this structure writes no "
+                "terrain (flatten FORBIDDEN, so every height delta is zero) and "
+                "its only destructive op, objects_clear, is hard-limited by "
+                "clear_radius_limit() to stay 1 m clear of the nearest POI "
+                "piece. So the binding question is geometric overlap only."),
+        mod_free_caveat=("the dump is MOD-FREE and cannot see More_World_Locations' "
+                         "~190 POI types; a live LocationProxy sweep after "
+                         "zones_generate is the only complete test"),
+        half_width_m=half_width_m,
+        min_slack_m=round(slack, 2),
+        binding_instance=dict(name=name, dist_m=round(dist, 2),
+                              reach_m=round(reach_m, 2)),
+        verdict="clear" if slack >= 0 else "VIOLATION",
+        destructive_rule_violations=[
+            dict(name=v["name"], min_dist_m=v["min_dist_m"], reach_m=round(v["reach_m"], 2),
+                 required_m=v["required_m"], short_by_m=v["short_by_m"],
+                 protected=v["protected"]) for v in destructive],
+        destructive_rule_note=("these are the MARGIN_M=12 / PROTECTED_EXTRA_M=90 "
+                              "taste budgets, which apply to an operation that "
+                              "DELETES; reported unsuppressed rather than hidden"),
+    )
+
+
 def zones_within(pos: tuple[float, float], reach: float) -> list[tuple[int, int]]:
     """Every zone whose CENTRE is within `reach` of `pos` -- the selection
     `zones_generate` actually makes."""
@@ -405,9 +526,15 @@ def prepare_block(fld: W.Field, pieces: list[A.Placed], sid: str) -> dict:
         cx = sum(p.x for p in land) / len(land)
         cz = sum(p.z for p in land) / len(land)
         radius = max(6.0, max(math.hypot(p.x - cx, p.z - cz) for p in land) + 4.0)
+        limit, limit_why = clear_radius_limit((cx, cz))
+        clipped = radius > limit
+        if clipped:
+            radius = limit
     else:
         cx = cz = 0.0
         radius = 0.0
+        clipped = False
+        limit_why = "no landward pieces, so nothing to clear"
     # `zones_generate pos=X,Z max=M` selects zones by the distance from `pos` to
     # the ZONE CENTRE, not by a bounding square. MEASURED live: pos=(-318,-64)
     # max=82 answered "5 zones generated", and exactly five zone centres lie
@@ -432,8 +559,9 @@ def prepare_block(fld: W.Field, pieces: list[A.Placed], sid: str) -> dict:
         zone_generated_before_required=True,
         clear=(dict(centre=[round(cx, 1), round(cz, 1)], radius_m=round(radius, 1),
                     reason="landward end of an over-water structure; the wet part "
-                           "has no vegetation to remove")
-               if land else None),
+                           "has no vegetation to remove",
+                    poi_clipped=clipped, poi_limit_reason=limit_why)
+               if land and radius >= 2.0 else None),
         flatten="FORBIDDEN",
     )
 
@@ -618,6 +746,7 @@ def build(fields: dict, default_patch: str) -> dict:
                             min_support_by_role=verdict["support_min_by_role"],
                             failures=verdict["failures"]),
             prepare=prepare_block(fld, pieces, spec["id"]),
+            poi_check=poi_check(pieces, half_width_m=spec["width_tiles"]),
             patch=spec.get("patch", default_patch),
         )
         out["structures"].append(rec)
@@ -699,6 +828,8 @@ def build(fields: dict, default_patch: str) -> dict:
             boats=[boat_for(fld, spec, b["prefab"]) for b in BOATS
                    if b["terminal"] == spec["id"]],
             prepare=prepare_block(fld, pieces + fixt, spec["id"]),
+            poi_check=poi_check(pieces + fixt,
+                                half_width_m=spec.get("width_tiles", 2)),
             patch=spec.get("patch", default_patch),
         )
         out["structures"].append(rec)
@@ -783,7 +914,12 @@ def write_structures_yaml(path: Path, res: dict) -> None:
             "overlapping one is refused by the ledger replay driver.",
         ],
     )
-    path.write_text(yaml.safe_dump(doc, sort_keys=False, width=100))
+    # numpy scalars come out of the POI gate and yaml refuses them. A JSON round
+    # trip with `default=float` coerces every numpy float/int to a Python one in
+    # one place, instead of sprinkling float() calls at the twenty sites that
+    # produce them.
+    plain = json.loads(json.dumps(doc, default=float))
+    path.write_text(yaml.safe_dump(plain, sort_keys=False, width=100))
 
 
 def main(argv=None) -> int:

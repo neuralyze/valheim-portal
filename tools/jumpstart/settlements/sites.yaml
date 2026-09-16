@@ -1,0 +1,398 @@
+world: Ulfsland
+seed: Pirate68
+seed_hash: 147627509
+owner: Settlements
+provenance:
+  height_field: /tmp/settle/h1m.bin
+  height_field_note: PatchScan 1 m with rivers; water plane y=30 (MEASURED ZoneSystem::c_WaterLevel)
+  locations_dump: /tmp/settle/loc3/f6fe167f4fcd.json
+  clamp_m: 8.0
+  scripts:
+  - sites.py
+  - layout.py
+  - clearance.py
+  - terrain1m.py
+  - bodies.py
+  - spawnable.py
+  - plan.py
+totals:
+  sites: 16
+  buildings: 50
+  pieces_total: 19203
+  portals: 16
+  signs: 16
+  zdo_estimate: 19235
+  earthwork_m3: 13355.5
+  beds: 16
+  stations: 97
+  all_clamp_ok: true
+  bodies_distinct: 18
+  bodies_with_missing_prefabs: 0
+  bodies_not_grounding: 0
+sites:
+- id: stenvik
+  type: town
+  xz:
+  - 496.0
+  - 904.0
+  pad_radius_m: 100.0
+  road_priority: trunk
+  approach_bearing_deg: 260.0
+  portal_tag: u-stenvik
+  provisional: false
+  pad_y: 45.57
+  patch: mainland
+  buildings: 18
+  pieces: 2606
+  earthwork_m3: 2927.2
+  clamp_headroom_min_m: 4.45
+  streets:
+  - name: stenvik-main
+    bearing_deg: 80.0
+    length_m: 150.0
+    max_grade_8m: 0.207
+    max_step_1m_m: 0.46
+    walkable: true
+  - name: stenvik-cross
+    bearing_deg: 30.0
+    length_m: 90.0
+    max_grade_8m: 0.183
+    max_step_1m_m: 0.51
+    walkable: true
+  gate: south-west end of the main street
+  dist_navigable_water_m: 133.0
+  dist_spawn_m: 1060.9
+  same_landmass_as_spawn: true
+  why: 'MEASURED: a 176 m district of 99.8% Meadows at 45.57 m with 17.8 m of district relief, 133 m from NAVIGABLE water, 260 m from the existing station hub at (661.5,1088.5), on the spawn island. The district is NOT levelled -- MEASURED, no 176 m district of <=12 m relief on this seed is both dry and coastal, so the town follows the ground on individual pads.'
+- id: vestvik
+  type: village
+  xz:
+  - -906.0
+  - 1846.0
+  pad_radius_m: 100.0
+  road_priority: trunk
+  approach_bearing_deg: 250.0
+  portal_tag: u-vestvik
+  provisional: false
+  pad_y: 33.99
+  patch: westisle
+  buildings: 12
+  pieces: 1794
+  earthwork_m3: 1724.6
+  clamp_headroom_min_m: 5.57
+  streets:
+  - name: vestvik-main
+    bearing_deg: 70.0
+    length_m: 150.0
+    max_grade_8m: 0.196
+    max_step_1m_m: 0.55
+    walkable: true
+  - name: vestvik-cross
+    bearing_deg: 150.0
+    length_m: 90.0
+    max_grade_8m: 0.187
+    max_step_1m_m: 0.63
+    walkable: true
+  gate: east end of the main street, toward the quay
+  dist_navigable_water_m: 137.9
+  dist_spawn_m: 2025.7
+  same_landmass_as_spawn: false
+  why: 'MEASURED: 100% Meadows at 33.99 m with 13.3 m of district relief on the west isle, the other half of the largest landmass in the world. Waterfront CORRECTED by Crossings and re-measured here: 93.8 m to the nearest wet cell but 137.9 m to navigable water, and the nearest shoreline that takes a 22 m pier is 227.3 m away at (-1031.5,1656.5). The village does not move; the quay is Crossings'' harbour-vestvik.'
+- id: hognest-castle
+  type: castle
+  xz:
+  - 530.0
+  - 1348.0
+  pad_radius_m: 33.1
+  road_priority: spur
+  portal_tag: u-castle
+  provisional: false
+  pad_y: 110.95
+  patch: mainland
+  body: hs_ashlands_neletit_portalhubtower.blueprint
+  pieces: 5565
+  cluster: 1
+  earthwork_m3: 3114.5
+  clamp_headroom_m: 4.09
+  rise_160m_m: 63.0
+  dist_navigable_water_m: 235.0
+  dist_spawn_m: 1470.3
+  same_landmass_as_spawn: true
+  why: 'MEASURED: 110.95 m pad height, 94.9 m above the lowest ground within 300 m, 100% Mountain over the pad, on the SPAWN ISLAND so it is reachable on foot. The clamp decides the architecture here: a 44 m pad has 4.09 m of headroom, a 52 m pad 1.80 m, and a 60 m pad FAILS at -6.54 m, so the body must span <= 38 m.'
+  approach_bearing_deg: null
+  approach_note: gate faces downhill; RoadNet's switchback may terminate below the summit with a portal rather than reaching the door
+- id: sudrberg-keep
+  type: castle
+  xz:
+  - 2406.0
+  - -3354.0
+  pad_radius_m: 33.1
+  road_priority: none
+  portal_tag: u-sudrberg
+  provisional: false
+  pad_y: 121.84
+  patch: south33
+  body: hs_mistlands_sheepshank_trophytowerv2.blueprint
+  pieces: 3577
+  cluster: 1
+  earthwork_m3: 2741.5
+  clamp_headroom_m: 2.73
+  rise_160m_m: 117.4
+  dist_navigable_water_m: 120.0
+  dist_spawn_m: 4168.4
+  same_landmass_as_spawn: false
+  why: 'MEASURED: 121.84 m pad height, 120.9 m of local rise, 100% Mountain, clamp headroom 2.73 m. On the south isle, which is a SEPARATE landmass -- portal-only, no road, and that is stated rather than implied.'
+  approach_bearing_deg: null
+  approach_note: gate faces downhill; RoadNet's switchback may terminate below the summit with a portal rather than reaching the door
+- id: wt-spawn
+  type: watchtower
+  xz:
+  - 114.0
+  - -108.0
+  pad_radius_m: 16.1
+  road_priority: trunk
+  portal_tag: u-wtspawn
+  provisional: false
+  pad_y: 76.04
+  patch: mainland
+  body: outposttower.blueprint
+  pieces: 212
+  cluster: 1
+  earthwork_m3: 108.6
+  clamp_headroom_m: 7.11
+  rise_160m_m: 52.6
+  dist_navigable_water_m: 180.3
+  dist_spawn_m: 210.5
+  same_landmass_as_spawn: true
+  why: 'MEASURED: 52.6 m above the lowest ground within 160 m and 205 m from the StartTemple -- the first built thing a player on foot can see from spawn.'
+- id: wt-south
+  type: watchtower
+  xz:
+  - 536.0
+  - 42.0
+  pad_radius_m: 16.1
+  road_priority: trunk
+  portal_tag: u-wtsouth
+  provisional: false
+  pad_y: 82.66
+  patch: mainland
+  body: outposttower.blueprint
+  pieces: 212
+  cluster: 1
+  earthwork_m3: 228.0
+  clamp_headroom_m: 6.22
+  rise_160m_m: 54.7
+  dist_navigable_water_m: 140.2
+  dist_spawn_m: 601.9
+  same_landmass_as_spawn: true
+  why: 'MEASURED: 56.2 m of local rise, 604 m from spawn, overlooking the ground between the temple and the dock.'
+- id: wt-town
+  type: watchtower
+  xz:
+  - 804.0
+  - 724.0
+  pad_radius_m: 16.1
+  road_priority: trunk
+  portal_tag: u-wttown
+  provisional: false
+  pad_y: 40.45
+  patch: mainland
+  body: outposttower.blueprint
+  pieces: 212
+  cluster: 1
+  earthwork_m3: 133.9
+  clamp_headroom_m: 6.82
+  rise_160m_m: 32.5
+  dist_navigable_water_m: 99.0
+  dist_spawn_m: 1128.7
+  same_landmass_as_spawn: true
+  why: 'MEASURED: 40.0 m of local rise, 78.0 m from navigable water, between Stenvik and the dock -- the tower that watches the town''s own approach.'
+- id: wt-peak
+  type: watchtower
+  xz:
+  - 1430.0
+  - 1538.0
+  pad_radius_m: 16.1
+  road_priority: spur
+  portal_tag: u-wtpeak
+  provisional: false
+  pad_y: 102.31
+  patch: mainland
+  body: outposttower.blueprint
+  pieces: 212
+  cluster: 1
+  earthwork_m3: 275.3
+  clamp_headroom_m: 5.78
+  rise_160m_m: 83.9
+  dist_navigable_water_m: 178.3
+  dist_spawn_m: 2142.3
+  same_landmass_as_spawn: true
+  why: 'MEASURED: 85.6 m of local rise at 103.64 m, the highest watchtower on the spawn island.'
+- id: wt-north
+  type: watchtower
+  xz:
+  - 152.0
+  - 1192.0
+  pad_radius_m: 16.1
+  road_priority: trunk
+  portal_tag: u-wtnorth
+  provisional: false
+  pad_y: 32.63
+  patch: mainland
+  body: outposttower.blueprint
+  pieces: 212
+  cluster: 1
+  earthwork_m3: 135.3
+  clamp_headroom_m: 6.7
+  rise_160m_m: 32.7
+  dist_navigable_water_m: 17.0
+  dist_spawn_m: 1208.3
+  same_landmass_as_spawn: true
+  why: 'MEASURED: 32.5 m of local rise, 18.4 m from navigable water on the north shore -- it watches the channel.'
+- id: wt-east
+  type: watchtower
+  xz:
+  - 1858.0
+  - 146.0
+  pad_radius_m: 16.1
+  road_priority: spur
+  portal_tag: u-wteast
+  provisional: false
+  pad_y: 55.33
+  patch: mainland
+  body: outposttower.blueprint
+  pieces: 212
+  cluster: 1
+  earthwork_m3: 210.7
+  clamp_headroom_m: 6.44
+  rise_160m_m: 55.4
+  dist_navigable_water_m: 106.2
+  dist_spawn_m: 1928.0
+  same_landmass_as_spawn: false
+  why: 'MEASURED: 55.5 m of local rise, 1928 m out at the east end of the island, where the ferry terminals are.'
+- id: lh-south
+  type: lighthouse
+  xz:
+  - -106.0
+  - -900.0
+  pad_radius_m: 17.6
+  road_priority: spur
+  portal_tag: u-lhsouth
+  provisional: false
+  pad_y: 33.12
+  patch: mainland
+  body: drake-lighthouse.blueprint
+  pieces: 1255
+  cluster: 1
+  earthwork_m3: 431.0
+  clamp_headroom_m: 4.49
+  rise_160m_m: 29.4
+  dist_navigable_water_m: 13.0
+  dist_spawn_m: 904.3
+  same_landmass_as_spawn: true
+  why: 'MEASURED: 11.7 m from NAVIGABLE water (the sea component that reaches the patch edge, not a pond), 24.0 m of local rise, and 30% of a 640 m window below the water plane -- a cape, not a bay shore. It stands over the southern sea approach to the dock at (675,-85).'
+- id: lh-east
+  type: lighthouse
+  xz:
+  - 2356.0
+  - 150.0
+  pad_radius_m: 17.6
+  road_priority: spur
+  portal_tag: u-lheast
+  provisional: false
+  pad_y: 31.59
+  patch: mainland
+  body: drake-lighthouse.blueprint
+  pieces: 1255
+  cluster: 1
+  earthwork_m3: 315.2
+  clamp_headroom_m: 5.69
+  rise_160m_m: 22.4
+  dist_navigable_water_m: 12.0
+  dist_spawn_m: 2425.1
+  same_landmass_as_spawn: false
+  why: 'MEASURED: 9.8 m from navigable water, 22.7 m of local rise, at the island''s east cape beside the ferry crossing.'
+- id: lh-west
+  type: lighthouse
+  xz:
+  - -1354.0
+  - 2360.0
+  pad_radius_m: 17.6
+  road_priority: spur
+  portal_tag: u-lhwest
+  provisional: false
+  pad_y: 33.08
+  patch: westisle
+  body: hs_plains_ulf_the_builder_lighthouse.blueprint
+  pieces: 1267
+  cluster: 1
+  earthwork_m3: 338.0
+  clamp_headroom_m: 6.0
+  rise_160m_m: 33.9
+  dist_navigable_water_m: 15.2
+  dist_spawn_m: 2686.3
+  same_landmass_as_spawn: false
+  why: 'MEASURED: 13.5 m from navigable water, 33.3 m of local rise, on the west isle''s north cape -- the far corner of the main landmass, and the light a boat sees first coming from the north.'
+- id: tree-sth
+  type: treehouse
+  xz:
+  - 542.0
+  - 484.0
+  pad_radius_m: 13.3
+  road_priority: spur
+  portal_tag: u-treesth
+  provisional: false
+  pad_y: 75.7
+  patch: mainland
+  body: hs_meadows_stilt_house.blueprint
+  pieces: 204
+  cluster: 3
+  earthwork_m3: 77.3
+  clamp_headroom_m: 6.84
+  rise_160m_m: 39.8
+  dist_navigable_water_m: 350.1
+  dist_spawn_m: 774.0
+  same_landmass_as_spawn: true
+  why: 'MEASURED: 100% BlackForest over the pad at 75.46 m, 776 m from spawn -- the nearest canopy hamlet to the temple on the spawn island. `hs_ashlands_swampytreehouse.blueprint` was chosen first and is OUT: MEASURED, `to_rcon_plan.py` refuses it on 22 unspawnable prefabs (Eyescream, FeastAshlands, MeadBzerker, QueensJam and 18 more consumables on item stands), and a body needing --drop-prefab is a worse choice than one that does not. The library has no large treehouse that spawns clean, so the flagship is three stilt bodies rather than one big one, and that is stated rather than quietly substituted.'
+- id: tree-west
+  type: treehouse
+  xz:
+  - -514.0
+  - 844.0
+  pad_radius_m: 13.3
+  road_priority: spur
+  portal_tag: u-treewest
+  provisional: false
+  pad_y: 40.83
+  patch: westisle
+  body: hs_meadows_stilt_house.blueprint
+  pieces: 204
+  cluster: 3
+  earthwork_m3: 80.9
+  clamp_headroom_m: 6.54
+  rise_160m_m: 22.1
+  dist_navigable_water_m: 50.9
+  dist_spawn_m: 953.2
+  same_landmass_as_spawn: false
+  why: 'MEASURED: BlackForest, 41.39 m, 966 m from spawn. A hamlet of three stilt bodies, each of which GROUNDS on its posts.'
+- id: tree-near
+  type: treehouse
+  xz:
+  - -616.0
+  - -236.0
+  pad_radius_m: 13.3
+  road_priority: spur
+  portal_tag: u-treenear
+  provisional: false
+  pad_y: 35.27
+  patch: westisle
+  body: hs_meadows_stilt_house.blueprint
+  pieces: 204
+  cluster: 3
+  earthwork_m3: 65.7
+  clamp_headroom_m: 6.94
+  rise_160m_m: 25.1
+  dist_navigable_water_m: 35.8
+  dist_spawn_m: 601.0
+  same_landmass_as_spawn: false
+  why: 'MEASURED: BlackForest, 35.20 m, 599 m from spawn -- the nearest built thing to the temple after the spawn watchtower.'

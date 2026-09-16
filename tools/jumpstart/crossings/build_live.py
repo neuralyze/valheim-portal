@@ -155,6 +155,13 @@ def main(argv=None) -> int:
                     help="structure id, or 'all'")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--validate", action="store_true",
+                    help="build the records and run schema.validate offline. No "
+                         "append, no console. `LiveBuilder(dry=True)` is NOT a "
+                         "dry run: MEASURED by RoadNet, it appends to the shared "
+                         "ledger and runs check_expect against the LIVE server, "
+                         "so it pollutes the log and then fails a postcondition "
+                         "for a command it deliberately did not send.")
     ap.add_argument("--note", default=None,
                     help="a note to append before the ops (e.g. why a re-emit)")
     ap.add_argument("--notes", action="store_true",
@@ -170,6 +177,21 @@ def main(argv=None) -> int:
             wires = sum(len(o.get("wire") or []) for o in ops)
             print(f"{sid:32s} ops={len(ops):3d} wire_lines={wires:4d} {kinds}")
         return 0
+
+    if args.validate:
+        from ledger import schema
+        bad = 0
+        for sid, ops in by_site.items():
+            for i, op in enumerate(ops):
+                rec = dict(seq=i + 1, ts="1970-01-01T00:00:00Z",
+                           actor="Crossings", prev="0" * 64, **op)
+                probs = schema.validate(rec)
+                if probs:
+                    bad += 1
+                    print(f"{sid} {op['op']}: {probs}")
+        print(f"validate: {sum(len(v) for v in by_site.values())} records, "
+              f"{bad} invalid")
+        return 1 if bad else 0
 
     targets: list[str]
     if args.notes:

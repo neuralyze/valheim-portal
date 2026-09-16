@@ -171,6 +171,19 @@ def zone_patches(zones: list[tuple[int, int]], seed: str, out: Path) -> dict:
     import os
 
     SCRATCH.mkdir(parents=True, exist_ok=True)
+    # Reuse a cached patch file when it already holds every zone asked for.
+    # PatchScan boots a whole Unity process (~20 s) before sampling, so a
+    # re-plan of the same segment paid that twice for bytes that cannot have
+    # changed: the generated height of a zone is a pure function of the seed.
+    if out.exists() and out.stat().st_size:
+        try:
+            sys.path.insert(0, str(JUMPSTART / "terraform"))
+            import heights as _ph
+            cached = _ph.load(out)
+            if all(f"z_{zx}_{zz}" in cached for zx, zz in zones):
+                return cached
+        except Exception:
+            pass
     req = out.with_suffix(".req.tsv")
     lines = []
     for zx, zz in zones:
@@ -225,6 +238,10 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
     st = {"samples_paved": 0, "samples_shoulder": 0, "skipped_pad": 0,
           "max_cut_m": 0.0, "max_fill_m": 0.0, "over_clamp": 0,
           "over_clamp_samples": [], "per_zone": {}}
+    # The world positions of every sample this write actually TOUCHES.  The
+    # location check is run against these, not against zone centres -- see
+    # `location_check`.
+    written: list[tuple[float, float]] = []
 
     for zx, zz in zones:
         patch = patches[f"z_{zx}_{zz}"]
@@ -251,6 +268,7 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
                 delta = y - generated
                 comp.set_height(gx, gy, delta)
                 comp.set_paint(gx, gy, road_colour if lat <= half else shoulder_colour)
+                written.append((wx, wz))
                 if lat <= half:
                     st["samples_paved"] += 1
                 else:
@@ -276,50 +294,162 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
             st["per_zone"][f"{zx},{zz}"] = touched
     st["max_cut_m"] = round(st["max_cut_m"], 3)
     st["max_fill_m"] = round(st["max_fill_m"], 3)
+    st["written"] = written
     return comps, st
 
 
-def location_check(zones: list[tuple[int, int]], pois: list,
-                   half_width_m: float) -> dict:
-    """Per-zone POI verdict against the per-type radii.
+def delta_at(comps: dict, x: float, z: float) -> float:
+    """The height change this write applies AT an arbitrary world position.
 
-    The ribbon's own POI clearance was already enforced on the CENTRELINE during
-    routing; this is the zone-level restatement the ledger requires, because the
-    thing being written is a zone and the thing that must be clear is the zone's
-    written samples.  A verdict of anything but "clear" stops the write.
+    Not "the nearest written sample's delta": `Heightmap` renders a mesh that
+    interpolates LINEARLY between adjacent samples at a 1 m pitch, so the
+    ground under an off-lattice point moves by the bilinear blend of the four
+    samples around it, and an UNWRITTEN sample contributes zero.  That is why a
+    piece 0.9 m outside the ribbon edge still settles a little and one 1.1 m
+    outside does not move at all -- and it is where `TERRAIN_SPREAD_M = 1.0`
+    comes from.
     """
-    worst = None
-    per_zone = []
-    for zx, zz in zones:
-        cx, cz = tcdata.zone_centre(zx, zz)
-        # A zone's written samples are inside its 64 m box, so the test radius
-        # is the box half-diagonal: 32*sqrt(2).
-        reach = 32.0 * math.sqrt(2.0)
-        hits = []
-        for p in pois:
-            d = math.hypot(p.x - cx, p.z - cz)
-            if d > reach + p.keepout_m(half_width_m):
-                continue
-            hits.append({"name": p.name, "xz": [round(p.x, 1), round(p.z, 1)],
-                         "protected": p.protected,
-                         "declared_radius_m": p.declared_m,
-                         "dist_to_zone_centre_m": round(d, 1),
-                         "hard_m": round(p.hard_m(half_width_m), 1)})
-        hits.sort(key=lambda h: h["dist_to_zone_centre_m"])
-        per_zone.append({"zone": [zx, zz], "within_reach": hits[:4]})
-        if hits and (worst is None or hits[0]["dist_to_zone_centre_m"] < worst[0]):
-            worst = (hits[0]["dist_to_zone_centre_m"], hits[0])
+    x0, z0 = math.floor(x), math.floor(z)
+    tx, tz = x - x0, z - z0
+    total = 0.0
+    for dx, dz, w in ((0, 0, (1 - tx) * (1 - tz)), (1, 0, tx * (1 - tz)),
+                      (0, 1, (1 - tx) * tz), (1, 1, tx * tz)):
+        if w == 0.0:
+            continue
+        sx, sz = x0 + dx, z0 + dz
+        zx, zz = tcdata.zone_of(sx, sz)
+        comp = comps.get((zx, zz))
+        if comp is None:
+            continue
+        cx, cz = comp.centre
+        gx, gy = tcdata.vertex_mask_index(cx, cz, sx, sz)
+        if not (0 <= gx < tcdata.PITCH and 0 <= gy < tcdata.PITCH):
+            continue
+        k = gy * tcdata.PITCH + gx
+        if comp.modified_height[k]:
+            total += w * comp.level_delta[k]
+    return total
+
+
+def delta_gate(comps: dict, written: list[tuple[float, float]], L,
+               tol_m: float, probe_step_m: float = 1.0) -> dict:
+    """THE gate on a non-destructive terrain write: does any location piece's
+    GROUND MOVE?
+
+    Distance is a proxy; this is the thing itself.  A ribbon that deletes
+    nothing can still leave a runestone hanging 3 m over a new road or buried
+    under it, which is the operator's own condemning complaint arriving by a
+    different route -- and it is the reason the loosened distance budget was
+    granted.  A piece whose ground does not move is unaffected at ANY distance;
+    one whose ground moves is damaged at any distance.
+
+    Every instance within (its own reach + the terrain spread) of the written
+    set is probed on a 1 m lattice over its own reach disc, and the worst
+    absolute applied delta over that disc is compared to `tol_m`.  Probing the
+    DISC rather than the marker matters: a location's pieces are spread over its
+    reach (measured up to 35.77 m for TrollCave02), and the marker itself can be
+    metres from the piece that would float.
+    """
+    reachable = L.instances_near(written, 60.0)
+    worst, violations, probed = None, [], 0
+    for inst in reachable:
+        px, pz = inst["xz"]
+        r = max(float(inst["reach_m"]), 1.0)
+        n = max(1, int(r / probe_step_m))
+        peak, peak_at = 0.0, (px, pz)
+        for iz in range(-n, n + 1):
+            for ix in range(-n, n + 1):
+                qx, qz = px + ix * probe_step_m, pz + iz * probe_step_m
+                if (qx - px) ** 2 + (qz - pz) ** 2 > r * r:
+                    continue
+                probed += 1
+                d = abs(delta_at(comps, qx, qz))
+                if d > peak:
+                    peak, peak_at = d, (qx, qz)
+        rec = {"name": inst["name"], "prefab": inst["prefab"],
+               "xz": [round(px, 1), round(pz, 1)],
+               "reach_m": inst["reach_m"], "protected": inst["protected"],
+               "min_dist_m": inst["min_dist_m"],
+               "worst_abs_delta_m": round(peak, 3),
+               "worst_at": [round(peak_at[0], 1), round(peak_at[1], 1)]}
+        if worst is None or peak > worst["worst_abs_delta_m"]:
+            worst = rec
+        if peak > tol_m:
+            violations.append(rec)
     return {
-        "dump": str(poimod.DUMP),
-        "method": "MEASURED: per-instance exteriorRadius/interiorRadius from "
-                  "Settlements' LocScan dump, plus an INFERRED 11 m piece "
-                  "overshoot and a 6 m road margin; centreline clearance was "
-                  "enforced during routing and is re-reported per zone here",
-        "nearest": worst[1] if worst else None,
-        "standoff_m": round(worst[0], 1) if worst else None,
-        "verdict": "clear",
-        "per_zone": per_zone,
+        "verdict": "clear" if not violations else "VIOLATION",
+        "tolerance_m": tol_m,
+        "instances_probed": len(reachable),
+        "positions_probed": probed,
+        "worst": worst,
+        "violations": violations,
+        "method": ("MEASURED: for every location instance within 60 m of the "
+                   "written set, the applied height delta is evaluated on a 1 m "
+                   "lattice over that instance's own reach disc (reach is "
+                   "max(exteriorRadius, interiorRadius, znviewReachM), up to "
+                   "35.77 m) by bilinear blend of the four TerrainComp samples "
+                   "around each probe, with unwritten samples contributing "
+                   "zero -- which is how Heightmap renders the ground. The "
+                   "worst absolute delta over the disc is compared to the "
+                   "tolerance. Distance is a proxy for this; this is the thing "
+                   "itself."),
+        "tool": "tools/jumpstart/roads/ribbon.py::delta_gate",
     }
+
+
+def location_check(comps: dict, written: list[tuple[float, float]],
+                   half_width_m: float) -> dict:
+    """The clearance GATE, delegated to the canonical instrument, with the
+    per-operation rule and the per-piece delta gate Main ruled.
+
+    `tools/jumpstart/settlements/clearance.py` is canonical -- it is what
+    `flatten.py`'s location gate and `Settlements`' `build.py` are wired to, and
+    its reach is MEASURED PER TYPE rather than a declared radius plus an
+    inferred constant.  A road passes `destructive=False`, which is a claim
+    about the pipeline and an honest one: this tool emits `zones_generate` and
+    `terrain_write` and NEVER `objects_clear`, so it cannot delete a location's
+    ZDOs, which is the hazard `MARGIN_M` and `PROTECTED_EXTRA_M` budget for.
+    The hazard it CAN cause -- a piece left floating or buried because its
+    ground moved -- is gated directly by `delta_gate`, and `verdict_for_samples`
+    REFUSES a non-destructive call that arrives without one.
+
+    TWO DEFECTS ARE RECORDED HERE BECAUSE BOTH WERE MINE.
+    (1) The first version measured each POI's distance to the ZONE CENTRE and
+    returned a HARD-CODED `verdict: "clear"`.  It passed a StoneCircle 3.2 m
+    from a zone centre against that circle's own 22 m radius, because the
+    verdict was not computed from anything.  A check whose answer does not
+    depend on its measurement is worse than none: it satisfies the gate.
+    (2) The second measured the right thing but was a SECOND implementation,
+    with an INFERRED 11 m overshoot where `clearance.py` had a per-type
+    measurement.  Consolidating them did not just remove a duplicate -- it
+    caught a WRONG VERDICT on the segment I was about to build first: my check
+    called T3-temple-meadhall clear, the canonical gate refuses it with 5
+    violations over 6,113 samples (StartTemple short by 84.9 m, Eikthyrnir by
+    14.0 and 8.8, WoodHouse1 by 5.2, Dolmen01 by 2.7).
+    """
+    sys.path.insert(0, str(JUMPSTART / "settlements"))
+    import clearance
+
+    dump = next((p for p in ("/tmp/settle/loc3/f6fe167f4fcd.json",
+                             "/tmp/settle/loc2/f6fe167f4fcd.json")
+                 if Path(p).exists()), None)
+    if dump is None:
+        raise SystemExit(
+            "no location dump found: refusing to write terrain without a "
+            "location check. MEASURED: flatten.py has no location check and "
+            "cut 6.65 m of ground out from under a LocationProxy holding a "
+            "buried treasure chest.")
+    L = clearance.load(dump)
+    gate = delta_gate(comps, written, L, clearance.DELTA_TOL_M)
+    v = L.verdict_for_samples(written, half_width_m=half_width_m,
+                              destructive=False, delta_gate=gate)
+    v["dump"] = dump
+    v["destructive"] = False
+    v["destructive_claim"] = (
+        "this pipeline emits zones_generate + terrain_write only and never "
+        "objects_clear, so it cannot delete a location's ZDOs; verifiable from "
+        "the ledger records for this segment")
+    return v
 
 
 def main() -> int:
@@ -327,6 +457,21 @@ def main() -> int:
     ap.add_argument("op", choices=["plan", "build"])
     ap.add_argument("--segment", required=True)
     ap.add_argument("--segments", default=str(HERE / "segments.yaml"))
+    ap.add_argument("--validate", action="store_true",
+                    help="build the ledger records and run schema.validate on "
+                         "them OFFLINE. Nothing is appended and nothing is "
+                         "sent. This is the safe pre-flight: LiveBuilder(dry=1) "
+                         "still APPENDS its records and still runs the "
+                         "postcondition against the live server, so a dry run "
+                         "leaves failed attempts in the shared ledger and "
+                         "cannot tell you whether a terrain_write validates.")
+    ap.add_argument("--dry", action="store_true",
+                    help="validate the ledger records and the wire strings "
+                         "without sending: LiveBuilder(dry=True). Run this "
+                         "BEFORE taking a live console window -- the schema "
+                         "refuses a malformed terrain_write at append time, and "
+                         "finding that out while holding the console is how a "
+                         "staged operation gets left half-sent.")
     ap.add_argument("--zone-batch", type=int, default=8,
                     help="zones per zones_generate call")
     args = ap.parse_args()
@@ -339,20 +484,49 @@ def main() -> int:
     seg = segs[0]
 
     pois = poimod.load()
-    pad_keepouts = [(s["xz"][0], s["xz"][1], s["pad_radius_m"])
-                    for s in specmod.SETTLEMENT_SITES.values()]
+    # PAD RADII COME FROM Settlements' OWN FILE, not from my copy of its
+    # coordinates.  Main ruled tools/jumpstart/settlements/sites.yaml
+    # authoritative and it is the boundary: town/village 100 m, castle 33.1,
+    # watchtower 16.1, lighthouse 17.6, treehouse 13.3 -- all LARGER than the
+    # provisional numbers I was handed over `hub` (12 and 10 for the small
+    # types), so reading my own copy would have paved inside three pads.  One
+    # source of truth, and it is the producer's.
+    sites_path = JUMPSTART / "settlements" / "sites.yaml"
+    pad_keepouts = []
+    pad_source = "none"
+    if sites_path.exists():
+        sdoc = yaml.safe_load(sites_path.read_text())
+        for site in sdoc["sites"]:
+            pad_keepouts.append((float(site["xz"][0]), float(site["xz"][1]),
+                                 float(site["pad_radius_m"])))
+        pad_source = str(sites_path)
+    else:
+        for site in specmod.SETTLEMENT_SITES.values():
+            pad_keepouts.append((site["xz"][0], site["xz"][1], site["pad_radius_m"]))
+        pad_source = "spec.SETTLEMENT_SITES (PROVISIONAL fallback)"
+    print(f"pad keep-outs: {len(pad_keepouts)} from {pad_source}")
     zones = segment_zones(seg["nodes"], seg["is_bridge"], seg["width_m"])
     print(f"{seg['id']}: {seg['length_m']} m, {seg['width_m']} m wide + "
           f"{SHOULDER_M} m shoulder, {len(zones)} zones = {len(zones)} "
           f"_TerrainCompiler ZDOs")
 
-    loc = location_check(zones, pois, seg["width_m"] / 2.0)
-    print(f"location check: verdict={loc['verdict']} nearest="
-          f"{(loc['nearest'] or {}).get('name')} at {loc['standoff_m']} m")
-
     out = SCRATCH / f"{seg['id']}.bin"
     patches = zone_patches(zones, SEED, out)
     comps, st = stamp(seg, patches, zones, pad_keepouts)
+    loc = location_check(comps, st["written"], seg["width_m"] / 2.0)
+    print(f"location check: verdict={loc['verdict']} nearest="
+          f"{(loc['nearest'] or {}).get('name')} standoff {loc['standoff_m']} m "
+          f"over {loc['samples_tested']} written samples, "
+          f"{len(loc['violations'])} distance violations; delta gate "
+          f"{loc['delta_gate']['verdict']} worst "
+          f"{(loc['delta_gate']['worst'] or {}).get('worst_abs_delta_m')} m over "
+          f"{loc['delta_gate']['instances_probed']} instances")
+    if loc["verdict"] != "clear":
+        for v in loc["violations"] + loc.get("delta_gate_violations", []):
+            print("   VIOLATION", v)
+        print("REFUSING: a written sample is inside a location's hard radius. "
+              "This is the defect that deleted POI content in the old world.")
+        return 3
     print(f"stamped {st['samples_paved']} paved + {st['samples_shoulder']} "
           f"shoulder samples over {len(comps)} zones; "
           f"cut {st['max_cut_m']} fill {st['max_fill_m']} m; "
@@ -392,18 +566,88 @@ def main() -> int:
         "paved_samples": st["samples_paved"],
         "shoulder_samples": st["samples_shoulder"],
         "paved_m2": st["samples_paved"] * 1.0,
-        "location_check": {k: v for k, v in loc.items() if k != "per_zone"},
+        "location_check": {k: v for k, v in loc.items() if k != "violations"},
         "over_clamp": st["over_clamp"],
     }
     if args.op == "plan":
         print(json.dumps(plan, indent=1))
         return 0
 
+    terrain_params = {
+        "name": f"road_{seg['id']}".replace("-", "_"),
+        "role": "road_segment",
+        "paint": PAINT_ROAD,
+        "datum": "road profile: a fitted longitudinal profile. "
+                 "lowest_major_walkable_surface is a PAD datum and does not "
+                 "apply to a ribbon, which has a different target height at "
+                 "every station.",
+        "profile": {
+            "nodes": [[n[0], n[1], y] for n, y, brg
+                      in zip(seg["nodes"], seg["profile_y"], seg["is_bridge"])
+                      if not brg],
+            "half_width_m": seg["width_m"] / 2.0,
+            "shoulder_m": SHOULDER_M,
+            "interp": "linear_arclength",
+        },
+        "max_cut_m": st["max_cut_m"], "max_fill_m": st["max_fill_m"],
+        "over_clamp": st["over_clamp"],
+        "location_check": loc,
+        "entries": entries,
+    }
+    wire_del = [f"deleteObjects -zone {e['zone'][0]} {e['zone'][1]} "
+                f"-prefab _TerrainCompiler -force" for e in entries]
+    wire_spawn = [f"spawn_object _TerrainCompiler "
+                  f"from={e['centre'][0]:g},{e['centre'][1]:g},0 "
+                  f"data={e['data_entry']}" for e in entries]
+
+    if args.validate:
+        sys.path.insert(0, str(JUMPSTART / "ledger"))
+        import schema
+        # The entries carry `blob` (raw bytes) until the blob store swallows
+        # them; validation only ever sees the digest, so strip them here.
+        vparams = dict(terrain_params)
+        vparams["entries"] = [{k: v for k, v in e.items() if k != "blob"}
+                              for e in entries]
+        for e in vparams["entries"]:
+            e["zone_generated_before"] = True
+            e["zone_generated_probe"] = (
+                f"objects_count id=_ZoneCtrl pos={e['centre'][0]:g},"
+                f"{e['centre'][1]:g} max=1")
+        rec = {"seq": 1, "ts": "1970-01-01T00:00:00Z", "actor": "RoadNet",
+               "op": "terrain_write", "params": vparams,
+               "wire": wire_del + wire_spawn,
+               "requires": {"mods": ["WorldEditCommands", "UpgradeWorld",
+                                     "ServerDevcommands", "ValheimRcon"],
+                            "prefabs": ["_TerrainCompiler"],
+                            "blobs": [e["blob_sha256"] for e in entries]},
+               "expect": {"terrain_compiler": True}, "meta": {},
+               "prev": "0" * 64}
+        bad = schema.validate(rec)
+        print(f"schema.validate(terrain_write): "
+              f"{'OK' if not bad else str(len(bad)) + ' problems'}")
+        for b in bad:
+            print("   ", b)
+        zrec = {"seq": 2, "ts": "1970-01-01T00:00:00Z", "actor": "RoadNet",
+                "op": "zones_generate",
+                "params": {"pos": list(entries[0]["centre"]), "max_m": 64.0,
+                           "zones": [e["zone"] for e in entries],
+                           "role": "road_segment"},
+                "wire": [f"zones_generate pos={entries[0]['centre'][0]:g},"
+                         f"{entries[0]['centre'][1]:g} max=64"],
+                "requires": {}, "expect": {"zone_ctrl": len(entries)},
+                "meta": {}, "prev": "0" * 64}
+        zbad = schema.validate(zrec)
+        print(f"schema.validate(zones_generate): "
+              f"{'OK' if not zbad else str(len(zbad)) + ' problems'}")
+        for b in zbad:
+            print("   ", b)
+        return 0 if not (bad or zbad) else 4
+
     # ---- live, through the ledger --------------------------------------
     sys.path.insert(0, str(JUMPSTART / "ledger"))
     from live import LiveBuilder
 
-    with LiveBuilder(actor="RoadNet") as b:
+    with LiveBuilder(actor="RoadNet", dry=args.dry) as b:
         b.observe(
             "road_segment_plan", 
             method="MEASURED: A* over a 1 m PatchScan field (rivers included) "
@@ -490,7 +734,8 @@ def main() -> int:
                 },
                 "max_cut_m": st["max_cut_m"], "max_fill_m": st["max_fill_m"],
                 "over_clamp": st["over_clamp"],
-                "location_check": {k: v for k, v in loc.items() if k != "per_zone"},
+                "location_check": {k: v for k, v in loc.items()
+                                   if k not in ("within_keepout",)},
                 "entries": entries,
             },
             wire=wire,

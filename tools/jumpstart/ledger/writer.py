@@ -53,6 +53,14 @@ except ImportError:  # run as a script
 REPO = HERE.parent.parent.parent
 RUNS = HERE / "runs"
 
+# The append lock. MEASURED tonight: `_append_raw` read the chain head,
+# computed `prev` and wrote, with no lock and with the head CACHED at open, so
+# two concurrent appenders forked the chain at file line 47 and every
+# subsequent append refused for every agent. The console token could never
+# have prevented it -- `note` and `observe` send nothing to the console and
+# take no token -- so the guard has to live at the FILE layer.
+LOCK_TIMEOUT_S = 30.0
+
 VALHEIM_ROOT = Path(os.environ.get(
     "VALHEIM_ROOT", "/media/big4/projects/game/valheim"))
 
@@ -402,35 +410,83 @@ class Ledger:
 
     def _append_raw(self, op: str, params: dict, *, wire: list[str],
                     requires: dict, expect: dict | None, meta: dict) -> dict:
-        rec: dict = {
-            "seq": self._seq + 1,
-            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "actor": self.actor,
-            "op": op,
-            "params": params,
-            "wire": wire,
-            "requires": requires,
-            "meta": meta,
-            "prev": self._head,
-        }
-        if expect is not None:
-            rec["expect"] = expect
+        """Append one record under an EXCLUSIVE FILE LOCK, with the chain head
+        RE-READ inside the critical section.
 
-        problems = schema.validate(rec)
-        problems += self._cross_record_checks(rec)
-        if problems:
-            raise LedgerError(
-                f"refusing to append {op} (seq {rec['seq']}, actor "
-                f"{self.actor}):\n  - " + "\n  - ".join(problems))
+        BOTH halves are load bearing and MEASURED. The lock alone would not
+        have prevented tonight's fork: `__init__` caches `_seq`/`_head`, and
+        the builder that forked the chain had been open for four minutes, so
+        it would have taken the lock and then written against a head that went
+        stale while it held nothing. So the head is read from the FILE at every
+        append, and the next seq comes from the LAST LINE rather than from a
+        count -- after a fork the numbers are duplicated and a count hands out
+        a seq that already exists twice.
 
-        line = schema.canonical(rec).decode("utf-8") + "\n"
-        with self.path.open("a", encoding="utf-8") as fh:
-            fh.write(line)
-            fh.flush()
-            os.fsync(fh.fileno())
-        self._seq = rec["seq"]
-        self._head = schema.digest(rec)
-        return rec
+        The lock covers `_cross_record_checks` too, deliberately: the portal
+        two-ends-per-tag guard and the one-compiler-per-zone clobber guard
+        DECIDE BY READING PRIOR RECORDS, so a concurrent append between the
+        read and the write is exactly the window in which both go silently
+        inert. It does NOT cover the console round trip -- `emit` sends after
+        `append` returns -- because one agent's RCON latency must not
+        serialise everybody's logging.
+        """
+        import fcntl
+
+        lock_path = self.root / "ledger.lock"
+        deadline = time.time() + LOCK_TIMEOUT_S
+        with lock_path.open("a+", encoding="utf-8") as lock:
+            while True:
+                try:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.time() >= deadline:
+                        lock.seek(0)
+                        raise LedgerError(
+                            f"ledger append lock held by {lock.read()[:200]!r} "
+                            f"and not released within {LOCK_TIMEOUT_S:g}s. A "
+                            f"crashed holder reads as this message rather than "
+                            f"as a hang; clear {lock_path} only after checking "
+                            f"that pid is gone.")
+                    time.sleep(0.05)
+            lock.seek(0)
+            lock.truncate()
+            lock.write(f"pid {os.getpid()} actor {self.actor} op {op} "
+                       f"since {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}")
+            lock.flush()
+            try:
+                self._seq, self._head = self._replay_chain()
+                rec: dict = {
+                    "seq": self._seq + 1,
+                    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "actor": self.actor,
+                    "op": op,
+                    "params": params,
+                    "wire": wire,
+                    "requires": requires,
+                    "meta": meta,
+                    "prev": self._head,
+                }
+                if expect is not None:
+                    rec["expect"] = expect
+
+                problems = schema.validate(rec)
+                problems += self._cross_record_checks(rec)
+                if problems:
+                    raise LedgerError(
+                        f"refusing to append {op} (seq {rec['seq']}, actor "
+                        f"{self.actor}):\n  - " + "\n  - ".join(problems))
+
+                line = schema.canonical(rec).decode("utf-8") + "\n"
+                with self.path.open("a", encoding="utf-8") as fh:
+                    fh.write(line)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                self._seq = rec["seq"]
+                self._head = schema.digest(rec)
+                return rec
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     # -- the invariants that make a defect unreproducible ------------------
 
@@ -560,17 +616,51 @@ class Ledger:
         recs = self.records()
         problems: list[str] = []
 
+        # Tags are keyed by FILE LINE as well as by seq: after a fork the seq
+        # numbers are duplicated, and an invariant that reports "seq 43" when
+        # two records carry that label is naming an ambiguous thing. File
+        # position is the only total order this artefact has.
         tags: dict[str, list[int]] = {}
+        tag_lines: dict[str, list[int]] = {}
         gone = retired_seqs(recs)
-        for r in recs:
+        for line, r in enumerate(recs):
             if r["op"] == "portal" and r["seq"] not in gone:
                 tags.setdefault(r["params"]["tag"], []).append(r["seq"])
+                tag_lines.setdefault(r["params"]["tag"], []).append(line)
         one_ended = {t: s for t, s in tags.items() if len(s) != 2}
         for tag, seqs in sorted(one_ended.items()):
             problems.append(
-                f"portal tag {tag!r} has {len(seqs)} end(s) at seq {seqs}, not "
-                f"2.  A one-ended tag pairs at random with the world's "
-                f"mod-location portals -- the operator's one-way trip.")
+                f"portal tag {tag!r} has {len(seqs)} end(s) at seq {seqs} "
+                f"(file line(s) {tag_lines[tag]}), not 2.  A one-ended tag "
+                f"pairs at random with the world's mod-location portals -- "
+                f"the operator's one-way trip.")
+
+        # THE FORK IS REPORTED HERE OR IT IS INVISIBLE. `Ledger.open` now
+        # tolerates a labelled fork so that a damaged log can still record
+        # that it is damaged -- which means the close report is the thing that
+        # has to say so, every time, rather than the open path failing loudly
+        # once. MEASURED consequence of the fork it was written for: for the
+        # window it was open, the two guards above were INERT, because both
+        # decide by READING PRIOR RECORDS and a reader that stops at the first
+        # branch cannot see claims made on the second.
+        integrity = schema.scan(
+            self.path.read_text("utf-8").splitlines()) if self.path.exists() \
+            else {"forks": [], "duplicate_seqs": {}}
+        for fork in integrity["forks"]:
+            problems.append(
+                f"chain FORK at file line {fork['line']} (seq {fork['seq']}, "
+                f"{fork['actor']} {fork['op']} at {fork['ts']}): declared "
+                f"prev={fork['declared_prev'][:12]} but the preceding line "
+                f"digests to {fork['actual_prev'][:12]}. Two appenders raced. "
+                f"Replay MUST order by file position; `seq` is advisory from "
+                f"this line on, and every guard that reads prior records was "
+                f"blind to one branch until this was labelled.")
+        if integrity["duplicate_seqs"]:
+            problems.append(
+                f"duplicate seq labels: "
+                f"{ {s: ls for s, ls in integrity['duplicate_seqs'].items()} } "
+                f"(seq -> file lines). Key resume progress and `merged_from` "
+                f"by FILE LINE, not by seq.")
 
         mutating = [r for r in recs if r["op"] in schema.MUTATING]
         no_expect = [r["seq"] for r in mutating if not r.get("expect")]

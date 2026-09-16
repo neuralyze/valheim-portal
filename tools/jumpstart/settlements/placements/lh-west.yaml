@@ -1,0 +1,33 @@
+world: Ulfsland
+settlement: lh-west
+placements:
+- id: lh-west
+  blueprint: hs_plains_ulf_the_builder_lighthouse.blueprint
+  sha256: a329009fb3fcd1249d4df0ad15eabe94d8f6c4859e24d5c2793624d7b3d6441d
+  pieces: 1267
+  align: floor-center
+  rotation:
+    yaw: 0
+  requirement:
+    biome: Meadows
+    footprint_m: 22.0
+    footprint_xz_m:
+    - 22.0
+    - 22.0
+  solved:
+    seed: Pirate68
+    x: -1354.0
+    z: 2360.0
+    y: 33.08
+    footprint_orientation: 22 m along x by 22 m along z
+    flatten_cost:
+      target_y: 33.08
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 53.4
+    nearest_location: Crypt4
+    nearest_location_standoff_m: 33.0
+  settlement:
+    site: lh-west
+    role: lighthouse
+    patch: westisle

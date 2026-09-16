@@ -1,0 +1,93 @@
+world: Ulfsland
+settlement: tree-sth
+placements:
+- id: tree-sth-1
+  blueprint: hs_meadows_stilt_house.blueprint
+  sha256: 9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4
+  pieces: 68
+  align: floor-center
+  rotation:
+    yaw: 0
+  requirement:
+    biome: Meadows
+    footprint_m: 16.0
+    footprint_xz_m:
+    - 16.0
+    - 16.0
+  solved:
+    seed: Pirate68
+    x: 541.0
+    z: 487.9
+    y: 75.7
+    footprint_orientation: 16 m along x by 16 m along z
+    flatten_cost:
+      target_y: 75.7
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 42.6
+    nearest_location: Crypt2
+    nearest_location_standoff_m: 33.0
+  settlement:
+    site: tree-sth
+    role: treehouse
+    patch: mainland
+- id: tree-sth-2
+  blueprint: hs_meadows_stilt_house.blueprint
+  sha256: 9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4
+  pieces: 68
+  align: floor-center
+  rotation:
+    yaw: 120
+  requirement:
+    biome: Meadows
+    footprint_m: 16.0
+    footprint_xz_m:
+    - 16.0
+    - 16.0
+  solved:
+    seed: Pirate68
+    x: 539.2
+    z: 481.2
+    y: 75.7
+    footprint_orientation: 16 m along x by 16 m along z
+    flatten_cost:
+      target_y: 75.7
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 48.6
+    nearest_location: Crypt2
+    nearest_location_standoff_m: 33.0
+  settlement:
+    site: tree-sth
+    role: treehouse
+    patch: mainland
+- id: tree-sth-3
+  blueprint: hs_meadows_stilt_house.blueprint
+  sha256: 9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4
+  pieces: 68
+  align: floor-center
+  rotation:
+    yaw: 240
+  requirement:
+    biome: Meadows
+    footprint_m: 16.0
+    footprint_xz_m:
+    - 16.0
+    - 16.0
+  solved:
+    seed: Pirate68
+    x: 545.9
+    z: 483.0
+    y: 75.7
+    footprint_orientation: 16 m along x by 16 m along z
+    flatten_cost:
+      target_y: 75.7
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 42.9
+    nearest_location: Crypt2
+    nearest_location_standoff_m: 33.0
+  settlement:
+    site: tree-sth
+    role: treehouse
+    patch: mainland

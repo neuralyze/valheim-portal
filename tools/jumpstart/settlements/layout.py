@@ -337,9 +337,18 @@ def check_overlaps(town: dict) -> list[dict]:
     return bad
 
 
+# EVERY body here passed `spawnable.py`, which runs the real `to_rcon_plan.py`
+# rather than trusting the audit's `missing_prefabs` field. MEASURED, the two
+# disagree: the audit reports `missing_prefabs: []` for
+# `hs_blackforest_crimsonchaostownhall.blueprint` and the plan emitter REFUSES
+# it on `Placeable_HardRock: not in the evidence file`. Four of the eighteen
+# bodies originally chosen here failed that way and were replaced rather than
+# forced through with --drop-prefab.
 STENVIK_SPEC = [
-    ("hall", "hs_blackforest_crimsonchaostownhall.blueprint", 1),
-    ("workshop", "hs_blackforest_mister_basestart_simple.blueprint", 1),
+    # was hs_blackforest_crimsonchaostownhall (Placeable_HardRock unspawnable)
+    ("hall", "hs_meadows_madzobuild_modernstarterhouse.blueprint", 1),
+    # was hs_blackforest_mister_basestart_simple (FeastMeadows unspawnable)
+    ("workshop", "creator-looney-swamp-starter-home.blueprint", 1),
     ("longhouse", "hs_blackforest_tester_meadows_log_cabin.blueprint", 2),
     ("house", "hs_blackforest_kin_01_woodhouse.blueprint", 3),
     ("cottage", "hs_meadows_cottage.blueprint", 4),
@@ -356,10 +365,11 @@ STENVIK_SPEC = [
 # actually live once the mod exists.
 VESTVIK_SPEC = [
     ("hall", "hs_blackforest_tester_meadows_log_cabin.blueprint", 1),
-    ("workshop", "hs_blackforest_mister_basestart_simple.blueprint", 1),
+    # was hs_blackforest_mister_basestart_simple (FeastMeadows unspawnable)
+    ("workshop", "hs_meadows_the_neck_nook.blueprint", 1),
     ("house", "hs_blackforest_kin_01_woodhouse.blueprint", 4),
-    ("quickhouse", "Rocket Raccoon_Quick_House.blueprint", 3),
-    ("cottage", "hs_meadows_cottage.blueprint", 2),
+    # was Rocket Raccoon_Quick_House (thin_wood_pole_2 unspawnable)
+    ("villa", "hs_meadows_villa.blueprint", 3),
     ("stonehouse", "hs_meadows_stone_cottage.blueprint", 2),
     ("hut", "hs_meadows_hut.blueprint", 2),
 ]

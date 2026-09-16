@@ -3,35 +3,51 @@
  "applied": {
   "1": {
    "status": "applied",
-   "ts": "2026-09-16T02:18:10Z"
+   "seq_label": 1,
+   "op": "spawn",
+   "ts": "2026-09-16T03:12:38Z"
   },
   "2": {
    "status": "applied",
-   "ts": "2026-09-16T02:18:16Z"
+   "seq_label": 2,
+   "op": "spawn",
+   "ts": "2026-09-16T03:12:44Z"
   },
   "3": {
    "status": "applied",
-   "ts": "2026-09-16T02:18:21Z"
+   "seq_label": 3,
+   "op": "portal",
+   "ts": "2026-09-16T03:12:48Z"
   },
   "4": {
    "status": "applied",
-   "ts": "2026-09-16T02:18:25Z"
+   "seq_label": 4,
+   "op": "portal",
+   "ts": "2026-09-16T03:12:53Z"
   },
   "5": {
    "status": "applied",
-   "ts": "2026-09-16T02:18:27Z"
+   "seq_label": 5,
+   "op": "save",
+   "ts": "2026-09-16T03:12:55Z"
   },
   "6": {
    "status": "applied",
-   "ts": "2026-09-16T02:18:29Z"
+   "seq_label": 6,
+   "op": "retire",
+   "ts": "2026-09-16T03:12:57Z"
   },
   "7": {
    "status": "applied",
-   "ts": "2026-09-16T02:18:31Z"
+   "seq_label": 7,
+   "op": "retire",
+   "ts": "2026-09-16T03:12:59Z"
   },
   "8": {
    "status": "applied",
-   "ts": "2026-09-16T02:18:33Z"
+   "seq_label": 8,
+   "op": "retire",
+   "ts": "2026-09-16T03:13:01Z"
   }
  },
  "preamble": null

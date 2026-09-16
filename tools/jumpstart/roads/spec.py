@@ -296,15 +296,31 @@ SETTLEMENT_EDGES: list[dict] = [
     {"id": "T7-stathub-stenvik",  "a": "stathub",  "b": "stenvik",  "cls": "trunk", "pri": 1},
     {"id": "T8-stenvik-wttown",   "a": "stenvik",  "b": "wttown",   "cls": "trunk", "pri": 1},
     {"id": "T9-wttown-dockshore", "a": "wttown",   "b": "dockshore", "cls": "trunk", "pri": 1},
-    {"id": "T10-dockshore-wtsouth", "a": "dockshore", "b": "wtsouth", "cls": "trunk", "pri": 1},
+    # T10 (dockshore -> wtsouth direct) IS DELIBERATELY ABSENT.  MEASURED: the
+    # dock's solved centre (675.4, -85.6) has NO land within 6 m -- it is over
+    # water by 7.0 m to a 0.031 km2 ISLET, not on the main island -- so a direct
+    # dock -> watchtower road needs 168 m of open water.  Settlements' requested
+    # sweep loop still closes, one node longer: dockshore -> temple (T5) ->
+    # wtspawn (T12) -> wtsouth (T11), all on land.
+    {"id": "T10-wtspawn-wtsouth", "a": "wtspawn", "b": "wtsouth", "cls": "trunk", "pri": 1,
+     "why": "replaces the direct dock -> wtsouth link, which needs 168 m of "
+            "open water because the dock is on an islet"},
     {"id": "T11-wtsouth-wtspawn", "a": "wtsouth",  "b": "wtspawn",  "cls": "trunk", "pri": 1},
     {"id": "T12-wtspawn-temple",  "a": "wtspawn",  "b": "temple",   "cls": "trunk", "pri": 1},
     {"id": "S6-stenvik-hognest",  "a": "stenvik",  "b": "hognest",  "cls": "mountain", "pri": 2,
      "why": "castle switchback; Settlements accepts a spur terminating below the summit"},
     {"id": "S7-stathub-wtnorth",  "a": "stathub",  "b": "wtnorth",  "cls": "spur", "pri": 2},
     {"id": "S8-wtsouth-treesth",  "a": "wtsouth",  "b": "treesth",  "cls": "spur", "pri": 2},
-    {"id": "S9-eastlobe-wtpeak",  "a": "eastlobe", "b": "wtpeak",   "cls": "spur", "pri": 2},
-    {"id": "S10-southeast-wteast", "a": "southeast", "b": "wteast", "cls": "spur", "pri": 2},
+    # S9 re-origined from `northeast`, not `eastlobe`.  MEASURED: wtpeak
+    # (1418, 1530) IS on the main land component, but A* found no admissible
+    # path from eastlobe (1728, 1162) -- the corridor between them is either
+    # steeper than the 25 % ceiling everywhere or inside a protected keep-out.
+    # `northeast` (1822, 1586) is 415 m away on the same component and routes.
+    {"id": "S9-northeast-wtpeak", "a": "northeast", "b": "wtpeak", "cls": "spur", "pri": 2},
+    # S10 IS DELIBERATELY ABSENT.  MEASURED: watchtower `wteast` (1858, 146)
+    # sits on land component 224, 0.3955 km2 -- a SEPARATE ISLAND from the spawn
+    # island's component 5.  Routed anyway it produced a 562 m bridge.  It is
+    # portal-only and Settlements has been told.
     {"id": "S11-southcape-lhsouth", "a": "southcape", "b": "lhsouth", "cls": "spur", "pri": 2},
     {"id": "W8-brgs2-vestvik",    "a": "brg-s2-w", "b": "vestvik",  "cls": "trunk", "pri": 3},
     {"id": "W9-vestvik-lhwest",   "a": "vestvik",  "b": "lhwest",   "cls": "spur", "pri": 3},
@@ -379,6 +395,12 @@ for _tid, _t in CROSSING_TERMINALS.items():
 # with `portals_casual` is the only way a ferry gets used at all.  Recorded here
 # because "why is there no road to the far ferry terminal" must have an answer.
 NO_ROAD: dict[str, str] = {
+    "wteast": "watchtower on land component 224 (0.3955 km2), a separate island "
+              "from the spawn island; portal only -- MEASURED, and routed anyway "
+              "it needs a 562 m bridge",
+    "dockshore_direct_to_wtsouth": "the dock's solved centre is over water, 7.0 m "
+                                   "from a 0.031 km2 islet; a direct road to the "
+                                   "south watchtower needs 168 m of open water",
     "ferry-terminal-eastisle": "on land component 273 (0.396 km2), a separate "
                                "island from the spawn island; portal only",
     "lheast": "x=2354 is beyond the spawn island's own bbox (x <= 1920); separate "

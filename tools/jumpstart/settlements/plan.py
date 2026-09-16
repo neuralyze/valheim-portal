@@ -131,11 +131,19 @@ OUTLIERS: list[dict] = [
              "the west isle's north cape -- the far corner of the main "
              "landmass, and the light a boat sees first coming from the north."),
     dict(id="tree-sth", kind="treehouse", tag="u-treesth", patch="mainland",
-         x=546.0, z=482.0, pad_m=32.0,
-         body="hs_ashlands_swampytreehouse.blueprint", road_priority="spur",
+         x=546.0, z=482.0, pad_m=16.0,
+         body="hs_meadows_stilt_house.blueprint", road_priority="spur",
+         cluster=3,
          why="MEASURED: 100% BlackForest over the pad at 75.46 m, 776 m from "
-             "spawn. The body is a genuine raised house -- MEASURED base_y "
-             "11.02 m, 15 walkable levels -- rather than a hut on the ground."),
+             "spawn -- the nearest canopy hamlet to the temple on the spawn "
+             "island. `hs_ashlands_swampytreehouse.blueprint` was chosen first "
+             "and is OUT: MEASURED, `to_rcon_plan.py` refuses it on 22 "
+             "unspawnable prefabs (Eyescream, FeastAshlands, MeadBzerker, "
+             "QueensJam and 18 more consumables on item stands), and a body "
+             "needing --drop-prefab is a worse choice than one that does not. "
+             "The library has no large treehouse that spawns clean, so the "
+             "flagship is three stilt bodies rather than one big one, and that "
+             "is stated rather than quietly substituted."),
     dict(id="tree-west", kind="treehouse", tag="u-treewest", patch="westisle",
          x=-530.0, z=850.0, pad_m=16.0, body="hs_meadows_stilt_house.blueprint",
          road_priority="spur", cluster=3,
@@ -353,6 +361,31 @@ def build(picker: S.Picker, run_interior: bool = True) -> dict:
             f"enclosed, reachable floor and a villager could never stand in them: "
             f"{failed}. Replace them in the town spec rather than lowering the gate.")
 
+    # --- the spawnability gate -------------------------------------------
+    # Asked of the thing that does the spawning, not of the audit. MEASURED,
+    # they disagree: `base_audit.json` reports `missing_prefabs: []` for
+    # `hs_blackforest_crimsonchaostownhall.blueprint` while `to_rcon_plan.py`
+    # refuses it on `Placeable_HardRock: not in the evidence file`. Four of the
+    # eighteen bodies first chosen here failed this way.
+    import spawnable
+    unspawnable = []
+    for name in plan["bodies"]:
+        rep = spawnable.check(name)
+        plan["bodies"][name]["spawnable"] = {
+            "ok": rep["ok"], "commands": rep["commands"],
+            "missing": rep["missing"],
+            "method": "MEASURED: a real run of blueprints/to_rcon_plan.py "
+                      "--align floor-center, which is the emitter that puts the "
+                      "body in the world",
+            "tool": "tools/jumpstart/settlements/spawnable.py",
+        }
+        if not rep["ok"]:
+            unspawnable.append((name, [m["prefab"] for m in rep["missing"]]))
+    if unspawnable:
+        raise ValueError(
+            f"these bodies cannot be spawned without --drop-prefab and are not "
+            f"acceptable choices: {unspawnable}. Replace them in the spec.")
+
     pieces = sum(e["pieces"] * e["count"] for e in plan["bodies"].values())
     earth = (sum(t["totals"]["earthwork_m3"] for t in plan["towns"].values())
              + sum(r["pad"]["moved_m3"] * r["cluster"] for r in plan["outliers"]))
@@ -381,6 +414,82 @@ def build(picker: S.Picker, run_interior: bool = True) -> dict:
     return plan
 
 
+def sites_yaml(plan: dict) -> str:
+    """The interchange `RoadNet` asked for, in the shape it specified.
+
+    `pad_radius_m` is the radius a ribbon must stay OUTSIDE and terminate at,
+    taken from the district or the pad plus its own margin.
+    `approach_bearing_deg` is given ONLY where the layout forces one -- a gate
+    or a downhill castle approach -- and omitted otherwise, because RoadNet has
+    the height field and picking the lowest-gradient approach there is strictly
+    better than guessing here.
+    """
+    import yaml as _yaml
+    recs = []
+    for name, t in plan["towns"].items():
+        main = t["streets"][0]
+        recs.append({
+            "id": name, "type": "town" if name == "stenvik" else "village",
+            "xz": [t["centre"][0], t["centre"][1]],
+            "pad_radius_m": 100.0, "road_priority": t["road_priority"],
+            "approach_bearing_deg": round((main["bearing_deg"] + 180) % 360, 1),
+            "portal_tag": t["tag"], "provisional": False,
+            "pad_y": t["pad_y"], "patch": t["patch"],
+            "buildings": t["totals"]["buildings"],
+            "pieces": t["totals"]["pieces_total"],
+            "earthwork_m3": t["totals"]["earthwork_m3"],
+            "clamp_headroom_min_m": t["totals"]["clamp_headroom_min_m"],
+            "streets": [{"name": s["name"], "bearing_deg": s["bearing_deg"],
+                         "length_m": s["profile"]["length_m"],
+                         "max_grade_8m": s["profile"]["max_grade"],
+                         "max_step_1m_m": s["profile"]["max_step_m"],
+                         "walkable": s["walkable"]} for s in t["streets"]],
+            "gate": t["gate"],
+            "dist_navigable_water_m": t["dist_navigable_water_m"],
+            "dist_spawn_m": t["dist_spawn_m"],
+            "same_landmass_as_spawn": t["island"]["same_landmass_as_spawn"],
+            "why": t["why"],
+        })
+    for r in plan["outliers"]:
+        rec = {
+            "id": r["id"], "type": r["kind"], "xz": [r["x"], r["z"]],
+            "pad_radius_m": round(r["pad_m"] * math.sqrt(2) / 2 + 2.0, 1),
+            "road_priority": r["road_priority"], "portal_tag": r["tag"],
+            "provisional": False, "pad_y": r["pad"]["target_y"],
+            "patch": r["patch"], "body": r["body"],
+            "pieces": r["pieces"] * r["cluster"], "cluster": r["cluster"],
+            "earthwork_m3": round(r["pad"]["moved_m3"], 1),
+            "clamp_headroom_m": r["pad"]["clamp_headroom_m"],
+            "rise_160m_m": r["rise_160m_m"],
+            "dist_navigable_water_m": r["dist_navigable_water_m"],
+            "dist_spawn_m": r["dist_spawn_m"],
+            "same_landmass_as_spawn": r["island"]["same_landmass_as_spawn"],
+            "why": r["why"],
+        }
+        if r["kind"] == "castle":
+            rec["approach_bearing_deg"] = None
+            rec["approach_note"] = ("gate faces downhill; RoadNet's switchback "
+                                    "may terminate below the summit with a "
+                                    "portal rather than reaching the door")
+        recs.append(rec)
+    doc = {
+        "world": "Ulfsland", "seed": plan["seed"], "seed_hash": plan["seed_hash"],
+        "owner": "Settlements",
+        "provenance": {
+            "height_field": plan["patch_file"],
+            "height_field_note": "PatchScan 1 m with rivers; water plane y=30 "
+                                 "(MEASURED ZoneSystem::c_WaterLevel)",
+            "locations_dump": plan["locations_dump"],
+            "clamp_m": T.CLAMP_M,
+            "scripts": ["sites.py", "layout.py", "clearance.py", "terrain1m.py",
+                        "bodies.py", "spawnable.py", "plan.py"],
+        },
+        "totals": plan["totals"],
+        "sites": recs,
+    }
+    return _yaml.safe_dump(doc, sort_keys=False, width=10 ** 9)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--patches", default=PATCHES)
@@ -392,6 +501,7 @@ def main() -> int:
     plan = build(picker, run_interior=not a.no_interior)
     out = Path(a.out)
     (out / "plan.json").write_text(json.dumps(plan, indent=1, default=str))
+    (out / "sites.yaml").write_text(sites_yaml(plan))
     print(json.dumps(plan["totals"], indent=1))
     print("\nbodies used:")
     for name, e in plan["bodies"].items():

@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Keep-out geometry for vanilla world locations, for road routing.
+"""Keep-out geometry for vanilla world locations, for ROAD ROUTING ONLY.
+
+THIS MODULE IS NOT THE CLEARANCE GATE.  `tools/jumpstart/settlements/clearance.py`
+is canonical for the verdict a build gate asks -- it is the one `flatten.py`'s
+location gate and `Settlements`' `build.py` are already wired to, and rewiring
+two working gates to keep a newer implementation would be churn for nothing.
+What survives here is the ROUTING half, which is a different question: A* needs
+a per-cell forbid/penalty RASTER over a whole island, not a verdict on a set of
+points.  The verdict belongs to `clearance.py`; call
+`clearance.load(...).verdict_for_samples(samples, half_width_m)`.
 
 SOURCE, MEASURED by `Settlements` and read-only here:
 `/tmp/settle/loc2/f6fe167f4fcd.json` -- seed Pirate68, hash 147627509, 12,301
@@ -59,9 +68,27 @@ from pathlib import Path
 
 import numpy as np
 
-DUMP = Path("/tmp/settle/loc2/f6fe167f4fcd.json")
+# loc3 carries the per-type `znviewReachM` measurement; loc2 does not.
+DUMP = Path("/tmp/settle/loc3/f6fe167f4fcd.json")
+if not DUMP.exists():
+    DUMP = Path("/tmp/settle/loc2/f6fe167f4fcd.json")
 
-OVERSHOOT_M = 11.0        # INFERRED, one observation
+# The 11 m "piece overshoot" that used to sit here is RETIRED.  It was one
+# observation (a POI whose pieces reached 43 m against a 32 m declared radius)
+# generalised to all 12,301 instances.  `znviewReachM` supersedes it: MEASURED
+# per TYPE over all 177 types of this seed by Settlements' LocScan.cs
+# extension, it is the furthest horizontal distance from a location prefab's
+# root to any child carrying a ZNetView -- i.e. to the objects that become ZDOs
+# and that a clearing step would actually delete.  Twelve of 177 types reach
+# past their declared radius, worst excess +11.8 m (TrollCave02: declared 12,
+# measured 35.8); the largest reach anywhere is 35.77 m.
+#
+# The rule is max(declared, measured) and NOT "prefer the measurement", because
+# 28 of 177 types carry <= 2 ZNetView children (WoodVillage1, NorthVillage,
+# FortressRuins among them) so their measured reach is near zero -- and a naive
+# "measured beats declared" would have SHRUNK the stand-off around exactly the
+# big village locations most worth avoiding.
+OVERSHOOT_M = 0.0
 ROAD_MARGIN_M = 6.0       # taste pick
 PIECE_PAD_M = 3.0         # taste pick: never level right up against a piece
 
@@ -88,9 +115,17 @@ class Poi:
 
 def load(path: Path = DUMP) -> list[Poi]:
     d = json.loads(Path(path).read_text())
+    # Per-TYPE measured ZNetView reach, when the dump carries it (loc3 onward).
+    reach: dict[str, float] = {}
+    for t in d.get("locationTypes") or []:
+        key = t.get("prefab") or t.get("name")
+        if key:
+            reach[key] = float(t.get("znviewReachM") or 0.0)
     out = []
     for r in d["locations"]:
-        declared = float(max(r.get("exteriorRadius") or 0, r.get("interiorRadius") or 0))
+        declared = float(max(r.get("exteriorRadius") or 0,
+                             r.get("interiorRadius") or 0,
+                             reach.get(r.get("prefab") or r.get("name"), 0.0)))
         q = int(r.get("quantity") or 0)
         prot = bool(r.get("prioritized")) or bool(r.get("centerFirst")) or (0 < q <= 5)
         out.append(Poi(r["name"], float(r["x"]), float(r["z"]), float(r.get("y") or 0.0),
