@@ -1,0 +1,2334 @@
+{
+ "owner": "RoadNet",
+ "seed": "Pirate68",
+ "segments": {
+  "S1-portalhub-brgs2": {
+   "abutments": [
+    {
+     "end": "b",
+     "level_run_m": 6.0,
+     "level_y": 30.6,
+     "node": "brg-s2-e",
+     "outbound_bearing_deg": 315.0,
+     "ribbon_end_xz": [
+      -316.0,
+      230.0
+     ],
+     "ribbon_width_m": 4.0,
+     "within_clamp": true,
+     "worst_cut_fill_m": 1.397
+    }
+   ],
+   "blob_sha256": {
+    "-5,3": "c6d3bfc721217d9e06c2b0639c6dc68b784a655ddaa7975a4f4a0a511b0058bf",
+    "-5,4": "7f09f61d7698b65337b29429741a02bddd754612bd95f17819527e16492fd35c"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 66.8,
+     "name": "WoodHouse5",
+     "prefab": "WoodHouse5",
+     "protected": false,
+     "reach_m": 8.0,
+     "standoff_m": 20.0
+    },
+    "samples_tested": 237,
+    "standoff_m": 20.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "spur",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 1,
+    "positions_probed": 197,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 53.12,
+     "name": "WoodHouse5",
+     "prefab": "WoodHouse5",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      -366.6,
+      206.4
+     ],
+     "xz": [
+      -366.6,
+      206.4
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [],
+   "generated_heights_sha256": {
+    "-5,3": "50d59280b72f7a045c61270194d3a6e8b3b3f25ab6d4e5db7437ffc3c8e9f0d9",
+    "-5,4": "57d13bfd6946dad720f1928dac689df0222888dc7c1d7d4920bf51672d08824f"
+   },
+   "grade_limit": 0.25,
+   "grade_limit_design": 0.12,
+   "grade_max_measured": 0.25,
+   "grade_relaxed_to": null,
+   "length_m": 30.6,
+   "max_cut_m": -2.285,
+   "max_fill_m": 0.688,
+   "paved_samples": 138,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 99,
+   "skipped_inside_settlement_pad": 0,
+   "width_m": 4.0,
+   "zdo_cost": 2,
+   "zones": [
+    [
+     -5,
+     3
+    ],
+    [
+     -5,
+     4
+    ]
+   ]
+  },
+  "S12-brgs1-boathouse": {
+   "abutments": [
+    {
+     "end": "a",
+     "level_run_m": 6.0,
+     "level_y": 30.6,
+     "node": "brg-s1-e",
+     "outbound_bearing_deg": 336.14,
+     "ribbon_end_xz": [
+      -312.0,
+      -62.0
+     ],
+     "ribbon_width_m": 4.0,
+     "within_clamp": true,
+     "worst_cut_fill_m": 1.354
+    }
+   ],
+   "blob_sha256": {
+    "-4,-2": "6c83f8429066717dd2fbb09d27b97047c1a38115034e866cf6e47ca4395f9542",
+    "-5,-1": "d2ba82a35a58b76ea3e726c9ca9d0e28d5edd286a43cec03f81217ca07b87a84",
+    "-5,-2": "a14564a179186be842b13d4b670897a1f82a9b381e8d5b37354122b670fd3815"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 36.8,
+     "name": "Runestone_Meadows",
+     "prefab": "Runestone_Meadows",
+     "protected": false,
+     "reach_m": 8.0,
+     "standoff_m": 20.0
+    },
+    "samples_tested": 334,
+    "standoff_m": 20.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "spur",
+   "crossings_handed_to_Crossings": [
+    "S12-brgs1-boathouse-x01"
+   ],
+   "delta_gate": {
+    "instances_probed": 3,
+    "positions_probed": 591,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 29.04,
+     "name": "Runestone_Meadows",
+     "prefab": "Runestone_Meadows",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      -255.3,
+      -113.2
+     ],
+     "xz": [
+      -255.3,
+      -113.2
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [],
+   "generated_heights_sha256": {
+    "-4,-2": "56991237c7c126749be307bc1f04ff1e3315c6bfcac91df0f02c34917620dbaa",
+    "-5,-1": "dfe3f00f344ca7146225d5265d105eb9291f6de7133a9a2fc7ca6c752d90f482",
+    "-5,-2": "2545e6ee93890437605ab689f5e54b3aa700ae97d634d726705f620c762e5c7e"
+   },
+   "grade_limit": 0.12,
+   "grade_limit_design": 0.12,
+   "grade_max_measured": 0.12,
+   "grade_relaxed_to": null,
+   "length_m": 144.9,
+   "max_cut_m": -2.486,
+   "max_fill_m": 3.417,
+   "paved_samples": 194,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 140,
+   "skipped_inside_settlement_pad": 0,
+   "width_m": 4.0,
+   "zdo_cost": 3,
+   "zones": [
+    [
+     -5,
+     -2
+    ],
+    [
+     -5,
+     -1
+    ],
+    [
+     -4,
+     -2
+    ]
+   ]
+  },
+  "S13-stathub-dock": {
+   "abutments": [],
+   "blob_sha256": {
+    "10,17": "dd43f38874bcb771c3174f3ad3ddd97d80a61bc0b017f7abe0cbc6c9d33ea74e",
+    "7,17": "5ef1cb435ca1af074fa279cd7f0150a524d08dcc9c6cc2abc27f68c55d63a22c",
+    "8,17": "07757c66fc0454dfefebd04aaf966bad6a21ba92482d30fdec416ade57acadf6",
+    "8,18": "b94468c11a25a7599f58879068ce1f556346153756e5bf1273fddb8a7258fdb4",
+    "9,17": "2eca771d3d7db9e36ff6aff0d90fda6796ae3fed1c01cbb27d90fbffb601a8c7",
+    "9,18": "4ef9e6e5a3440951abf7c3aff747ef2975b6f9fd74ed2af0c3ffc2d86ce2b593"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 46.7,
+     "name": "Runestone_Meadows",
+     "prefab": "Runestone_Meadows",
+     "protected": false,
+     "reach_m": 8.0,
+     "standoff_m": 20.0
+    },
+    "samples_tested": 1465,
+    "standoff_m": 20.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "spur",
+   "crossings_handed_to_Crossings": [
+    "S13-stathub-dock-x01"
+   ],
+   "delta_gate": {
+    "instances_probed": 1,
+    "positions_probed": 197,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 43.59,
+     "name": "Runestone_Meadows",
+     "prefab": "Runestone_Meadows",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      521.5,
+      1071.4
+     ],
+     "xz": [
+      521.5,
+      1071.4
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [
+    "S13-stathub-dock-f01"
+   ],
+   "generated_heights_sha256": {
+    "10,17": "e844f03af530ceccbdf1af196165efa4348a83ee40e301ab3cb51dbf7f309854",
+    "7,17": "baf208a9d8297f83fdacf0d5b8aeda8ed71f1f5e15f398a4e79a6b6587c76a22",
+    "8,17": "533dbccef868666d1d5ac36a9976fc7c8019635e6ed6725662931e2a9fe30471",
+    "8,18": "72c9d0d75666ef48d058bcfb31c66e418af2d94743b648586d35dadb88faf40d",
+    "9,17": "d55a3e3a873179710fb8a0766d960e46e15c4d83e4faca85c59d388ec2c720ea",
+    "9,18": "413299a8633cb2096c595eb2b5299b99fd84a336069421bcfea9c30477d9180d"
+   },
+   "grade_limit": 0.12,
+   "grade_limit_design": 0.12,
+   "grade_max_measured": 0.12,
+   "grade_relaxed_to": null,
+   "length_m": 251.5,
+   "max_cut_m": -6.439,
+   "max_fill_m": 2.865,
+   "paved_samples": 986,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 479,
+   "skipped_inside_settlement_pad": 0,
+   "width_m": 4.0,
+   "zdo_cost": 6,
+   "zones": [
+    [
+     7,
+     17
+    ],
+    [
+     8,
+     17
+    ],
+    [
+     8,
+     18
+    ],
+    [
+     9,
+     17
+    ],
+    [
+     9,
+     18
+    ],
+    [
+     10,
+     17
+    ]
+   ]
+  },
+  "S7-stathub-wtnorth": {
+   "abutments": [],
+   "blob_sha256": {
+    "10,17": "dd43f38874bcb771c3174f3ad3ddd97d80a61bc0b017f7abe0cbc6c9d33ea74e",
+    "3,18": "5b050cc587cd7ba531284320e3b3c149b2820358cf7ad5fe58fbfda3aa62e27b",
+    "3,19": "b42e623cb8292dccb1519421b57cde4ca6636d3601cf9f67865df66026932a2e",
+    "4,17": "2a6f23b77a1001c03688181e26a4d5e44756c31d03c00a800e8e6ecf661ba302",
+    "4,18": "24caf6ce9b1ecda0d0a791af2149ac060d3226d9aedeb6d8c11150f036eac825",
+    "5,17": "135f9fbf2af4ff0ff934b206aede86c365746c0f1381a359cac39c49c36d642a",
+    "6,17": "9b2ef756e4554073572aaafe66dc6294415c0c818b93b9b66ec1c8e6bf675e8f",
+    "7,17": "f6ecfcff2a833c4f550f3b1f0593c6d60476824b5e60552b47dcd6e8c3a73198",
+    "8,17": "9730d129ccba44e11f71157ca79ea28141c37524c285564ebfc9e1bf913e8a11",
+    "8,18": "b94468c11a25a7599f58879068ce1f556346153756e5bf1273fddb8a7258fdb4",
+    "9,17": "2eca771d3d7db9e36ff6aff0d90fda6796ae3fed1c01cbb27d90fbffb601a8c7",
+    "9,18": "4ef9e6e5a3440951abf7c3aff747ef2975b6f9fd74ed2af0c3ffc2d86ce2b593"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 29.8,
+     "name": "WoodHouse13",
+     "prefab": "WoodHouse13",
+     "protected": false,
+     "reach_m": 9.0,
+     "standoff_m": 21.0
+    },
+    "samples_tested": 3899,
+    "standoff_m": 21.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "spur",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 9,
+    "positions_probed": 1885,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 14.65,
+     "name": "WoodHouse9",
+     "prefab": "WoodHouse9",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      275.3,
+      1099.5
+     ],
+     "xz": [
+      275.3,
+      1099.5
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [
+    "S7-stathub-wtnorth-f01"
+   ],
+   "generated_heights_sha256": {
+    "10,17": "e844f03af530ceccbdf1af196165efa4348a83ee40e301ab3cb51dbf7f309854",
+    "3,18": "a550daffd7c551a98702ded16b7f6e1208e1e6d10107e1ee50d6e76333c560e4",
+    "3,19": "c7d5c0ba143ddfdffd217420a14140873e3704ee8bea2ed4be2581f0830ae73e",
+    "4,17": "b9a2297f9eedaade14e26157bdec5845d208b2916c423969a6d0e16ea2f66fa4",
+    "4,18": "e6b071d27e6005166859b602a1d0f8f4d6fa0f14ce456cabd475e2ba7566976e",
+    "5,17": "82b49e912e5df9b2f6d4d775ca3380a9aef2eb8ba50c6d34a3e4f9f434ded306",
+    "6,17": "8a2fc7f2836ee7e9ca8230ff55f45ca073586758b66339d40bc069c740ae1768",
+    "7,17": "baf208a9d8297f83fdacf0d5b8aeda8ed71f1f5e15f398a4e79a6b6587c76a22",
+    "8,17": "533dbccef868666d1d5ac36a9976fc7c8019635e6ed6725662931e2a9fe30471",
+    "8,18": "72c9d0d75666ef48d058bcfb31c66e418af2d94743b648586d35dadb88faf40d",
+    "9,17": "d55a3e3a873179710fb8a0766d960e46e15c4d83e4faca85c59d388ec2c720ea",
+    "9,18": "413299a8633cb2096c595eb2b5299b99fd84a336069421bcfea9c30477d9180d"
+   },
+   "grade_limit": 0.12,
+   "grade_limit_design": 0.12,
+   "grade_max_measured": 0.12,
+   "grade_relaxed_to": null,
+   "length_m": 578.0,
+   "max_cut_m": -6.439,
+   "max_fill_m": 6.771,
+   "paved_samples": 2595,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 1304,
+   "skipped_inside_settlement_pad": 125,
+   "width_m": 4.0,
+   "zdo_cost": 12,
+   "zones": [
+    [
+     3,
+     18
+    ],
+    [
+     3,
+     19
+    ],
+    [
+     4,
+     17
+    ],
+    [
+     4,
+     18
+    ],
+    [
+     5,
+     17
+    ],
+    [
+     6,
+     17
+    ],
+    [
+     7,
+     17
+    ],
+    [
+     8,
+     17
+    ],
+    [
+     8,
+     18
+    ],
+    [
+     9,
+     17
+    ],
+    [
+     9,
+     18
+    ],
+    [
+     10,
+     17
+    ]
+   ]
+  },
+  "S8-wtsouth-treesth": {
+   "abutments": [],
+   "blob_sha256": {
+    "7,4": "0dbadb110ab1c5624222aa4fd15daf518577691e59d3755fe84c1cc8137a0d2e",
+    "7,5": "3e3bd5358c7da5e89fc39c53d37eecfeeb477ecdc85d5cdf8d8af69a5ac710e3",
+    "7,6": "21e71bd9b9842157ddcade9ca93fe7b05e48d39302a55c24ed60e7e53d4193aa",
+    "7,7": "7d3a1c09fee8345e7b97fc2353036c936240db6fed7204396c812524cf4ae88a",
+    "8,1": "26bfe4264d753967f131e48607c01bc031dfa194e1448c5208540851e03fe486",
+    "8,2": "cf28228496b5c438de99ab0aa5dfdadb1de321e5a885f23d16f762a9efef641f",
+    "8,3": "90e821b1c9d1a94a30f6ef8c52178b4752445dd3eab88b73d31ee30605a69fd8",
+    "8,4": "3d09ed72c951005ad35a66278a6be0f0f18d2611fed7f17a9a9044f680c852eb",
+    "8,5": "d18e852f446e8f10c6d771068b357dfed6775bff96e0b00edb2d57cb804967fb",
+    "8,6": "7081df045039ef2ec71a7c24e94dff6aa9f5aff5b5ca26ab3b12e071f6471bc6",
+    "8,7": "95355764cb10171fcd229cd02ce06c1d04dbfb893aeb43ff690d80983c81f1bd",
+    "8,8": "4bbf3a99232f2f62a6e04c4a5873e3e7b0568bffd92b8ca12926d076e3c80fd5"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 33.8,
+     "name": "ShipSetting01",
+     "prefab": "ShipSetting01",
+     "protected": false,
+     "reach_m": 24.0,
+     "standoff_m": 36.0
+    },
+    "samples_tested": 3300,
+    "standoff_m": 36.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "spur",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 11,
+    "positions_probed": 7699,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 14.8,
+     "name": "StoneHouse4",
+     "prefab": "StoneHouse4",
+     "protected": false,
+     "reach_m": 7.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      498.8,
+      427.9
+     ],
+     "xz": [
+      498.8,
+      427.9
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [],
+   "generated_heights_sha256": {
+    "7,4": "d1f6a5a71a761270f2c8eb0bddda5c7e45a163c5ff3a64068619ebe73cbcd23f",
+    "7,5": "6031c99f5684bb4c3543dc11a6ba23651bbf951fb7d914d9d1ce6ef580ab20b1",
+    "7,6": "e7f9d25c77db33293f2823b86cadc641158aa6dc4f1f361574b7bd964228c4f8",
+    "7,7": "d54b94cd2a09cfd5eba27bd4f6aee28211f9ebe30885ac6517b58d3ae34d339d",
+    "8,1": "8206d78596fedb53114aed506cd86e5525373623e3e5d0fee42fe9c8543ba740",
+    "8,2": "7842426c5f0c10614734cb34b4c2e05efc8679558d9afd7feadb6d926ab1755a",
+    "8,3": "b4ae77cd56a93abe53ff50fc114ee2134a996984d8f002894a428f33aca5a87f",
+    "8,4": "93400689c76c2ee92bf29924122f2f516cda6aeed6a08978515b950a5d5c8411",
+    "8,5": "02b25f0e986ed8c0443daeabc9e1f507b08bc66ea60884d3e2aa8bccbd606008",
+    "8,6": "5aeaf97b5ed270ba52f9d8512076e8ec4623e8ee8b507a9459b618a2821d33f9",
+    "8,7": "935a332087f2d9185dc90e5111880ae8ec80e1806290bc8ed71f14012085882c",
+    "8,8": "d818b1d39280efa267872641204cfd26e42be311e52fec7f96183d58577ceeea"
+   },
+   "grade_limit": 0.12,
+   "grade_limit_design": 0.12,
+   "grade_max_measured": 0.12,
+   "grade_relaxed_to": null,
+   "length_m": 517.0,
+   "max_cut_m": -2.936,
+   "max_fill_m": 2.554,
+   "paved_samples": 2201,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 1099,
+   "skipped_inside_settlement_pad": 273,
+   "width_m": 4.0,
+   "zdo_cost": 12,
+   "zones": [
+    [
+     7,
+     4
+    ],
+    [
+     7,
+     5
+    ],
+    [
+     7,
+     6
+    ],
+    [
+     7,
+     7
+    ],
+    [
+     8,
+     1
+    ],
+    [
+     8,
+     2
+    ],
+    [
+     8,
+     3
+    ],
+    [
+     8,
+     4
+    ],
+    [
+     8,
+     5
+    ],
+    [
+     8,
+     6
+    ],
+    [
+     8,
+     7
+    ],
+    [
+     8,
+     8
+    ]
+   ]
+  },
+  "T1-portalhub-temple": {
+   "abutments": [],
+   "blob_sha256": {
+    "-1,-1": "f61aaf2d94be9d1ad453597289577799c947b5b41f6cc33916878dfb9bd9089d",
+    "-1,0": "7003ac262e40434701d137977465b71a587a13b861806021f3af730055c473c4",
+    "-2,-1": "48773b6af8250770726af9aa7ac2485acd7de7d20ec04d768c53c652db75484f",
+    "-3,-1": "f186418b73a16c430dce5de2e053571f112b7755b71756038d4f50cbce886282",
+    "-3,0": "1de78c0803a1f13de6c8ad128a837499b8bd767664e4c72476ab2ce8663342fa",
+    "-3,1": "ce8933a39e571c9fd19d03629a916fe6bb15a75d45650268a0f704714bf03c61",
+    "-4,1": "a0547a0fc06857aee28d7543ee02a3e3f272c712fca06b467300f8d921fe70fe",
+    "-4,2": "4ba2fc589f89bba7b7fe2f2ee0d27f0960f123a84a05c3eb97f5e7602f277347",
+    "-4,3": "f15f1628663582b24168dbae1192c6596a7afbfc39caba9866afc6c486e305f1",
+    "-5,3": "1978f2564a6977f98aa1d3471415ded836b38a323ed35c70b5607d5ee7d96a87"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 90.8,
+     "name": "WoodHouse5",
+     "prefab": "WoodHouse5",
+     "protected": false,
+     "reach_m": 8.0,
+     "standoff_m": 20.0
+    },
+    "samples_tested": 4244,
+    "standoff_m": 20.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "trunk",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 8,
+    "positions_probed": 3460,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 13.84,
+     "name": "Dolmen01",
+     "prefab": "Dolmen01",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      -201.8,
+      17.0
+     ],
+     "xz": [
+      -201.8,
+      17.0
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [],
+   "generated_heights_sha256": {
+    "-1,-1": "e2fa3fd092d9ad13857dbc8982b7fa6b943ea0c339aa3b6444e54666f03f897a",
+    "-1,0": "cfb608c21f0de8ad6570f9f7f6958618305900c1a7045f1118852fb52dba316a",
+    "-2,-1": "2f651ffe1573c68ac6a1b82e9b84f7be401ec490a31a5b45142b48e711865a9c",
+    "-3,-1": "cabdc651f1f4ae2d6d9ea674fa2f5338a8cb6d111956b05b357d5da01d41ca9a",
+    "-3,0": "d085a71113107b9ca55df73bedc95904e909d053d8f1cfdbbf08d5108c4ae54c",
+    "-3,1": "a831ba1c444cd5f34faeb8cc5a2f0d56b37f8a140841f40192a3fdb587f417ae",
+    "-4,1": "4a5a9ebb8e5eaf07046ec3e099a5caa9a5554615250d495b49dc4383b7b50f1d",
+    "-4,2": "0b8cc71cc931a8f95428040b2ecb28f138c665a57551f1fcc4563b2fea431f74",
+    "-4,3": "2c3700ec883c123ad98185c27bc550ef1e0a428708b6452148323c818828c4de",
+    "-5,3": "50d59280b72f7a045c61270194d3a6e8b3b3f25ab6d4e5db7437ffc3c8e9f0d9"
+   },
+   "grade_limit": 0.08,
+   "grade_limit_design": 0.08,
+   "grade_max_measured": 0.08,
+   "grade_relaxed_to": null,
+   "length_m": 771.3,
+   "max_cut_m": -5.235,
+   "max_fill_m": 6.587,
+   "paved_samples": 3499,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 745,
+   "skipped_inside_settlement_pad": 0,
+   "width_m": 6.0,
+   "zdo_cost": 10,
+   "zones": [
+    [
+     -5,
+     3
+    ],
+    [
+     -4,
+     1
+    ],
+    [
+     -4,
+     2
+    ],
+    [
+     -4,
+     3
+    ],
+    [
+     -3,
+     -1
+    ],
+    [
+     -3,
+     0
+    ],
+    [
+     -3,
+     1
+    ],
+    [
+     -2,
+     -1
+    ],
+    [
+     -1,
+     -1
+    ],
+    [
+     -1,
+     0
+    ]
+   ]
+  },
+  "T10-wtspawn-wtsouth": {
+   "abutments": [],
+   "blob_sha256": {
+    "2,-2": "ac2a4ea2a0bfe6c4afe1e35d5cf1f872390d0c39ce3644ce7bd5f9e17a7a5020",
+    "3,-2": "5ef22e07212cf8423b390ef3c160e22a973bff2b8e3a39ae6fd0b44d68ceada2",
+    "4,-1": "e6a466daa0cbc8b18b6e7baed0ac892045331147d45b25f2fe8991b5093dfea7",
+    "4,-2": "1662d8de3852741b3d546bdd3a254d0cc1e82c27b7ec90a997572aa1e27a0f76",
+    "5,-1": "ea5a7b2eb228605ee88c3870f0feada2b1b0af70d3668a301e291b1745b79a33",
+    "5,0": "393ba8fc8f3119321b9f0c23c63c7cffdc80d361df04e25a5892b6a6d535197f",
+    "6,0": "90c9eee88e7d37064153dbddbba638bd5ba51fa4997289fa732c8a8647a8a703",
+    "7,0": "3eae5864af18a42d5c2cb1ec8e79ee4bda2e0e5c7eaf562e0e44c985d4c5c761",
+    "8,0": "c21d123cf45d97f9e2f3a5694ac997616a8bac41ba0e39f5a35b4804f10eb72f",
+    "8,1": "92d3e185f329563affa4364fff02bc92db148644449ee763fa6c8392ab76d24b"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 58.2,
+     "name": "WoodHouse12",
+     "prefab": "WoodHouse12",
+     "protected": false,
+     "reach_m": 6.0,
+     "standoff_m": 18.0
+    },
+    "samples_tested": 4004,
+    "standoff_m": 18.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "trunk",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 12,
+    "positions_probed": 7568,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 14.56,
+     "name": "Dolmen02",
+     "prefab": "Dolmen02",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      382.9,
+      -12.7
+     ],
+     "xz": [
+      382.9,
+      -12.7
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [],
+   "generated_heights_sha256": {
+    "2,-2": "f20b98f70d6758e56730ba95341f432daa7df78c58dee7f9e7ba58fbde3fd7f1",
+    "3,-2": "ff459b016c3a0ce4488d1f7749badb4dd3ab6f90dc6d3250bff08235072a055a",
+    "4,-1": "3cb1ca51dacee826a77a1c36496c667690b2b419026c9b1f084b9c556718e21a",
+    "4,-2": "9352ef57e59dab2ac0484ea9275b1e48aa71d99a1112d3eae625ecc631837aa3",
+    "5,-1": "90960efa31fd8ebe6b2b265437f3ef557976fcb76753280d85759907581f8894",
+    "5,0": "6110207d0652d422c6e4d61056867cceb88194794f87fc966da3fe9714a9c919",
+    "6,0": "0d13c3fb56b42ef153c438c41a97668a0409e00e1f8003dffe0c4db0f28aa833",
+    "7,0": "449c14069805dd00bb14576a772ff78a85d318138e75cf8dbce39a954d099e98",
+    "8,0": "1e327b5fb1ada4b9681efbbb52bbaa68ef2110c4a4d32a41f4539cd2d540134a",
+    "8,1": "8206d78596fedb53114aed506cd86e5525373623e3e5d0fee42fe9c8543ba740"
+   },
+   "grade_limit": 0.08,
+   "grade_limit_design": 0.08,
+   "grade_max_measured": 0.08,
+   "grade_relaxed_to": null,
+   "length_m": 569.5,
+   "max_cut_m": -5.127,
+   "max_fill_m": 5.599,
+   "paved_samples": 3197,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 807,
+   "skipped_inside_settlement_pad": 388,
+   "width_m": 6.0,
+   "zdo_cost": 10,
+   "zones": [
+    [
+     2,
+     -2
+    ],
+    [
+     3,
+     -2
+    ],
+    [
+     4,
+     -2
+    ],
+    [
+     4,
+     -1
+    ],
+    [
+     5,
+     -1
+    ],
+    [
+     5,
+     0
+    ],
+    [
+     6,
+     0
+    ],
+    [
+     7,
+     0
+    ],
+    [
+     8,
+     0
+    ],
+    [
+     8,
+     1
+    ]
+   ]
+  },
+  "T11-wtsouth-wtspawn": {
+   "abutments": [],
+   "blob_sha256": {
+    "2,-2": "d8a73c94fe790b3dc27c153602c65e685e4516dc84678de7bdbc4864b1d16a0f",
+    "3,-2": "f5b9fdb60fdc57a857caba37e5138b12e80e359176c5d5326c4437590e2b637d",
+    "4,-1": "523837d65b3b2ec3dbd14e5d4fea9cedc19bf778b8522e825b3e34b2c6e3e0cc",
+    "4,-2": "1f75fa97cff7558be5846e16073899f271294923028224c088649c2289d2c11a",
+    "5,-1": "f9a2623dd414bd5eea8e6a3ba09fba03dde460befde4bbf4954ca63490c6c68c",
+    "5,0": "ed883bdc7c10ef3f787db70686da3b077fcab139bec7e590af67b4bd857b331a",
+    "6,0": "51fe61b03b05cf16f38c8e6289d55a6bf7d16601f1622e99a44644b6df2e2ee0",
+    "7,0": "caa3b173ade4c4689fedb5c6cca870fa3527dbcd3c29dd628a3f5db83f9e335d",
+    "8,0": "03c29ab4c47eb0be7b85021ca90cbe60c7a1aff9c37968b86317b66720dbac3f",
+    "8,1": "7276551d3e8cbabed66c6e08a77cee4f3ddfaff64befdaadc562d320013ff9e6"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 58.2,
+     "name": "WoodHouse12",
+     "prefab": "WoodHouse12",
+     "protected": false,
+     "reach_m": 6.0,
+     "standoff_m": 18.0
+    },
+    "samples_tested": 4006,
+    "standoff_m": 18.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "trunk",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 12,
+    "positions_probed": 7568,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 14.56,
+     "name": "Dolmen02",
+     "prefab": "Dolmen02",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      382.9,
+      -12.7
+     ],
+     "xz": [
+      382.9,
+      -12.7
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [],
+   "generated_heights_sha256": {
+    "2,-2": "f20b98f70d6758e56730ba95341f432daa7df78c58dee7f9e7ba58fbde3fd7f1",
+    "3,-2": "ff459b016c3a0ce4488d1f7749badb4dd3ab6f90dc6d3250bff08235072a055a",
+    "4,-1": "3cb1ca51dacee826a77a1c36496c667690b2b419026c9b1f084b9c556718e21a",
+    "4,-2": "9352ef57e59dab2ac0484ea9275b1e48aa71d99a1112d3eae625ecc631837aa3",
+    "5,-1": "90960efa31fd8ebe6b2b265437f3ef557976fcb76753280d85759907581f8894",
+    "5,0": "6110207d0652d422c6e4d61056867cceb88194794f87fc966da3fe9714a9c919",
+    "6,0": "0d13c3fb56b42ef153c438c41a97668a0409e00e1f8003dffe0c4db0f28aa833",
+    "7,0": "449c14069805dd00bb14576a772ff78a85d318138e75cf8dbce39a954d099e98",
+    "8,0": "1e327b5fb1ada4b9681efbbb52bbaa68ef2110c4a4d32a41f4539cd2d540134a",
+    "8,1": "8206d78596fedb53114aed506cd86e5525373623e3e5d0fee42fe9c8543ba740"
+   },
+   "grade_limit": 0.08,
+   "grade_limit_design": 0.08,
+   "grade_max_measured": 0.08,
+   "grade_relaxed_to": null,
+   "length_m": 569.5,
+   "max_cut_m": -5.156,
+   "max_fill_m": 5.579,
+   "paved_samples": 3198,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 808,
+   "skipped_inside_settlement_pad": 396,
+   "width_m": 6.0,
+   "zdo_cost": 10,
+   "zones": [
+    [
+     2,
+     -2
+    ],
+    [
+     3,
+     -2
+    ],
+    [
+     4,
+     -2
+    ],
+    [
+     4,
+     -1
+    ],
+    [
+     5,
+     -1
+    ],
+    [
+     5,
+     0
+    ],
+    [
+     6,
+     0
+    ],
+    [
+     7,
+     0
+    ],
+    [
+     8,
+     0
+    ],
+    [
+     8,
+     1
+    ]
+   ]
+  },
+  "T12-wtspawn-temple": {
+   "abutments": [],
+   "blob_sha256": {
+    "-1,-1": "7a818957c8a6fa76b503dbb3e0ba91f0272c5d99a0f98c29ec7fff872b2367f0",
+    "-1,0": "552cab38d8e8bf1de1ab17c76ca2e9642e1e0b92cdb41112db78ac807fdf6b26",
+    "0,-1": "866926ffbe1e19c3ca64bda6b3f41018c501d14a74a4a380f80928692e7d6f20",
+    "0,0": "488a708d70b56ef028419193967585a73ca2225e5d5b2639264f3d1ac7ba0946",
+    "1,-1": "3539db8c5b46522485c636bd568620c0b24dc88487761bbec9418367e7a0d63a",
+    "1,0": "5d4b9e53dccd1e9f6dc1e9e94126584048e87677f86eb2556e6e7307821f4c25",
+    "2,-1": "3fed1a5964de2d96ede3e995893a876b75bc8aebbe8b9678930512480de34df5",
+    "2,-2": "14fc144d2ca724dbae191b18d8e0a20089d96f7f0506ed89532224cebfa39518"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 35.1,
+     "name": "WoodHouse1",
+     "prefab": "WoodHouse1",
+     "protected": false,
+     "reach_m": 8.0,
+     "standoff_m": 20.0
+    },
+    "samples_tested": 2051,
+    "standoff_m": 20.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "trunk",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 7,
+    "positions_probed": 4655,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 14.87,
+     "name": "Dolmen01",
+     "prefab": "Dolmen01",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      57.9,
+      -73.9
+     ],
+     "xz": [
+      57.9,
+      -73.9
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [],
+   "generated_heights_sha256": {
+    "-1,-1": "e2fa3fd092d9ad13857dbc8982b7fa6b943ea0c339aa3b6444e54666f03f897a",
+    "-1,0": "cfb608c21f0de8ad6570f9f7f6958618305900c1a7045f1118852fb52dba316a",
+    "0,-1": "9936c82d6b3ec6820269d8ab26c2fccaae286e441a5314974f79f7bb0e1af2f7",
+    "0,0": "099009a27f36cb702820be2d856631caa3ce9aed5c22d7be9e1556e983597b5a",
+    "1,-1": "c2598880a15a2cf9a9813ded6cc3506d4b42f04480280482619d96e3edf15b87",
+    "1,0": "7229d411d96581eb37c94a4304920f55b67965e81148f4b445473791dc684653",
+    "2,-1": "3dbf8a8be6ddc831a52f5a3540a1cbb83cbc01c28dd46e2003aec7acab2b57ed",
+    "2,-2": "f20b98f70d6758e56730ba95341f432daa7df78c58dee7f9e7ba58fbde3fd7f1"
+   },
+   "grade_limit": 0.08,
+   "grade_limit_design": 0.08,
+   "grade_max_measured": 0.08,
+   "grade_relaxed_to": null,
+   "length_m": 333.3,
+   "max_cut_m": -4.391,
+   "max_fill_m": 4.54,
+   "paved_samples": 1661,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 390,
+   "skipped_inside_settlement_pad": 109,
+   "width_m": 6.0,
+   "zdo_cost": 8,
+   "zones": [
+    [
+     -1,
+     -1
+    ],
+    [
+     -1,
+     0
+    ],
+    [
+     0,
+     -1
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     -1
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     2,
+     -2
+    ],
+    [
+     2,
+     -1
+    ]
+   ]
+  },
+  "T13-temple-harboursouth": {
+   "abutments": [],
+   "blob_sha256": {
+    "-1,-1": "b5207f85e02b427d200098f4461c45ad66e2dc971a019bdfb6216ead3a6be4b7",
+    "-1,-2": "dac22f2a3dc15193699f18971efc3dcc9ab9e1149c54db4482817f91c3350bfc",
+    "-1,-3": "2841a06ec76c106e3f51e16b42e64ca3521cd27ed8820e4823feae7ede5f1138",
+    "-1,0": "776a8a5f4afb08daec51e96d8d1b3346a4e9f50e4a5ec84af75c363baaeb76af",
+    "0,-3": "b379e21fa5fb3162ca9bb9fa8485518b8086133e1d08411e0919aaadc59d26c5",
+    "0,-4": "afe243758cb9d372d073d9b220627fa262e0730e379e9e4baa01118f753167a7"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 25.3,
+     "name": "Dolmen01",
+     "prefab": "Dolmen01",
+     "protected": false,
+     "reach_m": 8.0,
+     "standoff_m": 20.0
+    },
+    "samples_tested": 2368,
+    "standoff_m": 20.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "trunk",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 6,
+    "positions_probed": 4662,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 16.91,
+     "name": "Dolmen01",
+     "prefab": "Dolmen01",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      -9.4,
+      -203.7
+     ],
+     "xz": [
+      -9.4,
+      -203.7
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [
+    "T13-temple-harboursouth-f01"
+   ],
+   "generated_heights_sha256": {
+    "-1,-1": "e2fa3fd092d9ad13857dbc8982b7fa6b943ea0c339aa3b6444e54666f03f897a",
+    "-1,-2": "d9f29874a6dcf0922e547b076286bec44305c7e4128d201f95eb5f15c725cb4f",
+    "-1,-3": "da938be0459edcc52068b35c8ac08a63b0687074e124d54d6c7f235cffc4d260",
+    "-1,0": "cfb608c21f0de8ad6570f9f7f6958618305900c1a7045f1118852fb52dba316a",
+    "0,-3": "1ff920db5f4b07303d2f312e5873de710612ba4db17da3e271a42a92c8a25d39",
+    "0,-4": "039ffbf8dcf6135f445fba0077fbd1f1805b806ae24dfce263ae51f76c96b60f"
+   },
+   "grade_limit": 0.08,
+   "grade_limit_design": 0.08,
+   "grade_max_measured": 0.08,
+   "grade_relaxed_to": null,
+   "length_m": 484.1,
+   "max_cut_m": -6.586,
+   "max_fill_m": 4.904,
+   "paved_samples": 1999,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 369,
+   "skipped_inside_settlement_pad": 0,
+   "width_m": 6.0,
+   "zdo_cost": 6,
+   "zones": [
+    [
+     -1,
+     -3
+    ],
+    [
+     -1,
+     -2
+    ],
+    [
+     -1,
+     -1
+    ],
+    [
+     -1,
+     0
+    ],
+    [
+     0,
+     -4
+    ],
+    [
+     0,
+     -3
+    ]
+   ]
+  },
+  "T3-temple-meadhall": {
+   "abutments": [],
+   "blob_sha256": {
+    "-1,-1": "bee5088e3f1f31453bb57ade4e13e98d9128e328875da9ca2b188d3c0f6ed5b2",
+    "-1,0": "a0d7f019319d128f6f8c789a9d4276beb1fe94ac4a6272052f286148432e6694",
+    "0,-1": "d70622c11d921b8a0d4a5e0efc27d28ece02b99d3605073bcc39142d862ecfff",
+    "0,0": "0d96b25147690696cba70a5c7b943c024eea9277f15c6ea72b09a95c82657518",
+    "1,0": "c3c6aee2a9b55f9cefcb613610036fe4741953d71203984f93b10c856a819649",
+    "1,1": "dcd2944ca7eb9bf7147c32c0a7538e6e270e459653e6de2f20e1687bdf7cbaf2",
+    "2,0": "97a2f7df86c88a4e07d3ee5cbcb2790c6f3ae5f6b77bc5b9c408f90fcc1e5a68",
+    "2,1": "fe696b0462a753fe4ca463f63995791b25605ff8da421be10950e4a452f6ccc2",
+    "2,2": "9ea3742395c4ec684aa99d1d6072426c0c8fff8aa47382bbd5608889840bac2f",
+    "3,2": "a4d12807841bf95e23edb205c4b55209c8fe9351f8bc5f7cb06ac69e84a6a9aa",
+    "3,3": "ec45e6f9283d3ed7b575907c5b22d7c7e4b49228ae3b6b4c3394519791412009",
+    "3,4": "162654e89aa60554eb7dbd66e411f88e24b51fce514a70112fe419e8c5a6f10f",
+    "4,4": "bcea9cf21b6e78f3952db35d2006770e9ce72c37b5b57fee71829266810f9a9c",
+    "4,5": "63e5c1cb344f9218b61a99878915c106a920b5184de5e7cc9f82f6351f906fa5",
+    "4,6": "7425292ab7e28ed3e7138e6bb31cf0d201d54ba8581dcc8d0f504a30089ce3c5",
+    "5,6": "04251d3957de582044e006086e17b3e69bf568b465852f49f323a78c1059bad3"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 34.1,
+     "name": "WoodHouse1",
+     "prefab": "WoodHouse1",
+     "protected": false,
+     "reach_m": 8.0,
+     "standoff_m": 20.0
+    },
+    "samples_tested": 5839,
+    "standoff_m": 20.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "trunk",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 14,
+    "positions_probed": 10030,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 14.33,
+     "name": "Dolmen01",
+     "prefab": "Dolmen01",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      8.2,
+      -14.1
+     ],
+     "xz": [
+      8.2,
+      -14.1
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [],
+   "generated_heights_sha256": {
+    "-1,-1": "e2fa3fd092d9ad13857dbc8982b7fa6b943ea0c339aa3b6444e54666f03f897a",
+    "-1,0": "cfb608c21f0de8ad6570f9f7f6958618305900c1a7045f1118852fb52dba316a",
+    "0,-1": "9936c82d6b3ec6820269d8ab26c2fccaae286e441a5314974f79f7bb0e1af2f7",
+    "0,0": "099009a27f36cb702820be2d856631caa3ce9aed5c22d7be9e1556e983597b5a",
+    "1,0": "7229d411d96581eb37c94a4304920f55b67965e81148f4b445473791dc684653",
+    "1,1": "b77c29a271fe1833fee0cf77bef8aa743946d375d7b816111182af550b610283",
+    "2,0": "4a8b5d6c8b5d60cedb12cbe97ba545d4b6e39070c71bfb771f944a06e631a1b1",
+    "2,1": "60c2c0d9585be4b30139b6ca09cb32f63e08f5021a1a2ed698ee66e195270e03",
+    "2,2": "45d529e753d92d31effd8265fdb99fac60296bfa25cf57e0bc21c6f9595d6157",
+    "3,2": "86b849c39d6f2c67405d0e83bf2377ec1de36a5d56132e22e708c8b45ce9c890",
+    "3,3": "e509c95bc18aef92472db7ee4e5fcf20440b524a3d9e43c5238cc40183b06471",
+    "3,4": "a9e80f4b52d108cf0d3083407f062038522c4df40f31f3e9d2aa871b023b7e94",
+    "4,4": "ed2b0ea7a07f080fe286bf9290eeb08fe68f5327b1fe2950593948007fe26e4d",
+    "4,5": "c3e51d47718fa3a4ce7ba2490a16e8e3179c2f48adf777d76826089f43fd3dcf",
+    "4,6": "25329329b931d7ac0f5b1837f39842c8a1590e3567719413ded033876dcd8110",
+    "5,6": "df2b3db8e95709f35d0f4ea39512ca567157bf67cf49b1010dce397bdca7be7f"
+   },
+   "grade_limit": 0.08,
+   "grade_limit_design": 0.08,
+   "grade_max_measured": 0.08,
+   "grade_relaxed_to": null,
+   "length_m": 876.8,
+   "max_cut_m": -3.716,
+   "max_fill_m": 5.061,
+   "paved_samples": 4731,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 1108,
+   "skipped_inside_settlement_pad": 0,
+   "width_m": 6.0,
+   "zdo_cost": 16,
+   "zones": [
+    [
+     -1,
+     -1
+    ],
+    [
+     -1,
+     0
+    ],
+    [
+     0,
+     -1
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     2,
+     0
+    ],
+    [
+     2,
+     1
+    ],
+    [
+     2,
+     2
+    ],
+    [
+     3,
+     2
+    ],
+    [
+     3,
+     3
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     4,
+     4
+    ],
+    [
+     4,
+     5
+    ],
+    [
+     4,
+     6
+    ],
+    [
+     5,
+     6
+    ]
+   ]
+  },
+  "T4-meadhall-stathub": {
+   "abutments": [],
+   "blob_sha256": {
+    "10,17": "fd576a2a5dc3f293ce9c179d3b3e4f244eb7d276eb3c5ab4e81cf559f07b82f0",
+    "5,6": "3a6d8aee9d766e5c00e9dfe23f0f9f6ff4f632f68862246129f6cc58bb481f4d",
+    "6,6": "0b56e8838801a9f07a7a26a98f20afe3bbb0a650e0a48788722430c68d14fda9",
+    "7,6": "9e563bf228f7fe15c0a7356b279685ce560ba54037fe03445f13647b00344687",
+    "7,7": "b9ef4d104d85decf13644f8340a6b53a4de0999b53a8cc653a1899d9a93204ee",
+    "8,10": "9667508c99e1564037cb3a1b03a34cbae6be739a927ecfe41241590aebaba367",
+    "8,11": "7febfe1a3f5673e2d5a063b8bc27e5e745d386e52138d76bb7758be6dfec9968",
+    "8,12": "16ed000062927a51d40a8d4f6b44393863abba16e34fbe5473dc7c916f7c5829",
+    "8,13": "9e42ad77146cfdbd868439be9236299d611180d95742fdf2a8191d94343ba8cf",
+    "8,7": "55f51e5d8f04f810093c288bf0876febb3fc3b839321e200a1349ac7db22c224",
+    "8,8": "adc9796e06a3bc71d39614156120e53f5992673f6c7e4413e44ae7bf0290affb",
+    "8,9": "9297c761735ed88f2d4ff8e96c2488c7afa5b5fcae3e225143d08684b199794f",
+    "9,11": "0baf4ce9c0fe2f8a18efacbe41a61c63bfd2f5c6d5fc5a938c36f775cdf8e25f",
+    "9,12": "b312fd7299fba895289f15cd35a3aad3fb989d8ace745ac8257a2b599da4cb5a",
+    "9,13": "70da3a7cc00c26112091c24e92593bf5fda4674ffe6297db6564c41e7d06848c",
+    "9,15": "5bb2d97fe9db8fb73a5f71074b3a26a809232d6666530505e4b07720183615da",
+    "9,16": "0be56363c7b91e19bbfaa75c02bcd4810e0f28931230d6e86c203ba1ab2819b8",
+    "9,17": "13fc8cf44e1fd1f28b7eec056f90cc57ce4e3fcbf784ede0ea66b94272aedd0b",
+    "9,8": "543a578f42554a299a44de5a97dde5c092c124d0186832f05db056650637b04e",
+    "9,9": "72d21a7847869820d4107dc5c4cf1fd4781f784fb3548e1fe52a402b62fc6d01"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 24.7,
+     "name": "WoodHouse9",
+     "prefab": "WoodHouse9",
+     "protected": false,
+     "reach_m": 8.0,
+     "standoff_m": 20.0
+    },
+    "samples_tested": 7583,
+    "standoff_m": 20.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "trunk",
+   "crossings_handed_to_Crossings": [
+    "T4-meadhall-stathub-x01",
+    "T4-meadhall-stathub-x02"
+   ],
+   "delta_gate": {
+    "instances_probed": 20,
+    "positions_probed": 7140,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 13.39,
+     "name": "WoodHouse12",
+     "prefab": "WoodHouse12",
+     "protected": false,
+     "reach_m": 6.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      527.2,
+      684.6
+     ],
+     "xz": [
+      527.2,
+      684.6
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [],
+   "generated_heights_sha256": {
+    "10,17": "e844f03af530ceccbdf1af196165efa4348a83ee40e301ab3cb51dbf7f309854",
+    "5,6": "df2b3db8e95709f35d0f4ea39512ca567157bf67cf49b1010dce397bdca7be7f",
+    "6,6": "39c07edcb46adf43d7c936debf00d6b7eee8b71fd4a87571703f9f6cccbc867a",
+    "7,6": "e7f9d25c77db33293f2823b86cadc641158aa6dc4f1f361574b7bd964228c4f8",
+    "7,7": "d54b94cd2a09cfd5eba27bd4f6aee28211f9ebe30885ac6517b58d3ae34d339d",
+    "8,10": "1782d8e9e39d9a7b52e21cd1d57ed818f3cbbb434d93deeffc6d5858973f4544",
+    "8,11": "c2698b7c8478e666b19423b606569f081d33daad00799df4076466bf931c9f5f",
+    "8,12": "1a191d66e5afdb692b84bb678067429a31e027b64f4f0f141deb63e8788aec3c",
+    "8,13": "35ec1d302ece336b0770ec6bba9b4bdc45e8550ded997cecdf58d77ca1d40cd2",
+    "8,7": "935a332087f2d9185dc90e5111880ae8ec80e1806290bc8ed71f14012085882c",
+    "8,8": "d818b1d39280efa267872641204cfd26e42be311e52fec7f96183d58577ceeea",
+    "8,9": "032e681b4e7841cf631e0b409b9be9a1b2b6c5697213d6560c6465110a8ca9c0",
+    "9,11": "0bfb800a596a6f971cc2048e5d62cddc0e4802c17d278a2704379f67a8dae2ee",
+    "9,12": "06a8db6cfea4eb374f28f824d23a2767882d50f6672b15925a1d691983e71e8d",
+    "9,13": "cb6b3793bc8aa8fa69118115bc8867c1a8f8515e1ea69a8d37b34b5a5979e3a6",
+    "9,15": "08493985a85029884123108014f8c8f1e5aa0ec77f43751fdb52b7d5599283ce",
+    "9,16": "1ea03d4942842ece98efa669c25b99d07a5caf0f6e976ee99139bf097c934012",
+    "9,17": "d55a3e3a873179710fb8a0766d960e46e15c4d83e4faca85c59d388ec2c720ea",
+    "9,8": "8419d8f359785d0451c47bcb27175a3cdf1c9fca525d4cd580fff6669bf889dd",
+    "9,9": "bdf65e7c0cad457a0c5e95c6dc6772a63094faedf5e8adf047a58b3ea9efbb36"
+   },
+   "grade_limit": 0.08,
+   "grade_limit_design": 0.08,
+   "grade_max_measured": 0.08,
+   "grade_relaxed_to": null,
+   "length_m": 1525.1,
+   "max_cut_m": -7.881,
+   "max_fill_m": 3.524,
+   "paved_samples": 6114,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 1469,
+   "skipped_inside_settlement_pad": 1649,
+   "width_m": 6.0,
+   "zdo_cost": 20,
+   "zones": [
+    [
+     5,
+     6
+    ],
+    [
+     6,
+     6
+    ],
+    [
+     7,
+     6
+    ],
+    [
+     7,
+     7
+    ],
+    [
+     8,
+     7
+    ],
+    [
+     8,
+     8
+    ],
+    [
+     8,
+     9
+    ],
+    [
+     8,
+     10
+    ],
+    [
+     8,
+     11
+    ],
+    [
+     8,
+     12
+    ],
+    [
+     8,
+     13
+    ],
+    [
+     9,
+     8
+    ],
+    [
+     9,
+     9
+    ],
+    [
+     9,
+     11
+    ],
+    [
+     9,
+     12
+    ],
+    [
+     9,
+     13
+    ],
+    [
+     9,
+     15
+    ],
+    [
+     9,
+     16
+    ],
+    [
+     9,
+     17
+    ],
+    [
+     10,
+     17
+    ]
+   ]
+  },
+  "T5-temple-dockshore": {
+   "abutments": [],
+   "blob_sha256": {
+    "-1,-1": "49921c32f5a3f5b5f40745b0f27d6d122001c9516ce4b5d9e861125d2f68ea89",
+    "-1,0": "9768ffabe8ee97b98210ea7c6433219cc2deded76676e815c93080af72b526a7",
+    "0,-1": "2bf7ffd22677d780fcb61db743076a93ae8e396627d6af52442ddcd1402865eb",
+    "0,-2": "c4b4445bf27d17917817e8b447cb2ee46ac74ec79d25261ba4a1286e29327c65",
+    "1,-2": "99bc8eee69dc865cd83c1cdcdb664ac02dc1a189b32245abc02be7931a59438e",
+    "1,-3": "d7b96c85c1aa27469a8b911ff4511e643e591dea7a94808baf8b20e87bfb7c8d",
+    "10,-1": "87c38bcecdc328c2c5457023dfdaed9b4691e93f1a6fedf261c6274bf563c07c",
+    "10,-2": "49e1bddd473bd1e6ee6bf6448c33e5c2e91c2c8edbe6b9b6dcc87ed433d908f7",
+    "2,-3": "bb062ebb12c37d2f48c6cac669b946a1523176d63a5cfc0e03d2f2472c1c1b31",
+    "2,-4": "23e186ecbe2ad52eee789ce6afe49a72ef5459eb89cb08d94fd86bd39f83ba63",
+    "3,-4": "b28b4e60d84ec18a4c61759d98a4a3683e679ed99d0bbf4544aff5602ae6087b",
+    "3,-5": "f32e4b85d64918951f08e6d74e6b1bf5214f6627e7a65b9a74ab3a541e3f6a19",
+    "4,-5": "4dbed8203a8e5fa59ab0e1ecf9c73d257539588537fd0a20c773c895bfa9016f",
+    "5,-4": "b292c9739e96bc557dabdae1c524a6888c65257ccd6eaa881863ee98d96b2c25",
+    "5,-5": "8ebf9777d5616af23fc55146e81e7452fbd404887eda05a6287192440e7b5270",
+    "6,-4": "32919dbd26d8ede5dd25d2c6b0a1f020b2dce3233c8088c35e6ebb23fad67fb2",
+    "7,-3": "b7ff6c74bc382b9ba223bfe3d828d5f1996d91f66f13b0fd13ac2a8585c82b04",
+    "7,-4": "c9aaef7e6231911788e50d185987d658f6b38bd95b130ef4cdb183c243d4cfd0",
+    "8,-2": "418c9da5b11164f059ccabbd75f8a88fffe1327601ec1adac1d2b60cd2bd7a68",
+    "8,-3": "929f8a741b77425f5a4cda0f41912fea1fe9b4061b34665908f0093dbf763de4",
+    "9,-2": "eb63bd869810dcd860de0559a948c09ad7cbd5e05b2353aa3b1e208739a74fd1",
+    "9,-3": "3090d0a58183a1b0a6eb25ebbf9eb2447026b7923b0a32b83827b14be8ec8284"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 42.4,
+     "name": "ShipSetting01",
+     "prefab": "ShipSetting01",
+     "protected": false,
+     "reach_m": 24.0,
+     "standoff_m": 36.0
+    },
+    "samples_tested": 7594,
+    "standoff_m": 36.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "trunk",
+   "crossings_handed_to_Crossings": [
+    "T5-temple-dockshore-x01"
+   ],
+   "delta_gate": {
+    "instances_probed": 17,
+    "positions_probed": 11641,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 14.52,
+     "name": "Dolmen01",
+     "prefab": "Dolmen01",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      126.7,
+      -246.2
+     ],
+     "xz": [
+      126.7,
+      -246.2
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [
+    "T5-temple-dockshore-f01"
+   ],
+   "generated_heights_sha256": {
+    "-1,-1": "e2fa3fd092d9ad13857dbc8982b7fa6b943ea0c339aa3b6444e54666f03f897a",
+    "-1,0": "cfb608c21f0de8ad6570f9f7f6958618305900c1a7045f1118852fb52dba316a",
+    "0,-1": "9936c82d6b3ec6820269d8ab26c2fccaae286e441a5314974f79f7bb0e1af2f7",
+    "0,-2": "1037707f56708e1b3accaebd9523c9d25d133273340306d4f93e5b646b4ece53",
+    "1,-2": "0173cae4d66fed50ce640dd875f42c60964adbac0e2486a62b25b043428038db",
+    "1,-3": "d74f387b6ce55fc346b4af58b39a8c2aa7f230cdaabbe15f2895105604a04e71",
+    "10,-1": "0e69a97abdea60c255e1f2f856d38cbd2e3377fcfbca9e34287676ef4c4a4864",
+    "10,-2": "1dce5edfdfe8ec6bf0aabf7f1573e038df422ca5271501d30b6823df1d464f7a",
+    "2,-3": "aaccaad6e4a07d2178e08e726414178e4c72f88853f91ffd033c266f722fed6f",
+    "2,-4": "35d8e367eb61f605aecfee5ebb71d0e07d900a9b2d5ce3412bdc2a2f23204f3e",
+    "3,-4": "a94936e1b0500ebb971b06c18dc0781ce23e26125b8eeacd6ae03160a3151e87",
+    "3,-5": "55bdb7d678638d56c55ba1c7ca7009c927030d277ef45bb902b8bbb2648406c2",
+    "4,-5": "8492d0d352d1ffebb625b490f96c8dc7200d2337de016321a18cbad9c712d649",
+    "5,-4": "2dea0b4263e459d01c9cfa8da951bca26b596d43c48b052d481389b178217302",
+    "5,-5": "cd00a8d269536c044a2c28d2b9e259d6fa182cec6ae0bcd5c46567422262e55d",
+    "6,-4": "8d66a7c6c3a90831bd92d3725defc231e091da177b83606f0ddbea5f7bda30fa",
+    "7,-3": "624aff497f2b5a3e1e9fdf1b4fbc37869e74a374ed70f42afee74f497324e8f5",
+    "7,-4": "61bd14620be8cb603277838f82aee18b7c868bdf995501324496acccb6960baf",
+    "8,-2": "cb1125e4b3c7fa0fb6ac2c805907c39738c462a2eed38121af9b50881682db62",
+    "8,-3": "ce6cfcdc2c7528d7c20befcbb4664c6bcd261dd862322e3745f4db844e0dc589",
+    "9,-2": "b5396a8eaf02b990407dd42398d2084d1043c9d39bcf908998a7d8e00eb53a06",
+    "9,-3": "00b6abe316cc46ff46066e52247cdb85ff28cf1e7eec778e0d9f23250c54db85"
+   },
+   "grade_limit": 0.08,
+   "grade_limit_design": 0.08,
+   "grade_max_measured": 0.08,
+   "grade_relaxed_to": null,
+   "length_m": 1048.6,
+   "max_cut_m": -6.59,
+   "max_fill_m": 7.471,
+   "paved_samples": 6146,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 1448,
+   "skipped_inside_settlement_pad": 0,
+   "width_m": 6.0,
+   "zdo_cost": 22,
+   "zones": [
+    [
+     -1,
+     -1
+    ],
+    [
+     -1,
+     0
+    ],
+    [
+     0,
+     -2
+    ],
+    [
+     0,
+     -1
+    ],
+    [
+     1,
+     -3
+    ],
+    [
+     1,
+     -2
+    ],
+    [
+     2,
+     -4
+    ],
+    [
+     2,
+     -3
+    ],
+    [
+     3,
+     -5
+    ],
+    [
+     3,
+     -4
+    ],
+    [
+     4,
+     -5
+    ],
+    [
+     5,
+     -5
+    ],
+    [
+     5,
+     -4
+    ],
+    [
+     6,
+     -4
+    ],
+    [
+     7,
+     -4
+    ],
+    [
+     7,
+     -3
+    ],
+    [
+     8,
+     -3
+    ],
+    [
+     8,
+     -2
+    ],
+    [
+     9,
+     -3
+    ],
+    [
+     9,
+     -2
+    ],
+    [
+     10,
+     -2
+    ],
+    [
+     10,
+     -1
+    ]
+   ]
+  },
+  "T8-stenvik-wttown": {
+   "abutments": [],
+   "blob_sha256": {
+    "10,13": "e7e689ed397ad504494c063eb92c0bf01058d2f421dcd3e005a46b2097ce080b",
+    "10,14": "5330fd725effc28a55230fb0b4422c48ed54fc54067ce45d8f411a46d7c92a58",
+    "11,12": "9384d05567961ce8bd690eb6d3f481825c50c8466ab96fcdde45359b819ba121",
+    "11,13": "8159115a1652a5624bba372d6432f87470a2f0984aa85adb21c721e64b787af6",
+    "12,11": "54d0cc5c0bd1ae23df39b48c1bb9ac0809ffdecefefc08d67651aff6fdf07378",
+    "12,12": "00e804d0a39927002599d9c3df7616f8e278edb9e14cfed8ee1d50d41e58bdf3",
+    "13,11": "3a0e0126f9492f05c2d88b2aebc5202a3ff99b45e79b099ba6eda595d10ccb88",
+    "13,12": "c38ad7e2d68629b482e93e8595188a24804618344cab2bdbac2c411b8fcd3c08",
+    "9,14": "a548489ac47804b4bf0f930e88399ec0631748436a7aec37f30d011bf8c0710b",
+    "9,15": "e55b04ad705bb71c71e22169bbdbcb2f31c8b3096d828f6b5457a25f29e57b58"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 20.4,
+     "name": "Runestone_Boars",
+     "prefab": "Runestone_Boars",
+     "protected": false,
+     "reach_m": 13.520000457763672,
+     "standoff_m": 25.520000457763672
+    },
+    "samples_tested": 2667,
+    "standoff_m": 25.520000457763672,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "trunk",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 7,
+    "positions_probed": 3475,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 15.24,
+     "name": "Dolmen01",
+     "prefab": "Dolmen01",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      705.1,
+      770.3
+     ],
+     "xz": [
+      705.1,
+      770.3
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [],
+   "generated_heights_sha256": {
+    "10,13": "f104193aec3b08396d04c1d155eb43012cf13b20d01657cc40361cf453770fe2",
+    "10,14": "32f6f3f12b9c93836c7abced31e723a40c3a1c441d7494c640d832a42fc09cb7",
+    "11,12": "296651734144ecc347db448d8bbae3c6bcfb9a62972ba9907d2d4f4e43b6a860",
+    "11,13": "e832a3dae8d204e4ce71b8b5418aff0bf1fb3b01fab6488ed3c86e13c966ca54",
+    "12,11": "862375553dca42a39fd409392e06a1ab707e1aeb3727b38fc7e959e71ab44fb0",
+    "12,12": "db8fea52983a7996f3151363a16358bd7d0bd8c21dd24e661be0e07b5068d30b",
+    "13,11": "b6c98bf6615d76e80674793e2b0b208f2c1df19fd2412394a36f3b1cd88e9e18",
+    "13,12": "4c602235ac63e0294c11962923b621d7e81e7b686e52ab360c68e6d011acfa76",
+    "9,14": "563394583b71ebae46869d5c4d5860fc48e85d80304c1318333db93e01f3811d",
+    "9,15": "08493985a85029884123108014f8c8f1e5aa0ec77f43751fdb52b7d5599283ce"
+   },
+   "grade_limit": 0.08,
+   "grade_limit_design": 0.08,
+   "grade_max_measured": 0.08,
+   "grade_relaxed_to": null,
+   "length_m": 436.5,
+   "max_cut_m": -4.251,
+   "max_fill_m": 4.455,
+   "paved_samples": 2145,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 522,
+   "skipped_inside_settlement_pad": 1140,
+   "width_m": 6.0,
+   "zdo_cost": 10,
+   "zones": [
+    [
+     9,
+     14
+    ],
+    [
+     9,
+     15
+    ],
+    [
+     10,
+     13
+    ],
+    [
+     10,
+     14
+    ],
+    [
+     11,
+     12
+    ],
+    [
+     11,
+     13
+    ],
+    [
+     12,
+     11
+    ],
+    [
+     12,
+     12
+    ],
+    [
+     13,
+     11
+    ],
+    [
+     13,
+     12
+    ]
+   ]
+  },
+  "T9-wttown-dockshore": {
+   "abutments": [],
+   "blob_sha256": {
+    "10,-1": "5a8f5467f6aab73f14533581651da7e6183900065ce69de4424fba720f0f9ba8",
+    "10,-2": "d2d34b21e1ffe3a3c1aa8131aed9d430a6188adf567df66b3d4a1a718f9a8fdb",
+    "11,-1": "5db509876818798fd89b66e370ddd08b6d9199b4fcf7111ff13d69d6857e4ef4",
+    "11,-2": "dbada0c725c14e38d8558d0c53c4235f0f7739361ab2c4d6653d192dc88adc9c",
+    "11,0": "3d892ce0c25f642a0a969173176c133d7068be36534b34f6202ba76023ebe30b",
+    "12,-1": "ecbc9edeaffa17928cda29143e73d67a16834ba0e3fe8d5d0fc136e01d49ca08",
+    "12,0": "c66daadfafeb7eba8a982ef3264b42163ef65040630a0b6ca14b4d4f12d63679",
+    "12,1": "b54337cca52bce13af75b526f85dae462f0c42f9611776d0f8a5664663e37d07",
+    "12,2": "19705f2a5ba2f38c7266ab65bc382022dd2d366b2d82f53603fe05ac5fe7d897",
+    "12,3": "f8807123502a5347f9f97c646d6a9ec27fffa6aca50bbec380763f88f3017d62",
+    "12,4": "084ac1084587f574301321a8343bcf192db9b8d5336b94b5b78ef92ce8c643ac",
+    "12,5": "20847e7b0466c624324d5b8b011952da270a034397ba15c710ec93b236dbe9c5",
+    "12,6": "91ce6a1bfc5d49a2932c174be11a0a497b6aba0b58f04952e51ee23011bbec4f",
+    "13,10": "dd942d256c608909ed54d71e63fdd6e5c61d1cdc3b513e3bde0986aca0d01c3c",
+    "13,11": "8d78fc003d466ab59c512d401a9b19ffc095fb3ce7cd3d229cbd3288daa38118",
+    "13,12": "508f1ae9a8acae516f2298642a6ee922965e40694262e19c26f3a97ee28535f3",
+    "13,4": "e8222d927640db3b8771ab5d8082d5dbd7985a8d680103941c30bda1d4ac805a",
+    "13,6": "76b274b2415c1a10a5fcfc0bfe56cddd200efe8b7501590818b8db09b2c54d7f",
+    "13,7": "d62e12332c6dd5e2840fdea99b92bba7e1cb0586f79ba45cea5fed44595d057d",
+    "14,10": "954cdff311d738386f5e74aee179995d0232fa0785255f11255b3552427fa65b",
+    "14,7": "38b27a0f4bb5febf89b9d43cd0f5441da17b9f9ab77a13d76ce7c086c5f1787a",
+    "14,8": "f40665fe20094273d2bc0042e4aa315d86c5089f6e05326a50132d76d4514c19",
+    "14,9": "385881f3c11ecedeeea795dbdbce5d7d6ba9f3d57e974bda22ebcc873ab63ab2"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 101.0,
+     "name": "ShipSetting01",
+     "prefab": "ShipSetting01",
+     "protected": false,
+     "reach_m": 24.0,
+     "standoff_m": 36.0
+    },
+    "samples_tested": 9005,
+    "standoff_m": 36.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "trunk",
+   "crossings_handed_to_Crossings": [],
+   "delta_gate": {
+    "instances_probed": 23,
+    "positions_probed": 17351,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 14.69,
+     "name": "Dolmen02",
+     "prefab": "Dolmen02",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      769.3,
+      109.2
+     ],
+     "xz": [
+      769.3,
+      109.2
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [
+    "T9-wttown-dockshore-f01",
+    "T9-wttown-dockshore-f02",
+    "T9-wttown-dockshore-f03",
+    "T9-wttown-dockshore-f04",
+    "T9-wttown-dockshore-f05",
+    "T9-wttown-dockshore-f06"
+   ],
+   "generated_heights_sha256": {
+    "10,-1": "0e69a97abdea60c255e1f2f856d38cbd2e3377fcfbca9e34287676ef4c4a4864",
+    "10,-2": "1dce5edfdfe8ec6bf0aabf7f1573e038df422ca5271501d30b6823df1d464f7a",
+    "11,-1": "5d65b20dac282e08a1fb1dbddb77747f40a80d5a8a207a95bea43e431a2688fa",
+    "11,-2": "3632872f4a54f14ffa6c4e8c94d0dbad18029eae7d3f097c9a9e2abeec0b03bd",
+    "11,0": "c8834408da77a3ad775c05cf93b95e6b740161d07378763d928995593ed72c0f",
+    "12,-1": "38bcef5ff1598258844a4d649f9b30a41767fd5edb6a3f86b80945174b64d734",
+    "12,0": "c662fcc34d0fb256c5f55ccf264eb5c226acf1abb0705c37a0f146cf4ff57dda",
+    "12,1": "99c3556f7c7f8535eaf9ef00423c65673093f3f40b7b82062f8b084ec5604aa9",
+    "12,2": "245125b74f05459889a06c4706fec889d5e074129b1df8a3f3b47b7d58872744",
+    "12,3": "ba792a0929bc23a6eac298e271435fab84464c3694a5d7e2e65e3df1f84303da",
+    "12,4": "d65e7723609f269868866082ad6a2160cbfae067b977a3f3d21509201a5c43a7",
+    "12,5": "c9eb86895e7e0add673584878c649258f162984cf26cd8f5b7db896909d700d1",
+    "12,6": "8856926e093632cc8155b2cb9501ae2128e331db2bbc05e9584be864df65c87b",
+    "13,10": "89375042104d0c989726d96a631afc8c9945d1c0507c938dd6e5dc8866bfee13",
+    "13,11": "b6c98bf6615d76e80674793e2b0b208f2c1df19fd2412394a36f3b1cd88e9e18",
+    "13,12": "4c602235ac63e0294c11962923b621d7e81e7b686e52ab360c68e6d011acfa76",
+    "13,4": "08354b0e64319742d71ff876b071f6345881b67e02836ef9b4a627bf531579cf",
+    "13,6": "e71a8ebb1c9875ce7e35b058fb454e8de537f8135650ed684647ba85ff738d0c",
+    "13,7": "e378ad657f7cfff8ba54638a26a9ea07eee80f92d13c7125bad05af86242a68d",
+    "14,10": "adf86185d390d69e0752f3945de33d358c499051ea6b23239d418f5343cb781d",
+    "14,7": "6b5008bdc8d0d81a68c4d5d57d91bf6d73fc05c465c2a5b8c5bd5cac8e6bbdbf",
+    "14,8": "11b96319b6722ac2df728427d5ddc7dd2c6db8c56670f08752af87b84c08d6e3",
+    "14,9": "0ed7b41721e4bccb3b687e6b07be9a09f6c4e302778ab5e09a73e836de8063b5"
+   },
+   "grade_limit": 0.08,
+   "grade_limit_design": 0.08,
+   "grade_max_measured": 0.08,
+   "grade_relaxed_to": null,
+   "length_m": 1196.2,
+   "max_cut_m": -3.571,
+   "max_fill_m": 6.302,
+   "paved_samples": 7186,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 1819,
+   "skipped_inside_settlement_pad": 412,
+   "width_m": 6.0,
+   "zdo_cost": 23,
+   "zones": [
+    [
+     10,
+     -2
+    ],
+    [
+     10,
+     -1
+    ],
+    [
+     11,
+     -2
+    ],
+    [
+     11,
+     -1
+    ],
+    [
+     11,
+     0
+    ],
+    [
+     12,
+     -1
+    ],
+    [
+     12,
+     0
+    ],
+    [
+     12,
+     1
+    ],
+    [
+     12,
+     2
+    ],
+    [
+     12,
+     3
+    ],
+    [
+     12,
+     4
+    ],
+    [
+     12,
+     5
+    ],
+    [
+     12,
+     6
+    ],
+    [
+     13,
+     4
+    ],
+    [
+     13,
+     6
+    ],
+    [
+     13,
+     7
+    ],
+    [
+     13,
+     10
+    ],
+    [
+     13,
+     11
+    ],
+    [
+     13,
+     12
+    ],
+    [
+     14,
+     7
+    ],
+    [
+     14,
+     8
+    ],
+    [
+     14,
+     9
+    ],
+    [
+     14,
+     10
+    ]
+   ]
+  },
+  "W10-brgs1-treenear": {
+   "abutments": [
+    {
+     "end": "a",
+     "level_run_m": 6.0,
+     "level_y": 30.6,
+     "node": "brg-s1-w",
+     "outbound_bearing_deg": 350.35,
+     "ribbon_end_xz": [
+      -326.0,
+      -66.0
+     ],
+     "ribbon_width_m": 4.0,
+     "within_clamp": true,
+     "worst_cut_fill_m": 0.95
+    }
+   ],
+   "blob_sha256": {
+    "-5,-2": "8fbc350f16c88ce48eb49ec539edab4f6e2510e389148eb85fd0701c58b3ded7",
+    "-5,-3": "ac4102aaa9b2018af5e1b01050492aa4ef3bc5cc658c8232df14aabfefb8d0b2",
+    "-6,-3": "cb1d850e40cd92a2afbf077ac11d381abfd97a7768fe53e8eee72bd150663437",
+    "-7,-3": "dca05d4093d0e75339122752da17f443351d4e3486b1b49a650f9a476ad2a5b7",
+    "-7,-4": "7919c6ce7609eef5886bce30d29cb9148d9bae9b95c21ea14552cafa0174d628",
+    "-8,-3": "c136f4f813676b7e29dc0516b57de0156341e933e754b5db311f316a01ac7884",
+    "-8,-4": "a3494b836f663d79110bf1f32db048cf21a1643ff229b272d056787c4c0825cc",
+    "-9,-3": "ae96e01f2ee30c9a3a7a2df1468ea882570c90017cd342014c8f22a834ef159d",
+    "-9,-4": "83595e60679101872dfec53e8c912d53bfe9eb300e4deae262cef897717d718d"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 34.6,
+     "name": "Crypt3",
+     "prefab": "Crypt3",
+     "protected": false,
+     "reach_m": 21.0,
+     "standoff_m": 33.0
+    },
+    "samples_tested": 2464,
+    "standoff_m": 33.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "spur",
+   "crossings_handed_to_Crossings": [
+    "W10-brgs1-treenear-x01"
+   ],
+   "delta_gate": {
+    "instances_probed": 6,
+    "positions_probed": 2582,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 14.9,
+     "name": "WoodHouse4",
+     "prefab": "WoodHouse4",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      -320.6,
+      -204.0
+     ],
+     "xz": [
+      -320.6,
+      -204.0
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [
+    "W10-brgs1-treenear-f01"
+   ],
+   "generated_heights_sha256": {
+    "-5,-2": "2545e6ee93890437605ab689f5e54b3aa700ae97d634d726705f620c762e5c7e",
+    "-5,-3": "e17bdd81bc93dce99e7e4b07a9e081c4d5e5526368180ad5bb0e8755b68a4a16",
+    "-6,-3": "07881ce21559094d0dbfc748f15b820e9b06661e3cc99fb32e70f6cfa54b6267",
+    "-7,-3": "26eb61cd1fd6eea55d3aa3548faa53c2b7b4a8e4ec3e6604c81ba0c534b9a5d1",
+    "-7,-4": "2aa7b0572ac62dac2f9bc8d501ca16b4f50acffc27222cc659bd7f28906b9ee3",
+    "-8,-3": "75c2d6b23d0fa199994bc1ef43a7567266f0d69e09afb274c578f4b34750e85a",
+    "-8,-4": "c78380283965db9686a0dbb17c1325190fc62f3466b0f503317ca51929bd209c",
+    "-9,-3": "2fab28cf6c9a6d4a89aa8024dbd5ad0b4f2b77dcbf84d00cd17b8c8d5a2e3889",
+    "-9,-4": "468ff9f0cec6b368862182407d378d9355920e6f91c113505f229b365af90440"
+   },
+   "grade_limit": 0.12,
+   "grade_limit_design": 0.12,
+   "grade_max_measured": 0.12,
+   "grade_relaxed_to": null,
+   "length_m": 466.1,
+   "max_cut_m": -6.003,
+   "max_fill_m": 4.286,
+   "paved_samples": 1720,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 744,
+   "skipped_inside_settlement_pad": 90,
+   "width_m": 4.0,
+   "zdo_cost": 9,
+   "zones": [
+    [
+     -9,
+     -4
+    ],
+    [
+     -9,
+     -3
+    ],
+    [
+     -8,
+     -4
+    ],
+    [
+     -8,
+     -3
+    ],
+    [
+     -7,
+     -4
+    ],
+    [
+     -7,
+     -3
+    ],
+    [
+     -6,
+     -3
+    ],
+    [
+     -5,
+     -3
+    ],
+    [
+     -5,
+     -2
+    ]
+   ]
+  },
+  "W5-brgs1-wsouth": {
+   "abutments": [
+    {
+     "end": "a",
+     "level_run_m": 6.0,
+     "level_y": 30.6,
+     "node": "brg-s1-w",
+     "outbound_bearing_deg": 350.35,
+     "ribbon_end_xz": [
+      -326.0,
+      -66.0
+     ],
+     "ribbon_width_m": 4.0,
+     "within_clamp": true,
+     "worst_cut_fill_m": 0.95
+    }
+   ],
+   "blob_sha256": {
+    "-10,-3": "205006a3290056572dcc37d7f52d89fefbf43f96c8f715d224dbb9742a5ed6c4",
+    "-10,-4": "50e79c56ef0363b03e82b7b55542ffe095dbba26ec4b64c96356dc1b3613f9a0",
+    "-11,-4": "b9c85c13dd0b1b30bf32be64f91574c0e1105e9a601a12fce52aabbbd760b6af",
+    "-11,-5": "b06d48276be2a69d60a07bd06d075bc693855b20decb10e80e115a6e0820cada",
+    "-12,-4": "a061a3a54830aa332c607f12261ef58ef84ebd4a1a42e5b9164bb156702f3cc8",
+    "-12,-5": "dbc1a3c5011ae3026a808beb1e907152e6e27159f9a712bce65edc8b2689674d",
+    "-5,-2": "8fbc350f16c88ce48eb49ec539edab4f6e2510e389148eb85fd0701c58b3ded7",
+    "-5,-3": "ac4102aaa9b2018af5e1b01050492aa4ef3bc5cc658c8232df14aabfefb8d0b2",
+    "-6,-3": "720171300bd2bb5807407c5ccb4141622a2bc3b5385437ef5d6b6a79d8fb0664",
+    "-7,-3": "3a08b289f54e33a18ea4a1f2716e326e5700bd3f30967cf8746bf5bb856028fd",
+    "-8,-3": "e030d02e3abecadeda076d5ae680de79dbfe0bb85157e1aef51e3111a175c095",
+    "-9,-3": "7188368af28b193b38c0f20cd91dfa4f53c2063473595800d187ae15dd14d95e"
+   },
+   "clearance": {
+    "budget": "non_destructive",
+    "dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+    "nearest": {
+     "dist_m": 78.9,
+     "name": "StoneHouse3",
+     "prefab": "StoneHouse3",
+     "protected": false,
+     "reach_m": 6.0,
+     "standoff_m": 18.0
+    },
+    "samples_tested": 3743,
+    "standoff_m": 18.0,
+    "tool": "tools/jumpstart/settlements/clearance.py::verdict_for_samples",
+    "verdict": "clear"
+   },
+   "cls": "spur",
+   "crossings_handed_to_Crossings": [
+    "W5-brgs1-wsouth-x01"
+   ],
+   "delta_gate": {
+    "instances_probed": 6,
+    "positions_probed": 2582,
+    "tolerance_m": 0.1,
+    "verdict": "clear",
+    "worst": {
+     "min_dist_m": 14.9,
+     "name": "WoodHouse4",
+     "prefab": "WoodHouse4",
+     "protected": false,
+     "reach_m": 8.0,
+     "worst_abs_delta_m": 0.0,
+     "worst_at": [
+      -320.6,
+      -204.0
+     ],
+     "xz": [
+      -320.6,
+      -204.0
+     ]
+    }
+   },
+   "fords_kept_as_terrain": [
+    "W5-brgs1-wsouth-f01"
+   ],
+   "generated_heights_sha256": {
+    "-10,-3": "3ca4787a74887898d2cd76293eccf86fc8d1b9b117cc9ef38486a967e2cf6016",
+    "-10,-4": "941c9c513c5aeef9263164fbe40c4febc47782fdcdef6fda66f53e3effcd50b8",
+    "-11,-4": "67772d1b08f60e10ea2f354a5c25e9c9d7e7a24a81c439f5819748cf6176ef46",
+    "-11,-5": "44afae17aaab4e2074aefc1acd25f2ae6ba49b350c018d61810ee6a8165c2404",
+    "-12,-4": "9c93bd23027b92050f1b431b8a64f7e0b2210ae4990917b31ee27eab542e14fe",
+    "-12,-5": "6c8ff08fea46dfcd6788252fd0d769b0ddfbc12504a86813ddd853c5e789d1c3",
+    "-5,-2": "2545e6ee93890437605ab689f5e54b3aa700ae97d634d726705f620c762e5c7e",
+    "-5,-3": "e17bdd81bc93dce99e7e4b07a9e081c4d5e5526368180ad5bb0e8755b68a4a16",
+    "-6,-3": "07881ce21559094d0dbfc748f15b820e9b06661e3cc99fb32e70f6cfa54b6267",
+    "-7,-3": "26eb61cd1fd6eea55d3aa3548faa53c2b7b4a8e4ec3e6604c81ba0c534b9a5d1",
+    "-8,-3": "75c2d6b23d0fa199994bc1ef43a7567266f0d69e09afb274c578f4b34750e85a",
+    "-9,-3": "2fab28cf6c9a6d4a89aa8024dbd5ad0b4f2b77dcbf84d00cd17b8c8d5a2e3889"
+   },
+   "grade_limit": 0.12,
+   "grade_limit_design": 0.12,
+   "grade_max_measured": 0.12,
+   "grade_relaxed_to": null,
+   "length_m": 633.3,
+   "max_cut_m": -6.003,
+   "max_fill_m": 5.011,
+   "paved_samples": 2512,
+   "samples_past_8m_clamp": 0,
+   "shoulder_m": 1.0,
+   "shoulder_samples": 1231,
+   "skipped_inside_settlement_pad": 0,
+   "width_m": 4.0,
+   "zdo_cost": 12,
+   "zones": [
+    [
+     -12,
+     -5
+    ],
+    [
+     -12,
+     -4
+    ],
+    [
+     -11,
+     -5
+    ],
+    [
+     -11,
+     -4
+    ],
+    [
+     -10,
+     -4
+    ],
+    [
+     -10,
+     -3
+    ],
+    [
+     -9,
+     -3
+    ],
+    [
+     -8,
+     -3
+    ],
+    [
+     -7,
+     -3
+    ],
+    [
+     -6,
+     -3
+    ],
+    [
+     -5,
+     -3
+    ],
+    [
+     -5,
+     -2
+    ]
+   ]
+  }
+ },
+ "what": "validated pre-flight per road segment: the evidence a replay needs BEFORE it sends anything",
+ "world": "Ulfsland"
+}

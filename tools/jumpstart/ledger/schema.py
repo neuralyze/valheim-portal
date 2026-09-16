@@ -314,6 +314,24 @@ OPS: dict[str, Op] = {
             "question using somebody else's data announces nothing, so the "
             "log has to carry the origin."),
 
+    "chain_reset": Op(
+        "chain_reset", mutating=False, idempotent="n/a",
+        required=("broken_at_line", "expected_prev", "actual_prev"),
+        optional=_ROLE + ("duplicate_seqs", "branches", "seq_advisory_from_line",
+                          "cause", "text"),
+        why="DOCUMENTS a chain fork instead of editing it away.  Two "
+            "concurrent appends can write two branches carrying the same "
+            "`prev` (MEASURED: file line 47 of Ulfsland's ledger).  The file "
+            "is never renumbered and no `prev` is ever rewritten -- a log "
+            "edited to look clean is worth less than one with a labelled "
+            "wart -- so the fork is named here, by FILE LINE, and the two "
+            "digests are carried so a reader can verify the claim against "
+            "the file rather than trust it.  `replay.py` refuses an "
+            "UNDOCUMENTED fork and verifies both digests, so a reset cannot "
+            "launder a fork it does not accurately describe.  Param names are "
+            "the ones BuildLedger's reader reads: broken_at_line, "
+            "expected_prev, actual_prev."),
+
     "note": Op(
         "note", mutating=False, idempotent="n/a",
         required=("text",),
@@ -397,7 +415,13 @@ def scan(raw_lines: Iterable[str]) -> dict:
     forks: list[dict] = []
     seq_lines: dict[int, list[int]] = {}
     count = 0
-    documented: set[int] = set()
+    # A fork counts as DOCUMENTED only when a `chain_reset` record names it by
+    # FILE LINE and states BOTH digests correctly. A prose `note` mentioning
+    # the word "fork" is not evidence -- that would let a reset launder a fork
+    # it does not accurately describe, which is the same shape as a check
+    # answering a question it is not measuring. The param names are the ones
+    # `replay.py` reads: broken_at_line, expected_prev, actual_prev.
+    resets: list[dict] = []
     for index, raw in enumerate(raw_lines):
         raw = raw.strip()
         if not raw:
@@ -416,16 +440,18 @@ def scan(raw_lines: Iterable[str]) -> dict:
                           "actor": rec.get("actor"), "op": rec.get("op"),
                           "ts": rec.get("ts"), "declared_prev": prev,
                           "actual_prev": head})
-        if rec.get("op") == "note" and "fork" in str(
-                (rec.get("params") or {}).get("text", "")).lower():
-            documented.add(len(forks))
+        if rec.get("op") == "chain_reset":
+            resets.append(rec.get("params") or {})
         seq = rec.get("seq", seq)
         seq_lines.setdefault(seq, []).append(index)
         head = digest(rec)
         seen[head] = index
         count = index + 1
-    for n, f in enumerate(forks, 1):
-        f["documented"] = n in documented or len(documented) >= len(forks)
+    for f in forks:
+        f["documented"] = any(
+            r.get("broken_at_line") == f["line"]
+            and r.get("expected_prev") == f["declared_prev"]
+            and r.get("actual_prev") == f["actual_prev"] for r in resets)
     return {"count": count, "last_seq": seq, "head": head, "forks": forks,
             "duplicate_seqs": {s: ls for s, ls in seq_lines.items()
                                if len(ls) > 1},

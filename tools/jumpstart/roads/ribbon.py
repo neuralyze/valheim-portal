@@ -457,6 +457,14 @@ def main() -> int:
     ap.add_argument("op", choices=["plan", "build"])
     ap.add_argument("--segment", required=True)
     ap.add_argument("--segments", default=str(HERE / "segments.yaml"))
+    ap.add_argument("--preflight-out",
+                    help="append this segment's validated pre-flight record to "
+                         "a JSON file. The pre-flight IS the replay evidence: it "
+                         "names the zones, the sample counts, the worst cut and "
+                         "fill, the clamp result, both clearance verdicts and the "
+                         "blob digests, so a future regeneration can tell whether "
+                         "it is rebuilding the same road before it sends a "
+                         "command.")
     ap.add_argument("--validate", action="store_true",
                     help="build the ledger records and run schema.validate on "
                          "them OFFLINE. Nothing is appended and nothing is "
@@ -622,6 +630,46 @@ def main() -> int:
                             "blobs": [e["blob_sha256"] for e in entries]},
                "expect": {"terrain_compiler": True}, "meta": {},
                "prev": "0" * 64}
+        if args.preflight_out:
+            pf = Path(args.preflight_out)
+            doc = json.loads(pf.read_text()) if pf.exists() else {
+                "owner": "RoadNet", "world": "Ulfsland", "seed": SEED,
+                "what": "validated pre-flight per road segment: the evidence a "
+                        "replay needs BEFORE it sends anything",
+                "segments": {}}
+            doc["segments"][seg["id"]] = {
+                "length_m": seg["length_m"], "cls": seg["cls"],
+                "width_m": seg["width_m"], "shoulder_m": SHOULDER_M,
+                "grade_limit": seg["grade_limit"],
+                "grade_limit_design": seg.get("grade_limit_design"),
+                "grade_relaxed_to": seg.get("grade_relaxed_to"),
+                "grade_max_measured": seg["grade_max_measured"],
+                "zones": [e["zone"] for e in entries],
+                "zdo_cost": len(entries),
+                "paved_samples": st["samples_paved"],
+                "shoulder_samples": st["samples_shoulder"],
+                "skipped_inside_settlement_pad": st["skipped_pad"],
+                "max_cut_m": st["max_cut_m"], "max_fill_m": st["max_fill_m"],
+                "samples_past_8m_clamp": st["over_clamp"],
+                "clearance": {k: v for k, v in loc.items()
+                              if k in ("verdict", "budget", "standoff_m",
+                                       "nearest", "samples_tested", "dump",
+                                       "tool")},
+                "delta_gate": {k: v for k, v in loc["delta_gate"].items()
+                               if k in ("verdict", "tolerance_m", "worst",
+                                        "instances_probed", "positions_probed")},
+                "blob_sha256": {f"{e['zone'][0]},{e['zone'][1]}": e["blob_sha256"]
+                                for e in entries},
+                "generated_heights_sha256": {
+                    f"{e['zone'][0]},{e['zone'][1]}": e["generated_heights_sha256"]
+                    for e in entries},
+                "crossings_handed_to_Crossings": [c["crossing_id"]
+                                                  for c in seg["crossings"]],
+                "fords_kept_as_terrain": [f["crossing_id"] for f in seg["fords"]],
+                "abutments": seg["abutments"],
+            }
+            pf.write_text(json.dumps(doc, indent=1, sort_keys=True))
+            print(f"pre-flight -> {pf}")
         bad = schema.validate(rec)
         print(f"schema.validate(terrain_write): "
               f"{'OK' if not bad else str(len(bad)) + ' problems'}")
@@ -758,7 +806,16 @@ def main() -> int:
         print(f"  terrain_write {len(entries)} zones -> {r['status']}")
         for c in r["checks"]:
             print("   ", c)
-        b.emit("save", params={}, wire=["save"], expect={})
+        # `expect` is MANDATORY and non-empty on every mutating op, and `save`
+        # is mutating.  The honest cheap postcondition for a save is that the
+        # thing just written is STILL THERE afterwards: count this segment's
+        # own compilers at their zone centres.  A bare `save` with no
+        # postcondition is a command whose effect nothing measured.
+        b.emit("save", params={"role": "road_segment"}, wire=["save"],
+               expect={"prefab_count": [
+                   {"prefab": "_TerrainCompiler",
+                    "pos": [e["centre"][0], e["centre"][1]],
+                    "max": 31, "count": 1} for e in entries]})
         print(json.dumps(b.close(), indent=1)[:1200])
     return 0
 

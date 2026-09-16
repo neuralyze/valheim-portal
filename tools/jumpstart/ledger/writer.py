@@ -587,14 +587,30 @@ class Ledger:
         zones = {tuple(e["zone"]) for e in rec["params"]["entries"]}
         for r in forbidden:
             p = r["params"]
-            pos = p.get("pos") or [p.get("anchor", {}).get("x"),
-                                   None,
-                                   p.get("anchor", {}).get("z")]
-            if pos[0] is None or pos[2] is None:
+            # THE POSITION FIELD IS NOT ONE SHAPE, and assuming it was made
+            # this guard CRASH rather than refuse. MEASURED: `spawn` and
+            # `portal` carry `pos` as [x, y, z], `zones_generate` carries it
+            # as [x, z], `objects_clear` calls it `centre` ([x, z]), and
+            # `spawn_plan` has no `pos` at all -- it has an `anchor`. Every
+            # one of those op kinds can carry `flatten: "FORBIDDEN"`, and
+            # Crossings' zones_generate records do, so indexing pos[2]
+            # unconditionally raised IndexError and took down every
+            # terrain_write on this world instead of answering the question.
+            # A guard that cannot read one of its inputs is not strict, it is
+            # broken.
+            xz = None
+            pos = p.get("pos") or p.get("centre")
+            if isinstance(pos, (list, tuple)) and len(pos) == 3:
+                xz = (pos[0], pos[2])
+            elif isinstance(pos, (list, tuple)) and len(pos) == 2:
+                xz = (pos[0], pos[1])
+            elif isinstance(p.get("anchor"), dict):
+                xz = (p["anchor"].get("x"), p["anchor"].get("z"))
+            if xz is None or xz[0] is None or xz[1] is None:
                 continue
             import math
-            zx = math.floor((float(pos[0]) + 32.0) / 64.0)
-            zz = math.floor((float(pos[2]) + 32.0) / 64.0)
+            zx = math.floor((float(xz[0]) + 32.0) / 64.0)
+            zz = math.floor((float(xz[1]) + 32.0) / 64.0)
             if (zx, zz) in zones:
                 bad.append(
                     f"terrain_write touches zone {[zx, zz]}, which holds the "

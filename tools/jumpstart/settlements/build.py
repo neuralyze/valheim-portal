@@ -43,6 +43,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import struct
 import subprocess
 import sys
@@ -237,6 +238,163 @@ def clearing_ops(doc: dict, unit_id: str) -> list[dict]:
                                       "total": 0, "tolerance": 0}}},
     ]
 
+
+# WHAT MAY BE DELETED, and this list is a MEASUREMENT of this seed rather than
+# a taxonomy: every prefab family `objects_count id=*` reported inside the 33
+# settlement cylinders after generation. Vegetation, pickables, rocks and
+# deadfall. A prefab that does NOT match is not assumed harmless -- it stops
+# the build, because the one unrepairable damage class this project has
+# recorded is deleting a location's pieces, and a mod POI's pieces are
+# ordinary building prefabs (MEASURED at (444.2, 911.5): woodwall x10,
+# wood_floor x3, wood_beam_45 x8, a Beehive and a Music_MeadowsVillageFarm;
+# at (533.8, 910.6): woodwall x22, wood_roof x7 and a TreasureChest_meadows).
+NATURAL_RE = re.compile(
+    r"^(?:beech|birch|fir|pine|oak|swamptree|yggashoot|bush|"
+    r"raspberrybush|blueberrybush|cloudberrybush|"
+    r"rock|minerock|stubbe|shrub|vines|glowingmushroom|"
+    r"pickable_|bh_pickable_|.*_log|.*_oldlog|greydwarf_root|"
+    r"marker|spawner_)", re.IGNORECASE)
+
+
+def cylinder_contents(srv, ar) -> dict:
+    """WHAT IS ACTUALLY IN THE CYLINDER ABOUT TO BE EMPTIED.
+
+    This is a different question from every stand-off check in this pipeline,
+    and it is the only one that measures the hazard directly. The dump answers
+    "how close is a location"; the live `LocationProxy` sweep answers "is there
+    a marker the dump cannot see"; and for an UNIDENTIFIED marker the sweep
+    can only assume a worst case -- MEASURED tonight, 58 m = a 32 m worst-case
+    radius + 11 m INFERRED overshoot + a 15 m taste margin -- which refused
+    Stenvik's hall on a marker 23.9 m away whose pieces are nowhere near the
+    pad.
+
+    So instead of arguing about radii: ask the world what is inside the
+    cylinder. `objects_count id=*` lists EVERY prefab present with its count,
+    the answer is one line per prefab, and `Server.count` permits `id=*` only
+    inside 40 m, which every settlement cylinder is. The verdict is then a
+    fact about the objects that would be deleted rather than an inference from
+    a distance.
+    """
+    got, per = srv.count("*", ar.centre_x, ar.centre_z, ar.radius_m)
+    natural = {p: n for p, n in per.items() if NATURAL_RE.match(p)}
+    other = {p: n for p, n in per.items() if not NATURAL_RE.match(p)}
+    return {
+        "total": got, "per_prefab": per,
+        "clearable": natural, "not_clearable": other,
+        "verdict": "clear" if not other else "VIOLATION",
+        "probe": f"objects_count id=* ignore=_* "
+                 f"pos={ar.centre_x:.2f},{ar.centre_z:.2f} "
+                 f"max={ar.radius_m:.2f}",
+        "method": ("MEASURED: the live per-prefab contents of the exact "
+                   "cylinder `objects_remove` will empty. Nothing here is "
+                   "inferred from a radius -- a prefab that would be deleted "
+                   "is either in the measured natural set or it stops the "
+                   "build."),
+        "tool": "tools/jumpstart/settlements/build.py::cylinder_contents",
+    }
+
+
+def scoped_clear(ar, unit_id: str, contents: dict) -> dict:
+    """`objects_remove` scoped to the prefabs MEASURED in the cylinder.
+
+    `id=*` would also delete anything that arrives between the measurement and
+    the removal, and it is the command that deleted POI content in the
+    pre-wipe world. Naming the prefabs makes the safety a property of the
+    COMMAND rather than of a count taken a minute earlier. `ignore=_*` is kept
+    so `_ZoneCtrl` and `_TerrainCompiler` survive: MEASURED, an empty
+    `ignore=` is an empty id, not "no filter", and answers
+    `Error: Entity id  not recognized.`
+    """
+    ids = sorted(contents["clearable"])
+    wire = (f"objects_remove id={','.join(ids)} ignore=_* "
+            f"pos={ar.centre_x:g},{ar.centre_z:g} max={ar.radius_m:.2f}")
+    return {
+        "op": "objects_clear",
+        "params": {"centre": [ar.centre_x, ar.centre_z],
+                   "radius_m": round(ar.radius_m, 2), "ids": ids,
+                   "ignore": ["_*"], "role": "clearing", "site_id": unit_id},
+        "wire": [wire],
+        "expect": {"objects_count": {
+            "ids": "*", "ignore": "_*",
+            "pos": [ar.centre_x, ar.centre_z],
+            "max": round(ar.radius_m / math.sqrt(2), 2),
+            "total": 0, "tolerance": 0}},
+    }
+
+
+
+def union_prior(b, comps: dict, op_y: dict) -> dict:
+    """Merge every EARLIER compiler claim on our zones into our own blobs.
+
+    THIS IS NOT DEFENSIVE, IT IS ARITHMETIC THE TOWN REQUIRES. A zone holds
+    exactly ONE `_TerrainCompiler` -- `Heightmap::GetAndCreateTerrainCompiler`
+    returns the first it finds -- and the write path deletes before it spawns.
+    Stenvik's 18 pads span 8 zones, so the second pad in a zone would ERASE
+    the first one's levelling and leave a finished building standing on
+    generated ground. The ledger's clobber guard refuses that, and the fix is
+    to read the earlier blob back out of the blob store and union the samples:
+    ours win where we wrote, theirs survive everywhere else.
+
+    Whether the earlier record ever reached the world is measured separately
+    (`compiler_present`), because a record is appended BEFORE it is sent and
+    an append that failed to send leaves a claim with no compiler behind it.
+    Unioning is right either way -- the samples describe a pad somebody
+    intended -- but the log should say which case it was.
+    """
+    import tcdata
+    prior: dict[tuple[int, int], list[dict]] = {}
+    for line, rec in enumerate(b.led.records()):
+        if rec["op"] != "terrain_write":
+            continue
+        for e in rec["params"]["entries"]:
+            z = (int(e["zone"][0]), int(e["zone"][1]))
+            if z in comps:
+                prior.setdefault(z, []).append(
+                    {"line": line, "seq": rec["seq"], "actor": rec["actor"],
+                     "blob_sha256": e["blob_sha256"],
+                     "data_entry": e["data_entry"]})
+    merged: dict[tuple[int, int], dict] = {}
+    for z, claims in prior.items():
+        comp = comps[z]
+        taken = 0
+        for claim in claims:
+            old = tcdata.parse(b.led.read_blob(claim["blob_sha256"]))
+            for i, (level, smooth) in old["heights"].items():
+                if not comp.modified_height[i]:
+                    comp.modified_height[i] = True
+                    comp.level_delta[i] = level
+                    comp.smooth_delta[i] = smooth
+                    taken += 1
+            for i, colour in old.get("paints", {}).items():
+                if not comp.modified_paint[i]:
+                    comp.modified_paint[i] = True
+                    comp.paint[i] = colour
+        merged[z] = {
+            "merged_from": [c["seq"] for c in claims],
+            "merged_from_lines": [c["line"] for c in claims],
+            "merge_policy": "union",
+            "samples_inherited": taken,
+            "why": ("a zone holds one compiler and this op deletes before it "
+                    "spawns, so the earlier pad's samples are re-read from "
+                    "the ledger's blob store and kept; ours win only where we "
+                    "wrote. Last-writer-wins per SAMPLE, never per zone."),
+        }
+    return merged
+
+
+
+def zone_compiler(srv, zx: int, zz: int) -> int:
+    """How many `_TerrainCompiler` ZDOs actually stand in this zone.
+
+    Counted at the zone centre inside 31 m -- under half a zone, so a
+    neighbour cannot leak in. Two means one of them is dead weight and the
+    terrain on screen is not the terrain written; zero against a ledger claim
+    means that claim was appended and never sent.
+    """
+    import tcdata
+    cx, cz = tcdata.zone_centre(zx, zz)
+    got, _ = srv.count("_TerrainCompiler", cx, cz, 31.0, ignore="")
+    return got
 
 def zone_list(cx: float, cz: float, radius_m: float) -> list[tuple[int, int]]:
     import tcdata
@@ -546,7 +704,8 @@ def generated_sha(patch) -> str:
 
 
 def terrain_entries(b, unit: dict, comps: dict, op_y: dict, patches: dict,
-                    probes: dict) -> tuple[list[dict], list[str], list[str]]:
+                    probes: dict, merged: dict | None = None
+                    ) -> tuple[list[dict], list[str], list[str]]:
     """One schema `entries[]` record per zone, plus the wire and the blob list.
 
     `write_entries` is flatten's, so the entry NAME and the bytes are its; the
@@ -578,6 +737,10 @@ def terrain_entries(b, unit: dict, comps: dict, op_y: dict, patches: dict,
             },
             "samples": e["counts"]["height_modified"],
         })
+        if merged and (zx, zz) in merged:
+            m = merged[(zx, zz)]
+            out[-1]["merged_from"] = m["merged_from"]
+            out[-1]["merge_policy"] = m["merge_policy"]
     wire = [f"deleteObjects -zone {e['zone'][0]} {e['zone'][1]} "
             f"-prefab _TerrainCompiler -force" for e in entries]
     wire += [f"spawn_object _TerrainCompiler "
@@ -697,6 +860,39 @@ def spawn_plan_record(b, unit: dict, site: str, role: str, plan_path: Path,
 
 # --- step 4: the portals, BOTH ends ---------------------------------------
 
+
+def _waypoints():
+    """WayFinding's emitter, loaded by PATH rather than by package import.
+
+    `tools/jumpstart` is not a package on this checkout, and `network/
+    waypoints.py` does `from . import DATA, JUMPSTART`, so it has to be given
+    a package context explicitly. Loaded once and cached on the function, so
+    the guidepost geometry and the sign validator are ONE implementation --
+    the whole reason for calling it rather than rewriting it.
+    """
+    import importlib.util
+    import types
+    if getattr(_waypoints, "mod", None) is not None:
+        return _waypoints.mod
+    pkg = types.ModuleType("jsnet")
+    pkg.__path__ = [str(JUMPSTART / "network")]
+    sys.modules.setdefault("jsnet", pkg)
+    init = importlib.util.spec_from_file_location(
+        "jsnet.__init__", JUMPSTART / "network/__init__.py")
+    base = importlib.util.module_from_spec(init)
+    init.loader.exec_module(base)
+    for name in ("DATA", "JUMPSTART", "HERE"):
+        if hasattr(base, name):
+            setattr(pkg, name, getattr(base, name))
+    spec = importlib.util.spec_from_file_location(
+        "jsnet.waypoints", JUMPSTART / "network/waypoints.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["jsnet.waypoints"] = mod
+    spec.loader.exec_module(mod)
+    _waypoints.mod = mod
+    return mod
+
+
 def site_tag(plan: dict, site: str) -> str:
     if site in plan["towns"]:
         return plan["towns"][site]["tag"]
@@ -780,8 +976,37 @@ def hub_spots(srv, tags: list[str]) -> dict[str, dict]:
         taken.append(fixtures.fixture_box(PORTAL_PREFAB, spot["x"], spot["y"],
                                           spot["z"], spot["yaw"]))
         out[tag] = spot
+    # EVERY PIECE GETS ITS OWN GROUND HEIGHT. The ring stands on UNLEVELLED
+    # ground -- there is no hall and there will be no terrain write here,
+    # because the pad's zones include (-5,4) which holds Crossings' bridge
+    # declared flatten=FORBIDDEN, and an `objects_remove` at this radius would
+    # delete that bridge. Ground at a 17 m radius varies by metres, so a
+    # single pad height would leave arches half-sunk or floating: the
+    # operator's original complaint, sixteen times over, in the one place
+    # where legibility is the entire point. So each XZ is sampled from the
+    # patchscan field for its own zone -- the same generated heights the
+    # flatten arithmetic uses, at 1 m.
+    zones = sorted(set(zone_list(hx, hz, max(w, d) / 2 + 2.0)))
+    patches = FL.run_patchscan(zones, SEED, FL.SCRATCH / "patch_portalring.bin")
+    for tag, spot in out.items():
+        import tcdata
+        zx, zz = tcdata.zone_of(spot["x"], spot["z"])
+        patch = patches[f"z_{zx}_{zz}"]
+        spot["ground_y"] = round(patch.height_at_world(spot["x"], spot["z"]), 3)
+        spot["pad_y_unused"] = spot["y"]
+        spot["y"] = spot["ground_y"]
     out["_hub"] = {"x": hx, "z": hz, "pad_y": pad_y, "yaw": yaw,
-                   "already_standing": standing}
+                   "already_standing": standing,
+                   "zones": [list(z) for z in zones],
+                   "ground_probe": ("MEASURED per piece from the patchscan "
+                                    "field at 1 m, bilinear at its own XZ. "
+                                    "There is no hall and no terrain write "
+                                    "here: the ring stands on generated "
+                                    "ground."),
+                   "no_flatten_reason": (
+                       "zone (-5,4) holds Crossings' S2 bridge declared "
+                       "flatten=FORBIDDEN, and objects_remove id=* at this "
+                       "radius would delete 45 of its pieces")}
     HUB_SPOTS.parent.mkdir(parents=True, exist_ok=True)
     HUB_SPOTS.write_text(json.dumps(out, indent=1))
     return out
@@ -838,7 +1063,7 @@ def sign_records(pieces, site: str, tag: str) -> list[dict]:
                   "site_id": site}
         if p.text is not None:
             import sys as _sys
-            from jumpstart.network import waypoints as W
+            W = _waypoints()
             params["data_b64"] = W.sign_data(p.text)
             params["zdo_strings"] = {"text": p.text}
         out.append({
@@ -987,42 +1212,82 @@ def apply_unit(b, plan: dict, doc: dict, unit: dict, site: str, role: str,
               "pad_location_check",
               {"hits": len(hits), "report": report[:1200]},
               role="site_pad", site_id=unit["id"])
-    if hits:
+    # THE MARKER SWEEP IS A PROXIMITY MEASUREMENT, NOT THE HAZARD. For a
+    # marker the mod-free dump cannot identify it can only assume a worst
+    # case, and MEASURED on this very pad that worst case (58 m = 32 radius +
+    # 11 INFERRED overshoot + 15 taste margin) refused Stenvik's hall on a
+    # marker 23.9 m away whose pieces are nowhere near the pad. So when the
+    # sweep reports hits, the question is escalated rather than answered by a
+    # radius: ask the world WHAT IS IN THE CYLINDER that is about to be
+    # emptied. Only a non-natural prefab inside it is a stop.
+    contents = cylinder_contents(b.srv, ar)
+    b.observe(f"contents of the clearing cylinder for {unit['id']}",
+              contents["method"], contents["tool"],
+              {"total": contents["total"], "clearable": contents["clearable"],
+               "not_clearable": contents["not_clearable"],
+               "probe": contents["probe"],
+               "live_markers_within_standoff": len(hits)},
+              role="clearing", site_id=unit["id"])
+    if contents["verdict"] != "clear":
         raise SystemExit(
-            f"REFUSED {unit['id']}: {len(hits)} live location marker(s) inside "
-            f"the pad's stand-off that the mod-free dump could not see:\n"
-            f"{report}")
+            f"REFUSED {unit['id']}: the clearing cylinder holds "
+            f"{contents['not_clearable']}, which are not in the measured "
+            f"natural set. `objects_remove` would delete them and a deleted "
+            f"location piece is the one damage class this project has "
+            f"recorded as unrepairable.\nlive marker sweep:\n{report}")
+    out["cylinder"] = {k: contents[k] for k in
+                       ("total", "clearable", "not_clearable", "verdict")}
+    out["live_markers_within_standoff"] = len(hits)
 
-    # Main's condition 3 on the loosened rule: the ROOM travels with the
-    # verdict, as a number, on the irreversible op itself. A bare `clear` is
-    # what this build had before tonight, and it is what let a 2 m margin
-    # re-litigate a siting decision while the physical room went unmeasured.
-    res = b.emit(clear["op"], params=clear["params"], wire=clear["wire"],
-                 requires={"mods": ["UpgradeWorld"], "prefabs": [],
-                           "blobs": []},
-                 expect=clear["expect"],
-                 meta={"settlement": site, "unit": unit["id"],
-                       "clear_radius_m": round(ar.radius_m, 2),
-                       "piece_reach_gate": room,
-                       "room_m": round(room["max_radius_m"] - ar.radius_m, 2),
-                       "live_marker_sweep": {"hits": len(hits),
-                                             "probe": "findObjects -prefab "
-                                                      "LocationProxy, bounded",
-                                             "report": report[:800]},
-                       "policy": ("REFUSE, never clip: a town pad needs its "
-                                  "WHOLE footprint clear or the building "
-                                  "stands in trees. Crossings clips because a "
-                                  "smaller clear still admits an already-sized "
-                                  "deck. Two operations, two policies, one "
-                                  "reason each."),
-                       "safe_by": ("a gate, not the layout: these radii were "
-                                   "already safe, but nothing in this "
-                                   "pipeline asked the question until "
-                                   "Crossings published the mechanism -- the "
-                                   "check that shipped answered a question "
-                                   "2 m narrower than the op it guarded")})
-    out["seqs"]["objects_clear"] = res["seq"]
-
+    # NOTHING TO REMOVE IS A REAL ANSWER, and it has to be handled rather
+    # than sent: `objects_remove id=` with an empty id list is the malformed
+    # command that answers "Error: Missing ids." and removes nothing
+    # silently. An empty cylinder happens on a resume -- the pad was cleared
+    # on a previous attempt -- and on a pad that generated bare.
+    if not contents["clearable"]:
+        b.observe(f"clearing skipped for {unit['id']}",
+                  "MEASURED: the cylinder holds no clearable object, so there "
+                  "is nothing for `objects_remove` to do. Sending it with an "
+                  "empty id list would answer `Error: Missing ids.` and "
+                  "remove nothing, which is a silent no-op dressed as a step.",
+                  "tools/jumpstart/settlements/build.py::cylinder_contents",
+                  {"total": contents["total"], "probe": contents["probe"]},
+                  role="clearing", site_id=unit["id"])
+        out["seqs"]["objects_clear"] = None
+    else:
+        clear = scoped_clear(ar, unit["id"], contents)
+        res = b.emit(clear["op"], params=clear["params"], wire=clear["wire"],
+                     requires={"mods": ["UpgradeWorld"], "prefabs": [],
+                               "blobs": []},
+                     expect=clear["expect"],
+                     meta={"settlement": site, "unit": unit["id"],
+                           "clear_radius_m": round(ar.radius_m, 2),
+                           "piece_reach_gate": room,
+                           "room_m": round(room["max_radius_m"]
+                                           - ar.radius_m, 2),
+                           "cylinder": {k: contents[k] for k in
+                                        ("total", "clearable",
+                                         "not_clearable")},
+                           "live_marker_sweep": {
+                               "hits": len(hits),
+                               "probe": "findObjects -prefab LocationProxy, "
+                                        "bounded",
+                               "report": report[:800]},
+                           "policy": ("REFUSE, never clip: a town pad needs "
+                                      "its WHOLE footprint clear or the "
+                                      "building stands in trees. Crossings "
+                                      "clips because a smaller clear still "
+                                      "admits an already-sized deck. Two "
+                                      "operations, two policies, one reason "
+                                      "each."),
+                           "ids_scoped_why": (
+                               "id=* would also delete anything that arrives "
+                               "between the measurement and the removal, and "
+                               "it is the command that deleted POI content in "
+                               "the pre-wipe world. Naming the measured "
+                               "prefabs makes the safety a property of the "
+                               "command.")})
+        out["seqs"]["objects_clear"] = res["seq"]
     stats, comps, op_y, patches = flatten_pad(place, unit["id"])
     missing = FL.ungenerated_zones(b.srv.rc, sorted(comps))
     if missing:
@@ -1033,8 +1298,32 @@ def apply_unit(b, plan: dict, doc: dict, unit: dict, site: str, role: str,
             f"MEASURED to 7.68 m of floating grass. Step 0 did not cover the "
             f"flatten's zone set.")
     probes = {z: zone_probe(b.srv, *z) for z in sorted(comps)}
+    # MERGE BEFORE WRITING, because a zone holds one compiler and 18 Stenvik
+    # pads share 8 zones. The second pad in a zone would otherwise erase the
+    # first one's levelling -- and the ledger's clobber guard refuses exactly
+    # that, which is how this was caught rather than discovered by the
+    # operator standing on a re-ungraded pad.
+    merged = union_prior(b, comps, op_y)
+    if merged:
+        out["merged"] = {f"{z[0]},{z[1]}": {
+            "merged_from": m["merged_from"],
+            "merged_from_lines": m["merged_from_lines"],
+            "samples_inherited": m["samples_inherited"],
+            "compiler_present": zone_compiler(b.srv, *z)} for z, m in
+            merged.items()}
+        b.observe(f"compiler union for {unit['id']}",
+                  "MEASURED: earlier per-zone TCData blobs re-read from the "
+                  "ledger's blob store and unioned per SAMPLE INDEX, ours "
+                  "winning only where we wrote. `compiler_present` is a live "
+                  "`objects_count _TerrainCompiler` at the zone centre, "
+                  "because a record is appended BEFORE it is sent and an "
+                  "append whose send failed leaves a claim with no compiler "
+                  "behind it -- which is the case for this build's own first "
+                  "attempt at stenvik-hall-1.",
+                  "tools/jumpstart/settlements/build.py::union_prior",
+                  out["merged"], role="site_pad", site_id=unit["id"])
     entries, wire, blobs = terrain_entries(b, unit, comps, op_y, patches,
-                                           probes)
+                                           probes, merged)
     write_gate = delta_gate(loc, comps, pad_lattice(unit))
     write_verdict = sample_verdict(loc, unit, comps, write_gate)
     if write_verdict["verdict"] != "clear":
@@ -1080,7 +1369,7 @@ def apply_unit(b, plan: dict, doc: dict, unit: dict, site: str, role: str,
 def apply_portals(b, plan: dict, doc: dict, site: str, units: list[dict],
                   loc: clearance.Locations) -> dict:
     """BOTH ends of this site's tag, plus the board that names it."""
-    from jumpstart.network import waypoints as W
+    W = _waypoints()
     tag = site_tag(plan, site)
     spot = site_portal_spot(plan, site, units)
     spots = hub_spots(b.srv, [site_tag(plan, s) for s in
@@ -1089,6 +1378,33 @@ def apply_portals(b, plan: dict, doc: dict, site: str, units: list[dict],
     hub = spots["_hub"]
     out: dict = {"tag": tag, "site_end": spot, "hub_end": spots[tag],
                  "seqs": {}}
+
+    # STEP 0 APPLIES TO THE RING TOO. An ungenerated zone plants its whole
+    # vegetation set the first time anybody walks there, against the collider
+    # at that instant -- so a ring placed first would get a Beech1 growing
+    # between two arches, in the one place where legibility is the whole
+    # point. Generation is neither a write nor a deletion, so it is the one
+    # step of the ordering that is safe beside Crossings' FORBIDDEN bridge.
+    # Idempotent: SpawnZone skips a zone that IsZoneGenerated.
+    ring_zones = [tuple(z) for z in hub["zones"]]
+    res = b.emit("zones_generate", params={
+        "pos": [hub["x"], hub["z"]],
+        "max_m": round(math.hypot(*(32.0, 32.0)) + 34.1, 2),
+        "zones": [list(z) for z in ring_zones],
+        "role": "spawn_portal", "site_id": "portal-ring",
+        "flatten": "FORBIDDEN",
+        "flatten_reason": (
+            "the ring shares zone (-5,4) with Crossings' S2 bridge, which is "
+            "itself flatten=FORBIDDEN over water; and the ring is placed on "
+            "generated ground with each piece's own measured height rather "
+            "than on a levelled pad")},
+        wire=[f"zones_generate pos={hub['x']:.1f},{hub['z']:.1f} "
+              f"max={math.hypot(32.0, 32.0) + 34.1:.1f}"],
+        requires={"mods": ["UpgradeWorld"], "prefabs": [], "blobs": []},
+        expect={"zone_ctrl": len(ring_zones)},
+        meta={"why": "the portal ring's own zones, generated before any arch "
+                     "is placed", "ring": True})
+    out["seqs"]["ring_zones_generate"] = res["seq"]
 
     rec = portal_record(tag, spot["x"], spot["y"], spot["z"], spot["yaw"],
                         site, "site", "portal hall (sandbox-portal-hub)", spot)
@@ -1408,10 +1724,27 @@ def main() -> int:
                                            loc), indent=1, default=str))
             print(json.dumps(b.close(), indent=1, default=str))
             return 0
+        refused = []
         for u in units:
-            res = apply_unit(b, plan, doc, u, a.site, role, all_units, loc)
+            # A REFUSAL IS A RESULT, NOT A CRASH. One pad that cannot be
+            # cleared safely must not cost the operator the other seventeen
+            # buildings, and the refusal is already in the ledger as an
+            # `observe` with its measurement before the raise -- so it is
+            # recorded, reported at the end, and the town continues.
+            try:
+                res = apply_unit(b, plan, doc, u, a.site, role, all_units,
+                                 loc)
+            except SystemExit as exc:
+                refused.append({"unit": u["id"], "reason": str(exc)})
+                b.note(f"REFUSED {u['id']}: {exc}", role="site_pad",
+                       site_id=u["id"])
+                print(f"REFUSED {u['id']} -- recorded, continuing\n{exc}",
+                      flush=True)
+                continue
             built.append(res)
             print(json.dumps(res, indent=1, default=str), flush=True)
+        if refused:
+            print(json.dumps({"refused": refused}, indent=1), flush=True)
         if not a.no_portals and not a.limit and not a.start:
             built.append(apply_portals(b, plan, doc, a.site, all_units, loc))
             print(json.dumps(built[-1], indent=1, default=str), flush=True)

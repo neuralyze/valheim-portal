@@ -102,6 +102,26 @@ STAGED_VERBS = {"zones_generate", "objects_remove", "objects_reset",
 GUARD_EPS_M = 0.5
 
 
+def blob_reader(store):
+    """A `read(sha) -> bytes` callable from either legitimate carrier.
+
+    Two callers share this module's executors and they hold DIFFERENT blob
+    objects: the replay driver holds a `BlobStore` (`.read`) because it is
+    decoupled from the writer, and `live.py`'s `LiveBuilder` holds a
+    `writer.Ledger` (`.read_blob`) because it is also appending.  MEASURED by
+    SettleBuild mid-build: decoupling the replay side without widening this
+    raised `AttributeError: 'Ledger' object has no attribute 'read'` on EVERY
+    live `terrain_write`, for every agent.  Both carriers are legitimate, so
+    the function takes either rather than the callers converging on one.
+    """
+    read = getattr(store, "read", None) or getattr(store, "read_blob", None)
+    if read is None:
+        raise LedgerError(
+            f"{type(store).__name__} carries neither `read` nor `read_blob`; "
+            f"a blob source is required to materialise a terrain write")
+    return read
+
+
 def chain_report(path: Path) -> dict:
     """Walk the ledger in FILE ORDER and report its integrity as DATA.
 
@@ -125,12 +145,21 @@ def chain_report(path: Path) -> dict:
             if raw:
                 records.append(json.loads(raw))
 
+    # A fork is documented by a record that NAMES IT CHECKABLY.  Either
+    # carrier is accepted -- a first-class `chain_reset` op, or any op whose
+    # params carry the three fields -- so the writer side can register a new
+    # op or not, as it prefers.  What is NOT accepted is a marker that merely
+    # mentions a fork: "a note whose text contains the word fork" documents
+    # nothing, cannot be checked against the file, and is precisely the
+    # laundering mechanism a confession has to rule out.  The digests are
+    # verified against what the file actually holds at that offset below.
     documented: dict[int, dict] = {}
     for rec in records:
-        if rec.get("op") == "chain_reset":
-            p = rec.get("params", {})
-            if "broken_at_line" in p:
-                documented[int(p["broken_at_line"])] = p
+        p = rec.get("params") or {}
+        if not isinstance(p, dict):
+            continue
+        if {"broken_at_line", "expected_prev", "actual_prev"} <= set(p):
+            documented[int(p["broken_at_line"])] = p
 
     head = schema.GENESIS_PREV
     forks: list[dict] = []
@@ -339,6 +368,43 @@ class Server:
             return []
         from console import run_console  # noqa: PLC0415
         return run_console(self.rc, cmd, settle=settle)
+
+    def console_echo(self, cmd: str) -> str:
+        """Send a console command and CONFIRM IT FROM THE SOCKET REPLY.
+
+        This is the transport for anything whose OUTPUT we do not need --
+        `spawn_object` above all -- and it is what `terraform/place.py` has
+        used all along.
+
+        WHY NOT `run_console`: that greps the CONTAINER LOG for the command's
+        own echo, and MEASURED by SettleBuild, container log lines are
+        TRUNCATED at ~150 characters -- a `Command completed: consoleCommand`
+        line was cut mid-word at 153.  A batch is up to 3,600 characters of
+        joined commands, so its echo CANNOT appear intact, `slice_for` raises
+        `OutputNotFound`, and the run aborts AFTER the pieces have landed.  A
+        successful placement then reads as a failure and a half-built
+        building is left standing.  At one command per trip the same path
+        costs 612 round trips for one house and 19,203 for the world.
+
+        The reply comes over the socket, is not subject to the log cap, and
+        is compared BYTE-FOR-BYTE -- which is strictly stronger than a log
+        grep, because a mismatch also detects a desynchronised stream rather
+        than merely a missing line.
+        """
+        self.sent.append(cmd)
+        if self.dry:
+            return "(dry run)"
+        from rcon import BRIDGE  # noqa: PLC0415
+        want = f"Command '{cmd}' executed."
+        reply = self.rc.command(BRIDGE + cmd).strip()
+        if reply != want:
+            raise LedgerError(
+                f"console command NOT CONFIRMED. Sent {len(cmd)}B; reply "
+                f"{len(reply)}B: {reply[:300]!r}\n"
+                f"The command may or may not have run, so nothing is assumed "
+                f"about the world here -- the op's postcondition is what "
+                f"decides, and this stops before it is measured.")
+        return reply
 
     def count(self, ident: str, x: float, z: float, radius: float,
               ignore: str = "_*") -> tuple[int, dict[str, int]]:
@@ -575,11 +641,16 @@ def send_wire(srv: Server, wire: list[str]) -> list:
             # spawn_object" -- ValheimRcon's own spawn verb is `spawn` and
             # takes no data payload.  Getting this wrong produces a run that
             # sends every line, reports a reply for each, and builds nothing.
-            replies.append(srv.console(cmd))
+            #
+            # Confirmed from the SOCKET REPLY, not from the container log:
+            # log lines are truncated at ~150 characters, so a batched wire
+            # can never verify through the log and a landed placement reads
+            # as a failure.  `console_echo` carries that measurement.
+            replies.append(srv.console_echo(cmd))
     return replies
 
 
-def apply_record(srv: Server, blobs: "BlobStore", rec: dict) -> dict:
+def apply_record(srv: Server, blobs, rec: dict) -> dict:
     """Send one op's recorded wire, then measure its postcondition."""
     op = rec["op"]
     spec = schema.OPS[op]
@@ -592,8 +663,9 @@ def apply_record(srv: Server, blobs: "BlobStore", rec: dict) -> dict:
 
     # Blobs the op needs must exist and must digest correctly BEFORE anything
     # is sent: a half-applied terrain write is worse than an unstarted one.
+    read = blob_reader(blobs)
     for sha in rec.get("requires", {}).get("blobs", []):
-        blobs.read(sha)
+        read(sha)
 
     if spec.idempotent == "guard":
         present, probe = already_present(srv, rec)
@@ -627,7 +699,7 @@ def _staged(srv: Server, wire: list[str]) -> dict:
             for k, v in out.items()}
 
 
-def _materialise_data_entries(blobs: "BlobStore", rec: dict) -> None:
+def _materialise_data_entries(blobs, rec: dict) -> None:
     """Write the World Edit Commands data entries a terrain_write's
     `spawn_object ... data=<entry>` refers to.
 
@@ -643,8 +715,9 @@ def _materialise_data_entries(blobs: "BlobStore", rec: dict) -> None:
         "WEC_DATA_DIR",
         "/media/big4/projects/game/valheim/Ulfsland/config_merged/bepinex/data"))
     doc = []
+    read = blob_reader(blobs)
     for e in rec["params"]["entries"]:
-        blob = blobs.read(e["blob_sha256"])
+        blob = read(e["blob_sha256"])
         doc.append({"name": e["data_entry"],
                     "bytes": ["TCData, " + base64.b64encode(blob).decode()]})
     data_dir.mkdir(parents=True, exist_ok=True)

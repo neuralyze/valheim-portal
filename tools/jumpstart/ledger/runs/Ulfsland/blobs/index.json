@@ -4,6 +4,11 @@
   "first_seen_seq": 32,
   "note": "boathouse-temple-strait spawn_object plan, 95 commands"
  },
+ "068f3358ed61d1d37b961c0ec32fef1e71118f3dc114fca93822ff735724bd0d": {
+  "bytes": 4898,
+  "first_seen_seq": 158,
+  "note": "TCData stenvik_manor_1_z8_14 zone 8,14"
+ },
  "1334151807f4027cf902a42f1c84cd0e6ca9bbc292d7edf988088660c5a7c558": {
   "bytes": 17410,
   "first_seen_seq": 38,
@@ -18,6 +23,11 @@
   "bytes": 48770,
   "first_seen_seq": 37,
   "note": "spawn plan stenvik-hall-1"
+ },
+ "14fc144d2ca724dbae191b18d8e0a20089d96f7f0506ed89532224cebfa39518": {
+  "bytes": 124,
+  "first_seen_seq": 181,
+  "note": "TCData T12-wtspawn-temple zone [2, -2]"
  },
  "1531d441ecfb78b71d284dfdac44a2d50ab5b3547da7ec554800d052ef41e335": {
   "bytes": 737,
@@ -44,10 +54,20 @@
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-cottage-1"
  },
+ "1d77465d2d248c81c2fcc1481121b726e9b2352aed15a1627d522b793ffc1630": {
+  "bytes": 1228,
+  "first_seen_seq": 136,
+  "note": "TCData stenvik_cottage_3_z9_15 zone 9,15"
+ },
  "26d5b6baebea96cfa01e2cbc50d929a0c0a991bbf30b0881ec7edfa2c12d4528": {
   "bytes": 5965,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-stonehouse-1"
+ },
+ "27f66cb7ade4f803e3269ccc86483df2adf68c097af7f7fe153073b99369a5d6": {
+  "bytes": 3554,
+  "first_seen_seq": 111,
+  "note": "TCData stenvik_house_1_z8_14 zone 8,14"
  },
  "2cdf2a235ef18c5b50aa6c75e886d4dda3c8055cc545bf7872588b83501ccaf3": {
   "bytes": 533,
@@ -69,15 +89,30 @@
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-manor-1"
  },
+ "3539db8c5b46522485c636bd568620c0b24dc88487761bbec9418367e7a0d63a": {
+  "bytes": 2912,
+  "first_seen_seq": 181,
+  "note": "TCData T12-wtspawn-temple zone [1, -1]"
+ },
  "36f23ecb196af19e4608f8f1cca2ba100b02bbb3351c595f2ea73975df7a87c3": {
   "bytes": 9925,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-beehive-1"
  },
+ "3fed1a5964de2d96ede3e995893a876b75bc8aebbe8b9678930512480de34df5": {
+  "bytes": 664,
+  "first_seen_seq": 181,
+  "note": "TCData T12-wtspawn-temple zone [2, -1]"
+ },
  "4373975acecf9041589018664acdd8f470f26d5202a891d6118ff83f0dec57e9": {
   "bytes": 2151,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-hut-2"
+ },
+ "488a708d70b56ef028419193967585a73ca2225e5d5b2639264f3d1ac7ba0946": {
+  "bytes": 4397,
+  "first_seen_seq": 181,
+  "note": "TCData T12-wtspawn-temple zone [0, 0]"
  },
  "4be3329aa7c4c784084b24669dedc749556900171ffb21969c2e6ffb98f33765": {
   "bytes": 715,
@@ -88,6 +123,11 @@
   "bytes": 440,
   "first_seen_seq": 37,
   "note": "TCData stenvik_hall_1_z7_15 zone 7,15"
+ },
+ "552cab38d8e8bf1de1ab17c76ca2e9642e1e0b92cdb41112db78ac807fdf6b26": {
+  "bytes": 610,
+  "first_seen_seq": 181,
+  "note": "TCData T12-wtspawn-temple zone [-1, 0]"
  },
  "57f47e37e894dc34108cfccd4f9c682f814f35036367a5c7a743bb1a41a45250": {
   "bytes": 1224,
@@ -114,10 +154,20 @@
   "first_seen_seq": 38,
   "note": "TCData stenvik_stonehouse_2_z7_14 zone 7,14"
  },
+ "5d4b9e53dccd1e9f6dc1e9e94126584048e87677f86eb2556e6e7307821f4c25": {
+  "bytes": 752,
+  "first_seen_seq": 181,
+  "note": "TCData T12-wtspawn-temple zone [1, 0]"
+ },
  "5e1cb805a1ef70ad4e41d8e92c3b3ddf85743eca41f2b46ed6a3b392ea86c2ee": {
   "bytes": 17851,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-workshop-1"
+ },
+ "632e275d1d5eab3cb51f32cf1123df4e7e4dbef9c7565a708f21ff03b33f3040": {
+  "bytes": 4242,
+  "first_seen_seq": 143,
+  "note": "TCData stenvik_cottage_4_z8_14 zone 8,14"
  },
  "6afb7cf6a95d25c0b6244504cece85913ef0c34ce6f4765d2b63302a439aaa82": {
   "bytes": 2111,
@@ -128,6 +178,21 @@
   "bytes": 3660,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-cottage-2"
+ },
+ "7a818957c8a6fa76b503dbb3e0ba91f0272c5d99a0f98c29ec7fff872b2367f0": {
+  "bytes": 1107,
+  "first_seen_seq": 181,
+  "note": "TCData T12-wtspawn-temple zone [-1, -1]"
+ },
+ "7f09f61d7698b65337b29429741a02bddd754612bd95f17819527e16492fd35c": {
+  "bytes": 517,
+  "first_seen_seq": 179,
+  "note": "TCData S1-portalhub-brgs2 zone [-5, 4]"
+ },
+ "866926ffbe1e19c3ca64bda6b3f41018c501d14a74a4a380f80928692e7d6f20": {
+  "bytes": 170,
+  "first_seen_seq": 181,
+  "note": "TCData T12-wtspawn-temple zone [0, -1]"
  },
  "8c011456174b9f5c34ade0b476ad5c50ac62ebc0d1849309849ee56c2047a1dc": {
   "bytes": 466,
@@ -169,6 +234,11 @@
   "first_seen_seq": 26,
   "note": "harbour-temple-south spawn_object plan, 69 commands"
  },
+ "9d1fdbfe5015e408380e99cefa87327210e4b13ef024c4bd54a8c869af6f71c5": {
+  "bytes": 1633,
+  "first_seen_seq": 136,
+  "note": "TCData stenvik_cottage_3_z9_14 zone 9,14"
+ },
  "a147c7647aafaa7792d94199c1f1c13c3d729f8e237fd7c16d66b6c7df6c0f34": {
   "bytes": 167,
   "first_seen_seq": 38,
@@ -204,6 +274,11 @@
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-cottage-3"
  },
+ "be83a5375332f13a988a4a5305d2ef71c9d1e50e7c2fbd834ee14a54535efd20": {
+  "bytes": 665,
+  "first_seen_seq": 136,
+  "note": "TCData stenvik_cottage_3_z8_15 zone 8,15"
+ },
  "bfad6dfc4de5e9abdeb156eae07c2b742e8491823f96af6176e26b2fbc4ed63a": {
   "bytes": 834,
   "first_seen_seq": 38,
@@ -213,6 +288,11 @@
   "bytes": 17485,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-house-1"
+ },
+ "c6d3bfc721217d9e06c2b0639c6dc68b784a655ddaa7975a4f4a0a511b0058bf": {
+  "bytes": 906,
+  "first_seen_seq": 179,
+  "note": "TCData S1-portalhub-brgs2 zone [-5, 3]"
  },
  "cd57946754c3ab56369cf2074ca8e8a33ba2937d15ebe0a9325da41a0449c199": {
   "bytes": 580,
@@ -229,10 +309,25 @@
   "first_seen_seq": 38,
   "note": "TCData stenvik_cottage_3_z9_14 zone 9,14"
  },
+ "d40b8159a7e46ec33aa090623caefbb0b7707c3978282a4e60273d3c3cbed641": {
+  "bytes": 2794,
+  "first_seen_seq": 104,
+  "note": "TCData stenvik_longhouse_2_z8_14 zone 8,14"
+ },
+ "db30d0f3b7de20d41d4666de19e20aeaf71a9c5ef992403be4fd7946821b1728": {
+  "bytes": 3608,
+  "first_seen_seq": 136,
+  "note": "TCData stenvik_cottage_3_z8_14 zone 8,14"
+ },
  "e7022d0e6c618c987203728516d15fe5736d48036fa17bd9d6975d831c881f9f": {
   "bytes": 17485,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-house-2"
+ },
+ "edd4192241f48af40e68992c9dd2fc5d53beffe44ac0c7cc7ca333e173089706": {
+  "bytes": 1861,
+  "first_seen_seq": 111,
+  "note": "TCData stenvik_house_1_z7_14 zone 7,14"
  },
  "f0054cfdb90570e52c3dcebbb57c6e083553acfc1540924d5531badc42239c43": {
   "bytes": 15959,
