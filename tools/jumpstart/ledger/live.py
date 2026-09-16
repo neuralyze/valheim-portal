@@ -72,6 +72,17 @@ class LiveBuilder:
 
     def __init__(self, *, actor: str, world: str = "Ulfsland",
                  root: Path | None = None, dry: bool = False):
+        # THE ACTOR IS THE CALLER'S, ALWAYS, AND IT IS KEYWORD-ONLY SO IT
+        # CANNOT BE DEFAULTED BY ACCIDENT.  A module-level `ACTOR` constant is
+        # a default in disguise: `clear.py`'s said `RoadClear` while `RoadEmit`
+        # was running it, and the ledger then recorded work under the name of
+        # an agent that had yielded an hour earlier.  Provenance that is wrong
+        # is worse than provenance that is missing, because it reads as
+        # evidence.
+        if not actor or not isinstance(actor, str):
+            raise LedgerError("LiveBuilder needs the actor that is actually "
+                              "running: the log is the only place a defect's "
+                              "provenance can be found")
         self.actor = actor
         self.world = world
         self.dry = dry
@@ -110,6 +121,30 @@ class LiveBuilder:
     def emit(self, op: str, *, params: dict, wire: list[str] | None = None,
              requires: dict | None = None, expect: dict | None = None,
              meta: dict | None = None) -> dict:
+        # A DRY RUN DOES NOT APPEND, AND THE FACT THAT IT USED TO IS A DEFECT
+        # THAT BIT TWICE IN ONE SESSION.  `dry=True` exists so an agent can
+        # test a gate, a wire string or a schema shape WITHOUT touching the
+        # shared artefact -- which is exactly the moment a stray record is
+        # most expensive, because the thing being tested is by definition not
+        # yet trusted.  MEASURED tonight: `clear.py emit --dry`, run only to
+        # find out whether the POI gate would refuse, left `observe` seq 933
+        # in the chain under `RoadClear`'s name for work `RoadEmit` was doing,
+        # so the log now attributes an action to an agent that had already
+        # yielded.  The record is annotated by a later append rather than
+        # edited, and this is the fix for the cause.
+        #
+        # The record is still BUILT and VALIDATED, because that is the useful
+        # half of a dry run: `schema.validate` is where a missing `expect`, a
+        # clobbered zone or an unmodelled param is caught.  It is simply not
+        # written, not sent and not verified.
+        if self.dry:
+            rec = self.led.build(op, params=params, wire=wire,
+                                 requires=requires, expect=expect, meta=meta)
+            bad = schema.validate(rec)
+            return {"seq": None, "op": op, "role": params.get("role"),
+                    "status": "dry-run: validated, NOT appended, NOT sent",
+                    "schema_problems": bad,
+                    "wire": rec.get("wire") or []}
         rec = self.led.append(op, params=params, wire=wire, requires=requires,
                               expect=expect, meta=meta)
         spec = schema.OPS[op]

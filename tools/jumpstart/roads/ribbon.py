@@ -67,6 +67,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(JUMPSTART / "terraform"))
 sys.path.insert(0, str(JUMPSTART))
 
+import applied as appliedmod  # noqa: E402
 import poi as poimod  # noqa: E402
 import route as routemod  # noqa: E402
 import spec as specmod  # noqa: E402
@@ -75,9 +76,12 @@ import tcdata  # noqa: E402
 SEED = "Pirate68"
 SCRATCH = Path("/tmp/roads/zonepatch")
 # WHO THE LEDGER SAYS BUILT THE ROAD.  `RoadNet` routed and pre-flighted the
-# network; `RoadBuild` writes it.  The log has to say who did what or the
-# provenance of a defect is a guess.
-ACTOR = "RoadBuild"
+# network, `RoadBuild` wrote the first pass, and `RoadEmit` writes the REPAIR:
+# the graded batter, the inclusive edge and the pad approaches.  The log has to
+# say who did what or the provenance of a defect is a guess -- and a repair
+# appended under the name of the actor whose defect it repairs is the one
+# record nobody can read.
+ACTOR = "RoadEmit"
 # Shoulder: one metre of dirt each side of the paved carriageway.  It is not
 # decoration -- it is the visual edge that tells the operator where the road is
 # from a distance, and it gives the paved band a margin so a half-metre
@@ -86,21 +90,93 @@ SHOULDER_M = 1.0
 PAINT_ROAD = "paved_cleared"
 PAINT_SHOULDER = "dirt_cleared"
 
+# --- the batter: the side slope that joins the earthwork to natural ground --
+#
+# THE DEFECT THIS EXISTS FOR, MEASURED.  Until this existed the ribbon wrote
+# every sample out to `edge = width/2 + shoulder` and NOTHING at edge + 1, so
+# the height delta fell from the full local cut or fill to 0.0 across ONE 1 m
+# lattice edge.  The carriageway itself was never the problem: on samples the
+# road alone wrote, the applied surface matches the fitted profile exactly and
+# its 1 m step is 0.047-0.120 m median, 0.118-0.182 m worst, i.e. the 8 %
+# trunk / 12 % spur design grade expressed on a 1 m lattice.  The BLOCKINESS
+# the operator reported was transverse: measured over the 15 standing
+# segments, the step one metre outside the shoulder runs 0.39-1.46 m median,
+# up to 8.06 m, on 42-89 % of each segment's length.  T12 at s = 302 m read
+# 68.41 m across the whole 8 m bench and 65.27 m one metre later.  A level
+# bench with a vertical face on each side IS a rectangular prism, and on a
+# side slope that is exactly "blocky rather than sloped".
+#
+# THE BATTER IS A SURFACE AT GRADE, NOT A DELTA RAMPED TO ZERO, and the
+# difference is the whole reason the transverse verdict could not be read.
+# The first form interpolated the HEIGHT CHANGE linearly to zero over
+# `run = |full| / grade`.  On level ground that yields a 38 deg face, and on a
+# side slope -- the only place a batter is needed -- it does not: the applied
+# surface is `generated + delta`, so its transverse slope is the taper's grade
+# PLUS the hillside's own.  MEASURED on T12 after the first batter: the step
+# one metre outside the shoulder read p50 0.83 m against a 0.781 limit, and
+# that 0.049 m is not noise and not the design grade -- it is the hill.  A
+# `step <= BATTER_GRADE` check therefore FAILS on output that looks right,
+# which is this project's signature defect wearing a new hat.
+#
+# So the batter is constructed as what it is on the ground: a PLANE through
+# the carriageway edge, falling (fill) or rising (cut) at exactly the grade,
+# written as `delta = target - generated` and TERMINATED WHERE IT MEETS
+# NATURAL GROUND, i.e. at the sign flip of that delta.  Three properties
+# follow by construction rather than by measurement:
+#   * the transverse step of the applied surface IS the grade, so the verdict
+#     can be read against the grade;
+#   * the taper ENDS AT GROUND -- there is nothing left to step off;
+#   * the reach is bought only where the geometry needs it, and on a hillside
+#     steeper than the batter the two surfaces never meet, which is a
+#     MEASURABLE refusal (`steeper_than_batter`) rather than a silent wall.
+#
+# The slope is taken at the 38 deg SLIDE limit rather than something steeper
+# so the batter is WALKABLE: the operator who steps off the carriageway on a
+# hillside should walk down, not slide.  That costs reach -- the full +/-8 m
+# clamp needs 8 / 0.781 = 10.24 m of run -- and reach is what the cap below
+# bounds.
+BATTER_GRADE = math.tan(math.radians(38.0))
+BATTER_MAX_M = 10.5
+# A batter sample is EARTHWORK, not road: it keeps the biome's own ground
+# texture so the visible road stays 8 m wide.  Writing paint here would read
+# as a 29 m wide dirt highway.
+PAINT_BATTER = None
+# THE CARRIAGEWAY EDGE IS INCLUSIVE, AND ONE FLOAT ULP DECIDED IT WAS NOT.
+# MEASURED by RoadClear on T12 at s = 116 m: lat -3 reads 67.00, lat -4 reads
+# 65.24, lat -5 reads 68.13 -- a ONE METRE WIDE TRENCH 1.76 m deep at the
+# road edge, deeper than the wall beside it.  The sample sits at exactly
+# lat = 4.0 = half + shoulder, and `lat` is a `hypot` of two floats, so it
+# comes back as 4.000000000000001 and a `lat <= edge` test drops it out of the
+# carriageway.  Under the batter that notch would be a HIDDEN HOLE beneath a
+# graded slope, so the tolerance is stated once, here, and used at both band
+# boundaries.  1e-6 m is twelve orders of magnitude above the ULP and eleven
+# below anything the operator can stand in.
+EDGE_EPS_M = 1e-6
+
 
 # ---------------------------------------------------------------------------
 # geometry
 # ---------------------------------------------------------------------------
 
 def segment_zones(nodes: list, is_bridge: list, width_m: float,
-                  shoulder_m: float = SHOULDER_M) -> list[tuple[int, int]]:
+                  shoulder_m: float = SHOULDER_M,
+                  batter_m: float = BATTER_MAX_M) -> list[tuple[int, int]]:
     """Zones whose lattice the ribbon's terrain part touches.
 
     Densified to 1 m between stations: at a 2 m station spacing a ribbon that
     merely clips a zone corner between two stations would otherwise be missed,
     and a missed zone is a GAP IN THE ROAD -- the one defect the operator is
     guaranteed to walk into.
+
+    THE BATTER IS PART OF THE REACH, and leaving it out is not a cosmetic
+    error.  `stamp` can only write a sample whose zone it was handed a patch
+    for, so a batter sample in an unrequested zone is dropped SILENTLY -- and a
+    dropped batter sample is the very wall the batter exists to remove.
+    MEASURED on T4 before this existed: zones (8,14), (9,14) and (8,15) were in
+    the patch request and produced no compiler at all, and 333 of 1,443
+    centreline metres came back unwritten.
     """
-    half = width_m / 2.0 + shoulder_m
+    half = width_m / 2.0 + shoulder_m + batter_m
     zones: set[tuple[int, int]] = set()
     prev = None
     for (x, z), br in zip(nodes, is_bridge):
@@ -173,6 +249,99 @@ def lateral_and_y(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
     return best
 
 
+def lateral_and_y_grid(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
+                       X: np.ndarray, Z: np.ndarray, reach_m: float
+                       ) -> tuple[np.ndarray, np.ndarray, np.ndarray,
+                                  np.ndarray, np.ndarray]:
+    """`lateral_and_y` for a whole lattice at once, and it is the SAME
+    arithmetic -- clamped projection onto every terrain segment, nearest wins,
+    profile interpolated at the clamped parameter.
+
+    This exists because the batter made the scalar form unaffordable, not
+    because vectorising is nice.  The scalar path is O(stations) per sample:
+    T4 is 729 stations over a lattice that the widened reach grows from 20
+    zones to ~40, i.e. 169,000 samples x 729 segments = 123 million Python
+    iterations for ONE segment.  The same work as numpy row operations is 729
+    vector ops per zone.  A bounding-box reject skips the segments that cannot
+    reach this zone at all, which on a 1.4 km ribbon is nearly all of them.
+
+    Returns `(lat, y, s, sgn, fx, fz)`:
+      lat  perpendicular distance to the polyline, +inf where nothing claims it
+      y    the fitted profile height at the projected foot
+      s    ARC LENGTH of that foot along the polyline, i.e. WHICH CROSS
+           SECTION this sample belongs to
+      sgn  WHICH SIDE of the road, from the sign of the cross product.  A
+           cross section has two rays and they are independent: a bridge pile
+           on the left must not clip the right-hand batter.
+      fx,  the foot itself, so a caller can walk OUTWARD from the centreline
+      fz   along this sample's own transverse ray
+
+    THE STATION, THE SIDE AND THE FOOT ARE WHAT MAKE THE BATTER A RAY RATHER
+    THAN A CLOUD OF INDEPENDENT SAMPLES, and that distinction is a measured
+    defect: refusing
+    batter samples one at a time cuts the taper MID-SLOPE and leaves the
+    refused sample standing as a 1 m ridge with the graded ground dug away on
+    both sides.  MEASURED on T12 at (28.0, -14.6): the step there went from
+    3.138 m (the original wall) to 3.676 m (worse than the wall the batter was
+    grading away).  A refusal has to end the whole ray outward of it, and
+    "outward along which ray" is a question the lattice cannot answer without
+    the foot and the station.
+    """
+    lat = np.full(X.shape, np.inf, dtype=np.float64)
+    y = np.zeros(X.shape, dtype=np.float64)
+    s = np.zeros(X.shape, dtype=np.float64)
+    sgn = np.zeros(X.shape, dtype=np.int8)
+    fx = np.zeros(X.shape, dtype=np.float64)
+    fz = np.zeros(X.shape, dtype=np.float64)
+    xlo, xhi = float(X.min()) - reach_m, float(X.max()) + reach_m
+    zlo, zhi = float(Z.min()) - reach_m, float(Z.max()) + reach_m
+    # Arc length to each node, over TERRAIN nodes: a bridged run is not part
+    # of this ribbon's surface, so its length must not shift the stations of
+    # everything past it.  The absolute value is irrelevant -- `s` is only
+    # ever used to group samples into cross sections -- but it must be
+    # CONSISTENT, because two samples given different stations are two
+    # different rays and a ray split in half is the defect above.
+    acc = 0.0
+    arc = [0.0] * len(nodes)
+    for k in range(len(nodes) - 1):
+        arc[k] = acc
+        if not (br[k] or br[k + 1]):
+            acc += math.hypot(float(nodes[k + 1][0]) - float(nodes[k][0]),
+                              float(nodes[k + 1][1]) - float(nodes[k][1]))
+    if len(nodes):
+        arc[-1] = acc
+    for k in range(len(nodes) - 1):
+        if br[k] or br[k + 1]:
+            continue
+        ax, az = float(nodes[k][0]), float(nodes[k][1])
+        bx, bz = float(nodes[k + 1][0]), float(nodes[k + 1][1])
+        if (max(ax, bx) < xlo or min(ax, bx) > xhi
+                or max(az, bz) < zlo or min(az, bz) > zhi):
+            continue
+        dx, dz = bx - ax, bz - az
+        L2 = dx * dx + dz * dz
+        if L2 <= 1e-12:
+            continue
+        seglen = math.sqrt(L2)
+        tt = ((X - ax) * dx + (Z - az) * dz) / L2
+        np.clip(tt, 0.0, 1.0, out=tt)
+        px, pz = ax + dx * tt, az + dz * tt
+        d = np.hypot(X - px, Z - pz)
+        m = d < lat
+        if not m.any():
+            continue
+        lat[m] = d[m]
+        y[m] = (float(prof[k])
+                + (float(prof[k + 1]) - float(prof[k])) * tt[m])
+        s[m] = arc[k] + seglen * tt[m]
+        # Cross product of the segment direction with the offset to the
+        # sample: positive on one hand, negative on the other.  Zero exactly
+        # on the centreline, where there is no ray to speak of.
+        sgn[m] = np.sign(dx * (Z - az) - dz * (X - ax))[m].astype(np.int8)
+        fx[m] = px[m]
+        fz[m] = pz[m]
+    return lat, y, s, sgn, fx, fz
+
 # ---------------------------------------------------------------------------
 # generated heights, on the compiler lattice
 # ---------------------------------------------------------------------------
@@ -213,14 +382,34 @@ def zone_patches(zones: list[tuple[int, int]], seed: str, out: Path) -> dict:
     env = {**os.environ,
            "VH_SRC": "/media/big4/projects/game/valheim/Ulfsland/data/bepinex",
            "SEED": seed, "REQ": str(req), "OUT": str(out),
-           "SANDBOX": "/tmp/patchscan/vh"}
+           # A PER-AGENT SANDBOX.  `/tmp/patchscan/vh` is shared and its
+           # BepInEx tree is owned by root from an earlier run, so
+           # `run_patchscan.sh`'s clean step fails with "Permission denied",
+           # the scan never runs, and the STALE output file still exists and
+           # still has non-zero size -- so the existence check passes and the
+           # caller gets the previous run's zones.  MEASURED on T3: three
+           # zones the widened batter needs, (1,-1), (3,5) and (5,5), came
+           # back missing and `stamp` died on a KeyError.  A silent fallback
+           # to old data is worse than a crash, so the sandbox is unshared and
+           # the completeness check below is re-asserted after the scan.
+           "SANDBOX": f"/tmp/patchscan/{ACTOR.lower()}"}
     proc = subprocess.run(["bash", str(JUMPSTART / "blueprints" / "run_patchscan.sh")],
                           env=env, capture_output=True, text=True)
     if not out.exists() or out.stat().st_size == 0:
         raise SystemExit(f"patchscan produced nothing:\n{proc.stderr[-4000:]}")
     sys.path.insert(0, str(JUMPSTART / "terraform"))
     import heights as patchheights
-    return patchheights.load(out)
+    got = patchheights.load(out)
+    missing = [(zx, zz) for zx, zz in zones if f"z_{zx}_{zz}" not in got]
+    if missing:
+        raise SystemExit(
+            f"patchscan did not produce {len(missing)} requested zones "
+            f"{missing[:8]}: the output file {out} exists and is non-empty, so "
+            f"it is the PREVIOUS run's data. Refusing to rasterise a segment "
+            f"against generated heights that do not cover it -- an unwritten "
+            f"batter sample is the wall the batter exists to remove.\n"
+            f"patchscan stderr tail:\n{proc.stderr[-2000:]}")
+    return got
 
 
 def generated_digest(patch) -> str:
@@ -342,20 +531,101 @@ WATER_LEVEL_M = 30.0
 # piece 0.0 in float rather than merely small -- there is no tolerance to argue
 # about afterwards.
 PROTECT_CLEAR_M = 1.0
+# The same Chebyshev set around a LIVE placed object.  MEASURED by SeatCheck
+# tonight: the hub-end portal `u-lheast` at (-307.5, 223.5) floats 0.536 m
+# because RoadBuild's ribbon cut the ground under it AFTER it was seated.  The
+# batter is new ground movement over ground that already carries seated
+# objects, so it is gated on the objects themselves rather than on a radius.
+PLACED_CLEAR_M = 1.0
+
+
+def _clip(st: dict, cause: str, is_road: bool, road_key: str | None,
+          wx: float, wz: float, lat: float, full: float,
+          residual: float | None = None) -> None:
+    """Record a sample the earthwork could not write, and -- when it is a
+    BATTER sample -- the WALL that therefore stays standing.
+
+    TWO HEIGHTS, BECAUSE THEY ARE TWO DIFFERENT CLAIMS AND CONFLATING THEM IS
+    HOW THE WORSE-THAN-THE-WALL DEFECT HID.  `full` is the cut or fill the
+    carriageway holds at the head of this ray -- the wall that stood there
+    BEFORE any batter, and the number the repair has to beat.  `residual` is
+    what is actually left at the clip: the height between the graded surface
+    where the ray stopped and natural ground there.  A ray clipped at its very
+    first sample leaves `residual == full` (no better, no worse); a ray
+    clipped further out leaves less.  Reporting only `full` would understate
+    the repair; reporting only `residual` would hide a clip that achieved
+    nothing.
+
+    A clip that leaves no trace is indistinguishable from a batter that
+    worked, and "the batter is on every segment" would then be true of a run
+    that graded nothing.
+
+    Module level rather than a closure in the sample loop on purpose: it is
+    called once per rejected sample over tens of thousands of samples per
+    segment, and a `def` inside that loop allocates a function object per
+    iteration for no benefit.
+    """
+    if is_road and road_key:
+        st[road_key] = st.get(road_key, 0) + 1
+        return
+    key = f"batter_clipped_{cause}"
+    st[key] = st.get(key, 0) + 1
+    before = abs(full)
+    h = before if residual is None else abs(residual)
+    st["walls_left_by_cause"][cause] = st["walls_left_by_cause"].get(cause, 0) + 1
+    if h > st["walls_left_max_m"]:
+        st["walls_left_max_m"] = round(h, 3)
+    if before > st["walls_before_max_m"]:
+        st["walls_before_max_m"] = round(before, 3)
+    # Only walls worth warning about are listed, and the threshold is the one
+    # the operator's own complaint is measured against: below 0.5 m a step is
+    # a kerb, not a cliff.
+    if len(st["walls_left"]) < 60 and h >= 0.5:
+        st["walls_left"].append({"world": [round(wx, 1), round(wz, 1)],
+                                 "lat_m": round(lat, 1), "wall_m": round(h, 2),
+                                 "wall_before_m": round(before, 2),
+                                 "cause": cause})
+    # EVERY clip's position, uncapped and unfiltered, because the transverse
+    # census has to be able to answer "is this step one I already recorded a
+    # reason for, or one nobody explained".  An unexplained step is a bug; an
+    # explained one is a documented residual, and a verdict that cannot tell
+    # them apart is the same failure as a verdict against a flat 0.5 m.
+    st["clip_at"].append((wx, wz, cause, round(h, 3)))
 
 
 def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
           pad_keepouts: list[tuple[float, float, float]],
           protected_pieces: list[tuple[float, float]] | None = None,
           protected_discs: list[tuple[float, float, float]] | None = None,
+          placed_objects: list[tuple[float, float]] | None = None,
+          poi_keepouts: list[tuple[float, float, float]] | None = None,
+          batter_m: float = BATTER_MAX_M,
+          batter_grade: float = BATTER_GRADE,
+          foreign_at=None,
+          road_claim_at=None,
           ) -> tuple[dict, dict]:
     """Rasterise one segment into per-zone compilers.  Returns (comps, stats).
 
-    Three things stop the ribbon rather than one, and each is somebody's
+    Four things stop the ribbon rather than one, and each is somebody's
     property: a Settlements PAD (its earthwork, levelled per building), a
-    protected PIECE (an over-water structure whose ground must not move -- this
-    is the `flatten: FORBIDDEN` rule expressed at the granularity the hazard
-    actually has), and A PROTECTED STRUCTURE'S WATER.
+    protected PIECE (an over-water structure whose ground must not move --
+    this is the `flatten: FORBIDDEN` rule expressed at the granularity the
+    hazard actually has), A PROTECTED STRUCTURE'S WATER, and -- new, and
+    MEASURED rather than declared -- a sample a FOREIGN TERRAIN WRITE ALREADY
+    OWNS.
+
+    THE FOREIGN-OWNERSHIP GATE IS THE T4 DEFECT'S FIX, AND THE RULING IS
+    MAIN'S: inside a settlement pad's footprint the PAD WINS -- it is a
+    building's foundation and it must stay flat -- but the road owns the
+    approach.  MEASURED with `applied.py`: 89 of T4's 1,443 centreline metres
+    sit on samples `SiteFinish` seq 286 overwrote after `RoadBuild` seq 213,
+    and sample (586, 954) holds road delta -4.470 against a live -1.571, so
+    the applied surface jumps 45.05 -> 47.11 in ONE METRE mid-carriageway.
+    Note what the gate is NOT: it is not a radius.  That clobber lies OUTSIDE
+    the road's own `pad_radius_m` keep-out, so a circle cannot see it.
+    Ownership is read from the blobs.  A sample the pad owns is left alone and
+    carried forward by the union; the step into it is removed by regrading the
+    APPROACH (`grade_into_foreign`), not by fighting over the sample.
 
     THE WATER RULE IS SCOPED TO THE STRUCTURES, NOT TO THE WATER PLANE, and
     the first version got that wrong.  Refusing every sample below 30.0 m
@@ -365,6 +635,38 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
     left an 8 m swim in the middle of a finished road.  The hazard the rule
     exists for is removing the water a protected structure STANDS OVER, so it
     is tested inside that structure's OWN recorded extent and nowhere else.
+
+    THE EARTHWORK IS TWO BANDS WITH TWO DIFFERENT POLICIES, and the difference
+    is the whole safety argument for widening the write.  The CARRIAGEWAY
+    (lat <= edge) must be continuous, so a protection that blocks a
+    carriageway sample leaves a recorded GAP and `walkability` judges it.  The
+    BATTER (lat > edge) is cosmetic relief, so a protection that blocks a
+    batter sample CLIPS THE REST OF THAT RAY: the wall stays there and is
+    counted.  A clipped batter is a blemish; a clipped carriageway is a hole
+    the operator falls into.  Same geometry, opposite failure mode, so they
+    cannot share a policy.
+
+    THE BATTER IS WRITTEN RAY BY RAY, OUTWARD, AND STOPS ONCE.  Two measured
+    defects forced that shape and neither is visible sample by sample:
+
+      * PER-SAMPLE REFUSAL LEAVES A RIDGE.  A refused sample keeps its
+        generated height while the graded samples either side of it are dug
+        away, so the step INTO it is bigger than the wall the batter was
+        removing.  MEASURED on T12 at (28.0, -14.6): 3.138 m of original wall
+        became a 3.676 m step.  Walking the ray outward and stopping at the
+        first refusal makes the residual at the stop at most the original
+        wall, by construction: the graded surface is monotone in the direction
+        of the cut or fill, so whatever is left is a fraction of what was
+        there.
+      * A TAPER THAT RESUMES BEYOND A HOLLOW IS AN ISOLATED PATCH.  The batter
+        stops where its plane MEETS natural ground; past that crossing the
+        plane is underground, and writing it again further out because the
+        ground dipped would bury a second slab in the hillside.
+
+    A ray is one cross section on one side: `(sign, station rounded to 1 m)`.
+    That is the lattice's own resolution -- samples are 1 m apart -- so a ray
+    is the set of samples a player crosses walking straight off the road at
+    that station.
     """
     nodes = np.array(seg["nodes"], dtype=np.float64)
     prof = np.array(seg["profile_y"], dtype=np.float64)
@@ -375,90 +677,365 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
     shoulder_colour = tcdata.PAINTS[PAINT_SHOULDER]
 
     comps: dict[tuple[int, int], tcdata.Compiler] = {}
-    st = {"samples_paved": 0, "samples_shoulder": 0, "skipped_pad": 0,
-          "skipped_protected": 0, "skipped_underwater": 0,
+    st = {"samples_paved": 0, "samples_shoulder": 0, "samples_batter": 0,
+          "skipped_pad": 0, "skipped_protected": 0, "skipped_underwater": 0,
+          "skipped_foreign": 0,
+          "batter_clipped_pad": 0, "batter_clipped_protected": 0,
+          "batter_clipped_underwater": 0, "batter_clipped_placed": 0,
+          "batter_clipped_water_edge": 0, "batter_clipped_poi": 0,
+          "batter_clipped_foreign": 0, "batter_clipped_steeper_than_batter": 0,
+          "batter_clipped_shared_corridor": 0,
+          "batter_clipped_reach": 0,
+          "batter_clipped_placed_at": [],
+          "batter_met_ground": 0,
+          # GATE 4: A WALL THAT COULD NOT BE GRADED IS RECORDED, WITH ITS
+          # HEIGHT AND ITS REASON.  A recorded wall the operator can be warned
+          # about beats a forced write beside a bridge pile, and a clip that
+          # leaves no trace is indistinguishable from a batter that worked.
+          "walls_left": [], "walls_left_max_m": 0.0, "clip_at": [],
+          "walls_before_max_m": 0.0,
+          "walls_left_by_cause": {},
+          "rays": 0, "rays_clipped": 0,
+          "rays_without_road": 0,
+          "samples_batter_in_pad_standoff": 0,
+          "interstice_rays": 0, "interstice_apron": 0,
+          "interstice_left_ungraded": 0, "interstice": [],
+          "samples_apron": 0,
           "max_cut_m": 0.0, "max_fill_m": 0.0, "over_clamp": 0,
-          "over_clamp_samples": [], "per_zone": {}}
+          "over_clamp_samples": [], "per_zone": {},
+          "batter_grade": round(batter_grade, 4), "batter_max_m": batter_m,
+          "edge_m": edge, "edge_eps_m": EDGE_EPS_M,
+          "edge_exact_samples": 0}
     # The world positions of every sample this write actually TOUCHES.  The
     # location check is run against these, not against zone centres -- see
     # `location_check`.
     written: list[tuple[float, float]] = []
+    # CARRIAGEWAY samples only.  `location_check`'s distance rule budgets for
+    # the ROAD's own geometry (`half_width_m`), and a batter sample is not
+    # road: including it would both overstate the road's width and make an
+    # 11 m-wider earthwork look like an 11 m-wider carriageway to the gate.
+    # The batter's real hazard -- moving a piece's ground -- is measured
+    # directly by `delta_gate` over the whole compiler set, which sees every
+    # sample regardless of which list it is in.
+    road_written: list[tuple[float, float]] = []
+    reach = edge + batter_m
 
+    def refusal(wx: float, wz: float, generated: float,
+                is_road: bool) -> str | None:
+        """The one reason this sample cannot be written, or None.
+
+        Ordered cheapest-and-hardest first.  The order is not cosmetic: a
+        sample inside a pad is the pad's whatever else is true of it, and
+        recording it under a softer cause would misattribute the wall.
+        """
+        # THE PAD RADIUS STOPS THE CARRIAGEWAY AND NOT THE BATTER, and the
+        # asymmetry is the point.  A pad radius is a PLANNING STAND-OFF -- it
+        # is where Settlements may level ground and put buildings -- so paving
+        # into it is the defect the ribbon exists to avoid.  But refusing the
+        # BATTER there leaves the road's own wall standing at the pad
+        # boundary, and MEASURED on T12 that wall is 4.1 m once the approach
+        # ramps up to meet the pad: the operator meets a cliff exactly where
+        # he arrives at a settlement.  What must not move is what is actually
+        # THERE -- the pad's own written samples (`foreign`), a protected
+        # piece, a live placed object, water -- and every one of those is
+        # gated separately and live.  So the batter may taper into the
+        # stand-off, bounded by its 10.5 m reach, and the pad's own write
+        # unions over it and wins if it ever comes.
+        if is_road and any(math.hypot(wx - px, wz - pz) <= pr
+                           for px, pz, pr in pad_keepouts):
+            return "pad"
+        if any(abs(wx - px) <= PROTECT_CLEAR_M
+               and abs(wz - pz) <= PROTECT_CLEAR_M
+               for px, pz in (protected_pieces or ())):
+            return "protected"
+        if generated < WATER_LEVEL_M and any(
+                math.hypot(wx - px, wz - pz) <= pr
+                for px, pz, pr in (protected_discs or ())):
+            return "underwater"
+        if foreign_at is not None and foreign_at(wx, wz) is not None:
+            return "foreign"
+        if is_road:
+            return None
+        # --- batter-only gates ------------------------------------------
+        # NEVER BATTER BELOW THE WATER LEVEL, anywhere, not only inside a
+        # protected extent.  A CAUSEWAY raises a pond bed and is what a road
+        # legitimately does; a BATTER beside a shoreline cuts the bank down
+        # and drains the water out from under whatever stands over it, which
+        # is the early-dock defect and the one unrepairable shape.  The
+        # carriageway's own water rule stays scoped to protected structures
+        # because a causeway has to be possible; the batter's does not,
+        # because a batter is never load bearing and refusing it costs a
+        # recorded wall.
+        if generated < WATER_LEVEL_M:
+            return "water_edge"
+        # THE WIDENED FOOTPRINT RE-CHECKED AGAINST POI CLEARANCE.  The
+        # ribbon's stand-offs were computed for a 7 m strip and a 38 deg
+        # batter off an 8 m wall is ~10 m more per side, so they do not
+        # transfer -- they are re-asked here, per sample, against each
+        # instance's own `reach + MARGIN_M (+ PROTECTED_EXTRA_M)`.
+        if any(math.hypot(wx - px, wz - pz) <= pr
+               for px, pz, pr in (poi_keepouts or ())):
+            return "poi"
+        # A LIVE PLACED OBJECT'S GROUND MUST NOT MOVE EITHER, and this gate
+        # is on the BATTER alone by construction: the carriageway's deltas
+        # are unchanged by this repair, so they cannot newly float anything,
+        # while every batter sample is ground that has never moved before.
+        if any(abs(wx - px) <= PLACED_CLEAR_M
+               and abs(wz - pz) <= PLACED_CLEAR_M
+               for px, pz in (placed_objects or ())):
+            return "placed"
+        return None
+
+    # ---- pass 1: the carriageway, and the batter collected into rays -----
+    #
+    # The carriageway is written here and now because its policy is per
+    # sample: a refused carriageway sample is a recorded GAP that
+    # `walkability` judges, and nothing about it depends on its neighbours.
+    # The batter cannot be decided here, because whether a sample may be
+    # written depends on every sample INBOARD of it on the same ray -- and
+    # rays cross zone boundaries, so the decision cannot even be made one
+    # zone at a time.
+    rays: dict[tuple[int, int], list] = {}
+    # NO BATTER WHERE THERE IS NO ROAD.  A station whose carriageway is
+    # refused has no edge to taper from, and grading a 10 m apron around a
+    # road that was never written is earthwork for nothing -- worse, on the
+    # far side of a pad boundary it is a 10 m skirt around empty ground.
+    road_stations: set[tuple[int, int]] = set()
+    dead_stations: set[tuple[int, int]] = set()
+    grids: dict[tuple[int, int], tuple] = {}
+    ax_1d = (np.arange(tcdata.PITCH) - tcdata.PITCH // 2) * tcdata.SCALE
     for zx, zz in zones:
         patch = patches[f"z_{zx}_{zz}"]
         comp = tcdata.Compiler(zone_x=zx, zone_z=zz)
         zcx, zcz = comp.centre
-        touched = 0
-        for gy in range(tcdata.PITCH):
-            for gx in range(tcdata.PITCH):
-                wx, wz = tcdata.sample_world(zcx, zcz, gx, gy)
-                got = lateral_and_y(nodes, prof, br, wx, wz)
-                if got is None:
+        # The zone's own sample centres, exactly `tcdata.sample_world` with gx
+        # varying along the row and gy down the column.
+        X = (zcx + ax_1d)[None, :] + np.zeros((tcdata.PITCH, 1))
+        Z = (zcz + ax_1d)[:, None] + np.zeros((1, tcdata.PITCH))
+        LAT, Y, S, SGN, FX, FZ = lateral_and_y_grid(nodes, prof, br, X, Z,
+                                                    reach)
+        comps[(zx, zz)] = comp
+        inband = np.argwhere(LAT <= reach)
+        for gy, gx in inband:
+            gy, gx = int(gy), int(gx)
+            wx, wz = float(X[gy, gx]), float(Z[gy, gx])
+            lat, y = float(LAT[gy, gx]), float(Y[gy, gx])
+            generated = float(patch.at(gy, gx))
+            full = y - generated
+            # THE EDGE IS INCLUSIVE.  See EDGE_EPS_M: without the tolerance
+            # the sample landing exactly on `edge` falls out of the
+            # carriageway on a float ULP and keeps its generated height,
+            # which is the 1 m wide, 1.76 m deep trench RoadClear measured at
+            # T12 s = 116 m.
+            if lat <= edge + EDGE_EPS_M:
+                if lat > edge - EDGE_EPS_M:
+                    st["edge_exact_samples"] += 1
+                key = (int(SGN[gy, gx]), int(round(float(S[gy, gx]))))
+                cause = refusal(wx, wz, generated, True)
+                if cause is not None:
+                    _clip(st, cause, True, f"skipped_{cause}",
+                          wx, wz, lat, full)
+                    dead_stations.add(key)
+                    dead_stations.add((-key[0], key[1]))
                     continue
-                lat, y = got
-                if lat > edge:
-                    continue
-                # Settlements' pads are its earthwork.  A road levelling ground
-                # under a building is the defect class this whole build exists
-                # to avoid, so the ribbon simply stops at the pad edge.
-                if any(math.hypot(wx - px, wz - pz) <= pr
-                       for px, pz, pr in pad_keepouts):
-                    st["skipped_pad"] += 1
-                    continue
-                # A PROTECTED PIECE'S GROUND MUST NOT MOVE.  Chebyshev, not
-                # Euclidean: the samples that can move the ground at a piece
-                # are precisely the four the mesh blends around it, one pitch
-                # away on each axis. MEASURED why this exists: S12 moved the
-                # ground 2.896 m under the boathouse's over-water pieces and
-                # 0.986 m under a pile, and T13 moved 1.629 m under a harbour
-                # pile -- both inside their own zone's FORBIDDEN structure,
-                # both invisible to a distance-from-centre test.
-                if any(abs(wx - px) <= PROTECT_CLEAR_M
-                       and abs(wz - pz) <= PROTECT_CLEAR_M
-                       for px, pz in (protected_pieces or ())):
-                    st["skipped_protected"] += 1
-                    continue
-                generated = float(patch.at(gy, gx))
-                # THE WATER A PROTECTED STRUCTURE STANDS OVER.  Not all water:
-                # raising a pond bed outside every protected extent is a
-                # causeway, which is what a road does. Inside one it is the
-                # early-dock defect.
-                if generated < WATER_LEVEL_M and any(
-                        math.hypot(wx - px, wz - pz) <= pr
-                        for px, pz, pr in (protected_discs or ())):
-                    st["skipped_underwater"] += 1
-                    continue
-                delta = y - generated
-                comp.set_height(gx, gy, delta)
-                comp.set_paint(gx, gy, road_colour if lat <= half else shoulder_colour)
+                road_stations.add(key)
+                road_stations.add((-key[0], key[1]))
+                comp.set_height(gx, gy, full)
+                comp.set_paint(gx, gy, road_colour
+                               if lat <= half + EDGE_EPS_M
+                               else shoulder_colour)
                 written.append((wx, wz))
-                if lat <= half:
-                    st["samples_paved"] += 1
-                else:
-                    st["samples_shoulder"] += 1
-                touched += 1
-                st["max_cut_m"] = min(st["max_cut_m"], delta)
-                st["max_fill_m"] = max(st["max_fill_m"], delta)
-                # THE CLAMP, CHECKED PER SAMPLE.  Not per segment and not on the
-                # fitting lattice: this is the integer lattice the game will
-                # apply, and `TerrainComp::ApplyToHeightmap` silently discards
-                # anything past +/- 8 m of the generated height, so a sample over
-                # the limit is a piece of road that is not where the plan says.
-                if abs(delta) > tcdata.CLAMP_M:
-                    st["over_clamp"] += 1
-                    if len(st["over_clamp_samples"]) < 20:
-                        st["over_clamp_samples"].append(
-                            {"zone": [zx, zz], "sample": [gx, gy],
-                             "world": [round(wx, 1), round(wz, 1)],
-                             "generated_y": round(generated, 2),
-                             "target_y": round(y, 2), "delta_m": round(delta, 2)})
+                road_written.append((wx, wz))
+                st["samples_paved" if lat <= half + EDGE_EPS_M
+                   else "samples_shoulder"] += 1
+                st["max_cut_m"] = min(st["max_cut_m"], full)
+                st["max_fill_m"] = max(st["max_fill_m"], full)
+                _clamp_check(st, full, zx, zz, gx, gy, wx, wz, generated, y,
+                             "carriageway")
+                continue
+            key = (int(SGN[gy, gx]), int(round(float(S[gy, gx]))))
+            rays.setdefault(key, []).append(
+                (lat, zx, zz, gx, gy, wx, wz, y, generated,
+                 float(FX[gy, gx]), float(FZ[gy, gx])))
+
+    # ---- pass 2: each ray, outward, once -------------------------------
+    for key, members in rays.items():
+        members.sort()
+        if key not in road_stations or key in dead_stations:
+            st["rays_without_road"] += 1
+            continue
+        st["rays"] += 1
+        lat0, zx0, zz0, _, _, _, _, y0, _, fx0, fz0 = members[0]
+        # THE WALL AT THE HEAD OF THIS RAY, which is what the batter has to
+        # beat and what bounds how much earth it may move.  Taken at the
+        # carriageway EDGE rather than at the first batter sample, because
+        # that is where the operator steps off.
+        ux, uz = (members[0][5] - fx0) / lat0, (members[0][6] - fz0) / lat0
+        ex, ez = fx0 + ux * edge, fz0 + uz * edge
+        gen_edge = appliedmod.generated_at(patches, ex, ez)
+        if gen_edge is None:
+            gen_edge = members[0][8]
+        full_edge = y0 - gen_edge
+        if abs(full_edge) <= EDGE_EPS_M:
+            # Road at grade with the ground: there is no wall here, so there
+            # is nothing to batter and no reach to spend.
+            continue
+        sign = 1.0 if full_edge > 0 else -1.0
+        budget = abs(full_edge)
+
+        # ---- ONE CORRIDOR OR TWO ROADS?  Main's ruling, and it is a GATE
+        # before it is a nicety.  Where another road segment's carriageway
+        # lies inside this ray's batter reach, the two roads are ONE CORRIDOR:
+        # a 0.781 plane off a 2 m wall needs 2.6 m per side and off a 5 m wall
+        # 6.4 m, so two tapers plus two carriageways cannot fit in a 6 m gap.
+        # MEASURED on T12: T3 runs 6-10 m away near the temple with its
+        # carriageway edge 1.18 m off its own centreline, so an ungated batter
+        # would TAPER INTO A FINISHED ROAD -- cutting up to 2.2 m out of T3's
+        # surface and leaving a trench between the pair.  So:
+        #   * if the two road profiles are within grade across the gap, the
+        #     interstice is levelled FLUSH at the higher of the two;
+        #   * if they are not, the interstice is LEFT ALONE with the step
+        #     recorded and both profiles named -- an honest ditch beats a
+        #     forced one, and the outside batter is unaffected either way.
+        claim = None
+        if road_claim_at is not None:
+            for m in members:
+                if m[0] > edge + batter_m:
+                    break
+                got = road_claim_at(m[5], m[6])
+                if got is not None:
+                    claim = (m[0], m[8] + got[0], got[1])
+                    break
+        if claim is not None:
+            clat, their_y, their_name = claim
+            gap = max(clat - edge, 1e-6)
+            diff = y0 - their_y
+            st["interstice_rays"] += 1
+            flush = max(y0, their_y)
+            fits = abs(diff) <= batter_grade * gap
+            rec = {"xz": [round(members[0][5], 1), round(members[0][6], 1)],
+                   "gap_m": round(gap, 2), "my_road_y": round(y0, 2),
+                   "their_road_y": round(their_y, 2),
+                   "their_claim": their_name,
+                   "profile_diff_m": round(diff, 2),
+                   "grade_can_absorb_m": round(batter_grade * gap, 2),
+                   "action": "levelled_flush" if fits else "left_ungraded"}
+            if len(st["interstice"]) < 40:
+                st["interstice"].append(rec)
+            if fits:
+                st["interstice_apron"] += 1
+                for lat, zx, zz, gx, gy, wx, wz, y, generated, _fx, _fz in members:
+                    if lat >= clat:
+                        break
+                    cause = refusal(wx, wz, generated, False)
+                    if cause is not None:
+                        _clip(st, cause, False, None, wx, wz, lat, full_edge,
+                              residual=flush - generated)
+                        break
+                    delta = flush - generated
+                    if abs(delta) > max(budget, abs(diff)) + tcdata.CLAMP_M * 0.0 + EDGE_EPS_M:
+                        _clip(st, "steeper_than_batter", False, None, wx, wz,
+                              lat, full_edge, residual=delta)
+                        break
+                    comps[(zx, zz)].set_height(gx, gy, delta)
+                    written.append((wx, wz))
+                    st["samples_batter"] += 1
+                    st["samples_apron"] += 1
+                    st["max_cut_m"] = min(st["max_cut_m"], delta)
+                    st["max_fill_m"] = max(st["max_fill_m"], delta)
+                    _clamp_check(st, delta, zx, zz, gx, gy, wx, wz, generated,
+                                 flush, "apron")
+            else:
+                st["interstice_left_ungraded"] += 1
+                _clip(st, "shared_corridor", False, None,
+                      members[0][5], members[0][6], members[0][0], full_edge,
+                      residual=full_edge)
+            continue
+
+        for lat, zx, zz, gx, gy, wx, wz, y, generated, _fx, _fz in members:
+            run = lat - edge
+            if run > batter_m:
+                # Reach spent.  Not a clip with a cause somebody owns: the
+                # taper simply has not met ground inside its cap, and what is
+                # left is a wall like any other.
+                target = y - sign * batter_grade * (lat - edge)
+                _clip(st, "reach", False, None, wx, wz, lat, full_edge,
+                      residual=target - generated)
+                st["rays_clipped"] += 1
+                break
+            cause = refusal(wx, wz, generated, False)
+            if cause is not None:
+                target = y - sign * batter_grade * run
+                _clip(st, cause, False, None, wx, wz, lat, full_edge,
+                      residual=target - generated)
+                if cause == "placed" and len(st["batter_clipped_placed_at"]) < 20:
+                    st["batter_clipped_placed_at"].append(
+                        [round(wx, 1), round(wz, 1)])
+                st["rays_clipped"] += 1
+                break
+            # THE PLANE AT GRADE, and where it meets ground the ray is done.
+            target = y - sign * batter_grade * run
+            delta = target - generated
+            if delta * sign <= 0.0:
+                # The plane has reached or passed natural ground: the taper
+                # ENDS AT GROUND, which is the whole point.  No wall, nothing
+                # to record but the fact that it happened.
+                st["batter_met_ground"] += 1
+                break
+            if abs(delta) > budget + EDGE_EPS_M:
+                # THE HILLSIDE IS STEEPER THAN THE BATTER.  Grading further
+                # out would move MORE earth than the road itself moves at the
+                # edge and still not arrive, so the batter stops and says so.
+                # This is also what keeps the batter inside the +/-8 m apply
+                # clamp without a second rule: the carriageway's own delta is
+                # already inside it.
+                _clip(st, "steeper_than_batter", False, None, wx, wz, lat,
+                      full_edge, residual=delta)
+                st["rays_clipped"] += 1
+                break
+            comps[(zx, zz)].set_height(gx, gy, delta)
+            written.append((wx, wz))
+            st["samples_batter"] += 1
+            if any(math.hypot(wx - px, wz - pz) <= pr
+                   for px, pz, pr in pad_keepouts):
+                st["samples_batter_in_pad_standoff"] += 1
+            st["max_cut_m"] = min(st["max_cut_m"], delta)
+            st["max_fill_m"] = max(st["max_fill_m"], delta)
+            _clamp_check(st, delta, zx, zz, gx, gy, wx, wz, generated, target,
+                         "batter")
+
+    for z, comp in list(comps.items()):
+        touched = sum(comp.modified_height) + sum(comp.modified_paint)
         if touched:
-            comps[(zx, zz)] = comp
-            st["per_zone"][f"{zx},{zz}"] = touched
+            st["per_zone"][f"{z[0]},{z[1]}"] = int(sum(comp.modified_height))
+        else:
+            del comps[z]
     st["max_cut_m"] = round(st["max_cut_m"], 3)
     st["max_fill_m"] = round(st["max_fill_m"], 3)
     st["written"] = written
+    st["road_written"] = road_written
     return comps, st
+
+
+def _clamp_check(st: dict, delta: float, zx: int, zz: int, gx: int, gy: int,
+                 wx: float, wz: float, generated: float, target: float,
+                 band: str) -> None:
+    """THE CLAMP, CHECKED PER SAMPLE.
+
+    Not per segment and not on the fitting lattice: this is the integer
+    lattice the game will apply, and `TerrainComp::ApplyToHeightmap` silently
+    discards anything past +/- 8 m of the generated height, so a sample over
+    the limit is a piece of road that is not where the plan says.
+    """
+    if abs(delta) <= tcdata.CLAMP_M:
+        return
+    st["over_clamp"] += 1
+    if len(st["over_clamp_samples"]) < 20:
+        st["over_clamp_samples"].append(
+            {"zone": [zx, zz], "sample": [gx, gy], "band": band,
+             "world": [round(wx, 1), round(wz, 1)],
+             "generated_y": round(generated, 2),
+             "target_y": round(target, 2), "delta_m": round(delta, 2)})
 
 
 def delta_at(comps: dict, x: float, z: float) -> float:
@@ -560,8 +1137,60 @@ def delta_gate(comps: dict, written: list[tuple[float, float]], L,
     }
 
 
+LOC_DUMPS = ("/tmp/settle/loc3/f6fe167f4fcd.json",
+             "/tmp/settle/loc2/f6fe167f4fcd.json")
+
+
+def _location_dump() -> str:
+    p = next((q for q in LOC_DUMPS if Path(q).exists()), None)
+    if p is None:
+        raise SystemExit(
+            "no location dump found: refusing to write terrain without a "
+            "location check. MEASURED: flatten.py has no location check and "
+            "cut 6.65 m of ground out from under a LocationProxy holding a "
+            "buried treasure chest.")
+    return p
+
+
+def poi_standoff_discs(zones: list[tuple[int, int]], pad_m: float = 64.0
+                       ) -> list[tuple[float, float, float]]:
+    """Per-instance keep-out discs for the BATTER, in the canonical budget.
+
+    `reach + TERRAIN_SPREAD_M` per instance -- exactly the non-destructive
+    budget `clearance.violations_for_samples` applies, with the caller's own
+    half-extent zero because a batter sample IS the footprint point rather than
+    the centre of one.  The destructive `standoff` (which adds `MARGIN_M` and
+    `PROTECTED_EXTRA_M`) is deliberately NOT used: MEASURED in that module,
+    applying it to a 6 m road refused 25 of 34 segments including every segment
+    out of StartTemple, and this op deletes nothing, so it is budgeting against
+    a hazard it does not have.
+
+    Returned as discs rather than as a verdict because the batter CLIPS per
+    sample: one sample too close to a runestone must not cost the other 40 km
+    of side slope.  Restricted to the segment's own zone bounding box plus a
+    zone of slack, so a 12,301-instance world costs a few dozen comparisons
+    per sample instead of twelve thousand.
+    """
+    sys.path.insert(0, str(JUMPSTART / "settlements"))
+    import clearance
+
+    L = clearance.load(_location_dump())
+    xs = [zx * tcdata.ZONE_SIZE for zx, _ in zones]
+    zs = [zz * tcdata.ZONE_SIZE for _, zz in zones]
+    xlo, xhi = min(xs) - pad_m, max(xs) + pad_m
+    zlo, zhi = min(zs) - pad_m, max(zs) + pad_m
+    out: list[tuple[float, float, float]] = []
+    for i in range(len(L.names)):
+        x, z = float(L.xz[i, 0]), float(L.xz[i, 1])
+        if not (xlo <= x <= xhi and zlo <= z <= zhi):
+            continue
+        out.append((x, z, float(L.reach[i]) + clearance.TERRAIN_SPREAD_M))
+    return out
+
 def location_check(comps: dict, written: list[tuple[float, float]],
-                   half_width_m: float) -> dict:
+                   half_width_m: float,
+                   road_written: list[tuple[float, float]] | None = None
+                   ) -> dict:
     """The clearance GATE, delegated to the canonical instrument, with the
     per-operation rule and the per-piece delta gate Main ruled.
 
@@ -603,15 +1232,30 @@ def location_check(comps: dict, written: list[tuple[float, float]],
             "cut 6.65 m of ground out from under a LocationProxy holding a "
             "buried treasure chest.")
     L = clearance.load(dump)
+    # TWO SAMPLE SETS, TWO QUESTIONS, and conflating them is what made the
+    # batter look like a wider ROAD to the distance rule.  `delta_gate` gets
+    # EVERY written sample, carriageway and batter alike, because its question
+    # is "does any piece's ground move" and a batter sample moves ground.  The
+    # distance rule gets the CARRIAGEWAY only, because its budget is
+    # `half_width_m` -- the road's own geometry -- and a batter is earthwork
+    # that tapers to nothing rather than a 29 m wide road.
     gate = delta_gate(comps, written, L, clearance.DELTA_TOL_M)
-    v = L.verdict_for_samples(written, half_width_m=half_width_m,
+    v = L.verdict_for_samples(list(road_written if road_written is not None
+                                   else written),
+                              half_width_m=half_width_m,
                               destructive=False, delta_gate=gate)
     v["dump"] = dump
     v["destructive"] = False
     v["destructive_claim"] = (
-        "this pipeline emits zones_generate + terrain_write only and never "
+        "this terrain op emits zones_generate + terrain_write only and never "
         "objects_clear, so it cannot delete a location's ZDOs; verifiable from "
-        "the ledger records for this segment")
+        "the ledger records for this segment. Road-surface vegetation clearing "
+        "is a SEPARATE op recorded by tools/jumpstart/roads/clear.py, which "
+        "passes destructive=True to this same instrument and censuses each "
+        "removal cylinder live in the same call")
+    v["samples_tested_carriageway"] = len(road_written if road_written
+                                          is not None else written)
+    v["samples_in_delta_gate"] = len(written)
     return v
 
 
@@ -624,6 +1268,11 @@ def location_check(comps: dict, written: list[tuple[float, float]],
 # the operator slides down is not a road.
 SLIDE_ANGLE_DEG = 38.0
 SLIDE_GRADIENT = math.tan(math.radians(SLIDE_ANGLE_DEG))
+# Stated as an assertion rather than a comment: `BATTER_GRADE` is defined at
+# the top of the file (it is needed by `segment_zones`' default reach) and it
+# IS this limit.  Two spellings of one number is how they drift apart.
+assert abs(BATTER_GRADE - SLIDE_GRADIENT) < 1e-12, (
+    "BATTER_GRADE must be the 38 deg slide limit")
 # The BASELINE THE VERDICT IS TAKEN OVER.  The 1 m figure is a DIFFERENT
 # QUANTITY: it is the slope of one lattice edge, and a 1 m rise between two
 # adjacent samples on a fitted 8% profile is a rounding artefact of the integer
@@ -634,21 +1283,539 @@ SLIDE_GRADIENT = math.tan(math.radians(SLIDE_ANGLE_DEG))
 VERDICT_BASELINE_M = 8.0
 
 
-def applied_at(comps: dict, patches: dict, x: float, z: float):
+# How far back from a foreign claim an approach ramp may reach.  Not a taste
+# number: the apply clamp is +/-8 m, so the largest step the road can possibly
+# owe a pad is 8 m, and 8 / 0.781 = 10.24 m of run removes it at grade.  One
+# metre of margin and the ramp can always arrive.
+APPROACH_MAX_M = 11.5
+
+
+def grade_into_foreign(seg: dict, patches: dict, live,
+                       pad_keepouts: list[tuple[float, float, float]],
+                       grade: float | None = None,
+                       station_step_m: float = 1.0,
+                       reach_m: float | None = None) -> dict:
+    """RE-PROFILE THE APPROACH SO THE ROAD ARRIVES AT WALKABLE GROUND INSTEAD
+    OF ENDING AT A CLIFF.  Returns a report; MUTATES `seg["profile_y"]`.
+
+    THE TWO DEFECTS THIS EXISTS FOR, both measured and both in the record
+    before anybody read them:
+
+      1. THE ROAD SIMPLY STOPS AT A PAD.  T4 has 333 unwritten centreline
+         metres in four runs (204, 68, 41, 5 m); the 204 m run is the stathub
+         pad keep-out, and seq 213's OWN meta already records
+         `step_across_m -7.644` at s = 888.3.  A 7.6 m step at the end of a
+         trunk road, measured, recorded, and shipped.
+      2. A FOREIGN PAD WRITE OWNS CARRIAGEWAY SAMPLES.  MEASURED with
+         `applied.py`: 89 of T4's metres sit on samples `SiteFinish` seq 286
+         overwrote after `RoadBuild` seq 213, and the applied surface jumps
+         45.05 -> 47.11 in one metre mid-road.
+
+    THE RULING IS MAIN'S AND IT IS NOT SYMMETRIC: inside the pad's footprint
+    the PAD WINS -- it is a building's foundation and it must stay flat -- and
+    the road owns the approach.  So this never restores a road delta inside a
+    pad.  It moves the ROAD'S OWN target profile, in the metres OUTSIDE the
+    claim, until the two surfaces meet.
+
+    HOW: every station that is not ours -- inside a pad keep-out disc, or
+    holding a sample a non-road write owns -- contributes a CONE constraint
+    `|y(s) - H| <= grade * |s - s_claim|`, where H is the LIVE APPLIED SURFACE
+    there, read off the ledger's own blobs.  The new profile is the planned
+    one clamped into the intersection of those cones.  Three properties follow:
+    a station already within grade of the claim is untouched (the clamp is
+    inactive); the ramp is exactly as long as the step needs and no longer;
+    and where two claims at different heights are too close to satisfy both,
+    the conflict is REPORTED with its residual step rather than split silently.
+
+    THE HEIGHT IS THE LIVE SURFACE, NOT THE PAD'S DATUM, and that distinction
+    is the whole reason the defect survived.  `pad_y` in sites.yaml is what a
+    pad was ASKED to be levelled to; what the road has to meet is what the
+    ground IS.  For the T4 clobber those differ, because the surface there is
+    a pad write's samples unioned over a road write's.
+    """
+    # THE RAMP GRADE IS THE ROAD'S OWN DESIGN GRADE, NOT THE BATTER'S, and
+    # Main's ruling ("grade the last metres into the pad at BATTER_GRADE") is
+    # the CEILING rather than the target.  MEASURED why the ceiling is the
+    # wrong target: ramping T12's 2.99 m pad step at 0.781 took the
+    # longitudinal 1 m gradient from 0.169 to 0.6446 -- within the slide limit
+    # but only just -- and because the road TURNS through that ramp, the
+    # batter plane beside it warps: points 9 m out along one station's normal
+    # project to a station 1-2 m away, so the transverse census read 1.686 m
+    # steps that are the ramp's own longitudinal fall leaking sideways.  At
+    # the road's 8 % the same step needs 37 m of run, which the road has, and
+    # both effects vanish.  The batter's grade stays the ceiling for the case
+    # where the run genuinely is not there.
+    design = float(seg.get("grade_limit") or 0.08)
+    want_grade = grade
+    nodes = seg["nodes"]
+    prof = list(seg["profile_y"])
+    br = seg["is_bridge"]
+    # Arc length per node over the TERRAIN polyline, the same convention
+    # `lateral_and_y_grid` uses.
+    arc = [0.0] * len(nodes)
+    acc = 0.0
+    for k in range(len(nodes) - 1):
+        arc[k] = acc
+        if not (br[k] or br[k + 1]):
+            acc += math.hypot(nodes[k + 1][0] - nodes[k][0],
+                              nodes[k + 1][1] - nodes[k][1])
+    arc[-1] = acc
+    # The run a ramp needs is set by the step it has to remove, and the step
+    # cannot exceed the +/-8 m apply clamp.  Capped at 120 m so a pathological
+    # claim cannot re-profile a whole segment silently.
+    if reach_m is None:
+        reach_m = APPROACH_MAX_M
+
+    # ---- the claims, measured station by station -----------------------
+    claims: list[dict] = []
+    s = 0.0
+    k = 0
+    while s <= acc + 1e-9:
+        while k < len(nodes) - 2 and arc[k + 1] <= s:
+            k += 1
+        if br[k] or br[k + 1]:
+            s += station_step_m
+            continue
+        span = max(arc[k + 1] - arc[k], 1e-9)
+        f = min(max((s - arc[k]) / span, 0.0), 1.0)
+        x = nodes[k][0] + (nodes[k + 1][0] - nodes[k][0]) * f
+        z = nodes[k][1] + (nodes[k + 1][1] - nodes[k][1]) * f
+        y = prof[k] + (prof[k + 1] - prof[k]) * f
+        cause = None
+        for px, pz, pr in pad_keepouts:
+            if math.hypot(x - px, z - pz) <= pr:
+                cause = "pad_keepout"
+                break
+        owner = None
+        if cause is None and live is not None:
+            w = live.foreign_at(x, z)
+            if w is not None:
+                cause = "foreign_write"
+                owner = f"{w['name']}#{w['seq']}"
+        if cause is not None:
+            surf = (live.surface_at(patches, x, z)
+                    if live is not None else None)
+            # A CLAIM IS GROUND SOMEBODY HAS ACTUALLY WRITTEN, NOT A CIRCLE ON
+            # A MAP, and this is the second time tonight that distinction
+            # decided a number.  A pad radius over UNWRITTEN ground is
+            # natural hillside: MEASURED on T12, 11 stations inside
+            # wt-spawn's stand-off read a live surface 2.991 m ABOVE the
+            # planned profile purely because the road CUTS through that hill.
+            # Ramping up to meet it re-profiled 56 nodes, turned a 4.58 m fill
+            # into a 7.02 m embankment and pushed the transverse wall at the
+            # pad boundary from 2.60 m to 5.09 m -- a repair that made the
+            # defect worse, in service of meeting a surface nobody had built.
+            # So a claim requires a non-zero live delta: somebody's earthwork,
+            # not somebody's intention.
+            if surf is not None and abs(surf[2]) > 1e-6:
+                claims.append({"s": round(s, 1), "xz": [round(x, 1), round(z, 1)],
+                               "cause": cause, "owner": owner,
+                               "live_y": round(surf[0], 3),
+                               "planned_y": round(y, 3),
+                               "step_m": round(y - surf[0], 3)})
+        s += station_step_m
+    # THE RAMP GRADE, SET BY THE STEP AND BOUNDED AT BOTH ENDS.  Main's
+    # ruling is "grade the last METRES into the pad at BATTER_GRADE", so the
+    # reach is the bound and the grade is whatever that run needs -- as gentle
+    # as possible, never gentler than the road's own design grade (there is no
+    # merit in a flatter road than was fitted) and never steeper than the
+    # batter's 38 deg.  MEASURED why the reach has to be the bound rather than
+    # the grade: ramping T12's 2.991 m step at the design 8 % needs 37 m of
+    # run, re-profiles 56 nodes and turns a 4.58 m fill into a 7.02 m
+    # embankment whose own batter is then clipped by the farmhouse -- the
+    # transverse wall at the pad boundary went 2.60 -> 5.09 m.  Over 11.5 m
+    # the same step needs 0.26, which is a third of the slide limit and moves
+    # a tenth of the earth.
+    if claims and want_grade is None:
+        worst = max(abs(c["step_m"]) for c in claims)
+        grade = min(max(worst / reach_m, design), BATTER_GRADE)
+    else:
+        grade = min(max(design if want_grade is None else want_grade, 1e-3),
+                    BATTER_GRADE)
+    if not claims:
+        return {"claims": 0, "nodes_regraded": 0, "ramps": [],
+                "worst_step_before_m": 0.0, "worst_step_after_m": 0.0,
+                "tool": "tools/jumpstart/roads/ribbon.py::grade_into_foreign"}
+
+    # ---- clamp the profile into every claim's cone ----------------------
+    regraded = 0
+    moved_max = 0.0
+    conflicts: list[dict] = []
+    for i in range(len(nodes)):
+        if br[i]:
+            continue
+        si = arc[i]
+        lo, hi = -1e30, 1e30
+        lo_c = hi_c = None
+        for c in claims:
+            d = abs(si - c["s"])
+            if d > reach_m:
+                continue
+            h = c["live_y"]
+            if h - grade * d > lo:
+                lo, lo_c = h - grade * d, c
+            if h + grade * d < hi:
+                hi, hi_c = h + grade * d, c
+        if lo_c is None and hi_c is None:
+            continue
+        want = prof[i]
+        if lo > hi:
+            # TWO CLAIMS AT DIFFERENT HEIGHTS TOO CLOSE TOGETHER: no profile
+            # satisfies both at grade.  Meet them halfway and record the
+            # residual, because a silent split is how a 2 m step gets shipped.
+            mid = (lo + hi) / 2.0
+            conflicts.append({"node": i, "s": round(si, 1),
+                              "between": [lo_c["xz"], hi_c["xz"]],
+                              "residual_step_m": round((lo - hi) / 2.0, 3)})
+            new = mid
+        else:
+            new = min(max(want, lo), hi)
+        if abs(new - want) > 1e-6:
+            prof[i] = new
+            regraded += 1
+            moved_max = max(moved_max, abs(new - want))
+    seg["profile_y"] = prof
+
+    worst_before = max(abs(c["step_m"]) for c in claims)
+    # AFTER, on the regraded profile, by the same instrument.
+    after = []
+    for c in claims:
+        si = c["s"]
+        kk = 0
+        while kk < len(nodes) - 2 and arc[kk + 1] <= si:
+            kk += 1
+        span = max(arc[kk + 1] - arc[kk], 1e-9)
+        f = min(max((si - arc[kk]) / span, 0.0), 1.0)
+        y = prof[kk] + (prof[kk + 1] - prof[kk]) * f
+        c["regraded_y"] = round(y, 3)
+        c["step_after_m"] = round(y - c["live_y"], 3)
+        after.append(abs(y - c["live_y"]))
+    return {
+        "claims": len(claims),
+        "claims_by_cause": {k: sum(1 for c in claims if c["cause"] == k)
+                            for k in sorted({c["cause"] for c in claims})},
+        "owners": sorted({c["owner"] for c in claims if c["owner"]}),
+        "nodes_regraded": regraded,
+        "max_profile_move_m": round(moved_max, 3),
+        "worst_step_before_m": round(worst_before, 3),
+        "worst_step_after_m": round(max(after) if after else 0.0, 3),
+        "conflicts": conflicts,
+        "ramp_grade": round(grade, 4),
+        "ramp_grade_is": ("the segment's own design grade"
+                          if abs(grade - design) < 1e-9
+                          else "steeper than design, capped at BATTER_GRADE"),
+        "design_grade": design,
+        "batter_grade_ceiling": round(BATTER_GRADE, 4),
+        "reach_m": round(reach_m, 1),
+        "claims_detail": claims[:80],
+        "method": ("MEASURED: the live applied surface from the ledger's own "
+                   "blobs (union per zone in file order + generated, blended "
+                   "bilinearly as Heightmap renders it) at every 1 m station "
+                   "the road does not own, then the planned profile clamped "
+                   "into each claim's +/-BATTER_GRADE cone. The pad keeps "
+                   "every sample it owns; only the ROAD's target height "
+                   "moves."),
+        "tool": "tools/jumpstart/roads/ribbon.py::grade_into_foreign",
+    }
+
+
+def edge_step_census(seg: dict, comps: dict, patches: dict,
+                     station_step_m: float = 2.0, lat_max_m: float = 24.0,
+                     lat_step_m: float = 1.0,
+                     batter_m: float = BATTER_MAX_M,
+                     grade: float = BATTER_GRADE,
+                     mine: set | None = None,
+                     clips: list | None = None) -> dict:
+    """THE NUMBER THE OPERATOR'S "BLOCKY" COMPLAINT IS ABOUT: the worst 1 m
+    TRANSVERSE step on the applied surface, per station, and where it falls.
+
+    `walkability` walks ALONG the centreline and answers "is this hill too
+    steep to climb".  It cannot see a wall beside the road, and the wall beside
+    the road is what a level bench on a side slope has: measured over the 15
+    standing segments before the batter existed, the step one metre outside the
+    shoulder ran 0.39-1.46 m median and up to 8.06 m on 42-89 % of each
+    segment.  A check that walks the centreline reported every one of those
+    segments walkable, which is true and was not the question.
+
+    THE VERDICT IS TAKEN AGAINST `BATTER_GRADE`, NOT AGAINST A FLAT 0.5 m, and
+    the flat number is the trap.  A correctly battered segment's 1 m
+    transverse step IS the design grade -- 0.781 m per metre at 38 deg -- so a
+    0.5 m threshold fails every segment that was repaired properly and sends
+    the next reader chasing a non-defect.  MEASURED on T12 after the first
+    batter: p50 0.83 m, which a 0.5 m checker calls a wall and which is in
+    fact the slope, plus the hillside the old delta-ramp form added on top of
+    it (see BATTER_GRADE).
+
+    AND THE VERDICT SET IS THE GROUND THIS WRITE TOUCHED, not a fixed lateral
+    band.  Sampling out to `lat_max_m` is deliberate -- it shows where the
+    ground goes -- but a natural cliff at lat 21 is not a wall the road left,
+    and a band-based rule reported exactly that on T12 before this.  So every
+    adjacent PAIR is classified by whether either of its samples has a
+    MODIFIED corner under it (`applied_at` returns that count), which is
+    precisely "is this step on ground we moved".  Three disjoint sets come
+    out: the carriageway, the EARTHWORK (the verdict), and natural ground
+    (reported, never judged).
+    """
+    nodes = np.array(seg["nodes"], dtype=np.float64)
+    br = np.array(seg["is_bridge"], dtype=bool)
+    half = seg["width_m"] / 2.0
+    edge = half + SHOULDER_M
+
+    # EVERY RECORDED CLIP, ON A 2 m GRID, so an over-grade step can be asked
+    # "did this write already record a reason for you".  2 m because the census
+    # samples the cross section at 1 m and a clip sits on the lattice: one cell
+    # either way covers the bilinear footprint of the step being judged.
+    clipgrid: dict[tuple[int, int], list] = {}
+    for cx_, cz_, cause_, h_ in (clips or ()):
+        clipgrid.setdefault((int(cx_ // 2), int(cz_ // 2)), []).append(
+            (cx_, cz_, cause_, h_))
+
+    def clip_near(x: float, z: float, r: float = 2.5):
+        best = None
+        for gx_ in (int(x // 2) - 1, int(x // 2), int(x // 2) + 1):
+            for gz_ in (int(z // 2) - 1, int(z // 2), int(z // 2) + 1):
+                for cx_, cz_, cause_, h_ in clipgrid.get((gx_, gz_), ()):
+                    d = math.hypot(x - cx_, z - cz_)
+                    if d <= r and (best is None or d < best[0]):
+                        best = (d, cause_, h_)
+        return None if best is None else {"cause": best[1],
+                                          "recorded_wall_m": best[2],
+                                          "dist_m": round(best[0], 2)}
+
+    # TOLERANCE, AND WHY IT IS NOT ZERO: the cross section is sampled at a 1 m
+    # pitch along a direction that is NOT the lattice axis, so each reading is
+    # a bilinear blend of four samples and a step measured across a diagonal
+    # picks up the LONGITUDINAL grade as well.  On an 8 % road that is at most
+    # 0.08 m of the 0.781, so the allowance is the road's own design grade
+    # rather than an invented number.
+    tol = float(seg.get("grade_limit") or 0.12)
+    limit = grade + tol
+
+    lats = np.arange(-lat_max_m, lat_max_m + 1e-9, lat_step_m)
+    worst_road = {"step_m": 0.0}
+    worst_toe = {"step_m": 0.0}
+    worst_work = {"step_m": 0.0}
+    worst_junction = {"step_m": 0.0}
+    toe_steps: list[float] = []
+    road_steps: list[float] = []
+    work_steps: list[float] = []
+    nat_steps: list[float] = []
+    junction_steps: list[float] = []
+    junctions: list[dict] = []
+    over_grade: list[dict] = []
+    explained = 0
+    unexplained = 0
+    stations = 0
+    uncovered = 0
+
+    acc = 0.0
+    for k in range(len(nodes) - 1):
+        if br[k] or br[k + 1]:
+            continue
+        ax, az = nodes[k]
+        bx, bz = nodes[k + 1]
+        seglen = math.hypot(bx - ax, bz - az)
+        if seglen <= 1e-9:
+            continue
+        t = station_step_m - acc
+        while t < seglen:
+            f = t / seglen
+            cx, cz = ax + (bx - ax) * f, az + (bz - az) * f
+            nx, nz = -(bz - az) / seglen, (bx - ax) / seglen
+            ys = []
+            mods = []
+            owns = []
+            for lat in lats:
+                got = applied_at(comps, patches, cx + nx * lat, cz + nz * lat,
+                                 mine)
+                ys.append(None if got is None else got[0])
+                mods.append(0 if got is None else got[2])
+                owns.append(0 if got is None else got[3])
+            if any(v is None for v in ys):
+                uncovered += 1
+            else:
+                stations += 1
+                arr = np.asarray(ys, dtype=np.float64)
+                d = np.abs(np.diff(arr))
+                md = np.asarray(mods, dtype=np.int32)
+                mn = np.asarray(owns, dtype=np.int32)
+                mid = (lats[:-1] + lats[1:]) / 2.0
+                on_road = np.abs(mid) <= edge + EDGE_EPS_M
+                touched = (md[:-1] > 0) | (md[1:] > 0)
+                # A step is MINE when a sample this write wrote is on one
+                # side of it.  It is a JUNCTION when the only written samples
+                # involved belong to someone else -- a neighbouring segment's
+                # carriageway or a settlement pad carried in by the union.
+                # Grading that is the neighbour's re-emit, not this one's, and
+                # judging this segment on it fails a correct segment.
+                ownpair = (mn[:-1] > 0) | (mn[1:] > 0)
+                # A pair straddling MY sample and SOMEBODY ELSE'S is a
+                # junction wherever it sits, carriageway included.  MEASURED
+                # on T12 at (75.2, -65.2): a 2.602 m step at lat 3.5, between
+                # a sample this write wrote and one it refuses because the
+                # site's pad radius GREW since the first build (sites.yaml's
+                # 100 m town against spec.py's provisional 12 m).  The old
+                # road's samples inside the new keep-out are the pad's ground
+                # now, by Main's ruling, and the road may not take them back.
+                mixed = ((mn[:-1] > 0) & (md[1:] > mn[1:])) | \
+                        ((mn[1:] > 0) & (md[:-1] > mn[:-1]))
+                work = ownpair & ~on_road & ~mixed
+                junction = (touched & ~ownpair & ~on_road) | mixed
+                nat = ~touched & ~on_road
+                toe = edge + batter_m + 1.0
+                outside = (np.abs(mid) > edge) & (np.abs(mid) <= toe)
+                on_road = on_road & ~mixed
+                if on_road.any():
+                    j = int(np.argmax(np.where(on_road, d, -1.0)))
+                    road_steps.append(float(d[j]))
+                    if d[j] > worst_road["step_m"]:
+                        worst_road = {"step_m": round(float(d[j]), 3),
+                                      "xz": [round(cx, 1), round(cz, 1)],
+                                      "lat_m": round(float(mid[j]), 1)}
+                if outside.any():
+                    j = int(np.argmax(np.where(outside, d, -1.0)))
+                    toe_steps.append(float(d[j]))
+                    if d[j] > worst_toe["step_m"]:
+                        worst_toe = {"step_m": round(float(d[j]), 3),
+                                     "xz": [round(cx, 1), round(cz, 1)],
+                                     "lat_m": round(float(mid[j]), 1)}
+                if work.any():
+                    j = int(np.argmax(np.where(work, d, -1.0)))
+                    work_steps += [float(v) for v in d[work]]
+                    if d[j] > worst_work["step_m"]:
+                        worst_work = {"step_m": round(float(d[j]), 3),
+                                      "xz": [round(cx, 1), round(cz, 1)],
+                                      "lat_m": round(float(mid[j]), 1)}
+                    for jj in np.flatnonzero(work & (d > limit)):
+                        jj = int(jj)
+                        px_ = cx + nx * float(mid[jj])
+                        pz_ = cz + nz * float(mid[jj])
+                        why = clip_near(px_, pz_)
+                        if why is None:
+                            unexplained += 1
+                        else:
+                            explained += 1
+                        if len(over_grade) < 60:
+                            over_grade.append(
+                                {"step_m": round(float(d[jj]), 3),
+                                 "xz": [round(cx, 1), round(cz, 1)],
+                                 "lat_m": round(float(mid[jj]), 1),
+                                 "recorded_clip": why})
+                if nat.any():
+                    nat_steps += [float(v) for v in d[nat]]
+                if junction.any():
+                    j = int(np.argmax(np.where(junction, d, -1.0)))
+                    junction_steps += [float(v) for v in d[junction]]
+                    if d[j] > worst_junction["step_m"]:
+                        worst_junction = {"step_m": round(float(d[j]), 3),
+                                          "xz": [round(cx, 1), round(cz, 1)],
+                                          "lat_m": round(float(mid[j]), 1)}
+                    if d[j] > grade and len(junctions) < 40:
+                        junctions.append(
+                            {"step_m": round(float(d[j]), 3),
+                             "xz": [round(cx, 1), round(cz, 1)],
+                             "lat_m": round(float(mid[j]), 1)})
+            t += station_step_m
+        acc = seglen - (t - station_step_m)
+
+    def pct(vals, q):
+        return round(float(np.percentile(vals, q)), 3) if vals else None
+
+    # TOLERANCE, AND WHY IT IS NOT ZERO (restated where it is used): the cross section is sampled at a 1 m
+    # pitch along a direction that is NOT the lattice axis, so each reading is
+    # a bilinear blend of four samples and a step measured across a diagonal
+    # picks up the LONGITUDINAL grade as well.  On an 8 % road that is at most
+    # 0.08 m of the 0.781, so the allowance is stated as the road's own design
+    # grade rather than invented.
+    tol = float(seg.get("grade_limit") or 0.12)
+    limit = grade + tol
+    return {
+        "stations": stations,
+        "stations_without_generated_cover": uncovered,
+        "lat_span_m": [float(-lat_max_m), float(lat_max_m)],
+        "verdict_band": ("every adjacent 1 m pair outside the carriageway "
+                         "with a sample THIS WRITE wrote under it; pairs "
+                         "whose only written sample belongs to another claim "
+                         "are reported as junction_* and are that claim's to "
+                         "grade"),
+        "carriageway_step_p50": pct(road_steps, 50),
+        "carriageway_step_p95": pct(road_steps, 95),
+        "carriageway_step_max": worst_road,
+        "earthwork_step_p50": pct(work_steps, 50),
+        "earthwork_step_p95": pct(work_steps, 95),
+        "earthwork_step_max": worst_work,
+        "earthwork_pairs": len(work_steps),
+        "earthwork_over_grade_frac": (
+            round(float(np.mean(np.asarray(work_steps) > limit)), 4)
+            if work_steps else None),
+        "earthwork_over_grade_at": over_grade,
+        "natural_ground_step_p50": pct(nat_steps, 50),
+        "natural_ground_step_max": (round(max(nat_steps), 3)
+                                    if nat_steps else None),
+        "junction_step_p50": pct(junction_steps, 50),
+        "junction_step_max": worst_junction,
+        "junction_pairs": len(junction_steps),
+        "junction_over_grade_at": junctions,
+        "outside_edge_step_p50": pct(toe_steps, 50),
+        "outside_edge_step_p95": pct(toe_steps, 95),
+        "outside_edge_step_max": worst_toe,
+        "outside_edge_over_0_5m_frac": (
+            round(float(np.mean(np.asarray(toe_steps) > 0.5)), 3)
+            if toe_steps else None),
+        "outside_edge_over_1_0m_frac": (
+            round(float(np.mean(np.asarray(toe_steps) > 1.0)), 3)
+            if toe_steps else None),
+        "batter_grade_limit": round(grade, 4),
+        "diagonal_tolerance_m": round(tol, 4),
+        "verdict_limit_m": round(limit, 4),
+        "earthwork_over_grade_explained_by_a_recorded_clip": explained,
+        "earthwork_over_grade_UNEXPLAINED": unexplained,
+        "verdict": ("no_earthwork" if not work_steps
+                    else "pass" if worst_work["step_m"] <= limit
+                    else "pass_with_recorded_clips" if unexplained == 0
+                    else "UNEXPLAINED_STEPS"),
+        "method": ("MEASURED: the applied surface (generated bilinear + "
+                   "delta_at, i.e. how Heightmap composes the mesh) sampled "
+                   "across the ribbon at 1 m lateral pitch every 2 m of "
+                   "centreline, reporting the largest adjacent-sample "
+                   "difference inside the carriageway, on the ground this "
+                   "write MODIFIED, and on untouched natural ground, "
+                   "separately. The verdict is the earthwork set against "
+                   "BATTER_GRADE plus the segment's own longitudinal grade "
+                   "as a diagonal allowance -- NOT a flat 0.5 m, which fails "
+                   "a correctly battered segment. This is the transverse "
+                   "quantity; walkability's gradients are the longitudinal "
+                   "one and cannot see a wall beside the road."),
+        "tool": "tools/jumpstart/roads/ribbon.py::edge_step_census",
+    }
+
+
+def applied_at(comps: dict, patches: dict, x: float, z: float,
+               mine: set | None = None):
     """The height the game will RENDER at (x, z), and how much of it is road.
 
-    Returns (applied_y, generated_y, corners_modified) or None when the
-    generated lattice around the point is not in hand.  This is
+    Returns `(applied_y, generated_y, corners_modified, corners_mine)` or None
+    when the generated lattice around the point is not in hand.  This is
     `generated bilinear + delta_at`, which is exactly `Heightmap`'s own
     composition: the mesh interpolates linearly between 1 m samples and an
     unwritten sample contributes zero delta.  Reading the PROFILE instead would
     answer what the plan intended rather than what the player stands on -- and
     the difference IS the edge, the pad gap and the ribbon end.
+
+    `corners_mine` EXISTS TO STOP THIS SEGMENT ANSWERING FOR ANOTHER
+    SEGMENT'S WALL, and it was a measured misattribution.  After the union a
+    compiler holds every neighbour's samples too, so the cross section at T12
+    s = 116 m reads a 3.676 m wall at lat -6.5 -- which is T3's carriageway
+    edge 1.18 m off T3's OWN centreline, running 6-10 m from T12 near the
+    temple.  Judging T12's batter on it would fail a correct segment and hide
+    the actual owner.  Pass the `{(zone, index)}` set THIS write wrote and
+    every step can be attributed.
     """
     x0, z0 = math.floor(x), math.floor(z)
     tx, tz = x - x0, z - z0
     gen = 0.0
     modified = 0
+    own = 0
     for dx, dz, w in ((0, 0, (1 - tx) * (1 - tz)), (1, 0, tx * (1 - tz)),
                       (0, 1, (1 - tx) * tz), (1, 1, tx * tz)):
         sx, sz = x0 + dx, z0 + dz
@@ -662,9 +1829,12 @@ def applied_at(comps: dict, patches: dict, x: float, z: float):
             return None
         gen += w * float(patch.at(gy, gx))
         comp = comps.get((zx, zz))
-        if comp is not None and comp.modified_height[gy * tcdata.PITCH + gx]:
+        k = gy * tcdata.PITCH + gx
+        if comp is not None and comp.modified_height[k]:
             modified += 1
-    return gen + delta_at(comps, x, z), gen, modified
+            if mine is None or ((zx, zz), k) in mine:
+                own += 1
+    return gen + delta_at(comps, x, z), gen, modified, own
 
 
 def walkability(seg: dict, comps: dict, patches: dict,
@@ -727,7 +1897,7 @@ def walkability(seg: dict, comps: dict, patches: dict,
             st["y"] = None
             off_lattice += 1
         else:
-            st["y"], st["gen"], st["mod"] = got
+            st["y"], st["gen"], st["mod"], st["mine"] = got
         # PAD ADJACENCY IS DECIDED BY THE SAMPLES, NOT BY THE STATION CENTRE.
         # `stamp` skips a SAMPLE whose world position is inside a pad disc, and
         # a station whose centre sits just outside the disc can still have one
@@ -923,6 +2093,32 @@ def main() -> int:
                          "staged operation gets left half-sent.")
     ap.add_argument("--zone-batch", type=int, default=8,
                     help="zones per zones_generate call")
+    ap.add_argument("--placed-objects",
+                    help="JSON map of LIVE placed-object positions produced by "
+                         "roads/clear.py --census: {\"objects\": [[x, z], ...]}. "
+                         "The batter is new ground movement over ground that "
+                         "already carries seated objects, and MEASURED by "
+                         "SeatCheck the hub portal u-lheast already floats "
+                         "0.536 m because a ribbon cut under it after it was "
+                         "seated. Without this file the batter is REFUSED, "
+                         "because an ungated batter is that defect at scale.")
+    ap.add_argument("--no-batter", action="store_true",
+                    help="rasterise the carriageway only, no side slopes. This "
+                         "reproduces the pre-repair geometry and exists to "
+                         "MEASURE it, not to ship it.")
+    ap.add_argument("--repair-of", type=int,
+                    help="the seq of the terrain_write this run REPAIRS. A "
+                         "repair that does not name what it repairs is "
+                         "indistinguishable from a first build, and the "
+                         "ledger is the only place the operator can find out "
+                         "which one he is standing on.")
+    ap.add_argument("--repair-before",
+                    help="JSON file holding the MEASURED before-state of the "
+                         "surface being repaired (the step census off the "
+                         "live blobs). Recorded verbatim in meta so the "
+                         "repair has a verifiable baseline rather than a "
+                         "claim -- the same shape the T12 pothole census took "
+                         "before its repair.")
     args = ap.parse_args()
 
     doc = yaml.safe_load(Path(args.segments).read_text())
@@ -967,10 +2163,12 @@ def main() -> int:
                               "pad_y": site.get("pad_y")})
         pad_source = "spec.SETTLEMENT_SITES (PROVISIONAL fallback)"
     print(f"pad keep-outs: {len(pad_keepouts)} from {pad_source}")
-    zones = segment_zones(seg["nodes"], seg["is_bridge"], seg["width_m"])
+    batter_m = 0.0 if args.no_batter else BATTER_MAX_M
+    zones = segment_zones(seg["nodes"], seg["is_bridge"], seg["width_m"],
+                          batter_m=batter_m)
     print(f"{seg['id']}: {seg['length_m']} m, {seg['width_m']} m wide + "
-          f"{SHOULDER_M} m shoulder, {len(zones)} zones = {len(zones)} "
-          f"_TerrainCompiler ZDOs")
+          f"{SHOULDER_M} m shoulder + {batter_m} m batter reach, "
+          f"{len(zones)} zones = {len(zones)} _TerrainCompiler ZDOs")
 
     out = SCRATCH / f"{seg['id']}.bin"
     patches = zone_patches(zones, SEED, out)
@@ -979,9 +2177,85 @@ def main() -> int:
           f"{prot['by_site'] or '{}'}"
           + (f"; records with NO recoverable piece: {prot['without_pieces']}"
              if prot["without_pieces"] else ""))
+    # THE LIVE PLACED-OBJECT MAP.  Read before stamping because the batter is
+    # gated per sample on it, and a gate applied after the fact is a report
+    # rather than a gate.
+    placed: list[tuple[float, float]] = []
+    placed_source = "none"
+    if args.placed_objects:
+        pdoc = json.loads(Path(args.placed_objects).read_text())
+        placed = [(float(o[0]), float(o[1])) for o in pdoc["objects"]]
+        placed_source = f"{args.placed_objects} ({pdoc.get('method', '?')})"
+    elif batter_m:
+        raise SystemExit(
+            "REFUSING to write a batter without --placed-objects: the batter "
+            "moves ground that has never moved before, and the one recorded "
+            "instance of that hazard tonight (portal u-lheast, 0.536 m float) "
+            "happened precisely because nothing measured what was standing on "
+            "it. Run roads/clear.py --census first, or pass --no-batter.")
+    print(f"placed objects gating the batter: {len(placed)} from {placed_source}")
+    # THE WIDENED FOOTPRINT'S OWN POI KEEP-OUTS.  The ribbon's clearance was
+    # computed for a 7 m strip; a 38 deg batter off an 8 m wall is ~10 m more
+    # per side, so the stand-offs are re-asked for the widened region rather
+    # than assumed to transfer. Discs, not a verdict: the batter CLIPS per
+    # sample, so what it needs from the instrument is a geometry it can test a
+    # single sample against.
+    poi_keepouts = poi_standoff_discs(zones) if batter_m else []
+    print(f"POI keep-out discs gating the batter: {len(poi_keepouts)}")
+
+    # ---- THE LIVE SURFACE, BEFORE ANYTHING IS DECIDED ------------------
+    #
+    # Read first, because two of this repair's three jobs are answers to what
+    # is ALREADY in the world rather than to what the plan says: which samples
+    # a foreign write owns (so the road stops fighting a pad for them), and
+    # what height the road has to arrive at when it meets one.  Deriving
+    # either from radii or from `pad_y` measures the intention instead of the
+    # ground, and the T4 clobber is 89 m of road that proves the difference.
+    live = appliedmod.Applied(actor=ACTOR)
+    print(f"live surface: {len(live.writes)} terrain_write zone entries in the "
+          f"ledger, {len({w['zone'] for w in live.writes})} zones claimed")
+    approach = grade_into_foreign(seg, patches, live, pad_keepouts)
+    print(f"approach grading: {approach['claims']} stations claimed by "
+          f"{approach.get('claims_by_cause', {})}"
+          + (f" owners {approach['owners']}" if approach.get("owners") else "")
+          + f"; regraded {approach['nodes_regraded']} profile nodes "
+          f"(worst move {approach.get('max_profile_move_m')} m); step into the "
+          f"claim {approach['worst_step_before_m']} -> "
+          f"{approach['worst_step_after_m']} m")
+    for c in approach.get("conflicts", [])[:5]:
+        print("   CONFLICT", c)
+
+    def foreign_at(x: float, z: float):
+        return live.foreign_at(x, z)
+
+    # ANOTHER ROAD'S CARRIAGEWAY, FOR THE CORRIDOR RULE.  Main's ruling: where
+    # two road claims run closer than the sum of their batter runs they are
+    # ONE CORRIDOR, and a batter that tapers into a finished road cuts it.
+    # This is scoped to OTHER segments -- this segment's own prior write is
+    # what is being replaced, so treating it as foreign would refuse the
+    # repair its own ground.
+    my_name = f"road_{seg['id']}".replace("-", "_")
+
+    def road_claim_at(x: float, z: float):
+        d, w = live.sample(int(round(x)), int(round(z)))
+        if w is None or w["role"] != appliedmod.ROAD_ROLE:
+            return None
+        if w["name"] == my_name:
+            return None
+        return (d, f"{w['name']}#{w['seq']}")
     comps, st = stamp(seg, patches, zones, pad_keepouts, prot["pieces"],
-                      prot["discs"])
-    loc = location_check(comps, st["written"], seg["width_m"] / 2.0)
+                      prot["discs"], placed_objects=placed,
+                      poi_keepouts=poi_keepouts, batter_m=batter_m,
+                      foreign_at=foreign_at, road_claim_at=road_claim_at)
+    # THE SAMPLES THIS WRITE WROTE, snapshotted BEFORE the union carries
+    # anybody else's in.  Without it every neighbour's wall is attributed to
+    # this segment -- measured: T3's carriageway edge reads as a 3.676 m wall
+    # in T12's own cross section at lat -6.5, because T3 runs 6-10 m from T12
+    # near the temple.
+    mine = {(z, i) for z, comp in comps.items()
+            for i in range(tcdata.SAMPLES) if comp.modified_height[i]}
+    loc = location_check(comps, st["written"], seg["width_m"] / 2.0,
+                         road_written=st["road_written"])
     print(f"location check: verdict={loc['verdict']} nearest="
           f"{(loc['nearest'] or {}).get('name')} standoff {loc['standoff_m']} m "
           f"over {loc['samples_tested']} written samples, "
@@ -996,11 +2270,23 @@ def main() -> int:
               "This is the defect that deleted POI content in the old world.")
         return 3
     print(f"stamped {st['samples_paved']} paved + {st['samples_shoulder']} "
-          f"shoulder samples over {len(comps)} zones; "
+          f"shoulder + {st['samples_batter']} batter samples over "
+          f"{len(comps)} zones; "
           f"cut {st['max_cut_m']} fill {st['max_fill_m']} m; skipped "
           f"{st['skipped_pad']} inside a Settlements pad, "
           f"{st['skipped_protected']} beside a protected piece, "
           f"{st['skipped_underwater']} on a protected structure's water")
+    print(f"batter clipped: {st['batter_clipped_pad']} at a pad, "
+          f"{st['batter_clipped_protected']} at a protected piece, "
+          f"{st['batter_clipped_underwater']} on protected water, "
+          f"{st['batter_clipped_water_edge']} at a water edge (below "
+          f"{WATER_LEVEL_M} m), {st['batter_clipped_poi']} inside a POI "
+          f"stand-off, {st['batter_clipped_placed']} beside a live placed "
+          f"object (grade {st['batter_grade']}, reach {st['batter_max_m']} m)")
+    print(f"WALLS LEFT STANDING: worst {st['walls_left_max_m']} m, by cause "
+          f"{st['walls_left_by_cause']}")
+    for w in st["walls_left"][:10]:
+        print("   ", w)
     print(f"samples past the MEASURED +/-8 m apply clamp: {st['over_clamp']}")
     for s in st["over_clamp_samples"]:
         print("   ", s)
@@ -1054,18 +2340,34 @@ def main() -> int:
         for z, plist in prior_by_zone.items():
             comp = comps[z]
             carried = 0
-            for pr in plist:
+            # THE UNION CARRIES THE LATEST PRIOR CLAIM, NOT THE FIRST, and the
+            # first version of this loop had it backwards: it stopped at the
+            # first prior blob holding a sample, which on a zone with five
+            # prior writes is the OLDEST.  That is Main's T4 ruling inverted --
+            # it would restore `RoadBuild` seq 213's road delta over
+            # `SiteFinish` seq 286's pad inside the pad's own footprint,
+            # re-breaking the foundation this repair exists to respect.  So
+            # the priors are resolved amongst themselves in FILE ORDER first
+            # (later wins, which is what the live compiler holds), and only
+            # then filled in where THIS write wrote nothing.
+            merged_h: dict[int, tuple[float, float]] = {}
+            merged_p: dict[int, tuple] = {}
+            for pr in sorted(plist, key=lambda p: p["file_line"]):
                 old = tcdata.parse(led_ro.read_blob(pr["sha"]))
                 for i, (lvl, sm) in old["heights"].items():
-                    if not comp.modified_height[i]:
-                        comp.modified_height[i] = True
-                        comp.level_delta[i] = lvl
-                        comp.smooth_delta[i] = sm
-                        carried += 1
+                    merged_h[i] = (lvl, sm)
                 for i, col in old["paints"].items():
-                    if not comp.modified_paint[i]:
-                        comp.modified_paint[i] = True
-                        comp.paint[i] = col
+                    merged_p[i] = col
+            for i, (lvl, sm) in merged_h.items():
+                if not comp.modified_height[i]:
+                    comp.modified_height[i] = True
+                    comp.level_delta[i] = lvl
+                    comp.smooth_delta[i] = sm
+                    carried += 1
+            for i, col in merged_p.items():
+                if not comp.modified_paint[i]:
+                    comp.modified_paint[i] = True
+                    comp.paint[i] = col
             print(f"  zone {list(z)}: unioned {carried} samples forward from "
                   f"seq {[pr['seq'] for pr in plist]} "
                   f"(file lines {[pr['file_line'] for pr in plist]}, "
@@ -1091,8 +2393,71 @@ def main() -> int:
     walk["skipped"] = {"settlement_pad": st["skipped_pad"],
                        "beside_protected_piece": st["skipped_protected"],
                        "on_protected_structure_water": st["skipped_underwater"]}
+    walk["batter_clipped"] = {
+        "settlement_pad": st["batter_clipped_pad"],
+        "beside_protected_piece": st["batter_clipped_protected"],
+        "on_protected_structure_water": st["batter_clipped_underwater"],
+        "beside_live_placed_object": st["batter_clipped_placed"],
+        "inside_poi_standoff": st["batter_clipped_poi"],
+        "at_a_water_edge": st["batter_clipped_water_edge"],
+        "on_a_foreign_claim": st["batter_clipped_foreign"],
+        "hillside_steeper_than_batter":
+            st["batter_clipped_steeper_than_batter"],
+        "reach_spent": st["batter_clipped_reach"],
+        "beside_live_placed_object_at": st["batter_clipped_placed_at"]}
+    walk["batter_rays"] = {"rays": st["rays"], "clipped": st["rays_clipped"],
+                           "met_natural_ground": st["batter_met_ground"]}
+    walk["walls_left"] = {"worst_m": st["walls_left_max_m"],
+                          "worst_before_m": st["walls_before_max_m"],
+                          "by_cause": st["walls_left_by_cause"],
+                          "listed": st["walls_left"]}
+    walk["approach_grading"] = approach
+    walk["edge_inclusive"] = {"samples_at_exactly_edge":
+                              st["edge_exact_samples"],
+                              "eps_m": st["edge_eps_m"],
+                              "edge_m": st["edge_m"]}
     walk["protected_pieces_in_zones"] = prot["by_site"]
     walk["protected_records_without_pieces"] = prot["without_pieces"]
+    # THE TRANSVERSE QUANTITY, beside the longitudinal one and never instead
+    # of it.  The operator's "blocky" is this number; `max_gradient_8m` is the
+    # answer to "is it too steep", which every one of these segments already
+    # passed while carrying an 8 m wall.
+    walk["transverse"] = edge_step_census(seg, comps, patches,
+                                          batter_m=batter_m, mine=mine,
+                                          clips=st["clip_at"])
+    tv = walk["transverse"]
+    print(f"TRANSVERSE (the operator's 'blocky'): carriageway 1 m step p50 "
+          f"{tv['carriageway_step_p50']} max {tv['carriageway_step_max']}")
+    print(f"  MY EARTHWORK p50 {tv['earthwork_step_p50']} p95 "
+          f"{tv['earthwork_step_p95']} max {tv['earthwork_step_max']} over "
+          f"{tv['earthwork_pairs']} pairs; VERDICT {tv['verdict']} against "
+          f"{tv['verdict_limit_m']} m ({tv['batter_grade_limit']} grade + "
+          f"{tv['diagonal_tolerance_m']} diagonal), over-grade fraction "
+          f"{tv['earthwork_over_grade_frac']}: "
+          f"{tv['earthwork_over_grade_explained_by_a_recorded_clip']} explained "
+          f"by a recorded clip, "
+          f"{tv['earthwork_over_grade_UNEXPLAINED']} UNEXPLAINED")
+    print(f"  batter rays {st['rays']} ({st['rays_clipped']} clipped, "
+          f"{st['batter_met_ground']} met natural ground, "
+          f"{st['rays_without_road']} skipped for having no written road); "
+          f"{st['samples_batter_in_pad_standoff']} batter samples inside a pad "
+          f"stand-off; interstice {st['interstice_rays']} rays "
+          f"({st['interstice_apron']} levelled flush, "
+          f"{st['interstice_left_ungraded']} left ungraded); "
+          f"{st['edge_exact_samples']} samples at exactly lat==edge")
+    for r in st["interstice"][:4]:
+        print("   interstice", r)
+    for w in tv["earthwork_over_grade_at"]:
+        if w["recorded_clip"] is None:
+            print("   UNEXPLAINED", w)
+    print(f"  ANOTHER CLAIM'S (junctions, not mine to grade) p50 "
+          f"{tv['junction_step_p50']} max {tv['junction_step_max']} over "
+          f"{tv['junction_pairs']} pairs")
+    print(f"  natural ground p50 {tv['natural_ground_step_p50']} max "
+          f"{tv['natural_ground_step_max']}; legacy band metric p50 "
+          f"{tv['outside_edge_step_p50']} max {tv['outside_edge_step_max']}")
+    for w in tv["earthwork_over_grade_at"][:6]:
+        print("   over grade", w)
     print(f"walkability: {walk['verdict']} max gradient over "
           f"{VERDICT_BASELINE_M:g} m baseline {walk['max_gradient_8m']} "
           f"(limit {walk['slide_limit']}, 38 deg slide angle) at "
@@ -1145,6 +2510,7 @@ def main() -> int:
         "zdo_cost": len(entries),
         "paved_samples": st["samples_paved"],
         "shoulder_samples": st["samples_shoulder"],
+        "batter_samples": st["samples_batter"],
         "paved_m2": st["samples_paved"] * 1.0,
         "location_check": {k: v for k, v in loc.items() if k != "violations"},
         "over_clamp": st["over_clamp"],
@@ -1168,6 +2534,12 @@ def main() -> int:
                       if not brg],
             "half_width_m": seg["width_m"] / 2.0,
             "shoulder_m": SHOULDER_M,
+            # The batter is part of the WRITTEN SURFACE, so it belongs in the
+            # field a replay re-derives deltas from. Without it a replay
+            # reproduces the carriageway and silently drops every side slope,
+            # which is the pre-repair geometry wearing this record's name.
+            "batter_m": batter_m,
+            "batter_grade": round(BATTER_GRADE, 4),
             "interp": "linear_arclength",
         },
         "max_cut_m": st["max_cut_m"], "max_fill_m": st["max_fill_m"],
@@ -1221,6 +2593,9 @@ def main() -> int:
                 "zdo_cost": len(entries),
                 "paved_samples": st["samples_paved"],
                 "shoulder_samples": st["samples_shoulder"],
+                "batter_samples": st["samples_batter"],
+                "batter_m": batter_m, "batter_grade": round(BATTER_GRADE, 4),
+                "transverse": walk["transverse"],
                 "skipped_inside_settlement_pad": st["skipped_pad"],
                 "max_cut_m": st["max_cut_m"], "max_fill_m": st["max_fill_m"],
                 "samples_past_8m_clamp": st["over_clamp"],
@@ -1351,6 +2726,8 @@ def main() -> int:
                               if not brg],
                     "half_width_m": seg["width_m"] / 2.0,
                     "shoulder_m": SHOULDER_M,
+                    "batter_m": batter_m,
+                    "batter_grade": round(BATTER_GRADE, 4),
                     "interp": "linear_arclength",
                 },
                 "max_cut_m": st["max_cut_m"], "max_fill_m": st["max_fill_m"],
@@ -1373,6 +2750,13 @@ def main() -> int:
                   "abutments": seg["abutments"],
                   "paved_samples": st["samples_paved"],
                   "shoulder_samples": st["samples_shoulder"],
+                  "batter_samples": st["samples_batter"],
+                  "batter_m": batter_m,
+                  "batter_grade": round(BATTER_GRADE, 4),
+                  "repair_of": args.repair_of,
+                  "repair_before": (json.loads(
+                      Path(args.repair_before).read_text())
+                      if args.repair_before else None),
                   "walkability": walk,
                   "merged_from_file_lines": {
                       f"{z[0]},{z[1]}": [{"file_line": pr["file_line"],

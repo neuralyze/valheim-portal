@@ -480,9 +480,27 @@ def _site_evidence(protected: dict, prior: list[dict],
             associated.update(int(n) for n in (v.get("lines") or []))
     role = protected.get("params", {}).get("role")
     here = _record_xz(protected.get("params", {}))
+    # A RETIRED PIECE IS NOT STANDING THERE, and protecting it asserts
+    # something true about the log and false about the world -- which is the
+    # substitution `retire` exists to stop (see its `why`: "so that a REPLAY
+    # ENDS WITH THE OBJECTS GONE rather than faithfully rebuilding litter").
+    # MEASURED case that found this: the portal hall's pad probes 1.500 m of
+    # applied delta at (-281.5, 197.5), which is the hub-END arch of tag
+    # `x-ferry-e`. That arch carries `site_id: ferry-terminal-eastisle`
+    # because its PAIR stands on a jetty 2.3 km away, so the jetty's
+    # `flatten: FORBIDDEN` -- "levelling the footprint removes the water the
+    # piles are driven into" -- reaches across the world and refuses a pad
+    # under an arch that stands in a wood. Deleting that arch and re-seating
+    # it inside the hall is exactly the fix, and once it is retired there is
+    # nothing at that position to protect. Nothing is loosened: an
+    # unretired piece is still protected, and a retire is itself a recorded,
+    # verified operation whose postcondition counts the objects to zero.
+    gone = retired_seqs(prior)
 
     for line_no, r in enumerate(prior + [protected]):
         rp = r.get("params", {})
+        if r.get("seq") in gone and r is not protected:
+            continue
         same = line_no in associated
         if not same and key is not None and _site_key(rp) == key:
             same = True
@@ -735,6 +753,39 @@ class Ledger:
                                 requires=dict(requires or {}),
                                 expect=expect, meta=dict(meta or {}))
 
+    def build(self, op: str, *, params: dict, wire: list[str] | None = None,
+              requires: dict | None = None, expect: dict | None = None,
+              meta: dict | None = None) -> dict:
+        """The record a call to `append` WOULD write, without writing it.
+
+        This is what a dry run needs and what it did not have: the useful half
+        of a dry run is `schema.validate`, and until now the only way to reach
+        it was to append.  So "test the gate without touching the shared
+        artefact" was not expressible, and two agents in one session left
+        records in the chain while trying not to.
+
+        `seq` and `prev` are the CURRENT head's successor rather than a
+        placeholder, so the validated shape is the one that would land -- but
+        nothing is locked, written or fsync'd, and the cross-record checks
+        (which read prior records and must run inside the append lock) are
+        deliberately NOT run here: a dry run cannot hold a claim on the chain.
+        """
+        seq, head = self._replay_chain()
+        rec: dict = {
+            "seq": seq + 1,
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "actor": self.actor,
+            "op": op,
+            "params": params,
+            "wire": list(wire or []),
+            "requires": dict(requires or {}),
+            "meta": dict(meta or {}),
+            "prev": head,
+        }
+        if expect is not None:
+            rec["expect"] = expect
+        return rec
+
     def _append_raw(self, op: str, params: dict, *, wire: list[str],
                     requires: dict, expect: dict | None, meta: dict) -> dict:
         """Append one record under an EXCLUSIVE FILE LOCK, with the chain head
@@ -921,8 +972,10 @@ class Ledger:
         import math
 
         bad = []
+        retired = retired_seqs(prior)
         forbidden = [r for r in prior
-                     if r["params"].get("flatten") == "FORBIDDEN"]
+                     if r["params"].get("flatten") == "FORBIDDEN"
+                     and r["seq"] not in retired]
         if not forbidden:
             return bad
         zones = {tuple(e["zone"]) for e in rec["params"]["entries"]}

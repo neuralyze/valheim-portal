@@ -413,8 +413,20 @@ KNOWN_ROLES = {
     "town_body", "town_plot", "watchtower", "castle", "lighthouse", "treehouse",
     # WayFinding
     "waypoint_sign", "directory_sign", "map_pin", "spawn_portal",
+    # SeatCheck -- the portal HALL, which replaces the unlevelled ring of 18
+    # arches the operator reported as "a bunch of portals spread throughout
+    # the woods"
+    "portal_hall_pad", "portal_hall_body", "portal_hall_end",
+    "portal_hall_move",
     # GroundTruth / shared
     "site_pad", "site_body", "site_prop", "clearing",
+    # RoadClear / RoadEmit -- the missing half of the road pipeline.  The
+    # ribbon levelled a paved carriageway THROUGH standing forest and removed
+    # nothing, because it ran under the non-destructive budget and said so.
+    # This role is the destructive counterpart: vegetation standing in a
+    # finished road, removed by explicit prefab list with a live per-cylinder
+    # census in the same call.
+    "road_surface_clearing",
 }
 
 TAG_RE = re.compile(r"^[A-Za-z0-9._-]{1,10}$")

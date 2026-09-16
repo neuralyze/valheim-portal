@@ -69,6 +69,11 @@
   "first_seen_seq": 213,
   "note": "TCData T4-meadhall-stathub zone [6, 6]"
  },
+ "0b9a7fc0d1b479b9c450a7a141e0ad586aab0e19c90ad42e69d30d3d0d7b694f": {
+  "bytes": 1308,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [4, 6]"
+ },
  "0c38e86a5b1a71fffecc44e2efe8c6a590fabdeca53054d878ab27a35d528676": {
   "bytes": 246,
   "first_seen_seq": 202,
@@ -103,6 +108,11 @@
   "bytes": 1023,
   "first_seen_seq": 240,
   "note": "TCData T5-temple-dockshore zone [7, -3]"
+ },
+ "0fee65f12a23b6f1e48d1db5792c9dc363b6a9ea9ad10f8e4b227fa1940112b0": {
+  "bytes": 7663,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [-1, -1]"
  },
  "1334151807f4027cf902a42f1c84cd0e6ca9bbc292d7edf988088660c5a7c558": {
   "bytes": 17410,
@@ -174,6 +184,11 @@
   "first_seen_seq": 38,
   "note": "TCData stenvik_hut_2_z8_14 zone 8,14"
  },
+ "19c7c2fe3a392fa60a03bb5cee1e721aa6fbfc54b1f3d9355fd994b3b64a3ffe": {
+  "bytes": 552,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [2, 0]"
+ },
  "1a4596d20f4a50440e96198355e7cfaa6a4c37bd9f7926f9cdfb09b26f001022": {
   "bytes": 98277,
   "first_seen_seq": 600,
@@ -188,6 +203,11 @@
   "bytes": 3598,
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-cottage-1"
+ },
+ "1d14a8e0356715ef7f7a46a8f9e411d0104c0ddcb649b449c5d5e2f58223977a": {
+  "bytes": 4160,
+  "first_seen_seq": 801,
+  "note": "TCData portal_hall_z_4_3 zone -4,3"
  },
  "1d77465d2d248c81c2fcc1481121b726e9b2352aed15a1627d522b793ffc1630": {
   "bytes": 1228,
@@ -208,6 +228,11 @@
   "bytes": 1225,
   "first_seen_seq": 387,
   "note": "TCData wt_town_z12_11 zone 12,11"
+ },
+ "1e778f5e57ba282b13376a6cc55f54742fcd04344ed5bc043662e6ee27f189a4": {
+  "bytes": 1144,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [-1, 0]"
  },
  "1f1737447fb9f58c16da34b9ed033e23748223f4ce9d5fe1aa7da0b24433c0e4": {
   "bytes": 13893,
@@ -294,6 +319,11 @@
   "first_seen_seq": 23,
   "note": "bridge-s2-portalhall-strait spawn_object plan, 156 commands"
  },
+ "2f4e55f057a2b32d03e8b5047127b85ef0fc9836286dd71c329a5b020e763b29": {
+  "bytes": 1515,
+  "first_seen_seq": 967,
+  "note": "TCData T12-wtspawn-temple zone [0, -1]"
+ },
  "2fa5d34004137e9a9dc03cbaf0a8c5c44679786c5d2b49591316da04a06f68b0": {
   "bytes": 16427,
   "first_seen_seq": 426,
@@ -319,6 +349,11 @@
   "first_seen_seq": 599,
   "note": "TCData lh_east_z37_2 zone 37,2"
  },
+ "316d2746a1b2ef0ee796827a29cf7406d3b8ba004ca24a0497186fbc172518c9": {
+  "bytes": 929,
+  "first_seen_seq": 801,
+  "note": "TCData portal_hall_z_5_4 zone -5,4"
+ },
  "317567dc9136f8da7f07535492ddfd92ce8094965aa4a8e67f5949111e4c1f5f": {
   "bytes": 11461,
   "first_seen_seq": 38,
@@ -338,6 +373,11 @@
   "bytes": 2912,
   "first_seen_seq": 181,
   "note": "TCData T12-wtspawn-temple zone [1, -1]"
+ },
+ "3540ac0e2a05669dd3f504208d1baf7aa739a9c087f6db91eff09ecb1da1ccd8": {
+  "bytes": 1379,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [4, 4]"
  },
  "3642d454b84b10cfd207dbb8a7309b52826ab4bed5b19edadcb5752387077f24": {
   "bytes": 17909,
@@ -478,6 +518,11 @@
   "bytes": 3073,
   "first_seen_seq": 320,
   "note": "TCData T1-portalhub-temple zone [-3, 0]"
+ },
+ "4a565e6a7adeca7374c555a278260a8d3464017f17db0c76a088e9ed75d691da": {
+  "bytes": 3465,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [5, 6]"
  },
  "4be3329aa7c4c784084b24669dedc749556900171ffb21969c2e6ffb98f33765": {
   "bytes": 715,
@@ -719,6 +764,11 @@
   "first_seen_seq": 234,
   "note": "TCData T9-wttown-dockshore zone [14, 8]"
  },
+ "6cfeaa74a7a917ee672969398871282a49abcf738a69ad5666e95e1554fba105": {
+  "bytes": 7004,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [1, 0]"
+ },
  "6d1cdea52c27cceaa84b17230673f4ec670cabdbfa53dda07f2589afd52ce5b3": {
   "bytes": 2735,
   "first_seen_seq": 279,
@@ -733,6 +783,21 @@
   "bytes": 2140,
   "first_seen_seq": 207,
   "note": "TCData T10-wtspawn-wtsouth zone [8, 1]"
+ },
+ "6dc3e08e493c936d9df5dc60bd3a0688e9e649b353ec18426f9f1104032e8e48": {
+  "bytes": 838,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [1, 1]"
+ },
+ "6e1c3ed0e19c6b12757c8bd3a1b48abcbd52d9fabf6878e99ee59b59e7ec48dd": {
+  "bytes": 1243,
+  "first_seen_seq": 967,
+  "note": "TCData T12-wtspawn-temple zone [2, -1]"
+ },
+ "6e97ecb11fd9a450b1a7314b5f6a5eb7406593060ba525a90f0f89142ad938cf": {
+  "bytes": 1128,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [2, 2]"
  },
  "6ea5a9a78babaa118c398374515ca4ce93b403f9da70087394946860e1da154a": {
   "bytes": 3660,
@@ -789,6 +854,11 @@
   "first_seen_seq": 185,
   "note": "TCData T3-temple-meadhall zone [4, 6]"
  },
+ "743a2468f0f6b2c2f23cdb657118fec977687b16352aafdc43c666be343c2347": {
+  "bytes": 6027,
+  "first_seen_seq": 967,
+  "note": "TCData T12-wtspawn-temple zone [1, 0]"
+ },
  "748bf80cce35aa7ac4feb6f14e31b24acb6de75d38f4c3498e2c69fafc010bc3": {
   "bytes": 5686,
   "first_seen_seq": 516,
@@ -798,6 +868,11 @@
   "bytes": 2215,
   "first_seen_seq": 698,
   "note": "TCData tree_west_1_z_8_13 zone -8,13"
+ },
+ "751ffefbb46529cc195354fc20ac69f1a3b9ccdf70a4be5750b2d0dcb738ee3d": {
+  "bytes": 6961,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [0, 0]"
  },
  "757ddd5ffff5cc134edb3d7094d522682a62da488d2d5cc66eccd4b5e7589cd3": {
   "bytes": 17865,
@@ -828,6 +903,11 @@
   "bytes": 6572,
   "first_seen_seq": 531,
   "note": "TCData hognest_castle_z8_21 zone 8,21"
+ },
+ "77e6f2b3c7be6f75247e1db6b92d1e7c1adfe6d14621203521f5d5a69263143b": {
+  "bytes": 499044,
+  "first_seen_seq": 802,
+  "note": "spawn plan portal-hall (portals+signs stripped)"
  },
  "7812f03c36f08fcd27c7028e0c4a071b2668c1e951832a309c26c5211d9ae759": {
   "bytes": 3660,
@@ -869,6 +949,11 @@
   "first_seen_seq": 346,
   "note": "TCData S1-portalhub-brgs2 zone [-5, 4]"
  },
+ "7df3bd7c580d469c597ef591e1d39516ddf0448e7a0151c151050869cf8c1820": {
+  "bytes": 3578,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [4, 5]"
+ },
  "7f09f61d7698b65337b29429741a02bddd754612bd95f17819527e16492fd35c": {
   "bytes": 517,
   "first_seen_seq": 179,
@@ -893,6 +978,11 @@
   "bytes": 14865,
   "first_seen_seq": 433,
   "note": "spawn plan vestvik-workshop-1"
+ },
+ "81e3ff2b18d26fb46948496c71e2c0c6db6240363e74e911237e7a234b5b8e80": {
+  "bytes": 1323,
+  "first_seen_seq": 801,
+  "note": "TCData portal_hall_z_4_4 zone -4,4"
  },
  "82232bd571cb96cd9cd3671fc8c5154a64707c5f8c5962e25587d6aea3209bb2": {
   "bytes": 1709,
@@ -983,6 +1073,11 @@
   "bytes": 1268,
   "first_seen_seq": 234,
   "note": "TCData T9-wttown-dockshore zone [12, 6]"
+ },
+ "8e507663d52878ef08b37f7ab6f2c92b5c20e5fda9ced2587f0eb4eec00fc87a": {
+  "bytes": 1127,
+  "first_seen_seq": 967,
+  "note": "TCData T12-wtspawn-temple zone [-1, 0]"
  },
  "8ebf9777d5616af23fc55146e81e7452fbd404887eda05a6287192440e7b5270": {
   "bytes": 1061,
@@ -1099,6 +1194,11 @@
   "first_seen_seq": 136,
   "note": "TCData stenvik_cottage_3_z9_14 zone 9,14"
  },
+ "9e2272481ab684c1ee6fe37e04cf177b4c666b37fbc2ad5f0e7dcc6ce297284e": {
+  "bytes": 2513,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [3, 4]"
+ },
  "9ea3742395c4ec684aa99d1d6072426c0c8fff8aa47382bbd5608889840bac2f": {
   "bytes": 965,
   "first_seen_seq": 185,
@@ -1113,6 +1213,11 @@
   "bytes": 517,
   "first_seen_seq": 323,
   "note": "TCData W5-brgs1-wsouth zone [-12, -4]"
+ },
+ "a09fdb5532ba8f22b0b9a5ab472a2dabadc6f94a862b75b7c660606d11f6bd7f": {
+  "bytes": 5421,
+  "first_seen_seq": 967,
+  "note": "TCData T12-wtspawn-temple zone [1, -1]"
  },
  "a0d7f019319d128f6f8c789a9d4276beb1fe94ac4a6272052f286148432e6694": {
   "bytes": 623,
@@ -1168,6 +1273,11 @@
   "bytes": 1408,
   "first_seen_seq": 323,
   "note": "TCData W5-brgs1-wsouth zone [-10, -3]"
+ },
+ "a573a4aba1e631873b1d41de11636dbd738f53698a71f1fb3e5e1f0116d3f838": {
+  "bytes": 2754,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [3, 2]"
  },
  "a59cdadeec208c01283fa40400286173af767e36828151a4f3baeb449585aab6": {
   "bytes": 1272,
@@ -1278,6 +1388,11 @@
   "bytes": 256,
   "first_seen_seq": 38,
   "note": "TCData stenvik_cottage_3_z8_15 zone 8,15"
+ },
+ "b7eb7e956ec3645e78e656b42645cbc213cbb6c7ed471b2559f03ac2c0eca10b": {
+  "bytes": 7597,
+  "first_seen_seq": 967,
+  "note": "TCData T12-wtspawn-temple zone [-1, -1]"
  },
  "b832c1e8d3697591c8becf77fdd0102f55a338526d73e842958144073a05dcef": {
   "bytes": 3494,
@@ -1399,6 +1514,11 @@
   "first_seen_seq": 517,
   "note": "spawn plan vestvik-hut-2"
  },
+ "c2b1340787fa2b1a726d0aaaff45ad0e961b1c07fc2042e684044a397b9028a5": {
+  "bytes": 3390,
+  "first_seen_seq": 801,
+  "note": "TCData portal_hall_z_5_3 zone -5,3"
+ },
  "c38ad7e2d68629b482e93e8595188a24804618344cab2bdbac2c411b8fcd3c08": {
   "bytes": 685,
   "first_seen_seq": 218,
@@ -1473,6 +1593,11 @@
   "bytes": 4835,
   "first_seen_seq": 699,
   "note": "spawn plan tree-west-1"
+ },
+ "ce7da554ebba180d7a53a6a2d9e365408cb08b69f086066e99f6e3853bf3e697": {
+  "bytes": 3685,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [3, 3]"
  },
  "ce853fe04fccd671efc5035657fbfb3990d998a9948f9317286b99f83480856a": {
   "bytes": 1189,
@@ -1599,6 +1724,11 @@
   "first_seen_seq": 545,
   "note": "TCData wt_peak_z22_24 zone 22,24"
  },
+ "deb66243e5c67ede9b2c415fbaa40d520b92f3c6c61f37087ce7ed4b41ec07eb": {
+  "bytes": 3511,
+  "first_seen_seq": 967,
+  "note": "TCData T12-wtspawn-temple zone [2, -2]"
+ },
  "dfabb515f62961c097f5903ad7bfc5890a8d5954acdf031aece014530c1e1df1": {
   "bytes": 2624,
   "first_seen_seq": 320,
@@ -1689,6 +1819,11 @@
   "first_seen_seq": 111,
   "note": "TCData stenvik_house_1_z7_14 zone 7,14"
  },
+ "ede2611610ebd2f6c6cdb095fc22e48462f2642860fa58080518616d267e93b9": {
+  "bytes": 1516,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [0, -1]"
+ },
  "ee33a25e8678e1e676a835dabeeddc1fee2be3cb340d35ba15f6ffaadf8ff9dd": {
   "bytes": 1306,
   "first_seen_seq": 640,
@@ -1713,6 +1848,11 @@
   "bytes": 917,
   "first_seen_seq": 320,
   "note": "TCData T1-portalhub-temple zone [-3, -1]"
+ },
+ "f1c1b74031cc0847652c35a3a83dd83e2ce5ced821d3258b62a3786322cb1c6f": {
+  "bytes": 4362,
+  "first_seen_seq": 1002,
+  "note": "TCData T3-temple-meadhall zone [2, 1]"
  },
  "f1c1f360e9e48edc14560c27d2904d7e3e5928a1d1d75e9b0f0ac11861359ecb": {
   "bytes": 2155,
@@ -1803,6 +1943,11 @@
   "bytes": 5127,
   "first_seen_seq": 677,
   "note": "spawn plan tree-sth-3"
+ },
+ "fefee8d618ebb6a3e5e37e552c89b5750e51311f9004fd6e5d99b1e1d38efe12": {
+  "bytes": 6673,
+  "first_seen_seq": 967,
+  "note": "TCData T12-wtspawn-temple zone [0, 0]"
  },
  "ff610caf79a38be07fc9e6851caad08900bd233770f04f6f010efe5bfce1bcd0": {
   "bytes": 1479,

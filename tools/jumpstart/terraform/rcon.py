@@ -255,9 +255,12 @@ sys=$(pgrep -x syslogd | head -1)
 [ -n "$sup" ] && [ -n "$sys" ] || { echo "MISSING $sup $sys"; exit 0; }
 echo "PIDS $sup $sys"
 echo "WCHAN $(cat /proc/$sup/wchan 2>/dev/null) $(cat /proc/$sys/wchan 2>/dev/null)"
+for n in 0 1 2; do
+    echo "SYSFD $n $(readlink /proc/$sys/fd/$n 2>/dev/null)"
+done
 target=$(readlink /proc/$sys/fd/1 2>/dev/null)
 for f in /proc/$sup/fd/*; do
-    if [ "$(readlink "$f" 2>/dev/null)" = "$target" ]; then echo "READFD $f"; fi
+    if [ -n "$target" ] && [ "$(readlink "$f" 2>/dev/null)" = "$target" ]; then echo "READFD $f"; fi
 done
 """
 
@@ -272,24 +275,138 @@ def _in_container(script: str, name: str = CONTAINER, timeout: float = 30.0) -> 
     return out.stdout + out.stderr
 
 
-def log_sink_state(name: str = CONTAINER) -> dict:
-    """Whether the container's stdout chain is moving, and where it is stuck.
+def sink_flowing(name: str = CONTAINER, marker: str | None = None,
+                 settle: float = 2.0, window_s: int = 30) -> dict:
+    """ACTIVELY prove whether the container's log sink is carrying anything.
 
-    Returns `{"stalled": bool, "wchans": (sup, sys), "read_fds": [...]}`.
+    Writes a unique marker to the container's own `/dev/log` with `logger` and
+    looks for it in `docker logs`.  Nothing else in this module answers the
+    question: ABSENCE of log output proves nothing, because the server's own
+    heartbeat period is 600 s (see `LOG_LIVENESS_WINDOW_S`), and a /proc
+    snapshot proves nothing either -- MEASURED by SeatCheck on the freshly
+    restarted, demonstrably healthy container, `readlink /proc/<syslogd>/fd/1`
+    from a `docker exec` context reads EMPTY while the log is plainly flowing,
+    so an empty fd readlink is not evidence of a lost socket.  It was a
+    corroborating detail in the one broken case and I had promoted it to the
+    test, which would have sent the next agent into a needless restart.
+
+    The marker goes through `/dev/log` -> syslogd -> supervisord -> container
+    stdout: exactly the path that breaks, and the game process is never
+    touched.
+    """
+    mark = marker or f"sinkprobe-{int(time.time() * 1000)}"
+    have = _in_container(
+        f"command -v logger >/dev/null && logger -p user.info {mark} "
+        f"&& echo HAVE_LOGGER || echo NO_LOGGER", name)
+    if "HAVE_LOGGER" not in have:
+        return {"flowing": None, "marker": mark, "probe": "unavailable",
+                "why": "no `logger` in the container; falling back to the "
+                       "/proc signature alone, which cannot tell a healthy "
+                       "quiet sink from a dead one"}
+    time.sleep(settle)
+    out = subprocess.run(
+        ["sudo", "-n", "docker", "logs", "--since", f"{window_s}s", name],
+        capture_output=True, text=True)
+    text = out.stdout + out.stderr
+    return {"flowing": mark in text, "marker": mark,
+            "probe": f"logger -p user.info {mark} then docker logs --since {window_s}s",
+            "window_lines": len(text.splitlines())}
+
+
+def log_sink_state(name: str = CONTAINER, probe: bool = True) -> dict:
+    """WHICH sink failure this is, decided by an ACTIVE measurement first and
+    by the /proc signature only to say WHICH failure it is.
+
+    Returns `{"verdict": ..., "stalled": bool, "flowing": bool | None,
+    "wchans": (sup, sys), "syslogd_fds": {...}, "read_fds": [...],
+    "remedy": str, "sink_probe": {...}}` where `verdict` is one of:
+
+      "healthy"        -- the marker written to `/dev/log` came out of
+          `docker logs`.  The sink carries traffic; if a census is blind the
+          cause is elsewhere.
+      "circular_wait"  -- not flowing, supervisord in `unix_wait_for_peer` AND
+          syslogd in `pipe_write`, with supervisord still holding a read end of
+          syslogd's stdout pipe.  DRAINABLE by `recover_log_sink` in about
+          20 s, no restart, the game untouched.
+      "fds_lost"       -- not flowing, supervisord blocked in
+          `unix_wait_for_peer`, and no read end of syslogd's stdout anywhere in
+          supervisord.  There is nothing for `dd` to drain: a container RESTART
+          is the only remedy.
+      "blocked_unknown"-- not flowing and neither signature matches.  Named
+          rather than folded into either, because "I do not recognise this" is
+          a different claim from "this is the drainable one".
+
+    TWO OF THIS INSTRUMENT'S OWN DEFECTS ARE RECORDED HERE, BOTH MINE.
+
+    (1) The verdict replaced a BOOLEAN.  MEASURED on the third outage:
+    `stalled` answered False and was RIGHT ABOUT THE QUESTION IT ASKS -- "is
+    this the circular wait" -- while being READ as "is the sink healthy".
+    Every `objects_count` in the project was blind, `recover_log_sink` no-opped
+    and returned that same state, and a no-op that looks like a successful
+    recovery is how the next agent spends an hour.
+
+    (2) The first fix then made the SAME mistake one level up: it decided
+    `fds_lost` from `readlink /proc/<syslogd>/fd/{0,1,2}` being empty.  MEASURED
+    by SeatCheck on the freshly restarted, demonstrably healthy container --
+    485 lines in a 120 s window, supervisord in `do_poll.constprop.0` -- those
+    readlinks STILL read empty, because reading another process's fd links from
+    a `docker exec` context is not permitted to resolve them.  So the empty
+    readlink was never evidence of a lost socket; it was a corroborating detail
+    in the one broken case that I promoted to the test, and it would have sent
+    the next agent into a needless restart.  The fds are still reported, as
+    evidence, and they decide nothing.
+
     Processes are found by name, never by the pids observed once: they differ
     per container and per restart.
     """
     text = _in_container(_SINK_PROBE_SH, name)
     wchans: tuple[str, ...] = ()
     read_fds: list[str] = []
+    sys_fds: dict[str, str] = {}
     for line in text.splitlines():
         if line.startswith("WCHAN "):
             wchans = tuple(line.split()[1:])
         elif line.startswith("READFD "):
             read_fds.append(line.split(None, 1)[1].strip())
-    stalled = len(wchans) == 2 and tuple(wchans) == SINK_STALL_WCHANS
-    return {"stalled": stalled, "wchans": wchans, "read_fds": read_fds,
-            "raw": text.strip()}
+        elif line.startswith("SYSFD "):
+            parts = line.split(None, 2)
+            sys_fds[parts[1]] = parts[2].strip() if len(parts) > 2 else ""
+    flow = sink_flowing(name) if probe else {"flowing": None,
+                                             "probe": "not requested"}
+    sup_blocked = bool(wchans) and wchans[0] == SINK_STALL_WCHANS[0]
+    circular = (len(wchans) == 2 and tuple(wchans) == SINK_STALL_WCHANS
+                and bool(read_fds))
+    if flow["flowing"] is True:
+        verdict = "healthy"
+    elif circular:
+        verdict = "circular_wait"
+    elif sup_blocked and not read_fds:
+        verdict = "fds_lost"
+    elif flow["flowing"] is False:
+        verdict = "blocked_unknown"
+    else:
+        # The probe could not run at all, so the only honest fallback is the
+        # signature, and its absence means "not the shape I know" rather than
+        # "fine".
+        verdict = "circular_wait" if circular else "healthy"
+    return {
+        "verdict": verdict,
+        # Kept, and it now means exactly what its name says: the drainable
+        # shape. Callers that tested it keep working and keep being right.
+        "stalled": verdict == "circular_wait",
+        "flowing": flow["flowing"],
+        "wchans": wchans, "syslogd_fds": sys_fds, "read_fds": read_fds,
+        "sink_probe": flow,
+        "remedy": {
+            "healthy": "none; if a census is blind, the cause is elsewhere",
+            "circular_wait": "recover_log_sink(), ~20 s, game untouched",
+            "fds_lost": ("docker restart -- supervisord is blocked in "
+                         "unix_wait_for_peer and holds no read end to drain"),
+            "blocked_unknown": ("diagnose before acting: the sink is not "
+                                "carrying a marker and neither known "
+                                "signature matches"),
+        }[verdict],
+        "raw": text.strip()}
 
 
 def recover_log_sink(name: str = CONTAINER, seconds: float = 25.0) -> dict:
@@ -312,10 +429,27 @@ def recover_log_sink(name: str = CONTAINER, seconds: float = 25.0) -> dict:
     is supervisord's copy of log lines that were already written to
     `/var/log/supervisor/`.
 
-    Returns the state AFTER the attempt; check `["stalled"]`.
+    REFUSES rather than no-ops on `fds_lost`.  MEASURED tonight: this function
+    was called on the third outage, saw `stalled=false`, returned that state
+    unchanged, and the caller read a successful recovery out of it while every
+    `objects_count` in the project stayed blind.  A no-op whose return value is
+    indistinguishable from a repair is worse than an exception, so the two
+    cases are now told apart and the one this function cannot fix names its
+    own remedy.
+
+    Returns the state AFTER the attempt; check `["verdict"] == "healthy"`.
     """
     before = log_sink_state(name)
-    if not before["stalled"]:
+    if before["verdict"] == "fds_lost":
+        raise RuntimeError(
+            "log sink is DEAD IN A SHAPE THIS CANNOT REPAIR: syslogd's fds "
+            f"0/1/2 readlink to nothing ({before['syslogd_fds']}), so it holds "
+            "no sockets and there is no read end for `dd` to drain. This is "
+            "NOT the circular wait. The only remedy is `docker restart "
+            f"{name}` -- and readiness after it is proved by a `players` "
+            "reply, never by a log line, because the log is the thing that "
+            f"was broken. Probe said:\n{before['raw']}")
+    if before["verdict"] == "healthy":
         return before
     if not before["read_fds"]:
         raise RuntimeError(
