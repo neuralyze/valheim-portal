@@ -67,6 +67,14 @@ import tcdata  # noqa: E402
 # that the PAD wins: it is a building's foundation and it must stay flat.
 ROAD_ROLE = "road_segment"
 
+# How far two claims' deltas may differ at one sample and still count as the
+# SAME ground.  The ledger's own `FLATTEN_TOLERANCE_M`, and for the same
+# reason: a bilinear blend of unwritten samples is exactly 0.0, so anything
+# above float noise is a real difference.  One number, two spellings is how
+# they drift apart, but `writer.py` must not import from `roads/`, so the
+# value is restated with its provenance rather than shared.
+AUTHOR_TOLERANCE_M = 0.01
+
 
 class Applied:
     """The live applied surface for as many zones as you ask about.
@@ -96,13 +104,46 @@ class Applied:
     # -- per zone ---------------------------------------------------------
 
     def zone(self, zx: int, zz: int) -> dict:
-        """`{delta, modified, owner}` for one zone, unioned in FILE ORDER.
+        """`{delta, modified, owner, author}` for one zone, unioned in FILE
+        ORDER.
 
         FILE ORDER, not `seq`: the chain forked at file line 47 and carries
         duplicate seq labels 43-46, so `seq` is not a total order on this
         artefact and sorting by it would put two records in an arbitrary
         relative position.  The file is append-only and its line number is the
         only total order it has.
+
+        TWO DIFFERENT QUESTIONS, TWO ARRAYS, and conflating them is a defect
+        that cost a whole segment.
+
+          `owner`  -- the LAST write whose blob HOLDS this sample.  That is
+                      the right answer for "which record's bytes are on the
+                      compiler", which is what a clobber check needs.
+          `author` -- the last write whose blob CHANGED it.  That is the right
+                      answer for "whose ground is this", because the blob a
+                      claim sends is the UNION of everything its zones must
+                      keep: a zone holds one `_TerrainCompiler` and
+                      `terrain_write` deletes before it spawns, so every claim
+                      carries its neighbours' samples forward verbatim and the
+                      record then says it owns them.
+
+        MEASURED, and it is why this exists: the portal hall's pad seq 801
+        holds 2,085 samples and AUTHORED 1,349 of them -- all inside its
+        37.4 x 37.4 m rectangle.  The other 736 are T1's and S1's carriageway,
+        carried forward.  Under `owner`, `foreign_at` answers
+        `portal-hall#801` over the whole of S1-portalhub-brgs2, so the
+        rasteriser refused all 215 of its carriageway samples as somebody
+        else's floor and stamped ZERO: the 30.6 m ramp a player walks off a
+        portal could not be repaired at all.  Rewinding past this segment's
+        own records cannot recover it -- the laundered copy is under the
+        HALL's name, not the road's.  Under `author` the last claim to change
+        those samples is the road's own write, which the rewind does drop, and
+        the hall keeps every sample it actually laid.
+
+        A write AUTHORS a sample when its value differs from the state the
+        writes before it had composed, by more than `AUTHOR_TOLERANCE_M`.
+        Where two claims agree to the centimetre the question is moot: the
+        ground does not move, so it does not matter which of them is asked.
         """
         key = (int(zx), int(zz))
         got = self._zones.get(key)
@@ -112,21 +153,37 @@ class Applied:
         delta = np.zeros(n, dtype=np.float64)
         modified = np.zeros(n, dtype=bool)
         owner = np.full(n, -1, dtype=np.int32)
+        author = np.full(n, -1, dtype=np.int32)
         for w in sorted((w for w in self.writes if w["zone"] == key),
                         key=lambda w: w["file_line"]):
             blob = tcdata.parse(self.led.read_blob(w["sha"]))
+            idx = self.writes.index(w)
             for i, (lvl, sm) in blob["heights"].items():
-                delta[i] = lvl + sm
+                v = lvl + sm
+                if not modified[i] or abs(v - delta[i]) > AUTHOR_TOLERANCE_M:
+                    author[i] = idx
+                delta[i] = v
                 modified[i] = True
-                owner[i] = self.writes.index(w)
+                owner[i] = idx
         got = {"zone": key, "delta": delta, "modified": modified,
-               "owner": owner,
+               "owner": owner, "author": author,
                "writes": [w for w in self.writes if w["zone"] == key]}
         self._zones[key] = got
         return got
 
-    def sample(self, sx: int, sz: int) -> tuple[float, dict | None]:
-        """`(delta, owning write)` at an INTEGER lattice sample."""
+    def sample(self, sx: int, sz: int, *,
+               by: str = "author") -> tuple[float, dict | None]:
+        """`(delta, the write whose ground this is)` at an INTEGER lattice
+        sample.
+
+        `by="author"` -- the last claim that CHANGED this sample.  The default,
+        because every caller of this method is asking an ownership question
+        ("may I write here", "whose road is this"), and the union means the
+        last claim to HOLD a sample is routinely not the one that put it
+        there.
+        `by="owner"` -- the last claim whose blob holds it, for the clobber
+        question of which record's bytes are on the compiler.
+        """
         zx, zz = tcdata.zone_of(sx, sz)
         zc = self.zone(zx, zz)
         cx, cz = tcdata.zone_centre(zx, zz)
@@ -136,7 +193,7 @@ class Applied:
         k = gy * tcdata.PITCH + gx
         if not zc["modified"][k]:
             return 0.0, None
-        o = int(zc["owner"][k])
+        o = int(zc[by][k])
         return float(zc["delta"][k]), (self.writes[o] if o >= 0 else None)
 
     # -- off-lattice, the way Heightmap renders it ------------------------
@@ -185,7 +242,10 @@ class Applied:
                 k = gy * tcdata.PITCH + gx
                 if not zc["modified"][k]:
                     continue
-                o = int(zc["owner"][k])
+                # THE AUTHOR, not the holder: every zone that carries this
+                # sample forward would otherwise read as a claim on it, and
+                # the union means most of them do carry it.  See `zone`.
+                o = int(zc["author"][k])
                 w = self.writes[o] if o >= 0 else None
                 if w is not None and w not in out:
                     out.append(w)

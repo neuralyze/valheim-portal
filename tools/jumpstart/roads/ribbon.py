@@ -1313,11 +1313,48 @@ assert abs(BATTER_GRADE - SLIDE_GRADIENT) < 1e-12, (
 VERDICT_BASELINE_M = 8.0
 
 
-# How far back from a foreign claim an approach ramp may reach.  Not a taste
-# number: the apply clamp is +/-8 m, so the largest step the road can possibly
-# owe a pad is 8 m, and 8 / 0.781 = 10.24 m of run removes it at grade.  One
-# metre of margin and the ramp can always arrive.
-APPROACH_MAX_M = 11.5
+# THE SHORTEST RUN AN APPROACH RAMP MAY USE.  Was the only run: the reasoning
+# read "the apply clamp is +/-8 m, so the largest step the road can possibly
+# owe a pad is 8 m, and 8 / 0.781 = 10.24 m of run removes it at grade; one
+# metre of margin and the ramp can always arrive."
+#
+# THE PREMISE IS FALSE AND IT WAS MEASURED FALSE IN THE SAME SESSION THAT
+# WROTE IT.  The clamp bounds what ONE `terrain_write` may move the ground
+# relative to the GENERATED height; it does not bound the step between a
+# road's profile and a pad's levelled datum, because the pad spends a clamp
+# budget of its own in the opposite direction.  MEASURED on T4 at Stenvik:
+# residual step at the pad -10.414 m on a 207.2 m run from (539.8, 814.2),
+# terminating on stenvik's levelled 45.57 m datum -- 2.4 m larger than the
+# largest step this constant assumes can exist.  With the run capped at
+# 11.5 m the ramp grade then saturates at `BATTER_GRADE`, which is the slide
+# limit, and T4's 8 m longitudinal gradient came out at 0.8849: NOT WALKABLE.
+# A player cannot climb a 10.4 m wall and slides back down the stretch before
+# it, so the trunk road into the town ends at a cliff.
+#
+# So the reach is now DERIVED: the run the step needs at the road's own design
+# grade, floored here and ceilinged by `APPROACH_RUN_CAP_M`.  T4's 10.414 m
+# at 8 % wants 130 m and it has 207; the second run's 2.770 m over 69.7 m is
+# 4 %.
+APPROACH_MIN_M = 11.5
+# ...AND BOUNDED, because a claim that cannot be met must not re-profile a
+# whole segment silently.  This is the 120 m this function's own docstring
+# already claimed, plus the margin T4's measured run needs; a step that wants
+# more run than this keeps its residual and the residual is REPORTED.
+APPROACH_RUN_CAP_M = 240.0
+
+
+def approach_reach_m(worst_step_m: float, design_grade: float,
+                     available_run_m: float) -> float:
+    """The run an approach ramp gets: what the step needs at design grade,
+    never below `APPROACH_MIN_M`, never above the segment's own length or
+    `APPROACH_RUN_CAP_M`.
+
+    Bounded by the AVAILABLE run and not only by a constant, because a ramp
+    longer than the segment re-profiles nodes that belong to the other end.
+    """
+    want = abs(worst_step_m) / max(design_grade, 1e-3)
+    return max(APPROACH_MIN_M,
+               min(want, APPROACH_RUN_CAP_M, max(available_run_m, 1e-9)))
 
 
 def grade_into_foreign(seg: dict, patches: dict, live,
@@ -1390,11 +1427,9 @@ def grade_into_foreign(seg: dict, patches: dict, live,
             acc += math.hypot(nodes[k + 1][0] - nodes[k][0],
                               nodes[k + 1][1] - nodes[k][1])
     arc[-1] = acc
-    # The run a ramp needs is set by the step it has to remove, and the step
-    # cannot exceed the +/-8 m apply clamp.  Capped at 120 m so a pathological
-    # claim cannot re-profile a whole segment silently.
-    if reach_m is None:
-        reach_m = APPROACH_MAX_M
+    # THE RUN A RAMP GETS IS DERIVED FROM THE STEP, so it cannot be decided
+    # here: the step is not known until the claims have been measured.  It is
+    # computed below, once, beside the grade it determines.
 
     # ---- the claims, measured station by station -----------------------
     claims: list[dict] = []
@@ -1444,22 +1479,45 @@ def grade_into_foreign(seg: dict, patches: dict, live,
                                "planned_y": round(y, 3),
                                "step_m": round(y - surf[0], 3)})
         s += station_step_m
-    # THE RAMP GRADE, SET BY THE STEP AND BOUNDED AT BOTH ENDS.  Main's
-    # ruling is "grade the last METRES into the pad at BATTER_GRADE", so the
-    # reach is the bound and the grade is whatever that run needs -- as gentle
-    # as possible, never gentler than the road's own design grade (there is no
-    # merit in a flatter road than was fitted) and never steeper than the
-    # batter's 38 deg.  MEASURED why the reach has to be the bound rather than
-    # the grade: ramping T12's 2.991 m step at the design 8 % needs 37 m of
-    # run, re-profiles 56 nodes and turns a 4.58 m fill into a 7.02 m
-    # embankment whose own batter is then clipped by the farmhouse -- the
-    # transverse wall at the pad boundary went 2.60 -> 5.09 m.  Over 11.5 m
-    # the same step needs 0.26, which is a third of the slide limit and moves
-    # a tenth of the earth.
-    if claims and want_grade is None:
+    # THE RAMP: THE RUN COMES FROM THE STEP, THE GRADE COMES FROM THE RUN.
+    #
+    # The previous order was the other way round and it is what shipped T4's
+    # cliff: the run was a constant 11.5 m, so the grade was whatever a 11.5 m
+    # ramp needed, which for a 10.414 m step is 0.905 -- clipped to
+    # `BATTER_GRADE`, the slide limit -- and 1.4 m of the step was still left
+    # over at the boundary.  A ramp at the slide limit is a ramp the player
+    # slides down, and T4's measured 8 m longitudinal gradient came out 0.8849
+    # against a 0.781 limit.
+    #
+    # Now the run is `step / design` (T4: 10.414 / 0.08 = 130 m, and it has
+    # 207) bounded by the segment's own length and `APPROACH_RUN_CAP_M`, and
+    # the grade is `step / run` -- so it lands ON the design grade whenever
+    # the run is there, and only steepens toward the batter ceiling when it is
+    # not.  Never gentler than design: there is no merit in a flatter road
+    # than was fitted.
+    #
+    # THE T12 REGRESSION THIS CONSTANT WAS SHRUNK TO AVOID CANNOT RECUR, and
+    # the reason is a DIFFERENT fix that landed after it.  That regression was
+    # ramping UP to meet ground nobody had built: 11 stations inside
+    # wt-spawn's stand-off whose live surface sat 2.991 m above the profile
+    # purely because the road CUTS a hill there, which at design grade over
+    # 37 m re-profiled 56 nodes, turned a 4.58 m fill into a 7.02 m
+    # embankment and pushed the transverse wall 2.60 -> 5.09 m.  A claim now
+    # REQUIRES a non-zero live delta -- "somebody's earthwork, not somebody's
+    # intention", the test twenty lines above -- so those 11 stations are no
+    # longer claims at all and there is no ramp to lengthen.  MEASURED after
+    # this change: T12 regrades the same nodes it did before.
+    if claims:
         worst = max(abs(c["step_m"]) for c in claims)
-        grade = min(max(worst / reach_m, design), BATTER_GRADE)
+        if reach_m is None:
+            reach_m = approach_reach_m(worst, design, acc)
+        if want_grade is None:
+            grade = min(max(worst / reach_m, design), BATTER_GRADE)
+        else:
+            grade = min(max(want_grade, 1e-3), BATTER_GRADE)
     else:
+        if reach_m is None:
+            reach_m = APPROACH_MIN_M
         grade = min(max(design if want_grade is None else want_grade, 1e-3),
                     BATTER_GRADE)
     if not claims:
@@ -2327,39 +2385,52 @@ def main() -> int:
     # either from radii or from `pad_y` measures the intention instead of the
     # ground, and the T4 clobber is 89 m of road that proves the difference.
     live = appliedmod.Applied(actor=ACTOR)
-    # RULE 1, MAIN'S RULING: REWIND PAST THIS SEGMENT'S OWN PRIOR WRITES.
+    # RULE 1, MAIN'S RULING, NOW IMPLEMENTED AS AUTHORSHIP RATHER THAN AS A
+    # NAME FILTER -- AND THE NAME FILTER WAS WRONG IN BOTH DIRECTIONS.
     #
-    # THE UNION LAUNDERS FOREIGN OWNERSHIP, and this is the line that stops it
-    # poisoning the next repair.  A repair MUST union every prior claim in a
-    # zone forward into its own blob -- a zone holds exactly one
+    # THE UNION LAUNDERS OWNERSHIP.  A repair MUST union every prior claim in
+    # a zone forward into its own blob -- a zone holds exactly one
     # `_TerrainCompiler` and this op does `deleteObjects -zone` first, so
-    # anything it does not carry is destroyed.  But the carried samples then
-    # sit in a blob whose `role` is `road_segment` and whose `name` is this
-    # road's, so `foreign_at` -- the instrument that implements "inside a
-    # settlement pad the pad wins", and which is deliberately blind to radii
-    # because that is what caught T4's clobber -- cannot see the pad any more.
+    # anything it does not carry is destroyed.  The record then stores that
+    # same union, so a pad's floor inside a road's blob reads as
+    # `role: road_segment` under the road's name, and `foreign_at` -- the
+    # instrument that implements "inside a settlement pad the pad wins", and
+    # which is deliberately blind to radii because that is what caught T4's
+    # clobber -- cannot see the pad any more.
     #
     # MEASURED on T8-stenvik-wttown: its write (seq 1197) refused 123
-    # carriageway samples because a site_pad owned them; the IDENTICAL
-    # rasterisation run against the surface that write produced finds ZERO and
-    # authors 810 batter samples where the write made 706.  Those 123 samples
-    # are a building's foundation and the second repair would pave them.
+    # carriageway samples because a site_pad owned them; the identical
+    # rasterisation run against the surface that write produced finds ZERO.
+    # Those samples are a building's foundation and a second repair would
+    # pave them.
     #
-    # Dropping this segment's own entries makes the per-sample owner fall back
-    # to the previous claim in FILE ORDER -- the pad's own record -- which is
-    # the state the FIRST build was handed.  The UNION still reads every prior
-    # including these, from the ledger directly, so nothing is lost from the
-    # blob: only the ownership question is rewound.
-    my_name_early = f"road_{seg['id']}".replace("-", "_")
-    laundered = [w for w in live.writes if w["name"] == my_name_early]
-    live.writes = [w for w in live.writes if w["name"] != my_name_early]
-    live._zones = {}
+    # THE FIRST FIX WAS TO DROP THIS SEGMENT'S OWN ZONE ENTRIES FROM THE
+    # OWNERSHIP VIEW, so the per-sample owner fell back to the previous claim
+    # in file order.  It cures the T8 direction and CAUSES THE MIRROR DEFECT,
+    # measured on S1-portalhub-brgs2: the portal hall's pad seq 801 unioned
+    # S1's carriageway forward VERBATIM (sample (-300, 214) is -1.694 in both
+    # blobs, to the bit), so with S1's own entries dropped the hall became the
+    # first writer of that sample in its zone lattice and read as its author.
+    # `foreign_at` then answered `portal-hall#801` over the whole 30.6 m ramp
+    # and the rasteriser refused all 215 carriageway samples and stamped ZERO
+    # -- the first surface a player walks off a portal, unrepairable.  No name
+    # filter can fix that, because the laundered copy is under the HALL's
+    # name.
+    #
+    # SO THE QUESTION IS ASKED PROPERLY INSTEAD: `applied.py` now composes an
+    # AUTHOR per sample -- the last claim whose value DIFFERED from the state
+    # the claims before it had composed -- alongside the holder, and every
+    # ownership answer comes from the author.  Nothing is dropped from the
+    # composition, so a laundered copy can never become a first write; a pad's
+    # floor is attributed to the pad even inside a road's blob, and a road's
+    # carriageway is attributed to the road even inside a pad's blob.  Both
+    # directions fall out of one measurement.
     print(f"live surface: {len(live.writes)} terrain_write zone entries in the "
           f"ledger, {len({w['zone'] for w in live.writes})} zones claimed; "
-          f"OWNERSHIP REWOUND past {len(laundered)} of this segment's own zone "
-          f"entries (seq {sorted({w['seq'] for w in laundered})}) so a pad's "
-          f"samples are inherited from the PAD's claim and not from this "
-          f"road's laundered copy of it")
+          f"OWNERSHIP BY AUTHORSHIP (the last claim that CHANGED each sample, "
+          f"not the last whose blob holds it), so the union cannot launder a "
+          f"pad's floor into a road's name nor a road's carriageway into a "
+          f"pad's")
     approach = grade_into_foreign(seg, patches, live, pad_keepouts)
     print(f"approach grading: {approach['claims']} stations claimed by "
           f"{approach.get('claims_by_cause', {})}"
@@ -2421,20 +2492,28 @@ def main() -> int:
     # written without authoring somebody's floor is a road to re-plan.
     authored_in_a_claim: dict[str, list] = {}
     for (zx, zz), comp in comps.items():
-        zc = live.zone(zx, zz)
         cx0, cz0 = tcdata.zone_centre(zx, zz)
         for i in range(tcdata.SAMPLES):
-            if not comp.modified_height[i] or not zc["modified"][i]:
-                continue
-            o = int(zc["owner"][i])
-            w = live.writes[o] if o >= 0 else None
-            if w is None or w["role"] == appliedmod.ROAD_ROLE:
+            if not comp.modified_height[i]:
                 continue
             gy, gx = divmod(i, tcdata.PITCH)
             wx, wz = tcdata.sample_world(cx0, cz0, gx, gy)
-            authored_in_a_claim.setdefault(
-                f"{w['name']}#{w['seq']} ({w['role']})", []).append(
-                    [round(wx, 1), round(wz, 1)])
+            # THE AUTHOR, AND FROM EVERY ZONE LATTICE THAT HOLDS THE SAMPLE.
+            # Reading this zone's `owner` array asked two wrong questions at
+            # once and MEASURED both wrong on S1-portalhub-brgs2: it refused
+            # 156 samples to `portal-hall#801` including (-302, 212), which
+            # is outside the hall's 37.4 x 37.4 m rectangle entirely and is
+            # S1's own carriageway that the hall's blob carried forward
+            # verbatim.  `holders` answers per WORLD sample across the
+            # adjacent lattices (the 65 x 65 boundary row is shared, so one
+            # square metre sits in two compilers) and now answers with the
+            # AUTHOR, so a carried copy is never mistaken for a claim.
+            foreign = [w for w in live.holders(int(round(wx)), int(round(wz)))
+                       if w["role"] != appliedmod.ROAD_ROLE]
+            for w in foreign[:1]:
+                authored_in_a_claim.setdefault(
+                    f"{w['name']}#{w['seq']} ({w['role']})", []).append(
+                        [round(wx, 1), round(wz, 1)])
     if authored_in_a_claim:
         for owner, pts in sorted(authored_in_a_claim.items()):
             print(f"   AUTHORED INSIDE A CLAIM: {len(pts)} samples owned by "

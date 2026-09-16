@@ -569,7 +569,7 @@ class _DeltaField:
             entry = self.zones.get(key)
             if entry is None:
                 continue
-            (cx, cz), (modified, level) = entry
+            (cx, cz), (modified, level, _smooth) = entry
             gx = math.floor((sx - cx) / 1.0 + 0.5) + 32
             gy = math.floor((sz - cz) / 1.0 + 0.5) + 32
             if not (0 <= gx < 65 and 0 <= gy < 65):
@@ -596,11 +596,20 @@ class _DeltaField:
 
 
 def _decode_tcdata(blob: bytes):
-    """(modified_height[], level_delta[]) out of a gzip'd TCData payload.
+    """(modified_height[], level_delta[], smooth_delta[]) out of a gzip'd
+    TCData payload.
 
     The inverse of `tcdata.Compiler.plain`: int32 version, int32 operations,
     4 floats of op record, int32 count then a flag+2-float record per sample.
     Only the height half is read; paint cannot move the ground.
+
+    BOTH height deltas, not just the level.  `TerrainComp::ApplyToHeightmap`
+    adds `m_levelDelta + m_smoothDelta`, so a write that moves the ground by
+    changing only the smooth half moves it exactly as much as one that
+    changes the level half.  The flatten guard reads `level` alone because it
+    measures the same field the road rasteriser writes; the pad-footprint
+    guard compares two claims' bytes for EQUALITY, and a comparison that
+    ignores half the sum reports "these agree" about ground that moved.
     """
     try:
         plain = gzip.decompress(blob)
@@ -614,14 +623,128 @@ def _decode_tcdata(blob: bytes):
     off += 4
     modified = bytearray(count)
     level = [0.0] * count
+    smooth = [0.0] * count
     for i in range(count):
         flag = plain[off]
         off += 1
         if flag:
-            level[i], _smooth = struct.unpack_from("<ff", plain, off)
+            level[i], smooth[i] = struct.unpack_from("<ff", plain, off)
             off += 8
             modified[i] = 1
-    return modified, level
+    return modified, level, smooth
+
+# A PAD IS RECOGNISED BY ITS SHAPE, NOT BY A ROLE ALLOW-LIST.  `terrain_write`
+# already enforces `target_y` XOR `profile` -- "a pad has a single target
+# height, a road has a longitudinal profile, and neither shape can express the
+# other" -- and a pad additionally carries its own rectangle in `pad_w`/`pad_d`
+# plus `apron_m`.  So the schema's own distinction answers "is this claim a
+# foundation", and a new settlement role cannot fall out of the guard's scope
+# by being spelled differently.  MEASURED on this ledger: 50 of 79
+# `terrain_write` records carry `pad_w`, and they are exactly the 49 `site_pad`
+# records plus the `portal_hall_pad`.
+def _is_pad(p: dict) -> bool:
+    return (p.get("pad_w") is not None or p.get("pad_d") is not None) \
+        and p.get("target_y") is not None
+
+
+def _pad_footprint(rec: dict, prior_through: list[dict]) -> dict | None:
+    """A pad claim's rectangle in world XZ, from records it already carries.
+
+    `pad_w`/`pad_d` are the FULL width and depth (`settlements/build.py`:
+    `hw, hd = unit["pad_w"] / 2 + APRON_M, ...`), so the half-extents are
+    `pad_w / 2 + apron_m`.  Reading them as half-extents would double every
+    footprint in the world and refuse roads 18 m outside a pad they never
+    touch.
+
+    THE POSITION IS NOT IN THE `terrain_write` RECORD, and this is the one
+    place this guard has to reach outside the record it is judging: a pad's
+    `terrain_write` carries `pad_w`, `pad_d`, `apron_m`, `target_y` and
+    `site_id`, and no `pos` at all -- its `entries[].centre` are ZONE
+    centres, four of them, none of which is the pad.  The position comes from
+    the same site's sibling records, which do carry one: `objects_clear`'s
+    `centre`, the body `spawn_plan`'s `anchor`/`pos`.  MEASURED on this
+    ledger: all 50 pad writes resolve a position this way, 0 do not.
+    """
+    p = rec.get("params", {})
+    if not _is_pad(p):
+        return None
+    sid = p.get("site_id")
+    if not sid:
+        return None
+    pos = None
+    for r in prior_through:
+        rp = r.get("params", {})
+        if rp.get("site_id") != sid:
+            continue
+        xz = _record_xz(rp)
+        if xz:
+            pos = (float(xz[0]), float(xz[1]))
+            break
+    if pos is None:
+        return None
+    w = float(p.get("pad_w") or p.get("pad_d"))
+    d = float(p.get("pad_d") or p.get("pad_w"))
+    ap = float(p.get("apron_m") or 0.0)
+    return {"seq": rec["seq"], "name": p.get("name"), "site_id": sid,
+            "role": p.get("role"), "x": pos[0], "z": pos[1],
+            "hw": w / 2.0 + ap, "hd": d / 2.0 + ap}
+
+
+def _pad_claims(prior: list[dict]) -> list[dict]:
+    """Every live pad footprint in the chain, ONE PER SITE, carrying that
+    site's LATEST claim, in file order.
+
+    ONE PER SITE, because a site's pad is re-emitted: `stenvik-hall-1` has
+    three `terrain_write` records and `tree-sth-1` two, all with the same
+    rectangle.  Reported per record the same contested sample is refused
+    three times with three seq labels, which reads as three defects; and the
+    floor to compare against is the LAST one, by the same file-order rule the
+    live compiler follows.
+    """
+    gone = retired_seqs(prior)
+    by_site: dict[str, dict] = {}
+    for line, r in enumerate(prior):
+        if r.get("op") != "terrain_write" or r.get("seq") in gone:
+            continue
+        foot = _pad_footprint(r, prior[:line + 1])
+        if foot:
+            foot["file_line"] = line
+            by_site[foot["site_id"]] = foot
+    return sorted(by_site.values(), key=lambda f: f["file_line"])
+
+
+def _entry_samples(e: dict, ledger: "Ledger"):
+    """`{(sx, sz): (level, smooth)}` for one `terrain_write` entry, keyed by
+    WORLD SAMPLE rather than by lattice index.
+
+    Keyed by world sample because the 65 x 65 lattice over a 64 m zone SHARES
+    ITS BOUNDARY ROW: one world sample sits in two adjacent zones' compilers,
+    so comparing claim A's index k against claim B's index k is comparing two
+    different square metres whenever their zones differ.  MEASURED by
+    `ribbon.py`'s rule-2 guard: sample (498, 96) is `wt-south` seq 373's pad
+    in zone (8,1) while `zone_of` puts it in (8,2), and (522, 480) is held as
+    a pad by zone (8,7) and as a road by zone (8,8).  Index arithmetic cannot
+    see either.
+
+    Returns None when the blob cannot be read or decoded -- "I could not
+    measure it" is not "it is flat".
+    """
+    try:
+        blob = ledger.read_blob(e["blob_sha256"])
+    except LedgerError:
+        return None
+    decoded = _decode_tcdata(blob)
+    if decoded is None:
+        return None
+    modified, level, smooth = decoded
+    cx, cz = float(e["centre"][0]), float(e["centre"][1])
+    out = {}
+    for i, flag in enumerate(modified):
+        if not flag:
+            continue
+        gy, gx = divmod(i, 65)
+        out[(int(cx + gx - 32), int(cz + gy - 32))] = (level[i], smooth[i])
+    return out
 
 def retired_seqs(records: list[dict]) -> set[int]:
     """Every seq a later `retire` removed.
@@ -882,6 +1005,7 @@ class Ledger:
         if op == "terrain_write":
             bad += self._zone_clobber_check(rec, prior)
             bad += self._flatten_forbidden_check(rec, prior)
+            bad += self._pad_footprint_check(rec, prior)
 
         if op == "portal":
             tag = p.get("tag")
@@ -1068,6 +1192,276 @@ class Ledger:
                         f"stands over -- the early-dock defect. Move the "
                         f"route, or stop writing samples inside that disc; "
                         f"there is no flag that waives this.")
+        return bad
+
+    def _pad_footprint_check(self, rec: dict, prior: list[dict]) -> list[str]:
+        """NO AUTHORED SAMPLE INSIDE ANOTHER CLAIM'S PAD FOOTPRINT.
+
+        Inside a settlement pad the pad wins: it is a foundation, and a
+        building whose floor has been regraded is a defect that reads as the
+        floating defect.  The road owns everything outside the pad and MUST
+        grade into the pad's EDGE -- that approach is required, it is what
+        took T12's junction step from 2.991 m to 0.070 m over 11 nodes -- so
+        the test is not "does this write come near a pad" but "does it AUTHOR
+        a sample inside one".
+
+        WHY THIS IS A WRITE-TIME GUARD AND NOT A TOOL-TIME ONE.  `ribbon.py`
+        already refuses this per sample before it sends (its rule 2), and
+        that is the right place to catch it early -- but it is one tool.  The
+        two invariants this file already enforces exist because "an ad-hoc
+        `spawn_object` or a hand-run `objects_remove` is invisible to them";
+        the same is true here.  Any `terrain_write` that reaches the chain
+        passes through `append`, so this is the only place the rule holds for
+        a writer that is not `ribbon.py`, for a `ribbon.py` whose rewind is
+        removed, and for a pad that lands between a plan and its write.
+
+        AUTHORED IS MEASURED AS DISAGREEMENT, WHICH IS THE ONLY HONEST
+        ANSWER THE CURRENT SCHEMA CAN GIVE.  The blob a claim sends is the
+        UNION of every delta its zones must keep -- a zone holds exactly one
+        `_TerrainCompiler` and this op does `deleteObjects -zone` first, so
+        anything the blob omits is destroyed.  The record then stores that
+        same union, so a pad's floor inside a road's blob reads as
+        `role: road_segment` under the road's name: the union LAUNDERS
+        ownership.  `merged_from` names the priors but not which samples came
+        from them, so the authored set is derivable only where this entry and
+        its priors DISAGREE (seq 1638 writes this up as the migration that
+        fixes it durably, and it is deliberately not applied yet).
+
+        That limit is exactly the right shape for this question.  Where the
+        two agree, the ground does not move, and there is nothing to refuse
+        whoever authored it.  Where they disagree inside a pad's rectangle,
+        the pad's floor is about to be regraded -- which is the defect --
+        regardless of which claim's name is on the blob.  So the guard is
+        blind to `role` on the deltas and reads only the bytes.
+
+        THE REWIND IS PART OF THE TEST, AND IT IS AUTHORSHIP RATHER THAN A
+        NAME FILTER.  The prior state is composed in FILE ORDER (`seq` is not
+        a total order past file line 47), later claim winning per world
+        sample, and each sample is attributed to the last claim whose value
+        DIFFERED from what the claims before it had composed.  The pad's own
+        floor is then the pad's wherever the pad laid it, however many claims
+        have carried it forward since.
+
+        EXCLUDING THIS CLAIM'S OWN EARLIER RECORDS BY NAME WAS THE FIRST
+        ATTEMPT AND IT IS WRONG IN THE OTHER DIRECTION, measured twice.  It
+        cures the T8 case -- 123 carriageway samples its first write refused
+        as pad-owned are carried in its own blob, and the identical
+        rasterisation against the surface that write produced finds ZERO
+        foreign owners -- and it CREATES the S1 case: the portal hall's pad
+        seq 801 unioned S1's carriageway forward verbatim ((-300, 214) is
+        -1.694 in both blobs, to the bit), so with S1's own records excluded
+        the hall becomes the first claim to hold those samples and reads as
+        their author.  The guard then refused 68 samples of S1's own ramp to
+        the hall, at positions like (-302, 212) that are outside the hall's
+        rectangle entirely.  Authorship over the FULL composition answers
+        both: nothing is dropped, so a carried copy can never become a first
+        write.
+
+        PAD-VERSUS-PAD IS OUT OF SCOPE, deliberately.  Settlement pads
+        overlap each other by design -- stenvik alone lays 18 of them at
+        26.1 m across a 100 m district, one producer, one ordering, later pad
+        winning per sample by the same file-order rule the live compiler
+        uses.  Refusing that would refuse `settlements/build.py` its own
+        layout.  What must never author a foundation is a claim that is not
+        one, so the guard fires on writes that are not themselves pads.
+
+        FAIL CLOSED.  An entry whose blob cannot be read or decoded, in a
+        zone a pad footprint reaches, is refused rather than assumed flat.
+        """
+        p = rec["params"]
+        if _is_pad(p):
+            return []
+        pads = [q for q in _pad_claims(prior)
+                if q["site_id"] != p.get("site_id")
+                and q["name"] != p.get("name")]
+        if not pads:
+            return []
+
+        # TRIGGER ON ZONE OVERLAP, VERDICT ON THE RECTANGLE.  Decoding a
+        # 20 km ribbon's priors costs real time, and a pad four kilometres
+        # away cannot be reached by any sample in these zones.  Neighbouring
+        # zones count: a pad's rectangle straddles zone boundaries and the
+        # lattice's boundary row is shared.
+        zones = {(int(e["zone"][0]), int(e["zone"][1]))
+                 for e in rec["params"]["entries"]}
+        near = []
+        for q in pads:
+            zx, zz = math.floor((q["x"] + 32.0) / 64.0), \
+                math.floor((q["z"] + 32.0) / 64.0)
+            span_x = int(q["hw"] // 64) + 2
+            span_z = int(q["hd"] // 64) + 2
+            reach = {(zx + i, zz + j)
+                     for i in range(-span_x, span_x + 1)
+                     for j in range(-span_z, span_z + 1)}
+            if reach & zones:
+                near.append(q)
+        if not near:
+            return []
+
+        bad: list[str] = []
+        # This write's own samples, per entry, keyed by world sample.
+        ours: dict[tuple, tuple] = {}
+        for e in rec["params"]["entries"]:
+            got = _entry_samples(e, self)
+            if got is None:
+                bad.append(
+                    f"terrain_write cannot be checked against "
+                    f"{len(near)} pad footprint(s) it reaches: its own TCData "
+                    f"for zone {list(e['zone'])} "
+                    f"(blob {str(e.get('blob_sha256'))[:12]}) could not be "
+                    f"read or decoded, so which samples it AUTHORS inside "
+                    f"those footprints is UNKNOWN. Refusing rather than "
+                    f"assuming it writes nothing there -- an unreadable blob "
+                    f"is not an empty one.")
+                continue
+            ours.update(got)
+        if bad:
+            return bad
+        if not ours:
+            return []
+
+        # THE PRIOR STATE, REWOUND, AND WHO AUTHORED EACH SAMPLE OF IT.
+        # Only at the samples this write holds: composing whole zones costs
+        # 4,225 samples per prior blob for an answer that is only ever asked
+        # about samples this write touches.
+        #
+        # ONE PASS IN FILE ORDER, and it has to be a pass rather than a
+        # lookup because AUTHORSHIP IS A PROPERTY OF THE SEQUENCE.  Every
+        # claim's blob is the union of its zones, so "this claim's blob holds
+        # sample k" says nothing about whether it PUT it there -- the pad
+        # `stenvik-hut-2` seq 304 is 10.4 x 10.4 m at (504.5, 896.1) and its
+        # blob holds (544, 927), forty metres away, because that sample is in
+        # one of its zones and it carried it.  A claim AUTHORED k when its
+        # value at k differs from the state the claims before it had composed;
+        # that is the same disagreement test this whole guard rests on,
+        # applied to the priors instead of to the candidate.
+        prior_state: dict[tuple, tuple] = {}
+        prior_owner: dict[tuple, dict] = {}
+        # AND WHAT EACH PAD ITSELF LAID, per pad.  Inside a pad's footprint
+        # the question is not "does this write disagree with whoever wrote
+        # last" but "does it hold ground that differs from the PAD'S FLOOR" --
+        # the pad wins there, so the pad is the datum, and a third claim that
+        # paved the foundation in between does not become the new reference
+        # just by being later.  MEASURED on T8: against the last writer its
+        # 28 contested samples read as a disagreement with T4 seq 1158;
+        # against the floor seq 121 laid at 47.15 m they are a foundation two
+        # roads have since been over.
+        pad_authored: dict[int, dict] = {}
+        pad_lines = {q["file_line"]: q for q in pads}
+        for line, r in enumerate(prior):
+            if r.get("op") != "terrain_write":
+                continue
+            rp = r["params"]
+            # NOTHING IS EXCLUDED.  The rewind is authorship, not a name
+            # filter: dropping this claim's own records makes a later claim
+            # that merely CARRIED its samples read as their author, which
+            # refused 68 samples of S1's own ramp to a pad whose rectangle
+            # they are outside.  See the docstring.
+            if not ({(int(e["zone"][0]), int(e["zone"][1]))
+                     for e in rp["entries"]} & {
+                        (zx + i, zz + j) for zx, zz in zones
+                        for i in (-1, 0, 1) for j in (-1, 0, 1)}):
+                continue
+            for e in rp["entries"]:
+                got = _entry_samples(e, self)
+                if got is None:
+                    bad.append(
+                        f"terrain_write cannot be checked against the pad "
+                        f"footprints it reaches: the PRIOR state at seq "
+                        f"{r['seq']} ({rp.get('name')}, zone "
+                        f"{list(e['zone'])}) could not be read or decoded, so "
+                        f"which of this write's samples are AUTHORED rather "
+                        f"than carried forward is UNKNOWN. Refusing rather "
+                        f"than treating every sample as new.")
+                    continue
+                for k, v in got.items():
+                    if k not in ours:
+                        continue
+                    was = prior_state.get(k)
+                    if was is None or abs((v[0] + v[1]) - (was[0] + was[1])) \
+                            > FLATTEN_TOLERANCE_M:
+                        prior_owner[k] = {"seq": r["seq"],
+                                          "name": rp.get("name"),
+                                          "role": rp.get("role"),
+                                          "file_line": line}
+                        if line in pad_lines:
+                            pad_authored.setdefault(line, {})[k] = v
+                    prior_state[k] = v
+        if bad:
+            return bad
+
+        # A PAD'S FOOTPRINT IS ITS RECTANGLE **OR** THE GROUND IT ITSELF
+        # LEVELLED, WHICHEVER IS WIDER, and the second half is not redundant.
+        # MEASURED on this ledger, per pad, over each pad's own AUTHORED
+        # samples: `stenvik-stonehouse-1` seq 272 authored 165 and only 60 of
+        # them are inside its 11.0 x 15.0 m rectangle; `wt-town` seq 387
+        # authored 17 outside its 20 x 20; the portal hall authored 1,349,
+        # all inside its 37.4 x 37.4, reaching 25.5 m from the centre -- so
+        # the pad does fill its corners and the rectangle is the right SHAPE,
+        # not a disc.  A pad levels its rectangle AND feathers past it, so a
+        # rectangle-only test misses a third of what the pad laid, and "a
+        # pad's written extent is not its nominal radius" is what the T4
+        # clobber cost to learn.  The rectangle catches ground the pad owns
+        # and has not levelled yet; the levelled set catches ground it
+        # levelled outside its rectangle.  Neither contains the other.
+        hits: dict[str, list] = {}
+        for (sx, sz), (lvl, sm) in ours.items():
+            guards = [q for q in near
+                      if abs(sx - q["x"]) <= q["hw"]
+                      and abs(sz - q["z"]) <= q["hd"]]
+            for line, laid in pad_authored.items():
+                q = pad_lines[line]
+                if (sx, sz) in laid and q not in guards:
+                    guards.append(q)
+            if not guards:
+                continue
+            held = prior_owner.get((sx, sz))
+            for q in guards:
+                was = pad_authored.get(q["file_line"], {}).get((sx, sz)) \
+                    or prior_state.get((sx, sz))
+                if was is not None and abs((lvl + sm) - (was[0] + was[1])) \
+                        <= FLATTEN_TOLERANCE_M:
+                    continue  # carried forward verbatim: the ground stays put
+                inside = (abs(sx - q["x"]) <= q["hw"]
+                          and abs(sz - q["z"]) <= q["hd"])
+                key = (f"{q['name']}#{q['seq']} ({q['role']}, site "
+                       f"{q['site_id']}, {2 * q['hw']:.1f} x {2 * q['hd']:.1f} m "
+                       f"at ({q['x']:.1f}, {q['z']:.1f}))")
+                moved = ((lvl + sm) - (was[0] + was[1])) if was else (lvl + sm)
+                hits.setdefault(key, []).append((sx, sz, moved, held, inside))
+        for key, pts in sorted(hits.items()):
+            worst = max(pts, key=lambda t: abs(t[2]))
+            shown = ", ".join(f"({x}, {z})" for x, z, _, _, _ in pts[:6])
+            # ATTRIBUTE EVERY STEP TO THE CLAIM THAT OWNS THE SAMPLE.  The
+            # rectangle names the FOOTPRINT's owner; the value that is about
+            # to be overwritten may belong to a third claim that wrote the
+            # same square metre later, and naming the wrong one sends the
+            # next agent to the wrong record.  MEASURED cost of getting this
+            # backwards: a 3.676 m wall attributed to T12 that was T3's own
+            # carriageway edge.
+            from collections import Counter as _C
+            held = _C(f"{h['name']}#{h['seq']} ({h['role']})" if h else
+                      "NOBODY (unwritten ground inside the footprint)"
+                      for _, _, _, h, _ in pts)
+            bad.append(
+                f"terrain_write ({p.get('name')}, {p.get('role')}) AUTHORS "
+                f"{len(pts)} sample(s) INSIDE the pad footprint of {key}: "
+                f"{sum(1 for t in pts if t[4])} within its rectangle, "
+                f"{sum(1 for t in pts if not t[4])} on ground the pad itself "
+                f"levelled outside that rectangle. "
+                f"Worst move {worst[2]:+.3f} m at ({worst[0]}, {worst[1]}); "
+                f"first at {shown}. Those samples are currently held by "
+                f"{dict(held.most_common(4))}. Inside a settlement pad the "
+                f"pad wins -- "
+                f"it is a building's foundation, and regrading it is the "
+                f"defect this refusal exists for. A road grades into a pad's "
+                f"EDGE and never authors a sample inside it. Nothing is "
+                f"clamped and nothing is dropped for you: stop writing those "
+                f"samples (compose the prior state from the claims in FILE "
+                f"ORDER, excluding this claim's own earlier writes, so the "
+                f"pad's samples are inherited from the PAD's record and not "
+                f"from a laundered copy), re-plan the segment, or have the "
+                f"pad's owner re-emit.")
         return bad
 
     # -- close -------------------------------------------------------------

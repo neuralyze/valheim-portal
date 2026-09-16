@@ -224,6 +224,11 @@
   "first_seen_seq": 213,
   "note": "TCData T4-meadhall-stathub zone [9, 17]"
  },
+ "18ef2588264f744f5de5a03f261cafa5f84678b39ea88eae3cc45f524076ec73": {
+  "bytes": 5524,
+  "first_seen_seq": 1666,
+  "note": "TCData T1-portalhub-temple zone [-2, -1]"
+ },
  "19238e0e14e8e8bd15462c75dcf257efcb10f397fcd6c99851d2bb652b1ee17e": {
   "bytes": 616,
   "first_seen_seq": 38,
@@ -334,6 +339,11 @@
   "first_seen_seq": 626,
   "note": "TCData tree_sth_1_z9_8 zone 9,8"
  },
+ "247d7a470f42521ff299403e0b61c6fb94186981e170d10c0216dae38b6f4eb4": {
+  "bytes": 1140,
+  "first_seen_seq": 1666,
+  "note": "TCData T1-portalhub-temple zone [-1, 0]"
+ },
  "24caf6ce9b1ecda0d0a791af2149ac060d3226d9aedeb6d8c11150f036eac825": {
   "bytes": 2519,
   "first_seen_seq": 317,
@@ -353,6 +363,11 @@
   "bytes": 5127,
   "first_seen_seq": 641,
   "note": "spawn plan tree-sth-3"
+ },
+ "2774eb6e5aca859cc7236828ebb8d2fecec391f69115e5cb14c3870bfa63a167": {
+  "bytes": 3783,
+  "first_seen_seq": 1666,
+  "note": "TCData T1-portalhub-temple zone [-3, 0]"
  },
  "27f66cb7ade4f803e3269ccc86483df2adf68c097af7f7fe153073b99369a5d6": {
   "bytes": 3554,
@@ -609,6 +624,11 @@
   "first_seen_seq": 735,
   "note": "spawn plan tree-near-2"
  },
+ "412ec018b061a234e3dc9cf32541be95959871a94cd296a819b5170baaf983a5": {
+  "bytes": 3454,
+  "first_seen_seq": 1674,
+  "note": "TCData S1-portalhub-brgs2 zone [-5, 3]"
+ },
  "418c9da5b11164f059ccabbd75f8a88fffe1327601ec1adac1d2b60cd2bd7a68": {
   "bytes": 332,
   "first_seen_seq": 240,
@@ -674,6 +694,11 @@
   "first_seen_seq": 1378,
   "note": "TCData T5-temple-dockshore zone [-1, -1]"
  },
+ "45609b69953accf3fdf20bd633539f12838eff6311c8cfc1deba6e99a98ec433": {
+  "bytes": 1395,
+  "first_seen_seq": 1666,
+  "note": "TCData T1-portalhub-temple zone [-3, -1]"
+ },
  "45af260ecdf11b3e2ee071b83ab1325e0425f526ef0fad6f72679f4ef937f496": {
   "bytes": 4049,
   "first_seen_seq": 1300,
@@ -683,6 +708,11 @@
   "bytes": 5421,
   "first_seen_seq": 1428,
   "note": "TCData S8-wtsouth-treesth zone [8, 7]"
+ },
+ "45eaba427f511696ee8d4c16484cf13d466aa42ead89e343e9a3c0a2efdaa400": {
+  "bytes": 4804,
+  "first_seen_seq": 1666,
+  "note": "TCData T1-portalhub-temple zone [-4, 1]"
  },
  "470cec1bbd51c692cb4095fc75ea9e6e1b5ebd6d26c02ddd03b86de1a9c176a5": {
   "bytes": 87,
@@ -858,6 +888,11 @@
   "bytes": 1456,
   "first_seen_seq": 1300,
   "note": "TCData T9-wttown-dockshore zone [11, 0]"
+ },
+ "59c55f66452d956b14bd23a294f94c36474a710f71542021c74218f697a4ab6c": {
+  "bytes": 5179,
+  "first_seen_seq": 1666,
+  "note": "TCData T1-portalhub-temple zone [-4, 2]"
  },
  "5a38db298e533d16117d62f833ea3de90d64f827f63fe4644a031338081d1baf": {
   "bytes": 2151,
@@ -1379,6 +1414,11 @@
   "first_seen_seq": 495,
   "note": "TCData vestvik_villa_2_z_14_30 zone -14,30"
  },
+ "8435df05a14d50e623511754c62a899ecce6052e16fabdd9633c1859b5d90864": {
+  "bytes": 9746,
+  "first_seen_seq": 1666,
+  "note": "TCData T1-portalhub-temple zone [-1, -1]"
+ },
  "84690c65feae84f66c8eceda201d94f9a908cbc3deab999099bbeb8ee0541346": {
   "bytes": 24532,
   "first_seen_seq": 360,
@@ -1528,6 +1568,11 @@
   "bytes": 883,
   "first_seen_seq": 38,
   "note": "TCData stenvik_house_3_z9_15 zone 9,15"
+ },
+ "94b83fa0a2ffe906c50721e55eea3c6cac5ebd6156bde4ca1d601ee54f9f0c35": {
+  "bytes": 491,
+  "first_seen_seq": 1666,
+  "note": "TCData T1-portalhub-temple zone [-5, 2]"
  },
  "94e30bcc6ebbe2c4dc7521a2befb5d5cd6222081a06b06578b8929fa50548d03": {
   "bytes": 3598,
@@ -2154,6 +2199,11 @@
   "first_seen_seq": 305,
   "note": "spawn plan stenvik-hut-2"
  },
+ "cf13709509cf36b3b8e63047826cef1d3bdb3f39ad31fd9f27f42e7823a99084": {
+  "bytes": 983,
+  "first_seen_seq": 1674,
+  "note": "TCData S1-portalhub-brgs2 zone [-5, 4]"
+ },
  "cf738fa6220ed6ba8a2a4c8cc5dff88252477310de36c29c68240e581b44b003": {
   "bytes": 2523,
   "first_seen_seq": 1300,
@@ -2328,6 +2378,11 @@
   "bytes": 2027,
   "first_seen_seq": 323,
   "note": "TCData W5-brgs1-wsouth zone [-8, -3]"
+ },
+ "e1504ee3ae56b846e43e8a65f4d339f0b3f768495e95d58ad1b81a3129ee1251": {
+  "bytes": 3360,
+  "first_seen_seq": 1666,
+  "note": "TCData T1-portalhub-temple zone [-3, 1]"
  },
  "e203d4f254af29d3882ce32200e036b6cb9ccb42edce7398588cb1181173041a": {
   "bytes": 1399,
