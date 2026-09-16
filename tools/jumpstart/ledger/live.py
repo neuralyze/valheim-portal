@@ -32,7 +32,8 @@ WHAT `emit` DOES, IN THIS ORDER, and every step earns its place:
      uses, so the transport that built the world is by construction the
      transport that rebuilds it.  Three transports exist and picking the wrong
      one fails silently.
-  3. VERIFY THE POSTCONDITION with the SAME `replay.check_expect`.  If it does
+  3. VERIFY THE POSTCONDITION with the SAME `replay.verify_expect`, which
+     WAITS for a staged operation to finish rather than measuring once.  If it does
      not hold, `emit` raises.  An operation that appeared to succeed is the
      single most expensive defect class this project has.
 
@@ -125,11 +126,19 @@ class LiveBuilder:
             R._materialise_data_entries(self.led, rec)
 
         replies = R.send_wire(self.srv, rec["wire"])
-        checks = R.check_expect(self.srv, rec)
+        # THE SHARED VERIFY, not a bare `check_expect`.  A staged Upgrade
+        # World op runs across frames, so measuring once immediately after
+        # `start` reports work the world actually did as failed -- MEASURED
+        # live, twice, and it aborted a road segment after three good
+        # batches.  Build and replay must measure a staged op the same way
+        # for the same reason they must SEND it the same way.
+        checks, settled = R.verify_expect(self.srv, rec)
         failed = [c for c in checks if not c["ok"]]
         out = {"seq": rec["seq"], "op": op, "role": params.get("role"),
                "replies": [str(r)[:200] for r in replies], "checks": checks,
                "status": "applied" if not failed else "POSTCONDITION FAILED"}
+        if settled is not None:
+            out["settled_after_s"] = settled
         if failed:
             raise PostconditionFailed(
                 f"seq {rec['seq']} ({op}, {self.actor}) was recorded and sent "

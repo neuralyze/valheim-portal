@@ -500,6 +500,22 @@ class Server:
         # count correctly refuses and the whole op aborts on a command that
         # was malformed rather than on a world that was wrong.  The token has
         # to be absent, not empty.
+        # AND THE FILTER MUST NEVER MASK THE THING BEING COUNTED.  MEASURED
+        # by RoadBuild on 16 built T3 zones: `objects_count _TerrainCompiler
+        # ... ignore=_*` answers 0 at every zone centre while the same query
+        # with no ignore answers 1 -- because `_TerrainCompiler` matches the
+        # default `_*` glob.  A `prefab_count` check on any underscore prefab
+        # therefore reported terrain that is demonstrably on disk as absent,
+        # and every future `_ZoneCtrl` check had the same hole waiting.
+        #
+        # Dropped only for a CONCRETE id: `ident="*"` with `ignore="_*"` is
+        # the deliberate "everything except the engine's own objects" query
+        # and must keep its filter.
+        if ignore and "*" not in ident and "," not in ident:
+            import fnmatch  # noqa: PLC0415
+            if any(fnmatch.fnmatchcase(ident, pat.strip())
+                   for pat in str(ignore).split(",") if pat.strip()):
+                ignore = ""
         parts = [f"objects_count id={ident}"]
         if ignore:
             parts.append(f"ignore={ignore}")
@@ -743,6 +759,41 @@ def send_wire(srv: Server, wire: list[str]) -> list:
     return replies
 
 
+def verify_expect(srv: Server, rec: dict) -> tuple[list[dict], float | None]:
+    """Measure an op's postcondition, WAITING for a staged op to finish.
+
+    THE ONE VERIFY BOTH PATHS USE.  `send_wire` is shared so that the
+    transport which built the world is the transport that rebuilds it; this
+    is the other half of that premise, and it was missing.  MEASURED by
+    RoadBuild: `live.py::emit` called bare `check_expect`, so every live
+    `zones_generate` was measured ONCE, immediately after `start` -- the
+    answer this module's own docstring calls "not the answer".  Two segments
+    failed on it: seq 221 wanted 8 zones and read 7, and a hand probe minutes
+    later found the missing zone generated; seq 226 wanted 4 and read 1, and
+    aborted T9 after three good batches.  Both records are in the chain as
+    failures for work the world actually did.
+
+    A staged Upgrade World operation runs ACROSS FRAMES -- `zones_generate`
+    reports progress as a percentage -- so an immediate answer is a guess.
+    Polling to a deadline converts a false negative into a wait, while a
+    genuine failure still fails when the deadline passes.
+
+    Returns (checks, seconds_waited or None).
+    """
+    checks = check_expect(srv, rec)
+    staged = any((c.split()[0] if c.split() else "") in STAGED_VERBS
+                 for c in rec.get("wire", []))
+    if not staged or all(c["ok"] for c in checks) or srv.dry:
+        return checks, None
+    began = time.time()
+    deadline = began + STAGED_SETTLE_S
+    while time.time() < deadline:
+        time.sleep(5.0)
+        checks = check_expect(srv, rec)
+        if all(c["ok"] for c in checks):
+            return checks, round(time.time() - began, 1)
+    return checks, round(time.time() - began, 1)
+
 def apply_record(srv: Server, blobs, rec: dict) -> dict:
     """Send one op's recorded wire, then measure its postcondition."""
     op = rec["op"]
@@ -795,25 +846,9 @@ def apply_record(srv: Server, blobs, rec: dict) -> dict:
 
     out["replies"] = [str(r)[:200] for r in send_wire(srv, rec["wire"])]
 
-    # A staged Upgrade World operation runs ACROSS FRAMES -- `zones_generate`
-    # reports progress as a percentage -- so the answer immediately after
-    # `start` is not the answer.  MEASURED by the clearing work: querying too
-    # early made a 69-object pad look empty and the removal then ran against
-    # nothing.  Measuring once, immediately, would therefore report a
-    # correct operation as failed; polling to a deadline converts that into
-    # a wait, while a genuine failure still fails when the deadline passes.
-    staged = any((c.split()[0] if c.split() else "") in STAGED_VERBS
-                 for c in rec["wire"])
-    out["checks"] = check_expect(srv, rec)
-    if staged and not all(c["ok"] for c in out["checks"]) and not srv.dry:
-        deadline = time.time() + STAGED_SETTLE_S
-        while time.time() < deadline:
-            time.sleep(5.0)
-            out["checks"] = check_expect(srv, rec)
-            if all(c["ok"] for c in out["checks"]):
-                out["settled_after_s"] = round(
-                    STAGED_SETTLE_S - (deadline - time.time()), 1)
-                break
+    out["checks"], settled = verify_expect(srv, rec)
+    if settled is not None:
+        out["settled_after_s"] = settled
     out["status"] = "applied" if all(c["ok"] for c in out["checks"]) \
         else "VERIFICATION FAILED"
     return out

@@ -74,6 +74,10 @@ import tcdata  # noqa: E402
 
 SEED = "Pirate68"
 SCRATCH = Path("/tmp/roads/zonepatch")
+# WHO THE LEDGER SAYS BUILT THE ROAD.  `RoadNet` routed and pre-flighted the
+# network; `RoadBuild` writes it.  The log has to say who did what or the
+# provenance of a defect is a guess.
+ACTOR = "RoadBuild"
 # Shoulder: one metre of dirt each side of the paved carriageway.  It is not
 # decoration -- it is the visual edge that tells the operator where the road is
 # from a distance, and it gives the paved band a margin so a half-metre
@@ -234,14 +238,134 @@ def generated_digest(patch) -> str:
     return hashlib.sha256(arr.tobytes()).hexdigest()
 
 
+def protected_piece_positions(zones: list[tuple[int, int]]) -> dict:
+    """Every PIECE of every `flatten: FORBIDDEN` structure whose zone this
+    segment touches, read out of the ledger.
+
+    The positions are not a declaration anyone made for this purpose: each
+    `spawn_plan` record names a blob, the blob is the literal command list that
+    built the structure, and the ledger refuses to replay a plan whose blob is
+    missing -- so this is the same evidence the structure itself was built
+    from.  MEASURED field order in those blobs: `pos=<z>,<x>,<y>`, confirmed
+    against three structures whose `expect.prefab_count` positions are (x, z)
+    and whose counts verified live (harbour expect (4.5, -265.2) has plan
+    field 0 in -276.9..-256.5 and field 1 in -7.5..12.9).  Read the other way
+    round and every piece lands in the wrong zone, which is a guard that
+    protects nothing while appearing to.
+
+    `spawn` and `portal` records carry a single piece as `pos=[x, y, z]`.
+    A protected record with NO recoverable piece is reported in
+    `without_pieces`: the caller must treat that as unknown rather than clear.
+    """
+    sys.path.insert(0, str(JUMPSTART / "ledger"))
+    from writer import Ledger
+    led = Ledger.open("Ulfsland", actor=ACTOR)
+    zset = set(zones)
+    pieces: list[tuple[float, float]] = []
+    by_site: dict[str, int] = {}
+    without: dict[str, list[int]] = {}
+    # The structure's own recorded EXTENT, for the one question a piece list
+    # cannot answer: is this bit of water the water a protected structure
+    # stands over?  `expect.prefab_count` rows carry pos + max, which is the
+    # radius Crossings itself verified the pieces inside.
+    discs: list[tuple[float, float, float]] = []
+    # A STRUCTURE IS A SITE, NOT A RECORD.  MEASURED why this matters: the
+    # spawn portal ring's only `flatten: FORBIDDEN` record is a
+    # `zones_generate` (seq 170) that carries no pieces at all, while the four
+    # portals it protects are separate `portal` records whose own `flatten` is
+    # unset -- so grouping by record finds nothing to keep out of, and grouping
+    # by SITE finds the four positions that actually must not move.  Same for
+    # Crossings' structures: the pieces live in the `spawn_plan` record and the
+    # FORBIDDEN flag is repeated on its `zones_generate` and `objects_clear`
+    # siblings.
+    recs = led.records()
+    protected_sites = {
+        (r["params"].get("site_id") or r["params"].get("role") or f"line{i}")
+        for i, r in enumerate(recs)
+        if r["params"].get("flatten") == "FORBIDDEN"}
+    for line, rec in enumerate(recs):
+        p = rec["params"]
+        site = p.get("site_id") or p.get("role") or f"line{line}"
+        if site not in protected_sites:
+            continue
+        found = []
+        if rec["op"] == "spawn_plan":
+            for sha in (rec.get("requires") or {}).get("blobs", []):
+                try:
+                    text = led.read_blob(sha).decode("utf-8", "replace")
+                except Exception:
+                    continue
+                if "spawn_object" not in text:
+                    continue
+                for ln in text.splitlines():
+                    if "pos=" not in ln:
+                        continue
+                    f = ln.split("pos=")[1].split()[0].split(",")
+                    found.append((float(f[1]), float(f[0])))
+        elif rec["op"] in ("spawn", "portal"):
+            pos = p.get("pos")
+            if isinstance(pos, (list, tuple)) and len(pos) == 3:
+                found.append((float(pos[0]), float(pos[2])))
+        keep = [(x, z) for x, z in found if tcdata.zone_of(x, z) in zset]
+        if keep:
+            pieces += keep
+            by_site[site] = by_site.get(site, 0) + len(keep)
+        for row in ((rec.get("expect") or {}).get("prefab_count") or []):
+            q, mx = row.get("pos"), row.get("max")
+            if q is None or mx is None:
+                continue
+            discs.append((float(q[0]), float(q[1]), float(mx)))
+    for site in sorted(protected_sites):
+        if site not in by_site:
+            without[site] = [i for i, r in enumerate(recs)
+                             if (r["params"].get("site_id")
+                                 or r["params"].get("role")) == site]
+    seen = set()
+    discs = [d for d in discs if not (d in seen or seen.add(d))]
+    return {"pieces": pieces, "by_site": by_site, "discs": discs,
+            "without_pieces": without,
+            "tool": "tools/jumpstart/roads/ribbon.py::protected_piece_positions"}
+
+
 # ---------------------------------------------------------------------------
 # the ribbon
 # ---------------------------------------------------------------------------
 
+# MEASURED ZoneSystem::c_WaterLevel.  A sample below it is seabed, and the one
+# thing a terrain write must never do is lower ground out from under a
+# structure that stands over water -- the early-dock defect.  Dry ground has no
+# water to remove, so the hazard is exactly "below this".
+WATER_LEVEL_M = 30.0
+# The set of samples that can move the ground at a protected piece is exactly
+# the four the game blends around it, i.e. the ones within one lattice pitch on
+# each axis.  Excluding that set by CHEBYSHEV distance makes `delta_at` at the
+# piece 0.0 in float rather than merely small -- there is no tolerance to argue
+# about afterwards.
+PROTECT_CLEAR_M = 1.0
+
+
 def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
           pad_keepouts: list[tuple[float, float, float]],
+          protected_pieces: list[tuple[float, float]] | None = None,
+          protected_discs: list[tuple[float, float, float]] | None = None,
           ) -> tuple[dict, dict]:
-    """Rasterise one segment into per-zone compilers.  Returns (comps, stats)."""
+    """Rasterise one segment into per-zone compilers.  Returns (comps, stats).
+
+    Three things stop the ribbon rather than one, and each is somebody's
+    property: a Settlements PAD (its earthwork, levelled per building), a
+    protected PIECE (an over-water structure whose ground must not move -- this
+    is the `flatten: FORBIDDEN` rule expressed at the granularity the hazard
+    actually has), and A PROTECTED STRUCTURE'S WATER.
+
+    THE WATER RULE IS SCOPED TO THE STRUCTURES, NOT TO THE WATER PLANE, and
+    the first version got that wrong.  Refusing every sample below 30.0 m
+    sounds safe and is not the rule: MEASURED on W5-brgs1-wsouth and
+    W10-brgs1-treenear, RoadNet's profile crosses an 8 m pond on 2.9 m of
+    fill -- a CAUSEWAY, with no structure within 200 m -- and a blanket rule
+    left an 8 m swim in the middle of a finished road.  The hazard the rule
+    exists for is removing the water a protected structure STANDS OVER, so it
+    is tested inside that structure's OWN recorded extent and nowhere else.
+    """
     nodes = np.array(seg["nodes"], dtype=np.float64)
     prof = np.array(seg["profile_y"], dtype=np.float64)
     br = np.array(seg["is_bridge"], dtype=bool)
@@ -252,6 +376,7 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
 
     comps: dict[tuple[int, int], tcdata.Compiler] = {}
     st = {"samples_paved": 0, "samples_shoulder": 0, "skipped_pad": 0,
+          "skipped_protected": 0, "skipped_underwater": 0,
           "max_cut_m": 0.0, "max_fill_m": 0.0, "over_clamp": 0,
           "over_clamp_samples": [], "per_zone": {}}
     # The world positions of every sample this write actually TOUCHES.  The
@@ -280,7 +405,29 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
                        for px, pz, pr in pad_keepouts):
                     st["skipped_pad"] += 1
                     continue
+                # A PROTECTED PIECE'S GROUND MUST NOT MOVE.  Chebyshev, not
+                # Euclidean: the samples that can move the ground at a piece
+                # are precisely the four the mesh blends around it, one pitch
+                # away on each axis. MEASURED why this exists: S12 moved the
+                # ground 2.896 m under the boathouse's over-water pieces and
+                # 0.986 m under a pile, and T13 moved 1.629 m under a harbour
+                # pile -- both inside their own zone's FORBIDDEN structure,
+                # both invisible to a distance-from-centre test.
+                if any(abs(wx - px) <= PROTECT_CLEAR_M
+                       and abs(wz - pz) <= PROTECT_CLEAR_M
+                       for px, pz in (protected_pieces or ())):
+                    st["skipped_protected"] += 1
+                    continue
                 generated = float(patch.at(gy, gx))
+                # THE WATER A PROTECTED STRUCTURE STANDS OVER.  Not all water:
+                # raising a pond bed outside every protected extent is a
+                # causeway, which is what a road does. Inside one it is the
+                # early-dock defect.
+                if generated < WATER_LEVEL_M and any(
+                        math.hypot(wx - px, wz - pz) <= pr
+                        for px, pz, pr in (protected_discs or ())):
+                    st["skipped_underwater"] += 1
+                    continue
                 delta = y - generated
                 comp.set_height(gx, gy, delta)
                 comp.set_paint(gx, gy, road_colour if lat <= half else shoulder_colour)
@@ -522,18 +669,32 @@ def applied_at(comps: dict, patches: dict, x: float, z: float):
 
 def walkability(seg: dict, comps: dict, patches: dict,
                 pad_keepouts: list[tuple[float, float, float]],
+                pad_sites: list[dict] | None = None,
+                protected_pieces: list[tuple[float, float]] | None = None,
+                protected_discs: list[tuple[float, float, float]] | None = None,
                 step_m: float = 0.5) -> dict:
-    """Walk the centreline on the APPLIED surface and report the two numbers
-    the operator's own test produces: is the ribbon CONTINUOUS, and is every
-    part of it WALKABLE.
+    """Walk the centreline on the APPLIED surface and report the numbers the
+    operator's own test produces: is the ribbon CONTINUOUS, is every part of it
+    WALKABLE, and does it MEET what it terminates at.
 
     Continuity is measured as the set of RUNS where the centreline is not on
     written road, each classified by cause, with the height STEP across it.  A
     bridged run is expected -- the deck is Crossings' and the ribbon stops at
     the bank by construction.  A pad run is expected too: the ribbon stops at a
-    Settlements pad edge rather than levelling ground under a building, and the
-    step there is the thing to look at, because it is a step the operator walks
-    over.  Anything else is a hole in the road.
+    Settlements pad edge rather than levelling ground under a building.
+    Anything else is a hole in the road.
+
+    A GAP IS NOT A SLOPE AND MUST NOT BE AVERAGED INTO ONE.  The verdict
+    gradient is taken over 8 m between stations whose whole run is road,
+    because that is the question "is this hill too steep to walk up".  At a
+    boundary the question is different -- "can I get from the pad onto the
+    road" -- and the answer is a STEP over one lattice edge, which an 8 m
+    average would divide by eight and hide.  So each boundary is reported as a
+    step, in metres, against the MEASURED pad datum of the site it terminates
+    at (`pad_y` from settlements/sites.yaml, the height Settlements levels that
+    pad to) rather than against the generated ground that is there today.  The
+    generated ground is a temporary answer; the datum is the one the junction
+    will actually have.
     """
     nodes = np.array(seg["nodes"], dtype=np.float64)
     br = np.array(seg["is_bridge"], dtype=bool)
@@ -567,8 +728,31 @@ def walkability(seg: dict, comps: dict, patches: dict,
             off_lattice += 1
         else:
             st["y"], st["gen"], st["mod"] = got
-        st["in_pad"] = any(math.hypot(st["x"] - px, st["z"] - pz) <= pr
-                           for px, pz, pr in pad_keepouts)
+        # PAD ADJACENCY IS DECIDED BY THE SAMPLES, NOT BY THE STATION CENTRE.
+        # `stamp` skips a SAMPLE whose world position is inside a pad disc, and
+        # a station whose centre sits just outside the disc can still have one
+        # of its four corner samples inside it -- so the station is not on
+        # written road for a reason that IS the pad.  MEASURED on
+        # T10-wtspawn-wtsouth: one such station at (520.0, 36.8), 1 m outside
+        # wt-south's 16.1 m radius, was classified a HOLE and refused the whole
+        # segment. Testing the corners is exact and needs no margin constant.
+        x0, z0 = math.floor(st["x"]), math.floor(st["z"])
+        st["in_pad"] = any(
+            math.hypot(x0 + dx - px, z0 + dz - pz) <= pr
+            for dx in (0, 1) for dz in (0, 1)
+            for px, pz, pr in pad_keepouts)
+        # The same reasoning for the other two things that stop the rasteriser:
+        # a station is not on road BECAUSE of a protected piece, or BECAUSE the
+        # ground there is seabed, and both are explanations rather than holes.
+        st["near_protected"] = any(
+            abs(x0 + dx - px) <= PROTECT_CLEAR_M
+            and abs(z0 + dz - pz) <= PROTECT_CLEAR_M
+            for dx in (0, 1) for dz in (0, 1)
+            for px, pz in (protected_pieces or ()))
+        st["underwater"] = (
+            st.get("gen") is not None and st["gen"] < WATER_LEVEL_M
+            and any(math.hypot(st["x"] - px, st["z"] - pz) <= pr
+                    for px, pz, pr in (protected_discs or ())))
         # ON ROAD means all four samples under the point are ones this write
         # set: that is where the rendered surface IS the fitted profile rather
         # than a blend of road and untouched ground.
@@ -623,6 +807,10 @@ def walkability(seg: dict, comps: dict, patches: dict,
         cause = ("bridge" if any(stations[k]["bridged"] for k in range(i, j + 1))
                  else "settlement_pad" if any(stations[k]["in_pad"]
                                               for k in range(i, j + 1))
+                 else "protected_structure" if any(stations[k]["near_protected"]
+                                                   for k in range(i, j + 1))
+                 else "below_water_plane" if any(stations[k]["underwater"]
+                                                 for k in range(i, j + 1))
                  else "ribbon_end" if i == 0 or j == len(stations) - 1
                  else "HOLE")
         step = None
@@ -636,12 +824,41 @@ def walkability(seg: dict, comps: dict, patches: dict,
         for st in (before, after):
             if st is not None:
                 lip.append(round(st["y"] - st["gen"], 3))
-        gaps.append({"cause": cause,
-                     "from_s_m": round(stations[i]["s"], 1),
-                     "length_m": round(run, 1),
-                     "xz": [round(stations[i]["x"], 1), round(stations[i]["z"], 1)],
-                     "step_across_m": step,
-                     "fill_at_edges_m": lip})
+        entry = {"cause": cause,
+                 "from_s_m": round(stations[i]["s"], 1),
+                 "length_m": round(run, 1),
+                 "xz": [round(stations[i]["x"], 1), round(stations[i]["z"], 1)],
+                 "step_across_m": step,
+                 "fill_at_edges_m": lip}
+        # WHAT THE JUNCTION WILL ACTUALLY BE.  A pad gap is the road stopping
+        # at somebody else's earthwork, so the step the operator meets is
+        # road-surface against PAD DATUM, not against the generated ground
+        # that happens to be there until the pad is levelled.
+        site = None
+        for cand in (pad_sites or []):
+            for k in range(i, j + 1):
+                if math.hypot(stations[k]["x"] - cand["xz"][0],
+                              stations[k]["z"] - cand["xz"][1]) <= cand["pad_radius_m"]:
+                    site = cand
+                    break
+            if site is not None:
+                break
+        if site is not None and site.get("pad_y") is not None:
+            edge = before if before is not None else after
+            road_y = edge["y"] if edge is not None else None
+            entry["terminates_at"] = {
+                "site_id": site["id"], "pad_y": site["pad_y"],
+                "pad_radius_m": site["pad_radius_m"],
+                "road_y_at_pad_edge": None if road_y is None else round(road_y, 3),
+                "step_road_to_pad_m": (None if road_y is None
+                                       else round(site["pad_y"] - road_y, 3)),
+                "pad_levelled_yet": site.get("pad_written", False),
+                "why": "the road surface at the pad boundary against the height "
+                       "Settlements levels that pad to. Positive means the pad "
+                       "floor stands ABOVE the road and the operator has to "
+                       "climb it; a step over ~0.5 m cannot be walked up.",
+            }
+        gaps.append(entry)
         i = j + 1
 
     holes = [g for g in gaps if g["cause"] == "HOLE"]
@@ -725,16 +942,29 @@ def main() -> int:
     # source of truth, and it is the producer's.
     sites_path = JUMPSTART / "settlements" / "sites.yaml"
     pad_keepouts = []
+    # The same file also carries the DATUM each pad will be levelled to, which
+    # is what the road has to meet at a junction.  Keeping it beside the
+    # keep-out means the junction report is measured against the height that
+    # will be there rather than the generated ground that is there now.
+    pad_sites = []
     pad_source = "none"
     if sites_path.exists():
         sdoc = yaml.safe_load(sites_path.read_text())
         for site in sdoc["sites"]:
             pad_keepouts.append((float(site["xz"][0]), float(site["xz"][1]),
                                  float(site["pad_radius_m"])))
+            pad_sites.append({"id": site["id"],
+                              "xz": [float(site["xz"][0]), float(site["xz"][1])],
+                              "pad_radius_m": float(site["pad_radius_m"]),
+                              "pad_y": (None if site.get("pad_y") is None
+                                        else float(site["pad_y"]))})
         pad_source = str(sites_path)
     else:
-        for site in specmod.SETTLEMENT_SITES.values():
+        for sid, site in specmod.SETTLEMENT_SITES.items():
             pad_keepouts.append((site["xz"][0], site["xz"][1], site["pad_radius_m"]))
+            pad_sites.append({"id": sid, "xz": list(site["xz"]),
+                              "pad_radius_m": site["pad_radius_m"],
+                              "pad_y": site.get("pad_y")})
         pad_source = "spec.SETTLEMENT_SITES (PROVISIONAL fallback)"
     print(f"pad keep-outs: {len(pad_keepouts)} from {pad_source}")
     zones = segment_zones(seg["nodes"], seg["is_bridge"], seg["width_m"])
@@ -744,7 +974,13 @@ def main() -> int:
 
     out = SCRATCH / f"{seg['id']}.bin"
     patches = zone_patches(zones, SEED, out)
-    comps, st = stamp(seg, patches, zones, pad_keepouts)
+    prot = protected_piece_positions(zones)
+    print(f"protected pieces in these zones: {len(prot['pieces'])} "
+          f"{prot['by_site'] or '{}'}"
+          + (f"; records with NO recoverable piece: {prot['without_pieces']}"
+             if prot["without_pieces"] else ""))
+    comps, st = stamp(seg, patches, zones, pad_keepouts, prot["pieces"],
+                      prot["discs"])
     loc = location_check(comps, st["written"], seg["width_m"] / 2.0)
     print(f"location check: verdict={loc['verdict']} nearest="
           f"{(loc['nearest'] or {}).get('name')} standoff {loc['standoff_m']} m "
@@ -761,8 +997,10 @@ def main() -> int:
         return 3
     print(f"stamped {st['samples_paved']} paved + {st['samples_shoulder']} "
           f"shoulder samples over {len(comps)} zones; "
-          f"cut {st['max_cut_m']} fill {st['max_fill_m']} m; "
-          f"{st['skipped_pad']} samples skipped inside a Settlements pad")
+          f"cut {st['max_cut_m']} fill {st['max_fill_m']} m; skipped "
+          f"{st['skipped_pad']} inside a Settlements pad, "
+          f"{st['skipped_protected']} beside a protected piece, "
+          f"{st['skipped_underwater']} on a protected structure's water")
     print(f"samples past the MEASURED +/-8 m apply clamp: {st['over_clamp']}")
     for s in st["over_clamp_samples"]:
         print("   ", s)
@@ -795,7 +1033,7 @@ def main() -> int:
     if not args.validate:
         sys.path.insert(0, str(JUMPSTART / "ledger"))
         from writer import Ledger
-        led_ro = Ledger.open("Ulfsland", actor="RoadNet")
+        led_ro = Ledger.open("Ulfsland", actor=ACTOR)
         for line, rec in enumerate(led_ro.records()):
             if rec.get("op") != "terrain_write":
                 continue
@@ -832,13 +1070,29 @@ def main() -> int:
                   f"seq {[pr['seq'] for pr in plist]} "
                   f"(file lines {[pr['file_line'] for pr in plist]}, "
                   f"{sorted({pr['name'] for pr in plist})})")
+        # Which pads have actually been levelled yet: a site whose name
+        # prefixes an existing terrain_write. It changes what a junction step
+        # MEANS -- against a levelled pad it is the real step today, against an
+        # unlevelled one it is the step the operator will meet once
+        # Settlements gets there, and those are different claims.
+        written_names = [r["params"].get("name") or ""
+                         for r in led_ro.records() if r["op"] == "terrain_write"]
+        for site in pad_sites:
+            site["pad_written"] = any(n.startswith(site["id"])
+                                      for n in written_names)
 
     # THE OPERATOR'S OWN TEST, on the surface that will exist after the union.
     # Run here rather than before the merge because a junction zone's carried
     # samples are part of the rendered mesh: at the temple the T3 ribbon meets
     # T12's, and continuity across that joint is a property of the union, not
     # of this segment alone.
-    walk = walkability(seg, comps, patches, pad_keepouts)
+    walk = walkability(seg, comps, patches, pad_keepouts, pad_sites,
+                       prot["pieces"], prot["discs"])
+    walk["skipped"] = {"settlement_pad": st["skipped_pad"],
+                       "beside_protected_piece": st["skipped_protected"],
+                       "on_protected_structure_water": st["skipped_underwater"]}
+    walk["protected_pieces_in_zones"] = prot["by_site"]
+    walk["protected_records_without_pieces"] = prot["without_pieces"]
     print(f"walkability: {walk['verdict']} max gradient over "
           f"{VERDICT_BASELINE_M:g} m baseline {walk['max_gradient_8m']} "
           f"(limit {walk['slide_limit']}, 38 deg slide angle) at "
@@ -849,6 +1103,12 @@ def main() -> int:
     for g in walk["gaps"]:
         print(f"   gap {g['cause']:14s} {g['length_m']:6.1f} m at {g['xz']} "
               f"step {g['step_across_m']} m, fill at edges {g['fill_at_edges_m']}")
+        t = g.get("terminates_at")
+        if t:
+            print(f"      terminates at {t['site_id']}: road "
+                  f"{t['road_y_at_pad_edge']} m vs pad datum {t['pad_y']} m = "
+                  f"STEP {t['step_road_to_pad_m']} m "
+                  f"(pad levelled yet: {t['pad_levelled_yet']})")
     if walk["holes"]:
         print(f"REFUSING: {walk['holes']} gap(s) in the ribbon with no cause "
               f"-- a hole in the road is the one defect the operator is "
@@ -1008,7 +1268,7 @@ def main() -> int:
     sys.path.insert(0, str(JUMPSTART / "ledger"))
     from live import LiveBuilder
 
-    with LiveBuilder(actor="RoadNet", dry=args.dry) as b:
+    with LiveBuilder(actor=ACTOR, dry=args.dry) as b:
         b.observe(
             "road_segment_plan", 
             method="MEASURED: A* over a 1 m PatchScan field (rivers included) "

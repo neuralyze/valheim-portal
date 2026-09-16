@@ -256,17 +256,17 @@ placements:
     - 12.4
   solved:
     seed: Pirate68
-    x: 484.7
-    z: 901.7
-    y: 45.38
+    x: 477.7
+    z: 902.7
+    y: 45.63
     footprint_orientation: 10.4 m along x by 12.4 m along z
     flatten_cost:
-      target_y: 45.38
+      target_y: 45.63
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 68.7
-    nearest_location: ShipSetting01
-    nearest_location_standoff_m: 36.0
+    nearest_location_m: 66.3
+    nearest_location: Dolmen03
+    nearest_location_standoff_m: 22.0
   settlement:
     site: stenvik
     role: cottage
@@ -346,15 +346,15 @@ placements:
     - 15.0
   solved:
     seed: Pirate68
-    x: 564.8
-    z: 914.9
-    y: 49.61
+    x: 569.8
+    z: 919.9
+    y: 49.45
     footprint_orientation: 11 m along x by 15 m along z
     flatten_cost:
-      target_y: 49.61
+      target_y: 49.45
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 35.1
+    nearest_location_m: 33.4
     nearest_location: Runestone_Boars
     nearest_location_standoff_m: 25.520000457763672
   settlement:
@@ -377,16 +377,16 @@ placements:
   solved:
     seed: Pirate68
     x: 478.5
-    z: 873.6
-    y: 47.13
+    z: 869.6
+    y: 47.21
     footprint_orientation: 11 m along x by 15 m along z
     flatten_cost:
-      target_y: 47.13
+      target_y: 47.21
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 58.0
-    nearest_location: Dolmen02
-    nearest_location_standoff_m: 20.0
+    nearest_location_m: 55.4
+    nearest_location: ShipSetting01
+    nearest_location_standoff_m: 36.0
   settlement:
     site: stenvik
     role: stonehouse
@@ -467,14 +467,14 @@ placements:
   solved:
     seed: Pirate68
     x: 538.3
-    z: 902.2
-    y: 48.35
+    z: 897.2
+    y: 47.95
     footprint_orientation: 10.4 m along x by 10.4 m along z
     flatten_cost:
-      target_y: 48.35
+      target_y: 47.95
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 57.5
+    nearest_location_m: 52.6
     nearest_location: Dolmen02
     nearest_location_standoff_m: 20.0
   settlement:
@@ -496,15 +496,15 @@ placements:
     - 10.4
   solved:
     seed: Pirate68
-    x: 504.5
+    x: 505.5
     z: 896.1
-    y: 45.56
+    y: 45.47
     footprint_orientation: 10.4 m along x by 10.4 m along z
     flatten_cost:
-      target_y: 45.56
+      target_y: 45.47
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 56.4
+    nearest_location_m: 56.0
     nearest_location: Dolmen02
     nearest_location_standoff_m: 20.0
   settlement:
@@ -527,14 +527,14 @@ placements:
   solved:
     seed: Pirate68
     x: 496.9
-    z: 853.4
-    y: 51.34
+    z: 851.4
+    y: 51.73
     footprint_orientation: 10.4 m along x by 10.4 m along z
     flatten_cost:
-      target_y: 51.34
+      target_y: 51.73
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 33.3
+    nearest_location_m: 32.9
     nearest_location: Dolmen02
     nearest_location_standoff_m: 20.0
   settlement:

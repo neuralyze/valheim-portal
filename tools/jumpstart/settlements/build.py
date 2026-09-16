@@ -101,6 +101,10 @@ def unit_records(plan: dict, site: str) -> list[dict]:
                 "id": b["id"], "body": b["body"], "sha256": b["sha256"],
                 "x": b["x"], "z": b["z"], "yaw": b["yaw_deg"],
                 "pad_w": b["pad"]["width_m"], "pad_d": b["pad"]["depth_m"],
+                # The BODY's own extent, distinct from its pad. `check_radius`
+                # needs the extent that can hold PREFABS: a pad is cleared
+                # ground and a 20 m pad around a 4 m hut contains nothing.
+                "foot_w": b["footprint"][0], "foot_d": b["footprint"][1],
                 "target_y": b["pad"]["target_y"], "ground_y": b["pad"]["target_y"],
                 "pieces": b["pieces"], "role": b["role"], "patch": town["patch"],
             })
@@ -139,6 +143,10 @@ def unit_records(plan: dict, site: str) -> list[dict]:
                 "z": round(rec["z"] + r * math.sin(ang), 1),
                 "yaw": round(120 * k, 1),
                 "pad_w": rec["pad"]["width_m"], "pad_d": rec["pad"]["depth_m"],
+                "foot_w": rec["footprint"][0] if "footprint" in rec
+                else rec["pad"]["width_m"],
+                "foot_d": rec["footprint"][1] if "footprint" in rec
+                else rec["pad"]["depth_m"],
                 "target_y": rec["pad"]["target_y"],
                 "ground_y": rec["pad"]["target_y"],
                 "pieces": rec["pieces"], "role": rec["kind"], "patch": rec["patch"],
@@ -343,14 +351,27 @@ def union_prior(b, comps: dict, op_y: dict) -> dict:
     """
     import tcdata
     prior: dict[tuple[int, int], list[dict]] = {}
-    for line, rec in enumerate(b.led.records()):
+    # HOW A RECORD IS NAMED, and the convention is IN THE FIELD NAME because
+    # two producers just disagreed about it. `seq` is ambiguous since the
+    # chain fork (four duplicate labels), so the union names records by
+    # position instead -- and position has two equally defensible readings:
+    # the index into `records()` (0-based, what `writer.py::close_report` and
+    # `ribbon.py` emit, so `recs[n]` addresses it) and the file line (1-based,
+    # what `sed -n 66p` and every editor mean). This emits BOTH, each
+    # labelled, so no reader has to guess and the two agents' arrays can be
+    # compared directly. The original defect was an unlabelled 0-based index
+    # published as a "line": the union at file line 75 said 65 for a record
+    # on line 66.
+    for index, rec in enumerate(b.led.records()):
+        line = index + 1
         if rec["op"] != "terrain_write":
             continue
         for e in rec["params"]["entries"]:
             z = (int(e["zone"][0]), int(e["zone"][1]))
             if z in comps:
                 prior.setdefault(z, []).append(
-                    {"line": line, "seq": rec["seq"], "actor": rec["actor"],
+                    {"line": line, "index": index, "seq": rec["seq"],
+                     "actor": rec["actor"],
                      "blob_sha256": e["blob_sha256"],
                      "data_entry": e["data_entry"]})
     merged: dict[tuple[int, int], dict] = {}
@@ -371,7 +392,9 @@ def union_prior(b, comps: dict, op_y: dict) -> dict:
                     comp.paint[i] = colour
         merged[z] = {
             "merged_from": [c["seq"] for c in claims],
-            "merged_from_lines": [c["line"] for c in claims],
+            "merged_from_file_lines_1based": [c["line"] for c in claims],
+            "merged_from_record_index_0based": [c["index"] for c in claims],
+            "merged_from_actors": [c["actor"] for c in claims],
             "merge_policy": "union",
             "samples_inherited": taken,
             "why": ("a zone holds one compiler and this op deletes before it "
@@ -787,19 +810,64 @@ def check_radius(unit: dict, units: list[dict], clear_radius_m: float,
                  rows: list[tuple]) -> float:
     """The radius a prefab count can be EXACT inside.
 
-    Two things bound it, and both are measurements rather than preferences:
-    a sibling building's identical prefabs must not be able to answer for
-    this one (so it stays inside the nearest neighbour's own reach), and
-    uncleared vegetation must not be able to either (so it stays inside the
-    radius `objects_clear` emptied). A wider radius with a tolerance would
-    be a check that passes for the wrong reason.
+    Three things bound it, and all three are measurements rather than
+    preferences.
+
+    (1) A SIBLING'S IDENTICAL PREFABS MUST NOT ANSWER FOR THIS BODY, so the
+    radius stays clear of the nearest neighbour's own pieces. Measured
+    against that neighbour's BODY FOOTPRINT and not its PAD: a pad is
+    levelled, cleared ground and contains no prefabs, and using the pad was
+    MEASURED to collapse this radius to its 1 m floor on `stenvik-hut-1`
+    (cottage-1's body is 4.4 x 6.4 but its pad is 10.4 x 12.4, so the pad's
+    8.09 m half-diagonal ate the whole 8.25 m separation).
+
+    (2) UNCLEARED VEGETATION MUST NOT ANSWER EITHER, so it stays inside the
+    radius `objects_clear` emptied.
+
+    (3) THE RADIUS MUST NOT LAND ON A RING OF PIECES. `objects_count`'s
+    filter is a boundary comparison, and a body's pieces sit on exact rings:
+    `stenvik-hut-1`'s 28 pieces are at 1.000 m (x4), 1.414 (x8), 2.003 (x1)
+    and 2.236 (x15) from its anchor. At a radius of exactly 1.000 the check
+    MEASURED `want 4 got 2` -- four pieces on the boundary, two of them
+    counted -- while the same body re-counted at 3 m answers 28 for 28 with
+    the plan's exact histogram. That is a coin flip, not a postcondition. So
+    the radius is snapped to the MIDPOINT of a gap between rings, which
+    leaves every piece unambiguously inside or outside.
+
+    A refusal is a real answer here: if no gap-midpoint that contains at
+    least one piece fits under the bound, a count inside that bound proves
+    nothing and the caller is told rather than handed a number.
     """
     reach = max((math.hypot(r[1] - unit["x"], r[3] - unit["z"]) for r in rows),
                 default=1.0)
-    safe = [math.hypot(o["x"] - unit["x"], o["z"] - unit["z"])
-            - math.hypot(o["pad_w"], o["pad_d"]) / 2 - 0.5
-            for o in units if o["id"] != unit["id"]]
-    return round(max(1.0, min([reach + 0.5, clear_radius_m - 0.1] + safe)), 2)
+    safe = []
+    for o in units:
+        if o["id"] == unit["id"]:
+            continue
+        foot = math.hypot(o.get("foot_w", o["pad_w"]),
+                          o.get("foot_d", o["pad_d"])) / 2
+        safe.append(math.hypot(o["x"] - unit["x"], o["z"] - unit["z"])
+                    - foot - 0.5)
+    cap = min([reach + 0.5, clear_radius_m - 0.1] + safe)
+    rings = sorted({round(math.hypot(r[1] - unit["x"], r[3] - unit["z"]), 3)
+                    for r in rows})
+    if not rings:
+        return round(max(1.0, cap), 2)
+    gaps = [(rings[i] + rings[i + 1]) / 2 for i in range(len(rings) - 1)]
+    gaps.append(rings[-1] + 0.25)
+    usable = [g for g in gaps if g <= cap]
+    if not usable:
+        raise SystemExit(
+            f"REFUSED {unit['id']}: no radius can make this count exact. The "
+            f"bound is {cap:.2f} m (reach+0.5 {reach + 0.5:.2f}, clear-0.1 "
+            f"{clear_radius_m - 0.1:.2f}, nearest sibling room "
+            f"{min(safe) if safe else float('inf'):.2f}) and the body's "
+            f"pieces sit on rings {rings[:6]}, so every candidate radius "
+            f"either contains no piece or lands ON a ring -- where "
+            f"`objects_count`'s boundary comparison MEASURED 2 of 4 pieces "
+            f"at exactly 1.000 m. A count that can be wrong by a boundary is "
+            f"not a postcondition.")
+    return round(max(usable), 2)
 
 
 def spawn_plan_record(b, unit: dict, site: str, role: str, plan_path: Path,
@@ -819,8 +887,20 @@ def spawn_plan_record(b, unit: dict, site: str, role: str, plan_path: Path,
     dominant = max(inside.items(), key=lambda kv: kv[1])[0] if inside else None
     reach = max((math.hypot(r[1] - unit["x"], r[3] - unit["z"]) for r in rows),
                 default=1.0)
+    # THE COUNT EXCLUDES THE EFFECTS A PLACED PIECE SPAWNS FOR ITSELF, and
+    # this is MEASURED rather than tidied away. `stenvik-beehive-1` placed
+    # 126 pieces and the check read 130: the four extras were
+    # `sfx_FireAddFuel` x2 and `vfx_groundtorch_addFuel` x2, the one-shot
+    # effects the body's two `piece_groundtorch_wood` spawn when they are
+    # fuelled. They are TRANSIENT -- the same cylinder re-counted minutes
+    # later answers 126 with the identical command -- so an exact count taken
+    # immediately after placement RACES them, and the race is invisible on a
+    # body with no torch. Excluding them makes the postcondition deterministic
+    # and it still counts every piece the plan placed, because no spawn plan
+    # in this corpus contains an `sfx_`/`vfx_` prefab: they only ever appear
+    # as a piece's own runtime children.
     expect: dict = {"objects_count": {
-        "ids": "*", "ignore": "_*",
+        "ids": "*", "ignore": "_*,sfx_*,vfx_*",
         "pos": [round(unit["x"], 2), round(unit["z"], 2)],
         "max": radius, "total": sum(inside.values()), "tolerance": 0}}
     if dominant:
@@ -1307,7 +1387,10 @@ def apply_unit(b, plan: dict, doc: dict, unit: dict, site: str, role: str,
     if merged:
         out["merged"] = {f"{z[0]},{z[1]}": {
             "merged_from": m["merged_from"],
-            "merged_from_lines": m["merged_from_lines"],
+            "merged_from_file_lines_1based": m["merged_from_file_lines_1based"],
+            "merged_from_record_index_0based":
+                m["merged_from_record_index_0based"],
+            "merged_from_actors": m["merged_from_actors"],
             "samples_inherited": m["samples_inherited"],
             "compiler_present": zone_compiler(b.srv, *z)} for z, m in
             merged.items()}
@@ -1501,19 +1584,41 @@ def fixture_audit(unit: dict) -> dict:
     height it was placed at. Beds, hearths and fire pits are the ones the
     operator named: a bed in the rain is the reported defect."""
     import fixtures
-    from to_rcon_plan import read_objects
-    fx, objects, body = body_of(unit, (unit["x"], unit["target_y"],
-                                       unit["z"]), unit["yaw"])
-    index = body.index()
-    rows = [(p, x, y, z, yaw) for p, x, y, z, yaw in
-            [(o["prefab"], *body.world_of(o)) for o in []]]
+    fx, _objects, body = body_of(unit, (unit["x"], unit["target_y"],
+                                        unit["z"]), unit["yaw"])
     # The carried fixtures, in world coordinates, straight off the placed body.
     rows = [(s[6], (s[0] + s[1]) / 2, s[2], (s[4] + s[5]) / 2, 0.0)
             for s in body.solids if fixtures.is_fixture(s[6])]
     if not rows:
         return {"carried_fixtures": 0,
                 "note": "this body carries no bed, hearth, station or chest"}
-    rep = fixtures.audit(rows, body, index)
+    # THE STRUCTURE MUST BE MEASURED WITHOUT THE FIXTURES IN IT, and getting
+    # this wrong is why every carried fixture in Stenvik read as a failure.
+    # `audit` does two things with the body it is given: it pierces each
+    # fixture's box against the body's solid index, and it classifies the
+    # fixture's cell against the body's interior mask. The fixtures here are
+    # solids OF THIS BODY, so both saw them --
+    #   * the index contained the fire pit, so the fire pit overlapped
+    #     itself. MEASURED on `stenvik-hall-1`: `fire_pit at (480.01, 45.20,
+    #     915.25) overlaps fire_pit by 2.00 x 1.27 x 2.00 m`, its own
+    #     dimensions to the centimetre.
+    #   * the mask counted the fire pit as an obstruction, so its own cell
+    #     classified `blocked` rather than `indoor_covered` and the
+    #     indoor-and-covered preference failed on a hearth that is demonstrably
+    #     under a roof -- the same message reported `0 of 4 cell(s) open to
+    #     the sky`, which is the answer to the question that was actually
+    #     asked.
+    # Six of fifteen bodies "failed" on those two artefacts. The frame is
+    # rebuilt with the same datum, footprint and origin so the world
+    # coordinates are unchanged, carrying only the structure's solids --
+    # re-running `place_body` on a filtered object list would re-derive the
+    # datum and the footprint centre and move the building.
+    structure = [s for s in body.solids if not fixtures.is_fixture(s[6])]
+    sbody = fixtures.PlacedBody(
+        solids=structure, carried={}, datum=body.datum,
+        footprint=body.footprint, origin=body.origin,
+        pivot_only=body.pivot_only, centre=body.centre, pad_y=body.pad_y)
+    rep = fixtures.audit(rows, sbody, sbody.index())
     kinds: dict[str, int] = {}
     for r in rows:
         kinds[r[0]] = kinds.get(r[0], 0) + 1
@@ -1609,7 +1714,11 @@ def live_verify(srv, plan: dict, site: str, units: list[dict],
         for prefab, x, _y, z, _yaw in rows:
             if math.hypot(x - u["x"], z - u["z"]) <= radius:
                 inside[prefab] = inside.get(prefab, 0) + 1
-        got, per = srv.count("*", u["x"], u["z"], radius)
+        # Same filter as the postcondition, for the same measured reason: a
+        # torch's one-shot `sfx_`/`vfx_` children are transient and would
+        # make this count disagree with itself between two runs.
+        got, per = srv.count("*", u["x"], u["z"], radius,
+                             ignore="_*,sfx_*,vfx_*")
         dominant = max(inside.items(), key=lambda kv: kv[1])[0]
         out.append({
             "unit": u["id"], "plan_pieces": len(rows),
@@ -1625,15 +1734,69 @@ def live_verify(srv, plan: dict, site: str, units: list[dict],
     return out
 
 
+def portal_pairing(srv, plan: dict, site: str) -> dict:
+    """EVERY END OF THIS SITE'S TAG, read off the ZDO.
+
+    The defect the operator reported by name is a one-way trip, and its cause
+    is a tag with one end: pairing in `TeleportWorld` is exact string equality
+    against a uniform random draw among equally-tagged UNCONNECTED portals, so
+    one end pairs with nothing and a BLANK tag pairs at random with this
+    world's blank-tag mod-location portals.
+
+    The ends come from the ledger's own `portal` records for this tag -- the
+    ledger is where both ends are declared -- and each is then read back
+    live at its recorded position, prefab-scoped inside 4 m.
+    """
+    import re as _re
+    tag = site_tag(plan, site)
+    led = (JUMPSTART / "ledger/runs/Ulfsland/ledger.jsonl").read_text()
+    declared = [json.loads(line) for line in led.splitlines()]
+    ends = [r for r in declared
+            if r["op"] == "portal" and r["params"].get("tag") == tag]
+    out = []
+    for rec in ends:
+        x, y, z = rec["params"]["pos"]
+        reply = srv.command(f"findObjects -prefab {PORTAL_PREFAB} -near "
+                            f"{x:.2f} {y:.2f} {z:.2f} 4 -detailed")
+        tags = _re.findall(r"Portal tag: (\S*)", reply)
+        out.append({"pos": [x, y, z], "seq": rec["seq"],
+                    "end": (rec.get("meta") or {}).get("end"),
+                    "tags_found": tags,
+                    "ok": tags.count(tag) == 1})
+    return {
+        "tag": tag, "tag_length": len(tag),
+        "declared_ends": len(ends), "ends": out,
+        "paired": len(ends) == 2 and all(e["ok"] for e in out),
+        "why": ("a tag needs EXACTLY two standing ends: one end is a "
+                "one-way trip and three ends pair at random among them"),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("op", choices=["placements", "plan", "validate", "apply",
-                                   "portals"])
+                                   "portals", "verify"])
     ap.add_argument("--site")
     ap.add_argument("--plan-json", default=str(HERE / "plan.json"))
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--from", dest="start", type=int, default=0)
     ap.add_argument("--no-portals", action="store_true")
+    # WHY A NAME SELECTOR EXISTS BESIDE --from/--limit. Those two are a
+    # RESUME: a contiguous tail of the unit list, which is what a run that
+    # stopped needs. The eight pads Stenvik refused on the mod village are
+    # NOT contiguous -- they are indices 1, 5, 7, 8, 11, 12, 14 and 15 of
+    # eighteen -- so building the ones that a nudge cleared needs a set, and
+    # `--from 8 --limit 8` would rebuild six standing buildings to reach two.
+    ap.add_argument("--only", default="",
+                    help="comma-separated unit ids to build, in the plan's "
+                         "own order; refuses an id that is not a unit of "
+                         "this site")
+    # WHO THE LEDGER SAYS DID IT. Siblings share one ledger and the chain
+    # records an actor per record; `SettleBuild` stood the first eight
+    # Stenvik buildings and yielded, and the rest of this world is built by
+    # `SiteFinish`. Hard-coding the first agent's name would credit one
+    # agent's work to another in the only log that survives the session.
+    ap.add_argument("--actor", default="SiteFinish")
     a = ap.parse_args()
 
     plan = json.loads(Path(a.plan_json).read_text())
@@ -1652,6 +1815,14 @@ def main() -> int:
     units = all_units[a.start:]
     if a.limit:
         units = units[:a.limit]
+    if a.only:
+        want = [u for u in a.only.split(",") if u]
+        known = {u["id"] for u in all_units}
+        unknown = [u for u in want if u not in known]
+        if unknown:
+            ap.error(f"--only names {unknown} which are not build units of "
+                     f"{a.site}; its units are {sorted(known)}")
+        units = [u for u in all_units if u["id"] in want]
     loc = clearance.load(LOCATIONS)
     kind = "town" if a.site in plan["towns"] else next(
         r["kind"] for r in plan["outliers"] if r["id"] == a.site)
@@ -1684,13 +1855,48 @@ def main() -> int:
     from live import LiveBuilder  # noqa: E402
     import schema  # noqa: E402
 
+    if a.op == "verify":
+        # WHAT THE OPERATOR WILL SEE, and nothing that writes. `Server` is
+        # used directly rather than `LiveBuilder`: this op appends no record,
+        # so taking a ledger handle would claim the write token for a
+        # read-only question.
+        import replay as R  # noqa: E402
+        report: dict = {"site": a.site, "units": [], "streets": [],
+                        "portals": None}
+        with R.Server() as srv:
+            srv.probe()
+            live = live_verify(srv, plan, a.site, units, role)
+            for row, u in zip(live, units):
+                row["fixtures"] = fixture_audit(u)
+                report["units"].append(row)
+            report["streets"] = street_report(plan, a.site, units)
+            report["portals"] = portal_pairing(srv, plan, a.site)
+        report["summary"] = {
+            "units": len(report["units"]),
+            "counts_exact": sum(1 for r in report["units"] if r["matches"]),
+            "with_strays": sum(1 for r in report["units"]
+                               if r["strays"]["beyond_pad_count"]),
+            "fixtures_clean": sum(1 for r in report["units"]
+                                  if r["fixtures"].get("clean", True)),
+            "worst_grounded_fraction": min(
+                (r["grounding"]["grounded_fraction"]
+                 for r in report["units"]), default=None),
+            "streets_walkable": all(s["walkable"]
+                                    for s in report["streets"]),
+            "portals_paired": report["portals"]["paired"],
+        }
+        print(json.dumps(report, indent=1, default=str))
+        ok = (report["summary"]["counts_exact"] == len(report["units"])
+              and report["summary"]["portals_paired"])
+        return 0 if ok else 1
+
     if a.op == "validate":
         # No append, no console: build the records and validate them. The
         # ledger object is needed only for its blob store, which is additive
         # and content-addressed.
         from writer import Ledger
         led = Ledger(Path(str(JUMPSTART / "ledger/runs/Ulfsland")),
-                     actor="SettleBuild")
+                     actor=a.actor)
 
         class Bag:
             def blob(self, data, note=""):
@@ -1702,7 +1908,7 @@ def main() -> int:
             for rec in unit_ops(bag, plan, doc, u, a.site, role, all_units,
                                 loc, validate_only=True):
                 envelope = {"seq": 0, "ts": "1970-01-01T00:00:00Z",
-                            "actor": "SettleBuild", "op": rec["op"],
+                            "actor": a.actor, "op": rec["op"],
                             "params": rec["params"], "wire": rec["wire"],
                             "requires": rec["requires"],
                             "expect": rec["expect"], "meta": rec["meta"],
@@ -1718,7 +1924,7 @@ def main() -> int:
         return 0 if not bad else 1
 
     built = []
-    with LiveBuilder(actor="SettleBuild") as b:
+    with LiveBuilder(actor=a.actor) as b:
         if a.op == "portals":
             print(json.dumps(apply_portals(b, plan, doc, a.site, all_units,
                                            loc), indent=1, default=str))
@@ -1745,7 +1951,12 @@ def main() -> int:
             print(json.dumps(res, indent=1, default=str), flush=True)
         if refused:
             print(json.dumps({"refused": refused}, indent=1), flush=True)
-        if not a.no_portals and not a.limit and not a.start:
+        # A PARTIAL BUILD MUST NOT RE-EMIT THE PORTAL PAIR. `--only` joins
+        # `--limit` and `--from` here: the site end is solved on the FIRST
+        # unit's pad, and with a subset that is a different pad -- so a
+        # partial run would stand a second arch with the same tag, and a tag
+        # with three ends pairs at random among them.
+        if not a.no_portals and not a.limit and not a.start and not a.only:
             built.append(apply_portals(b, plan, doc, a.site, all_units, loc))
             print(json.dumps(built[-1], indent=1, default=str), flush=True)
         report = b.close()

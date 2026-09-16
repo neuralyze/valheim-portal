@@ -16,15 +16,15 @@ placements:
     - 16.0
   solved:
     seed: Pirate68
-    x: -510.0
-    z: 844.0
+    x: -511.7
+    z: 847.3
     y: 40.83
     footprint_orientation: 16 m along x by 16 m along z
     flatten_cost:
       target_y: 40.83
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 43.7
+    nearest_location_m: 45.7
     nearest_location: Greydwarf_camp1
     nearest_location_standoff_m: 22.0
   settlement:
@@ -46,15 +46,15 @@ placements:
     - 16.0
   solved:
     seed: Pirate68
-    x: -516.0
-    z: 847.5
+    x: -518.0
+    z: 844.3
     y: 40.83
     footprint_orientation: 16 m along x by 16 m along z
     flatten_cost:
       target_y: 40.83
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 50.0
+    nearest_location_m: 51.7
     nearest_location: Greydwarf_camp1
     nearest_location_standoff_m: 22.0
   settlement:
@@ -76,15 +76,15 @@ placements:
     - 16.0
   solved:
     seed: Pirate68
-    x: -516.0
-    z: 840.5
+    x: -512.3
+    z: 840.4
     y: 40.83
     footprint_orientation: 16 m along x by 16 m along z
     flatten_cost:
       target_y: 40.83
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 49.6
+    nearest_location_m: 45.9
     nearest_location: Greydwarf_camp1
     nearest_location_standoff_m: 22.0
   settlement:

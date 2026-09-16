@@ -2,52 +2,52 @@
  "ledger_head": "fbdcd4adeebb8dc41b895cd05841373bcafaca9d541b6ecd4b74e41e591eaa1b",
  "applied": {
   "1": {
-   "status": "skipped-already-present",
+   "status": "applied",
    "seq_label": 1,
    "op": "spawn",
-   "ts": "2026-09-16T04:20:56Z"
+   "ts": "2026-09-16T06:09:56Z"
   },
   "2": {
-   "status": "skipped-already-present",
+   "status": "applied",
    "seq_label": 2,
    "op": "spawn",
-   "ts": "2026-09-16T04:21:00Z"
+   "ts": "2026-09-16T06:10:01Z"
   },
   "3": {
-   "status": "skipped-already-present",
+   "status": "applied",
    "seq_label": 3,
    "op": "portal",
-   "ts": "2026-09-16T04:21:05Z"
+   "ts": "2026-09-16T06:10:06Z"
   },
   "4": {
-   "status": "skipped-already-present",
+   "status": "applied",
    "seq_label": 4,
    "op": "portal",
-   "ts": "2026-09-16T04:21:09Z"
+   "ts": "2026-09-16T06:10:10Z"
   },
   "5": {
    "status": "applied",
    "seq_label": 5,
    "op": "save",
-   "ts": "2026-09-16T04:21:11Z"
+   "ts": "2026-09-16T06:10:12Z"
   },
   "6": {
    "status": "applied",
    "seq_label": 6,
    "op": "retire",
-   "ts": "2026-09-16T04:21:13Z"
+   "ts": "2026-09-16T06:10:15Z"
   },
   "7": {
    "status": "applied",
    "seq_label": 7,
    "op": "retire",
-   "ts": "2026-09-16T04:21:16Z"
+   "ts": "2026-09-16T06:10:17Z"
   },
   "8": {
    "status": "applied",
    "seq_label": 8,
    "op": "retire",
-   "ts": "2026-09-16T04:21:18Z"
+   "ts": "2026-09-16T06:10:19Z"
   }
  },
  "preamble": null

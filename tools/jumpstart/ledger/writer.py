@@ -33,6 +33,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import struct
 import subprocess
 import sys
@@ -290,6 +291,10 @@ FLATTEN_TOLERANCE_M = 0.01
 # probe cannot step over a written sample.
 FLATTEN_PROBE_M = 0.5
 
+# How far a same-`role` record may sit from the protected one and
+# still count as the same SITE when neither declares a site_id.
+_SITE_RADIUS_M = 64.0
+
 
 def _record_xz(p: dict) -> tuple | None:
     """A record's world XZ, whatever shape its op uses to carry it.
@@ -331,6 +336,148 @@ def _protected_discs(rec: dict) -> list[tuple]:
                 and isinstance(radius, (int, float)) and radius > 0):
             discs.append((float(pos[0]), float(pos[1]), float(radius)))
     return discs
+
+
+_SPAWN_POS_RE = re.compile(r"^spawn_object\s+(\S+)\s+pos=([^\s,]+),([^\s,]+),")
+
+
+def _protected_pieces(rec: dict, ledger: "Ledger") -> list[tuple] | None:
+    """Every PIECE position of a protected structure, as (x, z).
+
+    Strictly better evidence than the structure's probe disc, and it is
+    already recorded: a `spawn_plan`'s blob IS the literal command list, so
+    the pieces can be read back exactly.  MEASURED by RoadBuild against the
+    disc test on seven road segments -- the disc gets ALL SEVEN wrong in one
+    direction or the other.  Four segments are provably harmless at every one
+    of a structure's pieces while their discs overlap, and three genuinely
+    disturb a structure (worst applied delta 2.896 m at a boathouse piece).
+    A disc is a bounding circle over a probe radius; the pieces are the
+    thing that must not move.
+
+    THE FIELD ORDER IS z,x,y AND NOT WHAT YOU WOULD GUESS.  `spawn_object`'s
+    `pos=` takes z first (`Parse::VectorZXYRange`), so field0 is Z and field1
+    is X.  MEASURED twice independently: `to_rcon_plan.pos_arg`'s own IL-read
+    docstring, and RoadBuild cross-checking three structures' plan fields
+    against their `expect.prefab_count` (x, z) -- the harbour's expect
+    (4.5, -265.2) has field0 in -276.9..-256.5 and field1 in -7.5..12.9.
+    Read it the other way round and every piece lands in the wrong zone.
+
+    Returns None when the pieces cannot be read, which the caller must treat
+    as "cannot measure" rather than "nothing there".
+    """
+    p = rec.get("params", {})
+    if rec.get("op") in ("spawn", "portal"):
+        xz = _record_xz(p)
+        return [(float(xz[0]), float(xz[1]))] if xz else None
+    if rec.get("op") != "spawn_plan":
+        return None
+    shas = [p.get("plan_sha256")] + list(
+        (rec.get("requires") or {}).get("blobs", []))
+    for sha in [s for s in shas if s]:
+        try:
+            text = ledger.read_blob(sha).decode("utf-8", "replace")
+        except LedgerError:
+            continue
+        pts = []
+        for line in text.splitlines():
+            m = _SPAWN_POS_RE.match(line.strip())
+            if m:
+                try:
+                    pts.append((float(m.group(3)), float(m.group(2))))
+                except ValueError:
+                    continue
+        if pts:
+            return pts
+    return None
+
+
+
+def _disarmed_by_census(protected: dict, prior: list[dict]) -> bool:
+    """Has an actor MEASURED this protected site to hold nothing?
+
+    Accepts `observe what="structure_never_built"` whose `value` names the
+    protected record's seq and carries a live per-prefab census that is zero
+    throughout.  MEASURED example that motivated it: `dock-stationhub` was
+    routed and reserved by Crossings and never built, so its seq 38
+    `zones_generate` carries flatten=FORBIDDEN with no extent and fails
+    closed over a zone containing nothing -- refusing a validated 578 m road
+    segment to protect a structure that does not exist.
+
+    Deliberately strict: a census with no zero counts, or one that does not
+    name the seq, does not disarm anything.
+    """
+    for r in prior:
+        if r.get("op") != "observe":
+            continue
+        p = r.get("params", {})
+        if p.get("what") != "structure_never_built":
+            continue
+        v = p.get("value") or {}
+        if int(v.get("protects_seq", -1)) != int(protected.get("seq", -2)):
+            continue
+        counts = v.get("counts") or {}
+        if counts and all(int(n) == 0 for n in counts.values()):
+            return True
+    return False
+
+
+
+def _site_key(p: dict) -> tuple | None:
+    """The identity of the SITE a record belongs to, if it declares one."""
+    for field in ("site_id", "installation_id"):
+        v = p.get(field)
+        if isinstance(v, str) and v:
+            return (field, v)
+    return None
+
+
+def _site_evidence(protected: dict, prior: list[dict],
+                   ledger: "Ledger") -> tuple[list, list]:
+    """Pieces and discs from EVERY record belonging to the protected SITE.
+
+    A STRUCTURE IS A SITE, AND THE RECORD CARRYING THE FLAG IS OFTEN NOT THE
+    RECORD CARRYING THE PIECES.  MEASURED by RoadBuild: the spawn portal
+    ring's only `flatten: FORBIDDEN` record is a `zones_generate` with no
+    pieces and no disc, while the four portals it exists to protect are
+    separate `portal` records whose own `flatten` is unset.  Grouped by
+    record there is nothing to test and the guard falls through to a
+    fail-closed zone refusal; grouped by site there are four exact
+    positions.  The same shape blocked four more segments, because Crossings
+    repeats the flag on each site's `zones_generate` and `objects_clear`
+    siblings while the pieces live in that site's `spawn_plan` blob.
+
+    Nothing is loosened: a site with no pieces anywhere still refuses.
+
+    Grouping is by `site_id`/`installation_id` when declared.  Falling back
+    to bare `role` would merge every dock in the world into one site and
+    refuse a road near one because another is 4 km away, so the role
+    fallback is additionally bounded to records within `_SITE_RADIUS_M` of
+    the protected record's own position.
+    """
+    pieces: list = []
+    discs: list = []
+    key = _site_key(protected.get("params", {}))
+    role = protected.get("params", {}).get("role")
+    here = _record_xz(protected.get("params", {}))
+
+    for r in prior + [protected]:
+        rp = r.get("params", {})
+        same = False
+        if key is not None and _site_key(rp) == key:
+            same = True
+        elif key is None and role and rp.get("role") == role:
+            there = _record_xz(rp)
+            if here and there:
+                same = (math.hypot(float(there[0]) - float(here[0]),
+                                   float(there[1]) - float(here[1]))
+                        <= _SITE_RADIUS_M)
+        if not same:
+            continue
+        got = _protected_pieces(r, ledger)
+        if got:
+            pieces.extend(got)
+        discs.extend(_protected_discs(r))
+    return pieces, discs
 
 
 class _DeltaField:
@@ -762,7 +909,26 @@ class Ledger:
 
         for r in forbidden:
             p = r["params"]
-            discs = _protected_discs(r)
+            # PIECES FIRST: the disc is a bounding circle over a probe
+            # radius, the pieces are what must not move, and both are already
+            # recorded.  Fall back to the disc only when the pieces cannot be
+            # read.
+            pieces, site_discs = _site_evidence(r, prior, self)
+            discs = ([(px, pz, 0.0) for px, pz in pieces] if pieces
+                     else site_discs)
+            if not discs and not pieces and _disarmed_by_census(r, prior):
+                # DISARMED BY MEASUREMENT, and only in the one case where the
+                # guard would otherwise refuse for absence of evidence: a
+                # record with no readable pieces AND no disc, whose site an
+                # actor has since MEASURED to be empty.  The mirror of
+                # `zone_already_written`, which arms the clobber guard from a
+                # declaration; this disarms from a census.  It cannot loosen
+                # the precise test, because a structure with readable pieces
+                # never reaches here -- and if the site is built later, that
+                # build is a new record carrying its own pieces and its own
+                # protection.  The default stays fail-closed: absence of
+                # evidence still refuses; only evidence of absence moves it.
+                continue
             if not discs:
                 # No readable extent -> zone-granular refusal, as before.
                 xz = _record_xz(p)
@@ -806,12 +972,21 @@ class Ledger:
                         f"rather than assuming zero -- an unreadable blob is "
                         f"not a flat one.")
                     continue
-                worst, at = field.worst_delta_over_disc(dx, dz, radius)
+                if radius <= 0.0:
+                    # A piece: probe it exactly. `delta_at` is the bilinear
+                    # blend Heightmap renders, so an untouched piece reads
+                    # exactly 0.0 and there is nothing to sweep.
+                    worst, at = abs(field.delta_at(dx, dz)), (dx, dz)
+                else:
+                    worst, at = field.worst_delta_over_disc(dx, dz, radius)
                 if worst > FLATTEN_TOLERANCE_M:
                     bad.append(
                         f"terrain_write would move the ground by {worst:.3f} m "
-                        f"at ({at[0]:.1f}, {at[1]:.1f}), inside the "
-                        f"{radius:.1f} m footprint of the over-water structure "
+                        f"at ({at[0]:.1f}, {at[1]:.1f}), "
+                        + (f"AT A PIECE of the over-water structure "
+                           if radius <= 0.0 else
+                           f"inside the {radius:.1f} m footprint of the "
+                           f"over-water structure ") +
                         f"at seq {r['seq']} ({p.get('role')}) declared "
                         f"flatten=FORBIDDEN: "
                         f"{p.get('flatten_reason', 'no reason recorded')}. "
@@ -928,7 +1103,15 @@ def main() -> int:
     root = Path(args.root) if args.root else RUNS / args.world
     led = Ledger(root, actor="cli")
     if args.op == "verify":
-        print(f"chain OK: {led.seq + 1} records, head {led.head}")
+        # `led.seq` is the LAST LINE's seq LABEL, and after a fork that label
+        # is neither unique nor a count -- MEASURED on the live ledger, it
+        # said "227 records" for a file holding 231, because four seqs appear
+        # twice.  Report the count the file actually has, and the label
+        # separately so the difference is visible rather than reconciled
+        # silently.
+        recs = led.records()
+        print(f"chain OK: {len(recs)} lines, last seq label {led.seq}, "
+              f"head {led.head}")
         return 0
     report = led.close_report()
     print(json.dumps(report, indent=1))
