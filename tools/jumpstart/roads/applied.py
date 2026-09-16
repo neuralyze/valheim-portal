@@ -154,20 +154,58 @@ class Applied:
             total += w * d
         return total
 
+    def holders(self, sx: int, sz: int) -> list[dict]:
+        """EVERY write whose zone lattice holds the sample at `(sx, sz)`.
+
+        `sample()` resolves a sample to ONE zone, `tcdata.zone_of`'s, and for a
+        height that is right: the engine renders each zone's own mesh.  For
+        OWNERSHIP it is wrong, because a zone's lattice is 65 x 65 over a 64 m
+        zone -- the boundary row is SHARED -- so one world sample sits in two
+        compilers and `zone_of` picks one of them.
+
+        MEASURED, and this is a hole in the clobber detector that has nothing
+        to do with the union: sample (498, 96) is owned by `wt-south` seq 373,
+        a site_pad, in zone (8,1); `zone_of` says (8,2), where nobody wrote it,
+        so `sample()` answers None and `foreign_at` answers None and a road is
+        free to author a watchtower's floor.  At (522, 480) it is worse -- zone
+        (8,7) holds it as `tree-sth-2` seq 669's pad and zone (8,8) holds it as
+        a road, and `zone_of` picks the road.  Two compilers then disagree
+        about one square metre of ground.
+        """
+        out: list[dict] = []
+        zx0, zz0 = tcdata.zone_of(sx, sz)
+        for dzx in (-1, 0, 1):
+            for dzz in (-1, 0, 1):
+                zx, zz = zx0 + dzx, zz0 + dzz
+                cx, cz = tcdata.zone_centre(zx, zz)
+                gx, gy = tcdata.vertex_mask_index(cx, cz, sx, sz)
+                if not (0 <= gx < tcdata.PITCH and 0 <= gy < tcdata.PITCH):
+                    continue
+                zc = self.zone(zx, zz)
+                k = gy * tcdata.PITCH + gx
+                if not zc["modified"][k]:
+                    continue
+                o = int(zc["owner"][k])
+                w = self.writes[o] if o >= 0 else None
+                if w is not None and w not in out:
+                    out.append(w)
+        return out
+
     def owners_at(self, x: float, z: float) -> list[dict]:
         """Every write that owns one of the four samples under (x, z).
 
         The four, not the nearest: the mesh under the point is a blend of all
         four, so a foreign claim on any of them moves the ground the player
-        stands on.
+        stands on.  And every ZONE that holds each of those four, not just
+        `zone_of`'s -- see `holders`.
         """
         x0, z0 = math.floor(x), math.floor(z)
         out = []
         for dx in (0, 1):
             for dz in (0, 1):
-                _, w = self.sample(x0 + dx, z0 + dz)
-                if w is not None and w not in out:
-                    out.append(w)
+                for w in self.holders(x0 + dx, z0 + dz):
+                    if w not in out:
+                        out.append(w)
         return out
 
     def foreign_at(self, x: float, z: float) -> dict | None:
@@ -177,7 +215,8 @@ class Applied:
         blind to radii: a pad's written footprint is not its nominal
         `pad_radius_m`, and the T4 clobber was measured OUTSIDE the road's own
         pad keep-out.  Ownership is read from the blobs, not inferred from a
-        circle.
+        circle -- from EVERY blob that holds the sample, because a boundary
+        sample lives in two of them.
         """
         for w in self.owners_at(x, z):
             if w["role"] != ROAD_ROLE:

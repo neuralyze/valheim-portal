@@ -567,6 +567,7 @@ def _clip(st: dict, cause: str, is_road: bool, road_key: str | None,
     """
     if is_road and road_key:
         st[road_key] = st.get(road_key, 0) + 1
+        st["road_clip_at"].append((wx, wz, cause, round(full, 3)))
         return
     key = f"batter_clipped_{cause}"
     st[key] = st.get(key, 0) + 1
@@ -693,6 +694,21 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
           # about beats a forced write beside a bridge pile, and a clip that
           # leaves no trace is indistinguishable from a batter that worked.
           "walls_left": [], "walls_left_max_m": 0.0, "clip_at": [],
+          # EVERY CARRIAGEWAY REFUSAL'S POSITION AND CAUSE, uncapped.  The
+          # counters beside them say HOW MANY samples the road could not
+          # claim; they cannot say WHERE the road therefore stops, and that is
+          # the only question a gap report can be answered from.  MEASURED on
+          # T4: 47.0 m of centreline in zone (8,7) is refused because
+          # `tree-sth-2` seq 669 owns all 1,126 written samples in that zone,
+          # and with no position recorded `walkability` could only call an
+          # explained stop a HOLE -- refusing a segment whose ground is
+          # somebody's foundation, which is the one case the ruling says the
+          # road must accept and grade into.
+          "road_clip_at": [],
+          # EVERY SAMPLE OF EVERY RAY THAT WAS SKIPPED FOR HAVING NO ROAD, in
+          # the same `(x, z, cause, height)` shape the clip list uses, so the
+          # transverse census can tell a recorded residual from a bug.
+          "ray_skip_at": [],
           "walls_before_max_m": 0.0,
           "walls_left_by_cause": {},
           "rays": 0, "rays_clipped": 0,
@@ -863,6 +879,20 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
         members.sort()
         if key not in road_stations or key in dead_stations:
             st["rays_without_road"] += 1
+            # AND WHERE, AND HOW DEEP, because the counter alone hides a wall.
+            # A ray whose carriageway was refused is skipped -- correct, there
+            # is no edge to taper from -- but the NEIGHBOURING station's batter
+            # still ends at this ray's boundary, and the ground on this side is
+            # untouched.  MEASURED on T4 at (518.8, 640.5): 1.826 m applied
+            # against 0.362 m generated, one metre from a written batter sample
+            # at the same lateral.  With nothing recorded, the transverse
+            # census can only call that step UNEXPLAINED, which is the same
+            # word it uses for a bug.  `full` is the cut or fill the profile
+            # asks for at this station: the wall the road WOULD have had here,
+            # which is the bound on what the neighbour's taper can leave.
+            for lat_, _zx, _zz, _gx, _gy, wx_, wz_, y_, gen_, _fx, _fz in members:
+                st["ray_skip_at"].append(
+                    (wx_, wz_, "ray_without_road", round(abs(y_ - gen_), 3)))
             continue
         st["rays"] += 1
         lat0, zx0, zz0, _, _, _, _, y0, _, fx0, fz0 = members[0]
@@ -1700,6 +1730,31 @@ def edge_step_census(seg: dict, comps: dict, patches: dict,
                                 {"step_m": round(float(d[jj]), 3),
                                  "xz": [round(cx, 1), round(cz, 1)],
                                  "lat_m": round(float(mid[jj]), 1),
+                                 # WHERE THE STEP IS, not where the station
+                                 # is.  `xz` is the station centre and `lat_m`
+                                 # is measured along THAT station's normal, so
+                                 # on a ribbon that doubles back two steps 19 m
+                                 # apart across the road share an `xz` -- and
+                                 # an adjacency test clustering on `xz` then
+                                 # reads a bend's cross section as a cliff.
+                                 # MEASURED on T4: 41 unexplained steps
+                                 # clustered to a run of 8 on station centres
+                                 # and to runs of at most 2 on these.
+                                 "step_xz": [round(px_, 1), round(pz_, 1)],
+                                 # AND THE TWO SAMPLES IT IS BETWEEN, so a
+                                 # consumer can re-measure the same step on
+                                 # another surface -- the GENERATED one -- at
+                                 # exactly these points.  Reconstructing them
+                                 # from the station and the lat requires the
+                                 # normal, which is not in the record, and
+                                 # guessing the steepest direction instead
+                                 # overstates the natural step and excuses a
+                                 # wall this write made.
+                                 "step_between": [
+                                     [round(cx + nx * float(lats[jj]), 2),
+                                      round(cz + nz * float(lats[jj]), 2)],
+                                     [round(cx + nx * float(lats[jj + 1]), 2),
+                                      round(cz + nz * float(lats[jj + 1]), 2)]],
                                  "recorded_clip": why})
                 if nat.any():
                     nat_steps += [float(v) for v in d[nat]]
@@ -1842,6 +1897,7 @@ def walkability(seg: dict, comps: dict, patches: dict,
                 pad_sites: list[dict] | None = None,
                 protected_pieces: list[tuple[float, float]] | None = None,
                 protected_discs: list[tuple[float, float, float]] | None = None,
+                road_clips: list[tuple] | None = None,
                 step_m: float = 0.5) -> dict:
     """Walk the centreline on the APPLIED surface and report the numbers the
     operator's own test produces: is the ribbon CONTINUOUS, is every part of it
@@ -1890,6 +1946,15 @@ def walkability(seg: dict, comps: dict, patches: dict,
     stations.append({"s": s, "x": float(ax), "z": float(az),
                      "bridged": bool(br[-1])})
 
+    # THE RASTERISER'S OWN REFUSALS, indexed by the lattice sample they were
+    # taken at.  `stamp` records one entry per carriageway sample it could not
+    # write, as `(wx, wz, cause, full)`; the samples are integers, so an exact
+    # dict keyed on them needs no radius and no tolerance.
+    refusal_index: dict[tuple[int, int], dict] = {}
+    for wx, wz, cause, full in (road_clips or ()):
+        refusal_index[(int(round(wx)), int(round(wz)))] = {
+            "cause": cause, "full_m": full,
+            "at": [round(wx, 1), round(wz, 1)]}
     off_lattice = 0
     for st in stations:
         got = applied_at(comps, patches, st["x"], st["z"])
@@ -1923,6 +1988,25 @@ def walkability(seg: dict, comps: dict, patches: dict,
             st.get("gen") is not None and st["gen"] < WATER_LEVEL_M
             and any(math.hypot(st["x"] - px, st["z"] - pz) <= pr
                     for px, pz, pr in (protected_discs or ())))
+        # WHAT THE RASTERISER ITSELF SAID, and it is the authority here.  The
+        # three tests above ask circles and piece lists whether a station
+        # OUGHT to have been refused; this asks `stamp` what it ACTUALLY
+        # refused and why, keyed on the station's own four lattice samples.
+        # The difference is not academic: a site pad's WRITTEN footprint is
+        # not its nominal `pad_radius_m`, so on T4 the 47 m of centreline that
+        # `tree-sth-2` seq 669 owns is outside every pad circle and inside
+        # somebody's foundation. Modelling the gate got that wrong in the
+        # direction that refuses a whole segment.
+        st["refused"] = None
+        if road_clips:
+            for cx0 in (x0, x0 + 1):
+                for cz0 in (z0, z0 + 1):
+                    hit = refusal_index.get((cx0, cz0))
+                    if hit is not None:
+                        st["refused"] = hit
+                        break
+                if st["refused"]:
+                    break
         # ON ROAD means all four samples under the point are ones this write
         # set: that is where the rendered surface IS the fitted profile rather
         # than a blend of road and untouched ground.
@@ -1974,6 +2058,20 @@ def walkability(seg: dict, comps: dict, patches: dict,
         after = (stations[j + 1]
                  if j + 1 < len(stations) and stations[j + 1]["on_road"] else None)
         run = stations[j]["s"] - stations[i]["s"] + step_m
+        # WHAT THE RASTERISER REFUSED OVER THIS RUN, by cause and by count.
+        # Recorded whatever the verdict is, because a gap the road stops at
+        # for a measured reason and a gap nobody explained are the same shape
+        # on the ground and must never read the same in the report.
+        refused_here: dict[str, int] = {}
+        refused_worst = None
+        for k in range(i, j + 1):
+            rf = stations[k].get("refused")
+            if not rf:
+                continue
+            refused_here[rf["cause"]] = refused_here.get(rf["cause"], 0) + 1
+            if (refused_worst is None
+                    or abs(rf["full_m"]) > abs(refused_worst["full_m"])):
+                refused_worst = rf
         cause = ("bridge" if any(stations[k]["bridged"] for k in range(i, j + 1))
                  else "settlement_pad" if any(stations[k]["in_pad"]
                                               for k in range(i, j + 1))
@@ -1981,6 +2079,14 @@ def walkability(seg: dict, comps: dict, patches: dict,
                                                    for k in range(i, j + 1))
                  else "below_water_plane" if any(stations[k]["underwater"]
                                                  for k in range(i, j + 1))
+                 # A FOREIGN CLAIM IS AN EXPLANATION, NOT A HOLE, and it is
+                 # the ruling: inside somebody's written footprint the pad
+                 # wins and the road grades into its edge.  Measured from the
+                 # blobs by `stamp`, never inferred from a radius.
+                 else "foreign_claim" if refused_here.get("foreign")
+                 else "protected_structure" if refused_here.get("protected")
+                 else "below_water_plane" if refused_here.get("underwater")
+                 else "settlement_pad" if refused_here.get("pad")
                  else "ribbon_end" if i == 0 or j == len(stations) - 1
                  else "HOLE")
         step = None
@@ -1999,7 +2105,9 @@ def walkability(seg: dict, comps: dict, patches: dict,
                  "length_m": round(run, 1),
                  "xz": [round(stations[i]["x"], 1), round(stations[i]["z"], 1)],
                  "step_across_m": step,
-                 "fill_at_edges_m": lip}
+                 "fill_at_edges_m": lip,
+                 "rasteriser_refused": refused_here or None,
+                 "rasteriser_refused_worst": refused_worst}
         # WHAT THE JUNCTION WILL ACTUALLY BE.  A pad gap is the road stopping
         # at somebody else's earthwork, so the step the operator meets is
         # road-surface against PAD DATUM, not against the generated ground
@@ -2219,8 +2327,39 @@ def main() -> int:
     # either from radii or from `pad_y` measures the intention instead of the
     # ground, and the T4 clobber is 89 m of road that proves the difference.
     live = appliedmod.Applied(actor=ACTOR)
+    # RULE 1, MAIN'S RULING: REWIND PAST THIS SEGMENT'S OWN PRIOR WRITES.
+    #
+    # THE UNION LAUNDERS FOREIGN OWNERSHIP, and this is the line that stops it
+    # poisoning the next repair.  A repair MUST union every prior claim in a
+    # zone forward into its own blob -- a zone holds exactly one
+    # `_TerrainCompiler` and this op does `deleteObjects -zone` first, so
+    # anything it does not carry is destroyed.  But the carried samples then
+    # sit in a blob whose `role` is `road_segment` and whose `name` is this
+    # road's, so `foreign_at` -- the instrument that implements "inside a
+    # settlement pad the pad wins", and which is deliberately blind to radii
+    # because that is what caught T4's clobber -- cannot see the pad any more.
+    #
+    # MEASURED on T8-stenvik-wttown: its write (seq 1197) refused 123
+    # carriageway samples because a site_pad owned them; the IDENTICAL
+    # rasterisation run against the surface that write produced finds ZERO and
+    # authors 810 batter samples where the write made 706.  Those 123 samples
+    # are a building's foundation and the second repair would pave them.
+    #
+    # Dropping this segment's own entries makes the per-sample owner fall back
+    # to the previous claim in FILE ORDER -- the pad's own record -- which is
+    # the state the FIRST build was handed.  The UNION still reads every prior
+    # including these, from the ledger directly, so nothing is lost from the
+    # blob: only the ownership question is rewound.
+    my_name_early = f"road_{seg['id']}".replace("-", "_")
+    laundered = [w for w in live.writes if w["name"] == my_name_early]
+    live.writes = [w for w in live.writes if w["name"] != my_name_early]
+    live._zones = {}
     print(f"live surface: {len(live.writes)} terrain_write zone entries in the "
-          f"ledger, {len({w['zone'] for w in live.writes})} zones claimed")
+          f"ledger, {len({w['zone'] for w in live.writes})} zones claimed; "
+          f"OWNERSHIP REWOUND past {len(laundered)} of this segment's own zone "
+          f"entries (seq {sorted({w['seq'] for w in laundered})}) so a pad's "
+          f"samples are inherited from the PAD's claim and not from this "
+          f"road's laundered copy of it")
     approach = grade_into_foreign(seg, patches, live, pad_keepouts)
     print(f"approach grading: {approach['claims']} stations claimed by "
           f"{approach.get('claims_by_cause', {})}"
@@ -2261,6 +2400,53 @@ def main() -> int:
     # near the temple.
     mine = {(z, i) for z, comp in comps.items()
             for i in range(tcdata.SAMPLES) if comp.modified_height[i]}
+
+    # ---- RULE 2, MAIN'S RULING: REFUSE, DO NOT CLAMP -------------------
+    #
+    # NO AUTHORED SAMPLE MAY LAND INSIDE ANOTHER CLAIM'S WRITTEN FOOTPRINT.
+    # A road may grade into a pad's EDGE -- that is the approach grading, and
+    # it is required -- and it may never author a sample the pad wrote.  The
+    # footprint is read from the pad's OWN record's blob, per sample index,
+    # exactly as `foreign_at` reads it and for the same reason: a pad's
+    # written extent is not its nominal `pad_radius_m`, and the T4 clobber was
+    # measured OUTSIDE the road's keep-out circle.
+    #
+    # `refusal` already rejects such a sample one at a time, so this cannot
+    # fire while the ownership above is rewound -- which is the point.  It is
+    # the GUARD that makes the rewind safe rather than merely correct: if a
+    # future caller hands this function a laundered surface, or the rewind is
+    # removed, or a new pad lands between the plan and the write, the result
+    # is a LOUD REFUSAL naming the count and the owning claim instead of a
+    # silently regraded foundation.  Nothing is clamped: a road that cannot be
+    # written without authoring somebody's floor is a road to re-plan.
+    authored_in_a_claim: dict[str, list] = {}
+    for (zx, zz), comp in comps.items():
+        zc = live.zone(zx, zz)
+        cx0, cz0 = tcdata.zone_centre(zx, zz)
+        for i in range(tcdata.SAMPLES):
+            if not comp.modified_height[i] or not zc["modified"][i]:
+                continue
+            o = int(zc["owner"][i])
+            w = live.writes[o] if o >= 0 else None
+            if w is None or w["role"] == appliedmod.ROAD_ROLE:
+                continue
+            gy, gx = divmod(i, tcdata.PITCH)
+            wx, wz = tcdata.sample_world(cx0, cz0, gx, gy)
+            authored_in_a_claim.setdefault(
+                f"{w['name']}#{w['seq']} ({w['role']})", []).append(
+                    [round(wx, 1), round(wz, 1)])
+    if authored_in_a_claim:
+        for owner, pts in sorted(authored_in_a_claim.items()):
+            print(f"   AUTHORED INSIDE A CLAIM: {len(pts)} samples owned by "
+                  f"{owner}, first at {pts[:6]}")
+        print(f"REFUSING: this write authors "
+              f"{sum(len(p) for p in authored_in_a_claim.values())} samples "
+              f"inside {len(authored_in_a_claim)} other claim's written "
+              f"footprint. A road grades into a pad's EDGE and never authors a "
+              f"sample inside it -- inside a settlement pad the pad wins, "
+              f"because it is a foundation. Nothing has been sent. Re-plan the "
+              f"segment or have the pad's owner re-emit; do not clamp.")
+        return 6
     loc = location_check(comps, st["written"], seg["width_m"] / 2.0,
                          road_written=st["road_written"])
     print(f"location check: verdict={loc['verdict']} nearest="
@@ -2396,10 +2582,12 @@ def main() -> int:
     # T12's, and continuity across that joint is a property of the union, not
     # of this segment alone.
     walk = walkability(seg, comps, patches, pad_keepouts, pad_sites,
-                       prot["pieces"], prot["discs"])
+                       prot["pieces"], prot["discs"],
+                       road_clips=st["road_clip_at"])
     walk["skipped"] = {"settlement_pad": st["skipped_pad"],
                        "beside_protected_piece": st["skipped_protected"],
-                       "on_protected_structure_water": st["skipped_underwater"]}
+                       "on_protected_structure_water": st["skipped_underwater"],
+                       "on_a_foreign_claim": st["skipped_foreign"]}
     walk["batter_clipped"] = {
         "settlement_pad": st["batter_clipped_pad"],
         "beside_protected_piece": st["batter_clipped_protected"],
@@ -2429,9 +2617,9 @@ def main() -> int:
     # of it.  The operator's "blocky" is this number; `max_gradient_8m` is the
     # answer to "is it too steep", which every one of these segments already
     # passed while carrying an 8 m wall.
-    walk["transverse"] = edge_step_census(seg, comps, patches,
-                                          batter_m=batter_m, mine=mine,
-                                          clips=st["clip_at"])
+    walk["transverse"] = edge_step_census(
+        seg, comps, patches, batter_m=batter_m, mine=mine,
+        clips=st["clip_at"] + st["ray_skip_at"])
     tv = walk["transverse"]
     print(f"TRANSVERSE (the operator's 'blocky'): carriageway 1 m step p50 "
           f"{tv['carriageway_step_p50']} max {tv['carriageway_step_max']}")

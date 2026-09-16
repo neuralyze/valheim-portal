@@ -583,6 +583,25 @@ def _throttle(srv) -> None:
 ASK_ATTEMPTS = 4
 
 
+class AskTimeout(RuntimeError):
+    """A read-only question that would not answer, drained sink and all.
+
+    RAISED RATHER THAN FATAL, and the distinction is the whole point.  A
+    timeout on `findObjects` is not "the answer is unknowable": it is evidence
+    that the answer is TOO BIG.  `ValidatePayloadLength` caps a reply at 4,050
+    bytes and the CLIENT buffer is 4,096, so a box holding a few hundred ZDOs
+    does not come back at all -- MEASURED at the portal hall, cell
+    (-296, 216) y 37, which is the hall's own pad plus the portal ring: four
+    attempts, the sink drained and healthy every time, no reply.
+
+    The right response is the SAME one an over-dense reply gets: ask smaller
+    questions that TILE the same volume. That is not treating an unanswered
+    question as empty -- it is asking a question the transport can carry.
+    Refusal is still the answer when even a `MIN_LIST_HALF_M` box is silent,
+    because then the transport is genuinely broken rather than merely narrow.
+    """
+
+
 def ask(srv, cmd: str) -> str:
     """One socket round trip that survives a stalled sink.
 
@@ -597,24 +616,39 @@ def ask(srv, cmd: str) -> str:
     for i in range(ASK_ATTEMPTS):
         try:
             return srv.command(cmd)
+        # `rcon.py` raises a bare RuntimeError("rcon connection closed
+        # mid-packet") when the server drops the stream part way through a
+        # length-prefixed reply, and that is the SAME failure as a timeout
+        # with the same remedy: the socket is unusable and a fresh one cannot
+        # inherit the half-read packet.  MEASURED on T1 at the portal hall,
+        # where the densest boxes in the world are: 17 of 85 cells in, the
+        # game closed the connection mid-reply and the census died with the
+        # partial file intact but the run stopped. Letting it through the
+        # reconnect path is not suppressing the error -- the reply is re-asked
+        # and an unanswered question is still a refusal after
+        # `ASK_ATTEMPTS`.
+        except RuntimeError as exc:
+            if "closed mid-packet" not in str(exc):
+                raise
+            last = exc
+            got = sink_watch(f"stream closed on `{cmd[:70]}`")
         except (TimeoutError, socket.timeout, ConnectionError, OSError) as exc:
             last = exc
             got = sink_watch(f"timeout on `{cmd[:70]}`")
-            rc = getattr(srv, "rc", None)
-            if rc is not None:
-                try:
-                    rc.close()
-                except Exception:  # noqa: BLE001 -- closing a dead socket
-                    pass
-                time.sleep(1.0 + 2.0 * i)
-                rc.connect()
-            print(f"    [sink] {type(exc).__name__} on attempt {i + 1}; "
-                  f"{got.get('action')} -> {got.get('verdict')}; retrying",
-                  flush=True)
-    raise SystemExit(
+        rc = getattr(srv, "rc", None)
+        if rc is not None:
+            try:
+                rc.close()
+            except Exception:  # noqa: BLE001 -- closing a dead socket
+                pass
+            time.sleep(1.0 + 2.0 * i)
+            rc.connect()
+        print(f"    [sink] {type(last).__name__} on attempt {i + 1}; "
+              f"{got.get('action')} -> {got.get('verdict')}; retrying",
+              flush=True)
+    raise AskTimeout(
         f"`{cmd}` did not answer in {ASK_ATTEMPTS} attempts ({last}) even "
-        f"after draining the log sink. Refusing to treat an unanswered "
-        f"question as an empty answer.")
+        f"after draining the log sink.")
 
 
 # HOW MUCH A SUBDIVIDED BOX OVERLAPS ITS SIBLINGS, and this number was 1.4143.
@@ -659,8 +693,23 @@ def list_prefab(srv, prefab: str, x: float, y: float, z: float,
     while stack:
         cx, cy, cz, hh = stack.pop()
         _throttle(srv)
-        reply = ask(srv, f"findObjects -prefab {prefab} "
-                         f"-near {cx:.2f} {cy:.2f} {cz:.2f} {hh:.2f}")
+        try:
+            reply = ask(srv, f"findObjects -prefab {prefab} "
+                             f"-near {cx:.2f} {cy:.2f} {cz:.2f} {hh:.2f}")
+        except AskTimeout:
+            if hh <= MIN_LIST_HALF_M:
+                raise
+            h = hh / 2.0
+            for dx in (-h, h):
+                for dy in (-h, h):
+                    for dz in (-h, h):
+                        stack.append((cx + dx, cy + dy, cz + dz,
+                                      h * LIST_OVERLAP))
+            print(f"    [dense] no reply for a {hh:.2f} m box at "
+                  f"({cx:.0f},{cy:.0f},{cz:.0f}); asking its eight tiling "
+                  f"children instead", flush=True)
+            calls += 1
+            continue
         calls += 1
         # The SERVER logged exactly these lines on its main thread.  `n` rows
         # plus the "Found n objects" header when there is anything, one line
@@ -913,8 +962,28 @@ def list_box(srv, cx: float, cy: float, cz: float,
     while stack:
         bx, by, bz, hh = stack.pop()
         _throttle(srv)
-        reply = ask(srv, f"findObjects -near {bx:.2f} {by:.2f} {bz:.2f} "
-                         f"{hh:.2f}")
+        try:
+            reply = ask(srv, f"findObjects -near {bx:.2f} {by:.2f} {bz:.2f} "
+                             f"{hh:.2f}")
+        except AskTimeout:
+            # TOO BIG IS NOT UNKNOWABLE.  MEASURED at the portal hall: the
+            # 8 m cell box at (-296, 37, 216) holds the hall's pad and the
+            # portal ring and never answers, while its eight children each
+            # answer at once. The children TILE the parent, so nothing is
+            # skipped and no object is attributed to a neighbouring cell.
+            if hh <= MIN_LIST_HALF_M:
+                raise
+            h = hh / 2.0
+            for dx in (-h, h):
+                for dy in (-h, h):
+                    for dz in (-h, h):
+                        stack.append((bx + dx, by + dy, bz + dz,
+                                      h * LIST_OVERLAP))
+            print(f"    [dense] no reply for a {hh:.2f} m box at "
+                  f"({bx:.0f},{by:.0f},{bz:.0f}); asking its eight tiling "
+                  f"children instead", flush=True)
+            calls += 1
+            continue
         calls += 1
         _ECHO["socket_calls"] += 1
         _ECHO["socket_reply_lines"] += len(
