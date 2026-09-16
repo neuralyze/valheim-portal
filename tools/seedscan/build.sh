@@ -20,6 +20,7 @@ mkdir -p "$OUT"
 
 for dll in "$MANAGED/assembly_valheim.dll" "$MANAGED/assembly_utils.dll" \
            "$MANAGED/UnityEngine.CoreModule.dll" "$MANAGED/netstandard.dll" \
+           "$MANAGED/SoftReferenceableAssets.dll" \
            "$BEPINEX_CORE/BepInEx.dll"; do
   [ -f "$dll" ] || { echo "missing $dll" >&2; exit 1; }
 done
@@ -29,6 +30,7 @@ mcs -target:library -nologo -optimize+ \
   -r:"$MANAGED/assembly_utils.dll" \
   -r:"$MANAGED/UnityEngine.CoreModule.dll" \
   -r:"$MANAGED/UnityEngine.dll" \
+  -r:"$MANAGED/SoftReferenceableAssets.dll" \
   -r:"$MANAGED/netstandard.dll" \
   -r:"$BEPINEX_CORE/BepInEx.dll" \
   -r:"$BEPINEX_CORE/0Harmony.dll" \

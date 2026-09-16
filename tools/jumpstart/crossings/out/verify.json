@@ -1,0 +1,182 @@
+{
+ "bridge-s1-temple-strait": {
+  "ok": true,
+  "pieces": 66,
+  "terrain_anchored": 20,
+  "support_min_by_role": {
+   "bridge-s1-temple-strait/bent1/cap": 53.98,
+   "bridge-s1-temple-strait/bent1/pile": 140.0,
+   "bridge-s1-temple-strait/deck": 41.43,
+   "bridge-s1-temple-strait/rail": 42.22,
+   "bridge-s1-temple-strait/rail_post": 51.74
+  },
+  "failures": [],
+  "no_in_water_violations": [],
+  "safety_factor": 2.0,
+  "approximation": "support distance and direction taken COM-to-COM, not from FindSupportPoint's contact point; valid for the axis-aligned face-to-face geometry generated here",
+  "note": "bridge-s1-temple-strait"
+ },
+ "bridge-s2-portalhall-strait": {
+  "ok": true,
+  "pieces": 156,
+  "terrain_anchored": 25,
+  "support_min_by_role": {
+   "bridge-s2-portalhall-strait/bent1/cap": 64.75,
+   "bridge-s2-portalhall-strait/bent1/pile": 140.0,
+   "bridge-s2-portalhall-strait/bent2/cap": 39.01,
+   "bridge-s2-portalhall-strait/bent2/pile": 82.6,
+   "bridge-s2-portalhall-strait/bent3/cap": 39.01,
+   "bridge-s2-portalhall-strait/bent3/pile": 82.6,
+   "bridge-s2-portalhall-strait/bent4/cap": 64.75,
+   "bridge-s2-portalhall-strait/bent4/pile": 140.0,
+   "bridge-s2-portalhall-strait/deck": 24.03,
+   "bridge-s2-portalhall-strait/rail": 30.11,
+   "bridge-s2-portalhall-strait/rail_post": 31.2
+  },
+  "failures": [],
+  "no_in_water_violations": [],
+  "safety_factor": 2.0,
+  "approximation": "support distance and direction taken COM-to-COM, not from FindSupportPoint's contact point; valid for the axis-aligned face-to-face geometry generated here",
+  "note": "bridge-s2-portalhall-strait"
+ },
+ "harbour-temple-south": {
+  "ok": true,
+  "pieces": 72,
+  "terrain_anchored": 21,
+  "support_min_by_role": {
+   "harbour-temple-south/deck": 28.24,
+   "harbour-temple-south/pile10/pile": 82.6,
+   "harbour-temple-south/pile12/pile": 82.6,
+   "harbour-temple-south/pile2/pile": 140.0,
+   "harbour-temple-south/pile4/pile": 140.0,
+   "harbour-temple-south/pile6/pile": 140.0,
+   "harbour-temple-south/pile8/pile": 140.0,
+   "harbour-temple-south/portal": 100.0,
+   "harbour-temple-south/rail_post": 40.95,
+   "harbour-temple-south/sign": 90.0,
+   "harbour-temple-south/sign_post": 100.0
+  },
+  "failures": [],
+  "no_in_water_violations": [],
+  "safety_factor": 2.0,
+  "approximation": "support distance and direction taken COM-to-COM, not from FindSupportPoint's contact point; valid for the axis-aligned face-to-face geometry generated here",
+  "note": "harbour-temple-south"
+ },
+ "boathouse-temple-strait": {
+  "ok": true,
+  "pieces": 97,
+  "terrain_anchored": 57,
+  "support_min_by_role": {
+   "boathouse-temple-strait/fingerL/deck": 58.0,
+   "boathouse-temple-strait/fingerL/pile10/pile": 140.0,
+   "boathouse-temple-strait/fingerL/pile12/pile": 140.0,
+   "boathouse-temple-strait/fingerL/pile2/pile": 140.0,
+   "boathouse-temple-strait/fingerL/pile4/pile": 140.0,
+   "boathouse-temple-strait/fingerL/pile6/pile": 140.0,
+   "boathouse-temple-strait/fingerL/pile8/pile": 140.0,
+   "boathouse-temple-strait/fingerL/rail_post": 48.79,
+   "boathouse-temple-strait/fingerR/deck": 33.64,
+   "boathouse-temple-strait/fingerR/pile10/pile": 140.0,
+   "boathouse-temple-strait/fingerR/pile12/pile": 140.0,
+   "boathouse-temple-strait/fingerR/pile2/pile": 82.6,
+   "boathouse-temple-strait/fingerR/pile4/pile": 140.0,
+   "boathouse-temple-strait/fingerR/pile6/pile": 140.0,
+   "boathouse-temple-strait/fingerR/pile8/pile": 140.0,
+   "boathouse-temple-strait/fingerR/rail_post": 28.3,
+   "boathouse-temple-strait/head": 33.64,
+   "boathouse-temple-strait/sign": 90.0,
+   "boathouse-temple-strait/sign_post": 100.0
+  },
+  "failures": [],
+  "no_in_water_violations": [],
+  "safety_factor": 2.0,
+  "approximation": "support distance and direction taken COM-to-COM, not from FindSupportPoint's contact point; valid for the axis-aligned face-to-face geometry generated here",
+  "note": "boathouse-temple-strait"
+ },
+ "dock-stationhub": {
+  "ok": true,
+  "pieces": 48,
+  "terrain_anchored": 24,
+  "support_min_by_role": {
+   "dock-stationhub/deck": 58.0,
+   "dock-stationhub/pile10/pile": 140.0,
+   "dock-stationhub/pile2/pile": 140.0,
+   "dock-stationhub/pile4/pile": 140.0,
+   "dock-stationhub/pile6/pile": 140.0,
+   "dock-stationhub/pile8/pile": 140.0,
+   "dock-stationhub/rail_post": 61.24,
+   "dock-stationhub/sign": 90.0,
+   "dock-stationhub/sign_post": 100.0
+  },
+  "failures": [],
+  "no_in_water_violations": [],
+  "safety_factor": 2.0,
+  "approximation": "support distance and direction taken COM-to-COM, not from FindSupportPoint's contact point; valid for the axis-aligned face-to-face geometry generated here",
+  "note": "dock-stationhub"
+ },
+ "ferry-terminal-east": {
+  "ok": true,
+  "pieces": 57,
+  "terrain_anchored": 18,
+  "support_min_by_role": {
+   "ferry-terminal-east/deck": 24.96,
+   "ferry-terminal-east/pile10/pile": 48.73,
+   "ferry-terminal-east/pile2/pile": 140.0,
+   "ferry-terminal-east/pile4/pile": 140.0,
+   "ferry-terminal-east/pile6/pile": 82.6,
+   "ferry-terminal-east/pile8/pile": 48.73,
+   "ferry-terminal-east/rail_post": 21.77,
+   "ferry-terminal-east/sign": 90.0,
+   "ferry-terminal-east/sign_post": 100.0
+  },
+  "failures": [],
+  "no_in_water_violations": [],
+  "safety_factor": 2.0,
+  "approximation": "support distance and direction taken COM-to-COM, not from FindSupportPoint's contact point; valid for the axis-aligned face-to-face geometry generated here",
+  "note": "ferry-terminal-east"
+ },
+ "harbour-vestvik": {
+  "ok": true,
+  "pieces": 69,
+  "terrain_anchored": 18,
+  "support_min_by_role": {
+   "harbour-vestvik/deck": 28.24,
+   "harbour-vestvik/pile10/pile": 82.6,
+   "harbour-vestvik/pile2/pile": 140.0,
+   "harbour-vestvik/pile4/pile": 140.0,
+   "harbour-vestvik/pile6/pile": 82.6,
+   "harbour-vestvik/pile8/pile": 82.6,
+   "harbour-vestvik/portal": 100.0,
+   "harbour-vestvik/rail_post": 40.95,
+   "harbour-vestvik/sign": 90.0,
+   "harbour-vestvik/sign_post": 100.0
+  },
+  "failures": [],
+  "no_in_water_violations": [],
+  "safety_factor": 2.0,
+  "approximation": "support distance and direction taken COM-to-COM, not from FindSupportPoint's contact point; valid for the axis-aligned face-to-face geometry generated here",
+  "note": "harbour-vestvik"
+ },
+ "ferry-terminal-eastisle": {
+  "ok": true,
+  "pieces": 51,
+  "terrain_anchored": 16,
+  "support_min_by_role": {
+   "ferry-terminal-eastisle/deck": 34.94,
+   "ferry-terminal-eastisle/pile10/pile": 82.6,
+   "ferry-terminal-eastisle/pile2/pile": 140.0,
+   "ferry-terminal-eastisle/pile4/pile": 140.0,
+   "ferry-terminal-eastisle/pile6/pile": 140.0,
+   "ferry-terminal-eastisle/pile8/pile": 82.6,
+   "ferry-terminal-eastisle/portal": 100.0,
+   "ferry-terminal-eastisle/rail_post": 36.9,
+   "ferry-terminal-eastisle/sign": 90.0,
+   "ferry-terminal-eastisle/sign_post": 100.0
+  },
+  "failures": [],
+  "no_in_water_violations": [],
+  "safety_factor": 2.0,
+  "approximation": "support distance and direction taken COM-to-COM, not from FindSupportPoint's contact point; valid for the axis-aligned face-to-face geometry generated here",
+  "note": "ferry-terminal-eastisle"
+ }
+}

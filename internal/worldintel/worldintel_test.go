@@ -255,6 +255,62 @@ func TestRetainKeepsVehiclesAndSemanticCategoryDoesNotDemoteALoadedHull(t *testi
 	}
 }
 
+// A sign is the only thing in a Valheim world that names a place in a player's own
+// words, and before this it was the one thing guaranteed not to reach the map. Two
+// ways at once: a server-spawned sign has creator 0 and falls to category "world"
+// on its prefab name, which retain() drops; a player-built one carries a creator and
+// became "construction", which finalize folds into the coverage layers and deletes
+// from the object list. Both paths are exercised here because fixing one and not the
+// other looks identical on a world where only the other kind exists.
+func TestSignsAndPortalsCarryTheirInWorldLabel(t *testing.T) {
+	const text = "Iron Era Workshop"
+	for _, builder := range []struct {
+		name    string
+		creator int64
+	}{{"server-spawned", 0}, {"player-built", 76561198000000000}} {
+		sign := Object{Category: category("sign")}
+		values := valueMaps{s: map[int32]string{StableHash("text"): text}}
+		if builder.creator != 0 {
+			values.l = map[int32]int64{StableHash("creator"): builder.creator}
+		}
+		semanticCategory(&sign, values, nil)
+		if sign.Category != "waypoint" {
+			t.Fatalf("%s sign classified %q, want waypoint", builder.name, sign.Category)
+		}
+		if sign.Label != text {
+			t.Fatalf("%s sign label %q, want %q", builder.name, sign.Label, text)
+		}
+		if !retain(sign, values) {
+			t.Fatalf("%s sign was dropped before it reached the snapshot", builder.name)
+		}
+	}
+	// A portal's tag is promoted to the same field, because the map draws one label
+	// and a renderer that has to know which of two fields holds it will pick wrong.
+	// MEASURED on the pre-wipe Ulfsland save: 22 tagged portals, and the operator
+	// spawned 3.54 m from one of them and could not tell what it was.
+	portal := Object{Category: category("portal_wood")}
+	semanticCategory(&portal, valueMaps{s: map[int32]string{StableHash("tag"): "u-workshop"}}, nil)
+	if portal.Category != "portal" || portal.Label != "u-workshop" {
+		t.Fatalf("portal classified %q with label %q, want portal / u-workshop",
+			portal.Category, portal.Label)
+	}
+	// An untagged portal must NOT gain a label. A blank tag is the defect - it pairs
+	// at random with every other blank-tag portal - and labelling it with the empty
+	// string would draw an empty chip on the map that reads as a named place.
+	blank := Object{Category: category("portal_wood")}
+	semanticCategory(&blank, valueMaps{}, nil)
+	if blank.Label != "" {
+		t.Fatalf("an untagged portal gained the label %q", blank.Label)
+	}
+	// And a construction piece still loses to the creator branch, which is what keeps
+	// 72,846 walls out of the object list.
+	wall := Object{Category: category("wood_wall")}
+	semanticCategory(&wall, valueMaps{l: map[int32]int64{StableHash("creator"): 7}}, nil)
+	if wall.Category != "construction" {
+		t.Fatalf("a built wall classified %q, want construction", wall.Category)
+	}
+}
+
 func TestConstructionCoverageIsBoundedCompleteAndDeterministic(t *testing.T) {
 	buildSnapshot := func() Snapshot {
 		const pieces = 2_500

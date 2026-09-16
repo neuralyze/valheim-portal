@@ -49,6 +49,41 @@ Two consequences that decide what a flatten tool can even attempt:
 PAINT is a UnityEngine.Color whose channels are the paint types, from
 Heightmap's own constants: r dirt, g cultivated, b paved, a vegetation still
 standing (driven DOWN to clear it).
+
+`m_operations`, `m_lastOpPoint` AND `m_lastOpRadius` ARE NOT BOOKKEEPING.  They
+select which grass the CLIENT throws away, and getting them wrong is what made
+the operator report vegetation floating over a flattened pad.  MEASURED from
+`TerrainComp::CheckLoad` IL (asm md5 89ffdb64fefebc011f5a9a826f2968bf):
+
+    if (m_nview.GetZDO().DataRevision == m_lastDataRevision) return;
+    int before = m_operations;
+    if (!Load()) return;                       // reads this blob
+    m_hmap.Poke(0, false);                     // terrain now correct
+    if (!ClutterSystem.instance) return;       // dedicated server: stops here
+    if (m_operations == before + 1) {
+        ClutterSystem.instance.ResetGrass(m_lastOpPoint, m_lastOpRadius);
+        return;                                // NARROW branch
+    }
+    ClutterSystem.instance.ResetGrass(m_hmap.transform.position,
+                                      m_hmap.m_width * m_hmap.m_scale / 2f);
+
+`m_operations` is a plain field on a freshly instantiated component, so
+`before` is 0 on a first load, and a blob claiming `operations == 1` takes the
+NARROW branch.  With a synthesised blob whose op point and radius were zeroes,
+that reset a zero-sized box at the world origin and left the pad's grass
+untouched.  Grass is `ClutterSystem` clutter: MEASURED from `GenerateVegPatch`
+-> `GetGroundInfo`, its Y comes from a downward `Physics.Raycast` baked into a
+GameObject transform at generation time and never re-evaluated, and
+`GeneratePatch` regenerates a cached patch ONLY when `PatchData.m_reset` is
+set -- which `ResetGrass` is the only thing that sets.  So a missed reset is
+permanently floating grass for as long as the patch lives, and it recurs on
+every reload because `m_lastDataRevision` starts at 0 again on each new
+component.  `m_operations` has no other meaning: it is written only by
+`InternalDoOperation` (increment) and read only by `Save` and `CheckLoad`.
+
+`Compiler` therefore defaults `operations` to 2, so a first load cannot equal
+`before + 1`, AND writes an op point/radius that covers the whole zone, so a
+client that does somehow take the narrow branch still resets the same grass.
 """
 
 from __future__ import annotations
@@ -65,6 +100,15 @@ ZONE_SIZE = 64.0
 VERSION = 1
 # TerrainComp::ApplyToHeightmap clamps the applied height to base +/- this.
 CLAMP_M = 8.0
+# The grass reset a first load must NOT select.  `CheckLoad` takes its narrow
+# branch when the loaded operation count is exactly one more than the count the
+# component already held, which on a first load is zero.
+FIRST_LOAD_OPERATIONS = 0
+OPERATIONS = FIRST_LOAD_OPERATIONS + 2
+# Radius of the reset `CheckLoad` performs on its wide branch:
+# m_width * m_scale / 2 = 64 * 1.0 / 2.  Writing the same radius on the op
+# record makes both branches clear the same grass.
+ZONE_GRASS_RESET_M = ZONE_SIZE / 2.0
 
 # Heightmap's paint constants, as (r, g, b, a).
 PAINT_DIRT = (1.0, 0.0, 0.0, 1.0)
@@ -117,7 +161,7 @@ class Compiler:
 
     zone_x: int
     zone_z: int
-    operations: int = 1
+    operations: int = OPERATIONS
     modified_height: list[bool] = field(default_factory=lambda: [False] * SAMPLES)
     level_delta: list[float] = field(default_factory=lambda: [0.0] * SAMPLES)
     smooth_delta: list[float] = field(default_factory=lambda: [0.0] * SAMPLES)
@@ -128,6 +172,18 @@ class Compiler:
     @property
     def centre(self) -> tuple[float, float]:
         return zone_centre(self.zone_x, self.zone_z)
+
+    def op_record(self, op_y: float = 0.0) -> tuple[float, float, float, float]:
+        """`m_lastOpPoint` + `m_lastOpRadius`: the grass the client must drop.
+
+        The zone centre with the zone's own half-extent, because a synthesised
+        compiler edits the whole pad at once rather than at one hoe strike, and
+        because that is exactly the reset `CheckLoad` performs on its wide
+        branch.  `op_y` is cosmetic -- `ClutterSystem::ResetGrass` compares x
+        and z only -- but a pad height reads better in a dump than a zero.
+        """
+        cx, cz = self.centre
+        return cx, op_y, cz, ZONE_GRASS_RESET_M
 
     def set_height(self, x: int, y: int, delta: float, smooth: float = 0.0) -> None:
         i = y * PITCH + x
@@ -152,13 +208,11 @@ class Compiler:
                               if self.modified_height[i]), default=0.0),
         }
 
-    def plain(self) -> bytes:
+    def plain(self, op_y: float = 0.0) -> bytes:
         """The inflated TerrainComp::Save payload."""
         out = io.BytesIO()
         out.write(struct.pack("<ii", VERSION, self.operations))
-        # m_lastOpPoint and m_lastOpRadius: live-session fields.  Every saved compiler measured on
-        # Vangard has them zero, so zero is what a synthesised compiler writes.
-        out.write(struct.pack("<ffff", 0.0, 0.0, 0.0, 0.0))
+        out.write(struct.pack("<ffff", *self.op_record(op_y)))
         out.write(struct.pack("<i", SAMPLES))
         for i in range(SAMPLES):
             if self.modified_height[i]:
@@ -175,7 +229,7 @@ class Compiler:
                 out.write(b"\x00")
         return out.getvalue()
 
-    def blob(self) -> bytes:
+    def blob(self, op_y: float = 0.0) -> bytes:
         """gzip, matching assembly_utils Utils::Compress (a GZipStream).
 
         mtime is pinned to 0 so the same pad always produces the same bytes -- a
@@ -184,7 +238,7 @@ class Compiler:
         """
         buf = io.BytesIO()
         with gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=9, mtime=0) as gz:
-            gz.write(self.plain())
+            gz.write(self.plain(op_y))
         return buf.getvalue()
 
 

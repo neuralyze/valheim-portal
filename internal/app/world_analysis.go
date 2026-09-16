@@ -769,6 +769,7 @@ const worldAnalysisTemplate = `<!doctype html>
 <label class="map-layer"><input type="checkbox" data-layer="clusters" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Player structures{{if .Structures}} · {{.Structures}}{{end}}</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="roads" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Roads and terrain edits{{if .RoadArea}} · {{.RoadArea}}{{end}}</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="portal" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Portals</span></label>
+<label class="map-layer"><input type="checkbox" data-layer="waypoint" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Signs and waypoints</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="vehicle" checked {{if not .HaveAnalysis}}disabled{{end}}><span>Boats and carts</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="container" {{if not .HaveAnalysis}}disabled{{end}}><span>Containers</span></label>
 <label class="map-layer"><input type="checkbox" data-layer="production" {{if not .HaveAnalysis}}disabled{{end}}><span>Production</span></label>
@@ -828,6 +829,7 @@ const worldAnalysisTemplate = `<!doctype html>
 <li><span class="map-key map-key--location-other" aria-hidden="true">•</span>Other location</li>
 <li><span class="map-key map-key--build" aria-hidden="true">⌂</span>Build cluster / coverage</li>
 <li><span class="map-key map-key--portal" aria-hidden="true">◎</span>Portal</li>
+<li><span class="map-key map-key--waypoint" aria-hidden="true">⌐</span>Sign / waypoint</li>
 <li><span class="map-key map-key--vehicle" aria-hidden="true">⛵</span>Boat / cart</li>
 <li><span class="map-key map-key--container" aria-hidden="true">▣</span>Container</li>
 <li><span class="map-key map-key--production" aria-hidden="true">▲</span>Production</li>

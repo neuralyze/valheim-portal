@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import re
 import subprocess
 import sys
 import time
@@ -53,6 +54,7 @@ sys.path.insert(0, str(HERE))
 
 import tcdata  # noqa: E402
 import heights as patchheights  # noqa: E402
+import locations  # noqa: E402
 from rcon import Rcon  # noqa: E402
 from console import run_console  # noqa: E402
 
@@ -61,10 +63,25 @@ REPO = JUMPSTART.parent.parent
 VH_SRC = Path("/media/big4/projects/game/valheim/Ulfsland/data/bepinex")
 DATA_DIR = Path("/media/big4/projects/game/valheim/Ulfsland/config_merged/bepinex/data")
 SCRATCH = Path("/tmp/terraform")
+# The per-type location dump (tools/seedscan/LocScan.cs): name, position and the
+# ZoneLocation's own exteriorRadius / interiorRadius / quantity / prioritized /
+# centerFirst.  MOD-FREE by construction -- run_locscan.sh excludes BepInEx --
+# so it cannot see More_World_Locations' POIs, which is exactly why
+# locations.py cross-reads it against LIVE markers instead of trusting it.
+DEFAULT_LOCATION_DUMP = "/tmp/settle/loc2/f6fe167f4fcd.json"
 
 
-def placement(world: str, preset: str, pid: str) -> dict:
-    path = JUMPSTART / "worlds" / world / preset / "placements.yaml"
+def placements_path(world: str, preset: str, override: str | None) -> Path:
+    """Where the placement records live.  `override` exists so an ORDERING
+    experiment can be run against a throwaway pad without inventing a preset
+    under worlds/, which would read as a thirteenth installation."""
+    if override:
+        return Path(override)
+    return JUMPSTART / "worlds" / world / preset / "placements.yaml"
+
+
+def placement(world: str, preset: str, pid: str, override: str | None = None) -> dict:
+    path = placements_path(world, preset, override)
     doc = yaml.safe_load(path.read_text())
     for p in doc["placements"]:
         if p["id"] == pid:
@@ -126,7 +143,8 @@ def run_patchscan(zones: list[tuple[int, int]], seed: str, out: Path) -> dict[st
 
 def build(place: dict, patches: dict[str, patchheights.Patch], zones: list[tuple[int, int]],
           paint: str, apron: float,
-          comps: dict[tuple[int, int], tcdata.Compiler]) -> dict:
+          comps: dict[tuple[int, int], tcdata.Compiler],
+          op_y: dict[tuple[int, int], float]) -> dict:
     """Stamp one placement's pad into the shared per-zone compilers.
 
     Compilers are shared rather than one-per-placement because a zone holds
@@ -169,6 +187,11 @@ def build(place: dict, patches: dict[str, patchheights.Patch], zones: list[tuple
         if touched == 0:
             continue
         stats["samples"] += touched
+        # The pad height this zone was levelled to, for the compiler's op
+        # record.  Two pads sharing a zone is rare and their targets differ by
+        # less than the grass reset cares about (it compares x and z only), so
+        # the last writer wins and nothing depends on which.
+        op_y[(zx, zz)] = target
         # One verification per zone: a sample at a named world position, its
         # generated height, and the height the game will end up with.
         mid_x, mid_y = tcdata.vertex_mask_index(zcx, zcz, cx, cz)
@@ -187,34 +210,129 @@ def build(place: dict, patches: dict[str, patchheights.Patch], zones: list[tuple
     return stats
 
 
-def write_entries(name: str, comps: dict[tuple[int, int], tcdata.Compiler]) -> tuple[Path, list[dict]]:
+def write_entries(name: str, comps: dict[tuple[int, int], tcdata.Compiler],
+                  op_y: dict[tuple[int, int], float]) -> tuple[Path, list[dict]]:
     """One WEC data entry per zone.  The entry name carries the zone because
     each zone gets different bytes, and the file is one YAML list so the whole
-    run reloads in a single watcher event."""
+    run reloads in a single watcher event.
+
+    `op_y` is the pad height stamped into each zone's `m_lastOpPoint`.  See
+    tcdata's header: that record and `m_operations` decide which grass a
+    client's `ClutterSystem` throws away when it loads the compiler, and a blob
+    that gets them wrong leaves the pad's grass floating at its old height.
+    The self-check reports them so a wrong one is visible in the run output
+    rather than only in the operator's screenshot.
+    """
     import base64
 
     entries = []
     doc = []
     for (zx, zz), comp in sorted(comps.items()):
-        blob = comp.blob()
+        blob = comp.blob(op_y.get((zx, zz), 0.0))
         entry = f"{name}_z{zx}_{zz}".replace("-", "_")
         doc.append({"name": entry, "bytes": ["TCData, " + base64.b64encode(blob).decode()]})
         cx, cz = comp.centre
         entries.append({"entry": entry, "zone": [zx, zz], "centre": [cx, cz],
                         "blob_bytes": len(blob), "counts": comp.counts(),
                         "selfcheck": {k: v for k, v in tcdata.parse(blob).items()
-                                      if k in ("version", "samples", "plain_bytes", "blob_bytes")}})
+                                      if k in ("version", "samples", "plain_bytes", "blob_bytes",
+                                               "operations", "last_op_point", "last_op_radius")}})
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     path = DATA_DIR / f"terraform_{name}.yaml".replace("-", "_")
     path.write_text(yaml.safe_dump(doc, default_flow_style=False, width=10**9, sort_keys=False))
     return path, entries
 
 
+ZONE_CTRL = "_ZoneCtrl"
+TOTAL_RE = re.compile(r"^Total:?\s*(\d+)\s*$", re.M)
+
+
+def ungenerated_zones(rc: Rcon, zones: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Which of `zones` the world has never generated.
+
+    THIS IS A PRECONDITION, NOT A DIAGNOSTIC, and it is the measured fix for
+    the floating-vegetation defect.  MEASURED on Ulfsland at zone (-18, 28) on
+    2026-09-15: a compiler was spawned into an ungenerated zone, the zone was
+    then generated, and all 190 objects it planted landed on the UNMODIFIED
+    generated height -- median offset from the patchscan height 0.000 m, worst
+    0.42 m -- which stood them up to 7.68 m ABOVE the flattened pad, as real
+    ZDOs, permanently.  The paint's vegetation-cleared alpha was ignored too:
+    Bush01, RaspberryBush, Beech1 and eleven more prefabs were placed on ground
+    painted alpha 0.
+
+    The cause, from IL: `Heightmap::Generate` ends by calling `ApplyModifiers`,
+    which locates its compiler through `TerrainComp::FindTerrainCompiler` -- a
+    scan of the static `s_instances` list of INSTANTIATED components.  A
+    dedicated server with no peers instantiates no `_TerrainCompiler`
+    ZNetView, so the list is empty, no deltas and no cleared mask reach the
+    heightmap, and `ZoneSystem::SpawnZone` then calls `PlaceVegetation`
+    straight away -- whose `GetGroundData` is a downward `Physics.Raycast`
+    against that unmodified collider.
+
+    A `_ZoneCtrl` is planted at the zone CENTRE by `PlaceZoneCtrl` (MEASURED:
+    exactly (-1152, 0, 1408) for zone (-18, 22)), and `objects_count`'s
+    `pos`/`max` filter is a vertical cylinder on `Utils.DistanceXZ`, so a
+    1 m probe at the zone centre is an exact test with a two-line answer.
+    """
+    missing = []
+    for zx, zz in zones:
+        cx, cz = tcdata.zone_centre(zx, zz)
+        lines = run_console(
+            rc, f"objects_count id={ZONE_CTRL} pos={cx:g},{cz:g} max=1", settle=3.0)
+        found = TOTAL_RE.search("\n".join(lines))
+        if not found:
+            raise SystemExit(
+                f"zone {zx},{zz}: objects_count printed no Total line, so whether the zone "
+                f"is generated is unknown. Refusing to write terrain blind; console said "
+                f"{lines!r}")
+        if int(found.group(1)) == 0:
+            missing.append((zx, zz))
+    return missing
+
+
+def pad_location_check(rc: Rcon, place: dict, apron: float,
+                       dump: Path) -> tuple[list, str]:
+    """Generated locations whose stand-off this pad's rectangle reaches into.
+
+    Separate from `clearing/area.py`'s check on purpose: that one guards the
+    CLEARING cylinder and only runs when clearing runs, and MEASURED on
+    2026-09-15 a flatten cut 6.65 m out from under a `LocationProxy` holding a
+    `TreasureChest_meadows_buried` with nothing complaining.  A terrain write
+    is destructive on its own and needs its own gate.
+
+    Two sources, because neither is sufficient alone -- the live world sees
+    modded POIs but cannot name a marker's type, and the mod-free dump names
+    the type and carries its declared radii but contains no modded location.
+    See locations.py for the authority ordering and for which term of the
+    stand-off is measured, which is inferred, and which is taste.
+    """
+    solved = place["solved"]
+    cx, cz = float(solved["x"]), float(solved["z"])
+    w, d = pad_extent(place)
+    half_w, half_d = w / 2 + apron, d / 2 + apron
+    catalogue = locations.load_dump(dump)
+    probe = locations.probe_radius_m(catalogue, half_w, half_d)
+    target = float((solved.get("flatten_cost") or {}).get("target_y")
+                   or solved.get("y_centre_m") or solved["y"])
+    # Prefab-scoped and radius-bounded: `findObjects` refuses without both, and
+    # an unbounded listing is what wedges the console.
+    reply = rc.command(f"findObjects -prefab {locations.LOCATION_MARKER} "
+                       f"-near {cx:g} {target:g} {cz:g} {probe:.2f} -detailed")
+    markers = locations.describe(catalogue, locations.live_markers(reply),
+                                 cx, cz, half_w, half_d)
+    hits = locations.violations(markers, cx, cz, half_w, half_d)
+    return hits, locations.report(markers, hits, cx, cz, half_w, half_d)
+
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("op", choices=["plan", "apply"])
     ap.add_argument("--world", default="Ulfsland")
-    ap.add_argument("--preset", required=True)
+    ap.add_argument("--preset")
+    ap.add_argument("--placements",
+                    help="placements.yaml path; overrides --world/--preset, "
+                         "for ordering experiments on a throwaway pad")
     ap.add_argument("--id", action="append", required=True,
                     help="placement id; repeat to flatten several pads in one pass")
     ap.add_argument("--name", help="data-entry prefix; defaults to the first id")
@@ -222,9 +340,16 @@ def main() -> int:
     ap.add_argument("--paint", default="paved_cleared", choices=sorted(tcdata.PAINTS))
     ap.add_argument("--apron", type=float, default=0.0,
                     help="extra metres of levelled ground outside the costed footprint")
+    ap.add_argument("--locations", default=DEFAULT_LOCATION_DUMP,
+                    help="per-type location dump from tools/seedscan (default %(default)s)")
+    ap.add_argument("--allow-near-location", action="store_true",
+                    help="proceed despite a location stand-off violation. Records the "
+                         "violation on stdout; there is no silent override")
     args = ap.parse_args()
 
-    places = [placement(args.world, args.preset, pid) for pid in args.id]
+    if not args.preset and not args.placements:
+        ap.error("one of --preset or --placements is required")
+    places = [placement(args.world, args.preset, pid, args.placements) for pid in args.id]
     name = args.name or args.id[0]
     zone_set: set[tuple[int, int]] = set()
     spans: list[tuple[dict, list[tuple[int, int]]]] = []
@@ -240,8 +365,9 @@ def main() -> int:
     patches = run_patchscan(sorted(zone_set), args.seed, out)
 
     comps: dict[tuple[int, int], tcdata.Compiler] = {}
+    op_y: dict[tuple[int, int], float] = {}
     for place, zones in spans:
-        stats = build(place, patches, zones, args.paint, args.apron, comps)
+        stats = build(place, patches, zones, args.paint, args.apron, comps, op_y)
         solved = place["solved"]
         print(f"placement {stats['id']} at ({solved['x']}, {solved['z']}) "
               f"pad {stats['pad_w']} x {stats['pad_d']} m target_y {stats['target_y']}")
@@ -252,7 +378,43 @@ def main() -> int:
                   f"({check['world'][0]:.1f}, {check['world'][1]:.1f}): generated "
                   f"{check['generated_m']} + delta {check['level_delta_m']} = {check['result_m']}")
 
-    path, entries = write_entries(name, comps)
+    # THE ORDER IS A PRECONDITION, checked before ANYTHING is written -- not
+    # even the data-entry file -- because a stale entry in the watched data
+    # directory is a loaded gun for the next run.  Every zone about to receive
+    # a compiler must already be generated: see `ungenerated_zones`.  Checked
+    # rather than trusted, because clearing and flattening are separate
+    # commands and nothing else stops them being run the wrong way round.
+    if args.op == "apply":
+        with Rcon(timeout=60.0) as rc:
+            missing = ungenerated_zones(rc, sorted(comps))
+            if missing:
+                print(f"REFUSED: zones {missing} have never been generated (no {ZONE_CTRL} at "
+                      f"their centres), and nothing was written. Writing terrain into an "
+                      f"ungenerated zone makes the zone plant its vegetation on the UNMODIFIED "
+                      f"generated height, leaving it standing in the air over the finished pad "
+                      f"-- MEASURED to 7.68 m at zone (-18, 28) on 2026-09-15. Run "
+                      f"clearing/clear.py (zones_generate) for this pad first.")
+                return 1
+            # Second gate: a terrain write is destructive on its own, and
+            # `clearing/area.py`'s stand-off only runs when clearing runs.
+            refused = False
+            for place, _ in spans:
+                hits, text = pad_location_check(rc, place, args.apron, Path(args.locations))
+                print(f"  location check {place['id']}:")
+                print(text)
+                if hits and not args.allow_near_location:
+                    refused = True
+            if refused:
+                print("REFUSED: the pad rectangle reaches a generated location's stand-off, "
+                      "and nothing was written. MEASURED on 2026-09-15: a flatten cut 6.65 m "
+                      "out from under a LocationProxy holding a TreasureChest_meadows_buried "
+                      "without complaining, and marker-based stand-off had already deleted "
+                      "POI content in the pre-wipe world because a location's PIECES reach "
+                      "past its marker. Re-solve the placement further out, shrink the apron, "
+                      "or pass --allow-near-location and say why in the ledger.")
+                return 1
+
+    path, entries = write_entries(name, comps, op_y)
     print(f"data entries -> {path}")
     for e in entries:
         print(f"  {e['entry']}: {e['blob_bytes']} B gzip, "

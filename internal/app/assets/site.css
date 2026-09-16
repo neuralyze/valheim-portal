@@ -52,6 +52,10 @@
   --map-location-pending: #9a8246;
   --map-build: #64d486;
   --map-portal: #7dbcf2;
+  /* Signs. Deliberately NOT the portal blue: a sign and the portal it names sit within a metre of
+     each other, and one hue for both would read as one marker. Warm cream, the colour of a carved
+     board, and distinct from --map-vehicle's amber at glyph size. */
+  --map-waypoint: #ffe9a8;
   --map-container: #d0a06a;
   --map-production: #c69ae8;
   --map-creature: #dce9df;
@@ -1070,6 +1074,7 @@ body:has(.admin-nav) { width: min(1280px, calc(100% - 2rem)); max-width: 1280px;
 .map-key--location-other { color: var(--map-location-other); }
 .map-key--build { color: var(--map-build); }
 .map-key--portal { color: var(--map-portal); }
+.map-key--waypoint { color: var(--map-waypoint); }
 .map-key--container { color: var(--map-container); }
 .map-key--production { color: var(--map-production); }
 .map-key--creature { color: var(--map-creature); }

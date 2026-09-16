@@ -19,7 +19,17 @@ import (
 // and builder counts, a terrain-modification mask, and clusters that hold only player-placed pieces
 // where they used to hold generated ruins as well. Every one of those changes what an existing tile
 // means, so no v4 pyramid may be served as if it were this.
-const OverlaySchemaVersion = 5
+//
+// Bumped 5 to 6 for the waypoints layer. Two changes to what a tile MEANS, both of them the
+// difference between a map that names places and one that does not:
+//   - A portal object now carries `label`, its in-world tag. A v5 tile holds the same tag buried in
+//     `properties`, so a v5 tile served as v6 would draw eleven unlabelled arches - which is the
+//     exact defect this layer exists to fix.
+//   - Signs now reach a tile at all, in a new `waypoint` category. In v5 a sign was either
+//     category "world" (server-spawned, creator 0) and dropped by retain(), or "construction"
+//     (player-built) and folded into the coverage layers, so a v5 tile PROVABLY contains no signs
+//     and its absence of them is not evidence.
+const OverlaySchemaVersion = 6
 
 const MaxOverlayFeatures = 4096
 

@@ -115,7 +115,22 @@ type Object struct {
 	// stores. It is only meaningful - and only recorded - for the things the map draws a direction
 	// for, which today is vehicles: a boat is worth an arrow, a wall is not, and every wall in a
 	// 72,846-piece world carrying a redundant float is 72,846 floats of map payload.
-	Heading          float32    `json:"heading,omitempty"`
+	Heading float32 `json:"heading,omitempty"`
+	// Label is the text the WORLD itself carries for this object: a portal's tag, a sign's text.
+	// It is promoted out of Properties because it is the only thing on the map that names a place
+	// in a player's own words, and a renderer that has to scan a property list per object per frame
+	// to find it will not do it. MEASURED on the pre-wipe Ulfsland save: the whole world held 33
+	// portals and their tags, so the promotion costs 33 short strings and buys every label the map
+	// draws. Empty everywhere else, so nothing else grows.
+	//
+	// Why this matters more than it looks: MEASURED from assembly_valheim.dll 1.0.12,
+	// `TeleportWorld::GetHoverText` is the ONLY place in the game a portal's tag is ever shown, and
+	// `Player::FindHoverObject` resolves a hover only when
+	// `Distance(eye, hit) < m_maxInteractDistance` (5.0 by the field's own initialiser) plus the
+	// hoverable's own offset. The operator spawned 3.54 m from a CONNECTED portal tagged
+	// `u-workshop` and reported that they could not find any portals. Outside the game, this field
+	// is the whole fix.
+	Label            string     `json:"label,omitempty"`
 	ConnectionHash   int32      `json:"connection_hash,omitempty"`
 	Inventory        *Inventory `json:"inventory,omitempty"`
 	InventoryWarning string     `json:"inventory_warning,omitempty"`
@@ -186,6 +201,18 @@ type Source struct {
 	FWLBytes   int64     `json:"fwl_bytes"`
 	ModifiedAt time.Time `json:"modified_at"`
 }
+
+// maxUnknownPrefabSample bounds the census. A world with a thousand distinct unresolved prefabs
+// does not need a thousand rows in every snapshot to make the point; the commonest sixty-four,
+// plus the kind count beside them, say both how bad it is and what to fix first.
+const maxUnknownPrefabSample = 64
+
+// UnknownPrefab is one prefab hash the catalog could not name, and how many objects carry it.
+type UnknownPrefab struct {
+	PrefabHash int32 `json:"prefab_hash"`
+	Objects    int   `json:"objects"`
+}
+
 type Health struct {
 	Level              string   `json:"level"`
 	Findings           []string `json:"findings"`
@@ -195,6 +222,19 @@ type Health struct {
 	// name as a string, so there was nothing to resolve. Carries omitempty so an old-format
 	// snapshot serialises exactly as it did before.
 	UnresolvedLocations int `json:"unresolved_locations,omitempty"`
+	// UnknownPrefabs counts OBJECTS whose prefab hash resolved to nothing; these two count the
+	// distinct HASHES behind that number and name the worst offenders. The difference matters:
+	// measured on the pre-wipe Ulfsland, 90,740 unresolved objects turned out to be a few hundred
+	// distinct mod prefabs placed tens of thousands of times, so "90,740 unknown" reads as a
+	// hopeless catalog and the kind census reads as a short, fixable list.
+	//
+	// This exists because an unresolved hash is INVISIBLE twice over: category() sends an empty
+	// name to "unknown" and retain() drops it, so the object never reaches the snapshot and its
+	// hash cannot be recovered from the output. Without a census, the residue after a catalog fix
+	// is unmeasurable - which is exactly where the next missing thing hides.
+	UnknownPrefabKinds int `json:"unknown_prefab_kinds,omitempty"`
+	// The most-placed unresolved hashes, commonest first, bounded by maxUnknownPrefabSample.
+	UnknownPrefabSample []UnknownPrefab `json:"unknown_prefab_sample,omitempty"`
 }
 type Summary struct {
 	Objects        int `json:"objects"`
@@ -254,6 +294,10 @@ type Snapshot struct {
 	// total them. Unexported so it never reaches the wire twice: TerrainMods above is the published
 	// form and holds the same slice.
 	terrainZones []TerrainZone
+	// unknownPrefabs tallies objects per unresolved prefab hash. Unexported because the published
+	// form is the bounded census on Health: every distinct hash in a mod-heavy world would be a
+	// long tail nobody reads, and the whole point of the census is to be short enough to act on.
+	unknownPrefabs map[int32]int
 }
 type Diff struct {
 	Older         string         `json:"older"`
@@ -579,7 +623,7 @@ func CatalogFromFiles(paths ...string) map[int32]string {
 	return out
 }
 func knownCatalog() map[int32]string {
-	names := []string{"portal_wood", "portal", "piece_portal", "piece_portal_stone", "piece_workbench", "piece_stonecutter", "piece_artisanstation", "forge", "smelter", "blastfurnace", "charcoal_kiln", "windmill", "spinningwheel", "fermenter", "piece_cookingstation", "piece_oven", "piece_chest_wood", "piece_chest", "piece_chest_blackmetal", "TreasureChest_meadows", "Player", "Boar", "Wolf", "Lox", "Hen", "Chicken", "Asksvin", "TerrainModifier", "Pickable", "Beehive", "sign", "bed", "piece_bed02", "creator", "items", "tag", "tamed", "TamedName", "fuel", "ore", "queued", "done", "level", "health", "spawn_time", "lastWorldTime", "alive_time", "lovePoints", "pregnant", "procreation", "content", "StartTime", "SpawnPoint"}
+	names := []string{"portal_wood", "portal", "piece_portal", "piece_portal_stone", "piece_workbench", "piece_stonecutter", "piece_artisanstation", "forge", "smelter", "blastfurnace", "charcoal_kiln", "windmill", "spinningwheel", "fermenter", "piece_cookingstation", "piece_oven", "piece_chest_wood", "piece_chest", "piece_chest_blackmetal", "TreasureChest_meadows", "Player", "Boar", "Wolf", "Lox", "Hen", "Chicken", "Asksvin", "TerrainModifier", "Pickable", "Beehive", "sign", "sign_notext", "piece_sign", "bed", "piece_bed02", "creator", "items", "tag", "text", "tamed", "TamedName", "fuel", "ore", "queued", "done", "level", "health", "spawn_time", "lastWorldTime", "alive_time", "lovePoints", "pregnant", "procreation", "content", "StartTime", "SpawnPoint"}
 	m := make(map[int32]string, len(names))
 	for _, n := range names {
 		m[StableHash(n)] = n
@@ -853,6 +897,13 @@ func (s *Snapshot) absorbObject(o Object, vals valueMaps, catalog map[int32]stri
 	s.Summary.Categories[o.Category]++
 	if o.PrefabHash != 0 && o.Prefab == "" {
 		s.Health.UnknownPrefabs++
+		// Tallied HERE and not in finalize, because an unresolved object is about to be dropped by
+		// retain() and its hash is unrecoverable from the output afterwards. This counter is the
+		// only record that it existed.
+		if s.unknownPrefabs == nil {
+			s.unknownPrefabs = map[int32]int{}
+		}
+		s.unknownPrefabs[o.PrefabHash]++
 	}
 	if !validPos(o.Position) {
 		s.Health.InvalidCoordinates++
@@ -1195,8 +1246,26 @@ func semanticCategory(o *Object, v valueMaps, catalog map[int32]string) {
 		// fate as the rocks and trees beside the wreck.
 		o.Category = "world"
 	}
-	if has(v.s, "tag") {
+	if tag, ok := v.s[StableHash("tag")]; ok {
 		o.Category = "portal"
+		o.Label = tag
+		return
+	}
+	// A ZDO carrying a `text` string is a SIGN, and the rule is exact rather than a name guess:
+	// MEASURED in assembly_valheim.dll 1.0.12, `ZDOVars.s_text` is referenced in exactly two
+	// places outside its own initialiser, `Sign::UpdateText` (the read) and `Sign::SetText` (the
+	// write). Nothing else in the assembly reads or writes it. So this is the same kind of
+	// component evidence as the `tag` rule above, not a prefab-name heuristic.
+	//
+	// This case has to sit ABOVE the creator branch at the bottom. A sign somebody built carries a
+	// creator, which made it "construction", and finalize drops every construction piece from the
+	// object list into the coverage layers - so a signpost was the one thing in the world that
+	// names a place in a player's own words and it was the one thing guaranteed not to reach the
+	// map. A sign the server spawned is worse off still: creator 0, category "world" from the
+	// prefab name, dropped by retain().
+	if text, ok := v.s[StableHash("text")]; ok {
+		o.Category = "waypoint"
+		o.Label = text
 		return
 	}
 	if has(v.s, "items") || has(v.b, "items") {
@@ -1643,7 +1712,26 @@ func finalize(s *Snapshot) {
 		s.Health.Findings = append(s.Health.Findings, "objects with sentinel or invalid coordinates were excluded from map bounds")
 	}
 	if s.Health.UnknownPrefabs > 0 {
-		s.Health.Findings = append(s.Health.Findings, fmt.Sprintf("%d prefab hashes are unresolved; treat them as vanilla-or-mod-unknown until cataloged", s.Health.UnknownPrefabs))
+		s.Health.UnknownPrefabKinds = len(s.unknownPrefabs)
+		census := make([]UnknownPrefab, 0, len(s.unknownPrefabs))
+		for hash, objects := range s.unknownPrefabs {
+			census = append(census, UnknownPrefab{PrefabHash: hash, Objects: objects})
+		}
+		// Commonest first, then by hash so the same world always serialises identically and a
+		// tile ETag only changes when the content does.
+		sort.Slice(census, func(i, j int) bool {
+			if census[i].Objects != census[j].Objects {
+				return census[i].Objects > census[j].Objects
+			}
+			return census[i].PrefabHash < census[j].PrefabHash
+		})
+		s.Health.UnknownPrefabSample = census[:min(len(census), maxUnknownPrefabSample)]
+		s.Health.Findings = append(s.Health.Findings, fmt.Sprintf(
+			"%d objects carry one of %d unresolved prefab hashes; treat them as "+
+				"vanilla-or-mod-unknown until cataloged. A mod-built world needs the mod "+
+				"BUNDLES in its catalog, not just the game assembly: bundle blocks are "+
+				"LZ4/LZMA compressed, so a byte scan of the bundle file finds nothing",
+			s.Health.UnknownPrefabs, s.Health.UnknownPrefabKinds))
 	}
 	sort.Strings(s.GlobalKeys)
 }

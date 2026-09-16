@@ -1,0 +1,38 @@
+{
+ "ledger_head": "fbdcd4adeebb8dc41b895cd05841373bcafaca9d541b6ecd4b74e41e591eaa1b",
+ "applied": {
+  "1": {
+   "status": "applied",
+   "ts": "2026-09-16T02:18:10Z"
+  },
+  "2": {
+   "status": "applied",
+   "ts": "2026-09-16T02:18:16Z"
+  },
+  "3": {
+   "status": "applied",
+   "ts": "2026-09-16T02:18:21Z"
+  },
+  "4": {
+   "status": "applied",
+   "ts": "2026-09-16T02:18:25Z"
+  },
+  "5": {
+   "status": "applied",
+   "ts": "2026-09-16T02:18:27Z"
+  },
+  "6": {
+   "status": "applied",
+   "ts": "2026-09-16T02:18:29Z"
+  },
+  "7": {
+   "status": "applied",
+   "ts": "2026-09-16T02:18:31Z"
+  },
+  "8": {
+   "status": "applied",
+   "ts": "2026-09-16T02:18:33Z"
+  }
+ },
+ "preamble": null
+}

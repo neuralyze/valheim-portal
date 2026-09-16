@@ -1,0 +1,326 @@
+{
+ "seed": "Pirate68",
+ "water_level_y": 30.0,
+ "water_level_source": "ZoneSystem::c_WaterLevel, static literal float32(30.), assembly_valheim.dll 1.0.12, read via monodis",
+ "land_test": "h > 30.0 + 0.5",
+ "connectivity": "8-way (np.ones((3,3))) -- PERMISSIVE, merges diagonal touches, so it under-counts islands",
+ "decimation": "MAX over each block -- PERMISSIVE, grows and merges islands",
+ "rivers_included": true,
+ "method": "script tools/jumpstart/roads/archipelago.py via bash; no shared kernel state",
+ "resolution_sweep": {
+  "world16": {
+   "patch_step_m": 16.0,
+   "n": 1125,
+   "patch_bbox": {
+    "x": [
+     -9000.0,
+     9000.0
+    ],
+    "z": [
+     -9000.0,
+     9000.0
+    ]
+   },
+   "levels": [
+    {
+     "decim": 1,
+     "cell_m": 16.0,
+     "components": 4773,
+     "land_fraction": 0.3135,
+     "largest_km2": 5.4559,
+     "top10_km2": [
+      5.4559,
+      3.8894,
+      2.836,
+      2.6621,
+      2.4937,
+      2.3165,
+      2.113,
+      2.0938,
+      2.0214,
+      1.9727
+     ],
+     "components_over_1km2": 36,
+     "components_over_0p1km2": 110
+    },
+    {
+     "decim": 2,
+     "cell_m": 32.0,
+     "components": 824,
+     "land_fraction": 0.3653,
+     "largest_km2": 10.9292,
+     "top10_km2": [
+      10.9292,
+      5.4948,
+      4.5947,
+      4.3151,
+      3.8902,
+      3.6547,
+      3.3444,
+      3.1109,
+      3.0587,
+      2.9
+     ],
+     "components_over_1km2": 33,
+     "components_over_0p1km2": 94
+    },
+    {
+     "decim": 4,
+     "cell_m": 64.0,
+     "components": 162,
+     "land_fraction": 0.4373,
+     "largest_km2": 16.9247,
+     "top10_km2": [
+      16.9247,
+      16.7608,
+      10.8667,
+      9.0235,
+      7.3114,
+      5.4641,
+      5.0053,
+      4.9111,
+      3.2113,
+      3.1007
+     ],
+     "components_over_1km2": 32,
+     "components_over_0p1km2": 77
+    }
+   ]
+  },
+  "mainland4": {
+   "patch_step_m": 4.0,
+   "n": 2375,
+   "patch_bbox": {
+    "x": [
+     -4750.0,
+     4750.0
+    ],
+    "z": [
+     -5000.0,
+     4500.0
+    ]
+   },
+   "levels": [
+    {
+     "decim": 1,
+     "cell_m": 4.0,
+     "components": 7794,
+     "land_fraction": 0.3207,
+     "largest_km2": 3.3174,
+     "top10_km2": [
+      3.3174,
+      2.7908,
+      2.636,
+      1.5362,
+      1.5092,
+      0.918,
+      0.8941,
+      0.8489,
+      0.843,
+      0.7877
+     ],
+     "components_over_1km2": 5,
+     "components_over_0p1km2": 38
+    },
+    {
+     "decim": 2,
+     "cell_m": 8.0,
+     "components": 1991,
+     "land_fraction": 0.3429,
+     "largest_km2": 3.4689,
+     "top10_km2": [
+      3.4689,
+      2.8787,
+      2.7085,
+      1.6208,
+      1.5485,
+      1.2045,
+      0.9804,
+      0.893,
+      0.8802,
+      0.8648
+     ],
+     "components_over_1km2": 6,
+     "components_over_0p1km2": 39
+    },
+    {
+     "decim": 4,
+     "cell_m": 16.0,
+     "components": 294,
+     "land_fraction": 0.3795,
+     "largest_km2": 8.4265,
+     "top10_km2": [
+      8.4265,
+      4.106,
+      3.2328,
+      1.6156,
+      1.5857,
+      1.2782,
+      1.2483,
+      1.0516,
+      0.905,
+      0.8463
+     ],
+     "components_over_1km2": 8,
+     "components_over_0p1km2": 35
+    }
+   ]
+  }
+ },
+ "installations": {
+  "meadhall": {
+   "xz": [
+    303.5,
+    385.5
+   ],
+   "covered_by": "mainland",
+   "step_m": 1.0,
+   "generated_y": 82.63,
+   "biome": "Meadows",
+   "on_land": true,
+   "landmass_component": 5,
+   "landmass_km2": 2.7754,
+   "dist_to_land_m": 0.0
+  },
+  "dock": {
+   "xz": [
+    675.4,
+    -85.6
+   ],
+   "covered_by": "mainland",
+   "step_m": 1.0,
+   "generated_y": 29.38,
+   "biome": "Meadows",
+   "on_land": false,
+   "landmass_component": 229,
+   "landmass_km2": 0.0001,
+   "dist_to_land_m": 7.0
+  },
+  "stathub": {
+   "xz": [
+    661.5,
+    1088.5
+   ],
+   "covered_by": "mainland",
+   "step_m": 1.0,
+   "generated_y": 32.32,
+   "biome": "Meadows",
+   "on_land": true,
+   "landmass_component": 5,
+   "landmass_km2": 2.7754,
+   "dist_to_land_m": 0.0
+  },
+  "portalhub": {
+   "xz": [
+    -292.5,
+    213.5
+   ],
+   "covered_by": "mainland",
+   "step_m": 1.0,
+   "generated_y": 37.41,
+   "biome": "Meadows",
+   "on_land": true,
+   "landmass_component": 5,
+   "landmass_km2": 2.7754,
+   "dist_to_land_m": 0.0
+  },
+  "mtnpost": {
+   "xz": [
+    -7.5,
+    3939.5
+   ],
+   "covered_by": "mtn7114",
+   "step_m": 1.0,
+   "generated_y": 111.08,
+   "biome": "Mountain",
+   "on_land": true,
+   "landmass_component": 47,
+   "landmass_km2": 0.8473,
+   "dist_to_land_m": 0.0
+  },
+  "plainsfm": {
+   "xz": [
+    750.5,
+    -4278.5
+   ],
+   "covered_by": "south33",
+   "step_m": 1.0,
+   "generated_y": 34.64,
+   "biome": "Plains",
+   "on_land": true,
+   "landmass_component": 1,
+   "landmass_km2": 0.5925,
+   "dist_to_land_m": 0.0
+  },
+  "workshop": {
+   "xz": [
+    -4673.5,
+    -310.5
+   ],
+   "covered_by": "workshop3054",
+   "step_m": 1.0,
+   "generated_y": 70.86,
+   "biome": "BlackForest",
+   "on_land": true,
+   "landmass_component": 50,
+   "landmass_km2": 1.0816,
+   "dist_to_land_m": 0.0
+  },
+  "blacbase": {
+   "xz": [
+    -3045.5,
+    -4101.5
+   ],
+   "covered_by": "blackforest6",
+   "step_m": 1.0,
+   "generated_y": 38.41,
+   "biome": "BlackForest",
+   "on_land": true,
+   "landmass_component": 7,
+   "landmass_km2": 1.53,
+   "dist_to_land_m": 0.0
+  },
+  "ashland": {
+   "xz": [
+    -4577.5,
+    -8218.5
+   ],
+   "covered_by": null
+  },
+  "dnshrine": {
+   "xz": [
+    3957.3,
+    7734.3
+   ],
+   "covered_by": null
+  },
+  "dncamp": {
+   "xz": [
+    -1198.6,
+    8607.4
+   ],
+   "covered_by": null
+  },
+  "mistfrge": {
+   "xz": [
+    5523.3,
+    -5631.7
+   ],
+   "covered_by": null
+  },
+  "temple": {
+   "xz": [
+    -64.68,
+    3.31
+   ],
+   "covered_by": "mainland",
+   "step_m": 1.0,
+   "generated_y": 75.05,
+   "biome": "Meadows",
+   "on_land": true,
+   "landmass_component": 5,
+   "landmass_km2": 2.7754,
+   "dist_to_land_m": 0.0
+  }
+ }
+}

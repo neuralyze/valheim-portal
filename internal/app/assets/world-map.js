@@ -33,6 +33,10 @@
   const ZONE_DETAIL_SCALE = 0.18;
   const COVERAGE_VISIBLE_SCALE = 0.35;
   const COVERAGE_FULL_SCALE = 0.8;
+  // Below this, names are a smear rather than a map. Shared by the player-pin labels and the
+  // portal / sign labels so one zoom level reveals every name on the map at once, instead of a
+  // player's own pin appearing at one zoom and the portal it marks at another.
+  const LABEL_VISIBLE_SCALE = 0.12;
   const CLOSE_TERRAIN_DETAIL_SCALE = 0.55;
   const MAX_TERRAIN_DETAIL_MARKS = 9_000;
   const OBJECT_INDEX_CELL = 256;
@@ -119,6 +123,7 @@
     locationPending: token('--map-location-pending'),
     build: token('--map-build'),
     portal: token('--map-portal'),
+    waypoint: token('--map-waypoint'),
     container: token('--map-container'),
     production: token('--map-production'),
     creature: token('--map-creature'),
@@ -144,7 +149,7 @@
   // 'vehicle' must be listed here or the layer never draws: the checkbox, the colour token and the
   // glyph all existed on 2026-08-21 while two rafts stayed invisible, because drawObjectLayer is
   // only ever called for members of this array.
-  const objectLayers = ['terrain-risk', 'container', 'production', 'creature', 'other', 'portal', 'vehicle'];
+  const objectLayers = ['terrain-risk', 'container', 'production', 'creature', 'other', 'portal', 'waypoint', 'vehicle'];
   const world = document.body.dataset.world;
   // The same renderer serves the operator's map and the players' map. Only two things differ: where
   // the data comes from, and whether ground nobody has visited is covered over.
@@ -1377,9 +1382,17 @@
     }
   }
 
+  // Names for the layers that carry one. A label is collected during the glyph pass and drawn
+  // AFTER it, so a neighbouring glyph cannot land on top of a name - and so the collision stepping
+  // in drawBuilderLabel sees every name in the layer rather than only the ones already placed.
+  // Below LABEL_VISIBLE_SCALE a hundred names are a smear, which is the same threshold and the
+  // same reasoning as the player-pin labels.
+  const LABELLED_LAYERS = new Set(['portal', 'waypoint']);
+
   function drawObjectLayer(layer) {
     const index = state.objectIndexes.get(layer);
     if (!index) return;
+    const labels = LABELLED_LAYERS.has(layer) && state.scale >= LABEL_VISIBLE_SCALE ? [] : null;
     const bounds = visibleBounds(20);
     const minCellX = Math.max(index.minX, Math.floor(bounds.minX / OBJECT_INDEX_CELL));
     const maxCellX = Math.min(index.maxX, Math.floor(bounds.maxX / OBJECT_INDEX_CELL));
@@ -1405,19 +1418,41 @@
         // Vehicles are never thinned to one per cell. There are 36 boats and carts in a
         // 451,451-object world and each one is somebody's; the server already exempts them from
         // tile aggregation for the same reason, and dropping three of four here would undo that.
-        const vehicles = layer === 'vehicle';
-        const perCell = state.scale < ZONE_DETAIL_SCALE && !vehicles ? 1 : objects.length;
+        //
+        // Portals and signs join them, and for a sharper reason. MEASURED on the pre-wipe
+        // Ulfsland save: eleven of the world's twenty-two tagged portals stand inside one 30 m
+        // hall at (-295, 218). One glyph per index cell drew ONE of them, so the portal hub - the
+        // thing the operator went looking for and could not find - appeared on the map as a single
+        // anonymous dot. Every portal and every sign is a named place; there are tens of them, not
+        // tens of thousands, so none of them is thinned.
+        const named = layer === 'vehicle' || layer === 'portal' || layer === 'waypoint';
+        const perCell = state.scale < ZONE_DETAIL_SCALE && !named ? 1 : objects.length;
         for (let objectIndex = 0; objectIndex < perCell && drawn < maximum; objectIndex += 1) {
           const object = objects[objectIndex];
           if (object.position.x < bounds.minX || object.position.x > bounds.maxX || object.position.z < bounds.minZ || object.position.z > bounds.maxZ) continue;
           const [pixelX, pixelY] = screen(object.position.x, object.position.z);
           const kind = object.category === 'world' ? 'world' : object.category === 'unknown' ? 'unknown' : object.category;
           const colour = objectColor(object.category);
-          if (vehicles && !object.aggregate) drawHeading(pixelX, pixelY, object.heading, colour);
+          if (layer === 'vehicle' && !object.aggregate) drawHeading(pixelX, pixelY, object.heading, colour);
           drawGlyph(kind, pixelX, pixelY, markerSize(), colour);
+          // The label is the whole point of this layer. A portal carries its tag and a sign carries
+          // its text, and in game neither is legible at range: MEASURED from
+          // assembly_valheim.dll, a portal's tag appears only in `TeleportWorld::GetHoverText`,
+          // which `Player::FindHoverObject` gates on `m_maxInteractDistance` (5.0) with the
+          // crosshair on the arch. On the map it is just a string, so it is drawn.
+          if (labels && object.label) {
+            labels.push({ text: object.label, x: pixelX, y: pixelY - markerSize() - 3, colour });
+          }
           drawn += 1;
         }
       }
+    }
+    if (labels && labels.length) {
+      const taken = [];
+      // Nearest-to-the-top first, so a stack of hub portals reads down the hall in map order
+      // instead of in index-cell order.
+      labels.sort((a, b) => a.y - b.y || a.x - b.x);
+      for (const label of labels) drawBuilderLabel(label.text, label.x, label.y, label.colour, taken);
     }
   }
 
@@ -1642,6 +1677,20 @@
       context.beginPath();
       context.moveTo(-radius * 0.45, 0);
       context.lineTo(radius * 0.45, 0);
+      context.stroke();
+    } else if (kind === 'waypoint') {
+      // A board on a post. Nearest neighbours are 'container' (a chest: a wide box with a lid) and
+      // 'portal' (an upright ellipse), and this is neither: a WIDE board sitting high on a thin
+      // stem, filled so it reads at 7 px as a solid tab rather than an outline.
+      context.beginPath();
+      context.moveTo(0, radius);
+      context.lineTo(0, -radius * 0.15);
+      context.stroke();
+      context.beginPath();
+      context.rect(-radius, -radius, radius * 2, radius * 0.85);
+      context.globalAlpha = 0.55;
+      context.fill();
+      context.globalAlpha = 1;
       context.stroke();
     } else if (kind === 'container') {
       context.strokeRect(-radius, -radius * 0.45, radius * 2, radius * 1.35);
@@ -1910,7 +1959,7 @@
     if (!pins.length) return;
     const bounds = visibleBounds(40);
     const labelBoxes = [];
-    const showNames = state.scale >= 0.12;
+    const showNames = state.scale >= LABEL_VISIBLE_SCALE;
     // Pins describing one place are folded by the server before they get here (operator asked for
     // it on 2026-08-28). Measured on Hrafnheim that day: 4 uploaded files, 97 pins over 42 distinct
     // places, 55 of them (57%) removable, because SullysAutoPinner 1.4.0 generates a pin per
@@ -2034,7 +2083,7 @@
 
   function layerForCategory(category) {
     if (category === 'terrain') return 'terrain-risk';
-    if (['portal', 'container', 'production', 'creature', 'vehicle'].includes(category)) return category;
+    if (['portal', 'waypoint', 'container', 'production', 'creature', 'vehicle'].includes(category)) return category;
     return 'other';
   }
 
@@ -2157,12 +2206,20 @@
     } else if (data.name) {
       lines.push(`name: ${data.name}`);
     }
+    // The word the WORLD carries for this thing. A portal's tag names its destination and a sign's
+    // text names a place; both were previously reachable only by reading down the raw property
+    // dump at the bottom of this readout, which is not where somebody looking for a portal looks.
+    if (data.label) lines.push(`${selection.kind === 'portal' ? 'portal tag' : 'sign reads'}: ${data.label}`);
     if (data.generated !== undefined) lines.push(`generated: ${data.generated ? 'yes' : 'not yet'}`);
     if (data.id !== undefined) lines.push(`id: ${data.id}`);
     if (data.prefab) lines.push(`prefab: ${data.prefab}`);
     if (data.prefab_hash !== undefined) lines.push(`prefab hash: ${data.prefab_hash}`);
     if (data.pieces && !data.aggregate) lines.push(`pieces: ${data.pieces}`, `radius: ${data.radius.toFixed(1)} m`);
-    if (data.connection_hash) lines.push(`connection: ${data.connection_hash}`);
+    // Two portals sharing a connection hash are a PAIR. MEASURED on the pre-wipe Ulfsland save:
+    // all eleven tagged pairs shared exactly one hash each, with connection types 17 (source) and
+    // 1 (target) - so this number is the honest answer to "does this portal actually go anywhere",
+    // which a tag alone cannot give.
+    if (data.connection_hash) lines.push(`connection: ${data.connection_hash}${data.label ? ' (paired portals share this)' : ''}`);
     if (data.inventory) {
       lines.push(`inventory v${data.inventory.version}: ${data.inventory.items.length} stacks`);
       for (const item of data.inventory.items) {
@@ -2237,6 +2294,7 @@
     return {
       construction: 'Player-built pieces',
       portal: 'Portals',
+      waypoint: 'Signs and waypoints',
       container: 'Containers',
       production: 'Production',
       creature: 'Persistent creatures',
@@ -2272,7 +2330,7 @@
     if (category === 'world') return 'summary count; routine non-spatial ZDOs omitted';
     if (category === 'unknown') return 'summary count; connected entries use the Other layer';
     if (category === 'terrain') return 'Terrain / upgrade risk glyph layer';
-    if (['portal', 'container', 'production', 'creature'].includes(category)) return `${categoryLabel(category)} glyph layer`;
+    if (['portal', 'waypoint', 'container', 'production', 'creature'].includes(category)) return `${categoryLabel(category)} glyph layer`;
     return 'Other glyph layer when retained; otherwise summary count';
   }
 

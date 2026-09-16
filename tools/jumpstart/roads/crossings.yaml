@@ -1,0 +1,281 @@
+schema_version: 2
+owner: RoadNet
+consumer: Crossings
+world: Ulfsland
+seed: Pirate68
+measurement: generated heights from PatchScan at 1 m WITH rivers; bank coordinates snapped to 2 m per Crossings' MEASURED deck pitch
+precedence: DECLARED crossings carry Crossings' own measurements and are authoritative. DETECTED crossings are mine, from routing over the 1 m field. Where they describe the same channel, Crossings' numbers
+  win and mine are marked superseded.
+contract:
+  ribbon_stops_at_bank: true
+  stand_off_m: 0.0
+  bank_level_run_m: 6.0
+  deck_datum_y: 30.6
+  centreline_straight_across_window: true
+declared:
+- crossing_id: S1
+  owner: Crossings
+  status: declared
+  measured_by: Crossings, 1 m distance transform over /tmp/roads/h1m.bin
+  joins:
+  - spawn
+  - west
+  bank_a:
+    node: brg-s1-e
+    xz:
+    - -312.0
+    - -64.0
+    ground_y: 30.72
+    road_deck_y: 30.6
+    bearing_deg: 270.0
+  bank_b:
+    node: brg-s1-w
+    xz:
+    - -324.0
+    - -64.0
+    ground_y: 30.64
+    road_deck_y: 30.6
+    bearing_deg: 90.0
+  span_m: 12.0
+  gap_min_y: 27.48
+  water_surface_y: 30.0
+  why_terrain_failed: water_body
+  significance: the join between the two halves of the largest landmass in the world; 260 m from StartTemple
+  poi_clear: nearest WoodHouse7 at 47.9 m (exteriorRadius 8); Eikthyrnir altar 146.5 m -- MEASURED by Crossings
+- crossing_id: S2
+  owner: Crossings
+  status: declared
+  measured_by: Crossings, 1 m distance transform over /tmp/roads/h1m.bin
+  joins:
+  - spawn
+  - west
+  bank_a:
+    node: brg-s2-e
+    xz:
+    - -318.0
+    - 230.0
+    ground_y: 30.26
+    road_deck_y: 30.6
+    bearing_deg: 298.07
+  bank_b:
+    node: brg-s2-w
+    xz:
+    - -348.0
+    - 246.0
+    ground_y: 30.02
+    road_deck_y: 30.6
+    bearing_deg: 118.07
+  span_m: 34.0
+  gap_min_y: 25.14
+  water_surface_y: 30.0
+  why_terrain_failed: water_body
+  significance: second join; makes the network a loop rather than an out-and-back
+  poi_clear: nearest WoodHouse5 at 46.1 m (exteriorRadius 8) -- MEASURED by Crossings
+detected:
+- segment_id: T2-temple-brgs1
+  bank_a:
+    xz:
+    - -296.0
+    - -114.0
+    ground_y: 31.4
+    bearing_deg: 339.9
+    road_deck_y: 32.5
+  bank_b:
+    xz:
+    - -312.0
+    - -62.0
+    ground_y: 29.25
+    bearing_deg: 159.9
+    road_deck_y: 32.5
+  span_m: 54.41
+  stations:
+  - 241
+  - 273
+  gap_min_y: 26.67
+  water_surface_y: 30.0
+  clamp_evidence:
+    worst_required_delta_m: 3.88
+    required_fill_to_freeboard_m: 4.33
+    clamp_m: 8.0
+    usable_clamp_m: 7.0
+    stations_flagged: 33
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  crossing_id: T2-temple-brgs1-x01
+  owner: Crossings
+  kind: bridge
+  status: detected
+  ribbon_width_m: 6.0
+  bank_level_run_m: 6.0
+  required_deck_y: 32.5
+  single_H_both_banks: true
+  legal_deck_y_interval:
+  - 32.5
+  - 38.909
+  centreline_straight_from_to:
+  - - -291.28
+    - -118.72
+  - - -312.0
+    - -62.0
+  why_terrain_failed: water_body
+- segment_id: T4-meadhall-stathub
+  bank_a:
+    xz:
+    - 584.0
+    - 1028.0
+    ground_y: 31.9
+    bearing_deg: 33.1
+    road_deck_y: 32.5
+  bank_b:
+    xz:
+    - 616.0
+    - 1074.0
+    ground_y: 31.32
+    bearing_deg: 213.1
+    road_deck_y: 32.5
+  span_m: 56.04
+  stations:
+  - 722
+  - 749
+  gap_min_y: 25.41
+  water_surface_y: 30.0
+  clamp_evidence:
+    worst_required_delta_m: 6.17
+    required_fill_to_freeboard_m: 5.59
+    clamp_m: 8.0
+    usable_clamp_m: 7.0
+    stations_flagged: 28
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  crossing_id: T4-meadhall-stathub-x01
+  owner: Crossings
+  kind: bridge
+  status: detected
+  ribbon_width_m: 6.0
+  bank_level_run_m: 6.0
+  required_deck_y: 32.5
+  single_H_both_banks: true
+  legal_deck_y_interval:
+  - 32.5
+  - 38.496
+  centreline_straight_from_to:
+  - - 584.0
+    - 1022.84
+  - - 619.95
+    - 1077.95
+  why_terrain_failed: water_body
+- segment_id: T5-temple-dockshore
+  bank_a:
+    xz:
+    - 620.0
+    - -110.0
+    ground_y: 31.57
+    bearing_deg: 45.0
+    road_deck_y: 32.5
+  bank_b:
+    xz:
+    - 632.0
+    - -98.0
+    ground_y: 31.01
+    bearing_deg: 225.0
+    road_deck_y: 32.5
+  span_m: 16.97
+  stations:
+  - 477
+  - 483
+  gap_min_y: 29.75
+  water_surface_y: 30.0
+  clamp_evidence:
+    worst_required_delta_m: 1.54
+    required_fill_to_freeboard_m: 1.25
+    clamp_m: 8.0
+    usable_clamp_m: 7.0
+    stations_flagged: 7
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  crossing_id: T5-temple-dockshore-x01
+  owner: Crossings
+  kind: bridge
+  status: detected
+  ribbon_width_m: 6.0
+  bank_level_run_m: 6.0
+  required_deck_y: 32.5
+  single_H_both_banks: true
+  legal_deck_y_interval:
+  - 32.5
+  - 38.432
+  centreline_straight_from_to:
+  - - 616.1
+    - -113.9
+  - - 635.9
+    - -94.1
+  why_terrain_failed: water_body
+- segment_id: T5-temple-dockshore
+  bank_a:
+    xz:
+    - 654.0
+    - -76.0
+    ground_y: 31.03
+    bearing_deg: 122.6
+    road_deck_y: 32.5
+  bank_b:
+    xz:
+    - 672.0
+    - -94.0
+    ground_y: 30.65
+    bearing_deg: 302.6
+    road_deck_y: 32.5
+  span_m: 25.46
+  stations:
+  - 501
+  - 518
+  gap_min_y: 28.81
+  water_surface_y: 30.0
+  clamp_evidence:
+    worst_required_delta_m: 2.11
+    required_fill_to_freeboard_m: 2.19
+    clamp_m: 8.0
+    usable_clamp_m: 7.0
+    stations_flagged: 18
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  crossing_id: T5-temple-dockshore-x02
+  owner: Crossings
+  kind: bridge
+  status: detected
+  ribbon_width_m: 6.0
+  bank_level_run_m: 6.0
+  required_deck_y: 32.5
+  single_H_both_banks: true
+  legal_deck_y_interval:
+  - 32.5
+  - 38.953
+  centreline_straight_from_to:
+  - - 650.05
+    - -79.95
+  - - 672.0
+    - -94.0
+  why_terrain_failed: water_body
+abutment_handoffs:
+- node: brg-s1-e
+  end: b
+  level_y: 30.6
+  level_run_m: 6.0
+  worst_cut_fill_m: 1.354
+  within_clamp: true
+  ribbon_width_m: 6.0
+  outbound_bearing_deg: 339.93
+  ribbon_end_xz:
+  - -312.0
+  - -62.0
+  segment_id: T2-temple-brgs1
+  cls: trunk
+- node: brg-s2-e
+  end: b
+  level_y: 30.6
+  level_run_m: 6.0
+  worst_cut_fill_m: 1.397
+  within_clamp: true
+  ribbon_width_m: 4.0
+  outbound_bearing_deg: 315.0
+  ribbon_end_xz:
+  - -316.0
+  - 230.0
+  segment_id: S1-portalhub-brgs2
+  cls: spur

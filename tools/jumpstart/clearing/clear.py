@@ -3,11 +3,27 @@
 scenery standing in the pad.
 
 ORDER.  This is step 1 of the site-preparation order described in
-tools/jumpstart/SITE_PREPARATION_ORDER.md (owned by the blueprint datum work):
-clear -> flatten -> place structures -> place loose objects.  Clearing must run
-FIRST because flatten only writes terrain and will happily level the ground
-under a standing tree, and because a structure placed first would be standing
-where the trees are.
+tools/jumpstart/SITE_PREPARATION_ORDER.md: generate -> clear -> flatten ->
+place structures -> place loose objects.  Two corrections to what this header
+used to claim, both MEASURED on 2026-09-15:
+
+  * `zones_generate` (step 0, below) is a HARD PRECONDITION of the flatten,
+     not a convenience.  A compiler written into an ungenerated zone is
+     ignored by `Heightmap::ApplyModifiers` -- it finds compilers by scanning
+     the INSTANTIATED `TerrainComp::s_instances`, and a server with no peers
+     instantiates none -- so the zone then plants its entire vegetation set on
+     the unmodified generated height, standing it up to 7.68 m in the air over
+     the finished pad, permanently, and ignoring the paint's cleared alpha.
+     `terraform/flatten.py` now refuses to write into a zone with no
+     `_ZoneCtrl` at its centre.
+  * clearing BEFORE the flatten is not required.  `objects_remove`'s
+     `pos`/`max` filter is a vertical cylinder on `Utils.DistanceXZ` with no
+     height bound, so an object 7 m above a cut pad is exactly as removable as
+     one resting on it.  MEASURED: pads prepared as generate->clear->flatten
+     and as generate->flatten->clear both ended with the same two survivors,
+     `_TerrainCompiler` and `_ZoneCtrl`.  Clearing stays first only so that the
+     step carrying `zones_generate` runs immediately before the step that
+     requires it.
 
 ROUTE, and why it is this one.  Every claim below was MEASURED tonight against
 a throwaway server in /tmp running the same build and the same plugin set as
