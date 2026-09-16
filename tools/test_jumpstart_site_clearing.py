@@ -36,7 +36,31 @@ CLEARING = Path(__file__).resolve().parent / "jumpstart" / "clearing"
 sys.path.insert(0, str(CLEARING))
 
 import area as CA  # noqa: E402
-import clear as CL  # noqa: E402
+
+
+def _load(name: str, path: Path):
+    """Import a module by PATH under a unique name.
+
+    There are two `clear.py` in this project - `jumpstart/clearing` (sites) and
+    `jumpstart/roads` (road corridors) - and both test files reached them with a
+    bare `import clear` after a `sys.path.insert`. `sys.modules` caches by the
+    BARE NAME, so whichever test imported first won and the other silently got
+    the wrong module: MEASURED, importing roads then clearing returns the roads
+    module for both, `R is C` -> True. Each file passes alone and one fails, or
+    worse silently exercises code it was never written for, in a combined run.
+    Loading by path under a distinct name removes the collision for good.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader, f"cannot load {name} from {path}"
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+CL = _load("jumpstart_site_clear", CLEARING / "clear.py")
 
 
 def place(**over) -> dict:

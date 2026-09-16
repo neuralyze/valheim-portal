@@ -1008,6 +1008,23 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
           # the same `(x, z, cause, height)` shape the clip list uses, so the
           # transverse census can tell a recorded residual from a bug.
           "ray_skip_at": [],
+          # WHERE EVERY RAY ENDED, as `(station_arc_m, side, lat_m, cause)`.
+          # THE TERMINATION LOCUS IS A FIRST-CLASS MEASUREMENT because an
+          # `ADJACENT` run of unexplained over-grade steps has two readings and
+          # only this series tells them apart: rays that end at smoothly
+          # varying laterals mean the hillside itself is adjacent and the
+          # clips are honest, while rays that end at materially different
+          # laterals mean the LOCUS OF TERMINATIONS is a new cliff running
+          # parallel to the road -- the same family as the edge wall the
+          # batter exists to repair.  It has to be recorded HERE, per ray,
+          # because a ray is the unit that terminates: reconstructing it by
+          # bucketing written samples into 1 m station bins measures lattice
+          # aliasing instead, and MEASURED on T12 that reads a 5.611 m
+          # "sawtooth" at station 268 where the ray series is smooth.
+          # `met_ground` rays record nothing else at all, so without this the
+          # 69 % of terminations that are the batter working as designed are
+          # invisible to the test.
+          "ray_end_at": [],
           "walls_before_max_m": 0.0,
           "walls_left_by_cause": {},
           "rays": 0, "rays_clipped": 0,
@@ -1293,6 +1310,11 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
                       residual=full_edge)
             continue
 
+        # THE RAY'S OWN TERMINATION, recorded at whichever of the five exits
+        # it takes.  `end` is the lateral the earthwork reaches, which for a
+        # clipped ray is the REFUSED sample (the last one written is inside
+        # it) and for a ray that met ground is where the plane arrived.
+        end_lat, end_cause = members[-1][0], "lattice_end"
         for lat, zx, zz, gx, gy, wx, wz, y, generated, _fx, _fz in members:
             run = lat - edge
             if run > batter_m:
@@ -1303,6 +1325,7 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
                 _clip(st, "reach", False, None, wx, wz, lat, full_edge,
                       residual=target - generated)
                 st["rays_clipped"] += 1
+                end_lat, end_cause = lat, "reach"
                 break
             cause = refusal(wx, wz, generated, False)
             if cause is not None:
@@ -1313,6 +1336,7 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
                     st["batter_clipped_placed_at"].append(
                         [round(wx, 1), round(wz, 1)])
                 st["rays_clipped"] += 1
+                end_lat, end_cause = lat, cause
                 break
             # THE PLANE AT GRADE, and where it meets ground the ray is done.
             target = y - sign * batter_grade * run
@@ -1322,6 +1346,7 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
                 # ENDS AT GROUND, which is the whole point.  No wall, nothing
                 # to record but the fact that it happened.
                 st["batter_met_ground"] += 1
+                end_lat, end_cause = lat, "met_ground"
                 break
             if abs(delta) > budget + EDGE_EPS_M:
                 # THE HILLSIDE IS STEEPER THAN THE BATTER.  Grading further
@@ -1333,6 +1358,7 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
                 _clip(st, "steeper_than_batter", False, None, wx, wz, lat,
                       full_edge, residual=delta)
                 st["rays_clipped"] += 1
+                end_lat, end_cause = lat, "steeper_than_batter"
                 break
             comps[(zx, zz)].set_height(gx, gy, delta)
             written.append((wx, wz))
@@ -1343,6 +1369,8 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
             st["max_fill_m"] = max(st["max_fill_m"], delta)
             _clamp_check(st, delta, zx, zz, gx, gy, wx, wz, generated, target,
                          "batter")
+        st["ray_end_at"].append((round(float(key[1]), 2), int(key[0]),
+                                 round(float(end_lat), 3), end_cause))
 
     for z, comp in list(comps.items()):
         touched = sum(comp.modified_height) + sum(comp.modified_paint)

@@ -1266,69 +1266,236 @@ def placed_after(cen: dict, emitted: list[dict]) -> dict:
 # plan
 # ---------------------------------------------------------------------------
 
+# HOW CLOSE A REMOVAL CYLINDER MAY COME TO SOMETHING IT MAY NOT DELETE.  One
+# metre because `TERRAIN_SPREAD_M` is the reach of a terrain edit at all, so
+# it is the honest slack -- the same figure the concentric shrink used, kept
+# so the guarantee is unchanged and only the geometry that enforces it moves.
+BLOCKER_STANDOFF_M = TERRAIN_SPREAD_M
+
+# HOW MANY SUB-DISCS ONE BLOCKED TILE MAY BECOME.  Each costs one live
+# `objects_count` inside `emit` and one ledger record, and the console sink
+# died at 160 such calls, so the split is BOUNDED rather than trusted.
+# MEASURED on T12: the worst blocked tile -- the generated wood house beside
+# the centreline at (72,-68), 35 non-clearable pieces inside a 12.57 m disc --
+# is covered by 6.
+MAX_SUBDISCS_PER_TILE = 12
+
+# THE SMALLEST SUB-DISC WORTH SENDING, and it is a precision floor rather
+# than a taste one.  Centres and radii go on the wire at two decimals, so a
+# cylinder's own centre object can sit up to sqrt(2)*0.005 = 7.1 mm outside a
+# nominal radius of zero; 5 cm is seven times that.  A target whose blocker
+# clearance is thinner than this is recorded as unreachable WITH THE BLOCKER,
+# not sent as a cylinder that might reach nothing.
+SUBDISC_MIN_RADIUS_M = 0.05
+
+SPLIT_WHY = (
+    "SPLIT, NOT SHRUNK. The hazard is the blocker's own neighbourhood, and "
+    "pulling the parent disc in CONCENTRICALLY treats it as if it were the "
+    "whole disc: a blocker near the centre erases the disc, and a blocker "
+    "near the rim erases the rim. MEASURED, at the exact cost of this "
+    "ticket: T12's disc at (77.58,-67.58) met a generated wood house 4.71 m "
+    "from its centre, shrank from 15.34 m to 3.84 m (seq 937/952), removed 4 "
+    "objects and left 14 standing -- 13 of them then BURIED by this "
+    "segment's own terrain write, worst 3.818 m. It recorded no skip reason "
+    "because nothing was skipped; a shrink is silent. So the disc is now "
+    "covered by SUB-DISCS, each a strict SUBSET of the parent (so the "
+    "over-reach fraction the parent's radius encodes is preserved exactly) "
+    "and each WHOLLY outside every blocker's standoff "
+    "(dist(sub_centre, blocker) >= sub_radius + BLOCKER_STANDOFF_M) -- the "
+    "same shape as `footprint_clear`'s rule for a POI's own extent. The "
+    "per-cylinder live census in `emit` still refuses any sub-disc that "
+    "turns out to hold a non-CLEARABLE prefab, so the mod-POI gate is "
+    "untouched. An object no sub-disc can reach is recorded PER OBJECT with "
+    "the blocker that binds it, because 'left standing' with no reason is "
+    "what was reported to the operator as fixed.")
+
+
+def split_around_blockers(cx: float, cz: float, r0: float,
+                          targets: list[dict], blockers: list[dict]
+                          ) -> tuple[list[dict], list[dict]]:
+    """Cover `targets` with sub-discs of the parent disc `(cx, cz, r0)` that
+    each stand wholly clear of every blocker.  See `SPLIT_WHY`.
+
+    Greedy by coverage, and the candidate centres are THE TARGETS THEMSELVES:
+    a disc centred on the tree it exists to remove always reaches it, so the
+    cover terminates with an explicit per-object reason rather than with a
+    radius that happens to fall short.
+    """
+    remaining = {o["id"]: o for o in targets}
+    subs: list[dict] = []
+
+    def binding(o: dict) -> tuple[float, dict]:
+        return min(((math.hypot(o["x"] - b["x"], o["z"] - b["z"]), b)
+                    for b in blockers), key=lambda t: t[0])
+
+    while remaining and len(subs) < MAX_SUBDISCS_PER_TILE:
+        best = None
+        for o in remaining.values():
+            nb_d, nb = binding(o)
+            # A SUBSET OF THE PARENT DISC: the parent's radius is the written
+            # footprint plus the over-reach fraction, and a sub-disc that
+            # reached outside it would be clearing ground nothing measured.
+            room = r0 - math.hypot(o["x"] - cx, o["z"] - cz)
+            # FLOORED TO THE SENT PRECISION, NOT ROUNDED.  The wire carries
+            # `max=` at two decimals, and `round` goes UP half the time --
+            # which spends up to 5 mm of the standoff that is the whole
+            # guarantee.  MEASURED before this line existed: T12's worst
+            # emitted cylinder cleared its nearest blocker by 0.997 m against
+            # a 1.0 m standoff, i.e. the rounding, not the geometry, decided
+            # it.  The floor also has to hold the cylinder's OWN centre
+            # object, whose position is rounded to the same two decimals and
+            # can therefore sit up to 7.1 mm outside a radius of zero.
+            r = math.floor(min(nb_d - BLOCKER_STANDOFF_M, room) * 100.0) / 100.0
+            if r < SUBDISC_MIN_RADIUS_M:
+                continue
+            got = [q for q in remaining.values()
+                   if math.hypot(q["x"] - o["x"], q["z"] - o["z"]) <= r]
+            if best is None or (len(got), r) > (len(best[0]), best[1]):
+                best = (got, r, o, nb_d, nb)
+        if best is None:
+            break
+        got, r, o, nb_d, nb = best
+        counts: dict[str, int] = {}
+        for q in got:
+            counts[q["prefab"]] = counts.get(q["prefab"], 0) + 1
+        subs.append({
+            "centre": [round(float(o["x"]), 2), round(float(o["z"]), 2)],
+            "radius_m": r,
+            "ids": sorted(counts), "counts": counts,
+            "covered_ids": sorted(q["id"] for q in got),
+            "nearest_blocker_m": round(nb_d, 2),
+            "nearest_blocker": {"prefab": nb["prefab"], "id": nb["id"],
+                                "xz": [round(nb["x"], 2), round(nb["z"], 2)]},
+        })
+        for q in got:
+            remaining.pop(q["id"], None)
+    unreachable = []
+    for o in remaining.values():
+        nb_d, nb = binding(o)
+        room = r0 - math.hypot(o["x"] - cx, o["z"] - cz)
+        unreachable.append({
+            "prefab": o["prefab"], "id": o["id"],
+            "xz": [round(o["x"], 2), round(o["z"], 2)],
+            "y": round(o["y"], 2), "lat_m": o.get("lat_m"),
+            "clear_half_m": o.get("clear_half_m"),
+            "parent_disc": [round(cx, 2), round(cz, 2), round(r0, 2)],
+            "nearest_blocker": {"prefab": nb["prefab"], "id": nb["id"],
+                                "xz": [round(nb["x"], 2), round(nb["z"], 2)],
+                                "dist_m": round(nb_d, 2)},
+            "room_in_parent_m": round(room, 2),
+            "why": (f"a non-clearable {nb['prefab']} stands {nb_d:.2f} m away, "
+                    f"which leaves "
+                    f"{max(nb_d - BLOCKER_STANDOFF_M, 0.0):.2f} m inside the "
+                    f"{BLOCKER_STANDOFF_M:g} m standoff -- less than the "
+                    f"{SUBDISC_MIN_RADIUS_M:g} m minimum sendable cylinder, "
+                    f"so no cylinder that reaches this object can avoid it"
+                    if (math.floor(min(nb_d - BLOCKER_STANDOFF_M, room) * 100.0)
+                        / 100.0) < SUBDISC_MIN_RADIUS_M else
+                    f"the sub-disc budget of {MAX_SUBDISCS_PER_TILE} per tile "
+                    f"was spent before this object was covered"),
+        })
+    return subs, unreachable
+
+
 def plan_removals(seg: dict, cen: dict) -> dict:
-    """Group the removals into cylinders, and refuse every cylinder that holds
-    something this module may not delete.
+    """Group the removals into cylinders, and keep every cylinder clear of
+    everything this module may not delete.
 
     ONE CYLINDER PER TILE rather than one per trunk: `objects_remove` is a
     cylinder, and a per-trunk cylinder would multiply the ledger by a thousand
     records for no extra safety -- the safety comes from the prefab filter and
     from the census, both of which are per cylinder already.
+
+    A tile that holds nothing non-clearable keeps its full derived radius,
+    which is the path the thirteen already-cleared segments took.  A tile that
+    does is SPLIT rather than shrunk; see `SPLIT_WHY` for the measurement that
+    forced it.
     """
     per_station, widest = clear_half_width(seg)
     by_tile: list[dict] = []
     targeted: set[str] = set()
-    for cx, cz, r0 in [tuple(t) for t in cen["tiles"]]:
-        # SHRINK BEFORE SKIPPING.  MEASURED on T12: one stray `wood_beam_45`
-        # anywhere inside a 15.34 m cylinder blocked it whole and left 32
-        # trees standing in the carriageway.  The hazard is the blocker's own
-        # neighbourhood, not the whole disc, so the disc is pulled in to one
-        # metre short of the nearest blocker and only skipped if that leaves
-        # nothing worth removing.  One metre short because `TERRAIN_SPREAD_M`
-        # is the reach of an edit at all, so it is the honest slack.
-        blocker_d = [math.hypot(o["x"] - cx, o["z"] - cz) for o in cen["objects"]
-                     if math.hypot(o["x"] - cx, o["z"] - cz) <= r0
-                     and blocks(o["prefab"])]
-        r = r0
-        shrunk_from = None
-        if blocker_d:
-            r = min(r0, min(blocker_d) - TERRAIN_SPREAD_M)
-            shrunk_from = round(r0, 2)
-        inside, blockers, transient = {}, {}, {}
-        if r >= 2.0:
-            for o in cen["objects"]:
-                if math.hypot(o["x"] - cx, o["z"] - cz) > r:
-                    continue
-                if o["clearable"] and o["in_clear_width"]:
-                    inside[o["prefab"]] = inside.get(o["prefab"], 0) + 1
-                elif blocks(o["prefab"]):
-                    blockers[o["prefab"]] = blockers.get(o["prefab"], 0) + 1
-                elif o["prefab"] in NOT_PROPERTY:
-                    transient[o["prefab"]] = transient.get(o["prefab"], 0) + 1
-        if not inside:
-            if blocker_d:
-                by_tile.append(
-                    {"centre": [round(cx, 2), round(cz, 2)],
-                     "radius_m": round(r0, 2), "ids": [], "counts": {},
-                     "blockers": {}, "transient_present": {},
-                     "verdict": "skip",
-                     "why": ("a blocker at "
-                             f"{min(blocker_d):.1f} m leaves no usable radius")})
-            continue
-        rec = {"centre": [round(cx, 2), round(cz, 2)], "radius_m": round(r, 2),
-               "ids": sorted(inside), "counts": inside,
-               "blockers": blockers, "transient_present": transient,
-               "shrunk_from_m": shrunk_from,
-               "nearest_blocker_m": (round(min(blocker_d), 2)
-                                     if blocker_d else None),
-               "verdict": "skip" if blockers else "clear"}
-        by_tile.append(rec)
-        if not blockers:
-            for o in cen["objects"]:
-                if (o["clearable"] and o["in_clear_width"]
-                        and math.hypot(o["x"] - cx, o["z"] - cz) <= r):
-                    targeted.add(o["id"])
     want = [o for o in cen["objects"] if o["clearable"] and o["in_clear_width"]]
+    deferred: list[tuple] = []
+    for cx, cz, r0 in [tuple(t) for t in cen["tiles"]]:
+        # Blockers out to TWICE the parent radius, because a sub-disc centred
+        # near the parent's rim can otherwise reach one the parent does not
+        # contain -- and a standoff computed against an incomplete blocker set
+        # is not a standoff.
+        blockers = [o for o in cen["objects"]
+                    if blocks(o["prefab"])
+                    and math.hypot(o["x"] - cx, o["z"] - cz) <= 2.0 * r0]
+        near = [b for b in blockers
+                if math.hypot(b["x"] - cx, b["z"] - cz) <= r0]
+        inside = [o for o in want
+                  if math.hypot(o["x"] - cx, o["z"] - cz) <= r0]
+        transient: dict[str, int] = {}
+        for o in cen["objects"]:
+            if (o["prefab"] in NOT_PROPERTY
+                    and math.hypot(o["x"] - cx, o["z"] - cz) <= r0):
+                transient[o["prefab"]] = transient.get(o["prefab"], 0) + 1
+        if near:
+            deferred.append((cx, cz, r0, inside, blockers, near, transient))
+            continue
+        if not inside:
+            continue
+        counts: dict[str, int] = {}
+        for o in inside:
+            counts[o["prefab"]] = counts.get(o["prefab"], 0) + 1
+        by_tile.append({"centre": [round(cx, 2), round(cz, 2)],
+                        "radius_m": round(r0, 2),
+                        "ids": sorted(counts), "counts": counts,
+                        "blockers": {}, "transient_present": transient,
+                        "shrunk_from_m": None, "nearest_blocker_m": None,
+                        "verdict": "clear"})
+        targeted.update(o["id"] for o in inside)
+    unreachable: list[dict] = []
+    for cx, cz, r0, inside, blockers, near, transient in deferred:
+        blk: dict[str, int] = {}
+        for b in near:
+            blk[b["prefab"]] = blk.get(b["prefab"], 0) + 1
+        nearest = min(math.hypot(b["x"] - cx, b["z"] - cz) for b in near)
+        # Objects an unblocked tile already covers are not re-targeted: an
+        # overlapping sub-disc would be a second record and a second live
+        # census for an object that is already gone.
+        tgt = [o for o in inside if o["id"] not in targeted]
+        if not tgt:
+            by_tile.append({"centre": [round(cx, 2), round(cz, 2)],
+                            "radius_m": round(r0, 2), "ids": [], "counts": {},
+                            "blockers": blk, "transient_present": transient,
+                            "nearest_blocker_m": round(nearest, 2),
+                            "verdict": "skip",
+                            "why": ("nothing inside the derived width here is "
+                                    "left to remove; the nearest blocker is "
+                                    f"{nearest:.2f} m from this centre")})
+            continue
+        subs, un = split_around_blockers(cx, cz, r0, tgt, blockers)
+        unreachable += un
+        for i, s in enumerate(subs):
+            s.update({
+                "blockers": {}, "transient_present": transient,
+                "verdict": "clear",
+                "split_of": {"centre": [round(cx, 2), round(cz, 2)],
+                             "radius_m": round(r0, 2),
+                             "nearest_blocker_m": round(nearest, 2),
+                             "blockers_in_parent": blk,
+                             "sub_index": i + 1, "sub_count": len(subs),
+                             "standoff_m": BLOCKER_STANDOFF_M,
+                             "why": SPLIT_WHY}})
+            by_tile.append(s)
+            targeted.update(s["covered_ids"])
+        if un:
+            by_tile.append({"centre": [round(cx, 2), round(cz, 2)],
+                            "radius_m": round(r0, 2), "ids": [], "counts": {},
+                            "blockers": blk, "transient_present": transient,
+                            "nearest_blocker_m": round(nearest, 2),
+                            "verdict": "skip",
+                            "why": (f"{len(un)} object(s) inside the derived "
+                                    "width here cannot be reached by any "
+                                    "blocker-clear sub-disc; see "
+                                    "`unreachable` for the blocker that binds "
+                                    "each one")})
+    left = [o for o in want if o["id"] not in targeted]
+    un_by_id = {u["id"]: u for u in unreachable}
     return {
         "segment": seg["id"],
         "cylinders": by_tile,
@@ -1336,15 +1503,31 @@ def plan_removals(seg: dict, cen: dict) -> dict:
         "cylinders_skipped": [c for c in by_tile if c["verdict"] == "skip"],
         "in_clear_width_clearable": len(want),
         "targeted": len(targeted),
-        "left_standing": len(want) - len(targeted),
-        "left_standing_detail": sorted(
-            {o["prefab"] for o in want if o["id"] not in targeted}),
-        "policy": ("CLIP, never blanket: a cylinder holding any prefab not on "
-                   "CLEARABLE is skipped whole and its contents recorded. A "
-                   "road crosses other people's property, so the road yields. "
-                   "That is the opposite of a settlement pad, which REFUSES "
-                   "rather than clips because a building cannot stand in half "
-                   "a clearing."),
+        "left_standing": len(left),
+        "left_standing_detail": sorted({o["prefab"] for o in left}),
+        "left_standing_objects": [
+            un_by_id.get(o["id"], {
+                "prefab": o["prefab"], "id": o["id"],
+                "xz": [round(o["x"], 2), round(o["z"], 2)],
+                "y": round(o["y"], 2), "lat_m": o.get("lat_m"),
+                "clear_half_m": o.get("clear_half_m"),
+                "why": ("NO REASON RECORDED: this object is inside the "
+                        "derived clearing width and no derived disc contains "
+                        "it, which is a tiling defect rather than a refusal")})
+            for o in left],
+        "unreachable": unreachable,
+        "blocker_standoff_m": BLOCKER_STANDOFF_M,
+        "policy": ("CLIP, never blanket, and SPLIT, never shrink: a cylinder "
+                   "may not hold any prefab off CLEARABLE, and a tile that "
+                   "does is covered by sub-discs that each stand wholly "
+                   "outside every blocker's standoff. A road crosses other "
+                   "people's property, so the road yields -- but it yields "
+                   "the blocker's neighbourhood, not the whole disc, and "
+                   "every object it still cannot reach is named with the "
+                   "blocker that binds it. That is the opposite of a "
+                   "settlement pad, which REFUSES rather than clips because "
+                   "a building cannot stand in half a clearing."),
+        "split_why": SPLIT_WHY,
     }
 
 
@@ -1708,9 +1891,18 @@ def emit(seg: dict, cen: dict, plan: dict, gate: dict, *, dry: bool,
                           "by ZDO id. RECORDED SO THE DELETION IS REVERSIBLE: "
                           "prefab + world position + ZDO id per object. The "
                           "live count in the same call is authoritative for "
-                          "HOW MANY; this list is authoritative for WHERE."),
+                          "HOW MANY; this list is authoritative for WHERE. "
+                          "THE DURABLE KEY IS PREFAB + POSITION, NOT THE ZDO "
+                          "ID -- MEASURED tonight by re-censusing T12 across "
+                          "a container restart: all 414 objects came back at "
+                          "byte-identical x, z and y with DIFFERENT ZDO ids "
+                          "(23163:1 -> 22958:1, 76580:1 -> 76288:1), so the "
+                          "ids are reassigned on world load and an id alone "
+                          "cannot identify an object to put back."),
                       "deleted_listed": len(doomed),
                       "deleted_live_count": n_live,
+                      "split_of": cyl.get("split_of"),
+                      "nearest_blocker_m": cyl.get("nearest_blocker_m"),
                       "cylinder": {"total": live["total"],
                                    "clearable": clearable,
                                    "not_clearable": blockers,
@@ -1747,7 +1939,10 @@ def emit(seg: dict, cen: dict, plan: dict, gate: dict, *, dry: bool,
                           "safety a property of the COMMAND.")})
             removed_total += sum(clearable.values())
             done.append({"centre": [cx, cz], "radius_m": r, "ids": ids,
-                         "removed": sum(clearable.values()), "seq": res["seq"]})
+                         "removed": sum(clearable.values()),
+                         "seq": res["seq"],
+                         "split_of": cyl.get("split_of"),
+                         "nearest_blocker_m": cyl.get("nearest_blocker_m")})
             print(f"  cleared cylinder {i + 1}/{len(plan['cylinders_clear'])} "
                   f"({cx:.0f},{cz:.0f}) {sum(clearable.values())} objects "
                   f"-> seq {res['seq']}", flush=True)
@@ -1771,6 +1966,75 @@ def emit(seg: dict, cen: dict, plan: dict, gate: dict, *, dry: bool,
                        "pos": probe["centre"], "max": probe["radius_m"],
                        "total": 0, "tolerance": 0}})
             print(f"  saved; last cleared cylinder still reads 0", flush=True)
+        # WHAT WAS NOT CLEARED, AND WHY, PER CYLINDER AND PER OBJECT --
+        # APPENDED, not merely returned.  MEASURED at a cost paid twice:
+        # `plan['cylinders_skipped']`, `gate['shrink']['skipped_detail']`,
+        # `plan['left_standing_objects']` and this call's own `skipped` were
+        # all BUILT and all thrown away when the process exited, so of 1,734
+        # records ZERO carried per-cylinder skip detail while 262 of the 268
+        # objects still standing network-wide had no recorded reason anywhere
+        # in the chain -- and "every remaining object is recorded with its
+        # skip reason" was relayed to the operator as fact.  A reason that
+        # lives only in a run's stdout is not a record.
+        #
+        # A SHRINK IS SILENT, so a SPLIT states its parent: each emitted
+        # sub-disc is listed with the derived disc it is a strict subset of
+        # and the blocker that bound it, because the reader's question is
+        # never "what radius was sent" but "was the full request honoured".
+        # THE DURABLE KEY IS PREFAB + WORLD POSITION: ZDO ids are reassigned
+        # on world load (MEASURED: 414 T12 objects, byte-identical x/y/z,
+        # every id different), so an object named by id alone cannot be found
+        # again to answer "why is this one still here".
+        left = plan.get("left_standing_objects") or []
+        splits = [c for c in done if c.get("split_of")]
+        b.emit("observe", params={
+            "what": f"road_surface_clearing_left_standing::{seg['id']}",
+            "method": (
+                "MEASURED -- the per-cylinder disposition of THIS clearing "
+                "pass, appended at the end of the same session that sent the "
+                "removals: the plan's blocked-tile skips, the location "
+                "gate's per-cylinder skips, the skips this call's own "
+                "immediately-prior live census forced, the blocker-clear "
+                "sub-discs actually sent with the derived parent disc each "
+                "one is a subset of, and every object left inside the "
+                "derived clearing width named by prefab + world position "
+                "with the blocker that binds it."),
+            "tool": "tools/jumpstart/roads/clear.py::emit",
+            "value": {
+                "segment": seg["id"],
+                "in_clear_width_clearable": plan["in_clear_width_clearable"],
+                "targeted": plan["targeted"],
+                "objects_removed": removed_total,
+                "cylinders_emitted": len(done),
+                "cylinders_emitted_as_blocker_clear_sub_discs": len(splits),
+                "cylinders_skipped_in_plan": len(plan["cylinders_skipped"]),
+                "cylinders_skipped_by_the_location_gate": len(
+                    (gate.get("shrink") or {}).get("skipped_detail") or []),
+                "cylinders_skipped_at_emit": len(skipped),
+                "objects_left_standing": len(left),
+                "objects_left_standing_with_a_recorded_reason": sum(
+                    1 for o in left
+                    if o.get("why") and "NO REASON RECORDED" not in o["why"]),
+            }},
+            meta={
+                "segment": seg["id"],
+                "durable_key": ("prefab + world position; the ZDO id is "
+                                "recorded alongside and is NOT durable "
+                                "across a world load"),
+                "objects_left_standing": left,
+                "unreachable": plan.get("unreachable") or [],
+                "cylinders_skipped_in_plan": plan["cylinders_skipped"],
+                "cylinders_skipped_by_the_location_gate": (
+                    (gate.get("shrink") or {}).get("skipped_detail") or []),
+                "cylinders_skipped_at_emit": skipped,
+                "cylinders_split_around_blockers": splits,
+                "split_why": plan.get("split_why"),
+                "blocker_standoff_m": plan.get("blocker_standoff_m"),
+                "policy": plan.get("policy")})
+        print(f"  recorded disposition: {len(left)} left standing, "
+              f"{len(plan['cylinders_skipped'])} plan skips, "
+              f"{len(skipped)} emit skips, {len(splits)} sub-discs",
+              flush=True)
         report = b.close()
     return {"segment": seg["id"], "cylinders_emitted": done,
             "cylinders_skipped_at_emit": skipped,
