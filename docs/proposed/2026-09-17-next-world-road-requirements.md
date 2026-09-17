@@ -20,7 +20,55 @@ inconvenient.
    the terminus of the trunk road and should read as the end of the road.
 4. **Long tall bridges and/or ferries where the road needs them.** The operator observed
    specific places on the current build that wanted one and had neither.
+5. **A TALL lighthouse at the northernmost point, beside the north dock.** Height is part
+   of the requirement, not decoration: it is the landmark that marks the end of the road.
+   Three lighthouses already stand on the current world (`lh-south`, `lh-east`,
+   `lh-west`), so a proven body exists - what is new is the height and the position.
+6. **Lit lampposts along the roads, sited by TERRAIN rather than by interval.** Spacing is
+   30-60 m, but the placement rule is the visibility one: put each lamp where the terrain
+   gives the longest sightline in BOTH directions along the road. **Dense in forests and
+   other low-visibility biomes; sparing in Meadows and other open ones.** A lamp every
+   45 m on a straight open meadow is waste; a lamp on the crest before a Black Forest
+   bend is the whole point.
+7. **Two CLASSES of waterfront installation, and the geography decides which.**
+   - **Small boathouse** - a slip for a small boat and a short hop, sited wherever
+     crossing water saves a player a long walk around.
+   - **Large harbour port** - only where the geography justifies it: a large harbour,
+     inlet or open sea. It gets harbour WALLS, GATES, multiple large boathouses berthing
+     several large ships, a LIGHTHOUSE, DEFENCES, and it sits NEXT TO A TOWN.
+   **Berth real `Marlthon-OdinShip` vessels, various, matched to berth size.** A large
+   boathouse berthing a rowboat is the same class of defect as a slip that cannot float a
+   boat: both are scenery pretending to be infrastructure.
+   The siting question is measurable in both cases. Small: does crossing here get a player
+   somewhere they would otherwise walk a long way around? Large: is there a sheltered body
+   of water big enough, AND a town adjacent?
 
+## The fortification kit already exists
+
+`JamesJonesTV-RavenwoodVikingHouses` 7.7.8 is installed on all 7 profiles and its bundle
+carries 94 prefabs, enumerated by reading the bundle's own container index rather than by
+guessing name shapes. It includes a genuine wall system, which is what requirement 7's
+harbour walls, gates and defences should be built from:
+
+```
+mm_large_wall            + _corner _cross _end _gateway _glass _tower
+mm_large_wall_ice        + _corner _gateway _glass _stairs _stairs_reverse _tower
+mm_large_wall_lava       + _corner ...
+mm_castle_wall  mm_castle_gateway  mm_castle_tower  mm_large_gate
+mm_castle_floor  _floor_2x2  _floor_8x8
+rp_wood_floor_1x1 / 2x2 / 4x4 / 8x8   rp_wood_angle_floor_1x1 / 2x2
+mm_hedge_straight  _angle_15 _angle_45 _angle_90 _arch _quarter _half_*
+mm_maple_tree_01/02   mm_sakura_tree_01-04   mm_displaycase
+```
+
+Two cautions measured at the same time:
+- **14 of the 94 live under `assets/_customprefabs/_todo/`** (the hedges and trees). They
+  ship and probably register, but the author has them marked unfinished. Do not make
+  anything load-bearing out of a `_todo` prefab.
+- **Its pieces are currently INVISIBLE in the hammer**, along with `OdinsHorsePen` and
+  `OdinsUndercroft`, while `OdinPlus-Basements` works and `RavenwoodRestorations` is
+  partly visible. That asymmetry is under diagnosis. **Design for this kit; do not build
+  a port that depends on it until the registration failure is resolved.**
 ## Measured constraints these requirements must live inside
 
 Every figure below was measured on this fleet, with its instrument.

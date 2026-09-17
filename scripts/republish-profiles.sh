@@ -108,6 +108,22 @@ server_plugin_change() {
   [[ $want != "$have" ]]
 }
 
+# What server_plugin_change found, by name. A guard that stops a publish has to be able to
+# say what it saw: "these worlds' server plugins would change" named the world and nothing
+# else, so the only way to learn whether the pending deploy was one stale folder or a whole
+# mod set was to go and diff it by hand. Prints one line per differing entry, "+" for staged
+# but not deployed and "-" for deployed but not staged.
+server_plugin_diff() {
+  local world=$1 profile=$2
+  local staged="$source_root/profiles/$profile/manager-cache/server/BepInEx/plugins"
+  local manual="$source_root/profiles/$profile/manual-mods"
+  local deployed="$source_root/$world/config_merged/bepinex/plugins"
+  comm -3 \
+    <({ plugin_entries "$staged"; plugin_entries "$manual"; } | sort -zu | tr '\0' '\n') \
+    <(plugin_entries "$deployed" | sort -zu | tr '\0' '\n') |
+    sed -e 's/^\t/-/' -e 's/^\([^-\t]\)/+\1/' -e '/^$/d'
+}
+
 # The profile a world's SERVER runs, which is not the profile a client edition is built
 # from: a world publishes editions sourced from several primaries, and only the linked one
 # says anything about the plugins on that server. Comparing a target's source profile here
@@ -129,9 +145,37 @@ while read -r world; do
     running+=("$world")
   fi
 done <<<"$(cut -d' ' -f1 <<<"$plan" | sort -u)"
+# Appended to every release note of this run when the hatch below is used, so the bypass is
+# part of the RELEASE RECORD and not just terminal output nobody keeps. A hatch whose use
+# leaves no trace becomes the default path: this is what makes a release identifiable later
+# as having been published over a pending deploy, and names exactly which plugins differed.
+hatch_note=
 if ((${#running[@]})); then
-  printf 'refusing to start: these worlds are running and their server plugins would change, stop them first: %s\n' "$(printf '%s ' "${running[@]}")" >&2
-  exit 1
+  for world in "${running[@]}"; do
+    linked=$(linked_profile "$world")
+    printf 'pending server deploy for %s (%s):\n' "$world" "$linked" >&2
+    server_plugin_diff "$world" "$linked" | sed 's/^/  /' >&2
+    hatch_note+=" $world($linked)$(server_plugin_diff "$world" "$linked" | tr '\n' ' ' | sed 's/ *$//' | sed 's/^/ /')"
+  done
+  # Publishing does not touch a server - see the note above - so this refusal is a proxy for
+  # "a deploy is pending, and a client release published now may not match the plugins the
+  # server is actually running". When the pending difference is known to be unrelated to the
+  # editions being published, that proxy is wrong and there is no other way past it: stopping
+  # a live world to ship a client-side .cfg is the exact cost the guard was rewritten to avoid.
+  # The hatch is opt-in, it never narrows the request silently, the difference it stepped over
+  # is printed every time it is used, and it is recorded in each release note.
+  if [[ ${PORTAL_PUBLISH_WITH_PENDING_DEPLOY:-0} == 1 ]]; then
+    hatch_note="[PENDING-DEPLOY HATCH] PORTAL_PUBLISH_WITH_PENDING_DEPLOY=1; published over pending server deploy(s), each world still needs its own deploy:$hatch_note"
+    # Single line: the publish wrapper rejects a newline in an operator's note, so the note
+    # this script writes keeps the same shape.
+    notes="$notes | $hatch_note"
+    printf '%s\n' "$hatch_note" >&2
+  else
+    hatch_note=
+    printf 'refusing to start: these worlds are running and their server plugins would change, stop them first: %s\n' "$(printf '%s ' "${running[@]}")" >&2
+    printf 'if the pending difference above is unrelated to the editions you are publishing, and you have checked that the package set is unchanged, set PORTAL_PUBLISH_WITH_PENDING_DEPLOY=1\n' >&2
+    exit 1
+  fi
 fi
 
 next_version() {
