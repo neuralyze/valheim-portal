@@ -10,19 +10,29 @@
 // right and a taller grid runs down, into or past that clip. Adding columns
 // alone does not add reachable cells; it adds cells nobody can see.
 //
-// What DOES add reachable cells is shrinking the cell. The vanilla grid is the
-// measurement: 15 columns by 6 rows of m_pieceIconSpacing fit the panel, by
-// construction, because that is what the game ships. So at icon scale
-// s = 15/columns the same footprint holds `columns` by `floor(6*columns/15)`
-// cells, and the panel rect never has to be read at all - which matters,
-// because it cannot be read reliably: MEASURED in a loaded process,
-// Hud.m_pieceListRoot.rect is 0x0 (a point-anchored positioning origin) while
-// Hud.m_pieceIconSpacing is 70 on the shipped prefab, not the 64 in Hud::.ctor.
-// A grid derived from that 0x0 rect would have been derived from nothing.
+// What DOES add reachable cells is shrinking the cell, and the clip gives the
+// exact budget. MEASURED in a loaded process with the full plugin set:
+//   Hud.m_pieceIconSpacing            70      (the shipped prefab value, NOT
+//                                              the 64 in Hud::.ctor)
+//   Hud.m_pieceListMask.rect          1050 x 416
+//   Hud.m_pieceSelectionWindow.rect   1085 x 490
+//   Hud.m_pieceListRoot.rect          0 x 0, anchorMin = anchorMax = (0,1)
+// 1050 / 70 is exactly 15, and 416 / 70 is 5.94 - the clip IS the vanilla
+// 15x6 block, to the unit. And the clip is the icons' own container, not a
+// sibling: the ancestor chains measure as
+//   listRoot: Root < PieceList < SelectionWindow < bar < BuildHud < ...
+//   mask:            PieceList < SelectionWindow < bar < BuildHud < ...
+// so the mask object IS `PieceList`, two levels above every icon. Scaling
+// m_pieceListRoot therefore shrinks cell pitch and icon size together, inside
+// that clip, and the on-screen footprint does not move at all. The datum is
+// the clip rect, taken from the thing that does the clipping - not the 0x0
+// rect of the positioning origin, which would have been a measurement of
+// nothing.
 //
-// The grid is then the SMALLEST such grid that holds the fullest category, so
-// icons stay as large as the content allows, floored at MinIconPixels. What it
-// cannot hold is logged with the number of pieces it cannot reach.
+// The grid is then the SMALLEST grid in that clip which holds the fullest
+// category, so icons stay as large as the content allows, floored at
+// MinIconPixels. What it cannot hold is logged with the number of pieces it
+// cannot reach.
 //
 // The eight sites, all MEASURED in assembly_valheim.dll of the live install,
 // with the literal count that must be found at each:

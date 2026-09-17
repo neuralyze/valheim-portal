@@ -58,6 +58,7 @@ plane, not a hull -- and using it would oversize every slip by 60 %.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
@@ -430,7 +431,8 @@ CENSUS_Y_LEVELS = (0.0, -16.0, 16.0, -32.0, 32.0)
 
 
 def audit(srv, x0: float, x1: float, z0: float, z1: float, *,
-          pad_m: float = 4.0, y_centre: float = 30.0) -> dict:
+          pad_m: float = 4.0, y_centre: float = 30.0,
+          y_levels: tuple[float, ...] = CENSUS_Y_LEVELS) -> dict:
     """EVERY ZDO in a box, live, by prefab and WORLD POSITION.
 
     Disjoint 16 m cells on the global 16 m lattice, one UNSCOPED
@@ -439,6 +441,12 @@ def audit(srv, x0: float, x1: float, z0: float, z1: float, *,
     deck cannot contain a mast or a pile head.  No prefab list at all, so the
     census cannot be blind to a prefab nobody wrote down.  Deduplicated by
     prefab + world position, NOT by ZDO id: ids are reassigned on world load.
+
+    `y_levels` are the OFFSETS from `y_centre`, and the default pair of
+    (0, -16, 16, -32, 32) leaves an 8 m gap between +16 and +32 -- harmless
+    for a deck, and NOT harmless for a 48 m tower, so a caller censusing one
+    passes a contiguous stack instead.  MEASURED: at half 8 each box spans
+    y +/- 8 about its own centre, so offsets 16 m apart tile exactly.
     """
     import clear as CL  # noqa: PLC0415  roads/, and the guard lives in it
     half = CENSUS_CELL_M / 2.0
