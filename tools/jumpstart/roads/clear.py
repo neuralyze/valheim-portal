@@ -1806,6 +1806,43 @@ def shrink_to_gate(plan: dict, L, destructive: bool = True) -> dict:
 MAX_REMOVALS_PER_CYLINDER = 60
 
 
+# HOW MANY SMALLER CYLINDERS A REFUSED ONE MAY BE RE-PROPOSED AS, over the
+# whole segment, and the bound is the ONE FRAGILE SUBSYSTEM rather than taste:
+# every candidate costs one `objects_count id=*`, the call that filled
+# syslogd's receive queue at about 160 back to back and cost a 241 s container
+# restart.  S8's nine refused cylinders hold 37 objects, so 120 leaves room
+# for the worst segment measured plus a second rung, and a run that needs more
+# stops and says so instead of hammering the sink.
+MAX_RETRY_CANDIDATES = 120
+# HOW FAR THE LADDER MAY DESCEND.  Each rung halves the reach, so from a 10 m
+# derived disc rung 3 is already 1.25 m -- smaller than the carriageway is
+# wide, and at that size a candidate that is STILL blocked is telling us the
+# blocker is effectively on top of the tree.  Below that the calls buy
+# nothing.
+RETRY_MAX_DEPTH = 3
+RETRY_WHY = (
+    "ASK THE GUARD, DO NOT MODEL IT.  This cylinder's parent was refused by "
+    "the live per-cylinder census for holding a prefab not on CLEARABLE, and "
+    "the blocker's POSITION is not obtainable: MEASURED, `objects_count id=*` "
+    "reports those prefabs reproducibly and position-consistently (2 "
+    "Pickable_Mushroom_yellow at r 9.68 m and 0 at r 7.35 m on S8, so they "
+    "lie in that annulus) while `findObjects -prefab P -near` returns ZERO "
+    "for the same name at every y band from -128 to +140 m, which is also why "
+    "the corridor census never saw them to plan around.  With no position "
+    "there is no blocker-clear sub-disc to derive, so instead each object the "
+    "parent would have removed is re-proposed as its own smaller cylinder -- "
+    "a strict subset of the parent, centred on the object so it always "
+    "reaches it -- and the SAME live census that refused the parent decides "
+    "each one.  Nothing is narrowed silently: a candidate is either censused "
+    "clean and sent, or censused blocked and recorded with what blocked it.  "
+    "THE LOCATION GATE IS INHERITED RATHER THAN RE-ASKED, and it is sound "
+    "because the candidate is a SUBSET: `footprint_clear` and the "
+    "non-destructive distance rule both hold for every point of the parent "
+    "disc, so they hold for every point of a disc contained in it, and the "
+    "wire names FEWER prefabs than the parent's -- all of them on CLEARABLE, "
+    "so the budget cannot change from non-destructive to destructive.")
+
+
 def footprint_clear(L, cx: float, cz: float, r: float) -> dict:
     """Is the WHOLE cylinder outside every location's own footprint?
 
@@ -1945,7 +1982,30 @@ def emit(seg: dict, cen: dict, plan: dict, gate: dict, *, dry: bool,
                    "cylinders": len(plan["cylinders"]),
                    "cylinders_skipped": len(plan["cylinders_skipped"]),
                    "location_gate": gate["verdict"]})
-        for i, cyl in enumerate(plan["cylinders_clear"]):
+        # THE RETRY LADDER FOR A CYLINDER THE LIVE CENSUS REFUSED, and it asks
+        # THE GUARD rather than modelling it.
+        #
+        # MEASURED on S8: 9 of 14 cylinders were refused at removal time and
+        # they hold 37 objects, 6 of them blocked by nothing but
+        # `Pickable_Mushroom_yellow`.  `split_around_blockers` cannot help,
+        # because a split needs the blocker's POSITION and these blockers have
+        # none to be had: `objects_count id=*` reports them reproducibly and
+        # position-consistently (2 at r 9.68 m, 0 at r 7.35 m, so they lie in
+        # that annulus) while `findObjects` returns ZERO for the same prefab
+        # at every y band from -128 to +140 m, and the corridor census
+        # therefore never saw them to plan around.
+        #
+        # So the candidate sub-discs are proposed from the TARGETS -- one per
+        # object still to remove, at a ladder of radii -- and the verdict is
+        # the SAME live per-cylinder census that refused the parent.  Nothing
+        # is narrowed silently and no new instrument is introduced: a
+        # candidate is either censused clean and sent, or censused blocked and
+        # recorded with what blocked it.  A shrink that the guard accepts one
+        # disc at a time is a measurement; a shrink computed from a radius is
+        # the defect that buried 13 trees on the respawn road.
+        work = [(i, cyl) for i, cyl in enumerate(plan["cylinders_clear"])]
+        retries = 0
+        for i, cyl in work:
             cx, cz = cyl["centre"]
             r = cyl["radius_m"]
             # BETWEEN BATCHES, NOT PER CALL: prove the sink still carries
@@ -1976,16 +2036,87 @@ def emit(seg: dict, cen: dict, plan: dict, gate: dict, *, dry: bool,
                         if blocks(k)}
             transient = {k: v for k, v in live["per_prefab"].items()
                          if k in NOT_PROPERTY}
+            # WHICH OBJECTS THIS SKIP LEAVES STANDING, BY PREFAB AND
+            # POSITION.  A cylinder-level reason answers "why did this
+            # cylinder not fire"; the operator's question is "why is THIS
+            # tree still here", and MEASURED on T4 the two differ: 8 of the
+            # 20 objects left inside the derived width are inside three
+            # cylinders refused at removal time, and without this list the
+            # chain names the cylinder and not one of them.
             if blockers or not clearable:
+                stood = [{"prefab": o["prefab"], "id": o["id"],
+                          "xz": [round(o["x"], 2), round(o["z"], 2)],
+                          "y": round(o["y"], 2), "lat_m": o.get("lat_m"),
+                          "clear_half_m": o.get("clear_half_m")}
+                         for o in cen["objects"]
+                         if o["clearable"] and o["in_clear_width"]
+                         and math.hypot(o["x"] - cx, o["z"] - cz) <= r]
+                retry_of = cyl.get("retry_of")
+                proposed = []
+                # THE LADDER, and it is the lattice rather than taste: halve
+                # the reach at each rung from the parent's own radius down to
+                # the smallest cylinder that can still hold a trunk, and stop
+                # at the rung the guard accepts.  A candidate is centred on
+                # the object it exists to remove, so it always reaches it, and
+                # it is a strict subset of the parent disc so it can never
+                # clear ground the width derivation did not measure.
+                depth = (retry_of or {}).get("depth", 0)
+                if (blockers and stood and depth < RETRY_MAX_DEPTH
+                        and retries < MAX_RETRY_CANDIDATES):
+                    rung = r / 2.0
+                    if rung >= SUBDISC_MIN_RADIUS_M:
+                        for o in stood:
+                            room = r - math.hypot(o["xz"][0] - cx,
+                                                  o["xz"][1] - cz)
+                            rr = math.floor(min(rung, room) * 100.0) / 100.0
+                            if rr < SUBDISC_MIN_RADIUS_M:
+                                continue
+                            if retries >= MAX_RETRY_CANDIDATES:
+                                break
+                            retries += 1
+                            proposed.append({
+                                "centre": [o["xz"][0], o["xz"][1]],
+                                "radius_m": rr, "ids": [o["prefab"]],
+                                "counts": {o["prefab"]: 1},
+                                "blockers": {}, "transient_present": {},
+                                "verdict": "clear",
+                                "retry_of": {
+                                    "centre": [cx, cz], "radius_m": r,
+                                    "blockers": blockers,
+                                    "depth": depth + 1,
+                                    "why": RETRY_WHY}})
+                        work += [(len(work) + k, c)
+                                 for k, c in enumerate(proposed)]
                 skipped.append({"centre": [cx, cz], "radius_m": r,
                                 "blockers": blockers,
                                 "clearable_present": clearable,
+                                "objects_left_standing_here": stood,
+                                "retry_candidates_queued": len(proposed),
+                                "retry_of": retry_of,
                                 "why": ("a prefab not on CLEARABLE was in the "
-                                        "cylinder at removal time"
+                                        "cylinder at removal time, measured by "
+                                        "this call's own live census, so the "
+                                        "cylinder is refused WHOLE rather "
+                                        "than narrowed. `split_around_"
+                                        "blockers` cannot help here: a split "
+                                        "needs the blocker's POSITION and "
+                                        "these have none to be had -- "
+                                        "MEASURED, `objects_count` reports "
+                                        "them reproducibly while "
+                                        "`findObjects` returns ZERO for the "
+                                        "same prefab at every y band from "
+                                        "-128 to +140 m. So each object this "
+                                        "cylinder would have removed is "
+                                        "re-proposed as its own smaller "
+                                        "cylinder and the SAME live census "
+                                        "decides; see "
+                                        "`retry_candidates_queued`."
                                         if blockers else
                                         "nothing left to remove")})
                 print(f"  SKIP cylinder {i + 1} ({cx:.0f},{cz:.0f}) "
-                      f"blockers={blockers}", flush=True)
+                      f"blockers={blockers}"
+                      + (f"; queued {len(proposed)} smaller candidate(s)"
+                         if proposed else ""), flush=True)
                 continue
             ids = sorted(clearable)
             # HARDENING 3: a numeric bound between a coding error and a grove.
@@ -2051,6 +2182,7 @@ def emit(seg: dict, cen: dict, plan: dict, gate: dict, *, dry: bool,
                       "deleted_listed": len(doomed),
                       "deleted_live_count": n_live,
                       "split_of": cyl.get("split_of"),
+                      "retry_of": cyl.get("retry_of"),
                       "nearest_blocker_m": cyl.get("nearest_blocker_m"),
                       "cylinder": {"total": live["total"],
                                    "clearable": clearable,
@@ -2091,10 +2223,15 @@ def emit(seg: dict, cen: dict, plan: dict, gate: dict, *, dry: bool,
                          "removed": sum(clearable.values()),
                          "seq": res["seq"],
                          "split_of": cyl.get("split_of"),
+                         "retry_of": cyl.get("retry_of"),
                          "nearest_blocker_m": cyl.get("nearest_blocker_m")})
-            print(f"  cleared cylinder {i + 1}/{len(plan['cylinders_clear'])} "
-                  f"({cx:.0f},{cz:.0f}) {sum(clearable.values())} objects "
-                  f"-> seq {res['seq']}", flush=True)
+            print(f"  cleared cylinder {i + 1}/{len(work)} "
+                  f"({cx:.0f},{cz:.0f}) {sum(clearable.values())} objects"
+                  + (f" [retry of ({cyl['retry_of']['centre'][0]:.0f},"
+                     f"{cyl['retry_of']['centre'][1]:.0f}) r"
+                     f"{cyl['retry_of']['radius_m']}]"
+                     if cyl.get("retry_of") else "")
+                  + f" -> seq {res['seq']}", flush=True)
         # SAVE, AND IT IS NOT OPTIONAL AFTER A DESTRUCTIVE PASS.  MEASURED
         # tonight at a cost of 273 removals: the console sink died during the
         # re-census that followed this op, the main thread wedged, `save`

@@ -624,6 +624,46 @@ class ServerCacheConsistencyTest(unittest.TestCase):
         self.assertEqual(self.cached_version("server", "Advize-PlantEasily"), "2.2.0")
         valheim_mods.validate_server_cache(self.root, valheim_mods.load(self.manifest_path))
 
+    def test_deploy_refuses_a_shared_package_that_has_no_server_copy_at_all(self):
+        """A shared package the server cache does not hold is a refusal, and `sync` is the repair.
+
+        MEASURED 2026-09-16 across all seven profiles: AstralBeauty-SpearFishing 2.0.1,
+        ComfyMods-ComfyLadders 1.1.0 and hoskope-RhythmicRepairs 1.0.0 are scope "shared" in
+        every profile manifest and have been since the 2026-07-28 backup; each holds a client
+        cache directory, none holds a server one, and none appears in any of the five worlds'
+        config_merged/bepinex/plugins. Every deploy in those seven weeks printed deployed=true,
+        because validate_server_cache() checked each server directory it FOUND and
+        stale_cache_entries() checked the files inside one it found - neither could see an
+        absence. profiles/admin/server-config and profiles/ulfsland-dn/server-config meanwhile
+        carry org.bepinex.plugins.spearfishing.cfg, which deploy_server_config placed on all
+        five worlds: settings deployed for a plugin that is not there.
+
+        The assertion is on which cache the package has to be in for a deploy to proceed, not
+        on how the check is spelled.
+        """
+        manifest = self.write_manifest(
+            [{"identifier": "Advize-PlantEasily", "version": "2.2.0", "scope": "shared"}],
+            [{"identifier": "MSchmoecker-VNEI", "version": "0.11.0", "scope": "client-only"}],
+        )
+        self.stage_cached("client", "Advize-PlantEasily", "2.2.0")
+        self.stage_cached("client", "MSchmoecker-VNEI", "0.11.0")
+        self.stage_archive("Advize-PlantEasily", "2.2.0", "2.2.0")
+        self.assertIsNone(self.cached_version("server", "Advize-PlantEasily"))
+
+        with self.assertRaisesRegex(RuntimeError, "Advize-PlantEasily"):
+            valheim_mods.validate_server_cache(self.root, manifest)
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            valheim_mods.cmd_sync(self.root, manifest, SimpleNamespace(
+                identifier="Advize-PlantEasily", manifest=self.manifest_path))
+
+        self.assertEqual(self.cached_version("server", "Advize-PlantEasily"), "2.2.0")
+        valheim_mods.validate_server_cache(self.root, manifest)
+        # The control that keeps the refusal honest: a client-only package must never be what
+        # makes a deploy refuse, and must not acquire a server copy on the way past.
+        self.assertIsNone(self.cached_version("server", "MSchmoecker-VNEI"))
+
 
 class EnableKeepsPinnedDependenciesTest(unittest.TestCase):
     """`enable` must resolve against the versions the profile already pins.

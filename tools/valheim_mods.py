@@ -1616,6 +1616,38 @@ def stale_cache_entries(root, manifest):
             stale.append((item['identifier'], name, missing))
     return stale
 
+def missing_server_copies(root, manifest):
+    """Shared packages the profile pins that have NO server cache directory at all.
+
+    validate_server_cache() below checks every server plugin directory it FINDS, and
+    stale_cache_entries() checks the files inside one it finds. Both skip an entry whose
+    directory is absent, so for a shared package the two together answered "is the copy we
+    have the right one?" and never "is there a copy?". An existence check standing in for a
+    completeness check is how three packages stayed off every server for seven weeks while
+    every deploy reported success.
+
+    MEASURED 2026-09-16 over all seven profiles: AstralBeauty-SpearFishing 2.0.1,
+    ComfyMods-ComfyLadders 1.1.0 and hoskope-RhythmicRepairs 1.0.0 are scope "shared" in
+    every profile manifest (unchanged since the 2026-07-28 backup), hold a client cache
+    directory, hold NO server cache directory, and appear in no world's live plugin tree -
+    while profiles/admin/server-config and profiles/ulfsland-dn/server-config carry
+    org.bepinex.plugins.spearfishing.cfg, which deploy_server_config duly placed on all five
+    worlds. A settings file for a plugin that is not there is the only trace the fleet kept.
+
+    Only `scope == 'shared'` is required: that is the operator saying the server runs this
+    package, and it is the same key ensure_dependencies() uses to decide the server install.
+    A client-only entry legitimately has no server copy - Azumatt-PerfectPlacement and
+    JereKuusela-Structure_Tweaks are client-only precisely so the server never loads them.
+
+    Returns [(identifier, install_name)] in manifest order.
+    """
+    return [
+        (item['identifier'], package_install_name(item['identifier']))
+        for item in all_packages(manifest)
+        if item.get('scope') == 'shared'
+        and not cached_plugin(root, 'server', package_install_name(item['identifier'])).is_dir()
+    ]
+
 def validate_server_cache(root, manifest):
     for item in all_packages(manifest):
         plugin = cached_plugin(root, 'server', package_install_name(item['identifier']))
@@ -1642,6 +1674,22 @@ def validate_server_cache(root, manifest):
             f'Cached server package does not match its own archive: {detail}. The files are on '
             f'disk in the wrong place, so deploying would move a plugin without saying so. '
             f'Repair the cache first: {repair}'
+        )
+    # Absence, checked after the two checks above have finished saying nothing about it. This
+    # is the only one of the three that can fail on a package the deploy would otherwise omit
+    # in silence, which is why it raises rather than warns: a world whose profile says it runs
+    # a mod, and whose plugin tree does not carry it, is exactly the state the server config
+    # for that mod has been deployed into since July.
+    missing = missing_server_copies(root, manifest)
+    if missing:
+        detail = ', '.join(identifier for identifier, _ in missing)
+        repair = ' '.join(
+            f'valheim_mods.py --profile {root.name} sync {identifier}' for identifier, _ in missing[:3]
+        )
+        raise RuntimeError(
+            f'Shared package has no server copy in the cache: {detail}. The profile says the '
+            f'server runs it, so deploying would ship a server that is missing it while the '
+            f'clients install it. Install the server copy first: {repair}'
         )
 
 SERVER_CONFIG_DIR = 'server-config'
@@ -1788,6 +1836,8 @@ def cmd_deploy(root,m,args):
             print(f'generated_file={path.as_posix()}')
         for identifier, _, missing in stale_cache_entries(root, m):
             print(f'cache_stale={identifier} missing={",".join(path.as_posix() for path in missing[:4])}')
+        for identifier, _ in missing_server_copies(root, m):
+            print(f'cache_missing_server={identifier}')
         # What --apply would do to each hand-patched assembly, resolved without staging: the
         # layers copy <entry>/<rest>, so a source's copy of a live file is at <source>/<rel>
         # and the last layer that has it is the one that wins.
