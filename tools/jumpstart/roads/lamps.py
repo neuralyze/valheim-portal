@@ -1169,6 +1169,12 @@ def main() -> int:
     ap.add_argument("--eye-sweep", action="store_true",
                     help="re-site at eye 1.5/1.7/1.9 m and print the spread")
     ap.add_argument("--json", default="", help="write the report here")
+    ap.add_argument(
+        "--refuse-file-line", action="append", default=[], metavar="SEG=LINE",
+        help="REFUSE if a segment's latest centreline is still this ledger "
+             "file line. Use it to make a peer's 'that record is dead' "
+             "mechanical instead of remembered: `--refuse-file-line T4=1783` "
+             "aborts rather than siting T4 against the pre-reroute geometry.")
     args = ap.parse_args()
 
     segs = segments_from_ledger()
@@ -1178,6 +1184,30 @@ def main() -> int:
     if missing:
         raise SystemExit(f"no such built segment(s): {missing}; "
                          f"have {sorted(segs)}")
+
+    # THE DEAD-RECORD GUARD.  `HutsInRoad` re-routed T4 and told me file line
+    # 1783 was dead; "I will remember not to use it" is the class of promise
+    # that fails, so the promise is an assertion instead.  It reads the same
+    # LATEST-IN-FILE-ORDER record the siting will use, so it cannot disagree
+    # with the thing it is guarding.
+    for spec in args.refuse_file_line:
+        if "=" not in spec:
+            raise SystemExit(f"--refuse-file-line wants SEG=LINE, got {spec!r}")
+        short, line = spec.split("=", 1)
+        seg = segs.get(short.strip())
+        if seg is None:
+            raise SystemExit(f"--refuse-file-line names {short!r}, which is "
+                             f"not a built segment; have {sorted(segs)}")
+        if seg.file_line == int(line):
+            raise SystemExit(
+                f"REFUSING: {short}'s latest centreline is still ledger file "
+                f"line {seg.file_line} (seq {seg.seq}), which was declared "
+                f"superseded. Siting against a re-routed segment's OLD "
+                f"geometry would put lamps where the road no longer is -- and "
+                f"on T4 specifically, inside buildings the re-route exists to "
+                f"avoid. Wait for the new terrain_write.")
+        print(f"dead-record guard: {short} is at file line {seg.file_line} "
+              f"(seq {seg.seq}), not the refused {line}")
 
     live = appliedmod.Applied(actor=ACTOR)
     payload, keys = everburning_payload()

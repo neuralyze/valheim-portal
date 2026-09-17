@@ -423,10 +423,54 @@ def splice(seg: dict, dev: dict, patch: str) -> dict:
     fld = load_field(patch)
     ia, ib = dev["anchor_station"]
     old = [list(p) for p in seg["nodes"]]
-    new_poly = old[:ia] + [list(p) for p in dev["nodes"]] + old[ib + 1:]
-    pts, s = routemod.resample(new_poly, seg["station_m"])
-    s = np.asarray(s, dtype=np.float64)
+    dev_pts = [list(p) for p in dev["nodes"]]
+    # CONCATENATED, NOT RE-RESAMPLED, and this is a defect fix.  Resampling
+    # the whole spliced polyline moves EVERY retained station by a fraction of
+    # a metre, which re-samples the terrain under it and lets the global
+    # profile fit drift outside the window.  MEASURED: the first version
+    # re-resampled, `stations_over_clamp` still read 0 because that counts the
+    # CENTRELINE, and `ribbon.py --validate` then refused the write for one
+    # CARRIAGEWAY SAMPLE at (636, 1094) needing -8.000 m -- exactly the
+    # measured apply clamp -- 24 m from the stathub terminus and 400 m from
+    # anything this deviation touches.  A centreline count is not a surface
+    # count, and a splice that moves ground it was not asked to move is how a
+    # local repair becomes a global regression.
+    pts = old[:ia] + dev_pts + old[ib + 1:]
+    # ARC LENGTH, NOT CHORD LENGTH, and the difference is a factor of two at a
+    # turn.  `routemod.resample` places stations every `station_m` of ARC along
+    # the polyline, so around a vertex two consecutive stations are 2 m apart
+    # ALONG THE ROAD while their straight-line separation is as little as
+    # 0.86 m -- MEASURED on T4's own stored nodes.  Deriving `s` from chords
+    # therefore reports a 0.14 m rise over 0.866 m as a 0.16 grade where the
+    # road actually climbs at 0.07, and `fit_profile` then PROVED the
+    # already-built profile infeasible at 255 of 763 stations.  That is a
+    # measurement error masquerading as a structural verdict, and it is the
+    # same class as every other one in this family: the instrument answered a
+    # question about a chord when it was asked about a road.
+    #
+    # Every step is `station_m` because both halves were resampled at
+    # `station_m`; only the two JOINT steps are a real chord, because that pair
+    # was never resampled together.
+    step = np.full(len(pts) - 1, float(seg["station_m"]))
+    P = np.asarray(pts, dtype=np.float64)
+    for j in (ia - 1, ia + len(dev_pts) - 1):
+        if 0 <= j < len(step):
+            step[j] = float(np.hypot(P[j + 1, 0] - P[j, 0],
+                                     P[j + 1, 1] - P[j, 1]))
+    s = np.concatenate(([0.0], np.cumsum(step)))
     t = np.array([fld.bilinear(x, z) for x, z in pts], dtype=np.float64)
+    # THE RETAINED PROFILE IS PINNED TO THE HEIGHTS THAT WERE ALREADY BUILT.
+    # `fit_profile` is a global interval propagation, so without this the
+    # re-fit is free to move the profile a kilometre away from the deviation
+    # -- and the ground it would move there is ground a player already walks
+    # and that `ribbon.py` already proved inside the clamp.  Pinning makes the
+    # deviation window the ONLY thing that changes and turns the grade limit
+    # at the two joints into a constraint the fit must PROVE rather than an
+    # assumption.
+    retained = ([(k, k) for k in range(ia)]
+                + [(len(pts) - (len(old) - k), k)
+                   for k in range(ib + 1, len(old))])
+    old_prof = np.asarray(seg["profile_y"], dtype=np.float64)
 
     CF = routemod.CUT_FILL_MAX
     WL = 30.0  # c_WaterLevel, MEASURED; network.py's WATER_LEVEL
@@ -463,6 +507,39 @@ def splice(seg: dict, dev: dict, patch: str) -> dict:
                        "pinned_level_y": H,
                        "stations": [int(sel.min()), int(sel.max())]})
 
+    # A BAND, NOT AN EXACT PIN, and the width of it is forced by the file
+    # rather than chosen.  `segments.yaml` stores `profile_y` ROUNDED TO 3
+    # DECIMALS, and T4's measured grade sits exactly ON its 0.08 limit, so two
+    # adjacent stored heights can differ by 0.1601 m over 2.0 m = 0.08005 --
+    # over the limit by rounding alone.  MEASURED: pinning `lo == hi` to the
+    # stored values made `fit_profile` prove 25 spans INFEASIBLE across a
+    # kilometre of road that is already built and already inside the clamp.
+    # 0.05 m absorbs the 0.0005 m quantum with three orders of margin while
+    # keeping every retained station within 5 cm of the height a player is
+    # standing on now.
+    PIN_EPS_M = 0.05
+    # AND THE JOINTS GET A BLEND RUN, because a deviation has to ARRIVE at the
+    # retained profile and the grade limit decides how fast it may.  MEASURED:
+    # pinning right up to the joint left `fit_profile` proving two spans
+    # infeasible at stations (254, 262) and (377, 403) -- inside the RETAINED
+    # head, where the old profile is a feasible point -- because interval
+    # propagation is bidirectional and an unreachable height at the joint
+    # propagates backwards until something can absorb it.  The absorbing
+    # distance is the clamp over the grade: 7.0 m of permitted cut at 0.08 is
+    # 87.5 m, so 100 m is that bound rounded up.  Inside the blend the station
+    # keeps its ordinary terrain-derived band; outside it the built road does
+    # not move.
+    PIN_BLEND_M = 100.0
+    joints = [float(s[ia]), float(s[ia + len(dev_pts) - 1])]
+    pinned_n = 0
+    for knew, kold in retained:
+        if not (0 <= knew < len(pts)):
+            continue
+        if min(abs(float(s[knew]) - j) for j in joints) <= PIN_BLEND_M:
+            continue
+        lo[knew] = float(old_prof[kold]) - PIN_EPS_M
+        hi[knew] = float(old_prof[kold]) + PIN_EPS_M
+        pinned_n += 1
     g_max = float(seg["grade_limit"])
     fit = routemod.fit_profile(t, s, g_max, lo=lo, hi=hi)
     bad = [(p, q) for p, q in fit["infeasible_spans"] if not free[p:q + 1].all()]
@@ -508,6 +585,9 @@ def splice(seg: dict, dev: dict, patch: str) -> dict:
             "clearance": dev["clearance"],
             "infeasible_spans_after_splice": [[int(p), int(q)] for p, q in bad],
             "pinned": pinned,
+            "retained_stations_pinned": pinned_n,
+            "pin_band_m": PIN_EPS_M,
+            "pin_blend_m": PIN_BLEND_M,
             "instrument": "roads/deviate.py::splice",
         }],
     })

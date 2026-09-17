@@ -109,6 +109,11 @@
   "first_seen_seq": 202,
   "note": "TCData T12-wtspawn-temple zone [0, -1]"
  },
+ "0c48c116000c3a522f2696a6ff6fa570179205b2025a81c119fa87660a082f30": {
+  "bytes": 3699,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "0ca05568c5b89b7620a44b0f27d8d94a70f95c2b4bb124d88ea599580e556b58": {
   "bytes": 2714,
   "first_seen_seq": 1482,
@@ -414,6 +419,11 @@
   "first_seen_seq": 1666,
   "note": "TCData T1-portalhub-temple zone [-1, 0]"
  },
+ "24c3497c58bd901d6309ab246a4387ecd2175eeac3bcf83b09a944906f2a0508": {
+  "bytes": 1512,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "24caf6ce9b1ecda0d0a791af2149ac060d3226d9aedeb6d8c11150f036eac825": {
   "bytes": 2519,
   "first_seen_seq": 317,
@@ -499,6 +509,11 @@
   "first_seen_seq": 38,
   "note": "TCData stenvik_house_1_z7_14 zone 7,14"
  },
+ "2e73efc8cccf2c278e1897221817ba259e0120a2d774296d31f2aad89ce80a28": {
+  "bytes": 5479,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "2ec3ef9c3c1a9bfb54b71d5cbf715e4581b22b2deeca9d2578636e1fe370ff12": {
   "bytes": 3601,
   "first_seen_seq": 1855,
@@ -569,6 +584,11 @@
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-manor-1"
  },
+ "317f21a71453a7b69b0fe829b1477da6b542121ac9f0087479fb4f4a551ea129": {
+  "bytes": 5673,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "31853351a356a90a30969e6af8acbf00539e51e7191958e9d7db892fcc5b5188": {
   "bytes": 6998,
   "first_seen_seq": 1707,
@@ -588,6 +608,11 @@
   "bytes": 5196,
   "first_seen_seq": 202,
   "note": "TCData T12-wtspawn-temple zone [0, 0]"
+ },
+ "328bcf36f97a4e2195c1e5a8685f505e98d31fe24c7b1e90586e8d66fef22a25": {
+  "bytes": 10161,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "32d76f864018453c0cfc07d82ea70e0b8b7a441bbfaa10b848d55378774b7b41": {
   "bytes": 2847,
@@ -634,6 +659,11 @@
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-beehive-1"
  },
+ "37f8215097f3fc10fba9c2adcb2fd1c979fab942ff7b846e5e42c4d94616991d": {
+  "bytes": 3038,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "383b828a188a0c2c96bd7ce406dfa95527fca5e36a29e12b7e55974612cc5088": {
   "bytes": 2736,
   "first_seen_seq": 1482,
@@ -669,6 +699,11 @@
   "first_seen_seq": 218,
   "note": "TCData T8-stenvik-wttown zone [13, 11]"
  },
+ "3a366e29633721855c2cc48e85fbcde79e14c816bca877ed3aee99819e3c1f65": {
+  "bytes": 4481,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "3a55a56e4b0fc89c113e20717655dc9fca8ec6be28ecce2105af1f5b2f68f386": {
   "bytes": 2670,
   "first_seen_seq": 1861,
@@ -694,6 +729,11 @@
   "first_seen_seq": 1684,
   "note": "guardcheck T4-meadhall-stathub"
  },
+ "3bc8ed55f7c2404999621b105e8112e704001e5a4ed3f2ecedcea9c032268e3d": {
+  "bytes": 3518,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "3c77b9b5adfe77d16dd927435e489fcbede01ed69bbf43f50c8476353e8937d7": {
   "bytes": 2561,
   "first_seen_seq": 207,
@@ -713,6 +753,11 @@
   "bytes": 2656,
   "first_seen_seq": 1855,
   "note": "guardcheck T5-temple-dockshore"
+ },
+ "3d6a0db69a9056b01b0885cd8724cf7601421b2637c2bdb524fcb43726414b57": {
+  "bytes": 5809,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "3d892ce0c25f642a0a969173176c133d7068be36534b34f6202ba76023ebe30b": {
   "bytes": 1283,
@@ -738,6 +783,11 @@
   "bytes": 2180,
   "first_seen_seq": 1918,
   "note": "guardcheck S7-stathub-wtnorth"
+ },
+ "3fdf5b4b209f2d6b67bdc574fa66c977104bc76d4b44ea0c98378a9b0d6b6698": {
+  "bytes": 2019,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "3fed1a5964de2d96ede3e995893a876b75bc8aebbe8b9678930512480de34df5": {
   "bytes": 664,
@@ -1189,6 +1239,11 @@
   "first_seen_seq": 207,
   "note": "TCData T10-wtspawn-wtsouth zone [3, -2]"
  },
+ "5f78916031729fffda34275f76ffc748e99f8859f44d0fe167652841adcbc10e": {
+  "bytes": 4398,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "5fe3a3f70f26732559f4f86affb1ad3f71a9b5419292ca257c18d9e24bf37d71": {
   "bytes": 5129,
   "first_seen_seq": 1050,
@@ -1218,6 +1273,11 @@
   "bytes": 3201,
   "first_seen_seq": 1300,
   "note": "TCData T9-wttown-dockshore zone [14, 9]"
+ },
+ "60ad07dc767efbfa2ef41be038a844bbfdbdf0f0bfe53f8f9aeddd755ef1289b": {
+  "bytes": 93,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "60fc583aa42280db4625dcb02dfc3cdf2e68a350bdc45da437086b2fc0a46320": {
   "bytes": 5506,
@@ -1409,6 +1469,11 @@
   "first_seen_seq": 1535,
   "note": "TCData W5-brgs1-wsouth zone [-5, -3]"
  },
+ "6e94f5a3e43a8689260ce72a9d25c466e2fff624a8972b372e8c307db4ce2121": {
+  "bytes": 3960,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "6e97ecb11fd9a450b1a7314b5f6a5eb7406593060ba525a90f0f89142ad938cf": {
   "bytes": 1128,
   "first_seen_seq": 1002,
@@ -1453,6 +1518,11 @@
   "bytes": 2204,
   "first_seen_seq": 323,
   "note": "TCData W5-brgs1-wsouth zone [-6, -3]"
+ },
+ "724ab207fcd2e367ba45108e0a2806b29a730b510c324c91394bfa056a9569dd": {
+  "bytes": 1678,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "728575fea6ce4bf8624af91a9860a9abe0f54cfe02d5780ba4e9d8ae200b7718": {
   "bytes": 715,
@@ -1844,6 +1914,11 @@
   "first_seen_seq": 323,
   "note": "TCData W5-brgs1-wsouth zone [-5, -2]"
  },
+ "90b4fb49577faafd52560347b3a9cb2fd3325e586dbe89d1a3c8cc5c364cad39": {
+  "bytes": 447,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "90e821b1c9d1a94a30f6ef8c52178b4752445dd3eab88b73d31ee30605a69fd8": {
   "bytes": 2177,
   "first_seen_seq": 245,
@@ -1863,6 +1938,11 @@
   "bytes": 980,
   "first_seen_seq": 1992,
   "note": "guardcheck T9-wttown-dockshore"
+ },
+ "92301439fc2495e281b6e6cbeb7702609b28c902e7312090032db3f026312a99": {
+  "bytes": 2684,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "9297c761735ed88f2d4ff8e96c2488c7afa5b5fcae3e225143d08684b199794f": {
   "bytes": 970,
@@ -1964,6 +2044,11 @@
   "first_seen_seq": 1719,
   "note": "guardcheck T3-temple-meadhall"
  },
+ "98503da0aad09aa3f6ea5f3a8c6866ad66e346eb489a8933ce0f13ee49266122": {
+  "bytes": 6649,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "986547cdf3fd05781095c6d921d86cd5697a8319ab200c17c29624cc5ecb5bd5": {
   "bytes": 1138,
   "first_seen_seq": 1684,
@@ -2013,6 +2098,11 @@
   "bytes": 1633,
   "first_seen_seq": 136,
   "note": "TCData stenvik_cottage_3_z9_14 zone 9,14"
+ },
+ "9d34ade7fe705b50deb3e3436c30cf9e5a940328c28bd31b32828610c5d23c1c": {
+  "bytes": 4421,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "9e2272481ab684c1ee6fe37e04cf177b4c666b37fbc2ad5f0e7dcc6ce297284e": {
   "bytes": 2513,
@@ -2103,6 +2193,11 @@
   "bytes": 1858,
   "first_seen_seq": 245,
   "note": "TCData S8-wtsouth-treesth zone [7, 6]"
+ },
+ "a4ea75100351582d6a03a47d8c1cd9bf4c001b6ab8fdd9404867a9607d8ee56b": {
+  "bytes": 2667,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "a528bd44ec6a4ba3e5a9f15a36ea1336f32a2c31232c7c1fe0ab57965c6be40a": {
   "bytes": 1408,
@@ -2384,6 +2479,11 @@
   "first_seen_seq": 1902,
   "note": "guardcheck T10-wtspawn-wtsouth"
  },
+ "bb616678844ba33c9d2166217dabfc8c332ce6bf230ecfc90a9da36686c790fe": {
+  "bytes": 4749,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "bb9b1ace32894812ebced1e4e50fb90693b95ad2485cd1dcb8d2e78c5ae79b3f": {
   "bytes": 2588,
   "first_seen_seq": 317,
@@ -2433,6 +2533,11 @@
   "bytes": 2315,
   "first_seen_seq": 1855,
   "note": "guardcheck T5-temple-dockshore"
+ },
+ "bf2f36daa120073d1b1e9d31a76e9428d91d9a781d0e006b6a25bab1fd17bdfa": {
+  "bytes": 4695,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "bfad6dfc4de5e9abdeb156eae07c2b742e8491823f96af6176e26b2fbc4ed63a": {
   "bytes": 834,
@@ -2759,6 +2864,11 @@
   "first_seen_seq": 640,
   "note": "TCData tree_sth_3_z9_7 zone 9,7"
  },
+ "d6f50e0dee209fef3f23fe56c8d304573f9a974d9876e74daf27b88375ae09c5": {
+  "bytes": 5920,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
+ },
  "d70622c11d921b8a0d4a5e0efc27d28ece02b99d3605073bcc39142d862ecfff": {
   "bytes": 184,
   "first_seen_seq": 185,
@@ -2958,6 +3068,11 @@
   "bytes": 5117,
   "first_seen_seq": 634,
   "note": "spawn plan tree-sth-2"
+ },
+ "e4db9f940f9416cf98c600298b95208be846381fbea92d3cd2e22f4ca4bceb79": {
+  "bytes": 5823,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "e4e2e73caa89aebe3dbe179e1415b435ed06e1334dfcbe29e64b1e51292b4a5e": {
   "bytes": 3411,
@@ -3173,6 +3288,11 @@
   "bytes": 206,
   "first_seen_seq": 1300,
   "note": "TCData T9-wttown-dockshore zone [12, -1]"
+ },
+ "f549e8c2b586ffd32c325e54d60c33bf1c0aea917c94918fc317c6d11e560447": {
+  "bytes": 7842,
+  "first_seen_seq": 2048,
+  "note": "guardcheck T4-meadhall-stathub"
  },
  "f566c4e628209793bb98f4e783ef0f2ff996f80b005ce99fbda3456dc771abb4": {
   "bytes": 2509,

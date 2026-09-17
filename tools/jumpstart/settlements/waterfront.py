@@ -79,7 +79,16 @@ import fixtures as FX  # noqa: E402  portal tag validation
 import plan as CP  # noqa: E402  crossings' aimer and POI gate, as a library
 import water as W  # noqa: E402  VHPATCH1 -> numpy, water datums
 
-ACTOR = "HarbourWork"
+# WHO THE LEDGER SAYS DID IT.  `HarbourWork` MEASURED all of this and wrote
+# nothing -- it never held the token and yielded with zero world writes --
+# and `WaterfrontRun` is the agent that actually appends.  Crediting the
+# measurer for the writer's records would put the wrong name in the only log
+# that survives the session, which is the reason `build.py` grew `--actor`.
+# The FIRST applied pass (boathouse-temple-strait, seq 2055-2059) went in under
+# the old constant and is left alone: a ledger record is NEVER edited, and this
+# comment plus the later records are the annotation.
+ACTOR = "WaterfrontRun"
+MEASURED_BY = "HarbourWork"
 
 # The lattice-aligned field this module measures against.  Aligned means
 # `cx - half + step/2` is an INTEGER, so every field sample sits exactly on a
@@ -151,9 +160,25 @@ class Surface:
     total order on this artefact).
     """
 
-    def __init__(self, field: str = FIELD, actor: str = ACTOR):
+    def __init__(self, field: str = FIELD, actor: str = ACTOR,
+                 extra: str | None = None):
         import applied as AP  # noqa: PLC0415  roads/, imported lazily
-        self.fields = W.load(field)
+        # THE UNION IS NOT OPTIONAL, and this was MEASURED as a real refusal:
+        # `newbuild --site dock-northcape` aimed its pier off `extra.bin` and
+        # then could not measure its own berth, because the `north` patch
+        # (centre -170,2570 half 150.5) lives in `extra.bin` while this class
+        # loaded `h1m.bin` alone -- so `(-148.91, 2644.61) is in no patch`, and
+        # the vessel was silently dropped for want of a height. Unioned in the
+        # same order `cmd_newbuild` already uses, so both read one surface.
+        # `patch_for` still takes the SMALLEST containing patch, so a 1 m
+        # question is never answered off a coarser overview patch.
+        self.field_names = [p for p in (extra or EXTRA_FIELD, field)
+                            if p and Path(p).exists()]
+        self.fields = {}
+        for p in self.field_names:
+            self.fields |= W.load(p)
+        if not self.fields:
+            raise SystemExit(f"no PatchScan field loaded from {self.field_names}")
         self.applied = AP.Applied(actor=actor)
         for fid, f in self.fields.items():
             off = (f.cx - f.half + f.step / 2.0)
@@ -180,8 +205,9 @@ class Surface:
                 best = f
         if best is None:
             raise SystemExit(
-                f"({x}, {z}) is in no patch of {FIELD}; widen the request and "
-                f"re-run run_patchscan.sh rather than guessing a height")
+                f"({x}, {z}) is in no patch of {self.field_names}; widen the "
+                f"request and re-run run_patchscan.sh rather than guessing a "
+                f"height")
         return best
 
     def generated(self, x: float, z: float) -> float:
@@ -1014,11 +1040,19 @@ def cmd_complete(args) -> int:
         p = o.get("params") or {}
         print(f"  {mark} {o['op']:14s} {p.get('prefab') or p.get('plan_ref') or ''}")
     todo = substitute_boat(surf, site, todo)
+    # THE PORTAL GAP, CLOSED HERE.  Any tag whose SITE end this pass opens gets
+    # its HUB end appended to the SAME op list, so one pass emits both ends or
+    # neither.  Emitting the site end alone leaves a tag that pairs with
+    # nothing, which is the operator's original reported defect.
+    todo, pairing = pair_ops(site, todo)
+    if pairing:
+        print(json.dumps(dict(pairing=pairing), indent=1, default=float))
     if not todo:
         print("nothing to do")
         return 0
     if not args.apply:
         print(json.dumps(dict(site=site, would_emit=[o["op"] for o in todo],
+                              pairing=pairing,
                               vessel=pick_vessel(surf, site)), indent=1,
                          default=float))
         return 0
@@ -1030,12 +1064,58 @@ def cmd_complete(args) -> int:
                f"ledger; the deck itself is not re-sent, because a spawn_plan "
                f"re-emit would double every piece and its own postcondition "
                f"would then fail.", role=SITE_ROLE[site], site_id=site)
+        if pairing:
+            for row in pairing:
+                if row.get("bay"):
+                    row["bay"]["live_confirmed"] = confirm_bay_clear(
+                        b.srv, row["bay"])
+            b.observe(f"portal_pair_bays::{site}",
+                      "MEASURED by portal_hall's own bay gate (fixtures.probe "
+                      "against the placed hall body, interior mask class, 4.4 m "
+                      "separation from every standing seat) and then CONFIRMED "
+                      "EMPTY LIVE with a scoped objects_count. NOT a "
+                      "least-squares fit over the seat records: that fit put "
+                      "this arch 0.198 m into blackmarble_column_2 on a "
+                      "covered_unenclosed cell",
+                      "tools/jumpstart/settlements/waterfront.py::hub_bay",
+                      pairing)
         emit(b, todo, label=site)
         last = [o for o in todo if o["op"] in ("spawn", "portal")][-1]
         lp = last["params"]
         emit(b, [save_op((lp["pos"][0], lp["pos"][2]), lp["prefab"], 1,
                          max(3.0, lp.get("guard_radius_m", 0.5) * 2.0),
                          SITE_ROLE[site])], label=f"{site} save")
+        # BOTH ENDS, off the ZDO, before this pass is called done.
+        pairs = []
+        for row in pairing:
+            ends = [dict(e, end=("hub" if e.get("site_id") == "portal-hall"
+                                 else "site")) for e in tag_ends(row["tag"])]
+            emitted = [o["params"] for o in todo
+                       if o["op"] == "portal"
+                       and (o["params"] or {}).get("tag") == row["tag"]]
+            for p in emitted:
+                if not any(abs(e["x"] - p["pos"][0]) < 0.5
+                           and abs(e["z"] - p["pos"][2]) < 0.5 for e in ends):
+                    ends.append(dict(x=p["pos"][0], y=p["pos"][1],
+                                     z=p["pos"][2],
+                                     site_id=p.get("site_id"),
+                                     end=("hub" if p.get("site_id")
+                                          == "portal-hall" else "site")))
+            pairs.append(verify_pair(b.srv, row["tag"], ends))
+        if pairs:
+            b.observe(f"portal_pair_readback::{site}",
+                      "MEASURED: findObjects -detailed bounded to 3 m at EVERY "
+                      "end of the tag, tag string required in the ZDO listing "
+                      "at both, because the record that wrote a tag is not "
+                      "evidence the tag is on the ZDO",
+                      "tools/jumpstart/settlements/waterfront.py::verify_pair",
+                      pairs)
+            broken = [p["tag"] for p in pairs if not p["paired"]]
+            if broken:
+                raise SystemExit(
+                    f"the tag(s) {broken} did NOT read back off both ZDOs. The "
+                    f"pass is NOT complete and the ledger says so; do not "
+                    f"annotate this away, fix the end that is missing.")
         print(json.dumps(b.close(), indent=1))
     return 0
 
@@ -1074,6 +1154,31 @@ def cmd_stair(args) -> int:
                              "a cut here works in 60 cm of headroom beside open "
                              "water and draining a pier is unrepairable")))
            for st in run["steps"]]
+    # A RUN OF ONE PREFAB CANNOT USE THE SINGLE-SPAWN GUARD, and this is
+    # MEASURED rather than reasoned: on the first live run tread 2's
+    # postcondition asked for `prefab_count[wood_stair] == 1` inside the
+    # `max(3.0, guard*2)` default radius and the live answer was 2, because the
+    # treads are `STAIR["run_m"]` = 2.029 m apart and BOTH sit inside 3 m. The
+    # record correctly refused. The WORLD was right -- 2 treads at the intended
+    # positions, `Support: 1` on both, read back off the ZDOs -- so the defect
+    # was in the question, not the answer.
+    #
+    # The honest postcondition for a run is CUMULATIVE: after tread i lands
+    # there are exactly i+1 of them inside a radius that spans the whole run.
+    # That is monotone, exact at every step, and it cannot pass on a neighbour
+    # because the neighbour it would count is one this pass placed on purpose.
+    run_r = round(STAIR["run_m"] * max(1, len(run["steps"])) + 1.0, 1)
+    anchor = run["steps"][0]
+    for i, op in enumerate(ops, start=1):
+        op["expect"] = dict(prefab_count=[dict(
+            prefab=STAIR["prefab"],
+            pos=[round(anchor["x"], 2), round(anchor["z"], 2)],
+            max=run_r, count=i, tolerance=0)])
+        op["meta"]["guard"] = dict(
+            kind="cumulative run count", index=i, of=len(ops),
+            radius_m=run_r, tread_pitch_m=STAIR["run_m"],
+            why=("the single-spawn guard counts 1 inside 3 m and the treads are "
+                 "2.029 m apart, so it reads a sibling tread as a duplicate"))
     if not args.apply:
         print(json.dumps(dict(would_emit=[o["wire"][0] for o in ops]), indent=1))
         return 0
@@ -1139,54 +1244,352 @@ def lamp_blob() -> str:
     return e.encode()
 
 
-# The portal hall's seat ring, FITTED to the seats already on its floor rather
-# than read off a constant: least-squares circle over the 18 `SeatCheck` portal
-# records gives centre (-279.415, 215.646) and R 13.04, every seat at y 37.1 and
-# facing the centre with yaw = ring_angle - 180. MEASURED gap: 248.2 deg to
-# 294.6 deg is empty, i.e. the 270 deg slot is free.
-HUB_RING = dict(cx=-279.415, cz=215.646, r=13.375, y=37.1,
-                free_slots_deg=[270.0])
+# ---------------------------------------------------------------------------
+# the HUB end of a portal pair
+# ---------------------------------------------------------------------------
+#
+# WHY THIS IS NOT A RING FIT ANY MORE.  The first version of this section fitted
+# a circle by least squares over the 18 `portal-hall` portal RECORDS in the
+# ledger -- centre (-279.415, 215.646), R 13.375 -- read the 248.2..294.6 deg
+# span as empty, and seated `x-vestvik` at 270 deg, i.e. (-292.79, 215.65).
+# Two things were wrong with that, and the second one would have stood an arch
+# inside a wall:
+#
+#   1. THE FIT WAS POLLUTED.  Three of those 18 seats are not on that ring at
+#      all: `u-treenear`, `x-harbour` and `x-ferry-e` sit at R 8.47, 7.26 and
+#      8.26 on the hall's INNER ring, against 12.87..14.65 m for the other 15.
+#      A least-squares circle over two concentric rings describes neither, and
+#      the residual is what let a 46.4 deg "gap" look like one free slot.
+#   2. THE SEAT FAILED THE HALL'S OWN GATE.  MEASURED by `fixtures.probe`
+#      against the placed hall body at (-292.79, 37.10, 215.65) yaw 90: worst
+#      penetration 0.198 m -- OVER `portal_hall.BAY_PEN_TOL_M` 0.15 -- into
+#      `blackmarble_column_2` and `blackmarble_1x1`, and the interior mask
+#      calls the cell `covered_unenclosed`, not `indoor_covered`.  That seat is
+#      in the colonnade wall, in a door axis.  Geometry read off a log is not
+#      geometry read off the body.
+#
+# So the seat is ALLOCATED BY THE HALL'S OWN BAY SOLVER.  `portal_hall` already
+# owns that instrument -- the body's 15 designer arch transforms plus solved
+# inner-ring bays, each gated on nothing penetrating deeper than the 0.15 m the
+# floor beams themselves do, on the interior mask calling the cell
+# `indoor_covered`, and on 4.4 m (one `portal_wood` width) from every other bay.
+# `portal_hall.bays(need=18)` reproduces all three live solved seats to 0.000 m,
+# which is the check that says the instrument and the world agree.
+#
+# `bays(need=20)` CANNOT be used to get two more, and this is a trap worth
+# naming: its sweep step is `360/short`, so raising `need` MOVES the earlier
+# solved bays.  MEASURED at need=20 the bay that should be `x-harbour`'s drifts
+# 1.100 m and `x-ferry-e`'s 2.911 m, so the 4.4 m separation gate would then be
+# measured against seats that are not the ones standing in the world.  The
+# sweep is therefore re-run here with the LIVE seats as the occupied set.
+HUB_BAY_CLEAR_M = 4.4
 
 
-def hub_seat(angle_deg: float) -> dict:
-    a = math.radians(angle_deg)
-    return dict(x=round(HUB_RING["cx"] + HUB_RING["r"] * math.sin(a), 2),
-                y=HUB_RING["y"],
-                z=round(HUB_RING["cz"] + HUB_RING["r"] * math.cos(a), 2),
-                yaw=(angle_deg - 180.0) % 360.0, angle_deg=angle_deg)
+def _hall() -> tuple:
+    """The hall's interior mask and collider index, built from the SAME body
+    placement `portal_hall.bays` uses, so a bay solved here is a bay by that
+    module's definition and not by a second one."""
+    import base_geometry as BG  # noqa: PLC0415
+    import portal_hall as PH  # noqa: PLC0415
+    g = BG.geometry()
+    _objs, keep = PH.body_objects()
+    shell = FX.place_body(keep, (PH.HALL_X, PH.TARGET_Y, PH.HALL_Z),
+                          yaw_deg=PH.BODY_YAW)
+    return PH, g, shell.interior(), shell.index()
 
 
-def hub_portal_op(site: str, tag: str, angle_deg: float) -> dict:
-    seat = hub_seat(angle_deg)
+def hub_seats_taken() -> list[dict]:
+    """Every `portal_wood` seat the hall already holds, per the ledger.
+
+    This is the CANDIDATE list, not the oracle: `retire` records are honoured
+    (a retired seat frees its bay) and the survivors are confirmed live with
+    `findObjects` before anything is emitted, because a portal placed outside
+    the ledger is invisible to this function and would be collided with.
+    """
+    seats: dict[tuple, dict] = {}
+    for line in LIVE_LEDGER.read_text().splitlines():
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        p = rec.get("params") or {}
+        if p.get("prefab") != "portal_wood":
+            continue
+        pos = p.get("pos") or []
+        if len(pos) < 3:
+            continue
+        key = (round(pos[0], 1), round(pos[2], 1))
+        if rec["op"] == "retire":
+            seats.pop(key, None)
+        elif rec["op"] == "portal":
+            seats[key] = dict(tag=p.get("tag"), x=pos[0], y=pos[1], z=pos[2],
+                              yaw=p.get("yaw_deg") or 0.0,
+                              site_id=p.get("site_id"))
+    return list(seats.values())
+
+
+def hub_bay(taken: list[dict], *, bearing_step: float = 1.0) -> dict:
+    """Solve ONE free bay in the hall, under `portal_hall`'s own gate.
+
+    Sweeps the bearings and the radius ladder the hall's solver uses and returns
+    the first candidate that (a) drives nothing deeper than `BAY_PEN_TOL_M` into
+    the body, (b) lands on an `indoor_covered` cell, and (c) clears every seat
+    in `taken` by `HUB_BAY_CLEAR_M`.  It RAISES rather than relaxing any of the
+    three, because a bay that fails the gate is an arch in a wall -- and because
+    a guard that quietly widens its own tolerance is the silent shrink this
+    project has now been bitten by four times.
+
+    The cheap tests (interior class, separation) run BEFORE the collider probe,
+    which is the expensive one; that is an ordering choice, not a different gate.
+    """
+    PH, g, mask, index = _hall()
+    ref = PH.bays(need=18)
+    dsg = [b for b in ref if b["source"] == "designer"]
+    rx0 = sum(b["x"] for b in dsg) / len(dsg)
+    rz0 = sum(b["z"] for b in dsg) / len(dsg)
+    occupied = [FX.fixture_box("portal_wood", s["x"], s.get("y", PH.TARGET_Y),
+                               s["z"], s.get("yaw") or 0.0, g) for s in taken]
+    rejected: list[dict] = []
+    steps = int(round(360.0 / bearing_step))
+    for k in range(steps):
+        bearing = round(k * bearing_step, 1)
+        for radius in (8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 8.5):
+            x = rx0 + radius * math.sin(math.radians(bearing))
+            z = rz0 + radius * math.cos(math.radians(bearing))
+            cell = mask.cell(x, z)
+            klass = mask.klass.get(cell, "outdoor")
+            near = min([math.hypot(x - s["x"], z - s["z"]) for s in taken],
+                       default=99.9)
+            if klass != "indoor_covered":
+                continue
+            if near < HUB_BAY_CLEAR_M:
+                continue
+            stand = mask.stand_y(*cell) if cell in mask.cover_m else PH.TARGET_Y
+            yaw = round((bearing + 180.0) % 360.0, 1)
+            box = FX.fixture_box("portal_wood", x, stand, z, yaw, g)
+            hits, _sup = FX.probe(box, index, stand_y=stand, geom=g)
+            worst = max([h["penetration_m"] for h in hits], default=0.0)
+            deep = sorted({h["prefab"] for h in hits
+                           if h["penetration_m"] > PH.BAY_PEN_TOL_M})
+            clash = any(all(o > 1e-6 for o in FX.overlap(box, t))
+                        for t in occupied)
+            row = dict(x=round(x, 3), y=round(stand, 3), z=round(z, 3),
+                       yaw=yaw, bearing=bearing, r_m=radius, source="solved",
+                       worst_pen_m=round(worst, 3), deep_pen_prefabs=deep,
+                       klass=klass, cover_m=(None if cell not in mask.cover_m
+                                             else round(mask.cover_m[cell], 2)),
+                       nearest_seat_m=round(near, 3), overlaps=clash,
+                       seats_considered=len(taken),
+                       centre=[round(rx0, 3), round(rz0, 3)])
+            if deep or clash:
+                rejected.append(row)
+                continue
+            row["ok"] = True
+            row["gate"] = (
+                f"MEASURED by portal_hall's own bay gate via fixtures.probe "
+                f"against the placed hall body: worst penetration "
+                f"{row['worst_pen_m']} m <= BAY_PEN_TOL_M "
+                f"{PH.BAY_PEN_TOL_M}, interior mask class {klass!r}, nearest of "
+                f"{len(taken)} standing seats {row['nearest_seat_m']} m >= "
+                f"HUB_BAY_CLEAR_M {HUB_BAY_CLEAR_M}. Sweep centred on the mean "
+                f"of the body's 15 designer arch transforms "
+                f"({rx0:.3f},{rz0:.3f}), radius ladder and tolerances taken "
+                f"from portal_hall.bays, not restated.")
+            row["rejected_sample"] = rejected[:6]
+            return row
+    raise SystemExit(
+        f"no free bay in the hall clears portal_hall's gate against "
+        f"{len(taken)} standing seats: {len(rejected)} candidates were "
+        f"indoor_covered and {HUB_BAY_CLEAR_M} m clear but penetrate the body. "
+        f"Do NOT relax the gate -- the hall is full and needs another bay row.")
+
+
+def hub_portal_op(site: str, tag: str, bay: dict) -> dict:
+    """The HUB end of `tag`, on a bay solved by the hall's own instrument.
+
+    Pairing is EXACT STRING EQUALITY with a uniform random draw among equally
+    tagged unconnected portals, so a tag with ONE end pairs with nothing and the
+    site end is a dead arch.  This op is ALWAYS emitted in the same pass as the
+    site end -- see `pair_ops` -- so the tag never exists one-ended.
+    """
     blob = portal_blob(tag)
-    cmd = (f"spawn_object portal_wood pos={A.fmt(seat['z'])},{A.fmt(seat['x'])},"
-           f"{A.fmt(seat['y'])} rot={A.fmt(seat['yaw'])},0,0 from=0,0,0"
+    cmd = (f"spawn_object portal_wood pos={A.fmt(bay['z'])},{A.fmt(bay['x'])},"
+           f"{A.fmt(bay['y'])} rot={A.fmt(bay['yaw'])},0,0 from=0,0,0"
            f" data={blob}")
     return dict(
         op="portal",
         params=dict(prefab="portal_wood",
-                    pos=[seat["x"], seat["y"], seat["z"]],
-                    yaw_deg=seat["yaw"], tag=tag, pair_tag=tag,
+                    pos=[round(bay["x"], 4), round(bay["y"], 4),
+                         round(bay["z"], 4)],
+                    yaw_deg=bay["yaw"], tag=tag, pair_tag=tag,
                     guard_radius_m=0.5, zdo_strings=dict(tag=tag),
                     data_b64=blob,
-                    role="spawn_portal", site_id=site,
+                    role="spawn_portal", site_id="portal-hall",
+                    datum=(f"bay solved at bearing {bay['bearing']} radius "
+                           f"{bay['r_m']} m on the hall floor at y {bay['y']}"),
                     flatten="FORBIDDEN",
                     flatten_reason=("the hall floor is a built pad at y 37.1; a "
                                     "terrain_write under it would drop the floor "
-                                    "the ring stands on")),
+                                    "the bay stands on")),
         wire=[cmd],
         requires=dict(mods=["WorldEditCommands", "ServerDevcommands"],
                       prefabs=["portal_wood"], blobs=[]),
-        expect=dict(tag_readback=dict(tag=tag, pos=[seat["x"], seat["z"]],
-                                      max=3.0)),
-        meta=dict(end="hub", seat=seat, ring=HUB_RING,
+        expect=dict(prefab_count=[dict(
+            prefab="portal_wood", pos=[round(bay["x"], 2), round(bay["z"], 2)],
+            max=3.0, count=1, tolerance=0)]),
+        meta=dict(end="hub", pair_site=site, bay=bay,
                   why=("pairing is EXACT STRING EQUALITY with a uniform random "
                        "draw among equally-tagged unconnected portals, so a tag "
                        "with ONE end pairs with nothing and the site end would "
-                       "be a one-way trip. The hub end is placed in the SAME "
-                       "pass as the site end so the tag never exists with one "
-                       "end. Seat angle 270 deg is the measured gap in the "
-                       "ring.")))
+                       "be a dead arch. Emitted in the SAME pass as the site "
+                       "end so the tag is never one-ended. The bay is ALLOCATED "
+                       "by portal_hall's own gate, not fitted to the ledger: a "
+                       "least-squares ring fit over the 18 seat records put "
+                       "this arch at (-292.79,215.65), which MEASURES 0.198 m "
+                       "into blackmarble_column_2 against a 0.15 m tolerance "
+                       "and lands on a covered_unenclosed cell.")))
+
+
+def tag_ends(tag: str) -> list[dict]:
+    """Every standing end of `tag` per the ledger, retires honoured."""
+    ends: dict[tuple, dict] = {}
+    for line in LIVE_LEDGER.read_text().splitlines():
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        p = rec.get("params") or {}
+        if p.get("prefab") != "portal_wood":
+            continue
+        pos = p.get("pos") or []
+        if len(pos) < 3:
+            continue
+        key = (round(pos[0], 1), round(pos[2], 1))
+        if rec["op"] == "retire":
+            ends.pop(key, None)
+        elif rec["op"] == "portal" and p.get("tag") == tag:
+            ends[key] = dict(tag=tag, x=pos[0], y=pos[1], z=pos[2],
+                             site_id=p.get("site_id"), seq=rec.get("seq"))
+    return list(ends.values())
+
+
+def confirm_bay_clear(srv, bay: dict, *, radius: float = HUB_BAY_CLEAR_M) -> dict:
+    """MEASURE the bay empty before seating an arch in it.
+
+    `hub_seats_taken` reads the LEDGER, and the ledger is the candidate list,
+    not the oracle: a portal placed outside it is invisible to that function,
+    and a seat retired outside it would read as occupied.  So the solved bay is
+    confirmed live with a SCOPED `objects_count` -- scoped rather than the
+    unscoped `findObjects` this project caps at 8 m, because the question is
+    "is there a portal here", which names its prefab.
+
+    Refuses rather than nudging.  A guard that slides the bay a metre to make
+    room is a silent shrink; if the world disagrees with the ledger, the right
+    answer is to re-solve against the world, which is a decision, not a fixup.
+    """
+    n, per = srv.count("portal_wood", bay["x"], bay["z"], radius)
+    out = dict(at=[round(bay["x"], 2), round(bay["z"], 2)], radius_m=radius,
+               portal_wood=n, per_prefab=per,
+               method=("MEASURED live: scoped `objects_count id=portal_wood` "
+                       "over the bay's own separation radius. The ledger is the "
+                       "candidate list; this is the oracle."))
+    if n:
+        raise SystemExit(
+            f"the solved bay at ({bay['x']}, {bay['z']}) is NOT empty: "
+            f"{n} portal_wood stand within {radius} m, which the ledger does "
+            f"not know about. Re-solve against the live seats; do NOT nudge "
+            f"this bay to fit.")
+    print(f"    bay ({bay['x']}, {bay['z']}) confirmed EMPTY live: "
+          f"0 portal_wood within {radius} m", flush=True)
+    return out
+
+
+def pair_ops(site: str, todo: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Append a HUB end for every tag this pass is about to open at a SITE.
+
+    THE GAP THIS CLOSES.  `complete --site harbour-vestvik` emits the site end
+    of `x-vestvik` and nothing else: the hub end was a separate function with no
+    caller.  Run alone it leaves a tag with ONE end, which pairs with nothing --
+    the operator's original reported defect, reintroduced by a known gap.
+
+    A tag must have EXACTLY two ends.  So for each site-end portal op in `todo`:
+      * count the tag's standing ends in the ledger (retires honoured);
+      * 0 standing and we are emitting the site end -> solve a bay, append the
+        hub end to the SAME op list, so one pass emits both or neither;
+      * 1 standing already -> the missing end is appended, whichever it is;
+      * 2 standing -> nothing to do;
+      * 3+ -> raise.  A third end makes the destination a coin flip, and
+        silently picking one to keep is not this function's call to make.
+
+    Returns (ops, report).  Bays are solved against a taken-set that includes
+    every bay solved earlier in the SAME call, so two tags in one pass cannot be
+    given the same bay.
+    """
+    site_ends = [o for o in todo
+                 if o["op"] == "portal" and (o["params"] or {}).get("tag")]
+    if not site_ends:
+        return todo, []
+    taken = hub_seats_taken()
+    out = list(todo)
+    report = []
+    for op in site_ends:
+        tag = op["params"]["tag"]
+        standing = tag_ends(tag)
+        hub = [e for e in standing if e.get("site_id") == "portal-hall"]
+        row = dict(tag=tag, standing_ends=len(standing),
+                   hub_ends=len(hub), site_end_emitted_now=True)
+        if len(standing) >= 3:
+            raise SystemExit(
+                f"tag {tag!r} already has {len(standing)} standing ends "
+                f"{[(e['x'], e['z']) for e in standing]}; a third end makes the "
+                f"destination a coin flip. Retire the extras deliberately "
+                f"before adding to this tag.")
+        if hub:
+            row["action"] = "hub end already standing; not duplicated"
+            report.append(row)
+            continue
+        bay = hub_bay(taken)
+        hop = hub_portal_op(site, tag, bay)
+        out.append(hop)
+        taken.append(dict(tag=tag, x=bay["x"], y=bay["y"], z=bay["z"],
+                          yaw=bay["yaw"], site_id="portal-hall"))
+        row["action"] = "hub end SOLVED and appended to this pass"
+        row["bay"] = bay
+        report.append(row)
+    return out, report
+
+
+def verify_pair(srv, tag: str, ends: list[dict]) -> dict:
+    """Read `tag` back off EVERY end's ZDO.
+
+    The record that wrote a tag is not evidence the tag is on the ZDO: the blob
+    could encode the wrong hash, the spawn could have been swallowed, or the
+    guard could have matched a different portal.  So both ends are read with
+    `findObjects -detailed` and the tag STRING is required at both.  A pair that
+    reads back at one end only is reported as BROKEN, loudly, rather than being
+    counted as a success because the emit returned cleanly.
+    """
+    rows = []
+    for e in ends:
+        rb = read_back(srv, "portal_wood", e["x"], e["y"], e["z"], radius=3.0)
+        listing = rb.get("listing") or ""
+        rows.append(dict(end=e.get("end") or e.get("site_id"),
+                         at=[round(e["x"], 2), round(e["y"], 2),
+                             round(e["z"], 2)],
+                         zdos=len(rb.get("leaves") or []),
+                         tag_on_zdo=(tag in listing),
+                         listing=listing))
+    ok = len(rows) == 2 and all(r["tag_on_zdo"] for r in rows)
+    out = dict(tag=tag, ends=rows, paired=ok,
+               method=("MEASURED: findObjects -detailed bounded to 3 m at each "
+                       "end, and the tag STRING required in the ZDO listing at "
+                       "BOTH. Pairing is exact string equality among unconnected "
+                       "portals, so one end reading back is not half a portal, "
+                       "it is a dead arch."))
+    if not ok:
+        print(f"    !! PAIR {tag} IS NOT PROVEN: "
+              f"{[(r['end'], r['tag_on_zdo']) for r in rows]}", flush=True)
+    else:
+        print(f"    pair {tag}: tag read back off BOTH ZDOs", flush=True)
+    return out
 
 
 def cmd_fabric(args) -> int:
@@ -1500,8 +1903,18 @@ def cmd_newbuild(args) -> int:
               "Rejections:")
         for r in pick["rejected"]:
             print("      ", r)
+    # THE PORTAL GAP, CLOSED HERE TOO.  `ledger_ops.ops_for` is handed
+    # `pair_ends={}` and emits the SITE end only, so a new site with a
+    # `portal_tag` would stand with a tag that pairs with nothing.  At
+    # `dock-northcape` that is not cosmetic: the site is ~2.8 km from the
+    # nearest built road and the portal IS the access, so a one-ended tag
+    # strands the operator at the top of the map.
+    ops, pairing = pair_ops(sid, ops)
+    if pairing:
+        print(json.dumps(dict(pairing=pairing), indent=1, default=float))
     if not args.apply:
-        print(json.dumps(dict(ops=[o["op"] for o in ops]), indent=1))
+        print(json.dumps(dict(ops=[o["op"] for o in ops],
+                              pairing=pairing), indent=1, default=float))
         return 0
     with LiveBuilder(actor=ACTOR) as b:
         b.note(f"{sid}: a NEW waterfront structure. {spec['why']}",
@@ -1517,10 +1930,52 @@ def cmd_newbuild(args) -> int:
                        structural_ok=verdict["ok"],
                        poi=json.loads(json.dumps(poi, default=float)),
                        vessel=json.loads(json.dumps(pick, default=float))))
+        if pairing:
+            for row in pairing:
+                if row.get("bay"):
+                    row["bay"]["live_confirmed"] = confirm_bay_clear(
+                        b.srv, row["bay"])
+            b.observe(f"portal_pair_bays::{sid}",
+                      "MEASURED by portal_hall's own bay gate (fixtures.probe "
+                      "against the placed hall body, interior mask class, 4.4 m "
+                      "separation from every standing seat) and then CONFIRMED "
+                      "EMPTY LIVE with a scoped objects_count",
+                      "tools/jumpstart/settlements/waterfront.py::hub_bay",
+                      pairing)
         emit(b, ops, label=sid)
         lp = ops[-1]["params"]
         emit(b, [save_op((lp["pos"][0], lp["pos"][2]), lp["prefab"], 1, 12.0,
                          spec["role"])], label=f"{sid} save")
+        pairs = []
+        for row in pairing:
+            ends = [dict(e, end=("hub" if e.get("site_id") == "portal-hall"
+                                 else "site")) for e in tag_ends(row["tag"])]
+            for o in ops:
+                if o["op"] != "portal":
+                    continue
+                p = o["params"]
+                if p.get("tag") != row["tag"]:
+                    continue
+                if not any(abs(e["x"] - p["pos"][0]) < 0.5
+                           and abs(e["z"] - p["pos"][2]) < 0.5 for e in ends):
+                    ends.append(dict(x=p["pos"][0], y=p["pos"][1],
+                                     z=p["pos"][2], site_id=p.get("site_id"),
+                                     end=("hub" if p.get("site_id")
+                                          == "portal-hall" else "site")))
+            pairs.append(verify_pair(b.srv, row["tag"], ends))
+        if pairs:
+            b.observe(f"portal_pair_readback::{sid}",
+                      "MEASURED: findObjects -detailed bounded to 3 m at EVERY "
+                      "end of the tag, tag string required in the ZDO listing "
+                      "at both. At dock-northcape the portal IS the access, so "
+                      "an unproven pair is a stranded operator",
+                      "tools/jumpstart/settlements/waterfront.py::verify_pair",
+                      pairs)
+            broken = [p["tag"] for p in pairs if not p["paired"]]
+            if broken:
+                raise SystemExit(
+                    f"the tag(s) {broken} did NOT read back off both ZDOs; "
+                    f"{sid} is portal-only and this pass is NOT complete.")
         print(json.dumps(b.close(), indent=1))
     return 0
 
@@ -1762,6 +2217,193 @@ def cmd_measure(args) -> int:
     return 0
 
 
+# The deck tiles that MEASURE buried, per site, with the `spawn_plan` seq that
+# placed them.  Positions are the LIVE census positions, not the reconstructed
+# ones: the assembly recomputed off the field puts these two at (13.03,-259.79)
+# and (11.75,-261.32), which is 0.17 m and 0.25 m from where they actually
+# stand, and a 1 m delete aimed at a reconstruction can miss.
+BURIED = {
+    "harbour-temple-south": dict(
+        placed_by_seq=26, prefab="wood_floor",
+        tiles=[(12.91, -259.91), (11.50, -261.33)],
+        why=("the pier's landward corner is inside the bank. MEASURED against "
+             "the composed applied surface, these two tiles carry 0.724 m and "
+             "0.150 m of NATURAL ground over their walking surface -- the "
+             "ledger's own delta at both is 0.000, so this is not a clobber by "
+             "any road record and rewinding one cannot help. They are "
+             "invisible. A CUT is refused: the neighbouring deck tile at "
+             "(11.50,-258.50) stands at 30.582, i.e. 0.582 m above "
+             "c_WaterLevel, terrain spread reaches 1 m past the request, and "
+             "that is the same sub-0.6 m headroom beside open water that "
+             "refused a cut at the stair 4 m away. Draining a pier is the "
+             "unrepairable class, so 0.15 m of cosmetics does not buy a "
+             "terrain write here."))
+}
+
+
+def cmd_retire(args) -> int:
+    """Retire deck tiles that MEASURE buried, instead of cutting the bank.
+
+    Three things are re-measured before anything is deleted, because every one
+    of them is a way this pass could be wrong:
+
+      1. THE BURIAL, off the composed applied surface at each tile's own XZ.
+         A tile that is not actually buried is not retired.
+      2. THE SUPPORT, with the game's own WearNTear algorithm on the assembly
+         MINUS these tiles.  If the deck stops standing without them they are
+         load-bearing and this pass refuses -- buried is not the same as free.
+      3. THE NEIGHBOURS, live.  The delete is `deleteObjects -prefab wood_floor
+         -near x y z r`, so the radius must hold exactly ONE tile.  MEASURED on
+         this deck the pitch is 2 m, and the radius is checked against the
+         nearest OTHER tile rather than assumed from the pitch.
+
+    No terrain is written, so the "every written sample stays above
+    c_WaterLevel" requirement is satisfied by there being no written sample.
+    """
+    from ledger.live import LiveBuilder  # noqa: PLC0415
+    import replay as R  # noqa: PLC0415
+    site = args.site
+    spec = BURIED.get(site)
+    if not spec:
+        raise SystemExit(f"{site} has no MEASURED buried tiles recorded; "
+                         f"measure them before retiring anything")
+    surf = Surface()
+    s = SITES[site]
+    deck_top = s["deck_top_y"]
+    # 1. THE BURIAL
+    rows = []
+    for tx, tz in spec["tiles"]:
+        app, gen, delta = surf.at(tx, tz)
+        rows.append(dict(xz=[tx, tz], applied_y=round(app, 3),
+                         generated_y=round(gen, 3), ledger_delta_m=round(delta, 3),
+                         deck_top_y=deck_top,
+                         buried_by_m=round(app - deck_top, 3),
+                         author=surf.author_at(int(round(tx)), int(round(tz)))))
+    print(json.dumps(dict(burial=rows), indent=1, default=str))
+    shallow = [r for r in rows if r["buried_by_m"] <= 0.0]
+    if shallow:
+        raise SystemExit(
+            f"{[r['xz'] for r in shallow]} MEASURE at or below the deck top and "
+            f"are therefore NOT buried; retiring a visible deck tile would take "
+            f"a hole out of the pier. Re-measure before running this.")
+    # 2. THE SUPPORT, asked of the game's own algorithm
+    fields = W.load(EXTRA_FIELD) | W.load(FIELD)
+    fld = None
+    for f in fields.values():
+        if f.step <= 1.0 and f.contains(s["root"][0], s["root"][1], 40.0):
+            if fld is None or f.half < fld.half:
+                fld = f
+    ground, bed = CP.profiles(fld)
+    pieces = A.jetty(s["root"], s["bearing"], s["length_m"], A.DECK_Y, bed,
+                     width_tiles=s.get("width_tiles", 2), name=site)
+    keep = [p for p in pieces
+            if not any(math.hypot(p.x - tx, p.z - tz) < 0.6
+                       for tx, tz in spec["tiles"])]
+    full = A.verify(pieces, ground, note=f"{site} full")
+    less = A.verify(keep, ground, note=f"{site} minus buried")
+    support = dict(pieces_full=len(pieces), pieces_kept=len(keep),
+                   full_ok=full["ok"], without_ok=less["ok"],
+                   without_failures=(less.get("failures") or [])[:6],
+                   method=("MEASURED with the game's own WearNTear support "
+                           "algorithm via crossings/assemble.py::verify, on the "
+                           "assembly MINUS these tiles"))
+    print(json.dumps(support, indent=1, default=float))
+    if not less["ok"]:
+        raise SystemExit(
+            f"the deck does NOT stand without these tiles: "
+            f"{less.get('failures')[:3]}. They are load-bearing, buried or not, "
+            f"and retiring them would collapse the pier. Leave them.")
+    # 3. THE NEIGHBOURS, live -- the radius must hold exactly one tile
+    radius = 1.0
+    with R.Server(dry=False) as srv:
+        srv.probe()
+        box = audit(srv, min(t[0] for t in spec["tiles"]) - 10,
+                    max(t[0] for t in spec["tiles"]) + 10,
+                    min(t[1] for t in spec["tiles"]) - 10,
+                    max(t[1] for t in spec["tiles"]) + 10)
+    live = [o for o in (box.get("objects") or [])
+            if o["prefab"] == spec["prefab"]]
+    print(f"    live {spec['prefab']} in the census box: {len(live)}")
+    aim = []
+    for tx, tz in spec["tiles"]:
+        d = sorted(((math.hypot(o["x"] - tx, o["z"] - tz), o) for o in live),
+                   key=lambda t: t[0])
+        if not d:
+            raise SystemExit(
+                f"no live {spec['prefab']} anywhere near ({tx}, {tz}); an empty "
+                f"answer is not a zero, so this stops rather than aiming a "
+                f"delete at nothing")
+        inside = [o for dd, o in d if dd <= radius]
+        nearest_other = next((dd for dd, _o in d if dd > radius), None)
+        row = dict(target=[tx, tz], inside_radius=len(inside), radius_m=radius,
+                   nearest_m=round(d[0][0], 3),
+                   nearest_other_m=(None if nearest_other is None
+                                    else round(nearest_other, 3)),
+                   hit=dict(x=d[0][1]["x"], y=d[0][1]["y"], z=d[0][1]["z"]))
+        aim.append(row)
+        if len(inside) != 1:
+            raise SystemExit(
+                f"({tx}, {tz}) holds {len(inside)} {spec['prefab']} inside "
+                f"{radius} m, not exactly 1; a delete here would take a "
+                f"neighbour with it. Tighten the radius against the measured "
+                f"nearest-other of {row['nearest_other_m']} m.")
+    print(json.dumps(dict(aim=aim), indent=1, default=float))
+    ops = []
+    for row in aim:
+        h = row["hit"]
+        ops.append(dict(
+            op="retire",
+            params=dict(prefab=spec["prefab"],
+                        pos=[round(h["x"], 3), round(h["y"], 3),
+                             round(h["z"], 3)],
+                        radius_m=radius, retires=[spec["placed_by_seq"]],
+                        reason=spec["why"], role=SITE_ROLE[site], site_id=site),
+            wire=[f"deleteObjects -prefab {spec['prefab']} -near "
+                  f"{h['x']:.2f} {h['y']:.2f} {h['z']:.2f} {radius:.2f} -force"],
+            requires=dict(mods=["WorldEditCommands"], prefabs=[spec["prefab"]],
+                          blobs=[]),
+            expect=dict(absent=[dict(prefab=spec["prefab"],
+                                     pos=[round(h["x"], 2), round(h["z"], 2)],
+                                     max=radius)]),
+            meta=dict(counted_before=row["inside_radius"], aim=row,
+                      burial=next(r for r in rows
+                                  if abs(r["xz"][0] - row["target"][0]) < 0.01),
+                      support=support,
+                      deck_count_after=(
+                          f"the deck's spawn_plan (seq {spec['placed_by_seq']}) "
+                          f"has a prefab_count expect of 39 {spec['prefab']} at "
+                          f"tolerance 0; after this retire the deck is 37 BY "
+                          f"RECORD. That record is NOT edited and the plan is "
+                          f"NOT re-emitted -- a re-emit would double every "
+                          f"piece and its own postcondition would then fail. "
+                          f"This append is the annotation."),
+                      why_not_a_cut=spec["why"],
+                      terrain_written="NONE -- this pass writes no terrain at "
+                                      "all, so no sample can fall below "
+                                      "c_WaterLevel 30.0")))
+    if not args.apply:
+        print(json.dumps(dict(would_emit=[o["wire"][0] for o in ops]), indent=1))
+        return 0
+    with LiveBuilder(actor=ACTOR) as b:
+        b.note(f"{site}: retiring {len(ops)} deck tile(s) that MEASURE buried in "
+               f"natural ground, rather than cutting the bank to expose them. "
+               f"{spec['why']}", role=SITE_ROLE[site], site_id=site)
+        b.observe(f"buried_deck_tiles::{site}",
+                  "MEASURED three ways before deleting anything: burial off the "
+                  "composed applied surface at each tile's own XZ; support from "
+                  "the game's own WearNTear algorithm on the assembly MINUS "
+                  "these tiles; and the delete radius against the LIVE nearest "
+                  "other tile, so a 1 m delete cannot take a neighbour",
+                  "tools/jumpstart/settlements/waterfront.py::cmd_retire",
+                  dict(burial=rows, support=support, aim=aim))
+        emit(b, ops, label=f"{site} retire")
+        h = ops[-1]["params"]["pos"]
+        emit(b, [save_op((h[0], h[2]), spec["prefab"], 0, radius,
+                         SITE_ROLE[site])], label=f"{site} save")
+        print(json.dumps(b.close(), indent=1))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1769,7 +2411,8 @@ def main(argv=None) -> int:
     for name, fn in (("measure", cmd_measure), ("audit", cmd_audit),
                      ("complete", cmd_complete), ("stair", cmd_stair),
                      ("fabric", cmd_fabric), ("newbuild", cmd_newbuild),
-                     ("probe", cmd_probe), ("port", cmd_port)):
+                     ("probe", cmd_probe), ("port", cmd_port),
+                     ("retire", cmd_retire)):
         p = sub.add_parser(name)
         p.add_argument("--site", default=None)
         p.add_argument("--prefabs", nargs="*", default=[])

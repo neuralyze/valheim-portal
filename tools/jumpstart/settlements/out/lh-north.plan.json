@@ -1,0 +1,148 @@
+{
+ "seed": "Pirate68",
+ "seed_hash": 147627509,
+ "patch_file": "/tmp/settle/h1m.bin",
+ "locations_dump": "/tmp/settle/loc3/f6fe167f4fcd.json",
+ "towns": {},
+ "outliers": [
+  {
+   "id": "lh-north",
+   "kind": "lighthouse",
+   "tag": null,
+   "patch": "westisle",
+   "x": -182.0,
+   "z": 2592.0,
+   "pad_m": 22.0,
+   "body": "drake-lighthouse.blueprint",
+   "road_priority": "none",
+   "why": "THE TALL NORTH LIGHTHOUSE the operator asked for, beside the north dock. MEASURED: drake-lighthouse is the TALLEST body in the lighthouse pool -- 38 walkable levels against 22 for the runner-up -- and its solid collider stack spans 50.083 m, 47.083 m of it above the floor a player enters on. Seated on this pad (target_y 32.98) its lantern gallery, the 196 m2 top walkable surface the beacon stands on, is 40.08 m ABOVE SEA LEVEL and its roof cap 50.06 m. The pad is 19.6 m from the nearest pier piece with the worst natural sample inside the written square AND its 1 m spread ring at 31.043 m -- 1.043 m above c_WaterLevel 30.0 -- and 0 pier pieces inside the written region, so no terrain write goes under the deck or below the water plane. 53 otherwise-legal offsets were REFUSED on a wet spread ring, including the first pick (-178,2596) whose ring corner measured 29.866 m. NO PORTAL: the dock's own `x-north` pair stands 20 m away, and a second arch for the same place is a second convention, not access.",
+   "pad": {
+    "target_y": 32.98,
+    "cut_m3": 174.3,
+    "fill_m3": 131.4,
+    "moved_m3": 305.7,
+    "mean_move_m": 0.632,
+    "rms_m": 0.892,
+    "max_cut_m": 3.21,
+    "max_fill_m": 1.67,
+    "yaw_deg": 0.0,
+    "width_m": 22.0,
+    "depth_m": 22.0,
+    "apron_m": 0.0,
+    "samples": 484,
+    "over_clamp": 0,
+    "clamp_ok": true,
+    "clamp_headroom_m": 4.79,
+    "worst_delta_m": 3.21,
+    "wet_samples": 0,
+    "freeboard_m": 2.98,
+    "biome_counts": {
+     "Meadows": 484
+    },
+    "patch": "westisle",
+    "x": -182.0,
+    "z": 2592.0,
+    "offsets_tried": 2025,
+    "cleared_offsets": 451
+   },
+   "body_footprint": [
+    14.5,
+    14.5
+   ],
+   "body_sha256": "8f531ce29c330c7bc8d367047c2bfcde31bfb5afa42f499cdedc3f4c3eee2fac",
+   "pieces": 1255,
+   "grounded": "grounds_on_posts",
+   "floating_fraction": 0.333,
+   "missing_prefabs": [],
+   "stations": 0,
+   "beds": 0,
+   "walkable_levels": 38,
+   "base_y": 1.0,
+   "ground_y": 33.26,
+   "rise_160m_m": 24.9,
+   "dist_wet_cell_m": 17.5,
+   "dist_navigable_water_m": 17.5,
+   "dist_spawn_m": 2591.3,
+   "nearest_location": {
+    "name": "ShipSetting01",
+    "prefab": "ShipSetting01",
+    "dist_m": 39.4,
+    "reach_m": 24.0,
+    "protected": false,
+    "standoff_m": 36.0
+   },
+   "poi_violations": [
+    {
+     "name": "ShipSetting01",
+     "prefab": "ShipSetting01",
+     "dist_m": 39.4,
+     "required_m": 51.6,
+     "short_by_m": 12.2,
+     "protected": false
+    }
+   ],
+   "island": {
+    "landmass_label": 5,
+    "landmass_area_m2": 2682363.0,
+    "same_landmass_as_spawn": false,
+    "evidence": "MEASURED: 4-connected land (h > 30.0) at 1 m on the westisle patch; the north cape is on the west isle, not the spawn island, which is why this site is portal-only"
+   },
+   "cluster": 1
+  }
+ ],
+ "bodies": {
+  "drake-lighthouse.blueprint": {
+   "count": 2,
+   "sha256": "8f531ce29c330c7bc8d367047c2bfcde31bfb5afa42f499cdedc3f4c3eee2fac",
+   "pieces": 1255,
+   "footprint": [
+    14.5,
+    14.5
+   ],
+   "grounded": "grounds_on_posts",
+   "floating_fraction": 0.333,
+   "missing_prefabs": [],
+   "base_y": 1.0,
+   "relief_m": 38.8,
+   "max_buried_m": 2.0,
+   "stations": 0,
+   "beds": 0,
+   "walkable_levels": 38,
+   "is_town_dwelling": false,
+   "interior": {
+    "name": "drake-lighthouse.blueprint",
+    "yaw_deg": 0.0,
+    "pieces": 1255,
+    "indoor_covered_m2": 0.0,
+    "counts": {
+     "outdoor": 672,
+     "covered_unenclosed": 38,
+     "blocked": 102,
+     "unreachable": 29
+    },
+    "cover_height_m": null,
+    "interior_floor_above_pad_m": null,
+    "npc_ok": false,
+    "npc_verdict": "MEASURED only 0.0 m2 of covered, enclosed, reachable floor (< 4 m2): nothing could stand in this body, it is scenery"
+   },
+   "npc_gate": "PASS",
+   "npc_gate_scope": "informational: not a dwelling (tower, light, production or outlying structure), so an unenclosed interior is not a defect",
+   "spawnable": {
+    "ok": true,
+    "commands": 1255,
+    "missing": [],
+    "method": "MEASURED: a real run of blueprints/to_rcon_plan.py --align floor-center, which is the emitter that puts the body in the world",
+    "tool": "tools/jumpstart/settlements/spawnable.py"
+   }
+  }
+ },
+ "totals": {
+  "sites": 1,
+  "buildings": 1,
+  "pieces_total": 1255,
+  "portals": 0,
+  "signs": 0,
+  "earthwork_m3": 305.7,
+  "all_clamp_ok": true
+ }
+}
