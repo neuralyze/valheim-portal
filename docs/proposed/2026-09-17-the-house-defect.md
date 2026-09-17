@@ -159,6 +159,17 @@ Recorded because the pattern is not a property of subagents:
 - Pre-classified a mod update as DANGEROUS **in the brief**, so the agent inherited the
   verdict instead of measuring one. The changelog was purely additive.
 - Counted ledger records and called them live portal ends.
+- **Hand-wrote RCON probes without the `consoleCommand` bridge, read the resulting
+  `Unknown command` as a regression in a live world, spent an hour diagnosing it, and
+  reported it to the operator as broken.** The command surface was fully alive - 443
+  registered commands. ValheimRcon's verb registry is closed over its own assembly with
+  no console fallback, so a bare verb is rejected by design; `save` and `players` worked
+  only because they are two of its 41 own verbs. The project had already recorded this
+  exact trap in two source comments (`terraform/place.py:33`,
+  `blueprints/to_rcon_plan.py:65`). Every tool in the repo sends the bridge; only the
+  hand-written probe did not. **The instrument was the defect, and the subject was
+  healthy the whole time** - which is this document's thesis, committed by its author,
+  twice on the same world within one hour.
 
 ## What actually worked
 
