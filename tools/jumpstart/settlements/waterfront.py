@@ -1019,6 +1019,32 @@ def substitute_boat(surf: Surface, site: str, ops: list[dict]) -> list[dict]:
     return out
 
 
+def site_anchor(ops: list[dict], site: str) -> dict:
+    """The op a pass's `save` postcondition should be measured against.
+
+    NEVER the hub end.  MEASURED the hard way at `dock-northcape`: the save was
+    anchored on `ops[-1]`, which `pair_ops` had just made the HUB portal, and
+    the check asked for `prefab_count[portal_wood] == 1` within 12 m of a bay in
+    the portal hall -- where NINE portals stand inside 12 m.  It answered 9 and
+    correctly refused, while the world was entirely right.  A postcondition that
+    measures a different place than the pass built is a question about somebody
+    else's work.
+
+    So the anchor is the last op belonging to THIS site, and a portal is only
+    taken if nothing else is available.
+    """
+    mine = [o for o in ops
+            if o["op"] in ("spawn", "portal")
+            and (o["params"] or {}).get("site_id") == site]
+    if not mine:
+        raise SystemExit(f"no spawn/portal op belongs to {site!r}; a save cannot "
+                         f"be anchored on another site's piece")
+    solid = [o for o in mine if o["op"] == "spawn"]
+    return (solid or mine)[-1]
+
+
+
+
 def cmd_complete(args) -> int:
     """Emit the planned ops for a site that are NOT already in the world.
 
@@ -1080,7 +1106,7 @@ def cmd_complete(args) -> int:
                       "tools/jumpstart/settlements/waterfront.py::hub_bay",
                       pairing)
         emit(b, todo, label=site)
-        last = [o for o in todo if o["op"] in ("spawn", "portal")][-1]
+        last = site_anchor(todo, site)
         lp = last["params"]
         emit(b, [save_op((lp["pos"][0], lp["pos"][2]), lp["prefab"], 1,
                          max(3.0, lp.get("guard_radius_m", 0.5) * 2.0),
@@ -1574,7 +1600,15 @@ def verify_pair(srv, tag: str, ends: list[dict]) -> dict:
         rows.append(dict(end=e.get("end") or e.get("site_id"),
                          at=[round(e["x"], 2), round(e["y"], 2),
                              round(e["z"], 2)],
-                         zdos=len(rb.get("leaves") or []),
+                         # `bounded_detailed` returns the LEAF COUNT as an int,
+                         # not a list of leaves -- MEASURED by this function
+                         # raising `object of type 'int' has no len()` on the
+                         # first live pair. The ZDO count is the number of
+                         # `-Prefab:` rows in the listing, which is the thing
+                         # actually being counted.
+                         leaves=rb.get("leaves"),
+                         zdos=sum(1 for ln in listing.splitlines()
+                                  if ln.strip().startswith("-Prefab:")),
                          tag_on_zdo=(tag in listing),
                          listing=listing))
     ok = len(rows) == 2 and all(r["tag_on_zdo"] for r in rows)
@@ -1659,6 +1693,44 @@ def cmd_fabric(args) -> int:
                       why=("ONE lamp convention for the whole world; the ZDO int "
                            "payload is what makes it everburning in vanilla, and "
                            "without it the torch wants resin every 11 hours"))))
+    # THE RAILS ARE A RUN TOO, and the same guard that refused the stair would
+    # refuse them: 12 `wood_beam` at 1.4-2.0 m spacing all sit inside the
+    # single-spawn guard's 3.0 m radius, so each one after the first would read
+    # as a duplicate of its neighbour. Same fix as `cmd_stair` -- a CUMULATIVE
+    # count over a radius spanning the whole rail line -- with one addition
+    # that the stair did not need: the radius is wide enough to catch
+    # `wood_beam` this pass did NOT place, so the baseline is MEASURED LIVE
+    # first and the expected count is baseline + i. A guard that assumed a
+    # baseline of zero would pass on somebody else's beams.
+    rails = [o for o in ops if o["params"]["prefab"] == "wood_beam"]
+    if rails:
+        rx = [o["params"]["pos"][0] for o in rails]
+        rz = [o["params"]["pos"][2] for o in rails]
+        cx, cz = (min(rx) + max(rx)) / 2.0, (min(rz) + max(rz)) / 2.0
+        rail_r = round(max(math.hypot(x - cx, z - cz)
+                           for x, z in zip(rx, rz)) + 2.0, 1)
+        # The baseline comes out of the census THIS PASS already took over the
+        # same box, rather than a second socket call: the rails all lie on the
+        # deck and the census box is root+/-8 to head+/-8, so every candidate
+        # `wood_beam` inside the rail radius is already in `rep["objects"]`.
+        base = sum(1 for o in rep["objects"]
+                   if o["prefab"] == "wood_beam"
+                   and math.hypot(o["x"] - cx, o["z"] - cz) <= rail_r)
+        print(f"    rail guard: {len(rails)} wood_beam, radius {rail_r} m about "
+              f"({cx:.2f},{cz:.2f}), LIVE baseline {base} already standing")
+        for i, op in enumerate(rails, start=1):
+            op["expect"] = dict(prefab_count=[dict(
+                prefab="wood_beam", pos=[round(cx, 2), round(cz, 2)],
+                max=rail_r, count=base + i, tolerance=0)])
+            op["meta"]["guard"] = dict(
+                kind="cumulative run count over a live baseline",
+                index=i, of=len(rails), radius_m=rail_r, live_baseline=base,
+                why=("12 beams at 1.4-2.0 m spacing all fall inside the "
+                     "single-spawn guard's 3.0 m radius, so it reads a sibling "
+                     "as a duplicate -- MEASURED on the stair at this same "
+                     "site. The radius spans the run and the baseline is "
+                     "measured live so the count cannot pass on beams this "
+                     "pass did not place."))
     pick = pick_vessel(surf, site)
     if pick["chosen"] and not args.no_boat:
         c = pick["chosen"]
@@ -1943,7 +2015,7 @@ def cmd_newbuild(args) -> int:
                       "tools/jumpstart/settlements/waterfront.py::hub_bay",
                       pairing)
         emit(b, ops, label=sid)
-        lp = ops[-1]["params"]
+        lp = site_anchor(ops, sid)["params"]
         emit(b, [save_op((lp["pos"][0], lp["pos"][2]), lp["prefab"], 1, 12.0,
                          spec["role"])], label=f"{sid} save")
         pairs = []
@@ -1996,10 +2068,15 @@ def cmd_probe(args) -> int:
     from ledger.live import LiveBuilder  # noqa: PLC0415
     surf = Surface()
     x, z = args.probe_xz
-    g = surf.at(x, z)[0]
     results = []
     for i, prefab in enumerate(args.prefabs):
         px = x + i * 24.0
+        # EACH SLOT ON ITS OWN GROUND. Sampling once at the first slot and
+        # reusing it seats the others wherever that happens to land: MEASURED on
+        # the (56,-288) line the three slots are 35.00 / 34.90 / 35.97 m, so a
+        # shared datum would have buried the third probe 0.97 m and read as a
+        # negative result for a prefab that exists.
+        g = surf.at(px, z)[0]
         op = spawn_op("probe-znetscene", PROBE_ROLE, prefab,
                       px, g, z, 0.0,
                       reason=("a probe, not a structure; nothing here is load "
@@ -2421,9 +2498,15 @@ def main(argv=None) -> int:
         p.add_argument("--arc", type=float, default=180.0)
         p.add_argument("--gate-bearing", type=float, default=0.0)
         p.add_argument("--probe-xz", nargs=2, type=float,
-                       default=[-60.0, -300.0],
-                       help="where to place an existence probe; default is open "
-                            "meadow south of the temple, clear of every pad")
+                       default=[56.0, -288.0],
+                       help="where to place an existence probe. MEASURED "
+                            "default: the previous default (-60,-300) was "
+                            "described as open meadow and is the SEABED -- the "
+                            "composed applied surface there is 15.241 m, i.e. "
+                            "14.759 m BELOW c_WaterLevel 30.0, and all three "
+                            "24 m-spaced slots were underwater. (56,-288) puts "
+                            "the slots at 35.00 / 34.90 / 35.97 m, ~5 m of "
+                            "freeboard, 54 m clear of harbour-temple-south")
         p.add_argument("--no-boat", action="store_true",
                        help="skip the vessel (it is already berthed)")
         p.add_argument("--hub-slot", type=float, default=None,

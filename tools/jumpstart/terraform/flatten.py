@@ -129,9 +129,17 @@ def run_patchscan(zones: list[tuple[int, int]], seed: str, out: Path) -> dict[st
         cx, cz = tcdata.zone_centre(zx, zz)
         lines.append(f"z_{zx}_{zz}\t{cx:g}\t{cz:g}\t32.5\t1")
     req.write_text("\n".join(lines) + "\n")
+    # SANDBOX is OVERRIDABLE, and this is MEASURED rather than tidiness:
+    # `run_patchscan.sh` begins with `rm -rf "$SANDBOX/BepInEx"`, so if an
+    # earlier run staged that tree as ROOT the script cannot clear it and every
+    # later caller gets `patchscan produced nothing` explained only by
+    # `Permission denied`. That is exactly how lh-north was refused AFTER its
+    # clearing had already run. An agent without root cannot repair the shared
+    # path, so it must be able to use its own.
     env = {
         "VH_SRC": str(VH_SRC), "SEED": seed, "REQ": str(req), "OUT": str(out),
-        "SANDBOX": "/tmp/patchscan/vh",
+        "SANDBOX": __import__("os").environ.get("PATCHSCAN_SANDBOX",
+                                                "/tmp/patchscan/vh"),
     }
     cmd = ["bash", str(JUMPSTART / "blueprints" / "run_patchscan.sh")]
     proc = subprocess.run(cmd, env={**dict(__import__("os").environ), **env},

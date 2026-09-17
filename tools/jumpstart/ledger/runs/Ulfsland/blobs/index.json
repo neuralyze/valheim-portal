@@ -874,6 +874,11 @@
   "first_seen_seq": 748,
   "note": "TCData sudrberg_keep_z37__52 zone 37,-52"
  },
+ "43f3b9ce6819970ae55982c94f2dd6f3a454923acd3f6232344b0c25b893ef48": {
+  "bytes": 1292,
+  "first_seen_seq": 2157,
+  "note": "TCData lh_north_z_3_40 zone -3,40"
+ },
  "442f52c418160471ad3165dd3b535cad4696e4f485637d4fa5e531800eb3a342": {
   "bytes": 3489,
   "first_seen_seq": 1549,
@@ -1079,6 +1084,11 @@
   "first_seen_seq": 323,
   "note": "TCData W5-brgs1-wsouth zone [-10, -4]"
  },
+ "51559d9b9b415169e692d0121941f08d1efeacd2c15e013f8e033052e233d4ae": {
+  "bytes": 1294,
+  "first_seen_seq": 2157,
+  "note": "TCData lh_north_z_3_41 zone -3,41"
+ },
  "5156075876a82cd9cb062a539b2155f578d49c74fa57cbd6c16a0853e62bb966": {
   "bytes": 770,
   "first_seen_seq": 240,
@@ -1209,6 +1219,11 @@
   "first_seen_seq": 196,
   "note": "TCData T3-temple-meadhall zone [2, 1]"
  },
+ "5d1ad9159f2ebf46634ad169d33c4ac67636f1d6bc9637e2f030185191097095": {
+  "bytes": 5233,
+  "first_seen_seq": 2093,
+  "note": "harbour-vestvik spawn_object plan, 66 commands"
+ },
  "5d4b9e53dccd1e9f6dc1e9e94126584048e87677f86eb2556e6e7307821f4c25": {
   "bytes": 752,
   "first_seen_seq": 181,
@@ -1243,6 +1258,11 @@
   "bytes": 4398,
   "first_seen_seq": 2048,
   "note": "guardcheck T4-meadhall-stathub"
+ },
+ "5fb35b677bbfb407f8bcbbb033247ac1e0fa8d436975483d7747a79b379fe1cf": {
+  "bytes": 1199,
+  "first_seen_seq": 2188,
+  "note": "lamp spawn commands for T1"
  },
  "5fe3a3f70f26732559f4f86affb1ad3f71a9b5419292ca257c18d9e24bf37d71": {
   "bytes": 5129,
@@ -1288,6 +1308,11 @@
   "bytes": 126,
   "first_seen_seq": 626,
   "note": "TCData tree_sth_1_z9_7 zone 9,7"
+ },
+ "6291443a0eb1e4fbdce15cc5dafa505c2285724daed6f7adcc85900ec445229e": {
+  "bytes": 9822,
+  "first_seen_seq": 2129,
+  "note": "dock-northcape spawn_object plan, 127 commands"
  },
  "62ea36d8dc17c3a9aceea1be2afc5a432c68ce3c3c5187d8cd338e30ed575e11": {
   "bytes": 3572,
@@ -1684,6 +1709,11 @@
   "first_seen_seq": 213,
   "note": "TCData T4-meadhall-stathub zone [9, 12]"
  },
+ "7ca8e38f1ccd546d191db589d155d98b647039a962be61e90ebdfa0a79b071ad": {
+  "bytes": 99532,
+  "first_seen_seq": 2164,
+  "note": "spawn plan lh-north"
+ },
  "7d1cc393478fd338df1a0d7336dec3c11827a5ea18015f44d95b3a011a89954b": {
   "bytes": 397,
   "first_seen_seq": 346,
@@ -1944,6 +1974,11 @@
   "first_seen_seq": 2048,
   "note": "guardcheck T4-meadhall-stathub"
  },
+ "92839fc6cadad62fcbb50f6059aeb7404ddf6432bee088d571e31552070704e5": {
+  "bytes": 1025,
+  "first_seen_seq": 2178,
+  "note": "lamp spawn commands for S7"
+ },
  "9297c761735ed88f2d4ff8e96c2488c7afa5b5fcae3e225143d08684b199794f": {
   "bytes": 970,
   "first_seen_seq": 213,
@@ -2073,6 +2108,11 @@
   "bytes": 4903,
   "first_seen_seq": 713,
   "note": "spawn plan tree-near-1"
+ },
+ "9ad4b523dcb0595d64dc1c5ff0ab5d82776ac5c8b09a40346e956001598c7ad6": {
+  "bytes": 1288,
+  "first_seen_seq": 2183,
+  "note": "lamp spawn commands for S8"
  },
  "9b2ef756e4554073572aaafe66dc6294415c0c818b93b9b66ec1c8e6bf675e8f": {
   "bytes": 2105,
@@ -2284,6 +2324,11 @@
   "first_seen_seq": 1959,
   "note": "guardcheck W10-brgs1-treenear"
  },
+ "aad1db516da02d4b10ddc62b5df28bf94a5ec17b86c91a1de1745b6d4d3be0b9": {
+  "bytes": 655,
+  "first_seen_seq": 2203,
+  "note": "lamp spawn commands for T13"
+ },
  "ab9e9c120af061eb4aad37ddcf2530c22af457fe05acd8bfa9e1031286849fe9": {
   "bytes": 9847,
   "first_seen_seq": 1981,
@@ -2348,6 +2393,11 @@
   "bytes": 545,
   "first_seen_seq": 1875,
   "note": "guardcheck W5-brgs1-wsouth"
+ },
+ "aede0635a4abf1ed34adcc5d82149357359400e2809b0b435d2f0b1e5b858205": {
+  "bytes": 1031,
+  "first_seen_seq": 2193,
+  "note": "lamp spawn commands for T10"
  },
  "af2c9f636159cf7d8339cc9d2563e5edc69469c823aef6d997e5c6c9463cbf08": {
   "bytes": 2046,
@@ -2488,6 +2538,11 @@
   "bytes": 2588,
   "first_seen_seq": 317,
   "note": "TCData S7-stathub-wtnorth zone [10, 17]"
+ },
+ "bca10a2f2c918fa21a4626562b015be0382ce7804603ea20b3d7795b839e5210": {
+  "bytes": 135,
+  "first_seen_seq": 2168,
+  "note": "lamp spawn commands for S12"
  },
  "bcacac3ee2d40e3d4c06dfb9353846c40e8f743716ee6e3529d056399f3f302a": {
   "bytes": 2772,
@@ -2753,6 +2808,11 @@
   "bytes": 269,
   "first_seen_seq": 38,
   "note": "TCData stenvik_cottage_3_z9_14 zone 9,14"
+ },
+ "ceee2450828b577100f34efbe5c1a245420cb73a2be5e0d622f579107860eb63": {
+  "bytes": 8625,
+  "first_seen_seq": 2113,
+  "note": "dock-dockshore spawn_object plan, 112 commands"
  },
  "cef04144c60d9ee24056986748a7d32a0df5db66cf7118d2e602b35c72e8a102": {
   "bytes": 438,

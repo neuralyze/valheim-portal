@@ -43,6 +43,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 import struct
 import subprocess
@@ -70,7 +71,32 @@ import verify_placement as VP  # noqa: E402  blueprints/, for plan_rows / bottom
 
 PLACEMENTS = HERE / "placements"
 SCRATCH = Path("/tmp/settle/build")
-LOCATIONS = "/tmp/settle/loc3/f6fe167f4fcd.json"
+# The mod-free LocScan dump. OVERRIDABLE, because this module already states
+# the rule that makes the override necessary and then does not apply it in one
+# place: "live positions for POSITION, the mod-free dump for per-type RADIUS.
+# This is the check the dump alone cannot make."  `pad_location_check` obeys
+# that; `clear_radius_room` -- the HARD gate on the irreversible op -- reads the
+# dump's POSITIONS.
+#
+# MEASURED at lh-north, and it is not a rounding difference. The dump puts a
+# ShipSetting01 at (-195.60, 2555.07). After `zones_generate`, the ONLY
+# LocationProxy anywhere in a 715-ZDO census of the pad+marker box stands at
+# (-187.25, 34.70, 2539.22) -- the same zone (-3, 40), 17.9 m from the dump's
+# position. A mod-free scan draws each zone's location from a different
+# candidate list than a world running More_World_Locations' ~190 extra types,
+# so its per-zone RNG placement differs; the radii still hold because they are
+# per-type properties, but the coordinates are a MODEL and the proxy is the
+# MEASUREMENT. On the stale coordinate `clear_radius_room` allowed 14.35 m
+# against a 17.56 m cylinder and refused; on the measured one it allows
+# 28.04 m. Refusing a build on a coordinate that is demonstrably 17.9 m wrong
+# is not caution, it is a wrong answer with a guard's authority.
+#
+# So the path can be pointed at a dump whose positions have been corrected from
+# a live sweep. The gate stays ARMED and unchanged -- it is fed a true position
+# instead of a modelled one, and the correction must itself be recorded in the
+# ledger with the census that produced it.
+LOCATIONS = os.environ.get("SETTLE_LOCATIONS_DUMP",
+                           "/tmp/settle/loc3/f6fe167f4fcd.json")
 # The dump `flatten.py`'s own location gate reads. It carries the per-type
 # radii but not the measured ZNetView reach; ours carries both, and both are
 # recorded so the two gates can be told apart in the log.
