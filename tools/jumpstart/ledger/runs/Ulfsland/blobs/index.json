@@ -49,6 +49,11 @@
   "first_seen_seq": 158,
   "note": "TCData stenvik_manor_1_z8_14 zone 8,14"
  },
+ "06e3800d4633eaaf907536c6346476bdd0a5081d3fa36852d01cb82951712c45": {
+  "bytes": 3108,
+  "first_seen_seq": 2294,
+  "note": "lh-north batch 18/18 spawn_object plan, 2 commands"
+ },
  "06edd5bb58b61cf4adb65a917446167cb0f29d1c5148d2e62abf17304f41ec6e": {
   "bytes": 2254,
   "first_seen_seq": 1197,
@@ -234,6 +239,11 @@
   "first_seen_seq": 38,
   "note": "spawn plan stenvik-longhouse-2"
  },
+ "16043594803acc3fd9c8bf76be5cb60ec448e5c4693e08485b08c9a718bcb8bb": {
+  "bytes": 5003,
+  "first_seen_seq": 2285,
+  "note": "lh-north batch 9/18 spawn_object plan, 3 commands"
+ },
  "162654e89aa60554eb7dbd66e411f88e24b51fce514a70112fe419e8c5a6f10f": {
   "bytes": 2219,
   "first_seen_seq": 185,
@@ -313,6 +323,11 @@
   "bytes": 2960,
   "first_seen_seq": 1197,
   "note": "TCData T8-stenvik-wttown zone [9, 14]"
+ },
+ "1c3b10e3ce3bf260d46740de8907733cf0d9be8fdb62ec32fb3ce47d015ffd26": {
+  "bytes": 4987,
+  "first_seen_seq": 2287,
+  "note": "lh-north batch 11/18 spawn_object plan, 3 commands"
  },
  "1cdf279f0c7036aa8809847a29d20bfc1a6370b14d00a9c106c8275e87fbec25": {
   "bytes": 3660,
@@ -569,6 +584,11 @@
   "first_seen_seq": 245,
   "note": "TCData S8-wtsouth-treesth zone [8, 7]"
  },
+ "31458ddde727c3b232428d74cb2ec8dee4bfc585b36d3299f3c82f88dbc53899": {
+  "bytes": 5012,
+  "first_seen_seq": 2280,
+  "note": "lh-north batch 4/18 spawn_object plan, 3 commands"
+ },
  "3158340b1fb9c4c97f2fee8a51d6b720ea452d50fd9a8c91144349dc913c9326": {
   "bytes": 2308,
   "first_seen_seq": 599,
@@ -593,6 +613,11 @@
   "bytes": 6998,
   "first_seen_seq": 1707,
   "note": "guardcheck T12-wtspawn-temple"
+ },
+ "31b83babc3bcdd190d249ae441216536ba1643bf043954a94aaed46c683e649d": {
+  "bytes": 5003,
+  "first_seen_seq": 2283,
+  "note": "lh-north batch 7/18 spawn_object plan, 3 commands"
  },
  "31bcab7c796fc646c7c1153b3169a1971294bd1dd139ccc02233f312cf214e3b": {
   "bytes": 1844,
@@ -824,6 +849,11 @@
   "first_seen_seq": 1674,
   "note": "TCData S1-portalhub-brgs2 zone [-5, 3]"
  },
+ "4141281a7688e298f6c4dfb6f165946e98c1189f09ae391e9f5dc14a60c47ac6": {
+  "bytes": 4986,
+  "first_seen_seq": 2289,
+  "note": "lh-north batch 13/18 spawn_object plan, 3 commands"
+ },
  "418c9da5b11164f059ccabbd75f8a88fffe1327601ec1adac1d2b60cd2bd7a68": {
   "bytes": 332,
   "first_seen_seq": 240,
@@ -979,6 +1009,11 @@
   "first_seen_seq": 1707,
   "note": "guardcheck T12-wtspawn-temple"
  },
+ "496f97f3570addc7242152c829f25c5a349940afe9a64dbfe954089385970681": {
+  "bytes": 5167,
+  "first_seen_seq": 2277,
+  "note": "lh-north batch 1/18 spawn_object plan, 3 commands"
+ },
  "49a2f1f6a80497d113502c534156c2ce4a4681b55b305b84f34544ed6c679805": {
   "bytes": 954,
   "first_seen_seq": 1428,
@@ -1093,6 +1128,11 @@
   "bytes": 770,
   "first_seen_seq": 240,
   "note": "TCData T5-temple-dockshore zone [-1, 0]"
+ },
+ "524299b5a48fd23e950be9432be6426e928628bca4a91914ce2fdd88e255ad70": {
+  "bytes": 5233,
+  "first_seen_seq": 2293,
+  "note": "lh-north batch 17/18 spawn_object plan, 3 commands"
  },
  "5330fd725effc28a55230fb0b4422c48ed54fc54067ce45d8f411a46d7c92a58": {
   "bytes": 2965,
@@ -1218,6 +1258,11 @@
   "bytes": 3888,
   "first_seen_seq": 196,
   "note": "TCData T3-temple-meadhall zone [2, 1]"
+ },
+ "5c3574de6dd528d368d6a12d531ceccf1427be9b9fbf4967b262b9836dbc2df6": {
+  "bytes": 4958,
+  "first_seen_seq": 2282,
+  "note": "lh-north batch 6/18 spawn_object plan, 3 commands"
  },
  "5d1ad9159f2ebf46634ad169d33c4ac67636f1d6bc9637e2f030185191097095": {
   "bytes": 5233,
@@ -1394,6 +1439,11 @@
   "first_seen_seq": 1902,
   "note": "guardcheck T10-wtspawn-wtsouth"
  },
+ "69215ce374f9c79c6c0ba572c6d5dc1ed1d61f89ebaa92e4f09fad325e3a01d2": {
+  "bytes": 5100,
+  "first_seen_seq": 2292,
+  "note": "lh-north batch 16/18 spawn_object plan, 3 commands"
+ },
  "69510d32fa6dfca408fb7fe97157eaa9f02114544886e2eac0521fa84ddc8018": {
   "bytes": 4588,
   "first_seen_seq": 633,
@@ -1418,6 +1468,11 @@
   "bytes": 4316,
   "first_seen_seq": 1158,
   "note": "TCData T4-meadhall-stathub zone [10, 17]"
+ },
+ "6b51f42317b4ff80da363ab5b8bc2f2075729d05fd0ab0b7075afcddfe6d0026": {
+  "bytes": 5007,
+  "first_seen_seq": 2288,
+  "note": "lh-north batch 12/18 spawn_object plan, 3 commands"
  },
  "6b5b0680603cb931fa618aa1d31a6cfba000b86d16b00630b0c32daccbd64a8d": {
   "bytes": 1680,
@@ -1468,6 +1523,11 @@
   "bytes": 2140,
   "first_seen_seq": 207,
   "note": "TCData T10-wtspawn-wtsouth zone [8, 1]"
+ },
+ "6db827069bcac9d6b1760f88f5c9bdd6d67f6afbecbeef60d33fdccdcc702270": {
+  "bytes": 1697,
+  "first_seen_seq": 2213,
+  "note": "lamp spawn commands for T5"
  },
  "6dc3e08e493c936d9df5dc60bd3a0688e9e649b353ec18426f9f1104032e8e48": {
   "bytes": 838,
@@ -1694,6 +1754,11 @@
   "first_seen_seq": 1775,
   "note": "guardcheck T4-meadhall-stathub"
  },
+ "7a28a9070a27362827966a7559508c465dab43e53f413bc2481adb75ab56776e": {
+  "bytes": 1446,
+  "first_seen_seq": 2233,
+  "note": "lamp spawn commands for W5"
+ },
  "7a818957c8a6fa76b503dbb3e0ba91f0272c5d99a0f98c29ec7fff872b2367f0": {
   "bytes": 1107,
   "first_seen_seq": 181,
@@ -1814,6 +1879,16 @@
   "first_seen_seq": 207,
   "note": "TCData T10-wtspawn-wtsouth zone [2, -2]"
  },
+ "82f96c7c4497fe475f495d2e09243d9dc7d78d77090a3a3ffba995e9cc669d38": {
+  "bytes": 1945,
+  "first_seen_seq": 2223,
+  "note": "lamp spawn commands for T9"
+ },
+ "8322cc6c2e7cd8f1285c8dea58a57231d2f2e2663ff7fb472d1155b00d29c981": {
+  "bytes": 929,
+  "first_seen_seq": 2228,
+  "note": "lamp spawn commands for W10"
+ },
  "8333e631ea33199795a5299958b5b4b4296f9d56da306d6fd46e2ca3e27f5838": {
   "bytes": 2301,
   "first_seen_seq": 234,
@@ -1858,6 +1933,11 @@
   "bytes": 2859,
   "first_seen_seq": 245,
   "note": "TCData S8-wtsouth-treesth zone [8, 8]"
+ },
+ "87042f8ff745f71cbc6ed8d21cf894d01d8054a35f366cd95be3f1b5668fff54": {
+  "bytes": 771,
+  "first_seen_seq": 2218,
+  "note": "lamp spawn commands for T8"
  },
  "87c4e8811ea9758e11216cc39ce760c2da0989c00d3e0ad70e6873a31850c2f0": {
   "bytes": 2321,
@@ -2744,6 +2824,11 @@
   "first_seen_seq": 1855,
   "note": "guardcheck T5-temple-dockshore"
  },
+ "c92ce7065e5de1bf13ec50cd18809c014bd3734a5df5e4af0e7a935513bf0db5": {
+  "bytes": 4967,
+  "first_seen_seq": 2284,
+  "note": "lh-north batch 8/18 spawn_object plan, 3 commands"
+ },
  "cae005ca4118518e1aeb2a078e851a2c9de3a0ba1244ea7ff64a77b5a174abfb": {
   "bytes": 5434,
   "first_seen_seq": 1707,
@@ -2834,6 +2919,11 @@
   "first_seen_seq": 1674,
   "note": "TCData S1-portalhub-brgs2 zone [-5, 4]"
  },
+ "cf4b10954256b2023c91530699a6c8f739d8e356fc3b52b948bddb077413e8bb": {
+  "bytes": 5195,
+  "first_seen_seq": 2279,
+  "note": "lh-north batch 3/18 spawn_object plan, 3 commands"
+ },
  "cf738fa6220ed6ba8a2a4c8cc5dff88252477310de36c29c68240e581b44b003": {
   "bytes": 2523,
   "first_seen_seq": 1300,
@@ -2898,6 +2988,11 @@
   "bytes": 798,
   "first_seen_seq": 1300,
   "note": "TCData T9-wttown-dockshore zone [10, -1]"
+ },
+ "d4dfb8489b1b35e5e990f58ca2d80ccd43dadc17033e3f19b6de07480ba71864": {
+  "bytes": 5231,
+  "first_seen_seq": 2270,
+  "note": "lh-north batch 2/20 spawn_object plan, 3 commands"
  },
  "d4efaded52425c5a43a1e8adeb5a5baadb8b86849934e688bf0272e2fb82699d": {
   "bytes": 1777,
@@ -2983,6 +3078,11 @@
   "bytes": 3608,
   "first_seen_seq": 136,
   "note": "TCData stenvik_cottage_3_z8_14 zone 8,14"
+ },
+ "db658091092e5edfa39b956825dbf7d0d6b5bafa901167cf91f4f68a701384bb": {
+  "bytes": 4963,
+  "first_seen_seq": 2281,
+  "note": "lh-north batch 5/18 spawn_object plan, 3 commands"
  },
  "dbada0c725c14e38d8558d0c53c4235f0f7739361ab2c4d6653d192dc88adc9c": {
   "bytes": 156,
@@ -3189,6 +3289,11 @@
   "first_seen_seq": 338,
   "note": "TCData T13-temple-harboursouth zone [-1, 0]"
  },
+ "e9d848a9b1bf6ee0ca8f6c73f4e9d1778528cfa4c1bace4633fe19065150ffc3": {
+  "bytes": 5015,
+  "first_seen_seq": 2286,
+  "note": "lh-north batch 10/18 spawn_object plan, 3 commands"
+ },
  "ea49b2899e6304efdd330336567f219b7f68e235a23088d0377854ad754f7179": {
   "bytes": 1592,
   "first_seen_seq": 1300,
@@ -3219,6 +3324,11 @@
   "first_seen_seq": 320,
   "note": "TCData T1-portalhub-temple zone [-4, 3]"
  },
+ "ec30a2be958491eb44f005aad1b45ee1427356839e80f1f4cccf8fd49e078919": {
+  "bytes": 5234,
+  "first_seen_seq": 2269,
+  "note": "lh-north batch 1/20 spawn_object plan, 3 commands"
+ },
  "ec45e6f9283d3ed7b575907c5b22d7c7e4b49228ae3b6b4c3394519791412009": {
   "bytes": 2791,
   "first_seen_seq": 185,
@@ -3238,6 +3348,11 @@
   "bytes": 407,
   "first_seen_seq": 1482,
   "note": "TCData S7-stathub-wtnorth zone [9, 18]"
+ },
+ "edbc058171b9146aa1e39e63d42028ba77cfdb875240d243c24b9504d30f32df": {
+  "bytes": 5161,
+  "first_seen_seq": 2278,
+  "note": "lh-north batch 2/18 spawn_object plan, 3 commands"
  },
  "edd4192241f48af40e68992c9dd2fc5d53beffe44ac0c7cc7ca333e173089706": {
   "bytes": 1861,
@@ -3334,6 +3449,11 @@
   "first_seen_seq": 1158,
   "note": "TCData T4-meadhall-stathub zone [9, 8]"
  },
+ "f287b88ed4cec3e7e8d5ddf7ec7e93bd11db3b0c01ea16cb8f6b762dd424cdd7": {
+  "bytes": 3012,
+  "first_seen_seq": 2238,
+  "note": "lamp spawn commands for T4"
+ },
  "f4367af2886af9613df8c0a1b0b91ee8f534208c1bcd1951eef3ec0acbd4d4ae": {
   "bytes": 3777,
   "first_seen_seq": 1855,
@@ -3429,6 +3549,11 @@
   "first_seen_seq": 388,
   "note": "spawn plan wt-town"
  },
+ "f97a2223dbe79ac2c33ba3d5985f90c6c0bcacbbc73a17a3dae4fa4240b95e2d": {
+  "bytes": 1433,
+  "first_seen_seq": 2208,
+  "note": "lamp spawn commands for T3"
+ },
  "f9a4f64e2fabccacb0b66f7012048facb2e7c15c2b5b838975789a898a48ee66": {
   "bytes": 653,
   "first_seen_seq": 38,
@@ -3458,6 +3583,11 @@
   "bytes": 2638,
   "first_seen_seq": 1861,
   "note": "guardcheck S8-wtsouth-treesth"
+ },
+ "fbdaf40e19beb05ad2d7f450708b41d6fb63162265740912c4448f1b20c5eabd": {
+  "bytes": 5137,
+  "first_seen_seq": 2290,
+  "note": "lh-north batch 14/18 spawn_object plan, 3 commands"
  },
  "fbfb74e97867c166681c0828f9d3fa25eeeb12748ae5c278240a9d6ceddb4bc7": {
   "bytes": 649,
@@ -3503,6 +3633,11 @@
   "bytes": 5127,
   "first_seen_seq": 677,
   "note": "spawn plan tree-sth-3"
+ },
+ "fed7d932cfc95a5c10d127e272a6c7f4a11892af3395e6c202c3c0349aca453b": {
+  "bytes": 5065,
+  "first_seen_seq": 2291,
+  "note": "lh-north batch 15/18 spawn_object plan, 3 commands"
  },
  "fefee8d618ebb6a3e5e37e552c89b5750e51311f9004fd6e5d99b1e1d38efe12": {
   "bytes": 6673,

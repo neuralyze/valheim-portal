@@ -385,7 +385,12 @@ namespace Neuralyze.HammerFix
             if (_reportedGrid != grid)
             {
                 _reportedGrid = grid;
-                HammerFixPlugin.Log.LogInfo("build grid " + grid + " = " + (w * h)
+                // Message, not Info: this is the line the operator reads to confirm the
+                // grid was raised and to choose MinIconPixels, and MEASURED in their own
+                // installed BepInEx.cfg the disk log takes "Fatal, Error, Warning,
+                // Message" with the console disabled, so an Info line is written nowhere
+                // they can read it.
+                HammerFixPlugin.Log.LogMessage("build grid " + grid + " = " + (w * h)
                     + " cells (vanilla " + VanillaWidth + "x" + VanillaHeight + " = "
                     + (VanillaWidth * VanillaHeight) + "), icon scale " + scale.ToString("0.000")
                     + ", " + why + "; fullest category needs " + need);

@@ -25,6 +25,17 @@ namespace Neuralyze.HammerFix
         private static readonly SC.Dictionary<SR.MethodInfo, bool> _classified =
             new SC.Dictionary<SR.MethodInfo, bool>();
         private static int _lastPatchCount = -1;
+        private static int _removed;
+        // One shot. Reported after the first COMPLETED sweep, at Message level so it
+        // reaches LogOutput.log: MEASURED in the operator's own installed config,
+        // [Logging.Disk] LogLevels is "Fatal, Error, Warning, Message" and
+        // [Logging.Console] Enabled is false, so an Info line exists nowhere the
+        // operator can read it. Without this line, silence from the sweep cannot be
+        // told apart from a sweep that never ran - and it genuinely does not run until
+        // a local Player exists, because it is anchored on
+        // Player.UpdateAvailablePiecesList. "Measured zero" and "no news" are
+        // different answers.
+        private static bool _reported;
         private static PieceTable _scratch;
 
         internal static SR.MethodInfo UpdateAvailable
@@ -107,6 +118,14 @@ namespace Neuralyze.HammerFix
 
             Classify(target, info.Prefixes);
             Classify(target, info.Postfixes);
+
+            if (!_reported)
+            {
+                _reported = true;
+                HammerFixPlugin.Log.LogMessage("swept " + count
+                    + " UpdateAvailable patches (this plugin's own included), removed "
+                    + _removed + " unrunnable");
+            }
         }
 
         private static void Classify(SR.MethodInfo target, SC.IList<HL.Patch> patches)
@@ -159,7 +178,9 @@ namespace Neuralyze.HammerFix
                     + " - it throws " + failure.GetType().Name + ": " + failure.Message
                     + ". Its work (sizing m_availablePiecesByCategory and the selected-piece "
                     + "arrays) is done by HammerFix instead.");
-                try { HammerFixPlugin.Harmony.Unpatch(target, m); }
+                // Counted only where Unpatch actually returned: the summary must not
+                // claim a removal the runtime refused.
+                try { HammerFixPlugin.Harmony.Unpatch(target, m); _removed++; }
                 catch (S.Exception e)
                 {
                     HammerFixPlugin.Log.LogError("could NOT unpatch " + where + "::" + m.Name

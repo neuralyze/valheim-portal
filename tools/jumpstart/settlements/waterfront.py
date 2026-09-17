@@ -425,6 +425,36 @@ def stair_run(surf: Surface, foot_xz: tuple[float, float], bearing_deg: float,
 # ---------------------------------------------------------------------------
 # live audit
 # ---------------------------------------------------------------------------
+# `roads/clear.py`, loaded BY PATH under an unambiguous module name.
+#
+# MEASURED LIVE TONIGHT, and it aborted a pass two records in: `import clear`
+# inside `audit` resolved to `jumpstart/clearing/clear.py` and raised
+# `module 'clear' has no attribute 'list_box'`.  The cause is that
+# `settlements/build.py` -- which this module imports for its grounding
+# instrument -- does `sys.path.insert(0, JUMPSTART / "clearing")`, so whether
+# `clear` means the census module or the clearing-area module depends on
+# WHICH OTHER MODULE WAS IMPORTED FIRST.  Two files of the same name on one
+# path is a coin flip, and `build.py` loads `network/waypoints.py` by path for
+# exactly this class of reason.
+_ROADS_CLEAR = None
+
+
+def roads_clear():
+    global _ROADS_CLEAR  # noqa: PLW0603  one module object, loaded once
+    if _ROADS_CLEAR is None:
+        import importlib.util  # noqa: PLC0415
+        path = JUMPSTART / "roads" / "clear.py"
+        spec = importlib.util.spec_from_file_location("roads_clear", path)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["roads_clear"] = mod
+        spec.loader.exec_module(mod)
+        if not hasattr(mod, "list_box"):
+            raise SystemExit(f"{path} carries no `list_box`; the census "
+                             f"instrument is not where this module thinks")
+        _ROADS_CLEAR = mod
+    return _ROADS_CLEAR
+
+
 
 CENSUS_CELL_M = 16.0
 CENSUS_Y_LEVELS = (0.0, -16.0, 16.0, -32.0, 32.0)
@@ -448,7 +478,7 @@ def audit(srv, x0: float, x1: float, z0: float, z1: float, *,
     passes a contiguous stack instead.  MEASURED: at half 8 each box spans
     y +/- 8 about its own centre, so offsets 16 m apart tile exactly.
     """
-    import clear as CL  # noqa: PLC0415  roads/, and the guard lives in it
+    CL = roads_clear()
     half = CENSUS_CELL_M / 2.0
     cells = []
     cx = math.floor((x0 - pad_m) / CENSUS_CELL_M) * CENSUS_CELL_M + half
@@ -2489,6 +2519,1235 @@ def cmd_retire(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# THE NORTH LIGHTHOUSE: retire a HALF-BUILT body, then re-place it WHOLE
+# ---------------------------------------------------------------------------
+#
+# WHY THIS IS NOT A RESUME, AND MUST NEVER BECOME ONE.  `lh-north`'s body went
+# in as ONE `spawn_plan` of 1,255 `spawn_object` commands (seq 2164, 28
+# batches of 3,600 bytes) and raised TimeoutError part way through: the game's
+# stdout pipe backed up, pid 120208 sat in `pipe_write` on pipe:[62736727],
+# and the main thread stopped answering RCON at all.  272 pieces stood when
+# the sink was drained FROM THE HOST (supervisord held the read end on fd 21;
+# `timeout 75 cat /proc/113676/fd/21 >/dev/null`, after which 120208 moved to
+# `hrtimer_nanosleep` and RCON answered in 34 ms).  No SIGKILL was used and
+# none may be: a SIGKILL mid-write loses a terrain compiler.
+#
+# That record's `expect` is a FULL-BODY `objects_count` of 1,255 at tolerance
+# 0.  Re-emitting it re-sends all 1,255 commands, so it would DOUBLE the 272
+# that stand and then fail its own postcondition on 1,527.  The precedent is
+# ledger seq 73 -- RETIRE THE PARTIAL, RE-PLACE WHOLE -- and the retirement is
+# recorded with counts and positions so this reads as a repair and not as a
+# mystery.
+#
+# FOUR THINGS THIS SECTION MEASURES RATHER THAN ASSUMES:
+#
+#   1. WHAT IS STANDING.  Not seq 2166's per-prefab numbers and NOT the plan's
+#      first N lines -- MEASURED, the 272 standing pieces are NOT a prefix of
+#      the plan (its first 272 lines hold 58 `stone_wall_1x1` and the live
+#      census of the same moment held none), so a demolition reconstructed
+#      from plan order would aim at the wrong set.  The retire set comes from
+#      an UNSCOPED live census, deduplicated by prefab + WORLD POSITION
+#      because ZDO ids are reassigned on world load.
+#
+#   2. WHERE THE DELETE CUBE MAY REACH.  `deleteObjects -near x y z r` is a
+#      CUBE of half-extent r in ALL THREE AXES (MEASURED, roads/clear.py), and
+#      this body shares three prefabs -- `wood_floor`, `wood_pole`,
+#      `wood_pole_log_4` -- with `dock-northcape`'s 127-piece pier, whose
+#      nearest piece MEASURED 19.x m from this pad.  So the cube is sized from
+#      the standing pieces' own extent and then CHECKED against every foreign
+#      object of the same prefab the census found; it refuses rather than
+#      guessing.
+#
+#   3. THE SINK, BEFORE EVERY BATCH.  A 1,255-command record is what wedged
+#      it, so the body goes in as `SPAWN_BATCH_PIECES`-piece records with a
+#      host-side sink measurement and an RCON liveness probe between them.
+#      See `SPAWN_BATCH_PIECES` for the byte arithmetic.
+#
+#   4. THE HEIGHT AND THE BEACON'S SEAT, off the body's own collider solids
+#      rather than off a mesh bounding box.  See `lh_height`.
+#
+# NO TERRAIN IS WRITTEN BY ANY OF THIS.  The pad (seq 2163) stands with both
+# its compilers verified; a second write to those zones would DESTROY the
+# first one's terrain, and the pad sits 2.98 m above c_WaterLevel 30.0 beside
+# a pier whose piles are driven into water.
+
+# The console sink's capacity and the cost of one echoed line, both MEASURED
+# elsewhere in this project and used here as arithmetic rather than as a feel:
+#   - a Linux pipe holds 65,536 bytes before a writer blocks in `pipe_write`,
+#     which is the state pid 120208 was found in;
+#   - `deleteObjects` echoes ONE LINE PER DELETED OBJECT at 155 bytes
+#     (MEASURED by SeatCheck, quoted in ledger/schema.py), and 34 consecutive
+#     removal records averaging 20 objects -- about 105 KB -- wedged the main
+#     thread even though every individual reply was small.
+# 64 spawn commands therefore cost at most 64 x 155 = 9,920 bytes, 15 % of one
+# pipeful, and the gate below runs between records.  The old 1,255-command
+# record was ~194 KB with no gate anywhere inside it: three pipefuls.
+SINK_PIPE_BYTES = 65536
+SINK_ECHO_BYTES = 155
+SPAWN_BATCH_PIECES = 64
+# The joined-command budget for ONE round trip.  `place.batch_budget` clamps
+# against the 4,096-byte RCON buffer (the reply is `Command '<joined>'
+# executed.`, the larger of the two directions); 1,800 halves the 3,600 the
+# wedged record used, so a trip's echo sits near 45 % of the buffer rather
+# than 88 %, and a desynchronised stream poisons the NEXT caller's reply.
+SPAWN_WIRE_BYTES = 1800
+# Margin added to the measured extent of the pieces being retired, and the
+# clearance a FOREIGN object of the same prefab must keep outside the cube.
+RETIRE_MARGIN_M = 0.5
+RETIRE_CLEAR_M = 1.0
+# The row cap a `findObjects` reply must stay under so nothing approaches the
+# client's 4,096-byte buffer -- the same 18 rows roads/clear.py uses.
+LIST_ROW_CAP = 18
+# A contiguous census stack for a TOWER: offsets from the pad datum, 16 m
+# apart so the 8 m half-boxes tile exactly, covering pad-16 m to pad+64 m.
+# The default (0,-16,+16,-32,+32) leaves a gap between +16 and +32, which a
+# 48 m body would fall into.
+TOWER_Y_LEVELS = (-8.0, 8.0, 24.0, 40.0, 56.0)
+
+LIGHTHOUSE: dict[str, dict] = {
+    "lh-north": dict(
+        pad=(-182.0, 2592.0), pad_y=32.98, yaw=0.0, role="lighthouse",
+        plan="/tmp/settle/build/lh-north/lh-north.plan",
+        plan_sha256=("7ca8e38f1ccd546d191db589d155d98b647039a962be61e90ebdf"
+                     "a0a79b071ad"),
+        body=dict(filename="drake-lighthouse.blueprint",
+                  sha256=("8f531ce29c330c7bc8d367047c2bfcde31bfb5afa42f499cd"
+                          "edc3f4c3eee2fac")),
+        # From seq 2164, and both are `build.check_radius`'s own output: the
+        # body reaches 7.028 m from the anchor and 7.28 m is the midpoint of
+        # the gap above its outermost ring, so every piece is unambiguously
+        # inside and no ring sits ON the boundary.
+        count_radius_m=7.28, reach_m=7.028, partial_seq=2164,
+        stray_radius_m=14.0,
+        # `dock-northcape`, built and verified at seq 2127-2143: the 48 m pier
+        # (20/24/28/32/40 m were ALL refused by the aimer), the berthed
+        # CargoShip, and the `x-north` portal whose SITE end was re-seated
+        # onto the deck because its first seat stood 0.675 m UNDER
+        # c_WaterLevel 30.0 -- an arch standing in the surf, on the only
+        # access to a site 2.8 km from the nearest built road.
+        dock=dict(site="dock-northcape", tag="x-north",
+                  plan="settlements/out/dock-northcape.commands.txt",
+                  pier_xz=(-174.4, 2624.58), pier_radius_m=32.6,
+                  pier_prefabs={"wood_floor": 75, "wood_pole": 25,
+                                "wood_pole_log_4": 27},
+                  root=(-192.0, 2612.0), bearing_deg=60.0, length_m=48.0,
+                  boat=dict(prefab="CargoShip", xz=(-136.62, 2653.21),
+                            yaw_deg=55.0, radius_m=12.0),
+                  portal_site=(-184.3, 30.597, 2614.95),
+                  portal_hub=(-277.62, 37.1, 208.02)),
+        # The same body stands at three other sites.  `stone_wall_1x1` is the
+        # prefab seq 2166's census found NONE of while the plan's first 272
+        # lines hold 58, so it is probed at a FINISHED sibling: 81 standing
+        # there proves the prefab spawns, and lh-north's missing ones are
+        # simply commands the wedged wire never sent.
+        sibling=dict(site="lh-south", pad=(-106.0, -900.0), radius_m=7.28,
+                     probe_prefab="stone_wall_1x1", probe_count=81,
+                     total=1255),
+    ),
+}
+
+
+def lh_spec(site: str) -> dict:
+    """The site's spec, with the plan file's digest CHECKED against the one
+    the partial record placed.  Re-placing a different body under the same
+    name would turn a repair into a second defect."""
+    spec = LIGHTHOUSE.get(site)
+    if not spec:
+        raise SystemExit(f"{site!r} is not a lighthouse this module owns; "
+                         f"known: {sorted(LIGHTHOUSE)}")
+    path = Path(spec["plan"])
+    if not path.exists():
+        raise SystemExit(
+            f"the spawn plan {path} is GONE. It is the body this pass places "
+            f"and its digest is recorded in seq {spec['partial_seq']}; "
+            f"rebuild it with settlements/build.py rather than placing "
+            f"something else under the same name.")
+    got = hashlib.sha256(path.read_bytes()).hexdigest()
+    if got != spec["plan_sha256"]:
+        raise SystemExit(
+            f"{path} digests {got} and seq {spec['partial_seq']} placed "
+            f"{spec['plan_sha256']}. These are different bodies.")
+    return dict(spec, site_id=site)
+
+
+def plan_lines(spec: dict) -> list[str]:
+    return [ln.strip() for ln in
+            Path(spec["plan"]).read_text("utf-8").splitlines()
+            if ln.strip() and not ln.startswith("#")]
+
+
+def plan_prefabs(spec: dict) -> dict[str, int]:
+    import verify_placement as VP  # noqa: PLC0415
+    out: dict[str, int] = {}
+    for prefab, *_rest in VP.plan_rows(Path(spec["plan"])):
+        out[prefab] = out.get(prefab, 0) + 1
+    return dict(sorted(out.items()))
+
+
+def sink_gate(note: str) -> dict:
+    """MEASURE the console sink from the HOST, drain it if it is drainable,
+    and return the evidence.
+
+    Host-side on purpose: `docker exec` is exactly the call that blocks while
+    the sink is stalled, and MEASURED twice tonight the in-container probe
+    then reports `fds_lost` -- whose named remedy is a 4-7 minute restart --
+    for a wait that a two-second read of supervisord's own read end releases
+    with the game process untouched.  `keep_sink_clear` raises only for the
+    shape a drain cannot fix, so this is a loop's safety valve and not a stop.
+    """
+    import rcon as RC  # noqa: PLC0415
+    before = RC.host_sink_state()
+    action = RC.keep_sink_clear(note=note)
+    out = dict(note=note, verdict_before=before["verdict"],
+               wchans=list(before.get("wchans") or []),
+               pids=before.get("pids"), read_fds=before.get("read_fds"),
+               action=action.get("action"),
+               verdict_after=action.get("verdict"),
+               drain_seconds=action.get("seconds"),
+               method=before.get("method"), tool=before.get("tool"))
+    if action.get("action") != "none":
+        print(f"    [sink] {note}: {before['verdict']} -> "
+              f"{action.get('verdict')} by {action.get('action')} in "
+              f"{action.get('seconds')} s", flush=True)
+    return out
+
+
+def cube_offset(o: dict, cx: float, cy: float, cz: float) -> float:
+    """The half-extent a `deleteObjects -near` cube needs to contain `o`.
+
+    A CUBE in all three axes, so it is the max of the three axis offsets and
+    not a distance -- MEASURED in roads/clear.py, where a 20 m box answered
+    with a trunk 21.9 m away in XZ whose every axis offset was under 20.
+    """
+    return max(abs(o["x"] - cx), abs(o["y"] - cy), abs(o["z"] - cz))
+
+
+def lh_census(srv, spec: dict, *, box_m: float = 18.0) -> dict:
+    """WHAT STANDS at the pad, live, split into this body's pieces and
+    everything else, with the distance to the nearest foreign object.
+
+    UNSCOPED, so it cannot be blind to a prefab nobody wrote down, over a
+    CONTIGUOUS y stack because the body is 48 m tall, and deduplicated by
+    prefab + WORLD POSITION.
+    """
+    px, pz = spec["pad"]
+    body = set(plan_prefabs(spec))
+    rep = audit(srv, px - box_m, px + box_m, pz - box_m, pz + box_m,
+                y_centre=spec["pad_y"], y_levels=TOWER_Y_LEVELS)
+    mine, foreign = [], []
+    for o in rep["objects"]:
+        d = math.hypot(o["x"] - px, o["z"] - pz)
+        row = dict(prefab=o["prefab"], x=round(o["x"], 3), y=round(o["y"], 3),
+                   z=round(o["z"], 3), dist_xz_m=round(d, 3))
+        # A body piece is one of the plan's prefabs standing INSIDE the body's
+        # own measured reach. The pier 19 m away uses three of the same
+        # prefabs, so the prefab name alone cannot decide this.
+        (mine if (o["prefab"] in body and d <= spec["reach_m"] + 0.5)
+         else foreign).append(row)
+    per: dict[str, int] = {}
+    for r in mine:
+        per[r["prefab"]] = per.get(r["prefab"], 0) + 1
+    return dict(
+        pad=[px, pz], box_m=box_m, y_levels=list(TOWER_Y_LEVELS),
+        standing_total=len(mine), standing_per_prefab=dict(sorted(per.items())),
+        standing=mine, foreign=foreign,
+        foreign_per_prefab={p: sum(1 for r in foreign if r["prefab"] == p)
+                            for p in sorted({r["prefab"] for r in foreign})},
+        nearest_foreign_xz_m=min((r["dist_xz_m"] for r in foreign),
+                                 default=None),
+        engine_per_prefab=rep["engine_per_prefab"],
+        unlisted_boxes=rep["unlisted_boxes"], socket_calls=rep["socket_calls"],
+        census_method=rep["method"],
+        tool="tools/jumpstart/settlements/waterfront.py::lh_census")
+
+
+def retire_geometry(spec: dict, census: dict) -> dict:
+    """The ONE cube every retire in this pass aims at, sized from the pieces
+    that ARE standing and checked against everything that is not ours.
+
+    One shared cube rather than one per prefab: it must already cover the
+    body's 7.03 m reach in XZ, so its vertical half-extent covers the whole
+    standing stack anyway, and one geometry makes the emptiness check
+    afterwards a single question with a single possible answer.
+    """
+    px, pz = spec["pad"]
+    mine = census["standing"]
+    if not mine:
+        raise SystemExit(
+            "the live census found NO body piece at the pad. An empty answer "
+            "is not a zero here -- it is either an already-clean site or a "
+            "blind census -- so this stops rather than emitting a demolition "
+            "aimed at nothing. Check `unlisted_boxes` and the sink verdict.")
+    ys = [r["y"] for r in mine]
+    yc = round((min(ys) + max(ys)) / 2.0, 3)
+    need = max(cube_offset(r, px, yc, pz) for r in mine)
+    r_cube = round(math.ceil((need + RETIRE_MARGIN_M) * 10.0) / 10.0, 2)
+    if r_cube > 20.0:
+        raise SystemExit(
+            f"the standing pieces need a {r_cube:g} m cube and the schema caps "
+            f"a retire at 20 m, because `deleteObjects` echoes 155 bytes per "
+            f"deleted object. Retire in sub-cubes instead.")
+    # THE FOREIGN CHECK, in the cube's geometry for the delete and in the
+    # cylinder's for the count that proves the site empty afterwards.
+    intruders = [r for r in census["foreign"]
+                 if r["prefab"] in census["standing_per_prefab"]
+                 and cube_offset(r, px, yc, pz) <= r_cube + RETIRE_CLEAR_M]
+    if intruders:
+        raise SystemExit(
+            f"REFUSED: {len(intruders)} object(s) that are NOT this body's "
+            f"stand inside the {r_cube:g} m delete cube plus its "
+            f"{RETIRE_CLEAR_M:g} m clearance and share a prefab with it: "
+            f"{intruders[:4]}. A demolition that takes a neighbour's piece is "
+            f"not a repair.")
+    # THE EMPTINESS CYLINDER IS NOT THE CUBE, and conflating them was a real
+    # bug in this function caught on a synthetic census: a piece at dx=3,
+    # dz=3 needs a cube half-extent of only 3.0 but sits 4.243 m away
+    # RADIALLY, so a 3.5 m cylinder would have verified "gone" over a disc
+    # that never contained it. `objects_count` measures an XZ cylinder, so
+    # the radius has to cover the pieces' radial spread, not their axis
+    # offsets.
+    spread = max(math.hypot(r["x"] - px, r["z"] - pz) for r in mine)
+    r_empty = round(max(r_cube, spread + 0.2), 2)
+    in_cyl = [r for r in census["foreign"] if r["dist_xz_m"] <= r_empty + 0.5]
+    if in_cyl:
+        nearest = min(r["dist_xz_m"] for r in in_cyl)
+        r_empty = round(nearest - 0.5, 2)
+        if r_empty <= spread + 0.1:
+            raise SystemExit(
+                f"REFUSED: a foreign object stands {nearest:g} m from the pad "
+                f"in XZ while this body's pieces spread to {spread:.3f} m, so "
+                f"no cylinder can read EMPTY without either missing a piece "
+                f"or counting somebody else's: {in_cyl[:4]}")
+    return dict(centre=[px, yc, pz], cube_half_m=r_cube,
+                empty_radius_m=r_empty, piece_spread_xz_m=round(spread, 3),
+                y_range=[round(min(ys), 3), round(max(ys), 3)],
+                needed_half_m=round(need, 3),
+                foreign_inside_empty_cylinder=len(in_cyl),
+                nearest_foreign_xz_m=census["nearest_foreign_xz_m"],
+                method=("MEASURED: the cube half-extent is the largest of the "
+                        "three axis offsets over every standing piece plus "
+                        f"{RETIRE_MARGIN_M:g} m, because `deleteObjects "
+                        "-near` is a cube in all three axes; the emptiness "
+                        "radius is an XZ cylinder, which is what "
+                        "`objects_count` actually measures."))
+
+
+def retire_ops(spec: dict, census: dict, geom: dict) -> list[dict]:
+    """One `retire` per standing prefab, per the seq 73 precedent, aimed at the
+    measured cube and verified by counting that prefab to ZERO.
+
+    Ascending by count: the cheapest reply goes first, so the procedure is
+    proven on a one-object echo before the 168-object one is sent.
+    """
+    px, yc, pz = geom["centre"]
+    r = geom["cube_half_m"]
+    ops = []
+    for prefab, n in sorted(census["standing_per_prefab"].items(),
+                            key=lambda kv: (kv[1], kv[0])):
+        rows = [q for q in census["standing"] if q["prefab"] == prefab]
+        ops.append(dict(
+            op="retire",
+            params=dict(
+                prefab=prefab, pos=[px, yc, pz], radius_m=r,
+                retires=[spec["partial_seq"]],
+                reason=(
+                    f"{n} {prefab} of drake-lighthouse.blueprint stand at the "
+                    f"lh-north pad from spawn_plan seq {spec['partial_seq']}, "
+                    f"which raised TimeoutError part way through its 28 "
+                    f"batches when the game's stdout pipe backed up and the "
+                    f"main thread stopped answering RCON. That record's "
+                    f"expect is a full-body count of 1255 at tolerance 0, so "
+                    f"re-emitting it would DOUBLE these pieces and then fail "
+                    f"its own postcondition on 1527. The body is retired "
+                    f"whole and re-placed whole in this one token hold, which "
+                    f"is ledger seq 73's precedent. A half-built lighthouse "
+                    f"is the one state the operator should never find."),
+                role=spec["role"], site_id=spec["site_id"]),
+            wire=[f"deleteObjects -prefab {prefab} -near {px:.2f} {yc:.2f} "
+                  f"{pz:.2f} {r:.2f} -force"],
+            requires=dict(mods=["WorldEditCommands"], prefabs=[prefab],
+                          blobs=[]),
+            expect=dict(absent=[dict(prefab=prefab,
+                                     pos=[round(px, 2), round(pz, 2)],
+                                     max=geom["empty_radius_m"])]),
+            meta=dict(
+                counted_before=n, cube=geom,
+                echo_bytes_estimate=n * SINK_ECHO_BYTES,
+                positions=[[q["x"], q["y"], q["z"]] for q in rows],
+                position_key=("prefab + WORLD POSITION: ZDO ids are "
+                              "REASSIGNED on world load, so the id in a "
+                              "census is not a durable key and the positions "
+                              "are what make this demolition auditable"),
+                terrain_written=("NONE -- this pass writes no terrain at all, "
+                                 "so no sample can fall below c_WaterLevel "
+                                 "30.0; the pad from seq 2163 stands and a "
+                                 "second write to its zones would destroy the "
+                                 "first one's terrain"),
+                why=("radius is the MEASURED cube half-extent, not a "
+                     "convention: `deleteObjects -near` is a cube in all "
+                     "three axes, and the nearest object at this pad that is "
+                     "NOT this body measures "
+                     f"{census['nearest_foreign_xz_m']} m away in XZ "
+                     "(dock-northcape's pier), so this cannot take a "
+                     "neighbour's piece"))))
+    return ops
+
+
+def spawn_batches(spec: dict, lines: list[str], *,
+                  pieces: int = SPAWN_BATCH_PIECES, baseline: int = 0,
+                  rows: list | None = None, tag: str = "batch") -> list[dict]:
+    """The body as `ceil(len(lines)/pieces)` `spawn_plan` records, IN PLAN
+    ORDER.
+
+    Plan order is bottom-up in Y (`to_rcon_plan`), so WearNTear support exists
+    under every piece as it lands; batching must not reorder it.  Each
+    record's postcondition is the CUMULATIVE count inside the exact radius --
+    exact because the site is proven EMPTY first and the nearest foreign
+    object is 17.6 m away.  1,255 pieces at 1-2 m spacing cannot each be given
+    a disjoint disc, so this is the documented case where a cumulative
+    run-count is the only exact instrument available.
+
+    `baseline` is the count ALREADY STANDING inside the count radius, and it
+    is what makes a resume honest rather than optimistic: MEASURED, this pass
+    was killed by its harness after two batches had landed, and a resume that
+    assumed a baseline of zero would have asserted 64 where 192 was correct
+    and failed every remaining record. It must be a live measurement, never
+    the arithmetic of which records were appended: an appended record whose
+    wire may or may not have been sent is exactly the state a resume exists to
+    resolve.  `rows` accompanies a filtered `lines` list so the per-batch
+    prefab histogram still matches the commands being sent.
+    """
+    import place as PLACE  # noqa: PLC0415
+    import verify_placement as VP  # noqa: PLC0415
+    px, pz = spec["pad"]
+    rows = list(rows) if rows is not None else VP.plan_rows(Path(spec["plan"]))
+    if len(rows) != len(lines):
+        raise SystemExit(f"the plan parses {len(rows)} rows for {len(lines)} "
+                         f"command lines; refusing to batch a plan whose "
+                         f"parse and text disagree")
+    budget = PLACE.batch_budget(SPAWN_WIRE_BYTES)
+    chunks = [(lines[i:i + pieces], rows[i:i + pieces])
+              for i in range(0, len(lines), pieces)]
+    ops, done = [], baseline
+    for i, (chunk, chunk_rows) in enumerate(chunks, start=1):
+        wire = [";".join(g) for g in PLACE.batches(chunk, budget)]
+        digest = hashlib.sha256(("\n".join(wire) + "\n").encode()).hexdigest()
+        per: dict[str, int] = {}
+        for prefab, *_r in chunk_rows:
+            per[prefab] = per.get(prefab, 0) + 1
+        done += len(chunk)
+        ops.append(dict(
+            op="spawn_plan",
+            params=dict(
+                plan_sha256=digest, plan_ref=f"{spec['plan']}#{tag}{i}",
+                anchor=dict(x=px, y=spec["pad_y"], z=pz, yaw=spec["yaw"]),
+                command_count=len(chunk), prefabs=dict(sorted(per.items())),
+                body=spec["body"], align="floor-center",
+                reach_m=spec["reach_m"], pad_height=spec["pad_y"],
+                batch_bytes=SPAWN_WIRE_BYTES,
+                datum=f"pad top at target_y {spec['pad_y']} m",
+                role=spec["role"], site_id=spec["site_id"]),
+            wire=wire,
+            requires=dict(mods=["WorldEditCommands", "ServerDevcommands"],
+                          prefabs=sorted(per), blobs=[digest]),
+            expect=dict(objects_count=dict(
+                ids="*", ignore="_*,sfx_*,vfx_*",
+                pos=[round(px, 2), round(pz, 2)], max=spec["count_radius_m"],
+                total=done, tolerance=0)),
+            meta=dict(
+                batch=i, of=len(chunks), pieces=len(chunk), tag=tag,
+                baseline_pieces=baseline,
+                cumulative_pieces=done, round_trips=len(wire),
+                full_body=dict(plan_sha256=spec["plan_sha256"],
+                               commands=len(lines),
+                               body=spec["body"]["filename"]),
+                sink_budget=dict(
+                    pipe_bytes=SINK_PIPE_BYTES,
+                    echo_bytes_per_line=SINK_ECHO_BYTES,
+                    worst_case_bytes=len(chunk) * SINK_ECHO_BYTES,
+                    fraction_of_pipe=round(len(chunk) * SINK_ECHO_BYTES
+                                           / SINK_PIPE_BYTES, 3)),
+                why=(f"batch {i} of {len(chunks)}. The body is placed in "
+                     f"{pieces}-piece records because ONE 1,255-command "
+                     f"record (seq {spec['partial_seq']}) filled the game's "
+                     f"stdout pipe and stopped the main thread answering "
+                     f"RCON: at 155 echoed bytes per line that is ~194 KB "
+                     f"against a 65,536-byte pipe with no drain window "
+                     f"anywhere inside it. This record is at most "
+                     f"{len(chunk) * SINK_ECHO_BYTES} B, and the sink is "
+                     f"MEASURED from the host and the main thread probed "
+                     f"BEFORE it is sent. The postcondition is cumulative "
+                     f"because 1,255 pieces at 1-2 m spacing cannot each hold "
+                     f"a disjoint disc, and it is exact because the site was "
+                     f"proven empty first."))))
+    return ops
+
+
+def lh_remaining(spec: dict, census: dict, *, tol_m: float = 0.15) -> dict:
+    """WHICH PLAN LINES ARE NOT YET STANDING, matched PER PIECE by prefab +
+    world position.
+
+    THIS IS WHY THE PASS IS RESUMABLE WITHOUT GUESSING.  MEASURED tonight:
+    the placement run was killed by its own harness after two of twenty
+    records had landed, and the ledger then held an appended `spawn_plan`
+    whose wire may or may not have been sent -- which is precisely the
+    question a record cannot answer about itself.  A per-piece diff answers
+    it from the world: every one of the 1,255 plan lines has a distinct
+    target position, so a line is either occupied by a piece of its own
+    prefab within `tol_m` or it is not, and only the ones that are not get
+    re-sent.  That makes a resume neither a double-place nor a gap.
+
+    A STANDING BODY PIECE THAT NO PLAN LINE CLAIMS IS A REFUSAL, not a
+    rounding difference: it is either a duplicate from a re-sent command or
+    something else standing inside the body's footprint, and both change what
+    the final count means.
+    """
+    import verify_placement as VP  # noqa: PLC0415
+    rows = VP.plan_rows(Path(spec["plan"]))
+    lines = plan_lines(spec)
+    live = list(census["standing"])
+    taken = [False] * len(live)
+    todo_lines, todo_rows, matched = [], [], 0
+    for line, row in zip(lines, rows):
+        prefab, x, y, z, _yaw = row
+        best, at = None, None
+        for k, o in enumerate(live):
+            if taken[k] or o["prefab"] != prefab:
+                continue
+            d = max(abs(o["x"] - x), abs(o["y"] - y), abs(o["z"] - z))
+            if d <= tol_m and (best is None or d < best):
+                best, at = d, k
+        if at is None:
+            todo_lines.append(line)
+            todo_rows.append(row)
+        else:
+            taken[at] = True
+            matched += 1
+    orphans = [live[k] for k in range(len(live)) if not taken[k]]
+    per: dict[str, int] = {}
+    for prefab, *_r in todo_rows:
+        per[prefab] = per.get(prefab, 0) + 1
+    return dict(
+        plan_total=len(lines), standing=len(live), matched=matched,
+        remaining=len(todo_lines), remaining_per_prefab=dict(sorted(per.items())),
+        orphan_standing=len(orphans), orphans=orphans[:12],
+        tolerance_m=tol_m, lines=todo_lines, rows=todo_rows,
+        method=("MEASURED per piece: every plan line's target position "
+                "matched against the live census by prefab and by max axis "
+                "offset within "
+                f"{tol_m} m, each live piece claimable once. The remainder is "
+                "the set of lines with no piece standing at them, so a resume "
+                "can neither duplicate a placed piece nor skip a missing "
+                "one. ZDO ids are not used: they are reassigned on world "
+                "load."),
+        tool="tools/jumpstart/settlements/waterfront.py::lh_remaining")
+
+
+
+def cube_rows(srv, prefab: str, x: float, y: float, z: float,
+              half: float) -> dict:
+    """One `findObjects -prefab P -near x y z h` CUBE, halved until the
+    reply's OWN HEADER is under the row cap, parsed for positions.
+
+    A cube rather than `bounded_detailed`'s disc, on purpose: the question
+    here is how high the finished tower stands, and a disc counts the whole
+    48-piece roof column while a cube centred on the cap holds only the cap.
+    The HEADER decides, never the rows parsed -- a truncated reply must never
+    read as a short list.
+    """
+    CL = roads_clear()
+    hh = half
+    while True:
+        reply = CL.ask(srv, f"findObjects -prefab {prefab} -near {x:.2f} "
+                            f"{y:.2f} {z:.2f} {hh:.2f} -detailed")
+        m = CL.FOUND_RE.search(reply)
+        n = int(m.group(1)) if m else 0
+        if n <= LIST_ROW_CAP or hh <= 0.4:
+            break
+        hh = round(hh / 2.0, 3)
+    rows = [dict(prefab=mm.group("prefab"), x=float(mm.group("x")),
+                 y=float(mm.group("y")), z=float(mm.group("z")))
+            for mm in CL.POS_RE.finditer(reply)]
+    return dict(prefab=prefab, at=[round(x, 2), round(y, 2), round(z, 2)],
+                cube_half_m=hh, header_rows=n, listed=len(rows), rows=rows,
+                truncated=bool(n > LIST_ROW_CAP),
+                y_min=(None if not rows else round(min(r["y"] for r in rows), 3)),
+                y_max=(None if not rows else round(max(r["y"] for r in rows), 3)),
+                probe=(f"findObjects -prefab {prefab} -near {x:.2f} {y:.2f} "
+                       f"{z:.2f} {hh:.2f} -detailed"))
+
+
+def lh_height(spec: dict) -> dict:
+    """THE HEIGHT, off the body's own measured colliders -- and the beacon's
+    seat, which is the error this project has already paid for once.
+
+    BEWARE THE MESH AABB.  `bonfire` carries THREE solids: the pyre's log ring
+    at local y -0.496..+0.531, a 4.8 m box at -2.130..+2.670, and a 1.66 m
+    flame column to +4.149.  The UNION says the beacon's bottom is 2.130 m
+    below its pivot, which reads as a beacon floating over its plinth; the
+    STRUCTURAL solid is the log ring.  `fire_pit` has the identical shape -- a
+    0.2 m hearth pan plus a 2 m fire volume -- so this is the family's
+    convention and not a one-off.  Beacons were once placed 5.173 m in the air
+    because 15.402 m was a tower's mesh bounding box while its parapet
+    platform sat at 10.229 m; the datum is the surface a player stands on plus
+    the piece's own measured offset.
+    """
+    import base_geometry as BG  # noqa: PLC0415
+    import verify_placement as VP  # noqa: PLC0415
+    geom = BG.geometry()
+    objs = VP.plan_objects(Path(spec["plan"]))
+    pad_y = spec["pad_y"]
+    sea = float(getattr(W, "WATER_LEVEL", 30.0))
+
+    def span(o, solids=None) -> tuple[float, float]:
+        s = solids if solids is not None else geom._prefabs.get(o.prefab)
+        q = BG._normalised(tuple(o.rot))
+        ys = [BG._qrot(q, c)[1] for so in s for c in BG._solid_corners(so)]
+        return o.pos[1] + min(ys), o.pos[1] + max(ys)
+
+    solid = [o for o in objs if geom._prefabs.get(o.prefab)]
+    missing = sorted({o.prefab for o in objs} - {o.prefab for o in solid})
+    cap_y, cap = max(((span(o)[1], o) for o in solid), key=lambda t: t[0])
+    floors = [(span(o)[1], o) for o in objs
+              if o.prefab in ("wood_floor", "stone_floor_2x2")]
+    gallery_y, gallery = max(floors, key=lambda t: t[0])
+    entry_y = min(y for y, o in floors if o.prefab == "stone_floor_2x2")
+    beacon_rows = []
+    for b in [o for o in objs if o.prefab in ("bonfire", "fire_pit")]:
+        # The structural solid is the SHORTEST of the prefab's solids in y:
+        # the pyre ring / hearth pan. The tall ones are the fire and light
+        # volumes, and seating on their union is the mesh-AABB error.
+        ring = min(geom._prefabs[b.prefab],
+                   key=lambda s: (max(p[1] for p in BG._solid_corners(s))
+                                  - min(p[1] for p in BG._solid_corners(s))))
+        base_union = span(b)[0]
+        base_struct = span(b, [ring])[0]
+        under = []
+        for o in objs:
+            if o is b or not geom._prefabs.get(o.prefab):
+                continue
+            if math.hypot(o.pos[0] - b.pos[0], o.pos[2] - b.pos[2]) > 2.4:
+                continue
+            hi = span(o)[1]
+            if hi <= base_struct + 0.25:
+                under.append((hi, o.prefab))
+        under.sort(reverse=True)
+        beacon_rows.append(dict(
+            prefab=b.prefab, at=[round(b.pos[0], 3), round(b.pos[1], 3),
+                                 round(b.pos[2], 3)],
+            structural_base_y=round(base_struct, 3),
+            union_aabb_base_y=round(base_union, 3),
+            plinth_top_y=None if not under else round(under[0][0], 3),
+            plinth_prefabs=sorted({p for _h, p in under[:8]}),
+            engagement_m=(None if not under
+                          else round(under[0][0] - base_struct, 3)),
+            false_air_gap_if_union_used_m=(
+                None if not under else round(under[0][0] - base_union, 3)),
+            above_gallery_platform_m=round(base_struct - gallery_y, 3),
+            above_sea_m=round(base_struct - sea, 3),
+            seated=bool(under and abs(under[0][0] - base_struct) <= 0.25)))
+    return dict(
+        pad_target_y=pad_y, sea_level_m=sea,
+        entry_floor_top_y=round(entry_y, 3),
+        gallery_platform_top_y=round(gallery_y, 3),
+        gallery_platform_prefab=gallery.prefab,
+        gallery_platform_origin_y=round(gallery.pos[1], 3),
+        roof_cap_top_y=round(cap_y, 3), roof_cap_prefab=cap.prefab,
+        roof_cap_origin_y=round(cap.pos[1], 3),
+        roof_cap_xz=[round(cap.pos[0], 3), round(cap.pos[2], 3)],
+        height_above_entry_floor_m=round(cap_y - entry_y, 3),
+        height_above_pad_m=round(cap_y - pad_y, 3),
+        height_above_sea_m=round(cap_y - sea, 3),
+        gallery_above_sea_m=round(gallery_y - sea, 3),
+        prefabs_without_geometry=missing, beacons=beacon_rows,
+        method=("MEASURED off the blueprint's own collider solids "
+                "(blueprints/base_geometry.py, from the ZNetScene dump) "
+                "placed at this pad's datum. The cap is the union AABB's top; "
+                "the beacon's seat is its STRUCTURAL solid, never the union, "
+                "because a bonfire's union reaches 2.130 m below its pivot on "
+                "account of its fire volume."),
+        tool="tools/jumpstart/settlements/waterfront.py::lh_height")
+
+
+def lh_grounding(spec: dict) -> dict:
+    """The grounded fraction with the SUNK / OVERHANG split, against the pad.
+
+    `build.grounding` answers the fraction and the extremes; the split is the
+    part an operator can act on, because the two cases look nothing alike. A
+    column whose lowest solid is BELOW the pad is masonry embedded in the pad;
+    one whose lowest solid is ABOVE it is a cantilever with air under it. A
+    bare "grounded fraction 0.03" on this body would read as a floating
+    building when what it describes is a foundation ring seated 2.00 m into
+    its own pad, and the number that would be a real defect is a column whose
+    lowest piece hangs just above the ground with nothing beneath it.
+    """
+    import base_geometry as BG  # noqa: PLC0415
+    import build as B  # noqa: PLC0415
+    import verify_placement as VP  # noqa: PLC0415
+    path = Path(spec["plan"])
+    pad_y = spec["pad_y"]
+    floor = VP.bottoming(VP.plan_objects(path), BG.geometry())
+    tol = B.GROUND_TOL_M
+    gaps = sorted(y - pad_y for _n, y in floor.values())
+    sunk = [g for g in gaps if g < -tol]
+    over = [g for g in gaps if g > tol]
+    flush = [g for g in gaps if -tol <= g <= tol]
+    return dict(
+        columns=len(gaps), tolerance_m=tol,
+        # ONE convention, and it is `build.grounding`'s: a column is grounded
+        # when its lowest solid sits at or BELOW pad + tol, i.e. on the pad or
+        # embedded in it. Defining a second, stricter "flush only" fraction
+        # here would give this project two grounding instruments that disagree
+        # by 0.73 on the same body, which is how two clearance instruments
+        # happened. The flush count is reported as a count, not as a rate.
+        grounded_fraction=round((len(flush) + len(sunk)) / len(gaps), 3),
+        flush_columns=len(flush),
+        sunk_columns=len(sunk), deepest_below_pad_m=round(gaps[0], 3),
+        overhang_columns=len(over),
+        lowest_overhang_above_pad_m=(None if not over else round(min(over), 3)),
+        worst_air_gap_m=round(gaps[-1], 3),
+        floating_near_ground_columns=sum(1 for g in over if g <= 4.0),
+        build_py=B.grounding(path, pad_y),
+        method=("MEASURED with verify_placement.bottoming over 1 m columns: "
+                "the LOWEST solid in each column against the pad datum. Sunk "
+                "is below pad-tol (foundation embedded in the pad), overhang "
+                "is above pad+tol (a cantilever, and this body's are the "
+                "lantern gallery and the eaves)."),
+        tool="tools/jumpstart/settlements/waterfront.py::lh_grounding")
+
+
+def lh_live_verify(srv, spec: dict, census: dict) -> dict:
+    """The finished body, counted live: EVERY prefab against the plan inside
+    the radius the count can be EXACT in, plus the strays outside it.
+
+    The stray figure subtracts the foreign objects the pre-build census
+    already measured in the annulus, so a neighbour's pile head cannot be
+    reported as a piece this body flung out of its own footprint.
+    """
+    px, pz = spec["pad"]
+    want = plan_prefabs(spec)
+    r = spec["count_radius_m"]
+    wide = spec["stray_radius_m"]
+    total, per = srv.count("*", px, pz, r, ignore="_*,sfx_*,vfx_*")
+    rows = []
+    for prefab, n in want.items():
+        got, _ = srv.count(prefab, px, pz, r)
+        rows.append(dict(prefab=prefab, want=n, got=got, ok=(got == n)))
+    wide_total, wide_per = srv.count("*", px, pz, wide,
+                                     ignore="_*,sfx_*,vfx_*")
+    known_foreign = [f for f in census["foreign"]
+                     if r < f["dist_xz_m"] <= wide]
+    strays = wide_total - total - len(known_foreign)
+    bad = [q for q in rows if not q["ok"]]
+    return dict(
+        count_radius_m=r, total_want=sum(want.values()), total_got=total,
+        total_ok=(total == sum(want.values())),
+        per_prefab=rows, mismatched=bad, prefabs_ok=all(q["ok"] for q in rows),
+        live_per_prefab=per,
+        stray_radius_m=wide, stray_total_in_wide=wide_total,
+        known_foreign_in_annulus=len(known_foreign),
+        known_foreign=known_foreign, strays=strays, strays_ok=(strays == 0),
+        method=(f"MEASURED live: `objects_count id=* ignore=_*,sfx_*,vfx_*` "
+                f"at {r} m -- the gap-midpoint radius build.check_radius "
+                f"computed, so every piece is unambiguously inside and no "
+                f"ring sits ON the boundary where the filter's comparison "
+                f"MEASURED 2 of 4 pieces at exactly 1.000 m -- then one "
+                f"scoped count per prefab at the same radius, and the same "
+                f"star count at {wide} m to expose anything placed outside "
+                f"the body's {spec['reach_m']} m reach, minus the foreign "
+                f"objects the pre-build census had already measured there. "
+                f"sfx_/vfx_ are excluded because a fuelled piece spawns its "
+                f"own one-shot effects and an exact count taken immediately "
+                f"after placement would race them."),
+        tool="tools/jumpstart/settlements/waterfront.py::lh_live_verify")
+
+
+def pier_head(spec: dict) -> dict:
+    """The pier's HEAD, taken from the deck tiles the pier plan actually
+    places rather than from root + length: the aimer trims a deck to the wet
+    fraction it accepted, so the authored head is a measurement."""
+    d = spec["dock"]
+    path = JUMPSTART / d["plan"]
+    if not path.exists():
+        path = HERE / Path(d["plan"]).name
+    rx, rz = d["root"]
+    best = None
+    for line in path.read_text("utf-8").splitlines():
+        parts = line.split()
+        if len(parts) < 2 or parts[0] != "spawn_object":
+            continue
+        pos = next((p for p in parts if p.startswith("pos=")), None)
+        if pos is None or parts[1] != "wood_floor":
+            continue
+        z, x, y = (float(v) for v in pos[4:].split(","))
+        dd = math.hypot(x - rx, z - rz)
+        if best is None or dd > best[0]:
+            best = (dd, x, y, z)
+    if best is None:
+        raise SystemExit(f"no wood_floor deck tile in {path}; the pier head "
+                         f"cannot be measured off its own plan")
+    return dict(plan=str(path), along_m=round(best[0], 3),
+                xz=[round(best[1], 3), round(best[3], 3)],
+                deck_y=round(best[2], 3))
+
+
+def dock_confirm(srv, spec: dict) -> dict:
+    """THE DOCK, THE BERTH AND THE PORTAL, re-measured rather than cited.
+
+    The pier, the vessel and both ends of `x-north` were placed at seq
+    2127-2143; this pass owns the lighthouse above them and confirms the
+    access, because the site is portal-only and ~2.8 km from the nearest built
+    road -- a one-ended tag strands the operator at the top of the map, and
+    that is the operator's original reported defect.
+
+    THE PIER COUNT IS A COMPOSITE ONE AND IT HAS TO BE, which is a defect this
+    function shipped with and MEASURED live the moment the tower was finished:
+    a scoped count of `wood_floor` in the pier's own 32.6 m cylinder answered
+    103 for 75, and `wood_pole` 63 for 25.  Nothing was wrong with the pier.
+    The lighthouse pad is 33.455 m from the pier's anchor, the body reaches
+    7.028 m, so 423 of its 1,255 pieces -- including 28 `wood_floor`, 38
+    `wood_pole` and 6 `wood_pole_log_4` -- stand INSIDE that cylinder, and no
+    single cylinder can hold the whole 48 m pier while excluding the tower.
+    So the expected count is the pier's own plan PLUS the lighthouse rows that
+    fall inside the same disc, computed from the plan this pass has just
+    verified standing piece for piece, and the pier-only figure is the
+    difference.  A check that answers a question it is not measuring is the
+    most expensive thing in this project; this one names both structures.
+    """
+    d = spec["dock"]
+    import verify_placement as VP  # noqa: PLC0415
+    overlap: dict[str, int] = {}
+    for prefab, x, _y, z, _yaw in VP.plan_rows(Path(spec["plan"])):
+        if math.hypot(x - d["pier_xz"][0], z - d["pier_xz"][1]) <= d["pier_radius_m"]:
+            overlap[prefab] = overlap.get(prefab, 0) + 1
+    rows = []
+    for prefab, n in sorted(d["pier_prefabs"].items()):
+        got, _ = srv.count(prefab, d["pier_xz"][0], d["pier_xz"][1],
+                           d["pier_radius_m"])
+        extra = overlap.get(prefab, 0)
+        rows.append(dict(prefab=prefab, pier_want=n,
+                         lighthouse_in_disc=extra, want=n + extra, got=got,
+                         pier_only=got - extra, ok=(got == n + extra)))
+    boat = d["boat"]
+    bgot, _ = srv.count(boat["prefab"], boat["xz"][0], boat["xz"][1],
+                        boat["radius_m"])
+    head = pier_head(spec)
+    surf = Surface()
+    sea = float(getattr(W, "WATER_LEVEL", 30.0))
+    hx, hz = head["xz"]
+    happ, hgen, hdel = surf.at(hx, hz)
+    hull = hull_depths(surf, boat["yaw_deg"], boat["xz"][0], boat["xz"][1],
+                       boat["prefab"])
+    disc = berth(surf, boat["xz"][0], boat["xz"][1], boat["prefab"],
+                 radius_m=boat["radius_m"])
+    v = VESSELS[boat["prefab"]]
+    need = v["draught_m"] + KEEL_CLEARANCE_M
+    ends = tag_ends(d["tag"])
+    for e in ends:
+        e["end"] = ("site" if math.hypot(e["x"] - d["portal_site"][0],
+                                         e["z"] - d["portal_site"][2]) < 2.0
+                    else "hub")
+    pair = verify_pair(srv, d["tag"], ends)
+    return dict(
+        pier=dict(centre=list(d["pier_xz"]), radius_m=d["pier_radius_m"],
+                  length_m=d["length_m"], root=list(d["root"]),
+                  bearing_deg=d["bearing_deg"], head=head,
+                  head_depth_m=round(sea - happ, 3),
+                  head_generated_y=round(hgen, 3),
+                  head_terrain_delta_m=round(hdel, 3),
+                  per_prefab=rows, ok=all(q["ok"] for q in rows),
+                  pieces_want=sum(d["pier_prefabs"].values()),
+                  pieces_in_disc=sum(q["got"] for q in rows),
+                  lighthouse_pieces_in_disc=sum(overlap.values()),
+                  pieces_got=sum(q["pier_only"] for q in rows)),
+        berth=dict(prefab=boat["prefab"], at=list(boat["xz"]),
+                   yaw_deg=boat["yaw_deg"], radius_m=boat["radius_m"],
+                   count=bgot, ok=(bgot == 1),
+                   draught_m=v["draught_m"],
+                   keel_clearance_m=KEEL_CLEARANCE_M, required_depth_m=need,
+                   hull_min_depth_m=(None if hull is None
+                                     else round(hull[0], 3)),
+                   hull_max_depth_m=(None if hull is None
+                                     else round(hull[1], 3)),
+                   hull_open_sea=(None if hull is None else hull[2]),
+                   hull_samples=(None if hull is None else hull[3]),
+                   floats=(None if hull is None else bool(hull[0] >= need)),
+                   disc=disc),
+        portal=dict(tag=d["tag"], ends=len(ends), paired=pair["paired"],
+                    readback=pair),
+        method=("MEASURED live: one scoped `objects_count` per pier prefab "
+                "inside the pier's own 32.6 m reach, expected as the pier's "
+                "127 planned pieces PLUS the 423 lighthouse pieces whose own "
+                "verified positions fall inside that same disc -- the pad is "
+                "33.455 m from the pier anchor and the body reaches 7.028 m, "
+                "so no cylinder holds the pier alone; `pier_only` is the "
+                "difference and it is the number that says the pier is "
+                "intact. The vessel counted in its 12 m berth disc; the depth "
+                "recomputed as c_WaterLevel minus the APPLIED surface off the "
+                "1 m PatchScan `north` patch, at the pier head taken from the "
+                "pier's own plan and under the hull's elliptical collider "
+                "footprint; and the portal tag read back off BOTH ZDOs with "
+                "`findObjects -detailed`, because the record that wrote a tag "
+                "is not evidence the tag is on the ZDO."),
+        tool="tools/jumpstart/settlements/waterfront.py::dock_confirm")
+
+
+def cmd_lighthouse(args) -> int:
+    """Retire a half-built lighthouse and re-place it WHOLE, in batches that
+    cannot wedge the console sink, then confirm its dock, berth and portal.
+
+    The order is not negotiable and each step is a measurement the next one
+    depends on:
+
+        players online -> sink -> live census -> retire per prefab ->
+        site proven EMPTY -> save -> batched placement with a sink gate and a
+        liveness probe before every record -> full per-prefab verify ->
+        height off the ZDOs -> dock, berth and both portal ends -> save
+
+    `--resume` replaces the retire half with a PER-PIECE DIFF (`lh_remaining`)
+    and re-sends only the plan lines with nothing standing at them, against a
+    baseline MEASURED live.  It exists because this pass was killed mid
+    placement once: two of twenty records had landed, the ledger held an
+    appended record whose wire may or may not have gone out, and neither
+    retiring 128 good pieces nor re-sending 1,255 commands is the right
+    answer to that.  Resuming is only correct BECAUSE the diff is per piece;
+    a resume from "which records were appended" would be a guess.
+
+    Without `--apply` nothing is appended and nothing is sent: the geometry,
+    the batch plan and the height are all computable offline and are printed.
+    """
+    from ledger.live import LiveBuilder  # noqa: PLC0415
+    site = args.site or "lh-north"
+    spec = lh_spec(site)
+    lines = plan_lines(spec)
+    want = plan_prefabs(spec)
+    pieces = int(args.batch_pieces or SPAWN_BATCH_PIECES)
+    batches = spawn_batches(spec, lines, pieces=pieces)
+    height = lh_height(spec)
+    ground = lh_grounding(spec)
+    print(json.dumps(dict(
+        site=site, body=spec["body"], commands=len(lines), prefabs=want,
+        batches=len(batches), pieces_per_batch=pieces,
+        round_trips=sum(len(o["wire"]) for o in batches),
+        worst_batch_echo_bytes=max(o["meta"]["sink_budget"]["worst_case_bytes"]
+                                   for o in batches),
+        pipe_bytes=SINK_PIPE_BYTES, height=height, grounding=ground),
+        indent=1, default=str))
+    if not args.apply:
+        print("    dry: nothing appended, nothing sent")
+        return 0
+
+    px, pz = spec["pad"]
+    drains: list[dict] = []
+    with LiveBuilder(actor=args.actor) as b:
+        srv = b.srv
+        players = srv.rc.players_online()
+        gate = sink_gate("pass start")
+        drains.append(gate)
+        print(f"    players online {players}; sink {gate['verdict_before']} -> "
+              f"{gate['verdict_after']}", flush=True)
+        if players:
+            raise SystemExit(
+                f"{players} player(s) online. This pass deletes 272 standing "
+                f"pieces and then places 1,255, and doing that around a "
+                f"player is how somebody falls through a floor that stopped "
+                f"existing. Stop, or wait for an empty server.")
+        b.note(
+            f"{site}: RETIRING THE HALF-BUILT BODY AND RE-PLACING IT WHOLE, "
+            f"in one token hold. spawn_plan seq {spec['partial_seq']} timed "
+            f"out part way through its 28 batches -- the game's stdout pipe "
+            f"backed up, pid 120208 sat in pipe_write, the main thread "
+            f"stopped answering RCON, and 272 of 1255 pieces were standing "
+            f"when the sink was drained FROM THE HOST with no SIGKILL. That "
+            f"record's expect is a full-body count at tolerance 0, so it is "
+            f"NOT re-emitted: re-sending it would double the 272 and fail its "
+            f"own postcondition on 1527. Instead: an unscoped live census, a "
+            f"retire per standing prefab aimed at a MEASURED cube, the site "
+            f"counted EMPTY, and then the body placed as {len(batches)} "
+            f"records of {pieces} pieces with the sink measured from the host "
+            f"and the main thread probed before every one. No terrain is "
+            f"written -- the pad from seq 2163 stands, and a second write to "
+            f"its zones would destroy the first one's terrain. Precedent: "
+            f"ledger seq 73.", role=spec["role"], site_id=site)
+        # ANNOTATION BY APPEND, never by edit: a `--note` carries whatever
+        # the caller has to say about an EARLIER attempt in the same chain --
+        # an abort, a refusal, a correction -- into the log next to this
+        # pass's own records, which is the only sanctioned way to amend the
+        # ledger.
+        if getattr(args, "note", None):
+            b.note(args.note, role=spec["role"], site_id=site)
+        b.observe(f"sink_state::{site} pass start",
+                  "MEASURED from the HOST's /proc: wchan of the container's "
+                  "supervisord and syslogd plus supervisord's read ends of "
+                  "syslogd's stdout pipes, matched by pipe inode. No docker "
+                  "exec, which is the call that blocks while the sink is "
+                  "stalled and made the in-container probe report fds_lost "
+                  "for a drainable wait.",
+                  "tools/jumpstart/settlements/waterfront.py::sink_gate",
+                  dict(gate=gate, players_online=players),
+                  role=spec["role"], site_id=site)
+
+        # THE SIBLING PROBE: does `stone_wall_1x1` spawn at all? seq 2166's
+        # census found none of it while the plan's first 272 lines hold 58.
+        sib = spec["sibling"]
+        sgot, _ = srv.count(sib["probe_prefab"], sib["pad"][0], sib["pad"][1],
+                            sib["radius_m"])
+        stot, _ = srv.count("*", sib["pad"][0], sib["pad"][1],
+                            sib["radius_m"], ignore="_*,sfx_*,vfx_*")
+        b.observe(f"sibling_body::{sib['site']}",
+                  f"MEASURED live at the FINISHED sibling that carries the "
+                  f"same blueprint: a scoped count of {sib['probe_prefab']} "
+                  f"and the star count inside the same {sib['radius_m']} m "
+                  f"radius. This decides whether lh-north's missing "
+                  f"{sib['probe_prefab']} are a prefab that does not spawn or "
+                  f"commands the wedged wire never sent.",
+                  "tools/jumpstart/settlements/waterfront.py::cmd_lighthouse",
+                  dict(site=sib["site"], prefab=sib["probe_prefab"],
+                       want=sib["probe_count"], got=sgot,
+                       body_total_want=sib["total"], body_total_got=stot),
+                  role=spec["role"], site_id=site)
+        print(f"    sibling {sib['site']}: {sib['probe_prefab']} "
+              f"{sgot}/{sib['probe_count']}, body {stot}/{sib['total']}",
+              flush=True)
+
+        # 1. WHAT IS STANDING
+        census = lh_census(srv, spec)
+        print(f"    census: {census['standing_total']} body pieces, "
+              f"{len(census['foreign'])} foreign, nearest foreign "
+              f"{census['nearest_foreign_xz_m']} m, "
+              f"{census['socket_calls']} socket calls", flush=True)
+        if census["unlisted_boxes"]:
+            raise SystemExit(
+                f"{len(census['unlisted_boxes'])} census box(es) could not be "
+                f"listed safely: {census['unlisted_boxes'][:3]}. 'I could not "
+                f"measure it' is not 'it is fine', and a demolition aimed at "
+                f"an incomplete census is how a piece is left standing inside "
+                f"the new body.")
+        b.observe(f"partial_standing::{site}",
+                  census["census_method"], census["tool"],
+                  dict(standing_total=census["standing_total"],
+                       standing_per_prefab=census["standing_per_prefab"],
+                       standing=census["standing"],
+                       foreign_per_prefab=census["foreign_per_prefab"],
+                       nearest_foreign_xz_m=census["nearest_foreign_xz_m"],
+                       engine_per_prefab=census["engine_per_prefab"],
+                       plan_total=sum(want.values()),
+                       recorded_at_seq_2166=272,
+                       durable_key=("prefab + WORLD POSITION; ZDO ids are "
+                                    "reassigned on world load")),
+                  role=spec["role"], site_id=site)
+
+        if args.resume:
+            # 2R. THE PER-PIECE DIFF, instead of a demolition. Nothing is
+            # retired: the pieces standing here now are THIS pass's own,
+            # placed after the site was counted empty, and re-sending a
+            # command whose piece already stands is what doubles a body.
+            rest = lh_remaining(spec, census)
+            print(f"    resume: {rest['matched']} of {rest['plan_total']} "
+                  f"plan lines already standing, {rest['remaining']} to send, "
+                  f"{rest['orphan_standing']} orphan(s)", flush=True)
+            b.observe(f"resume_diff::{site}", rest["method"], rest["tool"],
+                      {k: v for k, v in rest.items()
+                       if k not in ("lines", "rows")},
+                      role=spec["role"], site_id=site)
+            if rest["orphan_standing"]:
+                raise SystemExit(
+                    f"{rest['orphan_standing']} standing piece(s) inside the "
+                    f"body's reach match NO plan line: {rest['orphans'][:4]}. "
+                    f"That is either a duplicate from a re-sent command or "
+                    f"something else in the footprint, and both change what "
+                    f"the final count of 1255 would mean. Stop and identify "
+                    f"them before sending anything.")
+            if not rest["remaining"]:
+                print("    resume: nothing left to place", flush=True)
+            batches = spawn_batches(spec, rest["lines"], pieces=pieces,
+                                    baseline=rest["matched"],
+                                    rows=rest["rows"], tag="resume")
+        else:
+            # 2. RETIRE, one record per prefab, per seq 73
+            geom = retire_geometry(spec, census)
+            print(f"    delete cube: half {geom['cube_half_m']} m about "
+                  f"{geom['centre']}, empty radius {geom['empty_radius_m']} m, "
+                  f"pieces spread {geom['piece_spread_xz_m']} m", flush=True)
+            b.observe(f"retire_geometry::{site}", geom["method"],
+                      "tools/jumpstart/settlements/waterfront.py"
+                      "::retire_geometry",
+                      geom, role=spec["role"], site_id=site)
+            ops = retire_ops(spec, census, geom)
+            for i, op in enumerate(ops, start=1):
+                g = sink_gate(f"before retire {i}/{len(ops)} "
+                              f"{op['params']['prefab']}")
+                drains.append(g)
+                rtt = srv.probe()
+                op["meta"]["sink_gate"] = g
+                op["meta"]["probe_rtt_s"] = round(rtt, 3)
+                emit(b, [op], label=f"{site} retire {i}/{len(ops)}")
+
+            # 3. THE SITE READS EMPTY -- one question, one possible answer
+            sink_gate("after retires")
+            empty_total, empty_per = srv.count("*", px, pz,
+                                               geom["empty_radius_m"],
+                                               ignore="_*,sfx_*,vfx_*")
+            b.observe(f"site_empty::{site}",
+                      f"MEASURED live: `objects_count id=* "
+                      f"ignore=_*,sfx_*,vfx_* pos={px:.2f},{pz:.2f} "
+                      f"max={geom['empty_radius_m']:g}` -- an XZ cylinder "
+                      f"that contains every one of the retired pieces (they "
+                      f"spread to {geom['piece_spread_xz_m']} m) and no "
+                      f"foreign object (the nearest measures "
+                      f"{census['nearest_foreign_xz_m']} m). A star count to "
+                      f"zero is the only honest proof of a demolition: "
+                      f"deleteObjects echoes one line per object, so a reply "
+                      f"that looks empty is indistinguishable from one that "
+                      f"was truncated.",
+                      "tools/jumpstart/settlements/waterfront.py"
+                      "::cmd_lighthouse",
+                      dict(radius_m=geom["empty_radius_m"], total=empty_total,
+                           per_prefab=empty_per,
+                           retired_total=census["standing_total"],
+                           retire_records=len(ops)),
+                      role=spec["role"], site_id=site)
+            print(f"    site after retires: {empty_total} objects inside "
+                  f"{geom['empty_radius_m']} m {empty_per}", flush=True)
+            if empty_total != 0:
+                raise SystemExit(
+                    f"the site still holds {empty_total} object(s) "
+                    f"{empty_per} after {len(ops)} retires. Placing 1,255 "
+                    f"pieces on top of a leftover would make the new body's "
+                    f"own count wrong and leave the operator a building with "
+                    f"a ghost in it.")
+            big = max(census["standing_per_prefab"].items(),
+                      key=lambda kv: kv[1])[0]
+            emit(b, [save_op((px, pz), big, 0, geom["empty_radius_m"],
+                             spec["role"])], label=f"{site} save (retired)")
+
+        # 4. THE BODY, WHOLE, IN BATCHES
+        for i, op in enumerate(batches, start=1):
+            g = sink_gate(f"before batch {i}/{len(batches)}")
+            drains.append(g)
+            rtt = srv.probe()
+            op["meta"]["sink_gate"] = g
+            op["meta"]["probe_rtt_s"] = round(rtt, 3)
+            print(f"    batch {i}/{len(batches)}: {op['params']['command_count']}"
+                  f" pieces, {len(op['wire'])} trips, cumulative "
+                  f"{op['meta']['cumulative_pieces']}, probe {rtt * 1000:.0f} "
+                  f"ms", flush=True)
+            emit(b, [op], label=f"{site} batch {i}/{len(batches)}")
+
+        # 5. EVERY PREFAB, COUNTED
+        sink_gate("before verify")
+        ver = lh_live_verify(srv, spec, census)
+        print(f"    verify: total {ver['total_got']}/{ver['total_want']}, "
+              f"prefabs_ok {ver['prefabs_ok']}, strays {ver['strays']}",
+              flush=True)
+        b.observe(f"body_verified::{site}", ver["method"], ver["tool"],
+                  dict(ver, grounding=ground), role=spec["role"],
+                  site_id=site)
+        if not (ver["total_ok"] and ver["prefabs_ok"]):
+            raise SystemExit(
+                f"the placed body does NOT match the plan: total "
+                f"{ver['total_got']}/{ver['total_want']}, mismatched "
+                f"{ver['mismatched']}. The records stand in the ledger; fix "
+                f"the cause rather than re-emitting a batch, because a "
+                f"re-emit duplicates whatever DID land.")
+
+        # 6. THE HEIGHT, off the ZDOs
+        sink_gate("before height read-back")
+        cap = cube_rows(srv, height["roof_cap_prefab"],
+                        height["roof_cap_xz"][0], height["roof_cap_origin_y"],
+                        height["roof_cap_xz"][1], 1.2)
+        gal = cube_rows(srv, height["gallery_platform_prefab"], px,
+                        height["gallery_platform_origin_y"], pz, 1.2)
+        bea = [cube_rows(srv, r["prefab"], r["at"][0], r["at"][1], r["at"][2],
+                         1.5) for r in height["beacons"]]
+        live_h = dict(
+            cap=cap, gallery=gal, beacons=bea,
+            cap_origin_y_live=cap["y_max"],
+            cap_top_y_live=(None if cap["y_max"] is None else
+                            round(cap["y_max"] + (height["roof_cap_top_y"]
+                                                  - height["roof_cap_origin_y"]),
+                                  3)),
+            agrees_with_plan_m=(None if cap["y_max"] is None else
+                                round(cap["y_max"]
+                                      - height["roof_cap_origin_y"], 3)))
+        b.observe(f"height::{site}",
+                  "MEASURED two ways and they must agree: the plan's collider "
+                  "geometry at this pad's datum, and the LIVE y of the "
+                  "topmost pieces read off their ZDOs with a bounded "
+                  "`findObjects -detailed` cube whose header is required "
+                  "under 18 rows. The beacon's seat is measured against its "
+                  "plinth from the piece's STRUCTURAL solid: a bonfire's union "
+                  "AABB reaches 2.130 m below its pivot because of the fire "
+                  "volume, and seating on a union is exactly how beacons "
+                  "ended up 5.173 m in the air earlier today.",
+                  "tools/jumpstart/settlements/waterfront.py::lh_height",
+                  dict(plan=height, live=live_h), units="m",
+                  role=spec["role"], site_id=site)
+        print(f"    height: cap top {height['roof_cap_top_y']} "
+              f"({height['height_above_sea_m']} m above sea, "
+              f"{height['height_above_entry_floor_m']} m above the entry "
+              f"floor); live cap origin {cap['y_max']} vs plan "
+              f"{height['roof_cap_origin_y']}", flush=True)
+
+        # 7. THE DOCK, THE BERTH AND BOTH PORTAL ENDS
+        sink_gate("before dock confirm")
+        dock = dock_confirm(srv, spec)
+        b.observe(f"access_confirmed::{spec['dock']['site']}", dock["method"],
+                  dock["tool"], dock, role=spec["role"], site_id=site)
+        print(f"    dock: pier {dock['pier']['pieces_got']}/"
+              f"{dock['pier']['pieces_want']} head depth "
+              f"{dock['pier']['head_depth_m']} m; {dock['berth']['prefab']} "
+              f"x{dock['berth']['count']} min depth "
+              f"{dock['berth']['hull_min_depth_m']} m; portal "
+              f"{dock['portal']['tag']} paired {dock['portal']['paired']}",
+              flush=True)
+        if not dock["portal"]["paired"]:
+            raise SystemExit(
+                f"the {spec['dock']['tag']} tag does NOT read back off both "
+                f"ZDOs: {[(e['end'], e['tag_on_zdo']) for e in dock['portal']['readback']['ends']]}. "
+                f"This site is portal-only and 2.8 km from the nearest built "
+                f"road, so a one-ended tag strands the operator at the top of "
+                f"the map. That is the operator's original reported defect.")
+        if not (dock["pier"]["ok"] and dock["berth"]["ok"]):
+            raise SystemExit(f"the pier or the berth does not measure as "
+                             f"recorded: {dock['pier']['per_prefab']} "
+                             f"{dock['berth']['count']}")
+
+        # 8. THE SAVE, with a postcondition that re-measures THIS pass
+        dominant = max(want.items(), key=lambda kv: kv[1])
+        emit(b, [save_op((px, pz), dominant[0], dominant[1],
+                         spec["count_radius_m"], spec["role"])],
+             label=f"{site} save")
+        b.note(
+            f"{site} IS COMPLETE. {sum(want.values())} pieces of "
+            f"{spec['body']['filename']} placed WHOLE in {len(batches)} "
+            f"spawn_plan records of {pieces} pieces each after the "
+            f"{census['standing_total']}-piece partial was retired in "
+            f"{len(ops)} records and the site counted EMPTY. Batch size is "
+            f"arithmetic, not taste: at 155 echoed bytes per placed object a "
+            f"{pieces}-piece record costs at most "
+            f"{pieces * SINK_ECHO_BYTES} B of a 65,536-byte pipe, while the "
+            f"single 1,255-command record that wedged the sink cost ~194 KB "
+            f"with no drain window inside it. The sink was MEASURED from the "
+            f"host and the main thread probed before every record: "
+            f"{sum(1 for g in drains if g['action'] != 'none')} drain(s) were "
+            f"needed across {len(drains)} gates. MEASURED height: the roof cap "
+            f"tops at {height['roof_cap_top_y']} m, "
+            f"{height['height_above_sea_m']} m above c_WaterLevel 30.0 and "
+            f"{height['height_above_entry_floor_m']} m above its own entry "
+            f"floor, with the lantern gallery platform at "
+            f"{height['gallery_platform_top_y']} m "
+            f"({height['gallery_above_sea_m']} m above sea). The beacon sits "
+            f"on its plinth, not in the air: pyre base "
+            f"{height['beacons'][0]['structural_base_y']} m against a plinth "
+            f"top of {height['beacons'][0]['plinth_top_y']} m. Access is "
+            f"confirmed at both ends of {spec['dock']['tag']}.",
+            role=spec["role"], site_id=site)
+        print(json.dumps(b.close(), indent=1, default=str))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -2497,7 +3756,7 @@ def main(argv=None) -> int:
                      ("complete", cmd_complete), ("stair", cmd_stair),
                      ("fabric", cmd_fabric), ("newbuild", cmd_newbuild),
                      ("probe", cmd_probe), ("port", cmd_port),
-                     ("retire", cmd_retire)):
+                     ("retire", cmd_retire), ("lighthouse", cmd_lighthouse)):
         p = sub.add_parser(name)
         p.add_argument("--site", default=None)
         p.add_argument("--prefabs", nargs="*", default=[])
@@ -2523,6 +3782,24 @@ def main(argv=None) -> int:
                        help="actually append and send; without it nothing is "
                             "written and nothing is sent")
         p.add_argument("--note", default=None)
+        # THE ACTOR IS THE CALLER'S.  `ACTOR` above is the agent that wrote
+        # the earlier waterfront records, and a module constant is a default
+        # in disguise: `clear.py`'s said `RoadClear` while `RoadEmit` was
+        # running it, and the ledger then recorded work under the name of an
+        # agent that had yielded an hour earlier. Provenance that is wrong is
+        # worse than provenance that is missing, because it reads as evidence.
+        p.add_argument("--actor", default=ACTOR,
+                       help="the agent id the ledger records this pass under")
+        p.add_argument("--batch-pieces", type=int, default=SPAWN_BATCH_PIECES,
+                       help="pieces per spawn_plan record; the sink gate runs "
+                            "between records, so this is the size of the "
+                            "largest un-gated burst of console echo")
+        p.add_argument("--resume", action="store_true",
+                       help="skip the retire half and re-send only the plan "
+                            "lines with nothing standing at them, matched "
+                            "PER PIECE against a live census. For a run that "
+                            "died mid-placement: neither retiring good "
+                            "pieces nor re-sending placed commands is right.")
         p.set_defaults(fn=fn)
     args = ap.parse_args(argv)
     if args.cmd not in ("measure", "probe") and not args.site:

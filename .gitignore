@@ -42,6 +42,15 @@ release-targets.json
 # fails naming the missing path, which points straight at build.sh.
 /tools/worldseed/*.dll
 
+# Build output of tools/hammerfix/build.sh, which compiles against a running server's
+# own assemblies. The copy that SHIPS is cmd/valheim-profile-sync/HammerFix.dll, which
+# is committed because //go:embed reads it at build time - the same arrangement as
+# EverybodyShim.dll. Keeping the tools/ copy out of git means one digest belongs to the
+# release and a stale local build can never be the one that ships. The two are
+# byte-identical when built: mcs writes the OUTPUT FILE NAME into the module metadata,
+# so only the basename affects the digest, and both are HammerFix.dll.
+/tools/hammerfix/*.dll
+
 # TEMPORARY: local ServerCharacters build. Built by tools/servercharacters/build.sh from
 # unmodified upstream bb7d3cd6 and embedded by internal/servercharacters. It MUST NOT be
 # committed: this repository is published, the mod has no licence, and running our own

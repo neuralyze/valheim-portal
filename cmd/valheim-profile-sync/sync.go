@@ -245,7 +245,7 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 				return false, err
 			}
 		}
-		if err := repairProfilePatchers(root); err != nil {
+		if err := repairInstalledProfile(root); err != nil {
 			return false, err
 		}
 		gameDir, gameErr := validateSteamValheimDirectory(syncer.GameDir)
@@ -478,12 +478,12 @@ func (syncer *profileSyncer) syncAuthorized(ctx context.Context, request profile
 	}
 	// The freshly activated tree has never had these applied: the generation was built
 	// from the manifest, so its BepInEx/patchers holds only what a package happened to
-	// place there. Until 2026-09-13 these four ran ONLY in the already-up-to-date branch
+	// place there. Until 2026-09-13 these steps ran ONLY in the already-up-to-date branch
 	// above, which meant every real install shipped without them - a player who synced a
 	// NEW release lost the EverybodyShim patcher and took 1,490
 	// "MissingMethodException: Vector2i .ZDO.GetSector()" in one session, while the
 	// same player on an unchanged release was fine. Both paths must repair the tree.
-	if err := repairProfilePatchers(root); err != nil {
+	if err := repairInstalledProfile(root); err != nil {
 		return false, err
 	}
 	gameDir, gameErr := validateSteamValheimDirectory(syncer.GameDir)
@@ -934,14 +934,18 @@ func packageMetadataPath(name string) bool {
 	}
 }
 
-// repairProfilePatchers puts the active tree's preloader patchers where BepInEx runs them
-// and removes a package that is no longer shipped.
+// repairInstalledProfile puts the active tree's preloader patchers where BepInEx runs them,
+// installs the plugins we ship ourselves, and removes a package that is no longer shipped.
 //
 // One helper called from BOTH sync paths, because having the steps inline in only one was
 // the bug: they lived in the already-up-to-date branch, so an unchanged release was
 // repaired and a NEW release was not. Anything that must be true of an installed profile
 // belongs here, not beside one of the two returns.
-func repairProfilePatchers(root string) error {
+//
+// It was called repairProfilePatchers until it also installed HammerFix, which is a plugin
+// rather than a patcher - a name that describes only some of what a shared helper does
+// invites the next step to be put somewhere else.
+func repairInstalledProfile(root string) error {
 	if err := repairLoadTimeProfilerPatcher(root); err != nil {
 		return fmt.Errorf("repair LoadTimeProfiler patcher: %w", err)
 	}
@@ -950,6 +954,9 @@ func repairProfilePatchers(root string) error {
 	}
 	if err := installEverybodyShim(root); err != nil {
 		return fmt.Errorf("install the EverybodyShim preloader patcher: %w", err)
+	}
+	if err := installHammerFix(root); err != nil {
+		return fmt.Errorf("install the HammerFix plugin: %w", err)
 	}
 	if err := removeRetiredDragonRiders(root); err != nil {
 		return fmt.Errorf("remove retired DragonRiders package: %w", err)

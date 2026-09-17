@@ -945,7 +945,7 @@ func TestInstallEverybodyShimPlacesThePatcherAndRepairsADivergentCopy(t *testing
 	}
 }
 
-func TestRepairProfilePatchersIsWhatBothSyncPathsCall(t *testing.T) {
+func TestRepairInstalledProfileIsWhatBothSyncPathsCall(t *testing.T) {
 	// The steps in here used to be inline in the already-up-to-date branch only, so a
 	// player who synced an UNCHANGED release got a repaired tree and a player who synced
 	// a NEW one did not - and lost the EverybodyShim patcher, taking 1,490
@@ -962,7 +962,7 @@ func TestRepairProfilePatchersIsWhatBothSyncPathsCall(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := repairProfilePatchers(root); err != nil {
+	if err := repairInstalledProfile(root); err != nil {
 		t.Fatal(err)
 	}
 
@@ -980,6 +980,63 @@ func TestRepairProfilePatchersIsWhatBothSyncPathsCall(t *testing.T) {
 	shim, err := os.ReadFile(filepath.Join(patchers, "EverybodyShim.dll"))
 	if err != nil || len(shim) == 0 {
 		t.Fatalf("EverybodyShim.dll not installed: %d bytes, %v", len(shim), err)
+	}
+	// So is HammerFix, which is a PLUGIN: it needs Harmony and live runtime state and is
+	// not a Cecil preloader. Without it a 1.0 client's hammer menu is empty on every
+	// table, because one mod's PieceManager copy throws MissingFieldException for
+	// PieceTable.m_availablePieces and aborts the prefix chain for every other mod.
+	fix, err := os.ReadFile(filepath.Join(plugins, "HammerFix", "HammerFix.dll"))
+	if err != nil || len(fix) == 0 {
+		t.Fatalf("HammerFix.dll not installed: %d bytes, %v", len(fix), err)
+	}
+	// And it must not end up hoisted: a patchers/ subdirectory under a plugin is moved
+	// into BepInEx/patchers, where a plugin never loads and nothing logs.
+	if _, err := os.Stat(filepath.Join(patchers, "HammerFix.dll")); err == nil {
+		t.Fatal("HammerFix.dll was hoisted into BepInEx/patchers, where a plugin never loads")
+	}
+}
+
+func TestInstallHammerFixPlacesThePluginReplacesAStaleCopyAndNoOpsOnAnIdenticalOne(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "active", "BepInEx", "plugins", "HammerFix", "HammerFix.dll")
+	if err := installHammerFix(root); err != nil {
+		t.Fatal(err)
+	}
+	placed, err := os.ReadFile(target)
+	if err != nil || len(placed) == 0 {
+		t.Fatalf("plugin not placed: %d bytes, %v", len(placed), err)
+	}
+	// A rebuilt DLL must replace a stale one, or a client keeps running the old repair
+	// while its executable claims the new one.
+	if err := os.WriteFile(target, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := installHammerFix(root); err != nil {
+		t.Fatal(err)
+	}
+	repaired, err := os.ReadFile(target)
+	if err != nil || string(repaired) == "stale" {
+		t.Fatalf("stale copy was not replaced: %d bytes, %v", len(repaired), err)
+	}
+	if len(repaired) != len(placed) {
+		t.Fatalf("replaced copy = %d bytes, want %d", len(repaired), len(placed))
+	}
+	// An identical copy must be left alone rather than rewritten: this runs on every
+	// sync, and writeFileAtomically renames a new inode into place, so a rewrite would
+	// churn the file under a game that may already have it loaded.
+	before, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := installHammerFix(root); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) || !os.SameFile(before, after) {
+		t.Fatalf("an identical plugin was rewritten: mtime %v -> %v", before.ModTime(), after.ModTime())
 	}
 }
 

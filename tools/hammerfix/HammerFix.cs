@@ -195,15 +195,22 @@ namespace Neuralyze.HammerFix
 
             Harmony = new HL.Harmony(GUID);
 
+            // Both at Message rather than Info. MEASURED in the operator's installed
+            // BepInEx.cfg: [Logging.Disk] LogLevels = "Fatal, Error, Warning, Message"
+            // and [Logging.Console] Enabled = false, so an Info line reaches no file and
+            // no screen - and BepInEx's own "Loading [...]" notice is Info too, which is
+            // why that install's LogOutput.log carries 595 Warning and 15 Message lines
+            // and not one Info line. These two are how anyone reading that log learns the
+            // plugin loaded at all and which of its two repairs are enabled.
             if (RepairPass.Value)
             {
                 AvailabilityPass.Install(Harmony);
-                Log.LogInfo("availability pass repair installed");
+                Log.LogMessage("availability pass repair installed");
             }
             if (RaiseGrid.Value)
             {
                 BuildGrid.Install(Harmony);
-                Log.LogInfo("build grid raise installed");
+                Log.LogMessage("build grid raise installed");
             }
         }
     }
