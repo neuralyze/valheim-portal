@@ -427,6 +427,14 @@ KNOWN_ROLES = {
     # finished road, removed by explicit prefab list with a live per-cylinder
     # census in the same call.
     "road_surface_clearing",
+    # Lampposts -- road LIGHTING.  Not `road_surface_clearing` and not
+    # `road_shoulder`: this op places objects and writes no terrain, which
+    # matters because `_pad_footprint_check` fires on `terrain_write` only, so
+    # the pad and POI keep-outs for a lamp are enforced by the tool rather than
+    # by this file.  Its own role so an operator can find every lamp in one
+    # grep, and so the day somebody adds a write-time guard for object
+    # placement it has a name to hang on.
+    "road_lighting",
 }
 
 TAG_RE = re.compile(r"^[A-Za-z0-9._-]{1,10}$")

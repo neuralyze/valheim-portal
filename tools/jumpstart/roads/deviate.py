@@ -85,6 +85,29 @@ MERGE_GAP_M = 2 * BRACKET_M
 # carriageway off it.
 BODY_MARGIN_M = 3.0
 
+# HUG THE EXISTING ALIGNMENT, and this is the single most important policy in
+# this module because without it the router answers a DIFFERENT QUESTION.
+#
+# MEASURED: left to minimise its own cost, A* answered T4's Stenvik conflict
+# with an 87.3 m-offset, 43.5 m-mean BYPASS -- a new road that abandons the
+# whole east district and walks around the outside of the town.  That is a
+# correct solution to "find the cheapest line from A to B avoiding these
+# bodies" and a wrong solution to the operator's problem.  Their words were
+# "the rest of stenvik streets are good": they like the road through the town
+# and want the huts out of it.  A bypass deletes the street they like AND
+# leaves the old carriageway behind as a 400 m ghost, because
+# `ribbon.py`'s union carries every prior sample forward verbatim and there is
+# no operation in this family that unwrites one.
+#
+# So distance from the OLD centreline is priced as a soft penalty, on the same
+# additive [0, 1] scale and through the same `poi_weight` the POI decay uses.
+# A deviation then costs itself for every metre it strays and takes the
+# narrowest swerve the keep-outs permit.  `HUG_REF_M` is the distance at which
+# the penalty saturates: 40 m, which is wider than the widest body half-extent
+# plus the corridor it needs, so a forced swerve is never priced at the cap
+# while it is still being forced.
+HUG_REF_M = 40.0
+
 
 def load_field(patch: str):
     if not PATCH_FILE.exists():
@@ -114,7 +137,8 @@ def pad_rects(claims: ST.Claims) -> list[dict]:
 
 
 def build_forbid(corr, pads: list[dict], pieces: list[dict],
-                 half_m: float) -> tuple[np.ndarray, dict]:
+                 half_m: float, margin_m: float = BODY_MARGIN_M
+                 ) -> tuple[np.ndarray, dict]:
     """Rasterise pad rectangles and measured piece positions onto the grid.
 
     The dilation is `half_m + BODY_MARGIN_M + cell slack`.  The cell slack is
@@ -125,7 +149,7 @@ def build_forbid(corr, pads: list[dict], pieces: list[dict],
     still breached it".
     """
     m = corr.m
-    grow = half_m + BODY_MARGIN_M + corr.cell_m / math.sqrt(2.0) + 1.0
+    grow = half_m + margin_m + corr.cell_m / math.sqrt(2.0) + 1.0
     jj, ii = np.meshgrid(np.arange(m), np.arange(m))
     X = corr.x0 + jj * corr.cell_m
     Z = corr.z0 + ii * corr.cell_m
@@ -235,7 +259,8 @@ def clearance(nodes: np.ndarray, pads: list[dict], pieces: list[dict]
 
 
 def deviate(seg: dict, report: dict, claims: ST.Claims, pieces: list[dict],
-            patch: str) -> dict:
+            patch: str, *, margin_m: float = BODY_MARGIN_M,
+            bracket_m: float = BRACKET_M, hug: bool = True) -> dict:
     fld = load_field(patch)
     half = seg["width_m"] / 2.0 + 1.0  # carriageway half + shoulder
     g_max = float(seg.get("grade_limit") or 0.08)
@@ -243,20 +268,78 @@ def deviate(seg: dict, report: dict, claims: ST.Claims, pieces: list[dict],
     pois = poimod.load()
     pf, ps, _touch = poimod.masks(pois, corr.x0, corr.z0, corr.cell_m, corr.m,
                                   half)
-    own, meta = build_forbid(corr, pad_rects(claims), pieces, half)
+    own, meta = build_forbid(corr, pad_rects(claims), pieces, half,
+                             margin_m=margin_m)
     corr.forbid = pf | own
-    corr.soft = ps
     nodes = np.asarray(seg["nodes"], dtype=np.float64)
     al = along_of(nodes)
+    if hug:
+        # Distance from every grid cell to the OLD alignment, by EUCLIDEAN
+        # DISTANCE TRANSFORM over the cells the old alignment occupies.
+        #
+        # Not by clamped projection onto each old polyline segment, which is
+        # how `ribbon.lateral_and_y_grid` does it and what this used to do:
+        # that is O(stations x cells) and T4 is 763 stations over a 1,217 x
+        # 1,217 cell grid, i.e. 1.1 billion vector elements for ONE segment.
+        # MEASURED: the run did not finish.  The transform is O(cells) and
+        # answers the same question to within half a cell, because the
+        # stations are 2 m apart on a 4 m grid so consecutive stations land in
+        # the same or adjacent cells and the rasterised line has no gaps.
+        from scipy import ndimage  # noqa: PLC0415
+        seed = np.ones((corr.m, corr.m), dtype=bool)
+        ji = np.rint((nodes[:, 0] - corr.x0) / corr.cell_m).astype(int)
+        ii = np.rint((nodes[:, 1] - corr.z0) / corr.cell_m).astype(int)
+        keep = (ii >= 0) & (ii < corr.m) & (ji >= 0) & (ji < corr.m)
+        seed[ii[keep], ji[keep]] = False
+        dmin = ndimage.distance_transform_edt(seed) * corr.cell_m
+        hug_soft = np.clip(dmin / HUG_REF_M, 0.0, 1.0)
+        corr.soft = np.maximum(ps, hug_soft)
+        meta["hug_ref_m"] = HUG_REF_M
+        meta["hug_seed_cells"] = int((~seed).sum())
+    else:
+        corr.soft = ps
+    meta["margin_m"] = margin_m
+    meta["bracket_m"] = bracket_m
     out = {"segment": seg["id"], "grade_limit": g_max, "mask": meta,
            "deviations": []}
+    # THE ANCHOR IS WHERE THE ROAD ALREADY IS, so it cannot be forbidden.  A
+    # deviation whose bracket reaches the segment's own terminus starts inside
+    # the destination's own keep-out by construction -- T8 begins at Stenvik's
+    # square, 0 m from the town, so its first anchor is 100 % masked and A*
+    # answered "no route found" for a corridor that certainly exists.
+    #
+    # THE EXEMPTION IS RECORDED, never silent, because a mask that quietly
+    # narrows is the defect class this project has paid for four times.  Each
+    # anchor gets a disc of exactly `grow` cleared around it, and the record
+    # says which anchor, how big the disc was and how many cells it returned.
+    jj, ii = np.meshgrid(np.arange(corr.m), np.arange(corr.m))
+    GX = corr.x0 + jj * corr.cell_m
+    GZ = corr.z0 + ii * corr.cell_m
+    grow = float(meta["grow_m"])
+    meta["anchor_exemptions"] = []
+
+    def exempt(px: float, pz: float, why: str) -> None:
+        disc = ((GX - px) ** 2 + (GZ - pz) ** 2) <= grow * grow
+        freed = int((corr.forbid & disc).sum())
+        if freed:
+            corr.forbid = corr.forbid & ~disc
+        meta["anchor_exemptions"].append({
+            "at": [round(px, 2), round(pz, 2)], "radius_m": round(grow, 2),
+            "cells_freed": freed, "why": why})
+
     for a_m, b_m, who in windows(report, seg["id"]):
-        ia = int(np.searchsorted(al, max(0.0, a_m - BRACKET_M)))
-        ib = int(np.searchsorted(al, min(al[-1], b_m + BRACKET_M)))
+        ia = int(np.searchsorted(al, max(0.0, a_m - bracket_m)))
+        ib = int(np.searchsorted(al, min(al[-1], b_m + bracket_m)))
         ia = max(0, min(ia, len(nodes) - 1))
         ib = max(0, min(ib, len(nodes) - 1))
         anchor_a = (float(nodes[ia, 0]), float(nodes[ia, 1]))
         anchor_b = (float(nodes[ib, 0]), float(nodes[ib, 1]))
+        exempt(*anchor_a, why=f"{seg['id']} station {ia} is on the existing "
+                              f"alignment and is the join this deviation must "
+                              f"make")
+        exempt(*anchor_b, why=f"{seg['id']} station {ib} is on the existing "
+                              f"alignment and is the join this deviation must "
+                              f"make")
         rec = {"conflicts": who, "window_m": [a_m, b_m],
                "anchor_station": [ia, ib],
                "anchor_a": anchor_a, "anchor_b": anchor_b,
@@ -286,10 +369,153 @@ def deviate(seg: dict, report: dict, claims: ST.Claims, pieces: list[dict],
         rec["clearance"] = clearance(pts_a, pad_rects(claims), pieces)
         rec["nodes"] = [[round(x, 2), round(z, 2)] for x, z in pts]
         ok = (rec["infeasible_stations"] == 0
-              and rec["clearance"]["worst_pad_m"] >= BODY_MARGIN_M
+              and rec["clearance"]["worst_pad_m"] >= margin_m
               and rec["clearance"]["worst_piece_m"] >= half)
         rec["verdict"] = "REROUTE_OK" if ok else "REROUTE_FAILS_GATE"
         out["deviations"].append(rec)
+    return out
+
+
+def splice(seg: dict, dev: dict, patch: str) -> dict:
+    """A COMPLETE, self-consistent segment record for the deviated alignment.
+
+    A deviation is a polyline; `ribbon.py build` needs a SEGMENT: nodes,
+    `profile_y`, `terrain_y`, `is_bridge`, the grade audit and the crossing
+    declarations, all mutually consistent.  Handing it a segment whose nodes
+    moved and whose profile did not is the "check that answers a question it
+    is not asked" defect with a 1.5 km blast radius: the rasteriser would
+    stamp the OLD heights along the NEW line.
+
+    SO THE WHOLE PROFILE IS RE-FITTED, not patched.  `fit_profile` is a global
+    interval propagation -- a grade limit couples every station to every other
+    one -- so a spliced middle changes the feasible band at the ends too.
+    Re-fitting is also what proves the deviation: an infeasible span is a PROOF
+    that no slope-limited profile exists inside the clamp, and a spliced
+    profile that was never re-proven is an assumption.
+
+    THE RETAINED NODES ARE COPIED VERBATIM, which is the whole point of
+    splicing rather than re-running `network.build_segment`.  A full rebuild
+    re-searches the corridor end to end and moves the alignment everywhere,
+    and every metre it moves is a metre of ALREADY-WRITTEN carriageway left
+    behind: `ribbon.py`'s union carries prior samples forward verbatim and
+    nothing in this family unwrites one.  Splicing confines the abandoned
+    surface to the conflict window.
+
+    THE DECK IS PINNED, NOT RE-CHOSEN.  Each crossing this segment already
+    declared keeps its recorded `required_deck_y` over its own window, located
+    by BANK POSITION rather than by station index because the splice
+    renumbers stations.  Crossings owns that datum; re-deriving it here would
+    be a second source of truth for a number another agent publishes.
+    """
+    # LOADED BY PATH, and the plain `import network` this replaces was a
+    # MEASURED defect, not a style preference.  `ribbon.py` inserts
+    # `tools/jumpstart` onto `sys.path` at import time, and that directory
+    # holds a PACKAGE called `network/` -- so `import network` resolved to
+    # `tools/jumpstart/network/__init__.py` and `_station_of` vanished with an
+    # AttributeError.  Two modules with one name and the winner decided by
+    # import order is exactly the class of bug this project keeps paying for,
+    # so the sibling is addressed by its file rather than by its name.
+    import importlib.util as _ilu  # noqa: PLC0415
+    _spec = _ilu.spec_from_file_location("roads_network", HERE / "network.py")
+    NW = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(NW)
+
+    fld = load_field(patch)
+    ia, ib = dev["anchor_station"]
+    old = [list(p) for p in seg["nodes"]]
+    new_poly = old[:ia] + [list(p) for p in dev["nodes"]] + old[ib + 1:]
+    pts, s = routemod.resample(new_poly, seg["station_m"])
+    s = np.asarray(s, dtype=np.float64)
+    t = np.array([fld.bilinear(x, z) for x, z in pts], dtype=np.float64)
+
+    CF = routemod.CUT_FILL_MAX
+    WL = 30.0  # c_WaterLevel, MEASURED; network.py's WATER_LEVEL
+    lo = np.maximum(t - CF, WL + routemod.ROAD_FREEBOARD_M)
+    hi = t + CF
+    free = np.zeros(len(pts), dtype=bool)
+    pinned = []
+    for c in seg.get("crossings") or []:
+        ka = NW._station_of(pts, c["bank_a"]["xz"])
+        kb = NW._station_of(pts, c["bank_b"]["xz"])
+        ka, kb = min(ka, kb), max(ka, kb)
+        free[ka:kb + 1] = True
+        wa = max(0, int(np.searchsorted(s, s[ka] - NW.BANK_LEVEL_M)))
+        wb = min(len(pts) - 1, int(np.searchsorted(s, s[kb] + NW.BANK_LEVEL_M)))
+        H = c.get("required_deck_y") or c["bank_a"].get("road_deck_y")
+        if H is None:
+            raise SystemExit(f"{seg['id']} crossing {c.get('crossing_id')} has "
+                             f"no recorded deck height to pin to")
+        lo[wa:wb + 1] = float(H)
+        hi[wa:wb + 1] = float(H)
+        pinned.append({"crossing_id": c.get("crossing_id"),
+                       "stations": [int(ka), int(kb)],
+                       "level_window": [int(wa), int(wb)],
+                       "pinned_deck_y": float(H)})
+    for ab in seg.get("abutments") or []:
+        H = float(ab["level_y"])
+        if ab["end"] == "a":
+            sel = np.nonzero(s <= s[0] + NW.BANK_LEVEL_M)[0]
+        else:
+            sel = np.nonzero(s >= s[-1] - NW.BANK_LEVEL_M)[0]
+        lo[sel] = H
+        hi[sel] = H
+        pinned.append({"abutment": ab["node"], "end": ab["end"],
+                       "pinned_level_y": H,
+                       "stations": [int(sel.min()), int(sel.max())]})
+
+    g_max = float(seg["grade_limit"])
+    fit = routemod.fit_profile(t, s, g_max, lo=lo, hi=hi)
+    bad = [(p, q) for p, q in fit["infeasible_spans"] if not free[p:q + 1].all()]
+    y = np.asarray(fit["y"], dtype=np.float64)
+    grade = np.abs(np.diff(y)) / np.maximum(np.diff(s), 1e-9)
+    cf = (y - t)[~free]
+    out = dict(seg)
+    out.update({
+        "length_m": round(float(s[-1]), 1),
+        "grade_max_measured": round(float(grade.max()), 4),
+        "grade_p95": round(float(np.percentile(grade, 95)), 4),
+        "grade_mean": round(float(grade.mean()), 4),
+        "cut_max_m": round(float(cf.min()), 2),
+        "fill_max_m": round(float(cf.max()), 2),
+        "stations_over_clamp": int((np.abs(cf) > routemod.CLAMP_M).sum()),
+        "stations_over_design_margin": int((np.abs(cf) > CF).sum()),
+        "terrain_stations": int((~free).sum()),
+        "bridged_stations": int(free.sum()),
+        "nodes": [[round(float(x), 2), round(float(z), 2)] for x, z in pts],
+        "profile_y": [round(float(v), 3) for v in y],
+        "terrain_y": [round(float(v), 3) for v in t],
+        "is_bridge": [bool(v) for v in free],
+        # `zones_of_segment`, NOT `ribbon.segment_zones`.  This field is
+        # informational -- `ribbon.py` main recomputes the write set itself
+        # from `segment_zones` with the batter reach -- and every other
+        # segment in this file carries the narrower carriageway-only set that
+        # `network.py` put there.  Filling one record from a different
+        # function would make the column mean two things.
+        "zones": sorted([list(z) for z in NW.zones_of_segment(
+            {"width_m": seg["width_m"],
+             "nodes": [[float(x), float(z)] for x, z in pts],
+             "is_bridge": [bool(v) for v in free]})]),
+        "reroute": (seg.get("reroute") or []) + [{
+            "of": seg["id"],
+            "why": "the operator reported building structures standing in the "
+                   "carriageway; this deviation is the ROUTING fix, and no "
+                   "building was removed to make it",
+            "conflicts_cleared": sorted(set(dev["conflicts"])),
+            "anchor_station_old": [ia, ib],
+            "old_window_run_m": dev["old_run_m"],
+            "new_window_run_m": dev["new_run_m"],
+            "detour_m": dev["detour_m"],
+            "clearance": dev["clearance"],
+            "infeasible_spans_after_splice": [[int(p), int(q)] for p, q in bad],
+            "pinned": pinned,
+            "instrument": "roads/deviate.py::splice",
+        }],
+    })
+    if bad:
+        raise SystemExit(
+            f"{seg['id']} spliced profile is INFEASIBLE over {bad} -- refusing "
+            f"to write a segment record whose profile is not proven; a road "
+            f"that cannot hold its grade inside the clamp is not a fix")
     return out
 
 
@@ -298,6 +524,27 @@ def main() -> int:
     ap.add_argument("--report", default="/tmp/roadclean/structures_network.json")
     ap.add_argument("--segment", action="append", required=True)
     ap.add_argument("--out", default="/tmp/roadclean/deviations.json")
+    ap.add_argument("--margin", type=float, default=BODY_MARGIN_M,
+                    help="metres of clearance demanded BEYOND the ribbon's "
+                         "own written half-width. The default keeps the "
+                         "batter toe off a body; 0 makes the pad edge the "
+                         "property line, which is how a village street "
+                         "works and is the only way a line threads a dense "
+                         "district.")
+    ap.add_argument("--bracket", type=float, default=BRACKET_M,
+                    help="metres of existing alignment the deviation may "
+                         "rewrite on each side of the conflict")
+    ap.add_argument("--splice", metavar="SEG:INDEX", action="append",
+                    help="write the deviated alignment for SEG's INDEX'th "
+                         "deviation back into segments.yaml, as a complete "
+                         "re-fitted segment record. Repeatable. Nothing is "
+                         "sent to the world: `ribbon.py build --repair-of` "
+                         "does that, against the record this writes.")
+    ap.add_argument("--no-hug", action="store_true",
+                    help="drop the stay-near-the-old-line penalty. Answers "
+                         "'cheapest line avoiding these bodies', which is a "
+                         "DIFFERENT question: on T4 it returns an 87 m bypass "
+                         "of the town whose street the operator likes.")
     a = ap.parse_args()
 
     report = json.loads(Path(a.report).read_text())
@@ -313,7 +560,9 @@ def main() -> int:
 
     all_out = {}
     for sid in a.segment:
-        res = deviate(segs[sid], report, claims, pieces, patch_of[sid])
+        res = deviate(segs[sid], report, claims, pieces, patch_of[sid],
+                      margin_m=a.margin, bracket_m=a.bracket,
+                      hug=not a.no_hug)
         all_out[sid] = res
         print(f"=== {sid}  grade_limit {res['grade_limit']}  "
               f"mask {res['mask']['cells_forbidden']} cells "
@@ -339,6 +588,38 @@ def main() -> int:
                 print(f"    {d.get('why')}")
     Path(a.out).write_text(json.dumps(all_out, indent=1))
     print(f"wrote {a.out}")
+
+    order = sorted(a.splice or [],
+                   key=lambda sp: -all_out[sp.split(":")[0]]["deviations"][
+                       int(sp.split(":")[1])]["anchor_station"][0])
+    for spec in order:
+        sid, _, idx = spec.partition(":")
+        d = all_out[sid]["deviations"][int(idx)]
+        if d["verdict"] != "REROUTE_OK":
+            raise SystemExit(f"{spec} is {d['verdict']}, not REROUTE_OK -- "
+                             f"refusing to splice an unproven deviation")
+        # RE-READ THE RECORD FROM DISK, never the map loaded at start-up.
+        # Two deviations on one segment are spliced one after the other and
+        # the first splice renumbers every station after it; splicing the
+        # second against the start-up snapshot would place it by an index that
+        # no longer means what it meant.  Splice DESCENDING by station so the
+        # indices of the ones still to come are the ones that did not move.
+        doc2 = yaml.safe_load(ST.SEGMENTS.read_text())
+        cur = next(sg for sg in doc2["segments"] if sg["id"] == sid)
+        rec = splice(cur, d, patch_of[sid])
+        for k, sg in enumerate(doc2["segments"]):
+            if sg["id"] == sid:
+                doc2["segments"][k] = rec
+                break
+        else:
+            raise SystemExit(f"no {sid} in {ST.SEGMENTS}")
+        ST.SEGMENTS.write_text(yaml.safe_dump(doc2, sort_keys=True,
+                                              default_flow_style=False))
+        print(f"spliced {sid} deviation {idx}: length {rec['length_m']} m, "
+              f"grade_max {rec['grade_max_measured']}, "
+              f"cut {rec['cut_max_m']} fill {rec['fill_max_m']}, "
+              f"over_clamp {rec['stations_over_clamp']}, "
+              f"zones {len(rec['zones'])} -> {ST.SEGMENTS}")
     return 0
 
 

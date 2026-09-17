@@ -1,0 +1,440 @@
+{
+ "tool": "tools/jumpstart/settlements/waterfront.py::cmd_measure",
+ "field": "/tmp/harbour/h1m.bin",
+ "world_field": "/tmp/harbour/world.bin",
+ "water_level_y": 30.0,
+ "land_level_y": 30.5,
+ "deck_datum_y": 30.6,
+ "vessels": {
+  "DoubleRowingCanoe": {
+   "draught_m": 0.8,
+   "hull_w": 3.84,
+   "hull_l": 8.2,
+   "cls": "small",
+   "mass": 600
+  },
+  "RowingCanoe": {
+   "draught_m": 1.0,
+   "hull_w": 7.68,
+   "hull_l": 6.59,
+   "cls": "small",
+   "mass": 500
+  },
+  "LittleBoat": {
+   "draught_m": 1.2,
+   "hull_w": 4.23,
+   "hull_l": 10.37,
+   "cls": "small",
+   "mass": 1000
+  },
+  "MercantShip": {
+   "draught_m": 1.5,
+   "hull_w": 9.16,
+   "hull_l": 21.57,
+   "cls": "large",
+   "mass": 2000
+  },
+  "BigCargoShip": {
+   "draught_m": 1.5,
+   "hull_w": 14.1,
+   "hull_l": 20.05,
+   "cls": "large",
+   "mass": 2000
+  },
+  "WarShip": {
+   "draught_m": 1.7,
+   "hull_w": 10.07,
+   "hull_l": 20.08,
+   "cls": "large",
+   "mass": 2000
+  },
+  "CargoShip": {
+   "draught_m": 2.0,
+   "hull_w": 9.16,
+   "hull_l": 15.71,
+   "cls": "large",
+   "mass": 2000
+  },
+  "VikingShip": {
+   "draught_m": 1.5,
+   "hull_w": 9.16,
+   "hull_l": 21.57,
+   "cls": "large",
+   "mass": 2000
+  },
+  "Karve": {
+   "draught_m": 1.2,
+   "hull_w": 7.68,
+   "hull_l": 10.12,
+   "cls": "small",
+   "mass": 1000
+  }
+ },
+ "keel_clearance_m": 1.0,
+ "sites": {
+  "harbour-temple-south": {
+   "kind": "harbour",
+   "root": [
+    11.5,
+    -258.5
+   ],
+   "bearing_deg": 220.0,
+   "why": "The main harbour, 268 m from StartTemple and the first waterfront a player sees. Standing and complete as 72 pieces, but its road join steps and its signed Longship berth is empty.",
+   "root_applied": [
+    30.582,
+    30.582,
+    0.0
+   ],
+   "vessel": {
+    "site": "harbour-temple-south",
+    "chosen": {
+     "site": "harbour-temple-south",
+     "vessel": "CargoShip",
+     "yaw": 220.0,
+     "seed": {
+      "x": -7.91,
+      "z": -281.48,
+      "source": "planned deck tile farthest along bearing 220 that stands over water (-4.06,-276.88), depth 5.618 m, pushed 6 m to seaward",
+      "planned_prefab": null
+     },
+     "required_depth_m": 3.0,
+     "draught_m": 2.0,
+     "hull_w_m": 9.16,
+     "hull_l_m": 15.71,
+     "candidates_swept": 99,
+     "x": -7.91,
+     "z": -281.48,
+     "along_from_seed_m": 0.0,
+     "offset_from_centreline_m": 0.0,
+     "min_depth_under_hull_m": 4.822,
+     "max_depth_under_hull_m": 9.168,
+     "hull_samples": 115,
+     "connected_to_open_sea": true,
+     "floats": true,
+     "disc": {
+      "vessel": "CargoShip",
+      "draught_m": 2.0,
+      "required_depth_m": 3.0,
+      "hull_w_m": 9.16,
+      "hull_l_m": 15.71,
+      "centre": [
+       -7.91,
+       -281.48
+      ],
+      "radius_m": 12.0,
+      "patch": "harbour",
+      "patch_step_m": 1.0,
+      "max_depth_in_disc_m": 10.133,
+      "navigable_area_m2": 440.0,
+      "connected_to_open_sea": true,
+      "deepest_navigable": [
+       -14.0,
+       -291.0,
+       10.133
+      ],
+      "ok": true,
+      "why": "MEASURED: depth = c_WaterLevel 30.0 - generated height on a 1 m PatchScan patch (rivers included); the usable set is depth >= draught 2.0 + keel clearance 1.0 AND 4-connected to the patch boundary, so a landlocked pocket cannot score as a berth."
+     },
+     "why": "MEASURED: seeded on the planned berth or the deepest-water planned deck tile, then swept along and across the pier. Each candidate is scored on the SHALLOWEST sample inside the hull's own elliptical footprint, with EVERY hull sample required to lie in water that is flood-fill connected to the open sea. Ranked floats-first then nearest-to-seed.",
+     "tool": "tools/jumpstart/settlements/waterfront.py::berth_spot"
+    },
+    "rejected": [],
+    "rule": "largest by draught that the hull footprint proves it can float, and that fits the slip's inner width less 1 m of fender and its length. A large boathouse berthing a rowboat is the same defect as a slip that cannot float a boat."
+   },
+   "stair_run": {
+    "steps": [
+     {
+      "prefab": "wood_stair",
+      "x": 10.61,
+      "y": 31.18,
+      "z": -256.57,
+      "yaw": 225.0,
+      "head_surface_y": 32.23,
+      "foot_surface_y": 31.28,
+      "ground_at_centre_y": 30.847,
+      "burial_m": 0.0,
+      "index": 0
+     },
+     {
+      "prefab": "wood_stair",
+      "x": 9.175,
+      "y": 30.23,
+      "z": -258.005,
+      "yaw": 225.0,
+      "head_surface_y": 31.28,
+      "foot_surface_y": 30.33,
+      "ground_at_centre_y": 29.708,
+      "burial_m": 0.0,
+      "index": 1
+     }
+    ],
+    "foot_xz": [
+     10.797,
+     -256.383
+    ],
+    "bearing_deg": 45.0,
+    "deck_top_y": 30.597,
+    "top_xz": [
+     11.327,
+     -255.853
+    ],
+    "top_ground_y": 32.23,
+    "top_found_at_m": 0.75,
+    "rise_needed_m": 1.633,
+    "steps_laid": 2,
+    "bottom_tread_surface_y": 30.33,
+    "residual_m": 0.267,
+    "max_burial_m": 0.0,
+    "closed": true,
+    "why": "MEASURED per tread against the composed applied surface (lattice-aligned PatchScan generated height + the ledger's own terrain_write blobs unioned in FILE ORDER, bilinear). The top is found by walking up-slope until the surface stops rising, not by assuming a distance. residual_m >= 0 is a kerb at the deck; residual_m < 0 means the step survives.",
+    "tool": "tools/jumpstart/settlements/waterfront.py::stair_run"
+   }
+  },
+  "boathouse-temple-strait": {
+   "kind": "slip",
+   "root": [
+    -305.98,
+    -110.4
+   ],
+   "bearing_deg": 190.0,
+   "why": "A slip in the strait lagoon 36 m south of bridge S1, shelter 0.96 -- the most enclosed water on either island. Built as a SLIP ONLY: its sign post, sign and boat were never emitted.",
+   "root_applied": [
+    27.766,
+    27.766,
+    0.0
+   ],
+   "vessel": {
+    "site": "boathouse-temple-strait",
+    "chosen": {
+     "site": "boathouse-temple-strait",
+     "vessel": "LittleBoat",
+     "yaw": 190.0,
+     "seed": {
+      "x": -306.0,
+      "z": -113.68,
+      "source": "planned boat position for boathouse-temple-strait",
+      "planned_prefab": "VikingShip"
+     },
+     "required_depth_m": 2.2,
+     "draught_m": 1.2,
+     "hull_w_m": 4.23,
+     "hull_l_m": 10.37,
+     "candidates_swept": 7,
+     "x": -307.04,
+     "z": -119.59,
+     "along_from_seed_m": 6.0,
+     "offset_from_centreline_m": 0.0,
+     "min_depth_under_hull_m": 2.384,
+     "max_depth_under_hull_m": 5.211,
+     "hull_samples": 38,
+     "connected_to_open_sea": true,
+     "floats": true,
+     "disc": {
+      "vessel": "LittleBoat",
+      "draught_m": 1.2,
+      "required_depth_m": 2.2,
+      "hull_w_m": 4.23,
+      "hull_l_m": 10.37,
+      "centre": [
+       -307.04,
+       -119.59
+      ],
+      "radius_m": 12.0,
+      "patch": "boathouse",
+      "patch_step_m": 1.0,
+      "max_depth_in_disc_m": 5.211,
+      "navigable_area_m2": 221.0,
+      "connected_to_open_sea": true,
+      "deepest_navigable": [
+       -306.0,
+       -121.0,
+       5.211
+      ],
+      "ok": true,
+      "why": "MEASURED: depth = c_WaterLevel 30.0 - generated height on a 1 m PatchScan patch (rivers included); the usable set is depth >= draught 1.2 + keel clearance 1.0 AND 4-connected to the patch boundary, so a landlocked pocket cannot score as a berth."
+     },
+     "why": "MEASURED: seeded on the planned berth or the deepest-water planned deck tile, then swept along and across the pier. Each candidate is scored on the SHALLOWEST sample inside the hull's own elliptical footprint, with EVERY hull sample required to lie in water that is flood-fill connected to the open sea. Ranked floats-first then nearest-to-seed.",
+     "tool": "tools/jumpstart/settlements/waterfront.py::berth_spot"
+    },
+    "rejected": [
+     {
+      "vessel": "CargoShip",
+      "rejected": "depth",
+      "min_depth_under_hull_m": 0.038,
+      "required_depth_m": 3.0
+     },
+     {
+      "vessel": "WarShip",
+      "rejected": "beam",
+      "hull_w_m": 10.07,
+      "beam_cap_m": 11.0
+     },
+     {
+      "vessel": "MercantShip",
+      "rejected": "depth",
+      "min_depth_under_hull_m": -0.888,
+      "required_depth_m": 2.5
+     },
+     {
+      "vessel": "BigCargoShip",
+      "rejected": "beam",
+      "hull_w_m": 14.1,
+      "beam_cap_m": 11.0
+     },
+     {
+      "vessel": "VikingShip",
+      "rejected": "depth",
+      "min_depth_under_hull_m": -0.888,
+      "required_depth_m": 2.5
+     }
+    ],
+    "rule": "largest by draught that the hull footprint proves it can float, and that fits the slip's inner width less 1 m of fender and its length. A large boathouse berthing a rowboat is the same defect as a slip that cannot float a boat."
+   }
+  },
+  "dock-stationhub": {
+   "kind": "jetty",
+   "root": [
+    510.41,
+    1058.09
+   ],
+   "bearing_deg": 115.0,
+   "why": "Planned, verified and never built. Serves the station hub 160 m east.",
+   "root_applied": [
+    28.333,
+    28.333,
+    0.0
+   ],
+   "vessel": {
+    "site": "dock-stationhub",
+    "chosen": null,
+    "rejected": [
+     {
+      "vessel": "CargoShip",
+      "rejected": "depth",
+      "min_depth_under_hull_m": -0.569,
+      "required_depth_m": 3.0
+     },
+     {
+      "vessel": "WarShip",
+      "rejected": "depth",
+      "min_depth_under_hull_m": -0.999,
+      "required_depth_m": 2.7
+     },
+     {
+      "vessel": "MercantShip",
+      "rejected": "depth",
+      "min_depth_under_hull_m": -0.734,
+      "required_depth_m": 2.5
+     },
+     {
+      "vessel": "BigCargoShip",
+      "rejected": "depth",
+      "min_depth_under_hull_m": -2.494,
+      "required_depth_m": 2.5
+     },
+     {
+      "vessel": "VikingShip",
+      "rejected": "depth",
+      "min_depth_under_hull_m": -0.734,
+      "required_depth_m": 2.5
+     },
+     {
+      "vessel": "LittleBoat",
+      "rejected": "depth",
+      "min_depth_under_hull_m": 0.468,
+      "required_depth_m": 2.2
+     },
+     {
+      "vessel": "Karve",
+      "rejected": "depth",
+      "min_depth_under_hull_m": -0.119,
+      "required_depth_m": 2.2
+     },
+     {
+      "vessel": "RowingCanoe",
+      "rejected": "depth",
+      "min_depth_under_hull_m": -0.119,
+      "required_depth_m": 2.0
+     },
+     {
+      "vessel": "DoubleRowingCanoe",
+      "rejected": "depth",
+      "min_depth_under_hull_m": 0.54,
+      "required_depth_m": 1.8
+     }
+    ],
+    "rule": "largest by draught that the hull footprint proves it can float, and that fits the slip's inner width less 1 m of fender and its length. A large boathouse berthing a rowboat is the same defect as a slip that cannot float a boat."
+   }
+  },
+  "harbour-vestvik": {
+   "kind": "jetty",
+   "root": [
+    -1038.22,
+    1661.95
+   ],
+   "bearing_deg": 305.0,
+   "why": "Planned, verified and never built. Vestvik's own shoreline is too shallow for a 22 m pier at any bearing, so this is the village's quay and the road joins the two.",
+   "root_applied": [
+    27.285,
+    27.285,
+    0.0
+   ],
+   "vessel": {
+    "site": "harbour-vestvik",
+    "chosen": {
+     "site": "harbour-vestvik",
+     "vessel": "CargoShip",
+     "yaw": 305.0,
+     "seed": {
+      "x": -1053.29,
+      "z": 1674.2,
+      "source": "planned deck tile farthest along bearing 305 that stands over water (-1048.37,1670.76), depth 6.035 m, pushed 6 m to seaward",
+      "planned_prefab": null
+     },
+     "required_depth_m": 3.0,
+     "draught_m": 2.0,
+     "hull_w_m": 9.16,
+     "hull_l_m": 15.71,
+     "candidates_swept": 99,
+     "x": -1053.29,
+     "z": 1674.2,
+     "along_from_seed_m": 0.0,
+     "offset_from_centreline_m": 0.0,
+     "min_depth_under_hull_m": 4.632,
+     "max_depth_under_hull_m": 6.432,
+     "hull_samples": 114,
+     "connected_to_open_sea": true,
+     "floats": true,
+     "disc": {
+      "vessel": "CargoShip",
+      "draught_m": 2.0,
+      "required_depth_m": 3.0,
+      "hull_w_m": 9.16,
+      "hull_l_m": 15.71,
+      "centre": [
+       -1053.29,
+       1674.2
+      ],
+      "radius_m": 12.0,
+      "patch": "vestvikquay",
+      "patch_step_m": 1.0,
+      "max_depth_in_disc_m": 6.963,
+      "navigable_area_m2": 441.0,
+      "connected_to_open_sea": true,
+      "deepest_navigable": [
+       -1063.0,
+       1668.0,
+       6.963
+      ],
+      "ok": true,
+      "why": "MEASURED: depth = c_WaterLevel 30.0 - generated height on a 1 m PatchScan patch (rivers included); the usable set is depth >= draught 2.0 + keel clearance 1.0 AND 4-connected to the patch boundary, so a landlocked pocket cannot score as a berth."
+     },
+     "why": "MEASURED: seeded on the planned berth or the deepest-water planned deck tile, then swept along and across the pier. Each candidate is scored on the SHALLOWEST sample inside the hull's own elliptical footprint, with EVERY hull sample required to lie in water that is flood-fill connected to the open sea. Ranked floats-first then nearest-to-seed.",
+     "tool": "tools/jumpstart/settlements/waterfront.py::berth_spot"
+    },
+    "rejected": [],
+    "rule": "largest by draught that the hull footprint proves it can float, and that fits the slip's inner width less 1 m of fender and its length. A large boathouse berthing a rowboat is the same defect as a slip that cannot float a boat."
+   }
+  }
+ }
+}

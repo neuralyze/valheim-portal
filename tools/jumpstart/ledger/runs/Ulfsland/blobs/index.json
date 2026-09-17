@@ -979,6 +979,11 @@
   "first_seen_seq": 202,
   "note": "TCData T12-wtspawn-temple zone [-1, -1]"
  },
+ "4d4be96a45f4b78d6342a88e0a718e219b3a639c52ddb47674dec1d396761904": {
+  "bytes": 130,
+  "first_seen_seq": 2009,
+  "note": "lamp spawn commands for S1"
+ },
  "4df7a8c15ac765b10b8f46a8bdaf554192cb56ea092da86bc5cadad296635d6b": {
   "bytes": 24956,
   "first_seen_seq": 546,
@@ -2674,6 +2679,11 @@
   "first_seen_seq": 1866,
   "note": "guardcheck T8-stenvik-wttown"
  },
+ "cfb3a7c5fc129617f100c3aadc466002509b308b45e4bad12cc590e62cc4b4dc": {
+  "bytes": 1571,
+  "first_seen_seq": 2009,
+  "note": "lamp spawn commands for W5"
+ },
  "d00ee2669882a2887e00d8de0d7afb9e00955f537f388cbe68792760d7b6332e": {
   "bytes": 342,
   "first_seen_seq": 599,
@@ -3268,6 +3278,11 @@
   "bytes": 2638,
   "first_seen_seq": 1861,
   "note": "guardcheck S8-wtsouth-treesth"
+ },
+ "fbfb74e97867c166681c0828f9d3fa25eeeb12748ae5c278240a9d6ceddb4bc7": {
+  "bytes": 649,
+  "first_seen_seq": 2029,
+  "note": "lamp spawn commands for T12"
  },
  "fc012e1d719cdd98ffef51c03a9eae59decc8fcee9d7fadf92007adcbe30f7b4": {
   "bytes": 1024,
