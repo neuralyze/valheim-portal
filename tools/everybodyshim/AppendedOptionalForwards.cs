@@ -161,34 +161,24 @@ namespace Neuralyze.EverybodyShim
 
     internal static class AppendedOptionalForwards
     {
-        // ONE ROW, added 2026-09-13 for exactly the reason the note below predicted.
+        // THIS TABLE IS NOW EMPTY, and the emitter below is kept deliberately.
         //
-        // PlayerProfile.IncrementStat is the appended-optional shape in its purest form:
-        //   1.0.12:  instance void IncrementStat(PlayerStatType stat,
-        //                                        [opt] float32 amount, [opt] bool cheated)
-        //   arities: total=[3] required=[1]
-        // Both appended parameters carry the GAME'S OWN .param defaults, so the forward
-        // restates Valheim's declared behaviour rather than inventing anything - the
-        // distinction that separates this table from AppendedRequiredForwards.
+        // PlayerProfile.IncrementStat(PlayerStatType, float32) was REMOVED 2026-09-17:
+        // ZERO consumers. It was added 2026-09-13 against a real 898-exceptions-in-39-
+        // seconds fault, and the two mods named as callers of the two-parameter form,
+        // EpicLoot and LongshipUpgrades, have since been rebuilt: MEASURED by a Cecil
+        // signature scan of all 2,116 DLLs in the fleet, both now emit
+        //   void PlayerProfile::IncrementStat(PlayerStatType, System.Single, System.Boolean)
+        // which is the native 1.0.12 three-parameter signature and resolves without a
+        // bridge. 38 references to a method NAMED IncrementStat remain in the fleet and
+        // not one of them wants the two-parameter form. The third named caller,
+        // Smoothbrain-Farming, was already dropped.
         //
-        // Why it matters: a player's own log showed 898 occurrences of
-        //   MissingMethodException: Method not found: void .PlayerProfile.IncrementStat(PlayerStatType,single)
-        // across 39 SECONDS in-world. Stat increments run on a hot path, so every step
-        // and every swing threw. EpicLoot and LongshipUpgrades call the two-parameter
-        // form; Smoothbrain-Farming did too and has since been dropped.
+        // So the row was bridging a callsite that no longer exists. Note what that
+        // means for the next reader: this table's rows expire when mods get rebuilt,
+        // and nothing tells you when. Re-measure by signature before trusting any row
+        // here - and NOT by name, which counts 38 where the answer is 0.
         //
-        // Wubarrk-Valheim10Compatibility does NOT bridge it: its client log names only
-        // its two BLOCKED return-type refusals, its own literals cover
-        // Game.SavePlayerProfile and PlayerProfile.GetCharacterFolderPath, and the 898
-        // runtime exceptions settle the question whatever its table says.
-        //
-        // The second bar - the one the SpawnItem reversal added - is met: NO installed mod
-        // resolves this method by name. Swept all 115 deployed DLLs for a UTF-16
-        // "IncrementStat" literal and found zero, the ASCII hits being metadata names
-        // rather than reflection strings. So the extra overload cannot break a by-name
-        // lookup the way our Character.Message forward once did.
-        //
-        // The rest of this table stays EMPTY BY DECISION, not by oversight.
         // Character.Message, SEMan.AddStatusEffect (both overloads), Inventory.AddItem
         // and EffectList.Create all lived here until 2026-09-13 and are all now
         // bridged by Wubarrk-Valheim10Compatibility, which additionally
@@ -198,15 +188,10 @@ namespace Neuralyze.EverybodyShim
         // PatchAll on an ambiguous by-name lookup that their hook had just
         // fixed (75 error lines), against 41 with ours cut back.
         //
-        // The emitter below is kept deliberately. The appended-optional shape
-        // is how Valheim breaks mods at every content patch, and when the next
-        // one lands this is a table row rather than new code - with the prefix
-        // rule and the refusals already proven.
-        internal static readonly ForwardSpec[] Table =
-        {
-            new ForwardSpec("PlayerProfile", "IncrementStat",
-                new[] { "PlayerStatType", "System.Single" }),
-        };
+        // The emitter stays. The appended-optional shape is how Valheim breaks mods at
+        // every content patch, and when the next one lands this is a table row rather
+        // than new code - with the prefix rule and the refusals already proven.
+        internal static readonly ForwardSpec[] Table = { };
 
         /// Emits every admissible forward. Returns the number emitted.
         internal static int Apply(AssemblyDefinition assembly, ManualLogSource log)

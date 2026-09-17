@@ -116,13 +116,30 @@ namespace Neuralyze.EverybodyShim
 
     internal static class DelegatedReturnForwards
     {
-        internal static readonly DelegatedReturnSpec[] Table =
-        {
-            // Safe only while Cross_Server_Portals remains the sole caller and
-            // stays read-only - see the header. Fires once per boot unbridged.
-            new DelegatedReturnSpec("ZDOMan", "GetPortals",
-                "System.Collections.Generic.List`1<ZDO>", "GetPortalList"),
-        };
+        // THIS TABLE IS NOW EMPTY, and the emitter below is kept deliberately.
+        //
+        // ZDOMan.GetPortals -> List<ZDO> was REMOVED 2026-09-17: ZERO consumers.
+        //
+        // The header above states the condition this bridge rested on - "the SOLE
+        // referencing mod is Cross_Server_Portals/ValheimCrossServerPortals.dll" - and
+        // that mod no longer references GetPortals at all. MEASURED by a Cecil
+        // signature scan of all 2,116 DLLs across all seven profiles' cache sides and
+        // all five deployed world plugin trees: ZERO references to
+        // `List<ZDO> ZDOMan::GetPortals()`, and ZERO references to a method named
+        // GetPortals by any signature. What ValheimCrossServerPortals.dll now emits is
+        //   List`1<ZDO> ZDOMan::GetPortalList()
+        // directly - the native 1.0 method this bridge used to delegate TO. The mod was
+        // rebuilt against 1.0 and went straight to the new name, so the bridge became
+        // dead weight rather than wrong.
+        //
+        // That also retires the assumption the header warns about. The reason this
+        // bridge was ever risky is that GetPortalList returns a FRESH copy while the
+        // old GetPortals returned the live backing collection, so a mutating caller
+        // would have silently written to a throwaway. With no caller, there is nothing
+        // to re-check - but if a row is ever added back, re-read that header first: a
+        // mutating caller must NOT get this bridge, because a crash is the better
+        // failure.
+        internal static readonly DelegatedReturnSpec[] Table = { };
 
         internal static int Apply(AssemblyDefinition assembly, ManualLogSource log)
         {

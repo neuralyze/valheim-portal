@@ -121,10 +121,20 @@ namespace Neuralyze.EverybodyShim
         // meaningful rather than merely quiet. Re-run over the 113 DLLs deployed under
         // Ulfsland's plugins tree on 2026-09-13, `SpawnItem` hits exactly one mod -
         // CreatureLevelControl.dll, the mod this reversal broke - while IncrementStat,
-        // GetSector, GetZone, GetPortals and GetPortalList, the five names the shipped
-        // tables forward, hit no mod at all. The only carriers of those five are
+        // GetSector, GetZone, GetPortals and GetPortalList, the five names the tables
+        // forwarded AT THAT TIME, hit no mod at all. The only carriers of those five are
         // EverybodyShim.dll and Valheim10Compatibility.Patcher.dll, which are the
         // emitters naming their own targets, not consumers looking anything up.
+        //
+        // UPDATED 2026-09-17: the shipped tables now forward ONE name, GetSector.
+        // IncrementStat, GetZone and GetPortals were deleted after a Cecil
+        // signature scan of all 2,116 DLLs in the fleet measured ZERO consumers for
+        // each - every remaining reference to those names emits the native 1.0
+        // signature. The by-name sweep above is still the right SECOND bar for
+        // admitting a row; it is just no longer the instrument for deciding whether a
+        // row is still needed. For that, compare FULL signatures including the return
+        // type: the by-name count for GetZone is 123 where the signature-exact answer
+        // is 0, and a name-based check already misread ServersideQoL as a dependant.
         //
         // Then boot, because only the boot counts.
         internal static readonly RequiredForwardSpec[] Table = { };

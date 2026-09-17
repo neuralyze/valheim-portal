@@ -119,35 +119,40 @@ namespace Neuralyze.EverybodyShim
     {
         internal static readonly WidenedReturnSpec[] Table =
         {
+            // The ONE surviving row, and it has exactly one consumer:
+            // CreatureLevelAndLootControl/CreatureLevelControl.dll, which emits
+            // `Vector2i ZDO::GetSector()` verbatim. MEASURED 2026-09-17 by a Cecil
+            // scan of every MethodReference in every method body across all seven
+            // profiles' manager-cache/{server,client} trees and all five deployed
+            // world plugin trees - 2,116 DLLs - comparing the FULL signature,
+            // return type included. 19 hits, all of them the same one package
+            // (14 cache copies + 5 live copies). Every other reference to a method
+            // NAMED GetSector - ServersideQoL's - emits `Vector2s ZDO::GetSector()`,
+            // which is native and needs no bridge. That distinction is why a
+            // name-based scan must never be used to decide this table: it reported
+            // ServersideQoL as a dependant when the difference is a RETURN TYPE
+            // alone.
             new WidenedReturnSpec("ZDO", "GetSector", "Vector2i"),
 
-            // Same shape as GetSector and blocked by Valheim10Compatibility for
-            // the same stated reason. 1.0.12 declares exactly one overload,
-            //   default valuetype [assembly_utils]Vector2s GetZone(UnityEngine.Vector3 point)
-            // and it is STATIC, which is the first time the emitter's static
-            // path is used. 9 deployed mods reference it: CreatureLevelAndLoot-
-            // Control, EpicLoot, More_World_Locations_AIO, Server_devcommands,
-            // ServersideQoL, Serverside_Simulations, Upgrade_World, ValheimRcon,
-            // World_Edit_Commands.
+            // ZoneSystem.GetZone -> Vector2i was REMOVED 2026-09-17: ZERO consumers.
             //
-            // UNEXERCISED AT BOOT - do not read the numbers beside this row as
-            // proof it fixed anything. Unlike GetSector, which was throwing
-            // 6813 times a boot before it was bridged, GetZone threw ZERO
-            // MissingMethodExceptions in the before run. The 44 -> 41 error
-            // lines that came with adding it are only Valheim10Compatibility's
-            // "BLOCKED ZoneSystem.GetZone" warning disappearing once this
-            // injects the overload their guard then finds present. Those nine
-            // mods call GetZone from console commands and gameplay events, not
-            // from startup, so a headless boot cannot reach the callsite.
+            // The row's own note above said "9 deployed mods reference it" and named
+            // them. That count was name-based and the signature measurement
+            // contradicts it: all 123 references to a method named GetZone in the
+            // fleet emit `Vector2s ZoneSystem::GetZone(UnityEngine.Vector3)`, the
+            // native 1.0 form. NOT ONE emits the Vector2i form this row injected, so
+            // the overload was bridging a callsite that does not exist. Its own note
+            // also recorded the corroborating fact without drawing the conclusion:
+            // GetZone threw ZERO MissingMethodExceptions in the before run.
             //
-            // Kept anyway, deliberately: the references are real and measured,
-            // the binding is probe-proven (static path, exit 115 patched vs
-            // MissingMethodException stock), and the measured ambiguity cost is
-            // zero across two boots. What it prevents is a MissingMethod-
-            // Exception firing mid-session out of a command - the kind of fault
-            // nobody connects to a game update three weeks later.
-            new WidenedReturnSpec("ZoneSystem", "GetZone", "Vector2i",
-                "UnityEngine.Vector3"),
+            // Deleting it is not free of consequence and that is the point: an extra
+            // overload is what makes a by-name AccessTools lookup ambiguous, which is
+            // the mechanism that regressed AzuAreaRepair. Removing an unused one can
+            // only reduce that surface.
+            //
+            // If a mod ever emits `Vector2i ZoneSystem::GetZone(Vector3)` again, put
+            // the row back - the emitter's static path is still here and still
+            // probe-proven.
         };
 
         /// Value-preserving conversions only. Keyed "from->to" on Cecil
