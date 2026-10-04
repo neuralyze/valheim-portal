@@ -268,6 +268,29 @@ def _save(s: Scope) -> list[Artefact]:
     return [Artefact("save", s.world_src, lineage=save_lineage)]
 
 
+# FIELD_WINDOWS_DEPENDS_ON: THE DEFAULT SEED IS SCANNED ON ITS DECLARED WINDOWS.
+# Stage 4 only ever DERIVED windows from the seed's land components, which is
+# right for a fresh seed and wrong for the one the committed corpus was built
+# on: for Pirate68 it caps `trunk-primary` at a 3200 m window around the spawn
+# and names the next landmass `trunk-secondary`, 7000 m away, so the west half
+# of the main continent -- where vestvik stands -- is in no window and the town
+# search finds 1 district candidate for 2 declared towns (MEASURED on the
+# from-scratch Ulfsland regeneration, stage 8: "seed 'Pirate68' yields 1 town
+# district candidate(s) and this plan declares 2 towns").  The default seed is
+# scanned with `worldseed.ULFSLAND_WINDOWS`, whose `trunk-secondary` is that
+# west half; every other seed still derives.  NEUTER `_FIELD_WINDOWS_MODE =
+# "derived"`.  Proven by `_default_seed_scans_declared`.
+FIELD_WINDOWS_DEPENDS_ON = ("declared_windows_for_the_default_seed",)
+_FIELD_WINDOWS_MODE = "declared"    # declared | derived
+
+
+def field_window_flags(seed: str) -> list[str]:
+    """The extra `roads/field.py request` arguments for this seed."""
+    if _FIELD_WINDOWS_MODE == "declared" and seed == worldseed.DEFAULT_SEED:
+        return ["--declared-windows"]
+    return []
+
+
 def _field(s: Scope) -> list[Artefact]:
     return [Artefact("field", s.work / f"{s.seed}_1m.bin", SCOPE_BINARY)]
 
@@ -621,6 +644,7 @@ STAGES: tuple[Stage, ...] = (
                              "--vh-src", str(s.vh_src),
                              "--sandbox", str(s.sandbox),
                              "--budget-mb", f"{scan_budget_mb(s.work):.0f}",
+                             *field_window_flags(s.seed),
                              "--seed", s.seed],
           note="derives this seed's patch windows off site_finder.land_components "
                "and runs PatchScan on them, under a budget measured off the HOST",
@@ -2231,6 +2255,8 @@ _NEUTERS: dict[str, tuple[str, str, object]] = {
                                       "cells-only"),
     # ADOPT_RESTAMP_DEPENDS_ON.
     "adopt skips identical": ("adopt_restamp", "_ADOPT_MODE", "skip"),
+    # FIELD_WINDOWS_DEPENDS_ON.
+    "field windows derived": ("field_windows", "_FIELD_WINDOWS_MODE", "derived"),
 }
 
 
@@ -2272,7 +2298,8 @@ def survivors(label: str) -> list[str]:
               ("descendants", _downstream_of_rerun_rerun),
               ("world_guard", _stale_world_stage_refused),
               ("census_loop", _wanted_ground_read_and_rerouted),
-              ("adopt_restamp", _identical_adoption_restamped))
+              ("adopt_restamp", _identical_adoption_restamped),
+              ("field_windows", _default_seed_scans_declared))
     return [n for n, probe in probes if n != dropped and probe()]
 
 
@@ -2780,6 +2807,17 @@ def _replaced_world_refused() -> bool:
         return rc == 0 and seen == [STALE, STALE]
 
 
+def _default_seed_scans_declared() -> bool:
+    """Stage 4 asks for the declared windows on the default seed and for
+    derived windows on every other."""
+    import dataclasses                                      # noqa: PLC0415
+    stage = next(st for st in STAGES if st.name == "field")
+    ulf = dataclasses.replace(_ROW_PROBE, seed=worldseed.DEFAULT_SEED)
+    fresh = dataclasses.replace(_ROW_PROBE, seed="Fresh42")
+    return ("--declared-windows" in [str(a) for a in stage.command(ulf)]
+            and "--declared-windows" not in [str(a) for a in stage.command(fresh)])
+
+
 def _identical_adoption_restamped() -> bool:
     """THE DRIVE-6 SHAPE: a stage-8 solve byte-identical to the slot it is
     adopted into, whose inputs are newer than that slot.  After adoption the
@@ -2926,6 +2964,16 @@ def selftest() -> int:
                                "the declared stage table has no ordering defect",
                                stages=len(STAGES)),
                neuter=_neuter("ordinal reversed"), neuters="ordinal reversed"),
+        R.Case("the_default_seed_is_scanned_on_its_declared_windows", False,
+               lambda: finding(_default_seed_scans_declared(),
+                               "stage 4 scans Pirate68 on ULFSLAND_WINDOWS and "
+                               "derives windows for any other seed", seeds=2),
+               prior_state="MEASURED on the from-scratch Ulfsland regeneration: "
+                           "derived windows left vestvik's west half of the "
+                           "main continent in no window, and stage 8 refused "
+                           "'1 town district candidate for 2 towns'",
+               neuter=_neuter("field windows derived"),
+               neuters="field windows derived"),
         R.Case("an_artefact_declaring_this_seed_is_accepted", False,
                lambda: finding(_own_header_accepted(),
                                "Fresh42-declared sites.yaml accepted for Fresh42",

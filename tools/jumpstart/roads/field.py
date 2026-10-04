@@ -430,6 +430,12 @@ if __name__ == "__main__":
     req.add_argument("--half-max-m", type=float)
     req.add_argument("--min-area-m2", type=float)
     req.add_argument("--budget-mb", type=float)
+    req.add_argument("--declared-windows", action="store_true",
+                     help="scan worldseed.ULFSLAND_WINDOWS, the window set "
+                          "MEASURED for the default seed (and the one its "
+                          "committed corpus was built on) instead of deriving "
+                          "windows from the land components; refused for any "
+                          "other seed (FIELD_WINDOWS_DEPENDS_ON)")
     ws.add_arguments(req, world_arg=False)
 
     # `field.py <a field>` was the whole interface before `request` existed and
@@ -442,6 +448,22 @@ if __name__ == "__main__":
 
     if args.op == "request":
         seed, _ = ws.apply(args)
+        if args.declared_windows:
+            if seed != ws.DEFAULT_SEED:
+                raise SystemExit(
+                    f"REFUSING --declared-windows for seed {seed!r}: "
+                    f"ULFSLAND_WINDOWS are geometries measured for "
+                    f"{ws.DEFAULT_SEED!r} and are ground nobody measured on "
+                    f"any other seed. Drop the flag to derive this seed's "
+                    f"windows from its own land.")
+            fields = request(ws.request_rows(), seed, args.out,
+                             vh_src=Path(args.vh_src), sandbox=args.sandbox)
+            for w in ws.ULFSLAND_WINDOWS:
+                print(f"{w.fid:24s} ({w.cx:9.1f},{w.cz:9.1f}) half={w.half:6.0f}"
+                      f"  {w.role}")
+            print(f"{args.out}: {len(fields)} DECLARED windows, "
+                  f"{Path(args.out).stat().st_size:,} bytes, seed {seed}")
+            raise SystemExit(0)
         fields, windows = request_for_seed(
             seed, args.grid, args.out, args.locations,
             vh_src=Path(args.vh_src), sandbox=args.sandbox,
