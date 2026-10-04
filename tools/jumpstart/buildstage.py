@@ -1839,9 +1839,56 @@ def actor_of(cmd: Iterable[str]) -> str:
 # ---------------------------------------------------------------------------
 # run
 # ---------------------------------------------------------------------------
+# LIVE_REPLACE_DEPENDS_ON: THE LIVE DEFAULT PAIR MAY BE BUILT ONLY OVER AN
+# ARCHIVED LEDGER.  The default seed/world's ledger is append-only,
+# hash-chained and cannot be re-derived from a re-run, so a build step -- which
+# appends to it -- is refused outright (REFUSED rc 5).  The operator may
+# replace that world on purpose (`--replace-live`, as `pipeline.py` already
+# allows), and the one thing that makes it safe is that the ledger being
+# replaced still exists: archived by RENAME beside it as
+# `ledger/runs/<World>.archive-*/ledger.jsonl`, never deleted.  Without such an
+# archive, or when the "archive" is the live ledger itself, the build is
+# refused.  NEUTER `_LIVE_REPLACE_MODE = "unguarded"`: --replace-live alone is
+# enough.  Proven by `_live_replace_case`.
+LIVE_REPLACE_DEPENDS_ON = ("the_replaced_ledger_survives_as_an_archive",)
+_LIVE_REPLACE_MODE = "archived"    # archived | unguarded
+
+
+def live_replace_refusal(seed: str, world: str, replace_live: bool,
+                         runs_dir: Path | None = None) -> str | None:
+    """Why this build may not run on the live default pair, or None."""
+    if not worldseed.is_default(seed, world):
+        return None
+    runs = runs_dir if runs_dir is not None else HERE / "ledger" / "runs"
+    if not replace_live:
+        return (f"REFUSING to build seed {seed!r} / world {world!r}: that is "
+                f"the live default pair. Its ledger is append-only, "
+                f"hash-chained and cannot be re-derived from a re-run, and a "
+                f"build step is a write. Use a different --seed/--world, or "
+                f"--replace-live to replace the world on purpose over an "
+                f"archived ledger.")
+    if _LIVE_REPLACE_MODE == "unguarded":
+        return None
+    live = runs / world / "ledger.jsonl"
+    archives = sorted(runs.glob(f"{world}.archive-*/ledger.jsonl"))
+    if not archives:
+        return (f"REFUSING --replace-live for {world!r}: no archived ledger "
+                f"beside it ({runs}/{world}.archive-*/ledger.jsonl). Archive "
+                f"the ledger being replaced by RENAME first; it is the one "
+                f"artefact that cannot be re-derived.")
+    if live.exists() and any(a.stat().st_size == live.stat().st_size
+                             and a.read_bytes() == live.read_bytes()
+                             for a in archives):
+        return (f"REFUSING --replace-live for {world!r}: the archived ledger "
+                f"is byte-identical to the live one, so nothing was replaced "
+                f"-- the build would append to the ledger it claims to "
+                f"preserve.")
+    return None
+
+
 def run(rt: Runtime, through: int = 99,
         steps: tuple[BuildStep, ...] = BUILD_STEPS,
-        resume: bool = False) -> int:
+        resume: bool = False, replace_live: bool = False) -> int:
     """Run the build steps IN THE DECLARED ORDER, refusing PER UNIT.
 
     A refused unit stops ITS OWN chain and every later step that consumes
@@ -1855,12 +1902,9 @@ def run(rt: Runtime, through: int = 99,
     artefact in this tree that cannot be re-derived from a re-run.
     """
     s = rt.scope
-    if worldseed.is_default(s.seed, s.world):
-        sys.stderr.write(
-            f"REFUSING to build seed {s.seed!r} / world {s.world!r}: that is "
-            f"the live default pair. Its ledger is append-only, hash-chained "
-            f"and 26,619,627 bytes of recorded world, and a build step is a "
-            f"write. Use a different --seed/--world.\n")
+    refusal = live_replace_refusal(s.seed, s.world, replace_live)
+    if refusal:
+        sys.stderr.write(refusal + "\n")
         return 5
     (s.work / "build").mkdir(parents=True, exist_ok=True)
     journal = s.work / "build" / "buildstage.json"
@@ -2163,6 +2207,9 @@ _NEUTERS: dict[str, tuple[str, str, str, object]] = {
     # COLLAR_RETRY_DEPENDS_ON: a road_ground refusal stands.
     "collar retry off": ("collar_retry", __name__, "_COLLAR_RETRY_MODE",
                          "off"),
+    # LIVE_REPLACE_DEPENDS_ON: --replace-live alone is enough.
+    "live replace unguarded": ("live_replace", __name__, "_LIVE_REPLACE_MODE",
+                               "unguarded"),
 }
 
 def _neuter(label: str) -> Callable[[], Callable[[], None]]:
@@ -2770,6 +2817,28 @@ def _collar_retry_case() -> bool:
             and again["resumed_rcs"] == [])
 
 
+def _live_replace_case() -> bool:
+    """The live pair is refused without --replace-live; with it, only over an
+    archived ledger that is not the live one.  Under the `live replace
+    unguarded` NEUTER the archive is not asked for and this is False."""
+    import tempfile                                         # noqa: PLC0415
+    seed, world = worldseed.DEFAULT_SEED, worldseed.DEFAULT_WORLD
+    with tempfile.TemporaryDirectory(prefix="buildstage-live-") as tmp:
+        runs = Path(tmp)
+        (runs / world).mkdir()
+        (runs / world / "ledger.jsonl").write_text("new\n")
+        plain = live_replace_refusal(seed, world, False, runs)
+        no_archive = live_replace_refusal(seed, world, True, runs)
+        (runs / f"{world}.archive-x").mkdir()
+        (runs / f"{world}.archive-x" / "ledger.jsonl").write_text("new\n")
+        same_file = live_replace_refusal(seed, world, True, runs)
+        (runs / f"{world}.archive-x" / "ledger.jsonl").write_text("old\n")
+        ok = live_replace_refusal(seed, world, True, runs)
+        other = live_replace_refusal("Fresh42", "Fresh42", False, runs)
+    return (bool(plain) and bool(no_archive) and bool(same_file)
+            and ok is None and other is None)
+
+
 def _upstream_refusal_blocked_at_bodies(r: dict) -> bool:
     """iron-era-workshop is BLOCKED by name, naming step 1, and never run."""
     return (_SITE_REFUSED_UPSTREAM not in r["rc"]
@@ -3200,7 +3269,8 @@ def survivors(label: str) -> list[str]:
               ("unbuilt", lambda: bool(_nine_row_table_refused())),
               ("installation_write_path",
                _installation_piece_under_a_later_write_refused),
-              ("collar_retry", _collar_retry_case))
+              ("collar_retry", _collar_retry_case),
+              ("live_replace", _live_replace_case))
     return [n for n, probe in probes if n != dropped and probe()]
 
 
@@ -3270,6 +3340,16 @@ def selftest() -> int:
                            "UNVERIFIED were settlements and installations",
                neuter=_neuter("recheck domain all"),
                neuters="recheck domain all"),
+        R.Case("the_live_pair_is_built_only_over_an_archived_ledger", False,
+               lambda: finding(_live_replace_case(),
+                               "the live default pair is refused without "
+                               "--replace-live and without an archived "
+                               "ledger beside it", cases=5),
+               prior_state="the shipped guard refused the live pair outright, "
+                           "so the operator's final regeneration of it could "
+                           "not run at all",
+               neuter=_neuter("live replace unguarded"),
+               neuters="live replace unguarded"),
         R.Case("a_road_ground_refusal_is_retried_without_the_pad_collar", False,
                lambda: finding(_collar_retry_case(),
                                "a road_ground unit the collar leaves refused "
@@ -3923,6 +4003,9 @@ def main(argv=None) -> int:
                          "skip is printed with the rc and wall it stands on. "
                          "OFF by default -- a from-scratch regen runs the "
                          "whole table.")
+    ap.add_argument("--replace-live", action="store_true",
+                    help="build the live default pair on purpose, over an "
+                         "archived ledger (LIVE_REPLACE_DEPENDS_ON)")
     ap.add_argument("--dry", action="store_true",
                     help="every step in its own offline/plan form")
     ap.add_argument("--json", default=None)
@@ -3964,7 +4047,8 @@ def main(argv=None) -> int:
                  "every record this build appends carries the name and "
                  "provenance that is wrong reads as evidence")
     return run(Runtime(scope, args.actor, args.dry),
-               through=args.through, resume=args.resume)
+               through=args.through, resume=args.resume,
+               replace_live=args.replace_live)
 
 
 if __name__ == "__main__":
