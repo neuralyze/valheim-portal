@@ -1,0 +1,6 @@
+#Name:Master refinery hip-end roof closure
+#Creator:Jumpstart
+#Description:Fill the missing straight 26-degree hip-end course between the two existing outer corners. Original source a9c75a2d4b20ef99d5329c6e744bc4fd0662c55cc904d940b5b0d2a9a3248024. Preserve the central smoke slot and smelter outlets.
+#Category:Repairs
+#Pieces
+wood_roof;BuildingWorkbench;4.23671423;8;2.83729669;0;0.5555702330196022;0;0.8314696123025452;"";1;1;1

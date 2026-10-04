@@ -1,0 +1,259 @@
+# pre-eikthyr -- the DURABLE half of this preset's placement declarations.
+#
+# WHY THIS FILE EXISTS.  `worlds/<World>/<preset>/placements.yaml` says it in
+# its own `resolve_note`: "Every `solved` block below is seed-specific and
+# disposable. The durable part is `requirement`."  The file states that its
+# content is seed-INDEPENDENT and then lives in a directory keyed by WORLD.
+# That is a key naming a superset of what the quantity depends on, and the
+# price was total: MEASURED 2026-09-23, `worlds/` held exactly one world and
+# nothing in the tree could make a second, so a fresh seed had no placement
+# templates at all and stage 8 could never run.
+#
+# WHAT WAS STRIPPED, and nothing else: `solved` and `solved_alternatives`.
+# Those two carry COORDINATES, which are the one thing a re-roll invalidates.
+# `blueprint_datum` is kept -- `blueprints/write_datum_blocks.py` states it is
+# "DURABLE, not seed-specific: it is a property of the [blueprint] body";
+# `requirement`, `rotation`, `align`, `flatten_required`, `portal`,
+# `containers`, `body_choice` and `body_audit` are declarations about the
+# BUILDING, not about the ground it stands on.
+#
+# INHERITED EVIDENCE.  The `*_note` prose below records measurements taken on
+# Ulfsland / seed Pirate68.  A world emitted from this template
+# inherits the REASONING, never the measurement: `derive.py init` stamps
+# `derived_from` into every file it writes, and the coordinates that reasoning
+# produced are exactly what was stripped.
+#
+# Emitted per world by `worlds/derive.py init <World> --seed <Seed>`; filled
+# with a fresh `solved` block by `blueprints/solve_placements.py --write`.
+schema_version: 1
+preset: pre-eikthyr
+owner: BlueprintHunt
+derived_from:
+  world: Ulfsland
+  seed: Pirate68
+
+rotation_convention: 'euler degrees, Unity YXZ order. MEASURED: ValheimRcon `spawn -rotation
+  <x> <y> <z>` calls Quaternion.Euler on that vector, so yaw is the Y component and +yaw turns
+  the building clockwise seen from above. Only yaw is used here; pitch and roll stay 0 so
+  buildings sit level.'
+coordinate_note: 'x/y/z are absolute world units, y = terrain height in `WorldGenerator.GetHeight`
+  units. Valheim''s WATER PLANE IS y = 30, not 0 -- these heights are absolute, not relative
+  to the surface. MEASURED on Pirate68: Ocean cells clamp at max 4.00 (the ocean floor, ~26
+  m down), Swamp spans 27.46..33.84 straddling 30, and every land location type in the ZoneSystem
+  dump floors at 30.50..31.11 because Valheim places land locations with minAltitude 1. `freeboard_m`
+  in each solved block is the metres the footprint''s LOWEST cell clears y=30 by, measured
+  on a 1 m river-inclusive sample; negative means part of the pad is under water. `align:
+  floor-center` means the blueprint is centred on x/z and its FLOOR PLANE is dropped exactly
+  onto y. The floor plane is measured from the game''s own piece colliders by tools/jumpstart/blueprints/base_geometry.py
+  and recorded per placement in `blueprint_datum`; the placement Y emitted to the server is
+  `flatten_cost.target_y - blueprint_datum.base_y`. The previous `align: ground-center` dropped
+  the lowest PIVOT onto y instead, which is not a surface: MEASURED, `stone_floor_2x2` is
+  a 2x2x1 m solid whose pivot sits at mid-thickness, and 99 of the 157 non-empty corpus bodies
+  are normalised so that min pivot Y == 0, on which that shift was always exactly 0.0. That
+  is why every structure floated while loose props spawned at the same pad height sat correctly.'
+constraint_note: 'Constraints come in two classes and the solver treats them differently.
+  HARD -- biome, min_biome_purity, min_height_m (freeboard over the WHOLE footprint above
+  the y=30 water plane), location_clearance_m, coastal/coastal_within_m, within_m, and require_overland
+  when declared -- are things no amount of building fixes, so a site failing one is rejected
+  and the miss is recorded in `violations` with a `remedy` saying what would work instead.
+  COSTED -- max_flat_m -- is terrain work: every placement here sets `flatten_required: true`
+  and is placed from the ulfsland-admin seat with Infinity Hammer and World Edit Commands,
+  both of which level ground. So max_flat_m is the tolerance that defines a CHEAP site, not
+  a gate, and `flatten_cost` reports the bill (cut/fill in cubic metres, mean metres moved
+  per square metre, worst single cut and fill) at the resolution named in its resolution_m.
+  Requiring natural flatness rejected 8 of 13 placements on Pirate68 for ground a hoe fixes.'
+resolve_note: Every `solved` block below is seed-specific and disposable. The durable part
+  is `requirement`. Re-roll the world, then re-run tools/jumpstart/blueprints/solve_placements.py
+  --write to regenerate all of them.
+location_clearance_note: 'MEASURED 2026-09-15 and it invalidates this field: `requirement.location_clearance_m`
+  and `solved.nearest_location_m` are VANILLA-ONLY figures and must not be read as clearance
+  against the live world.
+
+  `tools/seedscan/run_locscan.sh` builds its sandbox with `rsync --exclude ''BepInEx/''`,
+  then `rm -rf $SANDBOX/BepInEx`, then copies back only `BepInEx/core` and builds its own
+  scanner into `plugins`. So the location dump the solver scores against is produced by a
+  server with ZERO gameplay mods loaded, and More_World_Locations_AIO''s 190 POI locations
+  cannot register in it. The seed is right (Pirate68) and the dump is not stale; it is measuring
+  a different world.
+
+  The proof is a matched pair rather than an inference. At `pre-eikthyr#meadows-starter-hall`
+  the solver recorded nearest_location_m 77.0; the LIVE world holds THREE LocationProxy markers
+  at 11.08, 25.41 and 77.44 m from that pad centre. The solver found exactly the vanilla one
+  and neither of the two nearer ones. The same gap appears at every site checked: recorded
+  178.0 vs live 23.05 m (pre-moder#mountain-outpost), recorded 147.0 vs live 17.12 m (deepnorth-sandbox#complete-station-hub),
+  recorded 96.0 vs live 24.14 m (deepnorth-sandbox#sandbox-portal-hub).
+
+  What the figure can still be trusted for: ranking candidate sites against VANILLA locations
+  during the solve, which is what it was computed for. What it must NOT be used for: deciding
+  that ground is free to clear or build on. That question is answered LIVE, and only live,
+  by `clearing/clear.py`''s `locations_inside()` probe, which refuses to clear when a generated
+  marker stands inside the cylinder. That refusal is the real gate and it has already blocked
+  three sites here. Re-running the solver will not fix the number: the dump is mod-free BY
+  CONSTRUCTION, and a mod''s own location quantity switches only apply at world generation,
+  so they cannot retract a marker from a zone this world has already generated either.'
+placements:
+- id: meadows-starter-hall
+  blueprint: hs_blackforest_tester_meadows_log_cabin.blueprint
+  sha256: 362fa6df7ca5b324d211663f30a89667b07c931380167e035e34c450a70272b9
+  pieces: 207
+  footprint_xzy_m:
+  - 8.0
+  - 16.8
+  - 8.2
+  creator: Tester
+  viability: PLACES_CLEAN
+  align: floor-center
+  requirement:
+    biome: Meadows
+    footprint_m: 24
+    footprint_xz_m:
+    - 17.45
+    - 17.49
+    footprint_xz_note: 'WORLD-AXIS rectangle, MEASURED 2026-09-15, replacing the 24 m square.
+      The body is 8.0 x 16.8 m unrotated and stands at yaw 225, so its world footprint is
+      neither of those numbers: `to_rcon_plan.py --verify` measures the piece collider corners
+      after the rotation and reports footprint@yaw225=17.45x17.49, a 12.35 m reach. Why it
+      changed: the LIVE world holds a generated LocationProxy 11.08 m from the solved centre
+      (241.5, 353.5), and two more at 25.41 and 77.44 m. The solver recorded nearest_location_m
+      77.0 and found only the third - see this preset''s location_clearance_note, the dump
+      is mod-free by construction. 11.08 m is INSIDE the building''s own 12.35 m reach, so
+      no pad shrink can save this centre: the structure itself would stand on the location.
+      The pad therefore MOVES as well as shrinks; see solved.relocation. footprint_m stays
+      24 as the durable statement of the site that was searched for, and within_m 700 is untouched.'
+    max_flat_m: 3.0
+    min_biome_purity: 0.85
+    coastal: false
+    location_clearance_m: 60
+    feature: 'flat Meadows within easy walking distance of the start temple. within_m 700
+      is the intent and is NOT negotiable - 2100 m is not easy walking for a fresh character.
+      The BLUEPRINT was the negotiable half: small_long_house measures 50.2 x 33.6 m and MEASURED,
+      no 50 m pad in this seed satisfies the hard constraints within 700 m of the start temple
+      (0 exact-clearance pads at 56 m, 3 at 48 m, 33 at 40 m, 294 at 24 m). Swapped to PuP_house10,
+      19.1 x 15.5 m, which also keeps this preset''s own rule that the starter building must
+      not advertise an unreachable tier: no forge, no artisan station, timber only.'
+    near: StartTemple
+    within_m: 700
+    require_overland: true
+  rotation:
+    units: euler_degrees_yxz
+    yaw: 225
+    pitch: 0
+    roll: 0
+    facing: 'front door faces the start temple, so a new spawn walks straight in. yaw 225,
+      corrected from the inherited 0: MEASURED bearing from the solved site to the anchor
+      is 221 deg, so the old yaw was 139 deg off and the building faced nothing it claims
+      to.'
+  flatten_required: true
+  note: 'Timber cottage with porch, 225 pieces: cauldron and chests, no forge and no stone.
+    Replaces small_long_house (1444 pieces, 50.2 x 33.6 m), which cannot be placed inside
+    the 700 m walking-distance requirement on this seed. Smaller than the old hall by design
+    - the kit''s chest manifest supplies the contents, and a workbench costs 10 wood.'
+  containers:
+    by_prefab:
+      piece_chest_barrel: 5
+    containers: 5
+    slots_floor: 100
+  body_choice: 'Replaces `PuP_house10`. MEASURED on the 1 m flat-pad raster in library/data/base_audit.json:
+    the log cabin is `land_flat` at 0.0% floating with a 0.00 m worst air gap, against PuP_house10''s
+    1.6% and 2.53 m -- nothing under this body stands clear at all. It also CARRIES both stations
+    this tier ranks on (piece_workbench, piece_cookingstation, 2/2) where PuP_house10 carries
+    one, and two beds, at 207 pieces against 225. Material is meadows(207), i.e. the whole
+    body is tier-1 wood: nothing here hands the party a tier it has not reached. Span 17.0
+    m inside the 24 m pad. missing_pieces 0, so no --allow-missing-prefabs.'
+  body_audit:
+    source: library/audit_bases.py raster in library/data/base_audit.json, 1 m columns on
+      a flat pad
+    flat_pad_verdict: grounds
+    setting: land_flat
+    floating_fraction: 0.0
+    max_air_m: 0.0
+    air_isolation_max_m: 0.0
+    footprint_span_m: 17.0
+    pad_m: 24.0
+    pieces: 207
+    stations: 11
+    beds: 2
+    portals_in_body: 1
+    missing_pieces: 0
+    missing_prefabs: []
+    material_tier: meadows
+    material_tier_pieces: 207
+    licence: none stated
+    redistributable: false
+    licence_note: referenced by name and sha256 only; body is not vendored in this repo
+  portal:
+    role: spoke
+    tag: u-meadhall
+    peer: deepnorth-sandbox#sandbox-portal-hub
+    pieces_to_place: 1
+    pieces_in_body_dropped: 1
+    tag_max_len: 10
+    note: 'Vanilla pairs portals BY TAG, and MEASURED by FixtureHome from the deployed assembly,
+      Game::FindRandomUnconnectedPortal draws UNIFORMLY AT RANDOM among same-tag unconnected
+      portals and re-draws whenever either end loses its partner -- so a blank-tag portal
+      is not merely one-way, its destination is non-deterministic. This world holds 26 mod-added
+      portal_wood instances, three of them within 5-29 m of the workshop pad, and the single
+      untagged portal placed at the workshop is why the operator went through and found no
+      portal to return with. So: every portal here carries a tag, exactly two portals share
+      each tag, and an absent tag is a build FAILURE rather than a default. The tag is a ZDO
+      string field (ZDOVars.s_tag) written at spawn time in the `data=` payload of `spawn_object`;
+      TeleportWorld has no tag field of its own and reads that same ZDO string, so a headlessly
+      tagged portal is indistinguishable to the pairing code from one a player typed. Tags
+      are capped at 10 characters because TextInput::RequestText(this, "$piece_portal_tag",
+      10) is the UI input cap: a longer tag would PAIR but could never be re-typed, making
+      a broken pair unrepairable by hand. Topology is a single central hub -- deepnorth-sandbox#sandbox-portal-hub
+      at (-270.5, 211.5), 340 m from the StartTemple -- holding one portal per site; 11 tags,
+      22 portal ZDOs, worst case two hops between any two sites. Any portal_wood the BODY
+      carries is DROPPED, because a captured tag is an unknown tag.'
+  drop_prefabs:
+  - portal_wood
+  portal_tag: u-meadhall
+  blueprint_datum:
+    base_y: 0.297
+    method: lowest_walkable_surface
+    placeable: true
+    bottom_solid_y: -0.73
+    support_bottom_y: 0.2
+    lowest_station_y: 0.272
+    lowest_ground_resting_y: 0.272
+    floor_pieces: 38
+    pieces: 207
+    walkable_levels:
+    - y: 0.297
+      above_pad_m: 0.0
+      pieces: 30
+      area_m2: 120.0
+    - y: 2.297
+      above_pad_m: 2.0
+      pieces: 8
+      area_m2: 8.0
+    walkable_levels_total: 2
+    base_profile:
+      cell_m: 2.0
+      columns: 60
+      footprint_area_m2: 240.0
+      bottom_y_min: -0.73
+      bottom_y_p25: 0.0
+      bottom_y_median: 0.0
+      bottom_y_p75: 0.167
+      bottom_y_max: 0.2
+      relief_m: 0.93
+      bottom_is_flat: false
+      steps:
+      - bottom_y: 0.0
+        area_m2: 216.0
+        share: 0.9
+      - bottom_y: -0.5
+        area_m2: 24.0
+        share: 0.1
+      on_a_flat_pad:
+        columns: 60
+        columns_floating: 0
+        floating_fraction: 0.0
+        floating_area_m2: 0.0
+        max_air_m: 0.0
+        mean_air_m: 0.0
+        air_volume_m3: 0.0
+        max_buried_m: 1.027
+        grounded: true
+    violations: []

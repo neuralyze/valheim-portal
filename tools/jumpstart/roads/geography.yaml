@@ -1,0 +1,391 @@
+seed: Pirate68
+world: null
+world_agnostic: true
+world_agnostic_why: worldgen geography is a function of the SEED alone, so this file is valid in any world
+  built on that seed; `require_scope` is therefore called with no world.
+owner: RoadNet
+derived_by: roads/geography.py
+provenance:
+  height_field: /tmp/roads/h1m.bin
+  extremities: roads/survey.py::survey_patch -- farthest sample per 45 deg sector at least INLAND_M from
+    open water, on the window's largest land component
+  abutments: crossings/survey.py::approaches -- distance transform between the two trunk land components
+  snap_m: 2.0
+  water_level_y: 30.0
+  bridge_max_span_m: 96.0
+scanned_windows:
+- id: blackforest6
+  centre:
+  - -3292.0
+  - -3714.0
+  half_m: 1300.0
+  step_m: 1.0
+  samples: 2600
+- id: mainland
+  centre:
+  - 798.0
+  - 600.0
+  half_m: 1600.0
+  step_m: 1.0
+  samples: 3200
+- id: mtn7114
+  centre:
+  - 46.0
+  - 3668.0
+  half_m: 660.0
+  step_m: 1.0
+  samples: 1320
+- id: plains23
+  centre:
+  - 578.0
+  - -4478.0
+  half_m: 700.0
+  step_m: 1.0
+  samples: 1400
+- id: south33
+  centre:
+  - 1742.0
+  - -3302.0
+  half_m: 1700.0
+  step_m: 1.0
+  samples: 3400
+- id: westisle
+  centre:
+  - -760.0
+  - 1188.0
+  half_m: 1600.0
+  step_m: 1.0
+  samples: 3200
+- id: workshop3054
+  centre:
+  - -4134.0
+  - -906.0
+  half_m: 950.0
+  step_m: 1.0
+  samples: 1900
+seed_varying_fields:
+  nodes:
+  - biome
+  - generated_y
+  - ground_y
+  - inland_m
+  - measured
+  - radius_m
+  - raw_xz
+  - walked_m
+  - xz
+  document:
+  - anchors
+  - scanned_windows
+  - no_crossing
+  why: every value listed is derived from THIS seed's field or its location dump and must differ between
+    worlds; everything else in this document is a physical constant, a design constant, or authored vocabulary
+    (node ids, kinds, island roles, sector bearings) and is EXPECTED to be identical across seeds.
+  not_covered: a value DERIVED FROM another seed's ground and then transformed -- rounded, offset, snapped,
+    or recomputed through an intermediate -- is not byte-identical to anything and no check over this
+    list will see it. Stated so the limit is on the record rather than assumed away.
+anchors:
+  portalhub:
+  - -292.5
+  - 213.5
+nodes:
+- id: brg-s1-e
+  island: spawn
+  patch: mainland
+  kind: abutment
+  crossing: S1
+  side: near
+  level_y: 30.6
+  provenance: MEASURED, crossings/survey.py distance transform between the two trunk landmasses, rule
+    narrowest, snapped to 2 m
+  why: the join between the two halves of the main continent, at its narrowest -- the cheapest structure
+    that makes the west isle reachable on foot at all
+  xz:
+  - -312.0
+  - -64.0
+  raw_xz:
+  - -311.5
+  - -64.5
+  ground_y: 30.32
+  walked_m: 0.0
+  measured:
+    rule: narrowest
+    gap_m: 13.0
+    cost_m: 13.0
+    span_m: 13.0
+    bearing_deg: 270.0
+    near_bank_y: 30.32
+    far_bank_y: 30.24
+- id: brg-s1-w
+  island: west
+  patch: westisle
+  kind: abutment
+  crossing: S1
+  side: far
+  level_y: 30.6
+  provenance: MEASURED, crossings/survey.py distance transform between the two trunk landmasses, rule
+    narrowest, snapped to 2 m
+  why: the join between the two halves of the main continent, at its narrowest -- the cheapest structure
+    that makes the west isle reachable on foot at all
+  xz:
+  - -325.0
+  - -64.0
+  raw_xz:
+  - -324.5
+  - -64.5
+  ground_y: 30.24
+  walked_m: 1.0
+  measured:
+    rule: narrowest
+    gap_m: 13.0
+    cost_m: 13.0
+    span_m: 13.0
+    bearing_deg: 270.0
+    near_bank_y: 30.32
+    far_bank_y: 30.24
+- id: brg-s2-e
+  island: spawn
+  patch: mainland
+  kind: abutment
+  crossing: S2
+  side: near
+  level_y: 30.6
+  provenance: MEASURED, crossings/survey.py distance transform between the two trunk landmasses, rule
+    cheapest_from_anchor, snapped to 2 m
+  why: 'the second crossing of the same channel, sited where bridge span plus spur from the portal hall
+    is least: it closes a LOOP with S1 instead of leaving an out-and-back, and the spur is nearly free'
+  xz:
+  - -318.0
+  - 230.0
+  raw_xz:
+  - -317.5
+  - 230.5
+  ground_y: 30.62
+  walked_m: 0.0
+  measured:
+    rule: cheapest_from_anchor
+    gap_m: 34.89
+    cost_m: 65.12
+    span_m: 34.89
+    bearing_deg: 297.3
+    near_bank_y: 30.62
+    far_bank_y: 30.53
+- id: brg-s2-w
+  island: west
+  patch: westisle
+  kind: abutment
+  crossing: S2
+  side: far
+  level_y: 30.6
+  provenance: MEASURED, crossings/survey.py distance transform between the two trunk landmasses, rule
+    cheapest_from_anchor, snapped to 2 m
+  why: 'the second crossing of the same channel, sited where bridge span plus spur from the portal hall
+    is least: it closes a LOOP with S1 instead of leaving an out-and-back, and the spur is nearly free'
+  xz:
+  - -349.0
+  - 246.0
+  raw_xz:
+  - -348.5
+  - 246.5
+  ground_y: 30.53
+  walked_m: 1.0
+  measured:
+    rule: cheapest_from_anchor
+    gap_m: 34.89
+    cost_m: 65.12
+    span_m: 34.89
+    bearing_deg: 297.3
+    near_bank_y: 30.62
+    far_bank_y: 30.53
+- id: eastlobe
+  island: spawn
+  patch: mainland
+  kind: extremity
+  sector_deg: 90
+  provenance: MEASURED, survey.py sector 90
+  xz:
+  - 1728.0
+  - 1162.0
+  raw_xz:
+  - 1728.5
+  - 1162.5
+  generated_y: 45.05
+  biome: BlackForest
+  radius_m: 1120.7
+  inland_m: 25.7
+- id: northcape
+  island: spawn
+  patch: mainland
+  kind: extremity
+  sector_deg: 0
+  provenance: MEASURED, survey.py sector 0
+  xz:
+  - 758.0
+  - 2090.0
+  raw_xz:
+  - 757.5
+  - 2090.5
+  generated_y: 37.32
+  biome: BlackForest
+  radius_m: 1358.1
+  inland_m: 25.1
+- id: northeast
+  island: spawn
+  patch: mainland
+  kind: extremity
+  sector_deg: 45
+  provenance: MEASURED, survey.py sector 45
+  xz:
+  - 1822.0
+  - 1586.0
+  raw_xz:
+  - 1822.5
+  - 1585.5
+  generated_y: 37.55
+  biome: BlackForest
+  radius_m: 1414.6
+  inland_m: 25.0
+- id: southcape
+  island: spawn
+  patch: mainland
+  kind: extremity
+  sector_deg: 180
+  provenance: MEASURED, survey.py sector 180
+  xz:
+  - 72.0
+  - -862.0
+  raw_xz:
+  - 71.5
+  - -862.5
+  generated_y: 34.54
+  biome: BlackForest
+  radius_m: 1713.1
+  inland_m: 25.0
+- id: southeast
+  island: spawn
+  patch: mainland
+  kind: extremity
+  sector_deg: 135
+  provenance: MEASURED, survey.py sector 135
+  xz:
+  - 1148.0
+  - 474.0
+  raw_xz:
+  - 1147.5
+  - 473.5
+  generated_y: 33.26
+  biome: Meadows
+  radius_m: 523.9
+  inland_m: 25.0
+- id: temple
+  island: spawn
+  patch: mainland
+  kind: spawn_point
+  location_prefab: StartTemple
+  protected: true
+  clearance_radius_m: 25.0
+  provenance: MEASURED, the generator location dump this seed's keep-out set is read from (roads/poi.py::load)
+  why: 'StartTemple: where any character without a bed respawns, with nothing pointing at it. A road from
+    here is the physical half of WayFinding''s fix. It is also a PROTECTED location, so the road terminates
+    on its clearance ring, not in its courtyard.'
+  xz:
+  - -64.68
+  - 3.31
+  generated_y: 75.05
+- id: w-mid
+  island: west
+  patch: westisle
+  kind: extremity
+  sector_deg: 90
+  provenance: MEASURED, survey.py sector 90
+  xz:
+  - -132.0
+  - 1420.0
+  raw_xz:
+  - -131.5
+  - 1420.5
+  generated_y: 50.83
+  biome: BlackForest
+  radius_m: 627.9
+  inland_m: 25.0
+- id: w-north
+  island: west
+  patch: westisle
+  kind: extremity
+  sector_deg: 0
+  provenance: MEASURED, survey.py sector 0
+  xz:
+  - -186.0
+  - 2582.0
+  raw_xz:
+  - -186.5
+  - 2582.5
+  generated_y: 34.31
+  biome: Meadows
+  radius_m: 1497.1
+  inland_m: 25.0
+- id: w-northwest
+  island: west
+  patch: westisle
+  kind: extremity
+  sector_deg: 315
+  provenance: MEASURED, survey.py sector 315
+  xz:
+  - -1408.0
+  - 2184.0
+  raw_xz:
+  - -1408.5
+  - 2184.5
+  generated_y: 35.32
+  biome: BlackForest
+  radius_m: 1222.0
+  inland_m: 25.5
+- id: w-south
+  island: west
+  patch: westisle
+  kind: extremity
+  sector_deg: 180
+  provenance: MEASURED, survey.py sector 180
+  xz:
+  - -774.0
+  - -290.0
+  raw_xz:
+  - -773.5
+  - -289.5
+  generated_y: 33.04
+  biome: BlackForest
+  radius_m: 1471.4
+  inland_m: 25.1
+- id: w-southwest
+  island: west
+  patch: westisle
+  kind: extremity
+  sector_deg: 225
+  provenance: MEASURED, survey.py sector 225
+  xz:
+  - -1258.0
+  - 166.0
+  raw_xz:
+  - -1257.5
+  - 165.5
+  generated_y: 40.86
+  biome: BlackForest
+  radius_m: 1152.5
+  inland_m: 25.0
+- id: w-west
+  island: west
+  patch: westisle
+  kind: extremity
+  sector_deg: 270
+  provenance: MEASURED, survey.py sector 270
+  xz:
+  - -1288.0
+  - 974.0
+  raw_xz:
+  - -1288.5
+  - 974.5
+  generated_y: 33.73
+  biome: Meadows
+  radius_m: 612.5
+  inland_m: 25.0
+no_crossing: []

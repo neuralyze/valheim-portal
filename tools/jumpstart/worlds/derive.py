@@ -2224,6 +2224,436 @@ def run_spawn(
     return 0
 
 
+# ==========================================================================
+# PROVISIONING A WORLD THAT DOES NOT EXIST YET
+# ==========================================================================
+# MEASURED 2026-09-23: no tool in this tree had ever written a
+# `worlds/<World>/world.yaml` or a `worlds/<World>/<preset>/placements.yaml`.
+# `load_world` (above) exits when the first is absent; `solve_placements.py`
+# prints "no placements.yaml under <world>" and exits 1 when the second is.
+# The single write to `worlds/**` anywhere in the repo is a tempdir fixture in
+# `accept/sections/emission.py`.  Both artefacts were HAND-AUTHORED, sitting in
+# the middle of an automated pipeline, and `pipeline.py` stage 7 refused with
+# NO COMMAND because there was none to name.
+#
+# `init` is that command.  It invents NOTHING: every value it writes comes from
+# `worlds/world-defaults.yaml` (the mod-set and fleet half, which never
+# depended on the world) or from `worlds/placement-templates/<preset>.yaml`
+# (the durable requirement half, which the placement files themselves declare
+# is seed-independent), or is DERIVED from the world's own name.
+#
+# `check-facts` is the check that would have caught the drift the second home
+# makes possible: it re-derives every key the defaults own and exits 1 on any
+# disagreement with the world's own file.
+DEFAULTS_PATH = HERE / "world-defaults.yaml"
+TEMPLATE_DIR = HERE / "placement-templates"
+
+
+def load_defaults() -> dict:
+    if not DEFAULTS_PATH.exists():
+        raise SystemExit(f"missing {DEFAULTS_PATH}")
+    raw = yaml.safe_load(DEFAULTS_PATH.read_text("utf-8"))
+    if not isinstance(raw, dict):
+        raise SystemExit(f"{DEFAULTS_PATH}: must be a YAML mapping")
+    for key in ("profile_suffixes", "owned_keys", "derived_keys",
+                "server_config_role", "admin_edition_role", "measured_on"):
+        if key not in raw:
+            raise SystemExit(f"{DEFAULTS_PATH}: no `{key}`")
+    return raw
+
+
+def derived_identity(world: str, defaults: dict) -> dict:
+    """The keys a world's NAME decides, and nothing else.
+
+    MEASURED on Ulfsland: the four editions are the world's name lowercased
+    plus a role suffix, `admin_edition` IS `profiles.admin`, and
+    `server_config_root` IS `profiles/<profiles.server>/server-config`.  Three
+    keys, one fact -- so they are computed here once rather than typed three
+    times into every new world's file.
+    """
+    low = world.lower()
+    profiles = {role: f"{low}-{suffix}"
+                for role, suffix in defaults["profile_suffixes"].items()}
+    return {
+        "profiles": profiles,
+        "admin_edition": profiles[defaults["admin_edition_role"]],
+        "server_config_root":
+            f"profiles/{profiles[defaults['server_config_role']]}/server-config",
+    }
+
+
+def _detok(obj, world: str, server_profile: str):
+    """Literal token replacement, never `str.format`.
+
+    The defaults carry pages of prose and prose holds braces; `format` on a
+    document that is 90% English is a crash waiting for the first `{` somebody
+    writes.  Two tokens, replaced by name.
+    """
+    if isinstance(obj, dict):
+        return {k: _detok(v, world, server_profile) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_detok(v, world, server_profile) for v in obj]
+    if isinstance(obj, str):
+        return obj.replace("{server_profile}", server_profile).replace("{world}", world)
+    return obj
+
+
+def world_facts(world: str, seed: str, defaults: dict | None = None) -> dict:
+    """The full `world.yaml` document for a world, DERIVED.
+
+    Everything except `notes` is either the run's own identity, a key the
+    world's name decides, or a key `world-defaults.yaml` owns.  `notes` is the
+    one authored field and is written as a statement of fact about how the file
+    came to exist, not as inherited prose about another world.
+    """
+    d = defaults or load_defaults()
+    ident = derived_identity(world, d)
+    srv = ident["profiles"][d["server_config_role"]]
+    doc: dict = {
+        "version": int(d.get("version", 1)),
+        "world": world,
+        "seed": seed,
+        "disposable": True,
+        "notes": [
+            f"{world} was provisioned by `worlds/derive.py init {world} "
+            f"--seed {seed}`. Its WORLD contents are throwaway; the profiles "
+            f"and everything in this repo are durable and survive a re-roll.",
+            f"The `baseline`, `inventory`, `skills` and `servercharacters` "
+            f"blocks below are NOT measurements of {world}. They are readings "
+            f"of the DEPLOYED MOD SET, measured on "
+            f"{d['measured_on']['world']} / seed {d['measured_on']['seed']} "
+            f"and carried by worlds/world-defaults.yaml because they never "
+            f"depended on the world. A world running a different mod set must "
+            f"re-measure them; `derive.py check-facts {world}` refuses any "
+            f"drift between this file and that one.",
+        ],
+    }
+    doc.update(ident)
+    for key in d["owned_keys"]:
+        doc[key] = _detok(d[key], world, srv)
+    return doc
+
+
+_FACTS_HEADER = """\
+# {world} -- WORLD-SPECIFIC facts for the jumpstart tree.
+#
+# GENERATED by {gen} init. Do not hand-edit: `derive.py check-facts {world}`
+# re-derives every key below and exits 1 on drift.
+#   worlds/world-defaults.yaml  mod-set and fleet facts (world-agnostic)
+#   the world's own NAME         profiles, admin_edition, server_config_root
+#   --seed                       seed
+#
+# Everything under {world}/<preset>/ is generated from this file plus
+# ../tier-policy.yaml plus ../../presets/<preset>.yaml by ../derive.py build.
+"""
+
+
+def render_world_facts(world: str, seed: str, defaults: dict | None = None) -> str:
+    body = world_facts(world, seed, defaults)
+    return (_FACTS_HEADER.format(world=world, gen=GENERATED_BY)
+            + yaml.safe_dump(body, sort_keys=False, width=88, allow_unicode=True))
+
+
+def placement_template(preset: str) -> dict:
+    path = TEMPLATE_DIR / f"{preset}.yaml"
+    if not path.exists():
+        return {}
+    raw = yaml.safe_load(path.read_text("utf-8"))
+    return raw if isinstance(raw, dict) else {}
+
+
+_PLACEMENTS_HEADER = """\
+# {world}/{preset} -- placement REQUIREMENTS for this preset.
+#
+# GENERATED by {gen} init from
+#   worlds/placement-templates/{preset}.yaml
+# with this world's own header stamped on it. The template is the DURABLE half
+# of the declaration -- `requirement`, `rotation`, `align`, `blueprint_datum`,
+# `portal`, `containers` -- which this file family has always declared to be
+# seed-independent.
+#
+# THERE ARE NO COORDINATES IN THIS FILE YET, and that is the point: `solved`
+# and `solved_alternatives` are the only blocks a re-roll invalidates, so they
+# are the only blocks the template does not carry. Run
+#   blueprints/solve_placements.py --write --world {world}
+# to solve them against {world}'s own terrain.
+#
+# The `*_note` prose below records reasoning measured on the world named in
+# `derived_from`. The reasoning carries; the coordinates it produced did not.
+"""
+
+
+def render_placements(world: str, seed: str, preset: str, tmpl: dict) -> str:
+    body: dict = {
+        "schema_version": int(tmpl.get("schema_version", 1)),
+        "world": world,
+        "preset": preset,
+        "seed": seed,
+        "owner": tmpl.get("owner", "BlueprintHunt"),
+    }
+    for k, v in tmpl.items():
+        if k not in ("schema_version", "world", "preset", "seed", "owner"):
+            body[k] = v
+    return (_PLACEMENTS_HEADER.format(world=world, preset=preset, gen=GENERATED_BY)
+            + yaml.safe_dump(body, sort_keys=False, width=88, allow_unicode=True))
+
+
+def run_init(world: str, seed: str, presets: list[str] | None, write: bool) -> int:
+    """Provision `worlds/<World>/` for a world that does not exist yet.
+
+    TWO ARTEFACTS, TWO RULES, and the difference is who owns the file after
+    this command has run.
+
+    `world.yaml` is DERIVED and stays derived: every key in it comes from
+    `world-defaults.yaml` or from the world's name, `check-facts` refuses any
+    drift, so re-deriving it is a no-op by construction and an update is the
+    correct answer when the defaults move.
+
+    `<preset>/placements.yaml` is CREATE-ONLY.  Once it exists,
+    `solve_placements.py --write` has filled its `solved` blocks with THIS
+    WORLD'S COORDINATES -- 13 of them on Fresh42, 85 s of 1 m patch scanning
+    -- and the template this command renders has none.  Re-rendering it would
+    silently destroy the solve, and stage 6 runs BEFORE stage 7 in
+    `pipeline.py`, so a single re-run of the pipeline would do exactly that.
+    So an existing placement file is KEPT, reported, and never written.
+    Re-templating is a deliberate act: delete the file, or the preset
+    directory, and run `init` again.
+    """
+    if not seed:
+        raise SystemExit("init: --seed is required; a world without a seed "
+                         "cannot have its terrain probed")
+    defaults = load_defaults()
+    root = HERE / world
+    names = presets or js.all_preset_names()
+    derived: dict[Path, str] = {root / "world.yaml":
+                                render_world_facts(world, seed, defaults)}
+    create_only: dict[Path, str] = {}
+    missing = []
+    for preset in names:
+        tmpl = placement_template(preset)
+        if not tmpl:
+            missing.append(preset)
+            continue
+        create_only[root / preset / "placements.yaml"] = render_placements(
+            world, seed, preset, tmpl)
+    drift = 0
+    for path, content in derived.items():
+        current = path.read_text("utf-8") if path.exists() else None
+        if current == content:
+            status = "ok"
+        elif write:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, "utf-8")
+            status = "wrote" if current is None else "updated"
+        else:
+            status = "DRIFT" if current is not None else "MISSING"
+            drift += 1
+        print(f"{status:8s} {path.relative_to(HERE)}")
+    for path, content in create_only.items():
+        if path.exists():
+            solved = 0
+            try:
+                have = yaml.safe_load(path.read_text("utf-8")) or {}
+                solved = sum(1 for q in (have.get("placements") or [])
+                             if q.get("solved"))
+            except yaml.YAMLError:
+                solved = -1
+            print(f"{'kept':8s} {path.relative_to(HERE)}  "
+                  f"({solved} solved placement(s); init never overwrites a "
+                  f"solve)")
+            continue
+        if write:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, "utf-8")
+            status = "wrote"
+        else:
+            status = "MISSING"
+            drift += 1
+        print(f"{status:8s} {path.relative_to(HERE)}")
+    for preset in missing:
+        # NAMED, never skipped: a preset with no template is a preset this
+        # world cannot build, and silence here is how it would be found in game.
+        print(f"NO TEMPLATE  placement-templates/{preset}.yaml -- "
+              f"{world}/{preset} gets no placements", file=sys.stderr)
+    if missing:
+        return 1
+    if drift:
+        print(f"\n{drift} file(s) are missing or differ from a fresh derive; "
+              f"pass --write", file=sys.stderr)
+        return 1
+    return 0
+
+
+def run_check_facts(world: str) -> int:
+    """Refuse drift between a world's `world.yaml` and `world-defaults.yaml`.
+
+    THIS IS THE CHECK THAT MAKES ONE HOME OUT OF TWO.  Extracting the
+    world-agnostic half into a shared file without it would have created
+    exactly the defect it was meant to remove -- the same quantity in two
+    places, free to disagree.  Every key `owned_keys` and `derived_keys` name
+    is compared PARSED, so formatting and comments are free to differ and
+    values are not.
+    """
+    defaults = load_defaults()
+    path = HERE / world / "world.yaml"
+    if not path.exists():
+        print(f"{path}: does not exist. Run: {GENERATED_BY} init {world} "
+              f"--seed <Seed> --write", file=sys.stderr)
+        return 1
+    have = yaml.safe_load(path.read_text("utf-8")) or {}
+    seed = have.get("seed")
+    if not seed:
+        print(f"{path}: no `seed`", file=sys.stderr)
+        return 1
+    want = world_facts(world, str(seed), defaults)
+    checked = list(defaults["derived_keys"]) + list(defaults["owned_keys"])
+    bad = 0
+    for key in checked:
+        if have.get(key) != want.get(key):
+            bad += 1
+            print(f"DRIFT    {world}/world.yaml `{key}` disagrees with "
+                  f"worlds/world-defaults.yaml", file=sys.stderr)
+        else:
+            print(f"ok       {world}/world.yaml `{key}`")
+    if bad:
+        print(f"\n{bad} of {len(checked)} shared key(s) have two homes and "
+              f"they disagree.", file=sys.stderr)
+        return 1
+    return 0
+
+
+# The world the defaults were MEASURED on, read out of the defaults rather
+# than typed here: a second home for that name is the defect this file family
+# exists to remove.
+DEFAULT_MEASURED_WORLD = str(
+    (yaml.safe_load(DEFAULTS_PATH.read_text("utf-8")) or {})
+    .get("measured_on", {}).get("world", ""))
+
+
+# THE DECLARED DEPENDENCY OF THE PROVISIONER, in source, so a later reader can
+# see what was actually proven rather than that something was.
+#
+#   world_name        the four editions, `admin_edition` and
+#                     `server_config_root` are functions of the WORLD'S NAME.
+#                     Lose it and every world gets the fixture world's
+#                     profiles.
+#   defaults_keys     `check-facts` compares exactly the keys `owned_keys` and
+#                     `derived_keys` name. Lose one and the second home for
+#                     that key is free to drift, which is the defect the
+#                     extraction would otherwise have CREATED.
+#   solved_stripped   the placement templates carry the durable half only.
+#                     Lose it and every fresh world is born holding the
+#                     fixture world's COORDINATES.
+INIT_DEPENDS_ON = ("world_name", "defaults_keys", "solved_stripped")
+
+
+def run_selftest() -> int:
+    """PROVE EACH DEPENDENCY BY LOSING IT, AND PROVE THE SURVIVOR STANDS.
+
+    Every arm is a VERDICT printed with its numbers, never an assert: a runner
+    that reads an AssertionError as a flip would stamp an arm that raised for
+    an unrelated reason as proven.  The denominator is the REAL
+    `worlds/Ulfsland/world.yaml` and the REAL `placement-templates/` on disk,
+    which no neuter below can reach.
+    """
+    ok = True
+    defaults = load_defaults()
+    probe = "Nyworld"
+
+    # --- world_name: LOST vs KEPT ----------------------------------------
+    kept = derived_identity(probe, defaults)
+    lost = derived_identity(DEFAULT_MEASURED_WORLD, defaults)   # world-blind
+    good = (probe.lower() in kept["profiles"]["server"]
+            and probe.lower() not in lost["profiles"]["server"])
+    ok &= good
+    print(f"  {'OK ' if good else 'BAD'} world_name: {probe} derives "
+          f"{kept['profiles']['server']!r}; a world-blind derivation gives "
+          f"{lost['profiles']['server']!r} -- a second world wearing the "
+          f"fixture world's four editions")
+    # And the consequence, not the string: two different worlds must not share
+    # a server-config root, because that is one deploy directory for two worlds.
+    good = kept["server_config_root"] != lost["server_config_root"]
+    ok &= good
+    print(f"  {'OK ' if good else 'BAD'} world_name: server_config_root "
+          f"{kept['server_config_root']!r} != {lost['server_config_root']!r}")
+
+    # --- defaults_keys: LOST vs KEPT -------------------------------------
+    # The drift this check exists to catch: a world's own file disagreeing
+    # with the shared defaults. Mutate the DERIVED answer, then ask whether
+    # the comparison notices -- with the key checked, and with it dropped.
+    real = yaml.safe_load((HERE / DEFAULT_MEASURED_WORLD / "world.yaml")
+                          .read_text("utf-8"))
+    want = world_facts(DEFAULT_MEASURED_WORLD, str(real["seed"]), defaults)
+    drifted = dict(real)
+    drifted["inventory"] = dict(real["inventory"], slots=999)
+    checked = list(defaults["derived_keys"]) + list(defaults["owned_keys"])
+    caught = sum(1 for k in checked if drifted.get(k) != want.get(k))
+    neutered = [k for k in checked if k != "inventory"]
+    missed = sum(1 for k in neutered if drifted.get(k) != want.get(k))
+    good = caught == 1 and missed == 0
+    ok &= good
+    print(f"  {'OK ' if good else 'BAD'} defaults_keys: a world.yaml whose "
+          f"inventory.slots drifted to 999 is caught by "
+          f"{caught}/{len(checked)} checked keys; with `inventory` dropped "
+          f"from owned_keys it is caught by {missed}/{len(neutered)} -- "
+          f"UNREAD IS NOT CLEAR")
+    # The clean file must PASS the same comparison, or the check above only
+    # proved that something differs.
+    clean = sum(1 for k in checked if real.get(k) != want.get(k))
+    good = clean == 0
+    ok &= good
+    print(f"  {'OK ' if good else 'BAD'} defaults_keys: the REAL "
+          f"{DEFAULT_MEASURED_WORLD}/world.yaml disagrees on "
+          f"{clean}/{len(checked)} keys -- the extraction is lossless or this "
+          f"whole check is comparing nothing")
+
+    # --- solved_stripped: LOST vs KEPT -----------------------------------
+    names = js.all_preset_names()
+    tmpls = {p: placement_template(p) for p in names}
+    have = {p: t for p, t in tmpls.items() if t}
+    carried = sum(1 for t in have.values()
+                  for q in (t.get("placements") or [])
+                  if q.get("solved") or q.get("solved_alternatives"))
+    total = sum(len(t.get("placements") or []) for t in have.values())
+    good = len(have) == len(names) and total > 0 and carried == 0
+    ok &= good
+    print(f"  {'OK ' if good else 'BAD'} solved_stripped: "
+          f"{len(have)}/{len(names)} presets have a template, {total} "
+          f"placements, {carried} of them carrying a coordinate -- a template "
+          f"that kept `solved` would hand a fresh world "
+          f"{DEFAULT_MEASURED_WORLD}'s ground")
+    # ...and the emitted document must inherit that emptiness, which is the
+    # property the CONSUMER sees. Rendered in memory; nothing is written.
+    rendered = 0
+    for preset, tmpl in have.items():
+        doc = yaml.safe_load(render_placements(probe, probe, preset, tmpl))
+        if doc.get("world") != probe or doc.get("seed") != probe:
+            rendered += 1
+        rendered += sum(1 for q in doc.get("placements") or [] if q.get("solved"))
+    good = rendered == 0
+    ok &= good
+    print(f"  {'OK ' if good else 'BAD'} solved_stripped: {len(have)} emitted "
+          f"documents for {probe} -- {rendered} carry a foreign header or a "
+          f"coordinate")
+
+    # --- THE SURVIVOR, AS A VERDICT --------------------------------------
+    doc = world_facts(probe, "SomeSeed", defaults)
+    stands = (doc["world"] == probe and doc["seed"] == "SomeSeed"
+              and all(k in doc for k in defaults["owned_keys"])
+              and all(k in doc for k in defaults["derived_keys"])
+              and probe.lower() in doc["admin_edition"])
+    ok &= stands
+    print(f"  {'OK ' if stands else 'BAD'} SURVIVOR: losing nothing, "
+          f"`init {probe} --seed SomeSeed` derives {len(doc)} top-level keys, "
+          f"{len(have)} placement documents, admin edition "
+          f"{doc['admin_edition']!r}  [depends on "
+          f"{', '.join(INIT_DEPENDS_ON)}]")
+
+    print(f"derive selftest {'PASSES' if ok else 'FAILS'}")
+    return 0 if ok else 4
+
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -2254,6 +2684,28 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=f"re-probe and diff, never write: exits 1 when {SPAWN_FILE} disagrees with terrain",
     )
+    ip = sub.add_parser(
+        "init",
+        help="PROVISION worlds/<World>/: world.yaml plus one placements.yaml "
+             "per preset, for a world that does not exist yet",
+    )
+    ip.add_argument("world")
+    ip.add_argument("--seed", required=True,
+                    help="the seed this world was rolled on; recorded in "
+                         "world.yaml and stamped into every placements.yaml")
+    ip.add_argument("--preset", action="append", dest="presets")
+    ip.add_argument("--write", action="store_true",
+                    help="write; without it this is a dry run that exits 1 on "
+                         "anything missing or different")
+    cf = sub.add_parser(
+        "check-facts",
+        help="refuse drift between worlds/<World>/world.yaml and "
+             "worlds/world-defaults.yaml; never writes",
+    )
+    cf.add_argument("world")
+    sub.add_parser("selftest",
+                   help="prove `init`'s declared dependencies by losing each "
+                        "one; never writes")
 
     args = parser.parse_args(argv)
     if args.cmd == "list":
@@ -2264,6 +2716,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"         {SPAWN_FILE}  (written by `spawn`, read by build/check)")
         print("other:   blueprints/, placements.yaml  (BlueprintHunt)")
         return 0
+    if args.cmd == "init":
+        return run_init(args.world, args.seed, args.presets, write=args.write)
+    if args.cmd == "check-facts":
+        return run_check_facts(args.world)
+    if args.cmd == "selftest":
+        return run_selftest()
     if args.cmd == "spawn":
         default_patch = Path("/tmp/jumpstart-spawn") / f"patch-{args.world}.bin"
         return run_spawn(

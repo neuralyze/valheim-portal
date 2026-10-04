@@ -1,4 +1,4 @@
-world: Ulfsland
+world: Fresh42
 settlement: wt-town
 placements:
 - id: wt-town
@@ -15,19 +15,19 @@ placements:
     - 20.0
     - 20.0
   solved:
-    seed: Pirate68
-    x: 804.0
-    z: 724.0
-    y: 40.45
+    seed: Fresh42
+    x: 923.9
+    z: 147.2
+    y: 54.71
     footprint_orientation: 20 m along x by 20 m along z
     flatten_cost:
-      target_y: 40.45
+      target_y: 54.71
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 48.7
-    nearest_location: Dolmen03
+    nearest_location_m: 36.2
+    nearest_location: Greydwarf_camp1
     nearest_location_standoff_m: 22.0
   settlement:
     site: wt-town
     role: watchtower
-    patch: mainland
+    patch: trunk-primary

@@ -51,9 +51,11 @@ HERE = Path(__file__).resolve().parent
 JUMPSTART = HERE.parent
 sys.path.insert(0, str(JUMPSTART / "terraform"))
 sys.path.insert(0, str(JUMPSTART / "library"))
+sys.path.append(str(JUMPSTART))
 
 import tcdata  # noqa: E402
 import flatten as flattenmod  # noqa: E402
+import worldseed  # noqa: E402
 
 # Valheim's water plane, in WorldGenerator.GetHeight units. Imported rather than
 # restated: a 0 here is the mistake that put 10 of 13 placements under the sea.
@@ -158,10 +160,9 @@ def cost(patches, cx: float, cz: float, w: float, d: float,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--preset", required=True)
     ap.add_argument("--id", required=True)
-    ap.add_argument("--seed", default="Pirate68")
     ap.add_argument("--write", action="store_true",
                     help="update solved.flatten_cost, footprint_orientation and "
                          "requirement.footprint_xz_m in place")
@@ -171,20 +172,33 @@ def main() -> int:
     ap.add_argument("--target-basis",
                     help="why this pad height rather than the median")
     args = ap.parse_args()
+    seed, world = worldseed.apply(args)
 
-    path = JUMPSTART / "worlds" / args.world / args.preset / "placements.yaml"
-    doc = yaml.safe_load(path.read_text())
+    # Header, not path: this stage REWRITES solved.flatten_cost, so a records
+    # file belonging to another world would have another world's pads recosted
+    # against this run's heightmap and written back over them.
+    doc = flattenmod.load_placements(world, args.preset)
+    path = flattenmod.placements_path(world, args.preset, None)
     place = next((p for p in doc["placements"] if p["id"] == args.id), None)
     if place is None:
         raise SystemExit(f"no placement {args.id} in {path}")
     solved = place["solved"]
     cx, cz = float(solved["x"]), float(solved["z"])
     rows = manifest_rows()
-    w, d, why = body_rect(place, rows)
+    # THE DECLARED RECTANGLE IS A FLOOR, and the pad is the body AT ITS YAW:
+    # `flatten.placed_pad_at_yaw` (PAD_EXTENT_DEPENDS_ON), the rule every pad
+    # emitter shares.  Writing the requirement's rectangle alone is the
+    # axis-aligned key the live Fresh42 build refused on 8 of 13 bodies.
+    dw, dd, why = body_rect(place, rows)
+    pe = flattenmod.placed_pad_at_yaw(place, (dw, dd), (cx, cz))
+    w, d = pe["w"], pe["d"]
+    if pe["grew"]:
+        why += (f", grown to the body at yaw {pe['yaw_deg']:g} "
+                f"({pe['body_at_yaw'][0]} x {pe['body_at_yaw'][1]} m)")
 
     zones = flattenmod.zones_for(cx, cz, w, d)
     out = Path("/tmp/terraform") / f"recost_{args.preset}_{args.id}.bin"
-    patches = flattenmod.run_patchscan(sorted(zones), args.seed, out)
+    patches = flattenmod.run_patchscan(sorted(zones), seed, out)
     if (args.target_y is None) != (args.target_basis is None):
         raise SystemExit("--target-y and --target-basis go together: a declared height without a "
                          "written reason is the kind of number nobody can check later")
@@ -220,12 +234,14 @@ def main() -> int:
                               if k not in ("samples", "over_clamp_samples",
                                            "min_generated_m", "max_generated_m",
                                            "min_freeboard_m", "target_freeboard_m")}
-    solved["footprint_orientation"] = f"{w:.1f} m along x by {d:.1f} m along z"
+    # The pad the writer stamps, exactly (`:g`): the body at its yaw.
+    solved["footprint_orientation"] = f"{w:g} m along x by {d:g} m along z"
     solved["recost"] = {
         "by": "network/recost_pad.py",
         "reason": "body changed; flatten_cost and footprint_orientation belong to the body's "
                   "rectangle, not the previous body's",
         "rectangle_source": why,
+        "rectangle_declared_m": [dw, dd],
         "samples": new["samples"],
         "generated_range_m": [new["min_generated_m"], new["max_generated_m"]],
         "min_freeboard_m": new["min_freeboard_m"],
@@ -238,8 +254,10 @@ def main() -> int:
         solved["recost"]["target_y_median_would_be"] = round(
             cost(patches, cx, cz, w, d)["target_y"], 2)
         solved["recost"]["target_y_basis"] = args.target_basis
+    # The REQUIREMENT keeps the declared rectangle (seed-independent); the pad
+    # at the body's yaw is centre-dependent and lives in the solved block.
     if "footprint_xz_m" in place["requirement"]:
-        place["requirement"]["footprint_xz_m"] = [round(w, 1), round(d, 1)]
+        place["requirement"]["footprint_xz_m"] = [round(dw, 2), round(dd, 2)]
     path.write_text(yaml.safe_dump(doc, default_flow_style=False, width=100, sort_keys=False))
     print(f"  written -> {path}")
     return 0

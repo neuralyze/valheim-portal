@@ -92,23 +92,74 @@ import yaml
 HERE = Path(__file__).resolve().parent
 JUMPSTART = HERE.parent
 sys.path.insert(0, str(HERE))
+# APPENDED, never inserted: `tools/jumpstart/network/` is a package that
+# shadows `roads/network.py` for any importer that finds it first.
+if str(JUMPSTART) not in sys.path:
+    sys.path.append(str(JUMPSTART))
 
 import ribbon as RB  # noqa: E402
+import worldseed  # noqa: E402
 
-SEGMENTS = HERE / "segments.yaml"
-SETTLE_PLAN = JUMPSTART / "settlements" / "plan.json"
+# THE PLAN IS IN TWO FILES AND THE LEDGER DOES NOT CARE WHICH.  `north.py`
+# writes the N-series and the R-series into `north_segments.yaml`; everything
+# else is in `segments.yaml`.  A map built from one of them silently omits
+# whichever half the caller did not happen to be looking at.
+#
+# AND WHICH FILES IS A QUESTION ABOUT THE SEED, ASKED WHEN THE FILE IS OPENED.
+# They were import-time constants spelling Pirate68's names -- `SEGMENTS`,
+# `SEGMENT_FILES`, `SETTLE_PLAN`, and `LEDGER` spelling Ulfsland's -- so on
+# VH_SEED=Fresh42 this module scope-refused Ulfsland's plan in `segment_map`,
+# and SILENTLY took Ulfsland's 44 settlement pads (`Claims`) and Ulfsland's 25
+# written segments (`WRITTEN`, read at import by every tool that imported
+# this).  MEASURED 2026-09-25.  Every reader below asks `worldseed` instead:
+# `segment_files()`, `plan_path()`, `ledger_path()`.
 
-# The 15 segments whose terrain IS WRITTEN, read off the ledger's own
-# `terrain_write` records with `role == "road_segment"` rather than off the
-# 35-segment plan: 20 of the planned segments were never built, and a building
-# standing on an unbuilt alignment is not standing in a road.
-WRITTEN = [
-    "T1-portalhub-temple", "T3-temple-meadhall", "T4-meadhall-stathub",
-    "T5-temple-dockshore", "T8-stenvik-wttown", "T9-wttown-dockshore",
-    "T10-wtspawn-wtsouth", "T12-wtspawn-temple", "T13-temple-harboursouth",
-    "S1-portalhub-brgs2", "S7-stathub-wtnorth", "S8-wtsouth-treesth",
-    "S12-brgs1-boathouse", "W5-brgs1-wsouth", "W10-brgs1-treenear",
-]
+
+# WHICH SEGMENTS ARE WRITTEN IS A READING OF THE LEDGER, NOT A LIST.
+#
+# It used to be a list of fifteen, with a docstring that said it had been
+# "read off the ledger's own `terrain_write` records" - true on the day it
+# was typed and never again.  MEASURED 2026-09-21: the ledger holds 25 built
+# road segments.  The ten this module could not see are the whole northern
+# and radial network - N0-brgs2-wmid, N0b-wmid-wnorth, N1-wnorth-shelf,
+# N2-shelf-mid1, N3-mid1-mid2, N4-mid2-terminus, R1-ulfsgard-t8junction,
+# R2-ulfsgard-harbourb, R3-n0bjunction-vestvik, R4-vestvik-harbour - 6,239
+# of the network's 10,783 written nodes, 57.9 % of it.
+#
+# WHAT THAT COST, exactly.  `deviate.py` re-routes a road around a building
+# and takes its conflict windows from THIS module's report.  So the one tool
+# in this family that can move a carriageway off a body could not be pointed
+# at any northern segment at all - while `roads/mod_keepout.json` had been
+# carrying, since 2026-09-19, two rows whose own stated remedy is a
+# re-route of exactly those segments: mod-structure-05 "shift the centreline
+# 3.93 m ... 57 m of N0_brgs2_wmid re-written", mod-structure-08 "shift the
+# centreline 3.92 m ... 50 m of N0b_wmid_wnorth re-written".  The remedy was
+# written down and the tool for it could not address the road.
+#
+# And the refusal below said "over 15 segments", so a run that was blind to
+# ten of twenty-five reported a network-wide number and named 15 as the
+# network.  A denominator that is a constant cannot notice that the world
+# grew.
+def written_segments(ledger: Path | None = None) -> list[str]:
+    """Every road segment the ledger records a `terrain_write` for.
+
+    Same reading, same field names, as `accept/sections/roads.py`'s own
+    `built_segments` - this is the POPULATION question and it has one
+    answer.  Newest write wins there because a re-route abandons the earlier
+    polyline; here only the NAME is wanted, so the set is enough.  The ledger
+    is this run's world's unless one is named.
+    """
+    out: set[str] = set()
+    for line in Path(ledger or worldseed.ledger_path()).read_text().splitlines():
+        if '"road_segment"' not in line:
+            continue
+        d = json.loads(line)
+        p = d.get("params") or {}
+        if p.get("role") != "road_segment" or d.get("op") != "terrain_write":
+            continue
+        out.add(p["name"][len("road_"):].replace("_", "-"))
+    return sorted(out)
+
 
 # ---------------------------------------------------------------------------
 # the prefab index, classified
@@ -230,9 +281,9 @@ class Claims:
     circle over-claims 39 m2 of street.
     """
 
-    def __init__(self, plan_path: Path = SETTLE_PLAN,
+    def __init__(self, plan_path: Path | None = None,
                  loc_dump: Path | None = None):
-        doc = json.loads(plan_path.read_text())
+        doc = json.loads(Path(plan_path or worldseed.plan_path()).read_text())
         self.pads: list[dict] = []
         for town, t in doc["towns"].items():
             for b in t["buildings"]:
@@ -365,12 +416,190 @@ class Claims:
 
 
 # ---------------------------------------------------------------------------
-# the census
-# ---------------------------------------------------------------------------
+# THE CARRIAGEWAY COLUMN IS RENAMED ON READ, NOT ON DISK.
+#
+# `zones` per segment is the CARRIAGEWAY set and IS NOT the set `ribbon.main()`
+# writes; ribbon writes `segment_zones(..., batter_m=BATTER_MAX_M)`, which is
+# wider by construction.  MEASURED 2026-09-22 over all 39 segments of
+# roads/segments.yaml at BATTER_MAX_M 10.5, through ribbon's OWN segment_zones:
+#   record-column zones, network-wide   702
+#   derived at full batter reach        950
+#   segments under-declaring             37 OF 39
+#   zones missing from the record       248  -- a 26% under-declaration
+# Three agents hand-derived that on three segments (55->75, 60->82, 6->10) and
+# each read it as a quirk of their own closure.  It cost one real overlap at
+# zone (-5,4).
+#
+# `roads/network.py` DEFERRED the rename `zones` -> `zones_carriageway` on the
+# grounds that it "touches structures.py, ribbon.py, junction.py and every
+# lock-taker".  MEASURED 2026-09-22 over 137 .py files under tools/jumpstart
+# (540 bare `zones` tokens, of which 68 are the string KEY "zones"): ALL THREE
+# OF THOSE FILES READ THE COLUMN ZERO TIMES.  structures.py has 0 key sites
+# (11 prose); ribbon.py's 4 and junction.py's 4 are their own report fields.
+# The only two readers of the column in the entire tree are network.py's
+# all_zones summary and deviate.py's splice print, and neither takes a lock.
+# THE COMMENT THAT DEFERRED THE FIX DESCRIBED A BLAST RADIUS THAT DOES NOT
+# EXIST -- the same guess-instead-of-measure the column itself embodies.
+#
+# WHAT IS REFUSED IS THE ON-DISK RENAME, and it is refused with its number:
+# the column lives in 3 artefacts, 62 segment records, 1,129 zone entries --
+# roads/segments.yaml (git-TRACKED, 39 segments, 702 entries),
+# roads/preflight.json (git-TRACKED, 17 segments, 191 entries) and
+# roads/north_segments.yaml (untracked, 6 segments, 236 entries).  Renaming a
+# key across committed artefacts is a DATA MIGRATION, not a rename, and a
+# forked on-disk format is worse than an ambiguous name.
+#
+# SO THE BOUNDARY IS HERE.  On disk the column is `zones`, for every artefact
+# ever written; IN MEMORY, past this loader, it is `zones_carriageway` and
+# `zones` DOES NOT EXIST.  A reader reaching for `zones` gets a KeyError at its
+# own line -- fail-closed -- instead of a silently 26%-narrow lock set.  There
+# is NO fallback and NO alias: an alias is the ambiguity with extra steps.
+#
+# THE TWO CONVERSIONS LIVE IN `roads/network.py`, beside `write_zones` and
+# `require_write_zones_declared`, because that module OWNS the column: it is
+# the only writer of it and the holder of ZONES_SCOPE.  A second definition of
+# which key means what is the defect one layer up.
+def _zones_scope() -> str:
+    return _netmod().ZONES_SCOPE
 
-def segment_map(path: Path = SEGMENTS) -> dict:
-    doc = yaml.safe_load(path.read_text())
-    return {s["id"]: s for s in doc["segments"]}
+
+def carriageway_from_disk(doc):
+    """`network.carriageway_from_disk`, at the sanctioned parse."""
+    return _netmod().carriageway_from_disk(doc)
+
+
+def carriageway_to_disk(doc):
+    """`network.carriageway_to_disk`, at the serialisation boundary."""
+    return _netmod().carriageway_to_disk(doc)
+
+
+def segment_lock_zones(doc) -> list[tuple[int, int]]:
+    """THE ONLY SANCTIONED ZONE-LOCK SET for a plan document.
+
+    `network.require_write_zones_declared` is an EMIT-side refusal, and
+    MEASURED 2026-09-22 the artefact everybody actually reads has never been
+    through it: `roads/segments.yaml` carries NO `zones_write` key at all.  A
+    check pointed at the output while the input goes unguarded is the same
+    shape as the defect it was written to close, so the refusal is extended to
+    the READ side here.
+
+    Declared -> returned (the loader has already refused a narrowed one).
+    Undeclared -> RE-DERIVED through `ribbon.segment_zones` at BATTER_MAX_M,
+    which is the widest TRUE set; that is a repair, not a narrowing, and it is
+    the only honest answer for an artefact that predates the declaration.
+    """
+    net = _netmod()
+    if not isinstance(doc, dict):
+        raise SystemExit(
+            f"REFUSING to derive a zone lock from a {type(doc).__name__}. A "
+            f"lock is taken from a PLAN DOCUMENT, never from a zone list -- "
+            f"handing this function a segment's `{net.ZONES_COLUMN_IN_MEMORY}` "
+            f"is exactly the 248-zone under-declaration it exists to stop. "
+            f"{net.ZONES_SCOPE}")
+    for s in net._each_segment(doc):
+        if net.ZONES_COLUMN_ON_DISK in s:
+            raise SystemExit(
+                f"REFUSING: segment {s.get('id')!r} still carries the ON-DISK "
+                f"column `{net.ZONES_COLUMN_ON_DISK}`, so this document was "
+                f"parsed with a bare yaml.safe_load rather than "
+                f"load_segment_doc and nothing has checked what it declares. "
+                f"{net.ZONES_SCOPE}")
+    declared = doc.get("zones_write")
+    if isinstance(declared, list):
+        return sorted({(int(z[0]), int(z[1])) for z in declared})
+    return sorted({(int(z[0]), int(z[1]))
+                   for z in net.write_zones(doc.get("segments") or [])})
+
+
+def _netmod():
+    """`roads/network.py`, imported by path.
+
+    `tools/jumpstart/network/` is a PACKAGE that shadows `roads/network.py` for
+    every later importer, so this is loaded from its file under a private name
+    rather than by `import network`.
+    """
+    import importlib.util                                  # noqa: PLC0415
+    mod = sys.modules.get("_structures_network")
+    if mod is None:
+        spec = importlib.util.spec_from_file_location(
+            "_structures_network", HERE / "network.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["_structures_network"] = mod
+        spec.loader.exec_module(mod)
+    return mod
+
+
+def load_segment_doc(p: Path) -> dict:
+    """One plan file, PARSED, WITH ITS DECLARED SCOPE CHECKED.
+
+    THE DECLARATION WAS ALWAYS THERE AND NOTHING READ IT.  Both plan files
+    carry `seed` and `world` at top level beside `schema_version` and
+    `owner` -- MEASURED 2026-09-22: `segments.yaml` Pirate68/Ulfsland,
+    `north_segments.yaml` Pirate68/Ulfsland -- and TWELVE readers open them
+    without touching either key: boardwalk, census_equiv, clear, deviate,
+    junction, precensus, ribbon, structures, network, north, spec, poi.
+    PARSING A HEADER AND RETURNING IT AS DATA IS NOT READING IT.
+
+    The path carries NO WORLD NAME, so unlike the placement sets there is
+    nothing making path and header agree: a `segments.yaml` from another
+    world is accepted by every one of the twelve.  `deviate.py` is the tool
+    that MOVES A ROAD OFF A BUILDING and `junction.py` reconciles two roads'
+    datums; handed a second world's file, either re-routes a road across the
+    wrong planet with every number in the report looking normal.
+
+    CHECKED HERE, IN THE LOADER, NOT BESIDE `segment_files()`.  A module-scope
+    constant is not a read, and a refusal raised at import time takes down
+    every tool in the package rather than the one command that opened the
+    file -- which is how three stop-the-worlds happened on 2026-09-21.
+
+    `require_scope` treats an ABSENT seed as not-permission, so a future
+    writer that drops the header is refused rather than trusted.  Both files
+    round-trip through `yaml.safe_dump(sort_keys=True)` in `deviate.py` and
+    `junction.py --apply`, which re-sorts the document wholesale on every
+    write -- `seed` lands at line 104 and `world` at line 33005 of the same
+    file -- so the header is read PARSED and never by byte offset.
+
+    AND IT CHECKS THE SECOND DECLARATION IN THE SAME FILE, for the same
+    reason.  `network.require_write_zones_declared` runs at EMIT only, so a
+    document already on disk has never been through it -- MEASURED
+    2026-09-22: `roads/segments.yaml`, the artefact all 39 segments live in,
+    carries NO `zones_write` key at all.  A `zones_write` that IS present is
+    re-derived against `ribbon.segment_zones` here, on the way in, because a
+    declaration goes stale exactly the way the carriageway column did:
+    silently, and only visible to whoever re-derives.
+
+    The carriageway column is renamed to `zones_carriageway` on the way in and
+    `zones` STOPS EXISTING -- see the boundary note above.
+    """
+    doc = yaml.safe_load(p.read_text()) or {}
+    worldseed.require_scope(
+        "built road network", p,
+        found_seed=doc.get("seed"), found_world=doc.get("world"),
+        produced_by="roads/network.py plan (segments.yaml) and roads/north.py "
+                    "plan (north_segments.yaml), each writing the plan for "
+                    "the seed it routed")
+    if isinstance(doc.get("zones_write"), list):
+        _netmod().require_write_zones_declared(str(p), doc, act="READ")
+    carriageway_from_disk(doc)
+    doc["zones_scope"] = _zones_scope()
+    return doc
+
+
+def segment_map(path: Path | None = None) -> dict:
+    """Every planned segment, from EVERY plan file this repo writes.
+
+    `path` names ONE file, for a caller that really means one; the default
+    is the union, because the ledger's population spans both and a map built
+    from `segments.yaml` alone answers `KeyError: 'N0-brgs2-wmid'` for a road
+    that is built, written and standing.
+    """
+    out: dict = {}
+    for p in ((path,) if path is not None else worldseed.segment_files()):
+        if not p.exists():
+            continue
+        for s in load_segment_doc(p).get("segments", ()):
+            out[s["id"]] = s
+    return out
 
 
 def written_footprint(seg: dict) -> np.ndarray:
@@ -511,16 +740,19 @@ def main() -> int:
     ap.add_argument("--census-dir", default="/tmp/roadclean")
     ap.add_argument("--out", default="/tmp/roadclean/structures_network.json")
     ap.add_argument("--segment", action="append")
+    worldseed.add_arguments(ap)
     a = ap.parse_args()
+    worldseed.apply(a)
 
     segs = segment_map()
     claims = Claims()
     cdir = Path(a.census_dir)
     # THE CENSUS FILE PER SEGMENT, named explicitly.  A glob would silently
-    # pick a stale `_after` over a later `close_`, and an existence check on a
-    # directory is not a completeness check on 15 segments.
+    # pick a stale `_after` over a later `close_`, and an existence check on
+    # a directory is not a completeness check on the written network.
     files = {}
-    for sid in WRITTEN:
+    written = written_segments()
+    for sid in written:
         short = sid.split("-")[0]
         for cand in (f"close_census_{short}.json", f"census_{short}_after.json",
                      f"pass_census_{short}_after.json"):
@@ -528,10 +760,11 @@ def main() -> int:
             if p.exists():
                 files[sid] = p
                 break
-    missing = [s for s in WRITTEN if s not in files]
+    missing = [s for s in written if s not in files]
     if missing:
         print(f"NO CENSUS for {missing} -- refusing to report a network-wide "
-              f"number over {len(files)}/15 segments", file=sys.stderr)
+              f"number over {len(files)}/{len(written)} segments the LEDGER "
+              f"says are built", file=sys.stderr)
         return 2
 
     # EVERY census's markers registered BEFORE any segment is resolved.  A
@@ -539,14 +772,14 @@ def main() -> int:
     # marker may only fall in one of the two cell sets: resolving T5 against
     # T5's markers alone answered LOOSE for the house at (-46, -68) that
     # T13's census sees the proxy for.
-    for sid in WRITTEN:
+    for sid in written:
         claims.add_proxies(json.loads(files[sid].read_text())["objects"])
 
-    want = set(a.segment or WRITTEN)
-    report = {"world": "Ulfsland", "segments": {},
+    want = set(a.segment or written)
+    report = {"world": worldseed.world(), "segments": {},
               "instrument": "roads/structures.py", "sources": {},
               "location_markers": len(claims.locs)}
-    for sid in WRITTEN:
+    for sid in written:
         if sid not in want:
             continue
         doc = json.loads(files[sid].read_text())

@@ -1,4 +1,4 @@
-world: Ulfsland
+world: Fresh42
 settlement: wt-spawn
 placements:
 - id: wt-spawn
@@ -15,19 +15,19 @@ placements:
     - 20.0
     - 20.0
   solved:
-    seed: Pirate68
-    x: 114.0
-    z: -108.0
-    y: 76.04
+    seed: Fresh42
+    x: -974.1
+    z: -778.8
+    y: 82.49
     footprint_orientation: 20 m along x by 20 m along z
     flatten_cost:
-      target_y: 76.04
+      target_y: 82.49
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 53.6
-    nearest_location: WoodHouse12
-    nearest_location_standoff_m: 18.0
+    nearest_location_m: 35.2
+    nearest_location: WoodHouse6
+    nearest_location_standoff_m: 20.0
   settlement:
     site: wt-spawn
     role: watchtower
-    patch: mainland
+    patch: trunk-primary

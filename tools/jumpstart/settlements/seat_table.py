@@ -49,9 +49,13 @@ for _p in (JUMPSTART, JUMPSTART / "terraform", JUMPSTART / "roads",
 import tcdata            # noqa: E402
 import flatten as FL     # noqa: E402
 import ribbon            # noqa: E402
+import worldseed         # noqa: E402
 
-WORLD = "Ulfsland"
-SEED = "Pirate68"
+# RESOLVED, not literal.  `main()` rebinds these and the three WORLD-derived
+# paths below, because a seed without its ledger reads one world's records
+# while measuring another's ground.
+WORLD = worldseed.world()
+SEED = worldseed.seed()
 ROOT = JUMPSTART / "ledger/runs" / WORLD
 LEDGER = ROOT / "ledger.jsonl"
 BLOBS = ROOT / "blobs"
@@ -130,6 +134,20 @@ def live_comps(recs, zones: set[tuple[int, int]]):
 
 
 def main() -> int:
+    import argparse  # noqa: PLC0415
+
+    ap = argparse.ArgumentParser(description=__doc__)
+    worldseed.add_arguments(ap)
+    args = ap.parse_args()
+
+    # Rebind the WORLD-derived ledger paths with the seed: this report reads a
+    # ledger and re-scans the ground, and the two must name the same world.
+    global SEED, WORLD, ROOT, LEDGER, BLOBS  # noqa: PLW0603
+    SEED, WORLD = worldseed.apply(args)
+    ROOT = JUMPSTART / "ledger/runs" / WORLD
+    LEDGER = ROOT / "ledger.jsonl"
+    BLOBS = ROOT / "blobs"
+
     recs = records()
     objs = objects(recs)
     pads = pad_targets(recs)

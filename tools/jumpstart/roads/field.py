@@ -33,6 +33,8 @@ row-major, i outer (z ascending), j inner (x ascending).
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import math
 import os
 import struct
@@ -60,6 +62,47 @@ HERE = Path(__file__).resolve().parent
 JUMPSTART = HERE.parent
 DEFAULT_VH_SRC = Path(os.environ.get(
     "VH_SRC", "/media/big4/projects/game/valheim/Ulfsland/data/bepinex"))
+
+
+def _worldseed():
+    """`worldseed`, imported LAZILY and with the jumpstart root APPENDED.
+
+    Appended, never inserted: `tools/jumpstart/network/` is a package that
+    shadows `roads/network.py` for every later importer if it gets in front of
+    this directory -- the same trap `roads/spec.py` documents at its own
+    import.  Lazy because `field` is imported by survey tooling that has no
+    seed at all, and a hard import at module scope would make the path
+    manipulation a cost every one of those pays.
+    """
+    import sys
+    if str(JUMPSTART) not in sys.path:
+        sys.path.append(str(JUMPSTART))
+    import worldseed
+    return worldseed
+
+
+def _by_path(alias: str, path: Path):
+    """Load a sibling module BY PATH under a private name, once.
+
+    By path, not by `import <name>`: three `plan.py` exist in this tree and
+    whoever imports first owns `sys.modules['plan']`, which has already cost a
+    full run's worth of confusion here.  Every module this one reaches for
+    across a directory gets the same treatment before it can happen again.
+    """
+    import sys
+    if alias in sys.modules:
+        return sys.modules[alias]
+    spec = importlib.util.spec_from_file_location(alias, path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[alias] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _site_finder():
+    """`blueprints/site_finder.py`: the seed's own land, measured."""
+    return _by_path("jumpstart_blueprints_site_finder",
+                    JUMPSTART / "blueprints" / "site_finder.py")
 
 
 @dataclass
@@ -137,6 +180,80 @@ class Field:
         return np.degrees(np.arctan(np.hypot(gx, gz)))
 
 
+def header(path: str | Path) -> dict:
+    """The VHPATCH1 header: the SEED THE FIELD WAS SAMPLED ON, and its hash.
+
+    `load` read both of these and threw them away.  That was harmless while
+    the seed was a literal in eight modules and could not be anything else;
+    the moment `--seed` exists it stops being harmless, because planning a
+    fresh seed against Ulfsland's 230 MB field succeeds and returns a road
+    fitted to the wrong planet.  PatchScan writes the seed NAME, not just the
+    hash (`PatchScan.cs` line 283), so the check can be exact.
+    """
+    data = memoryview(Path(path).read_bytes()[:4096])
+    if bytes(data[:8]) != MAGIC:
+        raise ValueError(f"{path} is not a VHPATCH1 file")
+    (seed_hash,) = struct.unpack_from("<i", data, 8)
+    (name_len,) = struct.unpack_from("<i", data, 12)
+    return {"seed": bytes(data[16:16 + name_len]).decode(),
+            "seed_hash": seed_hash}
+
+
+def require_field(path: str | Path, seed: str) -> Path:
+    """REFUSE a field that is not there, NAMING THE STAGE THAT MAKES ONE.
+
+    MEASURED 2026-09-21, and it is the reason this exists: a fresh seed handed
+    a path it has no field for got `FileNotFoundError: [Errno 2] No such file
+    or directory: '/tmp/roads/h1m.bin'`, and a truncated one got "is not a
+    VHPATCH1 file".  Both are true and neither says WHO PRODUCES ONE, so the
+    cheapest way past them is to point `--field` at the field that does exist
+    -- which is Ulfsland's.  An error that makes borrowing the easy answer is
+    part of the defect.
+
+    There is NO fallback and there is no synthetic field: `request_for_seed`
+    makes a real one, or this run does not have ground to measure.
+    """
+    p = Path(path)
+    if not p.exists() or p.stat().st_size == 0:
+        raise SystemExit(
+            f"no height field for seed {seed!r} at {p}.\n"
+            f"A height field is PRODUCED, never defaulted or borrowed:\n"
+            f"  1. tools/seedscan/run_scan.sh   SEEDS=<a file holding {seed!r}> "
+            f"HEIGHT=1 STEP=8   -> the coarse whole-world grid\n"
+            f"  2. roads/field.py::request_for_seed --grid <that grid>          "
+            f"-> derives the windows from THIS SEED's own land components and "
+            f"runs blueprints/run_patchscan.sh\n"
+            f"Both need a Valheim dedicated-server install in $VH_SRC "
+            f"(run_patchscan.sh:32). Another seed's field is refused by "
+            f"require_seed and a hand-written one is not a measurement.")
+    return p
+
+
+def require_seed(path: str | Path, seed: str) -> dict:
+    """REFUSE a field sampled on a different seed than the one being planned.
+
+    Fails CLOSED and loudly.  The alternative -- a warning -- is how a wrong
+    number gets into a plan file that later reads as evidence.
+
+    THE REFUSAL ITSELF NOW LIVES IN `worldseed.require_scope`, because this was
+    never a height-field rule.  MEASURED 2026-09-21: while this function was
+    correctly refusing a foreign field, `poi.load` accepted 12,301 Pirate68
+    locations and `spec.load_solved_sites` adopted 16 Pirate68 sites into the
+    same Fresh42 run.  One artefact guarded out of three is the same as none,
+    because the plan is the join of all three.
+
+    ABSENT counts as wrong, and it is checked FIRST: a fresh seed's usual state
+    is "no field at all", and an errno is not an instruction.
+    """
+    h = header(require_field(path, seed))
+    _worldseed().require_scope(
+        "height field", path, found_seed=h["seed"], seed_=seed,
+        produced_by="roads/field.py::request_for_seed, which derives the "
+                    "windows from the seed's own land and runs "
+                    "blueprints/run_patchscan.sh; pass --field")
+    return h
+
+
 def load(path: str | Path) -> dict[str, Field]:
     """Parse VHPATCH1 with zero-copy numpy views over the file bytes."""
     data = memoryview(Path(path).read_bytes())
@@ -186,7 +303,85 @@ def request(patches: list[tuple[str, float, float, float, float]], seed: str,
                           env=env, capture_output=True, text=True)
     if not out.exists() or out.stat().st_size == 0:
         raise SystemExit(f"patchscan produced nothing:\n{proc.stderr[-4000:]}")
+    # The file must declare the seed we asked for.  PatchScan writes the seed
+    # NAME into its header, so this catches a stale OUT, a sandbox that ignored
+    # $SEED, and any future path where the scan silently scanned something else
+    # -- the whole point of producing a field is that it is THIS seed's ground.
+    require_seed(out, seed)
     return load(out)
+
+
+def request_for_seed(seed: str, grid: str | Path, out: str | Path,
+                     locations: str | Path, *,
+                     spawn_location: str = "StartTemple",
+                     vh_src: Path = DEFAULT_VH_SRC,
+                     sandbox: str = "/tmp/patchscan/vh",
+                     half_max_m: float | None = None,
+                     step_m: float | None = None,
+                     min_area_m2: float | None = None,
+                     budget_bytes: int | None = None,
+                     ) -> tuple[dict[str, Field], tuple]:
+    """PRODUCE A HEIGHT FIELD FOR A SEED FROM THAT SEED'S OWN LAND.
+
+    This is the stage that was missing.  `worldseed.ULFSLAND_WINDOWS` is seven
+    hand-written window geometries MEASURED for Pirate68; every later stage
+    reads a field, `require_seed` correctly refuses a foreign one, and there
+    was nothing to hand a fresh seed -- so driving one meant hand-writing a
+    synthetic VHPATCH1, which is a measurement of nothing.
+
+    The chain, all of it seed-scoped and each link refused if it is not:
+
+      tools/seedscan/run_scan.sh  (HEIGHT=1)   -> coarse whole-world grid
+      tools/seedscan/run_locscan.sh            -> the generator's location dump
+      site_finder.land_components(grid)        -> this seed's landmasses
+      site_finder.component_at(grid, spawn)    -> the one the spawn stands on
+      worldseed.windows_for_components(...)    -> trunk-primary/-secondary/
+                                                  outlier-* window geometry
+      blueprints/run_patchscan.sh              -> the 1 m VHPATCH1 field
+
+    Returns the loaded field and the windows it was scanned with, so a caller
+    can record what it asked for next to what it got.
+    """
+    ws = _worldseed()
+    sf = _site_finder()
+    grid, out = Path(grid), Path(out)
+    g = sf.load_grid(grid)
+    # load_grid refuses against `$VH_SEED`; this run has an EXPLICIT seed, and
+    # an explicit one that nobody compared is exactly the unread declaration
+    # this whole guard exists for.
+    ws.require_scope("coarse biome grid", grid, found_seed=g.get("seed"),
+                     seed_=seed,
+                     produced_by="tools/seedscan/run_scan.sh SEEDS=<this seed> "
+                                 "HEIGHT=1")
+    doc = json.loads(Path(locations).read_text("utf-8"))
+    poimod = _by_path("jumpstart_roads_poi", HERE / "poi.py")
+    ws.require_scope("location dump", locations, found_seed=poimod.dump_seed(doc),
+                     seed_=seed,
+                     produced_by="tools/seedscan/run_locscan.sh for this seed")
+    spawn = next((l for l in doc.get("locations", [])
+                  if l.get("name") == spawn_location), None)
+    if spawn is None:
+        raise SystemExit(
+            f"no {spawn_location!r} in {locations}: the spawn point is what "
+            f"`trunk-primary` is defined as holding, and a window set without "
+            f"it is not this seed's trunk. Re-run tools/seedscan/run_locscan.sh.")
+    spawn_xz = (float(spawn["x"]), float(spawn["z"]))
+    comp = sf.component_at(g, spawn_xz)
+    kw = {k: v for k, v in (("half_max_m", half_max_m), ("step_m", step_m),
+                            ("min_area_m2", min_area_m2),
+                            ("budget_bytes", budget_bytes)) if v is not None}
+    windows = ws.windows_for_components(
+        sf.land_components(g), spawn_xz,
+        None if comp is None else comp["label"],
+        # So each window records how far its landmass is from the spawn's, in
+        # metres of water, rather than leaving a reader to infer it from
+        # whether two windows happen to overlap.
+        separation_of=(None if comp is None else
+                       lambda label: sf.separation_m(g, comp["label"], label)),
+        **kw)
+    fields = request(ws.request_rows(windows), seed, out,
+                     vh_src=vh_src, sandbox=sandbox)
+    return fields, windows
 
 
 def zone_field_digest(fld: Field, zx: int, zz: int) -> str:
@@ -211,9 +406,55 @@ def zone_field_digest(fld: Field, zx: int, zz: int) -> str:
 
 
 if __name__ == "__main__":
+    import argparse
     import sys
 
-    for fid, f in load(sys.argv[1]).items():
+    ws = _worldseed()
+    ap = argparse.ArgumentParser(description=__doc__)
+    sub = ap.add_subparsers(dest="op")
+
+    show = sub.add_parser("show", help="summarise a VHPATCH1 field")
+    show.add_argument("path")
+
+    # THE FRONT DOOR FOR A FRESH SEED.  Without it "derive the windows and run
+    # PatchScan" is a paragraph an operator has to write Python for, and the
+    # Python they write is where the next borrowed artefact gets in.
+    req = sub.add_parser("request", help="derive this seed's windows and scan them")
+    req.add_argument("--grid", required=True,
+                     help="VHBIOME4 grid from tools/seedscan/run_scan.sh HEIGHT=1")
+    req.add_argument("--locations", required=True,
+                     help="location dump from tools/seedscan/run_locscan.sh")
+    req.add_argument("--out", required=True)
+    req.add_argument("--vh-src", default=str(DEFAULT_VH_SRC))
+    req.add_argument("--sandbox", default="/tmp/patchscan/vh")
+    req.add_argument("--half-max-m", type=float)
+    req.add_argument("--min-area-m2", type=float)
+    req.add_argument("--budget-mb", type=float)
+    ws.add_arguments(req, world_arg=False)
+
+    # `field.py <a field>` was the whole interface before `request` existed and
+    # still is: a subcommand that broke every operator's muscle memory would be
+    # paid for in exactly the moment somebody is debugging ground.
+    argv = sys.argv[1:]
+    if not argv or argv[0] not in ("show", "request"):
+        argv = ["show", *argv]
+    args = ap.parse_args(argv)
+
+    if args.op == "request":
+        seed, _ = ws.apply(args)
+        fields, windows = request_for_seed(
+            seed, args.grid, args.out, args.locations,
+            vh_src=Path(args.vh_src), sandbox=args.sandbox,
+            half_max_m=args.half_max_m, min_area_m2=args.min_area_m2,
+            budget_bytes=None if args.budget_mb is None
+            else int(args.budget_mb * 1024 * 1024))
+        for w in windows:
+            print(f"{w.fid:24s} ({w.cx:9.1f},{w.cz:9.1f}) half={w.half:6.0f}  {w.role}")
+        print(f"{args.out}: {len(fields)} windows, "
+              f"{Path(args.out).stat().st_size:,} bytes, seed {seed}")
+        raise SystemExit(0)
+
+    for fid, f in load(args.path).items():
         ld = f.land()
         print(f"{fid}: n={f.n} step={f.step} centre=({f.cx},{f.cz}) half={f.half} "
               f"h[{f.h.min():.1f},{f.h.max():.1f}] land={ld.mean():.3f}")

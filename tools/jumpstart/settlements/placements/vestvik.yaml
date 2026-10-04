@@ -1,4 +1,4 @@
-world: Ulfsland
+world: Fresh42
 settlement: vestvik
 placements:
 - id: vestvik-hall-1
@@ -7,37 +7,37 @@ placements:
   pieces: 207
   align: floor-center
   rotation:
-    yaw: 70.0
+    yaw: 50.0
   requirement:
     biome: Meadows
-    footprint_m: 23.0
+    footprint_m: 23.9
     footprint_xz_m:
-    - 14.4
+    - 23.9
     - 23.0
   solved:
-    seed: Pirate68
-    x: -912.0
-    z: 1876.4
-    y: 35.29
-    footprint_orientation: 14.4 m along x by 23 m along z
+    seed: Fresh42
+    x: -911.4
+    z: 592.2
+    y: 34.19
+    footprint_orientation: 23.9 m along x by 23 m along z
     flatten_cost:
-      target_y: 35.29
+      target_y: 34.19
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 48.1
-    nearest_location: Dolmen03
-    nearest_location_standoff_m: 22.0
+    nearest_location_m: 37.6
+    nearest_location: WoodHouse4
+    nearest_location_standoff_m: 20.0
   settlement:
     site: vestvik
     role: hall
-    patch: westisle
+    patch: trunk-primary
 - id: vestvik-workshop-1
   blueprint: hs_meadows_the_neck_nook.blueprint
   sha256: 865053dd210c98fb3a6e48dcfe5b2bdffa9345d6242d3d85add2d44687cb4cf8
   pieces: 183
   align: floor-center
   rotation:
-    yaw: 70.0
+    yaw: 0.0
   requirement:
     biome: Meadows
     footprint_m: 17.6
@@ -45,179 +45,209 @@ placements:
     - 17.6
     - 17.4
   solved:
-    seed: Pirate68
-    x: -887.7
-    z: 1857.6
-    y: 35.4
+    seed: Fresh42
+    x: -876.0
+    z: 598.4
+    y: 34.94
     footprint_orientation: 17.6 m along x by 17.4 m along z
     flatten_cost:
-      target_y: 35.4
+      target_y: 34.94
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 52.6
-    nearest_location: Dolmen03
+    nearest_location_m: 41.8
+    nearest_location: WoodHouse3
     nearest_location_standoff_m: 22.0
   settlement:
     site: vestvik
     role: workshop
-    patch: westisle
+    patch: trunk-primary
 - id: vestvik-house-1
   blueprint: hs_blackforest_kin_01_woodhouse.blueprint
   sha256: 19d4b35a177f0e69c096a35da974968588e3c1563e9955909821a1329de626e9
   pieces: 216
   align: floor-center
   rotation:
-    yaw: 150.0
+    yaw: 50.0
   requirement:
     biome: Meadows
     footprint_m: 20.3
     footprint_xz_m:
     - 20.3
-    - 15.2
+    - 19.1
   solved:
-    seed: Pirate68
-    x: -978.6
-    z: 1798.9
-    y: 34.2
-    footprint_orientation: 20.3 m along x by 15.2 m along z
+    seed: Fresh42
+    x: -973.0
+    z: 562.5
+    y: 32.3
+    footprint_orientation: 20.3 m along x by 19.1 m along z
     flatten_cost:
-      target_y: 34.2
+      target_y: 32.3
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 37.3
-    nearest_location: WoodHouse12
-    nearest_location_standoff_m: 18.0
+    nearest_location_m: 34.3
+    nearest_location: Dolmen01
+    nearest_location_standoff_m: 20.0
   settlement:
     site: vestvik
     role: house
-    patch: westisle
+    patch: trunk-primary
 - id: vestvik-house-2
   blueprint: hs_blackforest_kin_01_woodhouse.blueprint
   sha256: 19d4b35a177f0e69c096a35da974968588e3c1563e9955909821a1329de626e9
   pieces: 216
   align: floor-center
   rotation:
-    yaw: 70.0
+    yaw: 50.0
   requirement:
     biome: Meadows
     footprint_m: 20.3
     footprint_xz_m:
     - 20.3
-    - 15.2
+    - 19.1
   solved:
-    seed: Pirate68
-    x: -925.5
-    z: 1827.8
-    y: 35.14
-    footprint_orientation: 20.3 m along x by 15.2 m along z
+    seed: Fresh42
+    x: -903.9
+    z: 644.8
+    y: 31.98
+    footprint_orientation: 20.3 m along x by 19.1 m along z
     flatten_cost:
-      target_y: 35.14
+      target_y: 31.98
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 39.8
-    nearest_location: Runestone_Boars
-    nearest_location_standoff_m: 25.520000457763672
+    nearest_location_m: 51.0
+    nearest_location: ShipSetting01
+    nearest_location_standoff_m: 36.0
   settlement:
     site: vestvik
     role: house
-    patch: westisle
+    patch: trunk-primary
 - id: vestvik-house-3
   blueprint: hs_blackforest_kin_01_woodhouse.blueprint
   sha256: 19d4b35a177f0e69c096a35da974968588e3c1563e9955909821a1329de626e9
   pieces: 216
   align: floor-center
   rotation:
-    yaw: 70.0
+    yaw: 50.0
   requirement:
     biome: Meadows
     footprint_m: 20.3
     footprint_xz_m:
     - 20.3
-    - 15.2
+    - 19.1
   solved:
-    seed: Pirate68
-    x: -901.4
-    z: 1823.3
-    y: 34.67
-    footprint_orientation: 20.3 m along x by 15.2 m along z
+    seed: Fresh42
+    x: -903.4
+    z: 607.8
+    y: 34.19
+    footprint_orientation: 20.3 m along x by 19.1 m along z
     flatten_cost:
-      target_y: 34.67
+      target_y: 34.19
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 34.2
-    nearest_location: WoodHouse7
+    nearest_location_m: 49.7
+    nearest_location: WoodHouse4
     nearest_location_standoff_m: 20.0
   settlement:
     site: vestvik
     role: house
-    patch: westisle
+    patch: trunk-primary
 - id: vestvik-house-4
   blueprint: hs_blackforest_kin_01_woodhouse.blueprint
   sha256: 19d4b35a177f0e69c096a35da974968588e3c1563e9955909821a1329de626e9
   pieces: 216
   align: floor-center
   rotation:
-    yaw: 70.0
+    yaw: 50.0
   requirement:
     biome: Meadows
     footprint_m: 20.3
     footprint_xz_m:
     - 20.3
-    - 15.2
+    - 19.1
   solved:
-    seed: Pirate68
-    x: -894.8
-    z: 1841.5
-    y: 34.48
-    footprint_orientation: 20.3 m along x by 15.2 m along z
+    seed: Fresh42
+    x: -891.2
+    z: 659.9
+    y: 31.98
+    footprint_orientation: 20.3 m along x by 19.1 m along z
     flatten_cost:
-      target_y: 34.48
+      target_y: 31.98
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 52.2
-    nearest_location: WoodHouse7
+    nearest_location_m: 52.3
+    nearest_location: Runestone_Meadows
     nearest_location_standoff_m: 20.0
   settlement:
     site: vestvik
     role: house
-    patch: westisle
+    patch: trunk-primary
+- id: vestvik-villa-1
+  blueprint: hs_meadows_villa.blueprint
+  sha256: e2093627c21eaf055387c016c8aa4fa6b129fa62dca8999000380b2225d2af72
+  pieces: 178
+  align: floor-center
+  rotation:
+    yaw: 50.0
+  requirement:
+    biome: Meadows
+    footprint_m: 22.1
+    footprint_xz_m:
+    - 21.9
+    - 22.1
+  solved:
+    seed: Fresh42
+    x: -891.3
+    z: 621.2
+    y: 34.19
+    footprint_orientation: 21.9 m along x by 22.1 m along z
+    flatten_cost:
+      target_y: 34.19
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 62.1
+    nearest_location: WoodHouse4
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: vestvik
+    role: villa
+    patch: trunk-primary
 - id: vestvik-villa-2
   blueprint: hs_meadows_villa.blueprint
   sha256: e2093627c21eaf055387c016c8aa4fa6b129fa62dca8999000380b2225d2af72
   pieces: 178
   align: floor-center
   rotation:
-    yaw: 70.0
+    yaw: 50.0
   requirement:
     biome: Meadows
-    footprint_m: 18.4
+    footprint_m: 22.1
     footprint_xz_m:
-    - 18.4
-    - 16.4
+    - 21.9
+    - 22.1
   solved:
-    seed: Pirate68
-    x: -885.2
-    z: 1947.9
-    y: 36.05
-    footprint_orientation: 18.4 m along x by 16.4 m along z
+    seed: Fresh42
+    x: -881.2
+    z: 672.7
+    y: 31.98
+    footprint_orientation: 21.9 m along x by 22.1 m along z
     flatten_cost:
-      target_y: 36.05
+      target_y: 31.98
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 39.8
-    nearest_location: Dolmen03
-    nearest_location_standoff_m: 22.0
+    nearest_location_m: 36.3
+    nearest_location: Runestone_Meadows
+    nearest_location_standoff_m: 20.0
   settlement:
     site: vestvik
     role: villa
-    patch: westisle
+    patch: trunk-primary
 - id: vestvik-villa-3
   blueprint: hs_meadows_villa.blueprint
   sha256: e2093627c21eaf055387c016c8aa4fa6b129fa62dca8999000380b2225d2af72
   pieces: 178
   align: floor-center
   rotation:
-    yaw: 70.0
+    yaw: 0.0
   requirement:
     biome: Meadows
     footprint_m: 18.4
@@ -225,59 +255,59 @@ placements:
     - 18.4
     - 16.4
   solved:
-    seed: Pirate68
-    x: -882.5
-    z: 1876.3
-    y: 35.81
+    seed: Fresh42
+    x: -986.8
+    z: 572.5
+    y: 32.3
     footprint_orientation: 18.4 m along x by 16.4 m along z
     flatten_cost:
-      target_y: 35.81
+      target_y: 32.3
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 33.3
-    nearest_location: Dolmen03
-    nearest_location_standoff_m: 22.0
+    nearest_location_m: 36.7
+    nearest_location: Dolmen01
+    nearest_location_standoff_m: 20.0
   settlement:
     site: vestvik
     role: villa
-    patch: westisle
+    patch: trunk-primary
 - id: vestvik-stonehouse-1
   blueprint: hs_meadows_stone_cottage.blueprint
   sha256: 8c7b052641de15b112678579bcf6a96e5f085cb068c727109ddfea31c08a22eb
   pieces: 64
   align: floor-center
   rotation:
-    yaw: 150.0
+    yaw: 50.0
   requirement:
     biome: Meadows
-    footprint_m: 13.0
+    footprint_m: 14.0
     footprint_xz_m:
-    - 11.0
-    - 13.0
+    - 14.0
+    - 13.7
   solved:
-    seed: Pirate68
-    x: -990.4
-    z: 1808.5
-    y: 35.69
-    footprint_orientation: 11 m along x by 13 m along z
+    seed: Fresh42
+    x: -884.7
+    z: 631.8
+    y: 34.19
+    footprint_orientation: 14 m along x by 13.7 m along z
     flatten_cost:
-      target_y: 35.69
+      target_y: 34.19
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 39.3
-    nearest_location: WoodHouse3
-    nearest_location_standoff_m: 22.0
+    nearest_location_m: 59.9
+    nearest_location: Dolmen01
+    nearest_location_standoff_m: 20.0
   settlement:
     site: vestvik
     role: stonehouse
-    patch: westisle
+    patch: trunk-primary
 - id: vestvik-stonehouse-2
   blueprint: hs_meadows_stone_cottage.blueprint
   sha256: 8c7b052641de15b112678579bcf6a96e5f085cb068c727109ddfea31c08a22eb
   pieces: 64
   align: floor-center
   rotation:
-    yaw: 150.0
+    yaw: 0.0
   requirement:
     biome: Meadows
     footprint_m: 13.0
@@ -285,29 +315,29 @@ placements:
     - 11.0
     - 13.0
   solved:
-    seed: Pirate68
-    x: -918.4
-    z: 1765.5
-    y: 32.46
+    seed: Fresh42
+    x: -930.6
+    z: 596.2
+    y: 34.11
     footprint_orientation: 11 m along x by 13 m along z
     flatten_cost:
-      target_y: 32.46
+      target_y: 34.11
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 31.9
-    nearest_location: WoodHouse7
+    nearest_location_m: 32.5
+    nearest_location: Dolmen01
     nearest_location_standoff_m: 20.0
   settlement:
     site: vestvik
     role: stonehouse
-    patch: westisle
+    patch: trunk-primary
 - id: vestvik-hut-1
   blueprint: hs_meadows_hut.blueprint
   sha256: 83385eeee9cb1f66f327eff8100887609f1adaa805b9a86fb4fcc27f67a4943c
   pieces: 28
   align: floor-center
   rotation:
-    yaw: 150.0
+    yaw: 0.0
   requirement:
     biome: Meadows
     footprint_m: 10.4
@@ -315,49 +345,49 @@ placements:
     - 10.4
     - 10.4
   solved:
-    seed: Pirate68
-    x: -964.5
-    z: 1816.0
-    y: 34.47
+    seed: Fresh42
+    x: -865.5
+    z: 575.5
+    y: 36.43
     footprint_orientation: 10.4 m along x by 10.4 m along z
     flatten_cost:
-      target_y: 34.47
+      target_y: 36.43
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 34.2
-    nearest_location: Runestone_Boars
-    nearest_location_standoff_m: 25.520000457763672
+    nearest_location_m: 32.3
+    nearest_location: WoodHouse4
+    nearest_location_standoff_m: 20.0
   settlement:
     site: vestvik
     role: hut
-    patch: westisle
+    patch: trunk-primary
 - id: vestvik-hut-2
   blueprint: hs_meadows_hut.blueprint
   sha256: 83385eeee9cb1f66f327eff8100887609f1adaa805b9a86fb4fcc27f67a4943c
   pieces: 28
   align: floor-center
   rotation:
-    yaw: 70.0
+    yaw: 50.0
   requirement:
     biome: Meadows
-    footprint_m: 10.4
+    footprint_m: 12.2
     footprint_xz_m:
-    - 10.4
-    - 10.4
+    - 12.2
+    - 12.2
   solved:
-    seed: Pirate68
-    x: -899.6
-    z: 1889.5
-    y: 34.37
-    footprint_orientation: 10.4 m along x by 10.4 m along z
+    seed: Fresh42
+    x: -942.0
+    z: 595.6
+    y: 34.11
+    footprint_orientation: 12.2 m along x by 12.2 m along z
     flatten_cost:
-      target_y: 34.37
+      target_y: 34.11
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 30.1
-    nearest_location: Dolmen03
-    nearest_location_standoff_m: 22.0
+    nearest_location_m: 31.1
+    nearest_location: Dolmen01
+    nearest_location_standoff_m: 20.0
   settlement:
     site: vestvik
     role: hut
-    patch: westisle
+    patch: trunk-primary

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -32,6 +33,10 @@ if __package__ in (None, ""):  # allow running the file directly
 
 from . import DATA, HERE, JUMPSTART  # noqa: E402
 from . import catalogue, plan, portals, router, sites, terrain  # noqa: E402
+
+if str(JUMPSTART) not in sys.path:
+    sys.path.append(str(JUMPSTART))
+import worldseed  # noqa: E402
 
 SEEDSCAN_LOC_DEFAULT = Path("/tmp/seedscan/loc")
 
@@ -79,24 +84,92 @@ ENDPOINT_SPECS: dict[str, dict] = {
 
 
 def _locations(path: Path, seed: str) -> list[dict]:
-    """ZoneSystem location instances for a seed, from the tools/seedscan LocScan dump."""
+    """ZoneSystem location instances for a seed, from the tools/seedscan LocScan dump.
+
+    THE DUMP DECLARES ITS OWN SEED and this reader used to treat a non-match as
+    "no locations": it fell out of the loop and returned `[]`, so a run on a
+    seed with no dump routed its corridors against ZERO keep-outs and reported
+    `zonesystem_locations_loaded: 0` as though that were a measurement.  Empty
+    is not the same claim as absent -- MEASURED elsewhere tonight, the same
+    class of unread declaration let 12,301 Pirate68 locations into a Fresh42
+    run through `roads/poi.py`.
+
+    A dump directory that holds files but none for this seed is now a REFUSAL,
+    naming the seeds it does hold.  A directory with no dump at all still
+    returns `[]`: there is no artefact there to be mis-scoped, and the count is
+    reported downstream.
+    """
     if not path.exists():
         return []
+    found: list[str] = []
     for f in sorted(path.glob("*.json")):
         try:
             blob = json.loads(f.read_text())
         except (ValueError, OSError):
             continue
-        if blob.get("seed") == seed or blob.get("seedNameFromWorld") == seed:
+        declared = blob.get("seed") or blob.get("seedNameFromWorld")
+        if declared == seed:
+            worldseed.require_scope("ZoneSystem location dump", f,
+                                    found_seed=declared, seed_=seed,
+                                    produced_by="tools/seedscan/run_locscan.sh")
             return blob.get("locations") or []
+        found.append(str(declared))
+    if found:
+        raise SystemExit(
+            f"REFUSING: {path} holds {len(found)} location dump(s), declaring "
+            f"seed(s) {sorted(set(found))}, and none of them is this run's seed "
+            f"{seed!r}. Falling through to an empty keep-out set would route "
+            f"corridors through every generated location on the map and report "
+            f"the omission as a measurement of zero. Produced by: "
+            f"tools/seedscan/run_locscan.sh.")
     return []
 
 
 def _world(name: str) -> dict:
+    """`worlds/<name>/world.yaml`, checked against its own `world:` field.
+
+    The path carries the name and the file repeats it, so they agree today.
+    They stop agreeing the moment a world directory is copied to seed a second
+    world and the header is not updated -- and this file is where `route` gets
+    its seed from, so a stale header hands every subsequent measurement the
+    wrong planet.  UNEXERCISED, not observed; cheap to keep true.
+    """
     import yaml
 
     path = JUMPSTART / "worlds" / name / "world.yaml"
-    return yaml.safe_load(path.read_text()) if path.exists() else {}
+    if not path.exists():
+        return {}
+    doc = yaml.safe_load(path.read_text()) or {}
+    declared = doc.get("world")
+    if declared and str(declared) != str(name):
+        raise SystemExit(
+            f"REFUSING: {path} declares world {declared!r} but was reached as "
+            f"{name!r}. This file is where the seed comes from; a stale header "
+            f"here mislabels every measurement downstream of it.")
+    return doc
+
+
+def _scope(args, cat) -> tuple[str, str, dict]:
+    """(seed, world, world.yaml) -- ONE precedence, shared by both subcommands.
+
+    argument > environment > `worlds/<world>/world.yaml` > the catalogue.
+
+    `worldseed` supplies the first two terms and publishes the answer, so this
+    tool resolves `--world`/`--seed` exactly the way every other stage does.
+    Its LITERAL default is deliberately not allowed to win the seed here: the
+    named world's own `world.yaml` records the seed that world was rolled on,
+    and a reading of the world outranks a constant compiled into the tree.  So
+    `worldseed.seed()`'s fallback is bypassed and the environment is consulted
+    directly; a flag or `$VH_SEED` still beats the file, as everywhere else.
+    """
+    world = (getattr(args, "world", None) or None) or worldseed.world()
+    doc = _world(world)
+    seed = ((getattr(args, "seed", None) or None)
+            or os.environ.get(worldseed.ENV_SEED)
+            or doc.get("seed") or cat.seed)
+    os.environ[worldseed.ENV_SEED] = str(seed)
+    os.environ[worldseed.ENV_WORLD] = str(world)
+    return str(seed), str(world), doc
 
 
 def cmd_tiers(args) -> int:
@@ -163,8 +236,7 @@ def cmd_portals(args) -> int:
 
 def _solve_chain(args, cat, pol):
     """Sample the corridor, solve every stop, route the chain, emit the plans."""
-    world = _world(args.world)
-    seed = args.seed or world.get("seed") or cat.seed
+    seed, world_name, _wdoc = _scope(args, cat)
     ids = [s.strip() for s in args.chain.split(",") if s.strip()]
     by_id = {i.id: i for i in cat.installations}
     missing = [i for i in ids if i not in by_id]
@@ -265,7 +337,7 @@ def _solve_chain(args, cat, pol):
             }
 
     return {
-        "world": args.world,
+        "world": world_name,
         "seed": seed,
         "corridor": {
             "x0": cor.x0,
@@ -318,10 +390,11 @@ def cmd_network(args) -> int:
     pol = portals.load_policy()
     problems = cat.validate()
     g = portals.build(cat, args.tier)
+    seed, world_name, _wdoc = _scope(args, cat)
     doc = {
         "schema_version": 1,
-        "world": args.world,
-        "seed": args.seed or cat.seed,
+        "world": world_name,
+        "seed": seed,
         "owner": "WorldNetwork",
         "generated_by": "tools/jumpstart/network/cli.py network",
         "tier": args.tier,
@@ -341,7 +414,7 @@ def cmd_network(args) -> int:
         doc["chain"] = _solve_chain(args, cat, pol)
     text = json.dumps(doc, indent=1)
     if args.write:
-        out = DATA / args.world / f"network-tier{args.tier}.json"
+        out = DATA / world_name / f"network-tier{args.tier}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text + "\n")
         print(f"wrote {out}", file=sys.stderr)
@@ -367,8 +440,7 @@ def main(argv=None) -> int:
     p.set_defaults(fn=cmd_portals)
 
     def route_args(p):
-        p.add_argument("--world", default="Ulfsland")
-        p.add_argument("--seed", default=None)
+        worldseed.add_arguments(p)
         p.add_argument("--chain", default=None, help="comma-separated installation ids")
         p.add_argument("--at", action="append", help="id=x,z to fix a stop instead of solving it")
         p.add_argument("--box", default=None, help="x0,x1,z0,z1 corridor to sample")

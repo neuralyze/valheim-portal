@@ -108,10 +108,20 @@ Upgrade World's vertical cylinder (`Utils.DistanceXZ`, y ignored), so `half` is
 read as a radius.  For the clearing decision that is the correct shape anyway,
 because the removal is the same cylinder.
 
+WRITE PATH.  Both operations go through the LEDGER (`flatten.install_emit` ->
+`ledger/live.py` `LiveBuilder.emit`): appended first, then sent over the
+session's own transport, then verified by the record's own postcondition.
+This step used to drive raw RCON and append nothing -- MEASURED on the previous
+Fresh42 drive, 13 unit-runs at rc 0 and zero records naming any installation
+-- so the zones it generated and the ground it cleared were invisible to every
+later write and every replay.  See `terraform/flatten.py::
+INSTALLATION_WRITE_PATH_DEPENDS_ON`.  The socket is the session's, resolved from
+the environment and recorded on every record; there is no per-tool override.
+
 Usage:
     clear.py plan  --world Ulfsland --preset pre-bonemass --id iron-era-workshop
-    clear.py apply --world Ulfsland --preset pre-bonemass --id iron-era-workshop
-    clear.py apply --placements /tmp/p.yaml --id sandbox --rcon 127.0.0.1:2799:pw
+    clear.py apply --world Ulfsland --preset pre-bonemass --id iron-era-workshop --actor <you>
+    clear.py apply --placements /tmp/p.yaml --id sandbox --actor <you>
 """
 
 from __future__ import annotations
@@ -121,18 +131,20 @@ import math
 import re
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 JUMPSTART = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(JUMPSTART / "terraform"))
+sys.path.append(str(JUMPSTART))
 
 from area import (ClearArea, ClearAreaRefused, DEFAULT_MARGIN_M,  # noqa: E402
-                  clearing_area, placement)
+                  clearing_area, levelling_refusal, placement)
 from rcon import Rcon  # noqa: E402
 from console import run_console  # noqa: E402
+import flatten as FL  # noqa: E402  THE installation write path lives there
+import worldseed  # noqa: E402
 
 ZONE_HALF_M = 32.0
 # A zone is selected by the distance from `pos` to its CENTRE (MEASURED:
@@ -150,26 +162,6 @@ POSITION_RE = re.compile(
 # cheapest ground truth for "this pad contains world content, not scenery".
 LOCATION_MARKER = "LocationProxy"
 SETTLE_POLL_S = 2.0
-
-
-@dataclass(frozen=True)
-class Endpoint:
-    host: str | None = None
-    port: int | None = None
-    password: str | None = None
-
-    @classmethod
-    def parse(cls, text: str | None) -> "Endpoint":
-        if not text:
-            return cls()
-        parts = text.split(":")
-        if len(parts) != 3:
-            raise SystemExit("--rcon wants host:port:password")
-        return cls(parts[0], int(parts[1]), parts[2])
-
-    def open(self, timeout: float = 30.0) -> Rcon:
-        return Rcon(host=self.host, port=self.port, password=self.password, timeout=timeout)
-
 
 TOTAL_RE = re.compile(r"^Total:?\s*(\d+)\s*$", re.M)
 # `objects_count`'s table is one `<prefab>: <count>` line per prefab. MEASURED
@@ -233,22 +225,6 @@ def locations_inside(rc: Rcon, area: ClearArea) -> list[tuple[str, float]]:
     return hits
 
 
-def staged(rc: Rcon, command: str) -> list[str]:
-    """Upgrade World stages an operation and waits for `start` (its
-    `Automatic start` default is false, checked in upgrade_world.cfg on both
-    the sandbox and Ulfsland).
-
-    `stop` first, always.  The staging slot is server-global and survives the
-    session that filled it: MEASURED, a `vegetation_remove` staged minutes
-    earlier by an unrelated probe was executed by this step's `start` and
-    reported "Remove vegetation completed" from a different coordinate.  An
-    unrelated queued operation firing on our `start` is the worst failure this
-    file could have, so the slot is emptied before it is filled.
-    """
-    rc.console("stop")
-    return [rc.console(command).strip(), rc.console("start").strip()]
-
-
 def generate_max(area: ClearArea) -> float:
     """Rounded UP: `round()` shaved 2 mm off the required reach for the 70 m
     workshop pad (96.7523 -> 96.75), and a corner zone whose centre lands in
@@ -276,6 +252,57 @@ def commands(area: ClearArea, keep: tuple[str, ...]) -> list[str]:
     return [
         f"zones_generate {pos} max={generate_max(area):g}",
         " ".join(parts),
+    ]
+
+
+def records(area: ClearArea, keep: tuple[str, ...], preset: str) -> list[dict]:
+    """Step 1 as LEDGER RECORDS: the two commands above, byte for byte, each
+    with the postcondition this file already verified by hand.
+
+    `zones` is the set the clearing CYLINDER intersects, the same
+    `settlements/build.py::zone_list` a settlement pad's own generate carries
+    -- `generate_max` reaches every one of them by construction, so one
+    `_ZoneCtrl` per zone centre is the real completion signal.  The removal's
+    count is taken over `verify_half_side_m`, the region this tool has always
+    verified; that region is NARROWER than the cylinder it removes over, and
+    that is stated in `meta` rather than hidden (the exact disc `r` is refused
+    by `replay.Server.count` above 40 m for `id=*`, and 2 of the 13 Fresh42
+    installations clear wider than that: iron-era-workshop 51.50 m,
+    blackforest-walled-base 41.60 m)."""
+    gen, remove = commands(area, keep)
+    pid = area.placement_id
+    zones = FL._settlement_emitter().zone_list(area.centre_x, area.centre_z,
+                                               area.radius_m)
+    where = [area.centre_x, area.centre_z]
+    meta = {"installation": f"{preset}/{pid}", "tool": "clearing/clear.py apply"}
+    return [
+        {"op": "zones_generate",
+         "params": {"pos": where, "max_m": generate_max(area),
+                    "zones": [list(z) for z in zones],
+                    "role": "site_pad", "site_id": pid},
+         "wire": [gen],
+         "requires": {"mods": ["UpgradeWorld"], "prefabs": [], "blobs": []},
+         "expect": {"zone_ctrl": len(zones)},
+         "meta": dict(meta, why=(
+             "a dedicated server with no peers has generated none of these "
+             "zones, so a delete-only step has nothing to delete and a "
+             "flatten into them plants vegetation on unmodified ground"))},
+        {"op": "objects_clear",
+         "params": {"centre": where, "radius_m": round(area.radius_m, 2),
+                    "ids": "*", "ignore": list(keep),
+                    "role": "clearing", "site_id": pid},
+         "wire": [remove],
+         "requires": {"mods": ["UpgradeWorld"], "prefabs": [], "blobs": []},
+         "expect": {"objects_count": {
+             "ids": "*", "ignore": ",".join(keep), "pos": where,
+             "max": round(area.verify_half_side_m, 2),
+             "total": 0, "tolerance": 0}},
+         "meta": dict(meta, verify_half_side_m=round(area.verify_half_side_m, 2),
+                      unverified_annulus_m=[round(area.verify_half_side_m, 2),
+                                            round(area.radius_m, 2)],
+                      why=("objects_remove's pos/max filter is a vertical "
+                           "cylinder on Utils.DistanceXZ; the count is the "
+                           "verification box this tool has always read"))},
     ]
 
 
@@ -314,35 +341,39 @@ def protected(name: str, keep: tuple[str, ...]) -> bool:
     return False
 
 
-def apply(rc: Rcon, area: ClearArea, keep: tuple[str, ...],
+def apply(b, area: ClearArea, keep: tuple[str, ...], preset: str,
           generate: bool = True) -> dict:
+    """Generate, check for locations, remove -- every write THROUGH THE
+    LEDGER (`flatten.install_emit`), every read over the session's socket."""
+    rc = b.srv.rc
     half = area.verify_half_side_m
-    gen, remove = commands(area, keep)
-    replies: dict[str, list[str]] = {}
+    gen, remove = records(area, keep, preset)
+    seqs: dict[str, int | None] = {}
     before, _ = settle(rc, area, timeout=20.0)
     generated = None
     if generate:
-        replies["zones_generate"] = staged(rc, gen)
         # Generation has to FINISH before the removal is staged: it creates the
-        # objects the removal is supposed to take.
+        # objects the removal is supposed to take.  `install_emit` waits for
+        # the record's own `zone_ctrl` postcondition; `settle` is the report.
+        seqs["zones_generate"] = FL.install_emit(b, gen).get("seq")
         generated, _ = settle(rc, area)
     found = locations_inside(rc, area)
     if found:
         return {
             "before": before, "after_generate": generated, "after_clear": None,
-            "kept": [], "leftovers": [], "replies": replies,
+            "kept": [], "leftovers": [], "seqs": seqs,
             "locations": found, "verify_half_side_m": half,
             "verify_y_window_m": [round(area.surface_y - half, 2),
                                   round(area.surface_y + half, 2)],
         }
-    replies["objects_remove"] = staged(rc, remove)
+    seqs["objects_clear"] = FL.install_emit(b, remove).get("seq")
     after, prefabs = settle(rc, area)
     leftovers = sorted({p for p in prefabs if not protected(p, keep)})
-    rc.command("save")
+    b.srv.command("save")
     return {
         "before": before, "after_generate": generated, "after_clear": after,
         "kept": sorted({p for p in prefabs if protected(p, keep)}),
-        "leftovers": leftovers, "replies": replies, "locations": [],
+        "leftovers": leftovers, "seqs": seqs, "locations": [],
         "verify_half_side_m": half,
         "verify_y_window_m": [round(area.surface_y - half, 2), round(area.surface_y + half, 2)],
     }
@@ -351,7 +382,7 @@ def apply(rc: Rcon, area: ClearArea, keep: tuple[str, ...],
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("op", choices=["plan", "apply"])
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--preset")
     ap.add_argument("--placements", help="placements.yaml path; overrides --world/--preset")
     ap.add_argument("--id", action="append", required=True,
@@ -363,23 +394,60 @@ def main() -> int:
                     help="metres beyond the pad's half-diagonal (default %(default)s)")
     ap.add_argument("--keep", action="append", default=None,
                     help="prefab id or wildcard never removed (default: _*)")
-    ap.add_argument("--rcon", help="host:port:password; defaults to the Ulfsland container")
+    ap.add_argument("--actor",
+                    help="the agent running this. REQUIRED for apply: the generate "
+                         "and the removal are appended to the world's ledger before "
+                         "they are sent (terraform/flatten.py::"
+                         "INSTALLATION_WRITE_PATH_DEPENDS_ON)")
     ap.add_argument("--no-generate", action="store_true",
                     help="skip zones_generate; only meaningful where the zones are already generated")
     args = ap.parse_args()
+    _seed, world = worldseed.apply(args)
+    if args.op == "apply" and not args.actor:
+        ap.error("apply writes through the ledger (ledger/live.py LiveBuilder) and "
+                 "the record carries who ran it: pass --actor")
 
     if args.placements:
         path = Path(args.placements)
     else:
         if not args.preset:
             raise SystemExit("--preset is required without --placements")
-        path = JUMPSTART / "worlds" / args.world / args.preset / "placements.yaml"
+        path = JUMPSTART / "worlds" / world / args.preset / "placements.yaml"
+    preset = args.preset or path.parent.name
     keep = tuple(args.keep) if args.keep else DEFAULT_KEEP
 
     areas = []
     for pid in args.id:
         try:
-            areas.append(clearing_area(placement(path, pid), args.apron, args.margin))
+            place = placement(path, pid)
+            # A DECLARED DUPLICATE IS THE CANONICAL'S CYLINDER, CLEARED BY IT.
+            # MEASURED on Fresh42 drive 2: deepnorth-sandbox/sandbox-harbour
+            # (`duplicate_of: pre-elder#early-dock`) generated and cleared at
+            # seqs 541/542, and early-dock then cleared the identical
+            # cylinder -- centre (-7.5, -416.5), radius 30.22 m -- at 549/550.
+            # Two writes, one bought.
+            # `flatten.declared_duplicate`: the one predicate clear, flatten
+            # and stock ask.
+            canon = FL.declared_duplicate(place)
+            if canon:
+                print(f"{pid}: SKIPPED -- declares duplicate_of {canon}, whose "
+                      f"own run clears this same cylinder; nothing generated "
+                      f"or removed")
+                continue
+            # THE UNIT'S REFUSAL IS READ BY ITS FIRST WRITER, not its second:
+            # see area.LEVELLING_REFUSAL_DEPENDS_ON.
+            refusal = levelling_refusal(place)
+            if refusal is not None:
+                raise ClearAreaRefused(
+                    f"{pid}: the solve recorded this pad as one the engine "
+                    f"cannot level -- {refusal['over_clamp_samples']} samples "
+                    f"beyond the +/-{refusal['clamp_m']:g} m apply clamp, cut "
+                    f"{refusal['max_cut_m']} m, fill {refusal['max_fill_m']} m "
+                    f"({refusal['clamp_source']}). Step 2 refuses it on the "
+                    f"same numbers, so clearing it first is a write that buys "
+                    f"nothing. Nothing was generated or removed; re-solve the "
+                    f"placement.")
+            areas.append(clearing_area(place, args.apron, args.margin))
         except ClearAreaRefused as exc:
             print(f"REFUSED {exc}")
             return 1
@@ -396,9 +464,16 @@ def main() -> int:
         return 0
 
     failed = False
-    with Endpoint.parse(args.rcon).open() as rc:
+    PostconditionFailed = FL._ledger("live").PostconditionFailed
+    with FL.live_builder()(actor=args.actor, world=world) as b:
         for area in areas:
-            result = apply(rc, area, keep, generate=not args.no_generate)
+            try:
+                result = apply(b, area, keep, preset, generate=not args.no_generate)
+            except PostconditionFailed as exc:
+                print(f"{area.placement_id}: NOT CLEARED -- {exc}")
+                failed = True
+                continue
+            print(f"{area.placement_id}: ledger seqs {result['seqs']}")
             if result.get("locations"):
                 print(f"{area.placement_id}: REFUSED -- generated location markers inside the "
                       f"clearing cylinder: {result['locations']}. Nothing was removed. The "

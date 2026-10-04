@@ -59,15 +59,17 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "terraform"))
+sys.path.append(str(HERE.parent))
 
 import base_geometry  # noqa: E402
 import fixtures  # noqa: E402
 import to_rcon_plan  # noqa: E402
+import flatten as flattenmod  # noqa: E402  terraform/, for THE placements reader
+import worldseed  # noqa: E402
 
 # `library/materialise.py` by PATH, not by name. There is a `materialise.py` in
 # THIS directory too, and `fixtures` re-inserts this directory at the head of
@@ -83,7 +85,31 @@ locate_by_filename = library_materialise.locate_by_filename
 JUMPSTART = HERE.parent
 DELETED_RE = re.compile(r"Deleted (\d+)/(\d+) objects")
 OBJECT_LINE_RE = re.compile(r"^-Prefab: ", re.M)
-CONTAINER = "valheim-server-Ulfsland"
+# THE CONTAINER NAME HAS ONE RESOLVER, `terraform/rcon.py`, which derives it
+# from `$VALHEIM_WORLD`.  The literal `"valheim-server-Ulfsland"` that used to
+# sit here was a SECOND source of truth, and the worst possible one to have:
+# with `--world` now a live parameter this module would accept `--world X`,
+# read X's placement records, and send the DELETE commands to Ulfsland's
+# server.  Naming a world you are not talking to is not addressability.
+import rcon as rconmod  # noqa: E402  terraform/
+CONTAINER = rconmod.CONTAINER
+
+
+def require_transport(world: str) -> None:
+    """REFUSE when the world named and the server addressed are not the same.
+
+    `--world` selects the records; `$VALHEIM_WORLD` selects the container.
+    They are two knobs and this stage DELETES OBJECTS, so a disagreement is
+    not a warning.  There is no override: an operator who means it sets both.
+    """
+    if str(rconmod.WORLD) != str(world):
+        raise SystemExit(
+            f"REFUSING: --world {world!r} names the placement records, but the "
+            f"RCON transport is pointed at world {rconmod.WORLD!r} (container "
+            f"{CONTAINER!r}, from $VALHEIM_WORLD). This stage deletes objects; "
+            f"deleting {world!r}'s bodies out of {rconmod.WORLD!r} is not "
+            f"recoverable. Set VALHEIM_WORLD={world} to address that world's "
+            f"server, or drop --world.")
 
 
 def log_tip() -> str:
@@ -98,8 +124,10 @@ def log_tip() -> str:
 
 
 def placement(world: str, preset: str, pid: str) -> dict:
-    doc = yaml.safe_load(
-        (JUMPSTART / "worlds" / world / preset / "placements.yaml").read_text())
+    # Through THE placements reader, so the records' own `world:`/`seed:` is
+    # read.  This stage DELETES objects at the coordinates it finds here; a set
+    # belonging to another world names another world's ground.
+    doc = flattenmod.load_placements(world, preset)
     for p in doc["placements"]:
         if p["id"] == pid:
             return p
@@ -179,7 +207,7 @@ def slices(points: list[tuple[str, float, float, float]], cube_m: float,
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--preset", required=True)
     ap.add_argument("--id", required=True)
     ap.add_argument("--base-y", type=float, action="append", default=[],
@@ -199,8 +227,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--report")
     args = ap.parse_args(argv)
+    _seed, world = worldseed.apply(args)
+    require_transport(world)
 
-    place = placement(args.world, args.preset, args.id)
+    place = placement(world, args.preset, args.id)
     solved = place["solved"]
     cost = solved.get("flatten_cost") or {}
     cx, cz = float(solved["x"]), float(solved["z"])
@@ -263,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # -- the current searched layout
         try:
-            items = dict((stock.load_manifest(args.world, args.preset)
+            items = dict((stock.load_manifest(world, args.preset)
                           .get("items") or {}))
             est = sum(max(1, -(-int(c) // 50)) for c in items.values())
             # A tag is passed because `stock.solve_placement` now REFUSES to

@@ -1,0 +1,375 @@
+# prefabs_in_scene	4872
+
+=== PREFAB	fb_fortress_portcullis
+NODE	fb_fortress_portcullis	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1,1,1	comps=Piece;ZNetView;LODGroup;Door;Animator
+NODE	fb_fortress_portcullis/$hud_snappoint_top	active=0	lpos=0,5.75,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_portcullis/$hud_snappoint_bottom	active=0	lpos=0,0.22,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_portcullis/collider	active=1	lpos=2.41,0,0	lrot=0,0,0	lscale=1,1,1	comps=BoxCollider
+NODE	fb_fortress_portcullis/collider (1)	active=1	lpos=-2.92,0,0	lrot=0,0,0	lscale=1,1,1	comps=BoxCollider
+NODE	fb_fortress_portcullis/New	active=1	lpos=0,0,0.02	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_portcullis/New/Cube	active=1	lpos=2.725,3.1601,0	lrot=0,0,0	lscale=0.3217,5.84605,0.20841	comps=MeshFilter;MeshRenderer
+NODE	fb_fortress_portcullis/New/Cube (1)	active=1	lpos=-2.604,3.1601,0	lrot=0,0,0	lscale=0.3217,5.84605,0.20841	comps=MeshFilter;MeshRenderer
+NODE	fb_fortress_portcullis/door	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1,1,1	comps=Rigidbody;BoxCollider
+NODE	fb_fortress_portcullis/door/portcullis	active=1	lpos=0,0,0	lrot=270,90,0	lscale=100,100,100	comps=MeshFilter;MeshRenderer
+DOOR	m_name=$piece_fb_portcullis	m_keyItem=null	m_consumeKey=False	m_canNotBeClosed=False	m_invertedOpenClosedText=False	m_checkGuardStone=True	m_hoverOffset=0	m_openEnable=null	m_openEffects=EffectList	m_closeEffects=EffectList	m_lockedEffects=EffectList	m_nview=null	m_animator=null	m_lastDataRevision=4294967295
+ANIMATOR	path=fb_fortress_portcullis	controller=fb_portcullis_animator
+CLIP	portcullis_closed	len=0	wrap=Default
+CLIP	portcullis_open_forward	len=0	wrap=Default
+CLIP	portcullis_opening_forward	len=2.33333	wrap=Default
+CLIP	portcullis_closing_forward	len=1	wrap=Default
+CLIP	portcullis_opening_backward	len=2.33333	wrap=Default
+CLIP	portcullis_closing_backward	len=1	wrap=Default
+CLIP	portcullis_open_backward	len=0	wrap=Default
+COL	ASSET	fb_fortress_portcullis/collider	box	trig=0	enabled=1	active=0	aabb=2.53573,0.23615,-0.07058..2.91,6.07021,0.13192	2.53573,0.23615,-0.07058	2.91,0.23615,-0.07058	2.53573,6.07021,-0.07058	2.91,6.07021,-0.07058	2.53573,0.23615,0.13192	2.91,0.23615,0.13192	2.53573,6.07021,0.13192	2.91,6.07021,0.13192
+COL	ASSET	fb_fortress_portcullis/collider (1)	box	trig=0	enabled=1	active=0	aabb=-2.79427,0.23615,-0.07058..-2.42,6.07021,0.13192	-2.79427,0.23615,-0.07058	-2.42,0.23615,-0.07058	-2.79427,6.07021,-0.07058	-2.42,6.07021,-0.07058	-2.79427,0.23615,0.13192	-2.42,0.23615,0.13192	-2.79427,6.07021,0.13192	-2.42,6.07021,0.13192
+COL	ASSET	fb_fortress_portcullis/door	box	trig=0	enabled=1	active=0	aabb=-2.47495,0.24422,-0.05245..2.64786,5.75114,0.05732	-2.47495,0.24422,-0.05245	2.64786,0.24422,-0.05245	-2.47495,5.75114,-0.05245	2.64786,5.75114,-0.05245	-2.47495,0.24422,0.05732	2.64786,0.24422,0.05732	-2.47495,5.75114,0.05732	2.64786,5.75114,0.05732
+CLONE	stripped_monobehaviours=3
+STATE	0	pass=0	norm_time=19.99998	shortHash=80170468
+POSE	0	0	fb_fortress_portcullis__probe	lpos=0,0,0	lrot=0,0,0
+POSE	0	0	fb_fortress_portcullis__probe/$hud_snappoint_top	lpos=0,5.75,0	lrot=0,0,0
+POSE	0	0	fb_fortress_portcullis__probe/$hud_snappoint_bottom	lpos=0,0.22,0	lrot=0,0,0
+POSE	0	0	fb_fortress_portcullis__probe/collider	lpos=2.41,0,0	lrot=0,0,0
+POSE	0	0	fb_fortress_portcullis__probe/collider (1)	lpos=-2.92,0,0	lrot=0,0,0
+POSE	0	0	fb_fortress_portcullis__probe/New	lpos=0,0,0.02	lrot=0,0,0
+POSE	0	0	fb_fortress_portcullis__probe/New/Cube	lpos=2.725,3.1601,0	lrot=0,0,0
+POSE	0	0	fb_fortress_portcullis__probe/New/Cube (1)	lpos=-2.604,3.1601,0	lrot=0,0,0
+POSE	0	0	fb_fortress_portcullis__probe/door	lpos=0,0,0	lrot=0,0,0
+POSE	0	0	fb_fortress_portcullis__probe/door/portcullis	lpos=0,0,0	lrot=270,90,0
+COL	CLONE_s0_p0	fb_fortress_portcullis__probe/collider	box	trig=0	enabled=1	active=1	aabb=2.53573,0.23615,-0.07058..2.91,6.07021,0.13192	2.53573,0.23615,-0.07058	2.91,0.23615,-0.07058	2.53573,6.07021,-0.07058	2.91,6.07021,-0.07058	2.53573,0.23615,0.13192	2.91,0.23615,0.13192	2.53573,6.07021,0.13192	2.91,6.07021,0.13192
+COL	CLONE_s0_p0	fb_fortress_portcullis__probe/collider (1)	box	trig=0	enabled=1	active=1	aabb=-2.79427,0.23615,-0.07058..-2.42,6.07021,0.13192	-2.79427,0.23615,-0.07058	-2.42,0.23615,-0.07058	-2.79427,6.07021,-0.07058	-2.42,6.07021,-0.07058	-2.79427,0.23615,0.13192	-2.42,0.23615,0.13192	-2.79427,6.07021,0.13192	-2.42,6.07021,0.13192
+COL	CLONE_s0_p0	fb_fortress_portcullis__probe/door	box	trig=0	enabled=1	active=1	aabb=-2.47495,0.24422,-0.05245..2.64786,5.75114,0.05732	-2.47495,0.24422,-0.05245	2.64786,0.24422,-0.05245	-2.47495,5.75114,-0.05245	2.64786,5.75114,-0.05245	-2.47495,0.24422,0.05732	2.64786,0.24422,0.05732	-2.47495,5.75114,0.05732	2.64786,5.75114,0.05732
+STATE	1	pass=1	norm_time=17.66669	shortHash=-1968839819
+POSE	1	1	fb_fortress_portcullis__probe	lpos=0,0,0	lrot=0,0,0
+POSE	1	1	fb_fortress_portcullis__probe/$hud_snappoint_top	lpos=0,5.75,0	lrot=0,0,0
+POSE	1	1	fb_fortress_portcullis__probe/$hud_snappoint_bottom	lpos=0,0.22,0	lrot=0,0,0
+POSE	1	1	fb_fortress_portcullis__probe/collider	lpos=2.41,0,0	lrot=0,0,0
+POSE	1	1	fb_fortress_portcullis__probe/collider (1)	lpos=-2.92,0,0	lrot=0,0,0
+POSE	1	1	fb_fortress_portcullis__probe/New	lpos=0,0,0.02	lrot=0,0,0
+POSE	1	1	fb_fortress_portcullis__probe/New/Cube	lpos=2.725,3.1601,0	lrot=0,0,0
+POSE	1	1	fb_fortress_portcullis__probe/New/Cube (1)	lpos=-2.604,3.1601,0	lrot=0,0,0
+POSE	1	1	fb_fortress_portcullis__probe/door	lpos=0,3.7431,0	lrot=0,0,0
+POSE	1	1	fb_fortress_portcullis__probe/door/portcullis	lpos=0,0,0	lrot=270,90,0
+COL	CLONE_s1_p1	fb_fortress_portcullis__probe/collider	box	trig=0	enabled=1	active=1	aabb=2.53573,0.23615,-0.07058..2.91,6.07021,0.13192	2.53573,0.23615,-0.07058	2.91,0.23615,-0.07058	2.53573,6.07021,-0.07058	2.91,6.07021,-0.07058	2.53573,0.23615,0.13192	2.91,0.23615,0.13192	2.53573,6.07021,0.13192	2.91,6.07021,0.13192
+COL	CLONE_s1_p1	fb_fortress_portcullis__probe/collider (1)	box	trig=0	enabled=1	active=1	aabb=-2.79427,0.23615,-0.07058..-2.42,6.07021,0.13192	-2.79427,0.23615,-0.07058	-2.42,0.23615,-0.07058	-2.79427,6.07021,-0.07058	-2.42,6.07021,-0.07058	-2.79427,0.23615,0.13192	-2.42,0.23615,0.13192	-2.79427,6.07021,0.13192	-2.42,6.07021,0.13192
+COL	CLONE_s1_p1	fb_fortress_portcullis__probe/door	box	trig=0	enabled=1	active=1	aabb=-2.47495,3.98732,-0.05245..2.64786,9.49424,0.05732	-2.47495,3.98732,-0.05245	2.64786,3.98732,-0.05245	-2.47495,9.49424,-0.05245	2.64786,9.49424,-0.05245	-2.47495,3.98732,0.05732	2.64786,3.98732,0.05732	-2.47495,9.49424,0.05732	2.64786,9.49424,0.05732
+STATE	-1	pass=2	norm_time=16.6167	shortHash=1985811515
+POSE	-1	2	fb_fortress_portcullis__probe	lpos=0,0,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_portcullis__probe/$hud_snappoint_top	lpos=0,5.75,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_portcullis__probe/$hud_snappoint_bottom	lpos=0,0.22,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_portcullis__probe/collider	lpos=2.41,0,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_portcullis__probe/collider (1)	lpos=-2.92,0,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_portcullis__probe/New	lpos=0,0,0.02	lrot=0,0,0
+POSE	-1	2	fb_fortress_portcullis__probe/New/Cube	lpos=2.725,3.1601,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_portcullis__probe/New/Cube (1)	lpos=-2.604,3.1601,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_portcullis__probe/door	lpos=0,3.7431,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_portcullis__probe/door/portcullis	lpos=0,0,0	lrot=270,90,0
+COL	CLONE_s-1_p2	fb_fortress_portcullis__probe/collider	box	trig=0	enabled=1	active=1	aabb=2.53573,0.23615,-0.07058..2.91,6.07021,0.13192	2.53573,0.23615,-0.07058	2.91,0.23615,-0.07058	2.53573,6.07021,-0.07058	2.91,6.07021,-0.07058	2.53573,0.23615,0.13192	2.91,0.23615,0.13192	2.53573,6.07021,0.13192	2.91,6.07021,0.13192
+COL	CLONE_s-1_p2	fb_fortress_portcullis__probe/collider (1)	box	trig=0	enabled=1	active=1	aabb=-2.79427,0.23615,-0.07058..-2.42,6.07021,0.13192	-2.79427,0.23615,-0.07058	-2.42,0.23615,-0.07058	-2.79427,6.07021,-0.07058	-2.42,6.07021,-0.07058	-2.79427,0.23615,0.13192	-2.42,0.23615,0.13192	-2.79427,6.07021,0.13192	-2.42,6.07021,0.13192
+COL	CLONE_s-1_p2	fb_fortress_portcullis__probe/door	box	trig=0	enabled=1	active=1	aabb=-2.47495,3.98732,-0.05245..2.64786,9.49424,0.05732	-2.47495,3.98732,-0.05245	2.64786,3.98732,-0.05245	-2.47495,9.49424,-0.05245	2.64786,9.49424,-0.05245	-2.47495,3.98732,0.05732	2.64786,3.98732,0.05732	-2.47495,9.49424,0.05732	2.64786,9.49424,0.05732
+STATE	0	pass=3	norm_time=19	shortHash=80170468
+POSE	0	3	fb_fortress_portcullis__probe	lpos=0,0,0	lrot=0,0,0
+POSE	0	3	fb_fortress_portcullis__probe/$hud_snappoint_top	lpos=0,5.75,0	lrot=0,0,0
+POSE	0	3	fb_fortress_portcullis__probe/$hud_snappoint_bottom	lpos=0,0.22,0	lrot=0,0,0
+POSE	0	3	fb_fortress_portcullis__probe/collider	lpos=2.41,0,0	lrot=0,0,0
+POSE	0	3	fb_fortress_portcullis__probe/collider (1)	lpos=-2.92,0,0	lrot=0,0,0
+POSE	0	3	fb_fortress_portcullis__probe/New	lpos=0,0,0.02	lrot=0,0,0
+POSE	0	3	fb_fortress_portcullis__probe/New/Cube	lpos=2.725,3.1601,0	lrot=0,0,0
+POSE	0	3	fb_fortress_portcullis__probe/New/Cube (1)	lpos=-2.604,3.1601,0	lrot=0,0,0
+POSE	0	3	fb_fortress_portcullis__probe/door	lpos=0,0,0	lrot=0,0,0
+POSE	0	3	fb_fortress_portcullis__probe/door/portcullis	lpos=0,0,0	lrot=270,90,0
+COL	CLONE_s0_p3	fb_fortress_portcullis__probe/collider	box	trig=0	enabled=1	active=1	aabb=2.53573,0.23615,-0.07058..2.91,6.07021,0.13192	2.53573,0.23615,-0.07058	2.91,0.23615,-0.07058	2.53573,6.07021,-0.07058	2.91,6.07021,-0.07058	2.53573,0.23615,0.13192	2.91,0.23615,0.13192	2.53573,6.07021,0.13192	2.91,6.07021,0.13192
+COL	CLONE_s0_p3	fb_fortress_portcullis__probe/collider (1)	box	trig=0	enabled=1	active=1	aabb=-2.79427,0.23615,-0.07058..-2.42,6.07021,0.13192	-2.79427,0.23615,-0.07058	-2.42,0.23615,-0.07058	-2.79427,6.07021,-0.07058	-2.42,6.07021,-0.07058	-2.79427,0.23615,0.13192	-2.42,0.23615,0.13192	-2.79427,6.07021,0.13192	-2.42,6.07021,0.13192
+COL	CLONE_s0_p3	fb_fortress_portcullis__probe/door	box	trig=0	enabled=1	active=1	aabb=-2.47495,0.24422,-0.05245..2.64786,5.75114,0.05732	-2.47495,0.24422,-0.05245	2.64786,0.24422,-0.05245	-2.47495,5.75114,-0.05245	2.64786,5.75114,-0.05245	-2.47495,0.24422,0.05732	2.64786,0.24422,0.05732	-2.47495,5.75114,0.05732	2.64786,5.75114,0.05732
+
+=== PREFAB	fb_fortress_gates
+NODE	fb_fortress_gates	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1,1,1	comps=Piece;ZNetView;Door;Animator
+NODE	fb_fortress_gates/_snappoint_door (1)	active=0	lpos=-1.52,3,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_gates/_snappoint_door (2)	active=0	lpos=-1.52,1,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_gates/_snappoint_door (3)	active=0	lpos=1.52,3,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_gates/_snappoint_door (4)	active=0	lpos=1.52,1,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_gates/collider (1)	active=1	lpos=1.52,0,0	lrot=0,0,0	lscale=1,1,1	comps=BoxCollider
+NODE	fb_fortress_gates/collider (2)	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1,1,1	comps=BoxCollider
+NODE	fb_fortress_gates/Door1	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1.04,1.0875,1	comps=Rigidbody
+NODE	fb_fortress_gates/Door1/Gate_Left	active=1	lpos=1.42,2.69463,-0.10043	lrot=0,0,0	lscale=1,1,1	comps=MeshFilter;MeshRenderer;BoxCollider
+NODE	fb_fortress_gates/Door2	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1.04,1.0875,1	comps=Rigidbody
+NODE	fb_fortress_gates/Door2/Gate_Right	active=1	lpos=-1.42875,2.69463,-0.10043	lrot=0,0,0	lscale=1,1,1	comps=MeshFilter;MeshRenderer;BoxCollider
+DOOR	m_name=$piece_fb_wall_gates	m_keyItem=null	m_consumeKey=False	m_canNotBeClosed=False	m_invertedOpenClosedText=False	m_checkGuardStone=True	m_hoverOffset=0	m_openEnable=null	m_openEffects=EffectList	m_closeEffects=EffectList	m_lockedEffects=EffectList	m_nview=null	m_animator=null	m_lastDataRevision=4294967295
+ANIMATOR	path=fb_fortress_gates	controller=double_door_animator
+CLIP	double_closed_fb	len=0	wrap=Default
+CLIP	double_open_forward_fb	len=0	wrap=Default
+CLIP	double_opening_forward_fb	len=1	wrap=Default
+CLIP	double_closing_forward_fb	len=1	wrap=Default
+CLIP	double_opening_backward_fb	len=1	wrap=Default
+CLIP	double_closing_backward_fb	len=1	wrap=Default
+CLIP	double_open_backward_fb	len=0	wrap=Default
+COL	ASSET	fb_fortress_gates/collider (1)	box	trig=0	enabled=1	active=0	aabb=1.52502,0.0078,-0.06488..1.7845,6.00569,0.05767	1.52502,0.0078,-0.06488	1.7845,0.0078,-0.06488	1.52502,6.00569,-0.06488	1.7845,6.00569,-0.06488	1.52502,0.0078,0.05767	1.7845,0.0078,0.05767	1.52502,6.00569,0.05767	1.7845,6.00569,0.05767
+COL	ASSET	fb_fortress_gates/collider (2)	box	trig=0	enabled=1	active=0	aabb=-1.77327,0.0078,-0.05729..-1.53298,6.00181,0.06294	-1.77327,0.0078,-0.05729	-1.53298,0.0078,-0.05729	-1.77327,6.00181,-0.05729	-1.53298,6.00181,-0.05729	-1.77327,0.0078,0.06294	-1.53298,0.0078,0.06294	-1.77327,6.00181,0.06294	-1.53298,6.00181,0.06294
+COL	ASSET	fb_fortress_gates/Door1/Gate_Left	box	trig=0	enabled=1	active=0	aabb=-0.00455,0,-0.14869..1.52623,5.98125,0.08377	-0.00455,0,-0.14869	1.52623,0,-0.14869	-0.00455,5.98125,-0.14869	1.52623,5.98125,-0.14869	-0.00455,0,0.08377	1.52623,0,0.08377	-0.00455,5.98125,0.08377	1.52623,5.98125,0.08377
+COL	ASSET	fb_fortress_gates/Door2/Gate_Right	box	trig=0	enabled=1	active=0	aabb=-1.53533,0,-0.14869..-0.00455,5.98125,0.08377	-1.53533,0,-0.14869	-0.00455,0,-0.14869	-1.53533,5.98125,-0.14869	-0.00455,5.98125,-0.14869	-1.53533,0,0.08377	-0.00455,0,0.08377	-1.53533,5.98125,0.08377	-0.00455,5.98125,0.08377
+CLONE	stripped_monobehaviours=3
+STATE	0	pass=0	norm_time=19.99998	shortHash=-2091153735
+POSE	0	0	fb_fortress_gates__probe	lpos=0,0,0	lrot=0,0,0
+POSE	0	0	fb_fortress_gates__probe/_snappoint_door (1)	lpos=-1.52,3,0	lrot=0,0,0
+POSE	0	0	fb_fortress_gates__probe/_snappoint_door (2)	lpos=-1.52,1,0	lrot=0,0,0
+POSE	0	0	fb_fortress_gates__probe/_snappoint_door (3)	lpos=1.52,3,0	lrot=0,0,0
+POSE	0	0	fb_fortress_gates__probe/_snappoint_door (4)	lpos=1.52,1,0	lrot=0,0,0
+POSE	0	0	fb_fortress_gates__probe/collider (1)	lpos=1.52,0,0	lrot=0,0,0
+POSE	0	0	fb_fortress_gates__probe/collider (2)	lpos=0,0,0	lrot=0,0,0
+POSE	0	0	fb_fortress_gates__probe/Door1	lpos=0,0,0	lrot=0,0,0
+POSE	0	0	fb_fortress_gates__probe/Door1/Gate_Left	lpos=1.42,2.69463,-0.10043	lrot=0,0,0
+POSE	0	0	fb_fortress_gates__probe/Door2	lpos=0,0,0	lrot=0,0,0
+POSE	0	0	fb_fortress_gates__probe/Door2/Gate_Right	lpos=-1.42875,2.69463,-0.10043	lrot=0,0,0
+COL	CLONE_s0_p0	fb_fortress_gates__probe/collider (1)	box	trig=0	enabled=1	active=1	aabb=1.52502,0.0078,-0.06488..1.7845,6.00569,0.05767	1.52502,0.0078,-0.06488	1.7845,0.0078,-0.06488	1.52502,6.00569,-0.06488	1.7845,6.00569,-0.06488	1.52502,0.0078,0.05767	1.7845,0.0078,0.05767	1.52502,6.00569,0.05767	1.7845,6.00569,0.05767
+COL	CLONE_s0_p0	fb_fortress_gates__probe/collider (2)	box	trig=0	enabled=1	active=1	aabb=-1.77327,0.0078,-0.05729..-1.53298,6.00181,0.06294	-1.77327,0.0078,-0.05729	-1.53298,0.0078,-0.05729	-1.77327,6.00181,-0.05729	-1.53298,6.00181,-0.05729	-1.77327,0.0078,0.06294	-1.53298,0.0078,0.06294	-1.77327,6.00181,0.06294	-1.53298,6.00181,0.06294
+COL	CLONE_s0_p0	fb_fortress_gates__probe/Door1/Gate_Left	box	trig=0	enabled=1	active=1	aabb=-0.00455,0,-0.14869..1.52623,5.98125,0.08377	-0.00455,0,-0.14869	1.52623,0,-0.14869	-0.00455,5.98125,-0.14869	1.52623,5.98125,-0.14869	-0.00455,0,0.08377	1.52623,0,0.08377	-0.00455,5.98125,0.08377	1.52623,5.98125,0.08377
+COL	CLONE_s0_p0	fb_fortress_gates__probe/Door2/Gate_Right	box	trig=0	enabled=1	active=1	aabb=-1.53533,0,-0.14869..-0.00455,5.98125,0.08377	-1.53533,0,-0.14869	-0.00455,0,-0.14869	-1.53533,5.98125,-0.14869	-0.00455,5.98125,-0.14869	-1.53533,0,0.08377	-0.00455,0,0.08377	-1.53533,5.98125,0.08377	-0.00455,5.98125,0.08377
+STATE	1	pass=1	norm_time=19	shortHash=-1214483825
+POSE	1	1	fb_fortress_gates__probe	lpos=0,0,0	lrot=0,0,0
+POSE	1	1	fb_fortress_gates__probe/_snappoint_door (1)	lpos=-1.52,3,0	lrot=0,0,0
+POSE	1	1	fb_fortress_gates__probe/_snappoint_door (2)	lpos=-1.52,1,0	lrot=0,0,0
+POSE	1	1	fb_fortress_gates__probe/_snappoint_door (3)	lpos=1.52,3,0	lrot=0,0,0
+POSE	1	1	fb_fortress_gates__probe/_snappoint_door (4)	lpos=1.52,1,0	lrot=0,0,0
+POSE	1	1	fb_fortress_gates__probe/collider (1)	lpos=1.52,0,0	lrot=0,0,0
+POSE	1	1	fb_fortress_gates__probe/collider (2)	lpos=0,0,0	lrot=0,0,0
+POSE	1	1	fb_fortress_gates__probe/Door1	lpos=0,0,0	lrot=0,0,0
+POSE	1	1	fb_fortress_gates__probe/Door1/Gate_Left	lpos=1.42,2.69463,-0.10043	lrot=0,90,0
+POSE	1	1	fb_fortress_gates__probe/Door2	lpos=0,0,0	lrot=0,0,0
+POSE	1	1	fb_fortress_gates__probe/Door2/Gate_Right	lpos=-1.42875,2.69463,-0.10043	lrot=0,270,0
+COL	CLONE_s1_p1	fb_fortress_gates__probe/collider (1)	box	trig=0	enabled=1	active=1	aabb=1.52502,0.0078,-0.06488..1.7845,6.00569,0.05767	1.52502,0.0078,-0.06488	1.7845,0.0078,-0.06488	1.52502,6.00569,-0.06488	1.7845,6.00569,-0.06488	1.52502,0.0078,0.05767	1.7845,0.0078,0.05767	1.52502,6.00569,0.05767	1.7845,6.00569,0.05767
+COL	CLONE_s1_p1	fb_fortress_gates__probe/collider (2)	box	trig=0	enabled=1	active=1	aabb=-1.77327,0.0078,-0.05729..-1.53298,6.00181,0.06294	-1.77327,0.0078,-0.05729	-1.53298,0.0078,-0.05729	-1.77327,6.00181,-0.05729	-1.53298,6.00181,-0.05729	-1.77327,0.0078,0.06294	-1.53298,0.0078,0.06294	-1.77327,6.00181,0.06294	-1.53298,6.00181,0.06294
+COL	CLONE_s1_p1	fb_fortress_gates__probe/Door1/Gate_Left	box	trig=0	enabled=1	active=1	aabb=1.42661,0,-0.14796..1.66837,5.98125,1.32395	1.42661,0,1.32395	1.42661,0,-0.14796	1.42661,5.98125,1.32395	1.42661,5.98125,-0.14796	1.66837,0,1.32395	1.66837,0,-0.14796	1.66837,5.98125,1.32395	1.66837,5.98125,-0.14796
+COL	CLONE_s1_p1	fb_fortress_gates__probe/Door2/Gate_Right	box	trig=0	enabled=1	active=1	aabb=-1.67748,0,-0.14796..-1.43571,5.98125,1.32395	-1.43571,0,-0.14796	-1.43571,0,1.32395	-1.43571,5.98125,-0.14796	-1.43571,5.98125,1.32395	-1.67748,0,-0.14796	-1.67748,0,1.32395	-1.67748,5.98125,-0.14796	-1.67748,5.98125,1.32395
+STATE	-1	pass=2	norm_time=17.95001	shortHash=721958568
+POSE	-1	2	fb_fortress_gates__probe	lpos=0,0,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_gates__probe/_snappoint_door (1)	lpos=-1.52,3,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_gates__probe/_snappoint_door (2)	lpos=-1.52,1,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_gates__probe/_snappoint_door (3)	lpos=1.52,3,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_gates__probe/_snappoint_door (4)	lpos=1.52,1,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_gates__probe/collider (1)	lpos=1.52,0,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_gates__probe/collider (2)	lpos=0,0,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_gates__probe/Door1	lpos=0,0,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_gates__probe/Door1/Gate_Left	lpos=1.42,2.69463,-0.10043	lrot=0,270,0
+POSE	-1	2	fb_fortress_gates__probe/Door2	lpos=0,0,0	lrot=0,0,0
+POSE	-1	2	fb_fortress_gates__probe/Door2/Gate_Right	lpos=-1.42875,2.69463,-0.10043	lrot=0,90,0
+COL	CLONE_s-1_p2	fb_fortress_gates__probe/collider (1)	box	trig=0	enabled=1	active=1	aabb=1.52502,0.0078,-0.06488..1.7845,6.00569,0.05767	1.52502,0.0078,-0.06488	1.7845,0.0078,-0.06488	1.52502,6.00569,-0.06488	1.7845,6.00569,-0.06488	1.52502,0.0078,0.05767	1.7845,0.0078,0.05767	1.52502,6.00569,0.05767	1.7845,6.00569,0.05767
+COL	CLONE_s-1_p2	fb_fortress_gates__probe/collider (2)	box	trig=0	enabled=1	active=1	aabb=-1.77327,0.0078,-0.05729..-1.53298,6.00181,0.06294	-1.77327,0.0078,-0.05729	-1.53298,0.0078,-0.05729	-1.77327,6.00181,-0.05729	-1.53298,6.00181,-0.05729	-1.77327,0.0078,0.06294	-1.53298,0.0078,0.06294	-1.77327,6.00181,0.06294	-1.53298,6.00181,0.06294
+COL	CLONE_s-1_p2	fb_fortress_gates__probe/Door1/Gate_Left	box	trig=0	enabled=1	active=1	aabb=1.28523,0,-1.52481..1.52699,5.98125,-0.0529	1.52699,0,-1.52481	1.52699,0,-0.0529	1.52699,5.98125,-1.52481	1.52699,5.98125,-0.0529	1.28523,0,-1.52481	1.28523,0,-0.0529	1.28523,5.98125,-1.52481	1.28523,5.98125,-0.0529
+COL	CLONE_s-1_p2	fb_fortress_gates__probe/Door2/Gate_Right	box	trig=0	enabled=1	active=1	aabb=-1.5361,0,-1.52481..-1.29433,5.98125,-0.0529	-1.5361,0,-0.0529	-1.5361,0,-1.52481	-1.5361,5.98125,-0.0529	-1.5361,5.98125,-1.52481	-1.29433,0,-0.0529	-1.29433,0,-1.52481	-1.29433,5.98125,-0.0529	-1.29433,5.98125,-1.52481
+STATE	0	pass=3	norm_time=19	shortHash=-2091153735
+POSE	0	3	fb_fortress_gates__probe	lpos=0,0,0	lrot=0,0,0
+POSE	0	3	fb_fortress_gates__probe/_snappoint_door (1)	lpos=-1.52,3,0	lrot=0,0,0
+POSE	0	3	fb_fortress_gates__probe/_snappoint_door (2)	lpos=-1.52,1,0	lrot=0,0,0
+POSE	0	3	fb_fortress_gates__probe/_snappoint_door (3)	lpos=1.52,3,0	lrot=0,0,0
+POSE	0	3	fb_fortress_gates__probe/_snappoint_door (4)	lpos=1.52,1,0	lrot=0,0,0
+POSE	0	3	fb_fortress_gates__probe/collider (1)	lpos=1.52,0,0	lrot=0,0,0
+POSE	0	3	fb_fortress_gates__probe/collider (2)	lpos=0,0,0	lrot=0,0,0
+POSE	0	3	fb_fortress_gates__probe/Door1	lpos=0,0,0	lrot=0,0,0
+POSE	0	3	fb_fortress_gates__probe/Door1/Gate_Left	lpos=1.42,2.69463,-0.10043	lrot=0,0,0
+POSE	0	3	fb_fortress_gates__probe/Door2	lpos=0,0,0	lrot=0,0,0
+POSE	0	3	fb_fortress_gates__probe/Door2/Gate_Right	lpos=-1.42875,2.69463,-0.10043	lrot=0,0,0
+COL	CLONE_s0_p3	fb_fortress_gates__probe/collider (1)	box	trig=0	enabled=1	active=1	aabb=1.52502,0.0078,-0.06488..1.7845,6.00569,0.05767	1.52502,0.0078,-0.06488	1.7845,0.0078,-0.06488	1.52502,6.00569,-0.06488	1.7845,6.00569,-0.06488	1.52502,0.0078,0.05767	1.7845,0.0078,0.05767	1.52502,6.00569,0.05767	1.7845,6.00569,0.05767
+COL	CLONE_s0_p3	fb_fortress_gates__probe/collider (2)	box	trig=0	enabled=1	active=1	aabb=-1.77327,0.0078,-0.05729..-1.53298,6.00181,0.06294	-1.77327,0.0078,-0.05729	-1.53298,0.0078,-0.05729	-1.77327,6.00181,-0.05729	-1.53298,6.00181,-0.05729	-1.77327,0.0078,0.06294	-1.53298,0.0078,0.06294	-1.77327,6.00181,0.06294	-1.53298,6.00181,0.06294
+COL	CLONE_s0_p3	fb_fortress_gates__probe/Door1/Gate_Left	box	trig=0	enabled=1	active=1	aabb=-0.00455,0,-0.14869..1.52623,5.98125,0.08377	-0.00455,0,-0.14869	1.52623,0,-0.14869	-0.00455,5.98125,-0.14869	1.52623,5.98125,-0.14869	-0.00455,0,0.08377	1.52623,0,0.08377	-0.00455,5.98125,0.08377	1.52623,5.98125,0.08377
+COL	CLONE_s0_p3	fb_fortress_gates__probe/Door2/Gate_Right	box	trig=0	enabled=1	active=1	aabb=-1.53533,0,-0.14869..-0.00455,5.98125,0.08377	-1.53533,0,-0.14869	-0.00455,0,-0.14869	-1.53533,5.98125,-0.14869	-0.00455,5.98125,-0.14869	-1.53533,0,0.08377	-0.00455,0,0.08377	-1.53533,5.98125,0.08377	-0.00455,5.98125,0.08377
+MISSING	GB_Ship_Gate
+
+=== PREFAB	fb_fortress_wall_portcullis
+NODE	fb_fortress_wall_portcullis	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1,1,1	comps=Piece;ZNetView
+NODE	fb_fortress_wall_portcullis/_snappoint (1)	active=0	lpos=10,8,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint (2)	active=0	lpos=-10,8,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint (3)	active=0	lpos=10,6,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint (4)	active=0	lpos=-10,6,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint (5)	active=0	lpos=10,4,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint (6)	active=0	lpos=-10,4,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint (7)	active=0	lpos=10,2,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint (8)	active=0	lpos=-10,2,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint (9)	active=0	lpos=10,0,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint (10)	active=0	lpos=-10,0,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint_portcullis (1)	active=0	lpos=0,0.22,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/_snappoint_portcullis (2)	active=0	lpos=0,5.75,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	fb_fortress_wall_portcullis/boxcollider (1)	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1,1,1	comps=BoxCollider
+NODE	fb_fortress_wall_portcullis/boxcollider (2)	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1,1,1	comps=BoxCollider
+NODE	fb_fortress_wall_portcullis/meshcollider	active=1	lpos=0,0,0	lrot=270,0,0	lscale=100,100,100	comps=MeshFilter;MeshCollider
+NODE	fb_fortress_wall_portcullis/New	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1,1,1	comps=LODGroup
+NODE	fb_fortress_wall_portcullis/New/fb_fortress_wall_portcullis	active=1	lpos=0,0,0	lrot=270,0,0	lscale=100,100,100	comps=MeshFilter;MeshRenderer
+DOOR	none
+ANIMATOR	none
+COL	ASSET	fb_fortress_wall_portcullis/boxcollider (1)	box	trig=0	enabled=1	active=0	aabb=3.195,0.00879,-1.22338..10.00448,10.00879,1.23982	3.195,0.00879,-1.22338	10.00448,0.00879,-1.22338	3.195,10.00879,-1.22338	10.00448,10.00879,-1.22338	3.195,0.00879,1.23982	10.00448,0.00879,1.23982	3.195,10.00879,1.23982	10.00448,10.00879,1.23982
+COL	ASSET	fb_fortress_wall_portcullis/boxcollider (2)	box	trig=0	enabled=1	active=0	aabb=-10.00247,0.00879,-1.22338..-3.6563,10.00879,1.23982	-10.00247,0.00879,-1.22338	-3.6563,0.00879,-1.22338	-10.00247,10.00879,-1.22338	-3.6563,10.00879,-1.22338	-10.00247,0.00879,1.23982	-3.6563,0.00879,1.23982	-10.00247,10.00879,1.23982	-3.6563,10.00879,1.23982
+COL	ASSET	fb_fortress_wall_portcullis/meshcollider	mesh	trig=0	enabled=1	active=0	aabb=-10,0,-3.39985..10,11.86628,3.39985	-10,0,3.39985	10,0,3.39985	-10,0,-3.39985	10,0,-3.39985	-10,11.86628,3.39985	10,11.86628,3.39985	-10,11.86628,-3.39985	10,11.86628,-3.39985
+CLONE	stripped_monobehaviours=2
+CLONE	no animator; open pose unmeasurable
+COL	CLONE_STATIC	fb_fortress_wall_portcullis__probe/boxcollider (1)	box	trig=0	enabled=1	active=1	aabb=3.195,0.00879,-1.22338..10.00448,10.00879,1.23982	3.195,0.00879,-1.22338	10.00448,0.00879,-1.22338	3.195,10.00879,-1.22338	10.00448,10.00879,-1.22338	3.195,0.00879,1.23982	10.00448,0.00879,1.23982	3.195,10.00879,1.23982	10.00448,10.00879,1.23982
+COL	CLONE_STATIC	fb_fortress_wall_portcullis__probe/boxcollider (2)	box	trig=0	enabled=1	active=1	aabb=-10.00247,0.00879,-1.22338..-3.6563,10.00879,1.23982	-10.00247,0.00879,-1.22338	-3.6563,0.00879,-1.22338	-10.00247,10.00879,-1.22338	-3.6563,10.00879,-1.22338	-10.00247,0.00879,1.23982	-3.6563,0.00879,1.23982	-10.00247,10.00879,1.23982	-3.6563,10.00879,1.23982
+COL	CLONE_STATIC	fb_fortress_wall_portcullis__probe/meshcollider	mesh	trig=0	enabled=1	active=1	aabb=-10,0,-3.39985..10,11.86628,3.39985	-10,0,3.39985	10,0,3.39985	-10,0,-3.39985	10,0,-3.39985	-10,11.86628,3.39985	10,11.86628,3.39985	-10,11.86628,-3.39985	10,11.86628,-3.39985
+
+=== PREFAB	wood_door
+NODE	wood_door	active=1	lpos=0,51,0	lrot=0,0,0	lscale=1,1,1	comps=Piece;ZNetView;WearNTear;LODGroup;Door;Animator
+NODE	wood_door/pole_top_snow	active=0	lpos=0.862,0.804,0	lrot=0,0,0	lscale=0.2684,1,0.46703	comps=MeshFilter;MeshRenderer
+NODE	wood_door/pole_top_snow/pole_top_snow (1)	active=1	lpos=-6.39346,0,0	lrot=0,0,0	lscale=1,1,1	comps=MeshFilter;MeshRenderer
+NODE	wood_door/$hud_snappoint_top 1	active=0	lpos=1,1,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	wood_door/$hud_snappoint_top 2	active=0	lpos=-1,1,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	wood_door/$hud_snappoint_bottom $hud_snappoint_center 1	active=0	lpos=1,-1,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	wood_door/$hud_snappoint_bottom $hud_snappoint_center 2	active=0	lpos=-1,-1,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	wood_door/$hud_snappoint_bottom $hud_snappoint_corner 1	active=0	lpos=1,-1,0.264	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	wood_door/$hud_snappoint_bottom $hud_snappoint_corner 3	active=0	lpos=-1,-1,0.264	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	wood_door/$hud_snappoint_bottom $hud_snappoint_corner 2	active=0	lpos=1,-1,-0.264	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	wood_door/$hud_snappoint_bottom $hud_snappoint_corner 4	active=0	lpos=-1,-1,-0.264	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	wood_door/door	active=1	lpos=0.686,0,0	lrot=0,0,0	lscale=1,1,1	comps=BoxCollider;Rigidbody
+NODE	wood_door/door/plank (1)	active=1	lpos=-0.686,0,0	lrot=90,90,0	lscale=0.1,0.5,2	comps=MeshFilter;MeshRenderer
+NODE	wood_door/door/plank (2)	active=1	lpos=-0.186,0,0	lrot=90,90,0	lscale=0.1,0.5,2	comps=MeshFilter;MeshRenderer
+NODE	wood_door/door/plank (3)	active=1	lpos=-1.186,0,0	lrot=90,90,0	lscale=0.1,0.5,2	comps=MeshFilter;MeshRenderer
+NODE	wood_door/door/plank (4)	active=1	lpos=-1.128,0.101,0	lrot=90,90,0	lscale=0.32,0.5,0.1	comps=MeshFilter;MeshRenderer
+NODE	wood_door/New	active=1	lpos=0,0,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	wood_door/New/plank	active=1	lpos=-0.85,0,0	lrot=90,90,0	lscale=0.5,0.3,2	comps=MeshFilter;MeshRenderer;BoxCollider
+NODE	wood_door/New/plank (3)	active=1	lpos=0.85,0,0	lrot=90,90,0	lscale=0.5,0.3,2.01972	comps=MeshFilter;MeshRenderer;BoxCollider
+NODE	wood_door/New/plank (1)	active=1	lpos=0,-0.96,0	lrot=0,0,0	lscale=2,0.1,0.5	comps=MeshFilter;MeshRenderer;BoxCollider
+NODE	wood_door/Worn	active=0	lpos=0,0,0	lrot=0,0,0	lscale=1,1,1	comps=
+NODE	wood_door/Worn/plank	active=1	lpos=-0.85001,0,0	lrot=90,90,0	lscale=0.5,0.3,2	comps=MeshFilter;MeshRenderer;BoxCollider
+NODE	wood_door/Worn/plank (3)	active=1	lpos=0.85001,0,0	lrot=90,90,0	lscale=0.5,0.3,2.01972	comps=MeshFilter;MeshRenderer;BoxCollider
+NODE	wood_door/Worn/plank (1)	active=1	lpos=0,-0.96,0	lrot=0,0,0	lscale=2,0.1,0.5	comps=MeshFilter;MeshRenderer;BoxCollider
+DOOR	m_name=$piece_wooddoor	m_keyItem=null	m_consumeKey=False	m_canNotBeClosed=False	m_invertedOpenClosedText=False	m_checkGuardStone=True	m_hoverOffset=0	m_openEnable=null	m_openEffects=EffectList	m_closeEffects=EffectList	m_lockedEffects=EffectList	m_nview=null	m_animator=null	m_lastDataRevision=4294967295
+ANIMATOR	path=wood_door	controller=door_animator
+CLIP	closed	len=0	wrap=Default
+CLIP	open_forward	len=0	wrap=Default
+CLIP	opening_forward	len=0.5	wrap=Default
+CLIP	closing_forward	len=0.5	wrap=Default
+CLIP	opening_backward	len=0.5	wrap=Default
+CLIP	closing_backward	len=0.5	wrap=Default
+CLIP	open_backward	len=0	wrap=Default
+COL	ASSET	wood_door/door	box	trig=0	enabled=1	active=0	aabb=-0.694,-0.87776,-0.1..0.7005,1,0.1	-0.694,-0.87776,-0.1	0.7005,-0.87776,-0.1	-0.694,1,-0.1	0.7005,1,-0.1	-0.694,-0.87776,0.1	0.7005,-0.87776,0.1	-0.694,1,0.1	0.7005,1,0.1
+COL	ASSET	wood_door/New/plank	box	trig=0	enabled=1	active=0	aabb=-1,-1,-0.25..-0.7,1,0.25	-1,1,0.25	-1,1,-0.25	-0.7,1,0.25	-0.7,1,-0.25	-1,-1,0.25	-1,-1,-0.25	-0.7,-1,0.25	-0.7,-1,-0.25
+COL	ASSET	wood_door/New/plank (3)	box	trig=0	enabled=1	active=0	aabb=0.70002,-1.00986,-0.25..1.00002,1.00986,0.25	0.70002,1.00986,0.25	0.70002,1.00986,-0.25	1.00002,1.00986,0.25	1.00002,1.00986,-0.25	0.70002,-1.00986,0.25	0.70002,-1.00986,-0.25	1.00002,-1.00986,0.25	1.00002,-1.00986,-0.25
+COL	ASSET	wood_door/New/plank (1)	box	trig=0	enabled=1	active=0	aabb=-1,-1.01,-0.25..1,-1.00819,0.25	-1,-1.01,-0.25	1,-1.01,-0.25	-1,-1.00819,-0.25	1,-1.00819,-0.25	-1,-1.01,0.25	1,-1.01,0.25	-1,-1.00819,0.25	1,-1.00819,0.25
+COL	ASSET	wood_door/Worn/plank	box	trig=0	enabled=1	active=0	aabb=-1.00001,-1,-0.25..-0.70001,1,0.25	-1.00001,1,0.25	-1.00001,1,-0.25	-0.70001,1,0.25	-0.70001,1,-0.25	-1.00001,-1,0.25	-1.00001,-1,-0.25	-0.70001,-1,0.25	-0.70001,-1,-0.25
+COL	ASSET	wood_door/Worn/plank (3)	box	trig=0	enabled=1	active=0	aabb=0.70002,-1.00986,-0.25..1.00002,1.00986,0.25	0.70002,1.00986,0.25	0.70002,1.00986,-0.25	1.00002,1.00986,0.25	1.00002,1.00986,-0.25	0.70002,-1.00986,0.25	0.70002,-1.00986,-0.25	1.00002,-1.00986,0.25	1.00002,-1.00986,-0.25
+COL	ASSET	wood_door/Worn/plank (1)	box	trig=0	enabled=1	active=0	aabb=-1,-1.01,-0.25..1,-1.00819,0.25	-1,-1.01,-0.25	1,-1.01,-0.25	-1,-1.00819,-0.25	1,-1.00819,-0.25	-1,-1.01,0.25	1,-1.01,0.25	-1,-1.00819,0.25	1,-1.00819,0.25
+CLONE	stripped_monobehaviours=4
+STATE	0	pass=0	norm_time=19.99998	shortHash=80170468
+POSE	0	0	wood_door__probe	lpos=0,0,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/pole_top_snow	lpos=0.862,0.804,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/pole_top_snow/pole_top_snow (1)	lpos=-6.39346,0,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/$hud_snappoint_top 1	lpos=1,1,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/$hud_snappoint_top 2	lpos=-1,1,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_center 1	lpos=1,-1,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_center 2	lpos=-1,-1,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 1	lpos=1,-1,0.264	lrot=0,0,0
+POSE	0	0	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 3	lpos=-1,-1,0.264	lrot=0,0,0
+POSE	0	0	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 2	lpos=1,-1,-0.264	lrot=0,0,0
+POSE	0	0	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 4	lpos=-1,-1,-0.264	lrot=0,0,0
+POSE	0	0	wood_door__probe/door	lpos=0.686,0,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/door/plank (1)	lpos=-0.686,0,0	lrot=90,90,0
+POSE	0	0	wood_door__probe/door/plank (2)	lpos=-0.186,0,0	lrot=90,90,0
+POSE	0	0	wood_door__probe/door/plank (3)	lpos=-1.186,0,0	lrot=90,90,0
+POSE	0	0	wood_door__probe/door/plank (4)	lpos=-1.128,0.101,0	lrot=90,90,0
+POSE	0	0	wood_door__probe/New	lpos=0,0,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/New/plank	lpos=-0.85,0,0	lrot=90,90,0
+POSE	0	0	wood_door__probe/New/plank (3)	lpos=0.85,0,0	lrot=90,90,0
+POSE	0	0	wood_door__probe/New/plank (1)	lpos=0,-0.96,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/Worn	lpos=0,0,0	lrot=0,0,0
+POSE	0	0	wood_door__probe/Worn/plank	lpos=-0.85001,0,0	lrot=90,90,0
+POSE	0	0	wood_door__probe/Worn/plank (3)	lpos=0.85001,0,0	lrot=90,90,0
+POSE	0	0	wood_door__probe/Worn/plank (1)	lpos=0,-0.96,0	lrot=0,0,0
+COL	CLONE_s0_p0	wood_door__probe/door	box	trig=0	enabled=1	active=1	aabb=-0.694,-0.87776,-0.1..0.7005,1,0.1	-0.694,-0.87776,-0.1	0.7005,-0.87776,-0.1	-0.694,1,-0.1	0.7005,1,-0.1	-0.694,-0.87776,0.1	0.7005,-0.87776,0.1	-0.694,1,0.1	0.7005,1,0.1
+COL	CLONE_s0_p0	wood_door__probe/New/plank	box	trig=0	enabled=1	active=1	aabb=-1,-1,-0.25..-0.7,1,0.25	-1,1,0.25	-1,1,-0.25	-0.7,1,0.25	-0.7,1,-0.25	-1,-1,0.25	-1,-1,-0.25	-0.7,-1,0.25	-0.7,-1,-0.25
+COL	CLONE_s0_p0	wood_door__probe/New/plank (3)	box	trig=0	enabled=1	active=1	aabb=0.70002,-1.00986,-0.25..1.00002,1.00986,0.25	0.70002,1.00986,0.25	0.70002,1.00986,-0.25	1.00002,1.00986,0.25	1.00002,1.00986,-0.25	0.70002,-1.00986,0.25	0.70002,-1.00986,-0.25	1.00002,-1.00986,0.25	1.00002,-1.00986,-0.25
+COL	CLONE_s0_p0	wood_door__probe/New/plank (1)	box	trig=0	enabled=1	active=1	aabb=-1,-1.01,-0.25..1,-1.00819,0.25	-1,-1.01,-0.25	1,-1.01,-0.25	-1,-1.00819,-0.25	1,-1.00819,-0.25	-1,-1.01,0.25	1,-1.01,0.25	-1,-1.00819,0.25	1,-1.00819,0.25
+COL	CLONE_s0_p0	wood_door__probe/Worn/plank	box	trig=0	enabled=1	active=0	aabb=-1.00001,-1,-0.25..-0.70001,1,0.25	-1.00001,1,0.25	-1.00001,1,-0.25	-0.70001,1,0.25	-0.70001,1,-0.25	-1.00001,-1,0.25	-1.00001,-1,-0.25	-0.70001,-1,0.25	-0.70001,-1,-0.25
+COL	CLONE_s0_p0	wood_door__probe/Worn/plank (3)	box	trig=0	enabled=1	active=0	aabb=0.70002,-1.00986,-0.25..1.00002,1.00986,0.25	0.70002,1.00986,0.25	0.70002,1.00986,-0.25	1.00002,1.00986,0.25	1.00002,1.00986,-0.25	0.70002,-1.00986,0.25	0.70002,-1.00986,-0.25	1.00002,-1.00986,0.25	1.00002,-1.00986,-0.25
+COL	CLONE_s0_p0	wood_door__probe/Worn/plank (1)	box	trig=0	enabled=1	active=0	aabb=-1,-1.01,-0.25..1,-1.00819,0.25	-1,-1.01,-0.25	1,-1.01,-0.25	-1,-1.00819,-0.25	1,-1.00819,-0.25	-1,-1.01,0.25	1,-1.01,0.25	-1,-1.00819,0.25	1,-1.00819,0.25
+STATE	1	pass=1	norm_time=19.49999	shortHash=-1968839819
+POSE	1	1	wood_door__probe	lpos=0,0,0	lrot=0,0,0
+POSE	1	1	wood_door__probe/pole_top_snow	lpos=0.862,0.804,0	lrot=0,0,0
+POSE	1	1	wood_door__probe/pole_top_snow/pole_top_snow (1)	lpos=-6.39346,0,0	lrot=0,0,0
+POSE	1	1	wood_door__probe/$hud_snappoint_top 1	lpos=1,1,0	lrot=0,0,0
+POSE	1	1	wood_door__probe/$hud_snappoint_top 2	lpos=-1,1,0	lrot=0,0,0
+POSE	1	1	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_center 1	lpos=1,-1,0	lrot=0,0,0
+POSE	1	1	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_center 2	lpos=-1,-1,0	lrot=0,0,0
+POSE	1	1	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 1	lpos=1,-1,0.264	lrot=0,0,0
+POSE	1	1	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 3	lpos=-1,-1,0.264	lrot=0,0,0
+POSE	1	1	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 2	lpos=1,-1,-0.264	lrot=0,0,0
+POSE	1	1	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 4	lpos=-1,-1,-0.264	lrot=0,0,0
+POSE	1	1	wood_door__probe/door	lpos=0.686,0,0	lrot=0,90,0
+POSE	1	1	wood_door__probe/door/plank (1)	lpos=-0.686,0,0	lrot=90,90,0
+POSE	1	1	wood_door__probe/door/plank (2)	lpos=-0.186,0,0	lrot=90,90,0
+POSE	1	1	wood_door__probe/door/plank (3)	lpos=-1.186,0,0	lrot=90,90,0
+POSE	1	1	wood_door__probe/door/plank (4)	lpos=-1.128,0.101,0	lrot=90,90,0
+POSE	1	1	wood_door__probe/New	lpos=0,0,0	lrot=0,0,0
+POSE	1	1	wood_door__probe/New/plank	lpos=-0.85,0,0	lrot=90,90,0
+POSE	1	1	wood_door__probe/New/plank (3)	lpos=0.85,0,0	lrot=90,90,0
+POSE	1	1	wood_door__probe/New/plank (1)	lpos=0,-0.96,0	lrot=0,0,0
+POSE	1	1	wood_door__probe/Worn	lpos=0,0,0	lrot=0,0,0
+POSE	1	1	wood_door__probe/Worn/plank	lpos=-0.85001,0,0	lrot=90,90,0
+POSE	1	1	wood_door__probe/Worn/plank (3)	lpos=0.85001,0,0	lrot=90,90,0
+POSE	1	1	wood_door__probe/Worn/plank (1)	lpos=0,-0.96,0	lrot=0,0,0
+COL	CLONE_s1_p1	wood_door__probe/door	box	trig=0	enabled=1	active=1	aabb=0.586,-0.87776,-0.0145..0.786,1,1.38	0.586,-0.87776,1.38	0.586,-0.87776,-0.0145	0.586,1,1.38	0.586,1,-0.0145	0.786,-0.87776,1.38	0.786,-0.87776,-0.0145	0.786,1,1.38	0.786,1,-0.0145
+COL	CLONE_s1_p1	wood_door__probe/New/plank	box	trig=0	enabled=1	active=1	aabb=-1,-1,-0.25..-0.7,1,0.25	-1,1,0.25	-1,1,-0.25	-0.7,1,0.25	-0.7,1,-0.25	-1,-1,0.25	-1,-1,-0.25	-0.7,-1,0.25	-0.7,-1,-0.25
+COL	CLONE_s1_p1	wood_door__probe/New/plank (3)	box	trig=0	enabled=1	active=1	aabb=0.70002,-1.00986,-0.25..1.00002,1.00986,0.25	0.70002,1.00986,0.25	0.70002,1.00986,-0.25	1.00002,1.00986,0.25	1.00002,1.00986,-0.25	0.70002,-1.00986,0.25	0.70002,-1.00986,-0.25	1.00002,-1.00986,0.25	1.00002,-1.00986,-0.25
+COL	CLONE_s1_p1	wood_door__probe/New/plank (1)	box	trig=0	enabled=1	active=1	aabb=-1,-1.01,-0.25..1,-1.00819,0.25	-1,-1.01,-0.25	1,-1.01,-0.25	-1,-1.00819,-0.25	1,-1.00819,-0.25	-1,-1.01,0.25	1,-1.01,0.25	-1,-1.00819,0.25	1,-1.00819,0.25
+COL	CLONE_s1_p1	wood_door__probe/Worn/plank	box	trig=0	enabled=1	active=0	aabb=-1.00001,-1,-0.25..-0.70001,1,0.25	-1.00001,1,0.25	-1.00001,1,-0.25	-0.70001,1,0.25	-0.70001,1,-0.25	-1.00001,-1,0.25	-1.00001,-1,-0.25	-0.70001,-1,0.25	-0.70001,-1,-0.25
+COL	CLONE_s1_p1	wood_door__probe/Worn/plank (3)	box	trig=0	enabled=1	active=0	aabb=0.70002,-1.00986,-0.25..1.00002,1.00986,0.25	0.70002,1.00986,0.25	0.70002,1.00986,-0.25	1.00002,1.00986,0.25	1.00002,1.00986,-0.25	0.70002,-1.00986,0.25	0.70002,-1.00986,-0.25	1.00002,-1.00986,0.25	1.00002,-1.00986,-0.25
+COL	CLONE_s1_p1	wood_door__probe/Worn/plank (1)	box	trig=0	enabled=1	active=0	aabb=-1,-1.01,-0.25..1,-1.00819,0.25	-1,-1.01,-0.25	1,-1.01,-0.25	-1,-1.00819,-0.25	1,-1.00819,-0.25	-1,-1.01,0.25	1,-1.01,0.25	-1,-1.00819,0.25	1,-1.00819,0.25
+STATE	-1	pass=2	norm_time=18.95	shortHash=1985811515
+POSE	-1	2	wood_door__probe	lpos=0,0,0	lrot=0,0,0
+POSE	-1	2	wood_door__probe/pole_top_snow	lpos=0.862,0.804,0	lrot=0,0,0
+POSE	-1	2	wood_door__probe/pole_top_snow/pole_top_snow (1)	lpos=-6.39346,0,0	lrot=0,0,0
+POSE	-1	2	wood_door__probe/$hud_snappoint_top 1	lpos=1,1,0	lrot=0,0,0
+POSE	-1	2	wood_door__probe/$hud_snappoint_top 2	lpos=-1,1,0	lrot=0,0,0
+POSE	-1	2	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_center 1	lpos=1,-1,0	lrot=0,0,0
+POSE	-1	2	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_center 2	lpos=-1,-1,0	lrot=0,0,0
+POSE	-1	2	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 1	lpos=1,-1,0.264	lrot=0,0,0
+POSE	-1	2	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 3	lpos=-1,-1,0.264	lrot=0,0,0
+POSE	-1	2	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 2	lpos=1,-1,-0.264	lrot=0,0,0
+POSE	-1	2	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 4	lpos=-1,-1,-0.264	lrot=0,0,0
+POSE	-1	2	wood_door__probe/door	lpos=0.686,0,0	lrot=0,270,0
+POSE	-1	2	wood_door__probe/door/plank (1)	lpos=-0.686,0,0	lrot=90,90,0
+POSE	-1	2	wood_door__probe/door/plank (2)	lpos=-0.186,0,0	lrot=90,90,0
+POSE	-1	2	wood_door__probe/door/plank (3)	lpos=-1.186,0,0	lrot=90,90,0
+POSE	-1	2	wood_door__probe/door/plank (4)	lpos=-1.128,0.101,0	lrot=90,90,0
+POSE	-1	2	wood_door__probe/New	lpos=0,0,0	lrot=0,0,0
+POSE	-1	2	wood_door__probe/New/plank	lpos=-0.85,0,0	lrot=90,90,0
+POSE	-1	2	wood_door__probe/New/plank (3)	lpos=0.85,0,0	lrot=90,90,0
+POSE	-1	2	wood_door__probe/New/plank (1)	lpos=0,-0.96,0	lrot=0,0,0
+POSE	-1	2	wood_door__probe/Worn	lpos=0,0,0	lrot=0,0,0
+POSE	-1	2	wood_door__probe/Worn/plank	lpos=-0.85001,0,0	lrot=90,90,0
+POSE	-1	2	wood_door__probe/Worn/plank (3)	lpos=0.85001,0,0	lrot=90,90,0
+POSE	-1	2	wood_door__probe/Worn/plank (1)	lpos=0,-0.96,0	lrot=0,0,0
+COL	CLONE_s-1_p2	wood_door__probe/door	box	trig=0	enabled=1	active=1	aabb=0.586,-0.87776,-1.38..0.786,1,0.0145	0.786,-0.87776,-1.38	0.786,-0.87776,0.0145	0.786,1,-1.38	0.786,1,0.0145	0.586,-0.87776,-1.38	0.586,-0.87776,0.0145	0.586,1,-1.38	0.586,1,0.0145
+COL	CLONE_s-1_p2	wood_door__probe/New/plank	box	trig=0	enabled=1	active=1	aabb=-1,-1,-0.25..-0.7,1,0.25	-1,1,0.25	-1,1,-0.25	-0.7,1,0.25	-0.7,1,-0.25	-1,-1,0.25	-1,-1,-0.25	-0.7,-1,0.25	-0.7,-1,-0.25
+COL	CLONE_s-1_p2	wood_door__probe/New/plank (3)	box	trig=0	enabled=1	active=1	aabb=0.70002,-1.00986,-0.25..1.00002,1.00986,0.25	0.70002,1.00986,0.25	0.70002,1.00986,-0.25	1.00002,1.00986,0.25	1.00002,1.00986,-0.25	0.70002,-1.00986,0.25	0.70002,-1.00986,-0.25	1.00002,-1.00986,0.25	1.00002,-1.00986,-0.25
+COL	CLONE_s-1_p2	wood_door__probe/New/plank (1)	box	trig=0	enabled=1	active=1	aabb=-1,-1.01,-0.25..1,-1.00819,0.25	-1,-1.01,-0.25	1,-1.01,-0.25	-1,-1.00819,-0.25	1,-1.00819,-0.25	-1,-1.01,0.25	1,-1.01,0.25	-1,-1.00819,0.25	1,-1.00819,0.25
+COL	CLONE_s-1_p2	wood_door__probe/Worn/plank	box	trig=0	enabled=1	active=0	aabb=-1.00001,-1,-0.25..-0.70001,1,0.25	-1.00001,1,0.25	-1.00001,1,-0.25	-0.70001,1,0.25	-0.70001,1,-0.25	-1.00001,-1,0.25	-1.00001,-1,-0.25	-0.70001,-1,0.25	-0.70001,-1,-0.25
+COL	CLONE_s-1_p2	wood_door__probe/Worn/plank (3)	box	trig=0	enabled=1	active=0	aabb=0.70002,-1.00986,-0.25..1.00002,1.00986,0.25	0.70002,1.00986,0.25	0.70002,1.00986,-0.25	1.00002,1.00986,0.25	1.00002,1.00986,-0.25	0.70002,-1.00986,0.25	0.70002,-1.00986,-0.25	1.00002,-1.00986,0.25	1.00002,-1.00986,-0.25
+COL	CLONE_s-1_p2	wood_door__probe/Worn/plank (1)	box	trig=0	enabled=1	active=0	aabb=-1,-1.01,-0.25..1,-1.00819,0.25	-1,-1.01,-0.25	1,-1.01,-0.25	-1,-1.00819,-0.25	1,-1.00819,-0.25	-1,-1.01,0.25	1,-1.01,0.25	-1,-1.00819,0.25	1,-1.00819,0.25
+STATE	0	pass=3	norm_time=19.49999	shortHash=80170468
+POSE	0	3	wood_door__probe	lpos=0,0,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/pole_top_snow	lpos=0.862,0.804,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/pole_top_snow/pole_top_snow (1)	lpos=-6.39346,0,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/$hud_snappoint_top 1	lpos=1,1,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/$hud_snappoint_top 2	lpos=-1,1,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_center 1	lpos=1,-1,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_center 2	lpos=-1,-1,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 1	lpos=1,-1,0.264	lrot=0,0,0
+POSE	0	3	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 3	lpos=-1,-1,0.264	lrot=0,0,0
+POSE	0	3	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 2	lpos=1,-1,-0.264	lrot=0,0,0
+POSE	0	3	wood_door__probe/$hud_snappoint_bottom $hud_snappoint_corner 4	lpos=-1,-1,-0.264	lrot=0,0,0
+POSE	0	3	wood_door__probe/door	lpos=0.686,0,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/door/plank (1)	lpos=-0.686,0,0	lrot=90,90,0
+POSE	0	3	wood_door__probe/door/plank (2)	lpos=-0.186,0,0	lrot=90,90,0
+POSE	0	3	wood_door__probe/door/plank (3)	lpos=-1.186,0,0	lrot=90,90,0
+POSE	0	3	wood_door__probe/door/plank (4)	lpos=-1.128,0.101,0	lrot=90,90,0
+POSE	0	3	wood_door__probe/New	lpos=0,0,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/New/plank	lpos=-0.85,0,0	lrot=90,90,0
+POSE	0	3	wood_door__probe/New/plank (3)	lpos=0.85,0,0	lrot=90,90,0
+POSE	0	3	wood_door__probe/New/plank (1)	lpos=0,-0.96,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/Worn	lpos=0,0,0	lrot=0,0,0
+POSE	0	3	wood_door__probe/Worn/plank	lpos=-0.85001,0,0	lrot=90,90,0
+POSE	0	3	wood_door__probe/Worn/plank (3)	lpos=0.85001,0,0	lrot=90,90,0
+POSE	0	3	wood_door__probe/Worn/plank (1)	lpos=0,-0.96,0	lrot=0,0,0
+COL	CLONE_s0_p3	wood_door__probe/door	box	trig=0	enabled=1	active=1	aabb=-0.694,-0.87776,-0.1..0.7005,1,0.1	-0.694,-0.87776,-0.1	0.7005,-0.87776,-0.1	-0.694,1,-0.1	0.7005,1,-0.1	-0.694,-0.87776,0.1	0.7005,-0.87776,0.1	-0.694,1,0.1	0.7005,1,0.1
+COL	CLONE_s0_p3	wood_door__probe/New/plank	box	trig=0	enabled=1	active=1	aabb=-1,-1,-0.25..-0.7,1,0.25	-1,1,0.25	-1,1,-0.25	-0.7,1,0.25	-0.7,1,-0.25	-1,-1,0.25	-1,-1,-0.25	-0.7,-1,0.25	-0.7,-1,-0.25
+COL	CLONE_s0_p3	wood_door__probe/New/plank (3)	box	trig=0	enabled=1	active=1	aabb=0.70002,-1.00986,-0.25..1.00002,1.00986,0.25	0.70002,1.00986,0.25	0.70002,1.00986,-0.25	1.00002,1.00986,0.25	1.00002,1.00986,-0.25	0.70002,-1.00986,0.25	0.70002,-1.00986,-0.25	1.00002,-1.00986,0.25	1.00002,-1.00986,-0.25
+COL	CLONE_s0_p3	wood_door__probe/New/plank (1)	box	trig=0	enabled=1	active=1	aabb=-1,-1.01,-0.25..1,-1.00819,0.25	-1,-1.01,-0.25	1,-1.01,-0.25	-1,-1.00819,-0.25	1,-1.00819,-0.25	-1,-1.01,0.25	1,-1.01,0.25	-1,-1.00819,0.25	1,-1.00819,0.25
+COL	CLONE_s0_p3	wood_door__probe/Worn/plank	box	trig=0	enabled=1	active=0	aabb=-1.00001,-1,-0.25..-0.70001,1,0.25	-1.00001,1,0.25	-1.00001,1,-0.25	-0.70001,1,0.25	-0.70001,1,-0.25	-1.00001,-1,0.25	-1.00001,-1,-0.25	-0.70001,-1,0.25	-0.70001,-1,-0.25
+COL	CLONE_s0_p3	wood_door__probe/Worn/plank (3)	box	trig=0	enabled=1	active=0	aabb=0.70002,-1.00986,-0.25..1.00002,1.00986,0.25	0.70002,1.00986,0.25	0.70002,1.00986,-0.25	1.00002,1.00986,0.25	1.00002,1.00986,-0.25	0.70002,-1.00986,0.25	0.70002,-1.00986,-0.25	1.00002,-1.00986,0.25	1.00002,-1.00986,-0.25
+COL	CLONE_s0_p3	wood_door__probe/Worn/plank (1)	box	trig=0	enabled=1	active=0	aabb=-1,-1.01,-0.25..1,-1.00819,0.25	-1,-1.01,-0.25	1,-1.01,-0.25	-1,-1.00819,-0.25	1,-1.00819,-0.25	-1,-1.01,0.25	1,-1.01,0.25	-1,-1.00819,0.25	1,-1.00819,0.25

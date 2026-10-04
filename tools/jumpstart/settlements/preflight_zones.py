@@ -21,8 +21,8 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "terraform"))
 import build as B  # noqa: E402
 import flatten as FL  # noqa: E402
+import worldseed  # noqa: E402  (on sys.path through build)
 
-LEDGER = HERE.parent / "ledger/runs/Ulfsland/ledger.jsonl"
 ORDER = ("stenvik wt-spawn wt-south wt-town lh-south vestvik hognest-castle "
          "wt-peak wt-north wt-east lh-east lh-west tree-sth tree-west "
          "tree-near sudrberg-keep").split()
@@ -33,7 +33,9 @@ def zone_of(x: float, z: float) -> tuple[int, int]:
 
 
 def main() -> int:
-    lines = [json.loads(l) for l in LEDGER.read_text().splitlines() if l.strip()]
+    # THIS run's world's ledger and THIS seed's plan, asked at call time.
+    lines = [json.loads(l) for l in worldseed.ledger_path().read_text()
+             .splitlines() if l.strip()]
     owned: dict[tuple[int, int], list] = {}
     forbidden: dict[tuple[int, int], list] = {}
     tags: dict[str, list[int]] = {}
@@ -47,7 +49,11 @@ def main() -> int:
                 owned.setdefault((int(z[0]), int(z[1])), []).append((i, r["actor"]))
         if r["op"] == "portal":
             tags.setdefault(p["tag"], []).append(i)
-        if p.get("flatten") == "FORBIDDEN":
+        # BOTH KEEP-OUT KINDS -- `writer.KEEP_OUT_KINDS`.  A pre-flight that
+        # matched the literal "FORBIDDEN" would stop naming lamp zones the
+        # moment the emitters started writing RESEAT, and report a zone
+        # clear that a write still has to declare a debt for.
+        if p.get("flatten") in ("FORBIDDEN", "RESEAT"):
             pos = p.get("pos")
             xz = None
             if isinstance(pos, list) and len(pos) == 3:
@@ -65,7 +71,7 @@ def main() -> int:
     print(f"zones holding a flatten=FORBIDDEN structure: {sorted(forbidden)}")
     print(f"portal tags in the log (file lines): {tags}")
 
-    plan = json.loads((HERE / "plan.json").read_text())
+    plan = json.loads(worldseed.plan_path().read_text())
     mine: dict[tuple[int, int], list[str]] = {}
     for site in ORDER:
         doc = B.placements_doc(plan, site)

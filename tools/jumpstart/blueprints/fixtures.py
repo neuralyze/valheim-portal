@@ -1069,6 +1069,64 @@ def preference(prefab: str) -> str:
 # everything else, and the NO-INTERSECTION guard is unchanged for everything.
 INDOOR_MARGIN_M = 0.10
 
+# ---------------------------------------------------------------------------
+# A SEAT IS NOT A FIXTURE.  It is a place the WORLD DELIVERS A PLAYER TO.
+#
+# THE DEFECT, MEASURED ON ULFSLAND.  The gate's `spawn` section judges every
+# claimable bed against the Player prefab's OWN capsule and refused 16 times
+# over 8 beds:
+#     bed#0  (478.87,  883.97)  0.432 m of room, 0.449 m of headroom, wood_beam
+#     bed#5  (606.98,  935.68)  0.432 / 0.449, wood_beam
+#     bed#9  (-902.81, 1820.21) 0.431 / 0.449, wood_beam
+#     bed#12 (-926.91, 1824.71) 0.431 / 0.449, wood_beam
+#     bed#8  (-981.93, 1799.86) 1.087 m INSIDE Beech1, 0.449 m headroom
+#     bed#13 (-1356.18,2362.01) 0.146 m INSIDE wood_stair, 0.686 m headroom
+#     bed#14 (-245.08, 2424.62) 0.325 m INSIDE wood_roof_45, 0.870 m
+#     bed#15 (-248.74, 2424.51) 0.216 m INSIDE wood_roof_45, 0.870 m
+# The player's capsule is 0.490 m radius x 1.850 m tall, MEASURED off the
+# Player prefab, and the four identical 0.449 m readings are one blueprint
+# repeated in four bodies - a class, not four mistakes.
+#
+# THE MECHANISM IS IN THIS FILE AND IT IS STATED AS A DESIGN DECISION.
+# `free_spot` sets `head = 0.0 if want == WANT_INDOOR else headroom_m`, with
+# the reason given at that line: "a 0.38 m bed under a gallery beam is fine
+# where a player is not".  That is RIGHT for a chest, a stool or a
+# workbench - used from the cell beside it - and WRONG for a bed, because
+# the bed IS the cell the player occupies.  The 2 m band was dropped because
+# it vetoed hearths against their own roof; a SEAT needs the player's own
+# height and no more, which is 1.850 m and clears a 2.0 m roof.
+#
+# So: seats are the exception, they take the WALKER's numbers, and they take
+# them from the Player prefab rather than from a constant written here.
+SEAT_PREFABS = frozenset(("bed", "piece_bed02"))
+
+
+class UnmeasuredCapsule(RuntimeError):
+    """The walker's capsule is unmeasured, so no seat can be judged."""
+
+
+def walker_capsule(geom: "base_geometry.Geometry | None" = None
+                   ) -> tuple[float, float]:
+    """The player's own capsule (radius, height), MEASURED off `Player`.
+
+    From the same `piece_geometry.json` corpus every other solid in this
+    file comes from, so the builder and the acceptance gate's `spawn`
+    section read ONE number: the gate prints 0.490 m x 1.850 m and so does
+    this.  A constant typed here would be a second source that can drift.
+
+    REFUSES rather than defaults.  A seat judged against a guessed capsule
+    is how eight beds ended up under gallery beams with 0.449 m of air.
+    """
+    g = geom or base_geometry.geometry()
+    box = g.local_aabb("Player")
+    if box is None:
+        raise UnmeasuredCapsule(
+            "the geometry corpus has no solid for `Player`, so the walker's "
+            "own capsule is UNMEASURED and a seat cannot be judged against "
+            "it. Re-run tools/jumpstart/blueprints/run_piecegeometry.sh.")
+    x0, y0, _z0, x1, y1, _z1 = box
+    return (max(abs(x0), abs(x1)), y1 - y0)
+
 
 def free_spot(prefab: str, body: PlacedBody, index: SolidIndex,
               centre: tuple[float, float], pad_y: float, pad_half: float,
@@ -1077,7 +1135,8 @@ def free_spot(prefab: str, body: PlacedBody, index: SolidIndex,
               headroom_m: float = 2.0, taken: list | None = None,
               want: str | None = None, yaws: tuple[float, ...] = (),
               mask: InteriorMask | None = None,
-              geom: base_geometry.Geometry | None = None) -> dict | None:
+              geom: base_geometry.Geometry | None = None,
+              ground=None, accept=None) -> dict | None:
     """The legal position for a loose object that satisfies its PREFERENCE.
 
     Legal means: inside the pad, the prefab's own oriented solid clears every
@@ -1102,9 +1161,19 @@ def free_spot(prefab: str, body: PlacedBody, index: SolidIndex,
     None is a real answer the caller must report, not paper over. When `want`
     cannot be met it returns None EVEN IF a legal spot exists elsewhere on the
     pad, because quietly standing a bed in the yard is the defect.
+
+    `accept(prefab, x, y, z, yaw) -> bool`: a caller's last veto on a spot
+    that is otherwise the best so far; terraform/stock.py uses it to keep
+    every arch's walk-in corridor clear by the gate's own swept-capsule rule.
     """
     g = geom or base_geometry.geometry()
     want = want or preference(prefab)
+    # A SEAT TAKES THE WALKER'S NUMBERS.  See `SEAT_PREFABS` above for the
+    # population that made this necessary.  Measured off the Player prefab,
+    # not typed here, and asked BEFORE the search so a corpus with no
+    # `Player` refuses instead of silently placing a bed under a beam.
+    seat_r, seat_h = (walker_capsule(g) if prefab in SEAT_PREFABS
+                      else (None, None))
     if margin_m is None:
         margin_m = INDOOR_MARGIN_M if want == WANT_INDOOR else 0.5
     m = mask if mask is not None else body.interior(geom=g)
@@ -1164,8 +1233,24 @@ def free_spot(prefab: str, body: PlacedBody, index: SolidIndex,
         # is 0.63 m above its pad, so a fixture placed at pad height there
         # stands 0.63 m INSIDE the slab -- which the pierce test correctly
         # refuses, which is why that body reported no interior at all.
-        stand = m.stand_y(*mcell) if want == WANT_INDOOR else pad_y
+        stand0 = m.stand_y(*mcell) if want == WANT_INDOOR else pad_y
         for angle in angles:
+            # THE GROUND UNDER AN OUTDOOR FIXTURE, when the caller can read
+            # it: `ground((xmin, xmax, zmin, zmax))` of the fixture's own
+            # footprint answers the height it is seated at, or None when that
+            # ground is not level enough (or unread) -- and then this cell is
+            # not a spot.  Without it the fixture stands at `pad_y` wherever
+            # the search reaches, which is how `terraform/stock.py` seated a
+            # cartography table at the pad height 1.6 m past the pad's edge
+            # with its top 1.982 m under the bank (Fresh42 ledger seq 1978).
+            # Indoors the body's own floor is the ground, so it is not asked.
+            stand, seat = stand0, None
+            if ground is not None and want != WANT_INDOOR:
+                foot = fixture_box(prefab, x, 0.0, z, angle, g)
+                seat = ground((foot[0], foot[1], foot[4], foot[5]))
+                if seat is None:
+                    continue
+                stand = seat["y"]
             box = fixture_box(prefab, x, stand, z, angle, g, pad=margin_m)
             spanned = m.cells_of(fixture_box(prefab, x, stand, z, angle, g))
             # The fixture's own footprint has to be UNDER THE ROOF and reachable,
@@ -1212,9 +1297,27 @@ def free_spot(prefab: str, body: PlacedBody, index: SolidIndex,
             # requirement is the fixture's OWN volume, exactly, and the air
             # above it is MEASURED and reported (`free_above_m`) rather than
             # turned into a veto nobody can see.
-            head = 0.0 if want == WANT_INDOOR else headroom_m
+            # A SEAT IS THE EXCEPTION AND TAKES THE WALKER'S OWN HEIGHT,
+            # indoors as well as out: the player wakes up standing HERE, not
+            # in the cell beside it.  1.850 m, MEASURED, clears a 2.0 m roof
+            # - so this does not re-open the hearth-vetoed-by-its-own-roof
+            # defect the `head = 0.0` line was written to close - and it
+            # refuses the 0.449 m of air four of these beds actually have.
+            head = (seat_h if seat_h is not None
+                    else (0.0 if want == WANT_INDOOR else headroom_m))
+            # The COLUMN the player occupies, which is the walker's capsule
+            # about the seat's own pivot, not the bed's footprint: a beam
+            # 0.432 m from the pivot is inside the player and outside a
+            # 1.15 m-wide bed's clearance test.
             probe_box = (box[0], box[1], box[2], max(box[3], stand + head),
                          box[4], box[5])
+            if seat_r is not None:
+                # `fixture_box` order is (xmin, xmax, ymin, ymax, zmin, zmax)
+                probe_box = (min(probe_box[0], x - seat_r),
+                             max(probe_box[1], x + seat_r),
+                             probe_box[2], probe_box[3],
+                             min(probe_box[4], z - seat_r),
+                             max(probe_box[5], z + seat_r))
             if pierced(probe_box, index, stand_y=stand, geom=g):
                 continue
             if taken and any(all(o > 1e-6 for o in overlap(box, t)) for t in taken):
@@ -1239,6 +1342,8 @@ def free_spot(prefab: str, body: PlacedBody, index: SolidIndex,
                    else (round(d, 3), round(wall_gap, 3)))
             if best_key is not None and key >= best_key:
                 continue
+            if accept is not None and not accept(prefab, x, stand, z, angle):
+                continue
             best_key = key
             best = {
                 "prefab": prefab,
@@ -1258,6 +1363,7 @@ def free_spot(prefab: str, body: PlacedBody, index: SolidIndex,
                             else round(m.cover_m[mcell], 2)),
                 "margin_m": margin_m,
                 "box": list(box),
+                **({"ground": seat} if seat is not None else {}),
             }
     return best
 

@@ -8,10 +8,17 @@
 # Usage:
 #   VH_SRC=/path/to/server/install \
 #   SEED=Pirate68 REQ=/tmp/patch_req.tsv OUT=/tmp/patch.bin \
-#   [SANDBOX=/tmp/patchscan/vh] \
+#   [SANDBOX=/tmp/patchscan/vh] [SURFACE=worldgen|heightmap] \
 #   tools/jumpstart/blueprints/run_patchscan.sh
 #
 # REQ is a TSV: <id>\t<centre_x>\t<centre_z>\t<half_extent_m>\t<step_m>
+#
+# SURFACE selects WHICH SURFACE is sampled and it is not a detail:
+#   worldgen  (default) WorldGenerator.GetHeight -- the point's own biome.
+#   heightmap           HeightmapBuilder's per-zone corner-biome blend, i.e.
+#                       the ground the engine draws and a player stands on.
+# A FLATTEN DATUM MUST USE `heightmap`. See PatchScan.cs's header for the IL and
+# for the 10.08 m these two differ by on Ulfsland zone (22,24).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +27,7 @@ SEED="${SEED:?set SEED to the seed string}"
 REQ="${REQ:?set REQ to the patch request TSV}"
 OUT="${OUT:?set OUT to the output .patch path}"
 SANDBOX="${SANDBOX:-/tmp/patchscan/vh}"
+SURFACE="${SURFACE:-worldgen}"
 
 [ -x "$VH_SRC/valheim_server.x86_64" ] || { echo "no valheim_server.x86_64 in $VH_SRC" >&2; exit 1; }
 [ -f "$VH_SRC/BepInEx/core/BepInEx.Preloader.dll" ] || { echo "no BepInEx core in $VH_SRC" >&2; exit 1; }
@@ -65,6 +73,7 @@ env \
   PATCHSCAN_SEED="$SEED" \
   PATCHSCAN_REQ="$REQ" \
   PATCHSCAN_OUT="$OUT" \
+  PATCHSCAN_SURFACE="$SURFACE" \
   ./valheim_server.x86_64 -nographics -batchmode \
     -name patchscan -port 3457 -world PatchScanScratch -password patchscan1 \
     -savedir "$SANDBOX/scratch-save" >&2

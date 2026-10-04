@@ -55,6 +55,14 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import build as B  # noqa: E402  the emit path that just paired u-stenvik
+import worldseed  # noqa: E402  (on sys.path through build)
+
+# ULFSLAND'S SETTLEMENT RING, which this one-off extends.  `build.py` no longer
+# keeps it: a settlement's hub end is now an arch of THIS world's hall, solved
+# by `terraform/stock.py::hub_ends`, and nothing reads a cached ring.  The file
+# is Ulfsland's artefact and this tool is Ulfsland's repair, so the path lives
+# here and nowhere else.
+RING_CACHE = Path("/tmp/settle/hub_spots.json")
 
 # The orphans, and the destination name each hub board must carry. The name is
 # the SITE the arch leads to and not the tag: a tag is <=10 characters because
@@ -123,7 +131,7 @@ def live_site_end(srv, tag: str) -> dict:
     """
     import re
     rows = []
-    path = B.JUMPSTART / "ledger/runs/Ulfsland/ledger.jsonl"
+    path = worldseed.ledger_path()   # THIS run's world, at call time
     for line in path.read_text().splitlines():
         rec = json.loads(line)
         if rec["op"] == "portal" and rec["params"].get("tag") == tag:
@@ -344,7 +352,7 @@ def solve_new_spots(srv, tags: list[str], inner_m: float = 12.0,
     """
     import fixtures
     import tcdata
-    cache = json.loads(B.HUB_SPOTS.read_text())
+    cache = json.loads(RING_CACHE.read_text())
     hub = cache["_hub"]
     yaw = hub["yaw"]
     place = B.hub_placement()
@@ -616,14 +624,14 @@ def main() -> int:
                 "paired": all(g["ok"] for g in got) and len(got) == 2}
         report["ring_residuals"] = ring_ground_residuals(
             sol["patches"], {**{k: v for k, v in
-                                json.loads(B.HUB_SPOTS.read_text()).items()
+                                json.loads(RING_CACHE.read_text()).items()
                                 if k != "_hub"}, **sol["new"]})
 
         # Extend the cache so a later `build.py portals` run cannot hand one
         # of these two cells to a settlement tag.
-        cache = json.loads(B.HUB_SPOTS.read_text())
+        cache = json.loads(RING_CACHE.read_text())
         cache.update(sol["new"])
-        B.HUB_SPOTS.write_text(json.dumps(cache, indent=1))
+        RING_CACHE.write_text(json.dumps(cache, indent=1))
         report["close"] = b.close()
     print(json.dumps(report, indent=1, default=str))
     return 0

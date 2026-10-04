@@ -1,4 +1,4 @@
-world: Ulfsland
+world: Fresh42
 settlement: wt-north
 placements:
 - id: wt-north
@@ -15,19 +15,19 @@ placements:
     - 20.0
     - 20.0
   solved:
-    seed: Pirate68
-    x: 146.0
-    z: 1181.0
-    y: 32.42
+    seed: Fresh42
+    x: -828.1
+    z: 13.2
+    y: 50.87
     footprint_orientation: 20 m along x by 20 m along z
     flatten_cost:
-      target_y: 32.42
+      target_y: 50.87
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 66.6
-    nearest_location: Dolmen01
-    nearest_location_standoff_m: 20.0
+    nearest_location_m: 54.5
+    nearest_location: Crypt3
+    nearest_location_standoff_m: 33.0
   settlement:
     site: wt-north
     role: watchtower
-    patch: mainland
+    patch: trunk-primary

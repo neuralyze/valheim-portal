@@ -104,6 +104,52 @@ TERRAIN_SPREAD_M = 1.0
 # per-piece height-delta tolerance, and this is its starting value -- 0.10 m,
 # to be MEASURED against what actually reads as a visible step underfoot.
 DELTA_TOL_M = 0.10
+# MEASURED, not picked: `ZoneSystem.m_zoneSize`, the 64 m zone the generator
+# places every location in (the same number `crossings/plan.py::ZONE_SIZE` and
+# the TCData codec read), and `ZoneSystem.GetZone`'s own floor((p + 32) / 64).
+ZONE_M = 64.0
+# One metre of slack between a clearing cylinder and a location's population:
+# the number `settlements/build.py::clear_radius_room` has always held.
+CLEARING_SLACK_M = 1.0
+
+# CLEARING_POPULATION_DEPENDS_ON: what a clearing cylinder must not reach.
+#
+# THE DEFECT, MEASURED on Fresh42 drive 5.  The build REFUSED wt-south's pad
+# (ledger seq 2077, step 5) because its 16.14 m cylinder at (-672.1, -372.8)
+# held 3 `dungeon_forestcrypt_door` and 1 `CastleKit_groundtorch`, and wt-east
+# on 1 `CastleKit_groundtorch` -- and the offline gate before it, and the
+# siting before THAT, had both passed the same pads: Crypt4's marker stands
+# 48.0 m from wt-south's centre and its dump reach is 21 m, so the room was
+# 26.0 m against 16.14.  The objects were not on the ground: every one stood
+# at y = 5061.14, the crypt's INTERIOR, which the generator builds in the sky
+# above the location and which `objects_count`/`objects_remove` see because
+# their filter is `Utils.DistanceXZ` -- a cylinder, height excluded.
+#   pieces         the location's own pieces: max(exteriorRadius,
+#                  interiorRadius, znviewReachM) about its marker -- the only
+#                  population the dump ever described.
+#   interior_zone  a location that declares an interior (`interiorRadius` >
+#                  0) owns the WHOLE 64 m zone its marker stands in, at every
+#                  height.  MEASURED over the drive-5 frozen save's whole-ZDO
+#                  census (gate fingerprint 8c8c54096789): 992 of 992 objects
+#                  above y = 1000 stand inside the zone square of a location
+#                  whose type declares an interior (Crypt2 343, Crypt3 348,
+#                  Crypt4 247, TrollCave02 54); 0 stand outside one; the
+#                  farthest is 45.0 m from its own marker against a declared
+#                  interiorRadius of 21.  [INFERENCE] the bound is the
+#                  dungeon generator confining its rooms to its own zone; the
+#                  zone square is what was measured to hold, and it is used
+#                  rather than the 45.0 m maximum because a maximum over the
+#                  instances one save generated is not a bound on the next.
+CLEARING_POPULATION_DEPENDS_ON = ("pieces", "interior_zone")
+
+
+def zone_square(x: float, z: float) -> tuple[float, float, float, float]:
+    """(x0, x1, z0, z1) of the generator zone holding (x, z)."""
+    zx = math.floor((x + ZONE_M / 2) / ZONE_M)
+    zz = math.floor((z + ZONE_M / 2) / ZONE_M)
+    return (zx * ZONE_M - ZONE_M / 2, zx * ZONE_M + ZONE_M / 2,
+            zz * ZONE_M - ZONE_M / 2, zz * ZONE_M + ZONE_M / 2)
+
 
 
 @dataclass
@@ -116,6 +162,9 @@ class Locations:
     standoff: np.ndarray           # (n,) float32, reach + margins
     spawn: tuple[float, float]
     by_type: dict[str, dict]
+    # (n,) bool: the instance declares an interior (`interiorRadius` > 0),
+    # whose population fills its marker's zone -- CLEARING_POPULATION_DEPENDS_ON.
+    interior: np.ndarray | None = None
 
     def __len__(self) -> int:
         return len(self.names)
@@ -128,6 +177,140 @@ class Locations:
                 "reach_m": float(self.reach[i]),
                 "protected": bool(self.protected[i]),
                 "standoff_m": float(self.standoff[i])}
+
+    # ---- THE CLEARING CYLINDER'S ROOM: ONE RULE FOR SITING AND FOR BUILD ---
+    def cylinder_room(self, cx: float, cz: float,
+                      depends_on: tuple = CLEARING_POPULATION_DEPENDS_ON
+                      ) -> dict:
+        """How wide an `objects_remove` cylinder about (cx, cz) may be.
+
+        THE clearing gate's offline rule, one function for both askers: the
+        siting refuses a pad by the full population before it places one
+        (`settlements/plan.py::clearing_refusals` via `build.clearing_gate`),
+        and the build asks it over `build.BUILD_ROOM_DEPENDS_ON` before it
+        clears and records the full room beside its exact live census.
+
+        The bound is a MINIMUM OVER ALL INSTANCES, not the nearest marker,
+        over every population in `depends_on` (CLEARING_POPULATION_DEPENDS_ON):
+        `pieces` is distance less the instance's own reach; `interior_zone`
+        is the distance to the instance's whole zone square when it declares
+        an interior.  Less `CLEARING_SLACK_M`.  The cylinder has no height:
+        `Utils.DistanceXZ` is the removal's filter, so a population in the
+        sky is inside it."""
+        # float32, as `clear_radius_room` always computed it: the recorded
+        # `clear_radius_room_m` of a pieces-bound pad is unchanged to the cm.
+        d = np.hypot(self.xz[:, 0] - cx, self.xz[:, 1] - cz)
+        inf = np.full(len(self.names), np.inf)
+        pieces = ((d - self.reach).astype(np.float64) if "pieces" in depends_on
+                  else inf)
+        inner, sq = inf, None
+        if "interior_zone" in depends_on and self.interior is not None:
+            h = ZONE_M / 2
+            zx = np.floor((self.xz[:, 0].astype(np.float64) + h) / ZONE_M) * ZONE_M
+            zz = np.floor((self.xz[:, 1].astype(np.float64) + h) / ZONE_M) * ZONE_M
+            ox = np.maximum(np.abs(cx - zx) - h, 0.0)
+            oz = np.maximum(np.abs(cz - zz) - h, 0.0)
+            inner = np.where(self.interior, np.hypot(ox, oz), np.inf)
+            sq = (zx, zz)
+        room = np.minimum(pieces, inner)
+        i = int(np.argmin(room))
+        via_zone = bool(inner[i] < pieces[i])
+        binding = {"name": self.names[i], "prefab": self.prefabs[i],
+                   "dist_m": round(float(d[i]), 2),
+                   "reach_m": round(float(self.reach[i]), 2),
+                   "population": "interior_zone" if via_zone else "pieces"}
+        if via_zone:
+            h = ZONE_M / 2
+            binding["zone"] = [float(sq[0][i] - h), float(sq[0][i] + h),
+                               float(sq[1][i] - h), float(sq[1][i] + h)]
+            binding["zone_dist_m"] = round(float(inner[i]), 2)
+            binding["why"] = (
+                f"{self.names[i]}'s INTERIOR -- it declares interiorRadius "
+                f"> 0, and an interior fills its marker's whole {ZONE_M:g} m "
+                f"zone x {binding['zone'][:2]} z {binding['zone'][2:]} at "
+                f"y ~5000, {binding['zone_dist_m']} m from this centre")
+        else:
+            binding["why"] = (
+                f"{self.names[i]}'s PIECES -- it stands {binding['dist_m']} m "
+                f"away with a measured {binding['reach_m']} m reach")
+        return {"max_radius_m": round(float(room[i]) - CLEARING_SLACK_M, 2),
+                "binding": binding,
+                "depends_on": list(depends_on),
+                "method": ("MEASURED: min over all instances of (distance - "
+                           "max(exteriorRadius, interiorRadius, znviewReachM)) "
+                           "and, for an instance declaring an interior, of the "
+                           "distance to its marker's 64 m zone square; less "
+                           f"{CLEARING_SLACK_M:g} m of slack. The clearing "
+                           "cylinder is height-blind and must not reach a "
+                           "location's PIECES or its INTERIOR."),
+                "tool": "tools/jumpstart/settlements/clearance.py::"
+                        "Locations.cylinder_room"}
+
+    # ---- THE ONE BOUNDARY, AND THE TWO ANSWERS TO CROSSING IT ------------
+    #
+    # THE DEFECT THIS METHOD EXISTS TO END.  A road write is TWO bands of
+    # ground with the same relationship to a location and OPPOSITE failure
+    # modes, and until tonight they were measured by two implementations that
+    # disagreed.  `ribbon.py::poi_standoff_discs` built discs at
+    # `reach + TERRAIN_SPREAD_M` and CLIPPED the batter per sample against
+    # them; `violations_for_samples` below built `reach + half_width_m +
+    # TERRAIN_SPREAD_M` and REFUSED THE WHOLE WRITE.  MEASURED consequence on
+    # the northern trunk, seed Pirate68: `N0-brgs2-wmid` carried 13,238
+    # carriageway samples and the refusal named ONE of them, 8.7 m from a
+    # `Ruin2` whose reach is 9.89 m -- a metre of shoulder costing 1,779.4 m
+    # of road, while a batter sample at the same 8.7 m would merely have been
+    # clipped and counted.  Two gates, one sample, opposite verdicts.
+    #
+    # SO THERE IS ONE BOUNDARY AND IT LIVES HERE.  It is
+    # `reach + half_width_m + TERRAIN_SPREAD_M`, and `half_width_m` is ZERO
+    # for a sample set that already IS the footprint -- which a rasterised
+    # carriageway is, every 1 m sample out to its own edge.  What differs
+    # between the bands is not the boundary, it is what crossing it COSTS:
+    #
+    #   BATTER       -> CLIP the sample, record cause `poi` and the residual
+    #                   wall.  A batter is earthwork that tapers to nothing
+    #                   and is never load bearing, so refusing one metre of
+    #                   it costs a recorded blemish.
+    #   CARRIAGEWAY  -> REFUSE the write.  The carriageway is the surface the
+    #                   operator walks on; a clipped carriageway sample is a
+    #                   HOLE, and a road with a hole in it beside a ruin is
+    #                   not a cheaper road, it is a different defect.
+    #
+    # Both answers read the same number from the same array, which is the only
+    # property that makes them reconcilable at all.
+    def hard_radius(self, half_width_m: float = 0.0) -> np.ndarray:
+        """Per-instance NON-DESTRUCTIVE boundary, as a (n,) array of metres.
+
+        `half_width_m` is the CALLER's own half-extent about its samples and
+        MUST be 0.0 when the samples already are the footprint.  Passing the
+        road half-width beside a full-width rasterised sample set counts the
+        same 3 m twice: MEASURED on `N0-brgs2-wmid`, that inflated `Ruin2`'s
+        required distance from 10.89 m to 13.9 m and is the difference between
+        a gate that measures the written ground and one that measures a claim
+        about it.
+        """
+        return (self.reach.astype(np.float64) + float(half_width_m)
+                + TERRAIN_SPREAD_M)
+
+    def keepout_discs(self, xlo: float, xhi: float, zlo: float, zhi: float,
+                      half_width_m: float = 0.0
+                      ) -> list[tuple[float, float, float]]:
+        """The SAME boundary as `(x, z, r)` discs, for a caller that clips per
+        sample instead of refusing per write.
+
+        Bounded to a box because a per-sample clip on a 12,301-instance world
+        must cost a few dozen comparisons rather than twelve thousand.  Handing
+        the discs out from here rather than rebuilding them in the caller is
+        the whole point: a second implementation of a boundary is a second
+        boundary, and this project has now paid for that three times.
+        """
+        r = self.hard_radius(half_width_m)
+        out: list[tuple[float, float, float]] = []
+        for i in range(len(self.names)):
+            x, z = float(self.xz[i, 0]), float(self.xz[i, 1])
+            if xlo <= x <= xhi and zlo <= z <= zhi:
+                out.append((x, z, float(r[i])))
+        return out
 
     def violations(self, x: float, z: float, own_half_diagonal_m: float,
                    protected_only: bool = False) -> list[dict]:
@@ -220,8 +403,7 @@ class Locations:
         if destructive:
             need = self.standoff + float(half_width_m)
         else:
-            need = (self.reach.astype(np.float64) + float(half_width_m)
-                    + TERRAIN_SPREAD_M)
+            need = self.hard_radius(half_width_m)
         room = need - best
         if protected_only:
             room = np.where(self.protected, room, -np.inf)
@@ -269,7 +451,8 @@ class Locations:
     def verdict_for_samples(self, samples, half_width_m: float = 0.0,
                             protected_only: bool = False,
                             destructive: bool = True,
-                            delta_gate: dict | None = None) -> dict:
+                            delta_gate: dict | None = None,
+                            clipped: dict | None = None) -> dict:
         """The same measurement, packaged so a caller cannot lose the caveats.
 
         `method`, `tool` and `mod_free_caveat` travel IN THE RESULT rather than
@@ -279,6 +462,17 @@ class Locations:
         that lived in somebody's head. `method` is also exactly what the
         ledger's `observe` and `terrain_write.location_check` require, so a
         result can be handed to the log unmodified.
+
+        `clipped` IS WHAT THIS VERDICT DOES NOT COVER, AND IT IS REQUIRED
+        READING RATHER THAN A COURTESY.  The caller may satisfy this boundary
+        two ways: by not writing near a location, or by DROPPING the samples
+        that would have.  The second is a SHRINK, and a shrink that leaves no
+        trace is indistinguishable from a write that never needed one -- so a
+        caller that clips passes its per-cause census here and it travels in
+        the result beside the verdict.  `{"poi": 7}` next to `clear` says
+        "clear BECAUSE seven samples were dropped at a location boundary";
+        `clear` with no census says the write never approached one.  Those are
+        different facts and the ledger must not read them the same.
         """
         pts = list(samples)
         v = self.violations_for_samples(pts, protected_only, half_width_m,
@@ -311,6 +505,12 @@ class Locations:
             "scope": "protected-only" if protected_only else "all instances",
             "nearest": near,
             "standoff_m": (near or {}).get("standoff_m"),
+            # THE SHRINK, NAMED AND COUNTED.  `None` and `{}` are different
+            # statements: `None` is "this caller does not clip", `{}` is "it
+            # clips and had nothing to clip here".
+            "clipped": clipped,
+            "clipped_total": (None if clipped is None
+                              else int(sum(clipped.values()))),
             "method": ("MEASURED per location TYPE: "
                        "max(exteriorRadius, interiorRadius, znviewReachM) from the "
                        "LocScan.cs dump, plus a 12 m margin (taste) and a 90 m extra "
@@ -330,12 +530,27 @@ class Locations:
                 "the only complete test -- live positions for POSITION, this dump for "
                 "per-type RADIUS. Clearing this check is NECESSARY, NOT SUFFICIENT."),
         }
-        return not self.violations_for_samples(samples, protected_only)
 
 
 def is_protected(rec: dict) -> bool:
     return bool(rec.get("prioritized") or rec.get("centerFirst")
                 or int(rec.get("quantity", 0)) <= 5)
+
+
+def location_dump(seed: str | None = None) -> str:
+    """THIS seed's generator location dump, at CALL time: `roads/poi.py::
+    location_dump`, the one resolver, keyed on the run's seed and
+    header-checked.  Every settlement tool's `--locations` default was
+    Pirate68's dump named by its content hash under `/tmp/settle/loc3/`, so
+    a Fresh42 run read Pirate68's 12,301 locations; on Pirate68 this resolves
+    to that same file.  `roads/` is APPENDED, so `roads/clear.py`
+    never shadows `clearing/clear.py` for a later importer."""
+    import sys  # noqa: PLC0415
+    roads = str(Path(__file__).resolve().parent.parent / "roads")
+    if roads not in sys.path:
+        sys.path.append(roads)
+    import poi  # noqa: PLC0415
+    return str(poi.location_dump(seed))
 
 
 def load(path: str | Path) -> Locations:
@@ -372,16 +587,20 @@ def load(path: str | Path) -> Locations:
             "znviewPieces": t.get("znviewPieces"),
             "znviewReachM": t.get("znviewReachM"),
         }
-    return Locations(xz, names, prefabs, reach, prot, standoff, spawn, by_type)
+    interior = np.array([float(l.get("interiorRadius") or 0.0) > 0.0
+                         for l in locs], bool)
+    return Locations(xz, names, prefabs, reach, prot, standoff, spawn, by_type,
+                     interior)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--locations", default="/tmp/settle/loc3/f6fe167f4fcd.json")
+    ap.add_argument("--locations", default=None,
+                    help="default: THIS seed's dump (`location_dump`)")
     ap.add_argument("--at", nargs=2, type=float, metavar=("X", "Z"))
     ap.add_argument("--half-diagonal", type=float, default=0.0)
     a = ap.parse_args()
-    L = load(a.locations)
+    L = load(a.locations or location_dump())
     print(f"{len(L)} instances, {len(L.by_type)} types, spawn {L.spawn}")
     print(f"protected instances {int(L.protected.sum())}, "
           f"reach [{L.reach.min():.1f}, {L.reach.max():.1f}] m, "

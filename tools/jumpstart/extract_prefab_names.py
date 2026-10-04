@@ -43,6 +43,9 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import worldseed  # noqa: E402
+
 try:
     import lz4.block as lz4_block
 except ImportError:  # pragma: no cover - hard dependency for bundle scanning
@@ -274,7 +277,7 @@ def normalise(name: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--valheim-root", default=os.environ.get("VALHEIM_ROOT", "/media/big4/projects/game/valheim"))
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--out", required=True, help="output prefab index JSON")
     ap.add_argument("--skip-bundles", action="store_true", help="ObjectDB evidence only (fast)")
     ap.add_argument(
@@ -283,8 +286,14 @@ def main(argv: list[str] | None = None) -> int:
         help="write all ~620k bundle tokens instead of the pruned prefab-shaped subset",
     )
     args = ap.parse_args(argv)
+    # NOT SEED-SCOPED.  `--world` names an INSTALL tree (game bundles, BepInEx
+    # config); the prefab names it extracts are properties of the binaries and
+    # are identical on every seed, so there is no artefact declaration to read
+    # and `require_scope` would have nothing to compare.  The resolver is used
+    # anyway so the world NAME has one source.
+    _seed, world = worldseed.apply(args)
 
-    root = Path(args.valheim_root) / args.world
+    root = Path(args.valheim_root) / world
     bepinex = root / "config_merged" / "bepinex"
     server_data = root / "data" / "server" / "valheim_server_Data"
     bundle_dir = server_data / "StreamingAssets" / "SoftRef" / "Bundles"

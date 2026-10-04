@@ -32,26 +32,34 @@ import yaml
 HERE = Path(__file__).resolve().parent
 JUMPSTART = HERE.parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(JUMPSTART / "terraform"))
+sys.path.append(str(JUMPSTART))
 
 import base_geometry as bg  # noqa: E402
 from survey_datum import resolve_bodies  # noqa: E402
 from to_rcon_plan import read_objects  # noqa: E402
+import flatten as flattenmod  # noqa: E402  terraform/, for THE placements reader
+import worldseed  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--write", action="store_true")
     args = ap.parse_args(argv)
+    _seed, world = worldseed.apply(args)
 
     geom = bg.geometry()
     bodies = resolve_bodies()
-    root = JUMPSTART / "worlds" / args.world
+    root = JUMPSTART / "worlds" / world
 
     print(f"{'preset':20s} {'placement':27s} {'pad':>8s} {'base_y':>8s} "
           f"{'OLD y':>8s} {'NEW y':>8s} {'delta':>8s}  method")
     for path in sorted(root.glob("*/placements.yaml")):
-        doc = yaml.safe_load(path.read_text())
+        # EACH FILE IS ITS OWN DECLARATION.  Nine presets, nine `world:`/`seed:`
+        # headers; scope-checking the first and calling the sweep done is how
+        # eight go unread.  This loop REWRITES every file it touches.
+        doc = flattenmod.load_placements(world, path.parent.name)
         changed = False
         for place in doc["placements"]:
             solved = place.get("solved") or {}

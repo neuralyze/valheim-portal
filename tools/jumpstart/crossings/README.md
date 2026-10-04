@@ -28,6 +28,14 @@ drift from the measurement that produced it.
 | `bodies.py` | shortlists the library's over-water bodies with their draught and ZDO cost |
 | `PieceMaterial.cs`, `run_piecematerial.sh` | BepInEx scanner producing `data/piece_material.tsv`: real serialised `WearNTear`/`Piece`/`ZNetView`/`Ship`/`Rigidbody` fields for all 4,644 prefabs |
 
+**Which of these builds a seed's crossings.** `plan.py` → `structures.yaml` →
+`build_live.py` is Ulfsland's HAND-DECLARED driver (S1, S2, the docks), with
+coordinates typed for Pirate68. The crossings a seed's road network declares
+(`roads/crossings.<Seed>.yaml`) are built by `roads/boardwalk.py --from-network`,
+which generates through `assemble.py` here — one generator, one seed-driven
+driver — and the build runs it as `buildstage.py` step 6.5 `decks`, one unit
+per declared crossing.
+
 ## The four measurements everything rests on
 
 **The water plane is y = 30.0.** `ZoneSystem::c_WaterLevel` is a

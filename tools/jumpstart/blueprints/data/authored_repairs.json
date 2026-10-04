@@ -1,0 +1,28 @@
+{
+  "fox-0123456.blueprint": {
+    "source_sha256": "d60ae0e4f99243dad3c03017e3bc9082f6fd51ebe54350e7e29cf9879ca44d35",
+    "addition": "repairs/fox-0123456-roof-closures.blueprint",
+    "addition_sha256": "b4528d9a85a56158d48c572e1029af21921792d840c38c81a319e224b0d0efee",
+    "author": "Jumpstart",
+    "reason": "Close the full 4 m seam between the 45-degree lower roof and 26-degree upper course, and screen both open chimney gable ends with connected timber walls/lintels. Preserve the canopy, fire shafts and long-side smoke outlets. Original corpus bytes and its licence remain unchanged; this asset contains newly authored additions only.",
+    "measured_before": "Emitted roof_skin: 3 gaps, worst 4.678 m. Authored local roof_skin: 2 gaps, worst 4.672 m."
+  },
+  "halvar-master-refinery.blueprint": {
+    "source_sha256": "a9c75a2d4b20ef99d5329c6e744bc4fd0662c55cc904d940b5b0d2a9a3248024",
+    "addition": "repairs/halvar-master-refinery-roof-closure.blueprint",
+    "addition_sha256": "6bcb74652f25a3a2d58c754f98043dd21e989875f969a75ea04649ea5fe24561",
+    "author": "Jumpstart",
+    "poses": [
+      {
+        "row": 573,
+        "prefab": "wood_wall_roof_45",
+        "pos": [-4.71228, 4.0, -9.528671],
+        "from_rot": [0.0, 0.5555744, 0.0, 0.8314669],
+        "to_rot": [0.0, 0.8314669, 0.0, -0.5555744],
+        "reason": "Original gable triangle rises away from its ridge. Frozen gate precision measures placed seam mismatch 0.497972 m versus turned 0.195841 m. Exact-plan probing misses the turned neighbouring face and incorrectly clears the original pose. Explicitly retain the gate-preferred 180-degree yaw without touching any other source row or the sound added hip-end panel."
+      }
+    ],
+    "reason": "Fill the missing straight hip-end wood_roof at house-frame (5,8,1), between outer corners (5,8,-1) and (5,8,3). This closes source-local enclosed deck column (3.5,0,2.5), without roofing the central smoke slot or smelter outlets. Original corpus bytes and licence unchanged; one newly authored panel only.",
+    "measured_before": "Shelter: 1 inside-and-open deck column of 375; 118 open total. The other 117 are 107 terrace, 9 openings narrower than the walker, and 1 walled sample outside the roof line. Roof_skin has no discontinuities."
+  }
+}

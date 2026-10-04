@@ -46,6 +46,7 @@ sys.path.insert(0, str(JUMPSTART))
 import numpy as np  # noqa: E402
 
 import clear as C  # noqa: E402
+import worldseed  # noqa: E402
 
 
 def in_boxes(o: dict, boxes: list) -> bool:
@@ -76,7 +77,7 @@ def main() -> int:
     ap.add_argument("--out", default="/tmp/roadfinish/census_equiv_T10.json")
     args = ap.parse_args()
 
-    seg = C.load_segment(args.segment, HERE / "segments.yaml")
+    seg = C.load_segment(args.segment, worldseed.segments_path())
     per_station, _widest = C.clear_half_width(seg)
     lat_of = C.lateral_fn(seg)
     discs = C.tiles_local(seg, per_station)[

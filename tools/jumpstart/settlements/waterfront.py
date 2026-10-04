@@ -61,6 +61,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -97,6 +98,17 @@ MEASURED_BY = "HarbourWork"
 # no interpolation.  Produced by blueprints/run_patchscan.sh (rivers included).
 FIELD = "/tmp/harbour/h1m.bin"
 WORLD_FIELD = "/tmp/harbour/world.bin"
+# The east-isle ferry corridor.  A SEPARATE patch because neither `h1m.bin` nor
+# `extra.bin` covers it -- both ferry terminals sit ~1.75-1.95 km east and the
+# nearest 1 m field that did reach them, `/tmp/roads/h1m.bin`, is NOT lattice
+# aligned (its `mainland` patch has x0 = -801.5), which `Surface` correctly
+# refuses.  Scanned with the same blueprints/run_patchscan.sh, seed Pirate68,
+# centre (1850, 610) half 500.5 step 1.0 -> x0 1350.0, z0 110.0, both integers.
+# CROSS-CHECKED against the unaligned roads field at the six ferry control
+# points (two pier heads, two pier roots, two planned berths): worst
+# disagreement 0.0275 m, which is also the noise floor any berth margin has to
+# beat before "it floats" means anything.
+FERRY_FIELD = "/tmp/harbour/ferry.bin"
 
 # MEASURED in a sandbox copy of the Ulfsland server with Jotunn + JsonDotNET +
 # OdinShip + RavenwoodVikingHouses + RavenwoodRestorations staged, dumping
@@ -134,6 +146,18 @@ VESSELS: dict[str, dict] = {
 # 1.5 m draught, so the margin that number encodes is 1.0 m; it is spelled out
 # here rather than re-derived per vessel.
 KEEL_CLEARANCE_M = 1.0
+
+# HOW MUCH THE BERTH HAS TO BEAT THE REQUIREMENT BY BEFORE THE VERDICT COUNTS.
+# MEASURED reason, not taste: at `ferry-terminal-east` the plain `floats` test
+# accepted the planned berth at a shallowest-hull-sample of 3.050 m against a
+# 3.0 m requirement -- a 0.050 m margin, only 1.8x the 0.0275 m worst
+# disagreement between the two independent PatchScan fields over the same six
+# control points.  A pass/fail decided inside the instrument's own noise is not
+# a measurement, so a candidate must clear the requirement by this much to be
+# CHOSEN.  Candidates that float but miss the floor are still reported, because
+# a guard that narrows has to say what it narrowed: moving that berth 3.0 m
+# seaward buys 4.647 m and a 1.647 m margin, which is the trade this floor made.
+BERTH_MARGIN_FLOOR_M = 0.25
 
 # `wood_stair`, MEASURED from PieceGeometry: solid AABB 2.000 (x) x 2.029 (z) x
 # 1.121 (y), and the TREADS DESCEND WITH +z -- the top tread box is
@@ -173,7 +197,11 @@ class Surface:
         # same order `cmd_newbuild` already uses, so both read one surface.
         # `patch_for` still takes the SMALLEST containing patch, so a 1 m
         # question is never answered off a coarser overview patch.
-        self.field_names = [p for p in (extra or EXTRA_FIELD, field)
+        # `FERRY_FIELD` joins the union for the same reason `extra.bin` did:
+        # the two east-isle ferry terminals are in NEITHER of the other two
+        # files, and a site whose height cannot be read gets its vessel
+        # silently dropped rather than refused.
+        self.field_names = [p for p in (extra or EXTRA_FIELD, FERRY_FIELD, field)
                             if p and Path(p).exists()]
         self.fields = {}
         for p in self.field_names:
@@ -493,32 +521,63 @@ def audit(srv, x0: float, x1: float, z0: float, z1: float, *,
     unlisted: list[dict] = []
     calls = 0
     for ccx, ccz in cells:
-        for dy in CENSUS_Y_LEVELS:
+        # `y_levels`, NOT the module default, and the difference is a defect
+        # this loop shipped with for one run: the parameter was added and the
+        # loop kept iterating `CENSUS_Y_LEVELS`, so a census asked for a
+        # contiguous 0..+64 m stack silently measured the default -32..+32
+        # one. MEASURED consequence: at lh-north it saw NOTHING above y 72.98
+        # -- 0 of 48 `wood_roof`, 0 of 16 `wood_wall_log_4x0.5`, 0 of 2
+        # `bonfire` -- the per-piece diff then read 83 placed pieces as
+        # missing, and re-sending them DOUBLED 64 of them. A shrink is
+        # silent; that is why the window is now reported in the record.
+        for dy in y_levels:
             found, un, n, eng = CL.list_box(srv, ccx, y_centre + dy, ccz)
             calls += n
             unlisted += un
             for o in found.values():
-                by_pos[(o["prefab"], round(o["x"], 2), round(o["y"], 2),
-                        round(o["z"], 2))] = o
+                key = (o["prefab"], round(o["x"], 2), round(o["y"], 2),
+                       round(o["z"], 2))
+                # ONE ROW PER POSITION, and the MULTIPLICITY beside it. The
+                # durable key stays prefab + world position, because ZDO ids
+                # are reassigned on world load; the id is used ONLY to count
+                # how many distinct ZDOs share one position inside THIS
+                # census, which is the difference between "a piece stands
+                # here" and "two pieces stand here" -- the question a
+                # duplicate makes load-bearing.
+                row = by_pos.get(key)
+                if row is None:
+                    by_pos[key] = dict(o, at_position=1, ids=[o["id"]])
+                elif o["id"] not in row["ids"]:
+                    row["ids"].append(o["id"])
+                    row["at_position"] = len(row["ids"])
             for o in eng.values():
                 engine[(o["prefab"], round(o["x"], 2), round(o["z"], 2))] = o
     per = {}
-    for p, *_ in by_pos:
-        per[p] = per.get(p, 0) + 1
+    for key, row in by_pos.items():
+        per[key[0]] = per.get(key[0], 0) + row["at_position"]
     return dict(
         box=[x0, x1, z0, z1], pad_m=pad_m, cells=len(cells),
-        y_levels=list(CENSUS_Y_LEVELS), socket_calls=calls,
+        y_levels=list(y_levels), y_centre=y_centre,
+        y_window=[y_centre + min(y_levels) - CENSUS_CELL_M / 2.0,
+                  y_centre + max(y_levels) + CENSUS_CELL_M / 2.0],
+        socket_calls=calls,
         per_prefab=dict(sorted(per.items())),
-        total=len(by_pos), objects=list(by_pos.values()),
+        positions=len(by_pos),
+        total=sum(r["at_position"] for r in by_pos.values()),
+        objects=list(by_pos.values()),
         engine_per_prefab={p: sum(1 for k in engine if k[0] == p)
                            for p in {k[0] for k in engine}},
         unlisted_boxes=unlisted,
-        method=("MEASURED live over the RCON SOCKET ONLY. Disjoint 16 m cells on "
-                "the global 16 m lattice; one UNSCOPED `findObjects -near cx y cz "
-                "8` per cell at five y levels (-32,-16,0,+16,+32); a reply over 18 "
-                "rows re-asked as eight TILING sub-boxes so nothing approaches the "
-                "client's 4096-byte buffer. Deduplicated by prefab + WORLD "
-                "POSITION because ZDO ids are reassigned on world load."),
+        method=("MEASURED live over the RCON SOCKET ONLY. Disjoint 16 m cells "
+                "on the global 16 m lattice; one UNSCOPED `findObjects -near "
+                "cx y cz 8` per cell at each requested y level, the levels 16 "
+                "m apart so the 8 m half-boxes TILE in y and the window is "
+                "reported rather than assumed; a reply over 18 rows re-asked "
+                "as eight TILING sub-boxes so nothing approaches the client's "
+                "4096-byte buffer. One row per prefab + WORLD POSITION "
+                "because ZDO ids are reassigned on world load, with "
+                "`at_position` counting the distinct ZDOs sharing that "
+                "position within this census."),
         tool="tools/jumpstart/settlements/waterfront.py::audit")
 
 
@@ -645,7 +704,13 @@ def boat_op(site: str, vessel: str, x: float, z: float, yaw: float,
 # ---------------------------------------------------------------------------
 
 PLANNED = JUMPSTART / "crossings" / "out" / "ledger.jsonl"
-LIVE_LEDGER = JUMPSTART / "ledger" / "runs" / "Ulfsland" / "ledger.jsonl"
+
+
+def live_ledger() -> Path:
+    """THIS run's world's build ledger, asked at CALL time (it was
+    Ulfsland's, by path, for every world)."""
+    import worldseed  # noqa: PLC0415
+    return worldseed.ledger_path()
 
 
 def planned_ops(site: str) -> list[dict]:
@@ -684,7 +749,7 @@ def op_key(op: dict) -> tuple:
 
 def already_emitted(site: str) -> set:
     keys = set()
-    for line in LIVE_LEDGER.read_text().splitlines():
+    for line in live_ledger().read_text().splitlines():
         if not line.strip():
             continue
         rec = json.loads(line)
@@ -739,6 +804,43 @@ SITES: dict[str, dict] = {
              "shallow for a 22 m pier at any bearing, so this is the village's "
              "quay and the road joins the two."),
     ),
+    # --- the two ends of the east-isle ferry ------------------------------
+    #
+    # A FERRY IS A PAIR. Both entries exist here together on purpose: the
+    # operator's report was that the crossing had one end, and the way a
+    # one-ended ferry happened is that only one end was ever a site anything
+    # operated on. `bearing` is the MEASURED SEAWARD bearing, which is NOT the
+    # `bearing` in crossings/plan.py for either of them -- that field is the
+    # assembly axis, and at both terminals the deck marches out along its
+    # NEGATIVE direction. Taking plan.py's number at face value put the "head"
+    # on dry land at 30.559 and the "root" in 9.4 m of water, i.e. exactly
+    # backwards, so it is derived here from which end of the deck line is wet.
+    "ferry-terminal-east": dict(
+        kind="jetty", root=(1746.84, 656.44), bearing=155.0, length_m=20.0,
+        head=(1764.95, 647.72), deck_top_y=30.597, width_tiles=2,
+        boat_offset_m=7.5,
+        why=("THE MISSING END. Planned and structurally verified by Crossings "
+             "(ledger seq 39, zones [[27,10],[28,10]]) and never built: "
+             "MEASURED live at (1745.2, 655.6) over a 40 m radius, wood_floor "
+             "0 / wood_pole 0 / wood_pole_log_4 0. Its counterpart "
+             "ferry-terminal-eastisle has stood since seq 43 with a sign that "
+             "names a destination that does not exist, and road segment "
+             "S14-eastlobe-ferryeast was deliberately not built for the stated "
+             "reason that it 'terminates at ferry-terminal-east, which has zero "
+             "pieces in the world'. This is the spawn-island end."),
+    ),
+    "ferry-terminal-eastisle": dict(
+        kind="jetty", root=(1951.08, 555.59), bearing=335.0, length_m=20.0,
+        head=(1933.80, 565.86), deck_top_y=30.597, width_tiles=2,
+        boat_offset_m=7.5, portal_tag="x-ferry-e",
+        why=("The east-isle end, standing since ledger seq 43: 22 wood_floor, "
+             "11 wood_pole, 15 wood_pole_log_4, a sign post, a sign and portal "
+             "x-ferry-e, all MEASURED live at tolerance 0. Its BOAT is the "
+             "defect: the VikingShip at (1943.55, 29.75, 568.46) has a "
+             "shallowest sample of -0.465 m under its own 9.16 x 21.57 m hull "
+             "ellipse -- seabed 0.465 m ABOVE the water plane, i.e. aground -- "
+             "because the berth was sized by a POINT sample that read 4.21 m."),
+    ),
 }
 
 
@@ -755,6 +857,8 @@ SITE_ROLE: dict[str, str] = {
     "harbour-stenvik-port": "harbour_place",
     "dock-dockshore": "dock_place",
     "dock-northcape": "dock_place",
+    "ferry-terminal-east": "ferry_terminal_place",
+    "ferry-terminal-eastisle": "ferry_terminal_place",
 }
 PROBE_ROLE = "site_prop"
 
@@ -915,22 +1019,31 @@ def berth_spot(surf: Surface, site: str, vessel: str) -> dict:
             swept += 1
             mn, mx, conn, nsamp, _fld = got
             floats = bool(conn and mn >= need)
-            # floats first, then NEAREST to the seed, then deepest as a
-            # tie-break. A boat berthed is a boat against the quay.
-            key = (floats, -math.hypot(along, off), round(mn, 3))
+            # floats first -- AND BY MORE THAN THE INSTRUMENT'S OWN NOISE, see
+            # `BERTH_MARGIN_FLOOR_M` -- then NEAREST to the seed, then deepest
+            # as a tie-break. A boat berthed is a boat against the quay, but a
+            # boat berthed on a margin smaller than the disagreement between
+            # two height fields is a boat berthed on a coin toss.
+            trusted = bool(floats and mn - need >= BERTH_MARGIN_FLOOR_M)
+            key = (trusted, -math.hypot(along, off), round(mn, 3))
             if best is None or key > best[0]:
                 best = (key, dict(x=round(float(bx), 2), z=round(float(bz), 2),
                                   along_from_seed_m=round(along, 2),
                                   offset_from_centreline_m=round(off, 2),
+                                  moved_from_seed_m=round(math.hypot(along, off), 2),
                                   min_depth_under_hull_m=round(mn, 3),
                                   max_depth_under_hull_m=round(mx, 3),
+                                  margin_over_requirement_m=round(mn - need, 3),
+                                  water_under_keel_m=round(mn - v["draught_m"], 3),
                                   hull_samples=nsamp,
-                                  connected_to_open_sea=conn, floats=floats))
+                                  connected_to_open_sea=conn, floats=floats,
+                                  clears_margin_floor=trusted))
     if best is None:
         raise SystemExit(f"{site}: no berth candidate is inside a 1 m patch; "
                          f"widen the PatchScan request rather than guessing")
     out = dict(site=site, vessel=vessel, yaw=s["bearing"], seed=seed,
                required_depth_m=round(need, 2),
+               margin_floor_m=BERTH_MARGIN_FLOOR_M,
                draught_m=v["draught_m"], hull_w_m=v["hull_w"],
                hull_l_m=v["hull_l"], candidates_swept=swept, **best[1])
     out["disc"] = berth(surf, out["x"], out["z"], vessel,
@@ -940,7 +1053,10 @@ def berth_spot(surf: Surface, site: str, vessel: str) -> dict:
                   "candidate is scored on the SHALLOWEST sample inside the "
                   "hull's own elliptical footprint, with EVERY hull sample "
                   "required to lie in water that is flood-fill connected to the "
-                  "open sea. Ranked floats-first then nearest-to-seed.")
+                  "open sea, and the shallowest sample required to beat the "
+                  f"requirement by {BERTH_MARGIN_FLOOR_M} m so the verdict is "
+                  "outside the two height fields' own 0.0275 m disagreement. "
+                  "Ranked clears-the-floor first, then nearest-to-seed.")
     out["tool"] = "tools/jumpstart/settlements/waterfront.py::berth_spot"
     return out
 
@@ -962,18 +1078,25 @@ def pick_vessel(surf: Surface, site: str) -> dict:
                               hull_l_m=v["hull_l"], slip_m=s["length_m"]))
             continue
         spot = berth_spot(surf, site, name)
-        if spot["floats"]:
+        if spot["clears_margin_floor"]:
             chosen = spot
             break
-        tried.append(dict(vessel=name, rejected="depth",
+        tried.append(dict(vessel=name,
+                          rejected=("margin" if spot["floats"] else "depth"),
                           min_depth_under_hull_m=spot["min_depth_under_hull_m"],
-                          required_depth_m=spot["required_depth_m"]))
+                          required_depth_m=spot["required_depth_m"],
+                          margin_over_requirement_m=spot["margin_over_requirement_m"],
+                          margin_floor_m=BERTH_MARGIN_FLOOR_M,
+                          floats_but_inside_instrument_noise=spot["floats"]))
     return dict(site=site, chosen=chosen, rejected=tried,
-                rule=("largest by draught that the hull footprint proves it can "
-                      "float, and that fits the slip's inner width less 1 m of "
-                      "fender and its length. A large boathouse berthing a "
-                      "rowboat is the same defect as a slip that cannot float a "
-                      "boat."))
+                margin_floor_m=BERTH_MARGIN_FLOOR_M,
+                rule=("largest by draught whose own elliptical hull footprint "
+                      "proves it floats by at least the margin floor, and that "
+                      "fits the slip's inner width less 1 m of fender and its "
+                      "length. A large boathouse berthing a rowboat is the same "
+                      "defect as a slip that cannot float a boat; a vessel "
+                      "accepted on a 0.05 m margin is the same defect wearing a "
+                      "number."))
 
 
 def emit(builder, ops: list[dict], *, label: str = "") -> list[dict]:
@@ -1056,6 +1179,139 @@ def substitute_boat(surf: Surface, site: str, ops: list[dict]) -> list[dict]:
         out.append(op)
     return out
 
+# ---------------------------------------------------------------------------
+# A FERRY IS A PAIR
+# ---------------------------------------------------------------------------
+#
+# The operator's report was verbatim: "i investigated a ferry and i couldnt find
+# a corresponding dock on the other side of the water. ferries are supposed to
+# have two points that the ferries sail between. a ferry isnt just a boat on a
+# dock."  Everything below exists so that the two ends of a crossing are ONE
+# object in this module and cannot be finished singly again.
+FERRY_ROUTES: dict[str, dict] = {
+    "ferry-east-isle": dict(
+        a="ferry-terminal-east", b="ferry-terminal-eastisle",
+        name_a="mainland", name_b="East Isle",
+        why=("The only crossing on this world a bridge cannot replace. "
+             "MEASURED on the aligned 1 m ferry patch: the spawn island and "
+             "the east isle are separate 4-connected land components whose "
+             "nearest approach is 223.65 m -- 2.33x the 96 m absolute iron-"
+             "stringer free-span ceiling -- over water that reaches the 30.0 m "
+             "ocean-floor clamp, against ~20 m of HardWood pile reach. Both "
+             "ceilings are exceeded, so it is a ferry and not a bridge anyone "
+             "declined to build.")),
+}
+
+
+def route_for(site: str) -> tuple[str, dict, str] | None:
+    """`(route_id, route, other_end)` for a terminal, or None."""
+    for rid, r in FERRY_ROUTES.items():
+        if site == r["a"]:
+            return rid, r, r["b"]
+        if site == r["b"]:
+            return rid, r, r["a"]
+    return None
+
+
+def ferry_pair(surf: Surface) -> dict:
+    """MEASURE both ends of every ferry route as one object.
+
+    Returns, per route: each end's chosen vessel and berth, the deck datum at
+    each end, and the three distances that are NOT the same number and get
+    confused for each other --
+
+      * `shore_gap_m`     nearest land to nearest land. This is what the
+                          existing signs' "223 m" is, and it is right: MEASURED
+                          223.65 m against the ledger's 223.2 m claim.
+      * `head_to_head_m`  pier head to pier head, 187.65 m -- what a bridge
+                          would have had to span, and the number the span
+                          ceiling is judged against.
+      * `sail_m`          berth to berth. This is what a passenger travels and
+                          therefore the only one that belongs on a guidepost.
+    """
+    out = {}
+    for rid, r in FERRY_ROUTES.items():
+        ends = {}
+        for end in (r["a"], r["b"]):
+            pick = pick_vessel(surf, end)
+            s = SITES[end]
+            ends[end] = dict(
+                vessel=pick["chosen"], rejected=pick["rejected"],
+                deck_datum_y=DECK_DATUM_Y,
+                deck_top_y=s["deck_top_y"],
+                head_xz=list(s["head"]), root_xz=list(s["root"]),
+                seaward_bearing_deg=s["bearing"])
+            if pick["chosen"] is None:
+                raise SystemExit(
+                    f"{end}: NO vessel clears the berth by the "
+                    f"{BERTH_MARGIN_FLOOR_M} m margin floor. A ferry terminal "
+                    f"that cannot float a boat is a jetty; refusing rather than "
+                    f"berthing something that grounds. Rejections: "
+                    f"{pick['rejected']}")
+        a, b = r["a"], r["b"]
+        ba = ends[a]["vessel"]
+        bb = ends[b]["vessel"]
+        out[rid] = dict(
+            a=a, b=b, ends=ends,
+            deck_datum_shared=(ends[a]["deck_top_y"] == ends[b]["deck_top_y"]),
+            deck_datum_y=DECK_DATUM_Y,
+            head_to_head_m=round(math.dist(ends[a]["head_xz"], ends[b]["head_xz"]), 2),
+            sail_m=round(math.dist((ba["x"], ba["z"]), (bb["x"], bb["z"])), 2),
+            why=r["why"])
+    return out
+
+
+def ferry_sign_text(pair: dict, site: str) -> str:
+    """The guidepost text, with the number MEASURED in this same pass.
+
+    The planned text said "223 m to the East Isle. Longship moored here."  Two
+    of those three claims do not survive measurement: 223 m is the SHORE gap,
+    not the sail (197 m berth to berth), and the vessel is chosen by the berth
+    rather than by the record, so naming a Longship in the text and berthing
+    something else is a sign that lies in the same way the missing far terminal
+    did.  "Moored" is also wrong on its own terms -- MEASURED, Valheim has no
+    mooring mechanic -- so the text says berthed.
+    """
+    rid, r, other = route_for(site)
+    p = pair[rid]
+    facing = r["name_b"] if site == r["a"] else r["name_a"]
+    head = "FERRY EAST" if site == r["a"] else "FERRY WEST"
+    vessel = p["ends"][site]["vessel"]["vessel"]
+    return (f"{head} - to the {facing} terminal, {p['sail_m']:.0f} m across "
+            f"open water. {vessel} berthed here.")
+
+
+def substitute_sign(surf: Surface, site: str, ops: list[dict],
+                    pair: dict | None = None) -> list[dict]:
+    """Rewrite a ferry terminal's guidepost to the MEASURED crossing.
+
+    Only touches a site that belongs to a `FERRY_ROUTES` entry; every other
+    site's planned sign goes through untouched.
+    """
+    if route_for(site) is None:
+        return ops
+    pair = pair or ferry_pair(surf)
+    text = ferry_sign_text(pair, site)
+    out = []
+    for op in ops:
+        p = op.get("params") or {}
+        if op["op"] == "spawn" and p.get("prefab") == "sign":
+            was = (p.get("zdo_strings") or {}).get("text")
+            nq = dict(op, params=dict(p), meta=dict(op.get("meta") or {}))
+            nq["params"]["zdo_strings"] = dict(text=text)
+            nq["params"]["data_b64"] = sign_blob(text)
+            nq["wire"] = [op["wire"][0].split(" data=")[0]
+                          + f" data={nq['params']['data_b64']}"]
+            nq["meta"]["replaces_planned_text"] = dict(
+                was=was, now=text,
+                why=("the planned text quoted the 223 m SHORE gap as though it "
+                     "were the sail, and named a Longship the measured berth "
+                     "does not choose"))
+            out.append(nq)
+            continue
+        out.append(op)
+    return out
+
 
 def site_anchor(ops: list[dict], site: str) -> dict:
     """The op a pass's `save` postcondition should be measured against.
@@ -1104,6 +1360,16 @@ def cmd_complete(args) -> int:
         p = o.get("params") or {}
         print(f"  {mark} {o['op']:14s} {p.get('prefab') or p.get('plan_ref') or ''}")
     todo = substitute_boat(surf, site, todo)
+    # A FERRY TERMINAL IS FINISHED AS A PAIR OR NOT AT ALL.  Measuring BOTH
+    # ends here -- not just this one -- is what makes the guidepost able to
+    # name a real distance to a real far terminal, and it REFUSES (inside
+    # `ferry_pair`) if either end cannot float the vessel its own sign will
+    # promise. A sign that names a destination nobody verified is how this
+    # crossing came to have one end.
+    fpair = ferry_pair(surf) if route_for(site) else None
+    if fpair:
+        todo = substitute_sign(surf, site, todo, fpair)
+        print(json.dumps(dict(ferry_pair=fpair), indent=1, default=float))
     # THE PORTAL GAP, CLOSED HERE.  Any tag whose SITE end this pass opens gets
     # its HUB end appended to the SAME op list, so one pass emits both ends or
     # neither.  Emitting the site end alone leaves a tag that pairs with
@@ -1120,7 +1386,11 @@ def cmd_complete(args) -> int:
                               vessel=pick_vessel(surf, site)), indent=1,
                          default=float))
         return 0
-    with LiveBuilder(actor=ACTOR) as b:
+    # `--actor`, not the module constant. `ACTOR` is the agent that wrote the
+    # earlier waterfront records; recording this pass under that name would put
+    # a name in the ledger that did not do the work, which is the defect the
+    # `--actor` flag was added for and which `cmd_lighthouse` already honours.
+    with LiveBuilder(actor=getattr(args, "actor", None) or ACTOR) as b:
         b.note(args.note or
                f"{site}: completing a structure that was planned and verified by "
                f"Crossings and left incomplete. Emitting ONLY the planned ops "
@@ -1128,6 +1398,20 @@ def cmd_complete(args) -> int:
                f"ledger; the deck itself is not re-sent, because a spawn_plan "
                f"re-emit would double every piece and its own postcondition "
                f"would then fail.", role=SITE_ROLE[site], site_id=site)
+        if fpair:
+            b.observe(f"ferry_pair::{site}",
+                      "MEASURED on the lattice-aligned 1 m ferry PatchScan "
+                      "patch (centre 1850,610 half 500.5, x0/z0 integers), "
+                      "cross-checked against roads/h1m.bin at six control "
+                      "points to 0.0275 m: BOTH terminals of the route, each "
+                      "one's vessel chosen by the shallowest sample inside "
+                      "that hull's own elliptical footprint with every sample "
+                      "required to be flood-fill connected to open sea and to "
+                      "beat the requirement by the margin floor, plus the "
+                      "three distances that get confused for one another "
+                      "(shore gap, head to head, berth to berth).",
+                      "tools/jumpstart/settlements/waterfront.py::ferry_pair",
+                      fpair)
         if pairing:
             for row in pairing:
                 if row.get("bay"):
@@ -1149,6 +1433,32 @@ def cmd_complete(args) -> int:
         emit(b, [save_op((lp["pos"][0], lp["pos"][2]), lp["prefab"], 1,
                          max(3.0, lp.get("guard_radius_m", 0.5) * 2.0),
                          SITE_ROLE[site])], label=f"{site} save")
+        if fpair:
+            rid, _r, other = route_for(site)
+            s = SITES[site]
+            b.note(
+                f"{site} NOW EXISTS, so the stated blocker on road segment "
+                f"S14-eastlobe-ferryeast is REMOVED. RoadBuild recorded that "
+                f"segment as validated-but-deliberately-not-built with the "
+                f"reason 'terminates at ferry-terminal-east, which has zero "
+                f"pieces in the world' -- MEASURED then as wood_floor 0 / "
+                f"wood_pole_log_4 0 over a 40 m radius at (1745.2, 655.6). "
+                f"That is no longer true. WHEN IT IS ROUTED, THE TERMINUS "
+                f"SOLVES AGAINST THE DECK DATUM, NOT AGAINST TERRAIN: the "
+                f"walking surface of this pier is y={DECK_DATUM_Y} exactly "
+                f"(wood_floor authored at 30.5031 with a +{FLOOR_TOP_OFFSET} m "
+                f"top face), it is IDENTICAL at the far terminal "
+                f"{other}, and the landward deck tile stands at "
+                f"({s['root'][0]:.2f}, {s['root'][1]:.2f}) where the generated "
+                f"ground is 30.559 -- a 0.041 m step, already inside any "
+                f"reasonable join tolerance, and a road that levels its last "
+                f"run to 30.6 removes it entirely. A road once stopped 10.4 m "
+                f"below a town's floor because nothing read the datum that "
+                f"existed for exactly this purpose. NO TERRAIN MAY BE WRITTEN "
+                f"INSIDE THE PIER FOOTPRINT: every record here carries "
+                f"flatten: FORBIDDEN because levelling it would drain the "
+                f"water the piles are driven into.",
+                role=SITE_ROLE[site], site_id=site)
         # BOTH ENDS, off the ZDO, before this pass is called done.
         pairs = []
         for row in pairing:
@@ -1182,6 +1492,311 @@ def cmd_complete(args) -> int:
                     f"annotate this away, fix the end that is missing.")
         print(json.dumps(b.close(), indent=1))
     return 0
+
+
+def ferry_census(srv, site: str) -> dict:
+    """What is actually standing at a ferry terminal, per prefab, at tol 0."""
+    s = SITES[site]
+    hx, hz = s["head"]
+    rx, rz = s["root"]
+    cx, cz = (hx + rx) / 2.0, (hz + rz) / 2.0
+    r = round(math.dist((hx, hz), (rx, rz)) / 2.0 + 14.0, 1)
+    out = {}
+    for pf in ("wood_floor", "wood_pole", "wood_pole_log_4", "wood_pole2",
+               "sign", "portal_wood", "VikingShip", "CargoShip", "MercantShip",
+               "WarShip", "BigCargoShip"):
+        n, _ = srv.count(pf, cx, cz, r)
+        out[pf] = n
+    return dict(site=site, centre=[round(cx, 2), round(cz, 2)], radius_m=r,
+                counts=out,
+                method=("MEASURED live: scoped `objects_count` per prefab over "
+                        "one cylinder covering the whole pier from root to "
+                        "head plus 14 m, which also reaches the berth"))
+
+
+def placed_by(site: str, prefab: str, x: float, z: float,
+              tol_m: float = 2.0) -> list[dict]:
+    """The LIVE-LEDGER record(s) that placed this object, for `retire.retires`.
+
+    Matched on (site_id, prefab, position) and NOT on seq alone, because the
+    chain forked at file line 47 and `seq` is not unique on this artefact --
+    the file LINE is the only total order it has, so both are reported and the
+    schema gets the seq it requires.
+    """
+    out = []
+    for line_no, line in enumerate(live_ledger().read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        p = rec.get("params") or {}
+        if p.get("site_id") != site or p.get("prefab") != prefab:
+            continue
+        pos = p.get("pos")
+        if not pos or rec["op"] not in ("spawn", "portal"):
+            continue
+        if math.hypot(pos[0] - x, pos[-1] - z) > tol_m:
+            continue
+        out.append(dict(seq=rec["seq"], file_line=line_no, pos=pos,
+                        actor=rec.get("actor")))
+    return out
+
+
+def cmd_ferry(args) -> int:
+    """Repair a ferry terminal that is STANDING but whose berth or guidepost
+    does not survive measurement, and prove the route is a pair.
+
+    `complete` builds a terminal that was never built.  This is the other half:
+    a terminal that exists and is WRONG.  At `ferry-terminal-eastisle` the
+    Longship its own sign promises has -0.465 m of water under the shallowest
+    sample of its 9.16 x 21.57 m hull ellipse -- seabed ABOVE the water plane,
+    i.e. aground -- because the berth was sized from a single point sample that
+    read 4.21 m.  That is the same point-versus-footprint error that would have
+    oversized every slip on this world by 60%, and it is not repaired by
+    annotating it.
+
+    The repair is deliberately a RETIRE + a PLACE and not a nudge: there is no
+    verb on this surface that moves a ZDO, and a second boat spawned beside the
+    first is two boats.  Each retire is scoped to ONE prefab inside a cube sized
+    to that object, and its postcondition is that the prefab is ABSENT there.
+    """
+    from ledger.live import LiveBuilder  # noqa: PLC0415
+    import replay as R  # noqa: PLC0415
+    site = args.site
+    got = route_for(site)
+    if got is None:
+        raise SystemExit(f"{site} is not an end of any route in FERRY_ROUTES; "
+                         f"this command only operates on ferries")
+    rid, route, other = got
+    surf = Surface()
+    pair = ferry_pair(surf)
+    p = pair[rid]
+    chosen = p["ends"][site]["vessel"]
+    want_text = ferry_sign_text(pair, site)
+    s = SITES[site]
+
+    with R.Server(dry=False) as srv:
+        census = ferry_census(srv, site)
+        # the standing boat and the standing sign, read off their ZDOs
+        boats = {}
+        for pf in ("VikingShip", "CargoShip", "MercantShip", "WarShip",
+                   "BigCargoShip", "Karve", "LittleBoat"):
+            if census["counts"].get(pf):
+                txt, _lv, _un = R.bounded_detailed(
+                    srv, pf, census["centre"][0], W.WATER_LEVEL,
+                    census["centre"][1], census["radius_m"])
+                boats[pf] = [l.strip() for l in
+                             (txt if isinstance(txt, str) else "\n".join(txt)).splitlines()
+                             if l.strip()]
+        sign_pos = None
+        for op in planned_ops(site):
+            pp = op.get("params") or {}
+            if op["op"] == "spawn" and pp.get("prefab") == "sign":
+                sign_pos = pp["pos"]
+                sign_yaw = pp.get("yaw_deg", 0.0)
+                sign_was = (pp.get("zdo_strings") or {}).get("text")
+        sign_live = (read_back(srv, "sign", sign_pos[0], sign_pos[1], sign_pos[2], 2.0)
+                     if sign_pos else None)
+
+    report = dict(route=rid, site=site, other_end=other, pair=p,
+                  census=census, standing_boats=boats,
+                  sign_live=sign_live, sign_planned_text=sign_was,
+                  sign_wanted_text=want_text)
+
+    ops: list[dict] = []
+    grounding: list[dict] = []
+    # --- the boat -----------------------------------------------------------
+    for pf, listing in boats.items():
+        # POSITION *AND* ROTATION, both off the ZDO. The hull footprint is an
+        # ellipse and a 21.57 m hull turned 39 degrees covers different seabed:
+        # measuring this ship against the PIER's bearing instead of its own
+        # would be the same class of error as measuring it at a point.
+        found = [re.search(r"Position:\s*\((-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\)"
+                           r".*?Rotation:\s*\((-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\)", l)
+                 for l in listing]
+        for m in found:
+            if not m:
+                continue
+            bx, by, bz = (float(m.group(i)) for i in (1, 2, 3))
+            byaw = float(m.group(5))
+            rep = hull_report(surf, byaw, bx, bz, pf)
+            rep["live_pose"] = dict(pos=[bx, by, bz], yaw_deg=byaw)
+            rep["y_vs_water_plane_m"] = round(by - W.WATER_LEVEL, 3)
+            rep["also_measured_at_pier_bearing"] = hull_report(
+                surf, s["bearing"], bx, bz, pf)
+            grounding.append(rep)
+            if rep["floats"]:
+                raise SystemExit(
+                    f"{site}: the standing {pf} MEASURES afloat "
+                    f"({rep['min_depth_under_hull_m']} m under the hull against "
+                    f"{rep['required_depth_m']} m required). Refusing to retire "
+                    f"a vessel that is not the defect; if it should be a "
+                    f"different class, that is a separate decision and it needs "
+                    f"its own reason.")
+            r_cube = round(max(VESSELS[pf]["hull_l"], VESSELS[pf]["hull_w"]) / 2.0 + 1.0, 2)
+            src = placed_by(site, pf, bx, bz, tol_m=6.0)
+            if not src:
+                raise SystemExit(
+                    f"{site}: no live-ledger record places a {pf} within 6 m of "
+                    f"({bx:.2f}, {bz:.2f}). A retire must name what it "
+                    f"supersedes; refusing to delete an object this log did not "
+                    f"write.")
+            ops.append(dict(
+                op="retire",
+                params=dict(prefab=pf, pos=[round(bx, 2), round(by, 2), round(bz, 2)],
+                            radius_m=r_cube,
+                            retires=sorted({r["seq"] for r in src}),
+                            reason=(
+                                f"{pf} at ({bx:.2f}, {by:.2f}, {bz:.2f}) yaw "
+                                f"{byaw:.2f} is AGROUND. MEASURED shallowest "
+                                f"sample inside its own {VESSELS[pf]['hull_w']} "
+                                f"x {VESSELS[pf]['hull_l']} m hull ellipse at "
+                                f"that live pose: "
+                                f"{rep['min_depth_under_hull_m']:+.3f} m of "
+                                f"water, against "
+                                f"{rep['required_depth_m']:.1f} m required "
+                                f"(draught {VESSELS[pf]['draught_m']} + "
+                                f"{KEEL_CLEARANCE_M} m keel clearance) -- short "
+                                f"by {-rep['margin_over_requirement_m']:.3f} m "
+                                f"over {rep['hull_samples']} samples. The berth "
+                                f"it was placed on was sized from a single "
+                                f"POINT sample that read 4.21 m; the point is "
+                                f"in deep water and the hull is not. There is "
+                                f"no verb on this surface that moves a ZDO, so "
+                                f"it is retired and re-berthed inside one token "
+                                f"hold."),
+                            role=SITE_ROLE[site], site_id=site),
+                wire=[f"deleteObjects -prefab {pf} -near {bx:.2f} {by:.2f} "
+                      f"{bz:.2f} {r_cube:.2f} -force"],
+                requires=dict(mods=["WorldEditCommands"], prefabs=[pf], blobs=[]),
+                expect=dict(absent=[dict(prefab=pf,
+                                         pos=[round(bx, 2), round(bz, 2)],
+                                         max=round(r_cube + 0.5, 2))]),
+                meta=dict(measured_hull=rep, cube_half_m=r_cube,
+                          superseded_records=src,
+                          position_key=("prefab + WORLD POSITION: ZDO ids are "
+                                        "reassigned on world load, and `seq` is "
+                                        "not unique on this forked log, so the "
+                                        "superseded records carry their FILE "
+                                        "LINE as well as their seq"))))
+    nb = boat_op(site, chosen["vessel"], chosen["x"], chosen["z"],
+                 chosen["yaw"], chosen)
+    nb["meta"]["replaces"] = dict(
+        prefabs=sorted(boats), why="re-berthed on a footprint-measured spot")
+    ops.append(nb)
+
+    # --- the guidepost ------------------------------------------------------
+    # `read_back` returns `listing` as ONE string, not a list of lines. Joining
+    # a string with "\n".join() joins its CHARACTERS, which happened to give the
+    # right answer here and would have given the wrong one the moment the wanted
+    # text was a substring of the old. Compared as text, once.
+    live_text = ((sign_live or {}).get("listing") or "")
+    if not isinstance(live_text, str):
+        live_text = "\n".join(live_text)
+    if sign_pos and sign_live and want_text not in live_text:
+        sign_src = placed_by(site, "sign", sign_pos[0], sign_pos[2], tol_m=1.0)
+        if not sign_src:
+            raise SystemExit(
+                f"{site}: no live-ledger record places a sign within 1 m of "
+                f"({sign_pos[0]:.2f}, {sign_pos[2]:.2f}); refusing to delete a "
+                f"guidepost this log did not write.")
+        ops.append(dict(
+            op="retire",
+            params=dict(prefab="sign", pos=[round(v, 2) for v in sign_pos],
+                        radius_m=1.0,
+                        retires=sorted({r["seq"] for r in sign_src}),
+                        reason=(f"the guidepost reads {sign_was!r}. Its 223 m is "
+                                f"the SHORE gap (MEASURED 223.65 m), not the "
+                                f"sail, which is {p['sail_m']:.2f} m berth to "
+                                f"berth; and it promises a Longship the "
+                                f"measured berth does not choose. A sign is "
+                                f"replaced rather than edited because no verb "
+                                f"on this surface writes a ZDO string in place."),
+                        role=SITE_ROLE[site], site_id=site),
+            wire=[f"deleteObjects -prefab sign -near {sign_pos[0]:.2f} "
+                  f"{sign_pos[1]:.2f} {sign_pos[2]:.2f} 1.00 -force"],
+            requires=dict(mods=["WorldEditCommands"], prefabs=["sign"], blobs=[]),
+            expect=dict(absent=[dict(prefab="sign",
+                                     pos=[round(sign_pos[0], 2), round(sign_pos[2], 2)],
+                                     max=1.5)]),
+            meta=dict(was=sign_was, now=want_text,
+                      superseded_records=sign_src)))
+        ops.append(spawn_op(site, f"{site}/sign", "sign",
+                            sign_pos[0], sign_pos[1], sign_pos[2], sign_yaw,
+                            reason=ON_DECK, blob=sign_blob(want_text),
+                            strings=dict(text=want_text),
+                            meta=dict(replaces_text=dict(was=sign_was,
+                                                         now=want_text))))
+
+    report["would_emit"] = [f"{o['op']}:{o['params'].get('prefab')}" for o in ops]
+    if not args.apply:
+        print(json.dumps(report, indent=1, default=float))
+        return 0
+
+    with LiveBuilder(actor=getattr(args, "actor", None) or ACTOR) as b:
+        b.note(args.note or
+               f"{site}: repairing the STANDING end of ferry route {rid}. "
+               f"{route['why']} The deck, piles, sign post and portal are "
+               f"correct and are not touched; the berth and the guidepost are "
+               f"not, and are replaced with measured ones.",
+               role=SITE_ROLE[site], site_id=site)
+        b.observe(f"ferry_pair::{site}",
+                  "MEASURED: both ends of the route in one pass, each vessel "
+                  "chosen by the shallowest sample inside its own elliptical "
+                  "hull footprint with every sample required to be flood-fill "
+                  "connected to open sea and to clear the requirement by the "
+                  "margin floor; plus the live census of what stands at this "
+                  "end and the ZDO read-back of the boat and the sign it is "
+                  "about to replace.",
+                  "tools/jumpstart/settlements/waterfront.py::cmd_ferry",
+                  report)
+        # THE GROUNDING GETS ITS OWN RECORD, BEFORE THE RETIRE, because after
+        # the retire the evidence is gone from the world and the only place it
+        # can still be read is here. The operator has been told there are
+        # berthed ships at this site; one of them was sitting on the bottom,
+        # and the number that proves it outlives the hull.
+        if grounding:
+            b.observe(f"berthed_vessel_aground::{site}",
+                      "MEASURED BEFORE THE REMOVAL, at the vessel's own live "
+                      "ZDO position AND its own live ZDO rotation, on the "
+                      "lattice-aligned 1 m ferry PatchScan patch: the "
+                      "shallowest generated-height sample inside the hull's "
+                      "elliptical solid-collider footprint, against "
+                      "Ship.m_waterLevelOffset plus the project's 1.0 m keel "
+                      "clearance. The record that placed this vessel measured "
+                      "ONE POINT at the spawn position and read 4.21 m; the "
+                      "point is in deep water and the hull is not. The same "
+                      "footprint-versus-point error read an 11.64 x 35.43 m "
+                      "bound for a 9.16 x 21.57 m hull earlier tonight.",
+                      "tools/jumpstart/settlements/waterfront.py::hull_report",
+                      grounding, units="m")
+        emit(b, ops, label=site)
+        emit(b, [save_op((chosen["x"], chosen["z"]), chosen["vessel"], 1, 12.0,
+                         SITE_ROLE[site])], label=f"{site} save")
+        print(json.dumps(b.close(), indent=1))
+    return 0
+
+
+def hull_report(surf: Surface, bearing: float, bx: float, bz: float,
+                vessel: str) -> dict:
+    """The footprint measurement as a record, for a hull that is already
+    somewhere rather than one being sited."""
+    got = hull_depths(surf, bearing, bx, bz, vessel)
+    if got is None:
+        return dict(vessel=vessel, at=[bx, bz], measured=False,
+                    why="outside every loaded patch")
+    mn, mx, conn, nsamp, fld = got
+    v = VESSELS[vessel]
+    need = v["draught_m"] + KEEL_CLEARANCE_M
+    return dict(vessel=vessel, at=[round(bx, 2), round(bz, 2)],
+                yaw=round(bearing, 2), patch=fld.id,
+                draught_m=v["draught_m"], required_depth_m=round(need, 2),
+                hull_w_m=v["hull_w"], hull_l_m=v["hull_l"],
+                min_depth_under_hull_m=round(mn, 3),
+                max_depth_under_hull_m=round(mx, 3),
+                hull_samples=nsamp, every_sample_open_sea=conn,
+                floats=bool(conn and mn >= need),
+                margin_over_requirement_m=round(mn - need, 3),
+                water_under_keel_m=round(mn - v["draught_m"], 3))
 
 
 def cmd_stair(args) -> int:
@@ -1371,7 +1986,7 @@ def hub_seats_taken() -> list[dict]:
     the ledger is invisible to this function and would be collided with.
     """
     seats: dict[tuple, dict] = {}
-    for line in LIVE_LEDGER.read_text().splitlines():
+    for line in live_ledger().read_text().splitlines():
         if not line.strip():
             continue
         rec = json.loads(line)
@@ -1516,7 +2131,7 @@ def hub_portal_op(site: str, tag: str, bay: dict) -> dict:
 def tag_ends(tag: str) -> list[dict]:
     """Every standing end of `tag` per the ledger, retires honoured."""
     ends: dict[tuple, dict] = {}
-    for line in LIVE_LEDGER.read_text().splitlines():
+    for line in live_ledger().read_text().splitlines():
         if not line.strip():
             continue
         rec = json.loads(line)
@@ -2619,6 +3234,10 @@ LIGHTHOUSE: dict[str, dict] = {
         # the gap above its outermost ring, so every piece is unambiguously
         # inside and no ring sits ON the boundary.
         count_radius_m=7.28, reach_m=7.028, partial_seq=2164,
+        # The record whose 64 commands landed on top of pieces that were
+        # already standing, because the census behind that resume had a
+        # silent y blind spot. `dedupe_ops` retires against this seq.
+        duplicated_by_seq=2304,
         stray_radius_m=14.0,
         # `dock-northcape`, built and verified at seq 2127-2143: the 48 m pier
         # (20/24/28/32/40 m were ALL refused by the aimer), the berthed
@@ -2739,7 +3358,8 @@ def lh_census(srv, spec: dict, *, box_m: float = 18.0) -> dict:
     for o in rep["objects"]:
         d = math.hypot(o["x"] - px, o["z"] - pz)
         row = dict(prefab=o["prefab"], x=round(o["x"], 3), y=round(o["y"], 3),
-                   z=round(o["z"], 3), dist_xz_m=round(d, 3))
+                   z=round(o["z"], 3), dist_xz_m=round(d, 3),
+                   at_position=o.get("at_position", 1))
         # A body piece is one of the plan's prefabs standing INSIDE the body's
         # own measured reach. The pier 19 m away uses three of the same
         # prefabs, so the prefab name alone cannot decide this.
@@ -2747,12 +3367,16 @@ def lh_census(srv, spec: dict, *, box_m: float = 18.0) -> dict:
          else foreign).append(row)
     per: dict[str, int] = {}
     for r in mine:
-        per[r["prefab"]] = per.get(r["prefab"], 0) + 1
+        per[r["prefab"]] = per.get(r["prefab"], 0) + r["at_position"]
     return dict(
         pad=[px, pz], box_m=box_m, y_levels=list(TOWER_Y_LEVELS),
-        standing_total=len(mine), standing_per_prefab=dict(sorted(per.items())),
+        y_window=rep["y_window"],
+        standing_total=sum(r["at_position"] for r in mine),
+        standing_positions=len(mine),
+        standing_per_prefab=dict(sorted(per.items())),
         standing=mine, foreign=foreign,
-        foreign_per_prefab={p: sum(1 for r in foreign if r["prefab"] == p)
+        foreign_per_prefab={p: sum(r["at_position"] for r in foreign
+                                   if r["prefab"] == p)
                             for p in sorted({r["prefab"] for r in foreign})},
         nearest_foreign_xz_m=min((r["dist_xz_m"] for r in foreign),
                                  default=None),
@@ -2984,64 +3608,251 @@ def spawn_batches(spec: dict, lines: list[str], *,
     return ops
 
 
-def lh_remaining(spec: dict, census: dict, *, tol_m: float = 0.15) -> dict:
-    """WHICH PLAN LINES ARE NOT YET STANDING, matched PER PIECE by prefab +
-    world position.
-
-    THIS IS WHY THE PASS IS RESUMABLE WITHOUT GUESSING.  MEASURED tonight:
-    the placement run was killed by its own harness after two of twenty
-    records had landed, and the ledger then held an appended `spawn_plan`
-    whose wire may or may not have been sent -- which is precisely the
-    question a record cannot answer about itself.  A per-piece diff answers
-    it from the world: every one of the 1,255 plan lines has a distinct
-    target position, so a line is either occupied by a piece of its own
-    prefab within `tol_m` or it is not, and only the ones that are not get
-    re-sent.  That makes a resume neither a double-place nor a gap.
-
-    A STANDING BODY PIECE THAT NO PLAN LINE CLAIMS IS A REFUSAL, not a
-    rounding difference: it is either a duplicate from a re-sent command or
-    something else standing inside the body's footprint, and both change what
-    the final count means.
-    """
+def plan_spacing(spec: dict) -> list[dict]:
+    """Per plan line: the line, its row, and its MEASURED distance to the
+    nearest other piece of the same prefab in both metrics a probe can use --
+    the cube (`findObjects -near`, `deleteObjects -near`) and the XZ cylinder
+    (`objects_count`)."""
     import verify_placement as VP  # noqa: PLC0415
     rows = VP.plan_rows(Path(spec["plan"]))
     lines = plan_lines(spec)
-    live = list(census["standing"])
-    taken = [False] * len(live)
-    todo_lines, todo_rows, matched = [], [], 0
+    by_prefab: dict[str, list] = {}
+    for r in rows:
+        by_prefab.setdefault(r[0], []).append(r)
+    out = []
     for line, row in zip(lines, rows):
         prefab, x, y, z, _yaw = row
-        best, at = None, None
-        for k, o in enumerate(live):
-            if taken[k] or o["prefab"] != prefab:
-                continue
-            d = max(abs(o["x"] - x), abs(o["y"] - y), abs(o["z"] - z))
-            if d <= tol_m and (best is None or d < best):
-                best, at = d, k
-        if at is None:
-            todo_lines.append(line)
-            todo_rows.append(row)
-        else:
-            taken[at] = True
-            matched += 1
-    orphans = [live[k] for k in range(len(live)) if not taken[k]]
+        cube = 99.0
+        for _p, rx, ry, rz, _w in by_prefab[prefab]:
+            c = max(abs(rx - x), abs(ry - y), abs(rz - z))
+            if c > 0.05:
+                cube = min(cube, c)
+        out.append(dict(line=line, prefab=prefab,
+                        at=[round(x, 4), round(y, 4), round(z, 4)],
+                        nearest_same_prefab_cube_m=round(cube, 4)))
+    return out
+
+
+def lh_occupancy(srv, spec: dict, *, every: int = 60) -> dict:
+    """ONE PROBE PER PLANNED PIECE: is a piece of that prefab standing at that
+    position, and how many.
+
+    THIS REPLACES THE BOX CENSUS AS THE DIFF'S INSTRUMENT, and the reason is
+    measured rather than stylistic.  A 16 m-cell census of a 48 m tower has
+    to subdivide dense boxes and stack y levels, and two separate mistakes in
+    it -- a y window that silently stayed at the default, then a residual
+    3-piece shortfall with no unlisted box to show for it -- each produced a
+    diff that called standing pieces missing.  Re-sending those DOUBLES them.
+    A per-object probe has exactly one possible answer per piece, and this
+    body's spacing permits it: the closest two pieces of the same prefab
+    MEASURE 0.306 m apart in the cube metric, so a cube of half that distance
+    can only ever contain the one position being asked about.
+
+    1,255 socket calls, `findObjects -prefab P -near x y z h -detailed`, with
+    the sink measured from the host every `every` probes.  Socket-only: the
+    reply never goes through the console sink, so the cost is round trips and
+    not pipe pressure.
+    """
+    CL = roads_clear()
+    rowsp = plan_spacing(spec)
+    missing_lines, missing_rows, dups = [], [], []
+    total = 0
+    probes = 0
+    import time as _t  # noqa: PLC0415
+    import verify_placement as VP  # noqa: PLC0415
+    rows = VP.plan_rows(Path(spec["plan"]))
+    for i, (info, row) in enumerate(zip(rowsp, rows), start=1):
+        x, y, z = info["at"]
+        half = round(min(0.30, info["nearest_same_prefab_cube_m"] / 2.0 - 0.02),
+                     3)
+        if half < 0.08:
+            raise SystemExit(
+                f"REFUSED: {info['prefab']} at ({x}, {y}, {z}) has another of "
+                f"its own prefab {info['nearest_same_prefab_cube_m']} m away "
+                f"in the cube metric; no probe can ask about this position "
+                f"alone.")
+        if i % every == 1:
+            sink_gate(f"occupancy probe {i}/{len(rowsp)}")
+        reply = CL.ask(srv, f"findObjects -prefab {info['prefab']} -near "
+                            f"{x:.2f} {y:.2f} {z:.2f} {half:.2f} -detailed")
+        probes += 1
+        _t.sleep(0.02)
+        m = CL.FOUND_RE.search(reply)
+        n = int(m.group(1)) if m else 0
+        total += n
+        if n == 0:
+            missing_lines.append(info["line"])
+            missing_rows.append(row)
+        elif n > 1:
+            dups.append(dict(prefab=info["prefab"], line=info["line"],
+                             at=[round(x, 3), round(y, 3), round(z, 3)],
+                             live_at=[x, y, z], standing=n, want=1,
+                             excess=n - 1, probe_half_m=half))
     per: dict[str, int] = {}
-    for prefab, *_r in todo_rows:
+    for prefab, *_r in missing_rows:
         per[prefab] = per.get(prefab, 0) + 1
     return dict(
-        plan_total=len(lines), standing=len(live), matched=matched,
-        remaining=len(todo_lines), remaining_per_prefab=dict(sorted(per.items())),
-        orphan_standing=len(orphans), orphans=orphans[:12],
-        tolerance_m=tol_m, lines=todo_lines, rows=todo_rows,
-        method=("MEASURED per piece: every plan line's target position "
-                "matched against the live census by prefab and by max axis "
-                "offset within "
-                f"{tol_m} m, each live piece claimable once. The remainder is "
-                "the set of lines with no piece standing at them, so a resume "
-                "can neither duplicate a placed piece nor skip a missing "
-                "one. ZDO ids are not used: they are reassigned on world "
-                "load."),
-        tool="tools/jumpstart/settlements/waterfront.py::lh_remaining")
+        plan_total=len(rowsp), probes=probes, pieces_seen=total,
+        matched=len(rowsp) - len(missing_lines),
+        remaining=len(missing_lines), remaining_per_prefab=dict(sorted(per.items())),
+        duplicate_positions=len(dups),
+        duplicate_pieces=sum(d["excess"] for d in dups), duplicates=dups,
+        orphan_standing=0, orphans=[],
+        lines=missing_lines, rows=missing_rows,
+        method=("MEASURED one probe per planned piece: `findObjects -prefab P "
+                "-near x y z h -detailed` over a CUBE of half h = half this "
+                "position's own measured distance to the nearest other piece "
+                "of the same prefab, capped at 0.30 m. Every probe therefore "
+                "has exactly one possible answer -- 0 means the piece is not "
+                "there, 1 means it is, more than 1 is a duplicate -- which a "
+                "16 m box census of a 48 m tower cannot promise, and twice "
+                "did not deliver. The reply comes over the SOCKET, so 1,255 "
+                "probes cost round trips and no console-sink pressure; the "
+                "sink is measured from the host every 60 probes anyway."),
+        tool="tools/jumpstart/settlements/waterfront.py::lh_occupancy")
+
+
+
+def dedupe_ops(spec: dict, dups: list[dict]) -> list[dict]:
+    """Repair duplicated positions: delete EVERY piece of that prefab in a
+    small cube at the position, then re-send the plan's own line for it.
+
+    WHY BOTH COPIES GO AND ONE COMES BACK.  `deleteObjects -prefab P -near x
+    y z r` takes every match in the cube; there is no "delete one of two",
+    and WorldEditCommands' `object` verb is not registered on this RCON
+    surface (MEASURED by Lampposts: `Unknown command object`). So the honest
+    repair is to empty the position and re-place it from the SAME plan line
+    that authored it, which also means the restored piece carries the plan's
+    rotation rather than a reconstruction of it.
+
+    TOP DOWN, highest position first.  Nothing rests on the piece above the
+    one being removed once that one is already gone, so a hole can never sit
+    under a piece that is still standing for longer than the round trip that
+    refills it.
+
+    THE RADII ARE MEASURED PER POSITION, NOT CHOSEN.  A first draft of this
+    function used a flat 0.35 m cube and a 0.5 m verification disc "because
+    the closest two pieces are 0.5 m apart" -- and that claim was FALSE:
+    MEASURED over the plan, the closest two pieces of the SAME prefab are
+    0.306 m apart in the cube metric and 0.322 m in 3-D (two
+    `stone_floor_2x2` at the base).  A 0.35 m cube would have deleted a
+    neighbour and a 0.5 m disc would have counted one, so each position takes
+    half its own measured distance to the nearest same-prefab piece, and a
+    position too tight to bound is REFUSED rather than approximated.
+
+    THE VERIFICATION IS A COLUMN COUNT, NOT AN `absent`, and that correction
+    cost a failed postcondition on seq 2401.  `objects_count` is an XZ
+    CYLINDER and therefore Y-BLIND, while this body stacks the same prefab
+    above itself: `wood_pole_log_4` sits at y 71.98 AND y 75.98 on the same
+    XZ, `wood_roof` at 76.98 and 79.98.  So "absent inside a 0.3 m disc"
+    after emptying ONE position is FALSE while the piece four metres above it
+    stands, and it read got=1 want=0 on a delete that had done exactly what
+    it was asked.  The honest postcondition counts the whole column: the
+    delete asserts (plan pieces of that prefab in the disc) MINUS ONE, and
+    the re-place asserts the plan's own number back.  Both are exact, because
+    the nearest object that is not this body MEASURES 17.6 m away.
+
+    The delete CUBE still uses the cube metric, where the piece above is 4 m
+    away and cannot be touched.
+    """
+    import verify_placement as VP  # noqa: PLC0415
+    rows = VP.plan_rows(Path(spec["plan"]))
+    ops = []
+    for d in sorted(dups, key=lambda r: -r["at"][1]):
+        x, y, z = d["at"]
+        # THE PIECE ITSELF IS EXCLUDED BY A THRESHOLD, not by an epsilon: the
+        # duplicate's position comes back from the census rounded to the
+        # game's own print precision, so it sits ~0.0005 m from its plan row
+        # and a 1e-6 filter counts the row as its own nearest neighbour --
+        # MEASURED, that made this function refuse every position with a
+        # "nearest other is 0.000 m". 0.05 m is safe because the closest two
+        # same-prefab pieces in this body MEASURE 0.306 m apart.
+        self_m = 0.05
+        others = [max(abs(rx - x), abs(ry - y), abs(rz - z))
+                  for p, rx, ry, rz, _w in rows
+                  if p == d["prefab"]
+                  and max(abs(rx - x), abs(ry - y), abs(rz - z)) > self_m]
+        near_cube = min(others, default=99.0)
+        r = round(min(0.30, near_cube / 2.0 - 0.02), 3)
+        rv = r
+        if r < 0.08:
+            raise SystemExit(
+                f"REFUSED at ({x}, {y}, {z}): the nearest other {d['prefab']} "
+                f"is {near_cube:.3f} m away in the cube metric, so no cube "
+                f"can empty this position without taking it. Repair by hand.")
+        # The plan's own pieces of this prefab inside the verification disc,
+        # at ANY height -- the set the y-blind cylinder will count.
+        column = [1 for p, rx, _ry, rz, _w in rows
+                  if p == d["prefab"]
+                  and math.hypot(rx - x, rz - z) <= rv]
+        in_column = len(column)
+        ops.append(dict(
+            op="retire",
+            params=dict(prefab=d["prefab"], pos=[x, y, z], radius_m=r,
+                        retires=[spec["duplicated_by_seq"]],
+                        reason=(
+                            f"{d['standing']} {d['prefab']} stand at "
+                            f"({x}, {y}, {z}) where the body's plan places "
+                            f"ONE. The duplicate came from my own resume: the "
+                            f"census behind it used the default y stack "
+                            f"instead of the contiguous tower stack it was "
+                            f"asked for, saw nothing above 72.98 m, and the "
+                            f"per-piece diff therefore read 83 standing "
+                            f"pieces as missing. 64 of them were re-sent "
+                            f"before the cumulative count caught it at 1319 "
+                            f"for 1255. Both copies are removed and the "
+                            f"plan's own line is re-sent, so the position "
+                            f"ends with exactly one piece carrying the "
+                            f"plan's rotation."),
+                        role=spec["role"], site_id=spec["site_id"]),
+            wire=[f"deleteObjects -prefab {d['prefab']} -near {x:.2f} "
+                  f"{y:.2f} {z:.2f} {r:.2f} -force"],
+            requires=dict(mods=["WorldEditCommands"], prefabs=[d["prefab"]],
+                          blobs=[]),
+            expect=dict(prefab_count=[dict(
+                prefab=d["prefab"], pos=[round(x, 2), round(z, 2)], max=rv,
+                count=in_column - 1, tolerance=0)]),
+            meta=dict(standing_before=d["standing"], excess=d["excess"],
+                      cube_half_m=r, verify_radius_m=rv,
+                      plan_pieces_in_disc=in_column,
+                      nearest_same_prefab_cube_m=round(near_cube, 3),
+                      repair="duplicate position",
+                      why=("the cube is half this position's own MEASURED "
+                           "distance to the nearest other piece of the same "
+                           "prefab, so it cannot reach a neighbour; the "
+                           "postcondition counts the whole Y COLUMN inside "
+                           "that disc because objects_count is y-blind and "
+                           "this body stacks the same prefab above itself -- "
+                           f"the plan puts {in_column} {d['prefab']} in this "
+                           f"disc, so an emptied position reads "
+                           f"{in_column - 1}"))))
+        digest = hashlib.sha256((d["line"] + "\n").encode()).hexdigest()
+        ops.append(dict(
+            op="spawn_plan",
+            params=dict(
+                plan_sha256=digest, plan_ref=f"{spec['plan']}#dedupe",
+                anchor=dict(x=spec["pad"][0], y=spec["pad_y"],
+                            z=spec["pad"][1], yaw=spec["yaw"]),
+                command_count=1, prefabs={d["prefab"]: 1},
+                body=spec["body"], align="floor-center",
+                reach_m=spec["reach_m"], pad_height=spec["pad_y"],
+                batch_bytes=SPAWN_WIRE_BYTES,
+                datum=f"pad top at target_y {spec['pad_y']} m",
+                role=spec["role"], site_id=spec["site_id"]),
+            wire=[d["line"]],
+            requires=dict(mods=["WorldEditCommands", "ServerDevcommands"],
+                          prefabs=[d["prefab"]], blobs=[digest]),
+            expect=dict(prefab_count=[dict(
+                prefab=d["prefab"], pos=[round(x, 2), round(z, 2)], max=rv,
+                count=in_column, tolerance=0)]),
+            meta=dict(repair="duplicate position", restores=d["at"],
+                      verify_radius_m=rv, plan_pieces_in_disc=in_column,
+                      why=("the plan's OWN line, byte for byte, so the "
+                           "restored piece carries the authored rotation; "
+                           "the postcondition is the plan's own column count "
+                           f"back to {in_column} inside a disc that no other "
+                           "position of this prefab reaches"))))
+    return ops
 
 
 
@@ -3170,17 +3981,25 @@ def lh_height(spec: dict) -> dict:
         tool="tools/jumpstart/settlements/waterfront.py::lh_height")
 
 
-def lh_grounding(spec: dict) -> dict:
-    """The grounded fraction with the SUNK / OVERHANG split, against the pad.
+def lh_grounding(spec: dict, surface=None) -> dict:
+    """The grounded fraction with the SUNK / OVERHANG split.
 
     `build.grounding` answers the fraction and the extremes; the split is the
     part an operator can act on, because the two cases look nothing alike. A
-    column whose lowest solid is BELOW the pad is masonry embedded in the pad;
-    one whose lowest solid is ABOVE it is a cantilever with air under it. A
+    column whose lowest solid is BELOW the reference is masonry embedded in the
+    pad; one whose lowest solid is ABOVE it is a cantilever with air under it. A
     bare "grounded fraction 0.03" on this body would read as a floating
     building when what it describes is a foundation ring seated 2.00 m into
     its own pad, and the number that would be a real defect is a column whose
     lowest piece hangs just above the ground with nothing beneath it.
+
+    THE REFERENCE IS THE RENDERED GROUND, NOT THE PAD DATUM.  `surface` is a
+    `(x, z) -> applied_y` callable -- `build.applied_surface` builds one.
+    Without it this falls back to `spec["pad_y"]`, the scalar the pad was
+    levelled TO, and a body seated on that number is grounded against it BY
+    CONSTRUCTION: that fallback is what reported a clean census over a
+    watchtower standing in a median 4.92 m of air at wt-peak.  `reference`
+    says which ran.
     """
     import base_geometry as BG  # noqa: PLC0415
     import build as B  # noqa: PLC0415
@@ -3189,31 +4008,46 @@ def lh_grounding(spec: dict) -> dict:
     pad_y = spec["pad_y"]
     floor = VP.bottoming(VP.plan_objects(path), BG.geometry())
     tol = B.GROUND_TOL_M
-    gaps = sorted(y - pad_y for _n, y in floor.values())
+    cell = BG.BASE_PROFILE_CELL_M
+    gaps, uncovered = [], 0
+    for (ix, iz), (_n, y) in floor.items():
+        ref = pad_y
+        if surface is not None:
+            ref = surface((ix + 0.5) * cell, (iz + 0.5) * cell)
+            if ref is None:
+                uncovered += 1
+                continue
+        gaps.append(y - ref)
+    gaps.sort()
     sunk = [g for g in gaps if g < -tol]
     over = [g for g in gaps if g > tol]
     flush = [g for g in gaps if -tol <= g <= tol]
     return dict(
-        columns=len(gaps), tolerance_m=tol,
+        columns=len(gaps), tolerance_m=tol, uncovered_columns=uncovered,
+        reference="applied" if surface is not None else "pad_y_scalar",
         # ONE convention, and it is `build.grounding`'s: a column is grounded
-        # when its lowest solid sits at or BELOW pad + tol, i.e. on the pad or
-        # embedded in it. Defining a second, stricter "flush only" fraction
-        # here would give this project two grounding instruments that disagree
-        # by 0.73 on the same body, which is how two clearance instruments
-        # happened. The flush count is reported as a count, not as a rate.
+        # when its lowest solid sits at or BELOW reference + tol, i.e. on the
+        # ground or embedded in it. Defining a second, stricter "flush only"
+        # fraction here would give this project two grounding instruments that
+        # disagree by 0.73 on the same body, which is how two clearance
+        # instruments happened. The flush count is reported as a count, not as
+        # a rate.
         grounded_fraction=round((len(flush) + len(sunk)) / len(gaps), 3),
         flush_columns=len(flush),
         sunk_columns=len(sunk), deepest_below_pad_m=round(gaps[0], 3),
         overhang_columns=len(over),
         lowest_overhang_above_pad_m=(None if not over else round(min(over), 3)),
         worst_air_gap_m=round(gaps[-1], 3),
-        floating_near_ground_columns=sum(1 for g in over if g <= 4.0),
-        build_py=B.grounding(path, pad_y),
-        method=("MEASURED with verify_placement.bottoming over 1 m columns: "
-                "the LOWEST solid in each column against the pad datum. Sunk "
-                "is below pad-tol (foundation embedded in the pad), overhang "
-                "is above pad+tol (a cantilever, and this body's are the "
-                "lantern gallery and the eaves)."),
+        floating_near_ground_columns=sum(1 for g in over
+                                         if g <= B.NEAR_GROUND_TOL_M),
+        build_py=B.grounding(path, pad_y, surface=surface),
+        method=("MEASURED with verify_placement.bottoming over "
+                f"{cell:g} m columns: the LOWEST solid in each column against "
+                "the RENDERED surface (HeightmapBuilder + live TerrainComp "
+                "delta) when a surface is supplied, else against the pad "
+                "datum. Sunk is below reference-tol (foundation embedded), "
+                "overhang is above reference+tol (a cantilever, and this "
+                "body's are the lantern gallery and the eaves)."),
         tool="tools/jumpstart/settlements/waterfront.py::lh_grounding")
 
 
@@ -3405,14 +4239,17 @@ def cmd_lighthouse(args) -> int:
         liveness probe before every record -> full per-prefab verify ->
         height off the ZDOs -> dock, berth and both portal ends -> save
 
-    `--resume` replaces the retire half with a PER-PIECE DIFF (`lh_remaining`)
-    and re-sends only the plan lines with nothing standing at them, against a
-    baseline MEASURED live.  It exists because this pass was killed mid
-    placement once: two of twenty records had landed, the ledger held an
-    appended record whose wire may or may not have gone out, and neither
-    retiring 128 good pieces nor re-sending 1,255 commands is the right
-    answer to that.  Resuming is only correct BECAUSE the diff is per piece;
-    a resume from "which records were appended" would be a guess.
+    `--resume` replaces the retire half with ONE PROBE PER PLANNED PIECE
+    (`lh_occupancy`) and re-sends only the positions with nothing standing at
+    them, against a baseline MEASURED live.  It exists because this pass was
+    killed mid placement once: two of twenty records had landed, the ledger
+    held an appended record whose wire may or may not have gone out, and
+    neither retiring 128 good pieces nor re-sending 1,255 commands is the
+    right answer to that.  Resuming is only correct BECAUSE the diff is per
+    piece, and per piece means ONE PROBE PER PIECE: a 16 m box census of a 48
+    m tower called standing pieces missing twice, and re-sending those
+    doubled 64 of them.  A resume from "which records were appended" would be
+    a guess on top of that.
 
     Without `--apply` nothing is appended and nothing is sent: the geometry,
     the batch plan and the height are all computable offline and are printed.
@@ -3543,7 +4380,7 @@ def cmd_lighthouse(args) -> int:
             # retired: the pieces standing here now are THIS pass's own,
             # placed after the site was counted empty, and re-sending a
             # command whose piece already stands is what doubles a body.
-            rest = lh_remaining(spec, census)
+            rest = lh_occupancy(srv, spec)
             print(f"    resume: {rest['matched']} of {rest['plan_total']} "
                   f"plan lines already standing, {rest['remaining']} to send, "
                   f"{rest['orphan_standing']} orphan(s)", flush=True)
@@ -3559,6 +4396,39 @@ def cmd_lighthouse(args) -> int:
                     f"something else in the footprint, and both change what "
                     f"the final count of 1255 would mean. Stop and identify "
                     f"them before sending anything.")
+            # 2D. DUPLICATES FIRST, if any position holds more than the plan
+            # wants. They come before the missing lines on purpose: the
+            # placement's postcondition is a cumulative count, and a count
+            # cannot be exact while the site holds pieces the plan never
+            # authored.
+            if rest["duplicate_positions"]:
+                dops = dedupe_ops(spec, rest["duplicates"])
+                print(f"    dedupe: {rest['duplicate_positions']} position(s) "
+                      f"hold {rest['duplicate_pieces']} extra piece(s); "
+                      f"{len(dops)} records, top down", flush=True)
+                for i, op in enumerate(dops, start=1):
+                    if i % 8 == 1:
+                        g = sink_gate(f"dedupe {i}/{len(dops)}")
+                        drains.append(g)
+                        srv.probe()
+                    emit(b, [op], label=f"{site} dedupe {i}/{len(dops)}")
+                after, _per = srv.count("*", px, pz, spec["count_radius_m"],
+                                        ignore="_*,sfx_*,vfx_*")
+                b.observe(f"deduped::{site}",
+                          "MEASURED live after the repair: the star count "
+                          "inside the exact radius, against the count the "
+                          "plan authorises. Each position was additionally "
+                          "proved by its own per-object probe inside a disc "
+                          "measured against its nearest same-prefab "
+                          "neighbour.",
+                          "tools/jumpstart/settlements/waterfront.py"
+                          "::dedupe_ops",
+                          dict(positions=rest["duplicate_positions"],
+                               extra_pieces=rest["duplicate_pieces"],
+                               records=len(dops), total_after=after,
+                               plan_total=sum(want.values())),
+                          role=spec["role"], site_id=site)
+                print(f"    dedupe: site now counts {after}", flush=True)
             if not rest["remaining"]:
                 print("    resume: nothing left to place", flush=True)
             batches = spawn_batches(spec, rest["lines"], pieces=pieces,
@@ -3719,12 +4589,20 @@ def cmd_lighthouse(args) -> int:
         emit(b, [save_op((px, pz), dominant[0], dominant[1],
                          spec["count_radius_m"], spec["role"])],
              label=f"{site} save")
+        # The closing record has to be true in BOTH modes, and naming the
+        # retire list unconditionally made it raise `UnboundLocalError: ops`
+        # on a resume that had retired nothing -- AFTER the save had gone in.
+        # A pass that finished its work and then died writing its own summary
+        # is a pass whose log does not say it finished.
+        how = (f"re-placed from a per-piece diff in {len(batches)} record(s) "
+               f"of up to {pieces} pieces" if args.resume else
+               f"placed WHOLE in {len(batches)} spawn_plan records of "
+               f"{pieces} pieces each after the "
+               f"{census['standing_total']}-piece partial was retired in "
+               f"{len(ops)} records and the site counted EMPTY")
         b.note(
             f"{site} IS COMPLETE. {sum(want.values())} pieces of "
-            f"{spec['body']['filename']} placed WHOLE in {len(batches)} "
-            f"spawn_plan records of {pieces} pieces each after the "
-            f"{census['standing_total']}-piece partial was retired in "
-            f"{len(ops)} records and the site counted EMPTY. Batch size is "
+            f"{spec['body']['filename']}, {how}. Batch size is "
             f"arithmetic, not taste: at 155 echoed bytes per placed object a "
             f"{pieces}-piece record costs at most "
             f"{pieces * SINK_ECHO_BYTES} B of a 65,536-byte pipe, while the "
@@ -3741,8 +4619,17 @@ def cmd_lighthouse(args) -> int:
             f"({height['gallery_above_sea_m']} m above sea). The beacon sits "
             f"on its plinth, not in the air: pyre base "
             f"{height['beacons'][0]['structural_base_y']} m against a plinth "
-            f"top of {height['beacons'][0]['plinth_top_y']} m. Access is "
-            f"confirmed at both ends of {spec['dock']['tag']}.",
+            f"top of {height['beacons'][0]['plinth_top_y']} m. VERIFIED live: "
+            f"{ver['total_got']} of {ver['total_want']} pieces inside "
+            f"{ver['count_radius_m']} m with every one of "
+            f"{len(ver['per_prefab'])} prefabs exact and {ver['strays']} "
+            f"strays; the pier measures {dock['pier']['pieces_got']} of "
+            f"{dock['pier']['pieces_want']} pieces, the "
+            f"{dock['berth']['prefab']} floats in "
+            f"{dock['berth']['hull_min_depth_m']} m under its own hull "
+            f"against a {dock['berth']['required_depth_m']} m requirement, "
+            f"and {spec['dock']['tag']} reads back off BOTH ZDOs. Access is "
+            f"confirmed at both ends.",
             role=spec["role"], site_id=site)
         print(json.dumps(b.close(), indent=1, default=str))
     return 0
@@ -3756,7 +4643,8 @@ def main(argv=None) -> int:
                      ("complete", cmd_complete), ("stair", cmd_stair),
                      ("fabric", cmd_fabric), ("newbuild", cmd_newbuild),
                      ("probe", cmd_probe), ("port", cmd_port),
-                     ("retire", cmd_retire), ("lighthouse", cmd_lighthouse)):
+                     ("retire", cmd_retire), ("lighthouse", cmd_lighthouse),
+                     ("ferry", cmd_ferry)):
         p = sub.add_parser(name)
         p.add_argument("--site", default=None)
         p.add_argument("--prefabs", nargs="*", default=[])

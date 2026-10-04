@@ -53,7 +53,10 @@ HERE = Path(__file__).resolve().parent
 JUMPSTART = HERE.parent
 sys.path.insert(0, str(JUMPSTART / "terraform"))
 
-from flatten import pad_extent  # noqa: E402  the flatten step's own pad, not a second opinion
+# the flatten step's own pad, not a second opinion; and its placements reader,
+# not a second one -- `load_placements_file` reads the record's own header.
+from flatten import pad_extent, load_placements_file  # noqa: E402
+import tcdata  # noqa: E402  THE clamp authority step 2 refuses by
 
 # Not derived from game data -- see MARGIN above.
 DEFAULT_MARGIN_M = 2.0
@@ -173,6 +176,27 @@ def pad_relief_m(place: dict) -> float:
     return float(spread) if spread is not None else 0.0
 
 
+# LEVELLING_REFUSAL_DEPENDS_ON: the SOLVE's own bill of the pad as step 2
+# will write it (`solved.flatten_cost`), judged by `tcdata.clamp_verdict` --
+# the one authority `terraform/flatten.py::clamp_refusals` refuses step 2 by.
+#
+# MEASURED 2026-09-25, Fresh42 drive 2: stage 7 recorded iron-era-workshop
+# REFUSED in its own block (`engine_clamp_m` 10.54 m vs 8.0, 442 samples over
+# the clamp, `flatten_cost.verdict: refused`), and build step 1 then generated
+# its zones and removed 196 objects in a 51.5 m cylinder (ledger seqs 543,
+# 544) before step 2 refused the same unit on the same 442 samples.  A write
+# that bought nothing: the unit's refusal was on disk before its first write,
+# and the first writer did not read it.
+def levelling_refusal(place: dict) -> dict | None:
+    """The clamp verdict the solver RECORDED for this pad, when it refuses;
+    None when the pad can be levelled or the block carries no bill."""
+    cost = (place.get("solved") or {}).get("flatten_cost")
+    if not cost:
+        return None
+    verdict = tcdata.clamp_verdict(cost)
+    return verdict if verdict["verdict"] == "refused" else None
+
+
 def clearing_area(place: dict, apron: float = 0.0,
                   margin: float = DEFAULT_MARGIN_M) -> ClearArea:
     """Derive the clearing cylinder from what the solver already solved.
@@ -213,8 +237,11 @@ def clearing_area(place: dict, apron: float = 0.0,
 
 
 def load_placements(path: Path) -> list[dict]:
-    doc = yaml.safe_load(path.read_text())
-    return list(doc.get("placements") or [])
+    # THE reader, header included.  `clear.py --placements <path>` accepts any
+    # file, so this is the one caller with no world name in the path at all --
+    # the record's own `world:`/`seed:` is the only thing that can say which
+    # world these coordinates are in, and this stage DELETES objects at them.
+    return list(load_placements_file(path).get("placements") or [])
 
 
 def placement(path: Path, pid: str) -> dict:

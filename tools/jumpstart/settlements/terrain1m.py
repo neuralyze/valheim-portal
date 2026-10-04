@@ -194,6 +194,11 @@ def pad_bill(f: Field, x: float, z: float, width_m: float, depth_m: float,
         "freeboard_m": round(target - WATER_LEVEL_M, 2),
         "biome_counts": counts,
         "patch": f.id,
+        # WHICH SURFACE THESE NUMBERS ARE OF.  This field is
+        # `WorldGenerator.GetHeight` -- right for FINDING ground, and not the
+        # surface `ApplyToHeightmap` adds a delta to; a pad that is written is
+        # billed by `settlements/plan.py::site_bill` on that one.
+        "surface": "worldgen (the finding field)",
     })
     return bill
 

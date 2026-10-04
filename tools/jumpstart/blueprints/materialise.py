@@ -41,6 +41,7 @@ from pathlib import Path
 import yaml
 
 HERE = Path(__file__).resolve().parent
+AUTHORED_REPAIRS = HERE / "data" / "authored_repairs.json"
 
 
 def sha256(path: Path) -> str:
@@ -49,6 +50,25 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def authored_repair(path: Path) -> dict | None:
+    """Resolve checksum-bound authored additions and poses; never edit corpus."""
+    entry = json.loads(AUTHORED_REPAIRS.read_text("utf-8")).get(path.name)
+    if entry is None:
+        return None
+    digest = sha256(path)
+    if digest != entry["source_sha256"]:
+        raise ValueError(
+            f"{path}: authored repair requires source SHA-256 "
+            f"{entry['source_sha256']}, got {digest}; refusing mismatched body")
+    addition = AUTHORED_REPAIRS.parent / entry["addition"]
+    digest = sha256(addition)
+    if digest != entry["addition_sha256"]:
+        raise ValueError(
+            f"{addition}: authored repair SHA-256 mismatch: expected "
+            f"{entry['addition_sha256']}, got {digest}")
+    return entry
 
 
 def load_manifest(path: Path) -> dict:

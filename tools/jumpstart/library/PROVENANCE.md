@@ -101,6 +101,17 @@ across the terms under which it was obtained. **Local use only. Never committed.
 Never redistributed.** `materialise.py` copies it in at use time and verifies
 every SHA-256.
 
+**Correcting a corpus body without redistributing it.** A defect in one of
+these bodies is fixed by an *additive* repair, never by committing an edited
+copy: `blueprints/data/authored_repairs.json` names the corpus file, the
+SHA-256 of the exact bytes the repair was authored against, and a
+project-owned blueprint under `blueprints/data/repairs/` holding **only newly
+authored pieces** (with its own SHA-256). `to_rcon_plan.read_objects` composes
+the two for every consumer, and refuses when either hash does not match, so
+a changed corpus body is never silently patched. The first is
+`fox-0123456.blueprint` (`blackforest-walled-base`): 10 timber pieces closing
+its roof-course seam and chimney gable ends.
+
 ### 2. AGPL-3.0 — 21 rows, licensed but incompatible
 
 [`RickardAndreasAgren/ValheimBlueprintCruncher`](https://github.com/RickardAndreasAgren/ValheimBlueprintCruncher)

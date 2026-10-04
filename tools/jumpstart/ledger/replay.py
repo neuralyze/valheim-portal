@@ -64,6 +64,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Sequence
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -83,6 +84,17 @@ COUNT_LINE_RE = re.compile(r"^(\S+):\s*(\d+)\s*$", re.M)
 # One `findObjects -detailed` row's ZDO id, for de-duplicating
 # overlapping subdivision leaves.
 OBJECT_ID_RE = re.compile(r"Id:\s*(-?\d+:-?\d+)")
+# `findObjects` DECLARES its own row count before listing them, and the
+# listing is SILENTLY TRUNCATED near 4050 bytes -- MEASURED: a disc that
+# declared "Found 35 objects" returned 31 rows.  Comparing the declaration
+# against the rows actually parsed is the only way to tell a short answer
+# from a small world, and a duplicate hunt that skips it makes a co-located
+# PAIR read as a single piece.
+FOUND_RE = re.compile(r"Found\s+(\d+)\s+objects")
+# One row's rotation, as ValheimRcon prints it: "Rotation: (0 270 0)",
+# Unity euler x y z -- the SAME order `modifyObject -rotation` parses and
+# NOT the `y,x,z` that `spawn_object rot=` takes.
+ROTATION_RE = re.compile(r"Rotation:\s*\(([-\d.eE ]+)\)")
 # The zone count an Upgrade World zone operation prints WHEN IT IS QUEUED,
 # out of `ZoneOperation::OnInit`: "... No player base detection. 1 zones:
 # 85134 skipped by the command."  It is the operation's own statement of how
@@ -97,7 +109,14 @@ ZONE_SELECTED_RE = re.compile(r"(\d+)\s+zones\b")
 #           `stop` / <cmd> / `start`, and the answer immediately after `start`
 #           is not the answer.
 #   (else)  Server Devcommands / World Edit Commands: through `consoleCommand`.
-NATIVE_VERBS = {"save", "players", "deleteObjects"}
+# `modifyObject` and `findObjects` are ValheimRcon's own verbs, beside
+# `deleteObjects` in the same command table (MEASURED from the DLL: all three
+# register through `ValheimRcon.Commands.*` and answer a bare RCON frame).
+# Sending `modifyObject` through the `consoleCommand` bridge instead answers
+# "Unknown command", which is the same silent-no-op that made `spawn_object`
+# build nothing.
+NATIVE_VERBS = {"save", "players", "deleteObjects", "modifyObject",
+                "findObjects"}
 # `zones_reset` is in here for a MEASURED reason beyond tidiness: sent bare
 # with no `start`, it STAGES a world-wide reset (86 zones, observed) and sits
 # in the queue waiting for the next `start` ANYBODY sends.  `uw_check` lists
@@ -453,6 +472,160 @@ class Server:
         from console import run_console  # noqa: PLC0415
         return run_console(self.rc, cmd, settle=settle)
 
+    # CHEATS_DEPENDS_ON: THIS SERVER PROCESS'S OWN `Terminal.m_cheat` FLAG.
+    #
+    # Every Upgrade World verb this ledger emits -- `zones_generate`,
+    # `zones_restore`, `objects_count`, `objects_remove`, `stop`, `start` --
+    # is registered with `IsCheat = true`.  MEASURED 2026-09-23 by
+    # disassembling the deployed `UpgradeWorld.dll` 1.82: `Helper::Command`
+    # constructs `Terminal.ConsoleCommand` with `isCheat` = 1 at IL_0008 for
+    # BOTH the ConsoleEvent and the ConsoleEventFailable overload, i.e. for
+    # every command the mod registers.  `Terminal.m_cheat` is FALSE in a
+    # freshly started server process and is toggled only by `devcommands`.
+    #
+    # So on any server this toolchain did not already have a human in,
+    # `zones_generate` answers "'zones_generate' is not valid in the current
+    # context." and `objects_count` prints no `Total:` line at all.  MEASURED
+    # on the fresh seed Fresh42, stage 10, first zone: the write returned a
+    # successful RCON echo -- `Command 'zones_generate pos=-704,-384 max=32'
+    # executed.` -- for a command the game had REFUSED, and only
+    # `Server.count`'s "an empty answer is not a zero" stopped the survey
+    # from recording 295 generated zones that were never generated.  The
+    # session's precondition was satisfied on Ulfsland by a console somebody
+    # had typed `devcommands` into long ago; it had never been a declared
+    # prerequisite of anything, so a fresh seed could not run stage 10.
+    #
+    # PROBED, NEVER ASSUMED, BECAUSE `devcommands` IS A TOGGLE.  Sending it
+    # unconditionally at session start turns cheats OFF on exactly the
+    # servers where they were already on.  The probe is a scoped
+    # `objects_count` at the world origin with max=1, which is a cheat
+    # command that reads nothing and writes nothing: a `Total:` line means
+    # they are on, "not valid in the current context" means they are off.
+    CHEAT_PROBE = "objects_count id=_ZoneCtrl pos=0.00,0.00 max=1.00"
+    NOT_VALID = "is not valid in the current context"
+
+    def require_cheats(self) -> dict:
+        """Leave this session with `Terminal.m_cheat` TRUE, or refuse."""
+        if self.dry:
+            return {"cheats": "dry", "toggled": False}
+        before = self.console(self.CHEAT_PROBE)
+        if not any(self.NOT_VALID in ln for ln in before):
+            return {"cheats": "already on", "toggled": False,
+                    "probe": before[:2]}
+        said = self.console("devcommands")
+        after = self.console(self.CHEAT_PROBE)
+        if any(self.NOT_VALID in ln for ln in after):
+            raise LedgerError(
+                "this server's console has cheats OFF and `devcommands` did "
+                f"not turn them on (it said {said!r}); every Upgrade World "
+                "verb -- zones_generate, objects_count, stop, start -- is "
+                "registered IsCheat=true and will be REFUSED BY THE GAME "
+                "while still returning a successful RCON echo. Refusing to "
+                "open a write session whose writes cannot land.")
+        return {"cheats": "enabled by this session", "toggled": True,
+                "devcommands_said": said[:2], "probe": after[:2]}
+
+    # VERBS_DEPENDS_ON: WHICH PLUGINS THIS SERVER PROCESS HAS LOADED.
+    #
+    # THE ELEVENTH INSTANCE OF THE KEY CLASS, AND `require_cheats` ABOVE IS
+    # THE ONE IT WAS FOUND IN.  `require_cheats` declares "this session's
+    # writes can land" and keys it on `Terminal.m_cheat` alone -- a SUBSET of
+    # what that depends on.  `Terminal.TryRunCommand` refuses in TWO ways
+    # while `RconProxy` still answers `Command '<cmd>' executed.`:
+    #
+    #     registered, IsCheat, m_cheat false -> "is not valid in the current
+    #                                            context"   <- require_cheats
+    #     NOT REGISTERED (plugin absent)     -> "is not a recognized command"
+    #                                                        <- THIS
+    #
+    # MEASURED 2026-09-23, stage 12 on the fresh seed Fresh42: cheats probed
+    # ON, and `terraform/flatten.py apply` then returned rc 0 for 13 of 13
+    # pads while all 33 of its `spawn_object _TerrainCompiler` commands came
+    # back `'spawn_object' is not a recognized command.`  Zero terrain moved.
+    # `spawn_object` and `deleteObjects` are registered by the
+    # `World_Edit_Commands` plugin; Ulfsland's server carries it among 100
+    # mods a human installed years ago, and a freshly provisioned server
+    # carries three plugins.  It had never been a declared prerequisite of
+    # anything -- exactly the shape `devcommands` had.
+    #
+    # THE PROBE MUST BE INERT AND BOUNDED, AND THE FIRST VERSION WAS NEITHER.
+    # MEASURED 2026-09-23 on Fresh42 by running it: a BARE `objects_count`
+    # printed the whole world -- `Total: 59380` and ~500 `Console:` lines --
+    # which is exactly the main-thread log write `rcon.guard()` exists to
+    # refuse, reached by going through `consoleCommand` where that guard does
+    # not apply. A precondition check that can wedge the server it is checking
+    # is not a precondition check. So every probe is the REAL VERB IN A
+    # SCOPED, INERT FORM: a radius of 1 m at the world origin, or the verb's
+    # own argument error.
+    #
+    # AND ONLY THE VERBS THAT GO THROUGH THE CONSOLE ARE PROBED HERE, because
+    # only those can be refused by `Terminal` while the socket says otherwise.
+    # `deleteObjects`, `save` and `players` are NATIVE `ValheimRcon` verbs
+    # sent with `rc.command()` (see terraform/flatten.py: `deletes` go through
+    # `rc.command`, `commands` through `run_console`) -- MEASURED on the same
+    # server the same minute: `consoleCommand deleteObjects` answered
+    # `Unknown command 'deleteObjects'` while `deleteObjects -zone ...` over
+    # the native path answered `No objects found matching the provided
+    # criteria.` Probing a native verb through the console reports a missing
+    # plugin for a verb that works, which is the same defect pointed the other
+    # way.
+    VERB_PROBES = {
+        "spawn_object": "spawn_object",
+        "zones_generate": "zones_generate pos=0,0 max=1",
+        "zones_restore": "zones_restore pos=0,0 max=1",
+        "objects_count": "objects_count id=_ZoneCtrl pos=0.00,0.00 max=1.00",
+        "objects_remove": "objects_remove",
+    }
+    # Which plugin registers what, so a refusal names the FIX and not just
+    # the symptom.  MEASURED by listing both servers' plugin directories:
+    # Ulfsland has 100, a freshly provisioned server has three.
+    VERB_PLUGIN = {"spawn_object": "World_Edit_Commands",
+                   "zones_generate": "Upgrade_World",
+                   "zones_restore": "Upgrade_World",
+                   "objects_count": "Upgrade_World",
+                   "objects_remove": "Upgrade_World"}
+
+    def require_verbs(self, verbs: Sequence[str] | None = None) -> dict:
+        """Leave this session knowing every verb it emits is REGISTERED.
+
+        Returns the per-verb reading.  Raises `LedgerError` naming the missing
+        verbs AND the plugins that register them, because "unrecognised" with
+        no plugin name is an instruction to go and find out.
+        """
+        if self.dry:
+            return {"verbs": "dry", "missing": []}
+        from console import (UnrecognizedVerb,  # noqa: PLC0415
+                             unrecognized_verbs)
+        want = tuple(verbs) if verbs is not None else tuple(self.VERB_PROBES)
+        seen: dict[str, str] = {}
+        missing: list[str] = []
+        for verb in want:
+            try:
+                out = self.console(self.VERB_PROBES.get(verb, verb))
+            except UnrecognizedVerb:
+                # `run_console` already refused it; that IS the reading.
+                missing.append(verb)
+                seen[verb] = "NOT RECOGNIZED"
+                continue
+            # Read the slice directly as well, so this probe does not depend
+            # on WHICH of the two paths reported the refusal.
+            if unrecognized_verbs(out):
+                missing.append(verb)
+                seen[verb] = "NOT RECOGNIZED"
+            else:
+                seen[verb] = (out[0][:60] if out else "registered (no output)")
+        if missing:
+            plugins = sorted({self.VERB_PLUGIN.get(v, "?") for v in missing})
+            raise LedgerError(
+                f"this server does not know {missing}: the Terminal answers "
+                f"'is not a recognized command' / 'Unknown command' while the "
+                f"RCON socket still returns a successful echo, so every "
+                f"command using them would be recorded as done and would move "
+                f"nothing. The plugin(s) that register them are {plugins} and "
+                f"this server has not loaded them. Refusing to open a write "
+                f"session whose writes cannot land.")
+        return {"verbs": seen, "missing": []}
+
     def console_echo(self, cmd: str) -> str:
         """Send a console command and CONFIRM IT FROM THE SOCKET REPLY.
 
@@ -574,6 +747,21 @@ def restart_and_wait(world: str, timeout: float = 300.0) -> dict:
 # --------------------------------------------------------------------------
 # Expectation checks
 # --------------------------------------------------------------------------
+
+def _euler_close(a, b, tol_deg: float) -> bool:
+    """Two euler triples equal MODULO 360 on each axis.
+
+    Written out because 0 and 360 are the same pose and a plain subtraction
+    says they are 360 degrees apart, which would make a correct rotation
+    read as a failed one on exactly the axis this check exists for."""
+    if len(a) != 3 or len(b) != 3:
+        return False
+    for u, v in zip(a, b):
+        d = abs((u - v) % 360.0)
+        if min(d, 360.0 - d) > tol_deg:
+            return False
+    return True
+
 
 def check_expect(srv: Server, rec: dict) -> list[dict]:
     """Measure the op's declared postcondition.  Returns one result per check;
@@ -711,6 +899,52 @@ def check_expect(srv: Server, rec: dict) -> list[dict]:
             results.append({"check": f"prefab_count[{c['prefab']}]",
                             "want": c["count"], "got": got, "tolerance": tol,
                             "ok": abs(got - int(c["count"])) <= tol})
+
+    if "rotation" in exp:
+        # A `modify`'s postcondition, AND THE ONLY KIND THAT CAN WORK.  A 180
+        # degree yaw moves neither the pivot, nor the footprint, nor the
+        # AABB: `objects_count`, `absent`, `prefab_count` and every
+        # positional test read IDENTICAL before and after, which is exactly
+        # how "349/349 at tolerance 0" was reported over 349 inverted
+        # panels.  So the rotation itself is read back off the object's own
+        # `findObjects -detailed` line.
+        #
+        # TRUNCATION IS CHECKED, NOT ASSUMED.  `findObjects -detailed`
+        # silently truncates near 4050 bytes -- MEASURED: a disc that
+        # declared "Found 35 objects" returned 31 rows.  A truncated reply
+        # that happens to contain no row for this pivot is not evidence the
+        # rotation is wrong, and it is not evidence it is right either, so
+        # the check refuses rather than guessing.
+        for c in exp["rotation"]:
+            x, y, z = c["pos"]
+            r = float(c.get("max", 0.20))
+            reply = "" if srv.dry else srv.command(
+                f"findObjects -prefab {c['prefab']} -near {x:.2f} {y:.2f} "
+                f"{z:.2f} {r:.2f} -detailed")
+            declared = FOUND_RE.search(reply)
+            rows = [ln for ln in reply.splitlines() if "-Prefab:" in ln]
+            want = [round(float(v), 1) for v in c["rotation_deg"]]
+            got = []
+            for ln in rows:
+                m = ROTATION_RE.search(ln)
+                if m:
+                    got.append([round(float(t), 1)
+                                for t in m.group(1).split()])
+            intact = (declared is not None
+                      and int(declared.group(1)) == len(rows))
+            n_want = int(c.get("count", 1))
+            ok = (srv.dry
+                  or (intact and len(rows) == n_want
+                      and sum(1 for g in got
+                              if _euler_close(g, want,
+                                              float(c.get("tolerance_deg",
+                                                          1.0))))
+                      == int(c.get("matching", n_want))))
+            results.append({
+                "check": f"rotation[{c['prefab']}]", "want": want,
+                "got": got, "rows": len(rows),
+                "declared": None if declared is None else int(declared.group(1)),
+                "reply_intact": intact, "ok": ok})
 
     if "absent" in exp:
         # A retire's postcondition.  Counting to zero is the ONLY honest proof
@@ -989,10 +1223,25 @@ def _materialise_data_entries(blobs, rec: dict) -> None:
     """
     import base64
     import yaml
+    import flatten                                          # noqa: PLC0415
 
-    data_dir = Path(os.environ.get(
-        "WEC_DATA_DIR",
-        "/media/big4/projects/game/valheim/Ulfsland/config_merged/bepinex/data"))
+    # THE SAME DEFECT AS `terraform/flatten.py:66`, IN THE REPLAY PATH, and it
+    # is the more dangerous of the two: a replay exists to rebuild a world that
+    # is NOT the one recorded, so the default here is wrong exactly when the
+    # tool is being used for its purpose. MEASURED 2026-09-23 by BuildOrch on
+    # the flatten side: a fresh seed's entries landed in Ulfsland's watched
+    # directory in 101 s and nothing in the tree noticed.
+    #
+    # AND THE RESOLVER IS NOW ONE FUNCTION, NOT TWO COPIES OF A RULE.  This
+    # path and `flatten.py::write_entries` write the SAME YAML files for the
+    # same watcher; they had two independent derivations of where, agreeing
+    # only by coincidence, and `$WEC_DATA_DIR` was honoured by one of them.
+    # MEASURED 2026-09-23 on Fresh42: the flatten side wrote to the world's
+    # `config_merged/bepinex/data` while the server watched its install's
+    # `<BepInEx>/config/data`, and all 18 `spawn_object ... data=` commands
+    # answered `Error: Can't find data entry`. `flatten.data_dir` carries that
+    # measurement and the world-scoping guard with it.
+    data_dir = flatten.data_dir()
     doc = []
     read = blob_reader(blobs)
     for e in rec["params"]["entries"]:

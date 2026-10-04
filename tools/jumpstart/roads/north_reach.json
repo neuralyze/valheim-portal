@@ -1,0 +1,169 @@
+{
+  "owner": "TrunkNorth",
+  "world": "Ulfsland",
+  "seed": "Pirate68",
+  "what": "BUILDABLE-CORRIDOR reach, which supersedes the walkable-mask figure of +2712 m. The walkable mask measures terrain that is ALREADY walkable; this measures terrain a road can be CONSTRUCTED to.",
+  "method": "MEASURED. Dijkstra over PatchScan heights, multi-source from the three points where the EXISTING built network touches this corridor. Cell kinds are TECHNIQUES: graded dry ground inside the 25% network grade ceiling on a 12 m-smoothed field, boardwalk where the bed carries a pile within reach, bridge where water is within half a free span of land.",
+  "instrument": "tools/jumpstart/roads/north.py reach",
+  "constants": {
+    "water_level_y": 30.0,
+    "deck_datum_y": 30.6,
+    "pile_reach_m": 20.0,
+    "max_span_m": 96.0,
+    "ford_depth_m": 1.0,
+    "land_test": "h > 30.5",
+    "grade_ceiling": 0.25,
+    "clamp_m": 8.0
+  },
+  "sources": {
+    "stathub": [
+      660.0,
+      1088.0
+    ],
+    "w5-north-end": [
+      -326.0,
+      -66.0
+    ],
+    "brg-s2-w": [
+      -349.0,
+      246.0
+    ]
+  },
+  "source_snaps": {
+    "stathub": {
+      "asked_xz": [
+        660.0,
+        1088.0
+      ],
+      "used_xz": [
+        660.0,
+        1086.0
+      ],
+      "snapped_m": 0.0,
+      "asked_cell_was_land": true
+    },
+    "w5-north-end": {
+      "asked_xz": [
+        -326.0,
+        -66.0
+      ],
+      "used_xz": [
+        -328.0,
+        -66.0
+      ],
+      "snapped_m": 0.0,
+      "asked_cell_was_land": true
+    },
+    "brg-s2-w": {
+      "asked_xz": [
+        -349.0,
+        246.0
+      ],
+      "used_xz": [
+        -352.0,
+        246.0
+      ],
+      "snapped_m": 4.0,
+      "asked_cell_was_land": false
+    }
+  },
+  "ladder_4m": [
+    {
+      "technique": "graded land only (no water at all)",
+      "pile_reach_m": -1.0,
+      "span_ceiling_m": 0.0,
+      "z_max_m": 2698.0,
+      "x_at_z_max": [
+        -440.0,
+        -424.0
+      ],
+      "cells_reachable": 195990
+    },
+    {
+      "technique": "+ ford, depth <= 1 m",
+      "pile_reach_m": 1.0,
+      "span_ceiling_m": 0.0,
+      "z_max_m": 4294.0,
+      "x_at_z_max": [
+        320.0,
+        320.0
+      ],
+      "cells_reachable": 248057
+    },
+    {
+      "technique": "+ boardwalk on piles, depth <= 4 m",
+      "pile_reach_m": 4.0,
+      "span_ceiling_m": 0.0,
+      "z_max_m": 7758.0,
+      "x_at_z_max": [
+        -984.0,
+        -980.0
+      ],
+      "cells_reachable": 551390
+    },
+    {
+      "technique": "+ boardwalk to the ~20 m pile reach",
+      "pile_reach_m": 20.0,
+      "span_ceiling_m": 0.0,
+      "z_max_m": 7814.0,
+      "x_at_z_max": [
+        -1176.0,
+        -1164.0
+      ],
+      "cells_reachable": 755729
+    },
+    {
+      "technique": "+ bridge, free span <= 96 m",
+      "pile_reach_m": 20.0,
+      "span_ceiling_m": 96.0,
+      "z_max_m": 7814.0,
+      "x_at_z_max": [
+        -1176.0,
+        -1164.0
+      ],
+      "cells_reachable": 765518
+    },
+    {
+      "technique": "+ a hypothetical 400 m span",
+      "pile_reach_m": 20.0,
+      "span_ceiling_m": 400.0,
+      "z_max_m": 9398.0,
+      "x_at_z_max": [
+        -1448.0,
+        948.0
+      ],
+      "cells_reachable": 1396120
+    }
+  ],
+  "corroboration_16m": {
+    "z_max_m": 7816.0,
+    "box_x": [
+      -5200,
+      5200
+    ],
+    "box_z": [
+      -1600,
+      8800
+    ]
+  },
+  "superseded_claim": {
+    "old_z_max_m": 2712.0,
+    "old_method": "largest WALKABLE-AS-GENERATED land component",
+    "reproduced_as": "the 'graded land only' rung",
+    "why_it_was_wrong": "it measured whether a player can walk there today, not whether a road can be built there"
+  },
+  "stop": {
+    "frontier_z_m": 7816.0,
+    "nearest_deepnorth_shore_xz": [
+      -872.0,
+      8024.0
+    ],
+    "gap_m_at_16m": 224.0,
+    "south_shore_xz": [
+      -872.0,
+      7800.0
+    ],
+    "span_ceiling_m": 96.0,
+    "verdict": "FERRY -- both ceilings exceeded in the same chord"
+  }
+}

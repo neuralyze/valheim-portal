@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import functools
 import importlib.util
 import hashlib
 import struct
@@ -93,10 +94,18 @@ import replay as R  # noqa: E402
 from live import LiveBuilder  # noqa: E402
 from to_rcon_plan import read_objects  # noqa: E402
 import place as PLACE  # noqa: E402
+import worldseed  # noqa: E402
+# THE ONE READER OF THE SPAWN WIRE FORMAT.  `forbidden_pieces` used to
+# carry a private `^`-anchored copy and read 123 of lh-north's 1,319
+# protected pieces; see that function.
+import writer as W  # noqa: E402
 
 ACTOR = "SeatCheck"
-SEED = "Pirate68"
-WORLD = "Ulfsland"
+# RESOLVED, not literal.  `main()` rebinds these AND the two paths derived
+# from WORLD below, because a `--world` that moved the seed but not the
+# ledger path would read one world's records while building another's.
+SEED = worldseed.seed()
+WORLD = worldseed.world()
 LEDGER = JUMPSTART / "ledger/runs" / WORLD / "ledger.jsonl"
 BLOBS = JUMPSTART / "ledger/runs" / WORLD / "blobs"
 SCRATCH = Path("/tmp/portalhall")
@@ -108,12 +117,31 @@ BODY_YAW = 0.0            # the body's own east-west passage then lines up with
                           # the S1/T1 terminus, which is 12 m west of centre
 HALL_X, HALL_Z = -280.0, 216.0
 TARGET_Y = 37.10          # = the MEASURED applied ground at the road terminus
-PAD = 37.4                # body envelope is 36.4 x 34.4 at this yaw
+PAD = 37.4                # DECLARED, a floor: body envelope 36.4 x 34.4 here
 APRON = 0.0
 PAINT = "paved_cleared"
 STRIP = ("portal_wood", "sign")
-CLEAR_R = round(math.hypot(PAD, PAD) / 2 + 2.0, 2)
 BATCH_BYTES = 3600
+
+
+@functools.lru_cache(maxsize=None)
+def hall_pad() -> tuple[float, float]:
+    """THE pad this module stamps, claims and clears round: the declared
+    `PAD` square grown wherever the body AT ITS YAW needs more -
+    `flatten.pad_extent_at_yaw` (PAD_EXTENT_DEPENDS_ON), the rule every pad
+    emitter shares, over `flatten.placed_body_extents`.  MEASURED 2026-09-25:
+    37.4 x 37.4, the declared square byte for byte - the body spans 36.381 x
+    34.312 m at yaw 0 and all 1,295 vertices under it are stamped."""
+    ext = FL.placed_body_extents(BODY, BODY_YAW)
+    pe = FL.pad_extent_at_yaw((PAD, PAD), ext["unturned"], ext,
+                              (HALL_X, HALL_Z), 0.0, APRON)
+    return pe["w"], pe["d"]
+
+
+def clear_r() -> float:
+    """The clearing cylinder: the pad's half-diagonal plus 2 m."""
+    return round(math.hypot(*hall_pad()) / 2 + 2.0, 2)
+
 
 # The old ring, for the arches that have to be moved and the guideposts that
 # have to go with them.
@@ -327,7 +355,8 @@ def applied(x: float, z: float, comps: dict, patches: dict
 
 
 def pad_zones() -> list[tuple[int, int]]:
-    return FL.zones_for(HALL_X, HALL_Z, PAD + 2 * APRON, PAD + 2 * APRON)
+    w, d = hall_pad()
+    return FL.zones_for(HALL_X, HALL_Z, w + 2 * APRON, d + 2 * APRON)
 
 
 def patchset(zones) -> dict:
@@ -489,9 +518,6 @@ def assignment() -> list[dict]:
     return [dict(b, tag=t) for t, b in zip(TAG_ORDER, bs)]
 
 
-LOCATION_DUMP = "/tmp/settle/loc3/f6fe167f4fcd.json"
-
-
 def location_check(probes: list[dict]) -> dict:
     """The pad's stand-off from generated locations, AND the exact probe that
     matters more: the applied height change at every protected piece.
@@ -505,13 +531,14 @@ def location_check(probes: list[dict]) -> dict:
     marker the dump cannot see is exactly what the dump cannot rule out.
     """
     import clearance
-    loc = clearance.load(LOCATION_DUMP)
-    half_diag = math.hypot(PAD, PAD) / 2
+    dump = clearance.location_dump()
+    loc = clearance.load(dump)
+    half_diag = math.hypot(*hall_pad()) / 2
     near = loc.nearest(HALL_X, HALL_Z)
     viol = loc.violations(HALL_X, HALL_Z, half_diag)
     worst = max((p["worst_applied_delta_m"] for p in probes), default=0.0)
     return {
-        "dump": LOCATION_DUMP,
+        "dump": dump,
         "method": "MEASURED twice. (1) stand-off per location TYPE from the "
                   "LocScan dump, pad half-diagonal "
                   f"{half_diag:.2f} m. (2) `ribbon.delta_at` over the bytes "
@@ -543,7 +570,7 @@ def location_check(probes: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def census(srv) -> dict:
-    total, per = srv.count("*", HALL_X, HALL_Z, CLEAR_R)
+    total, per = srv.count("*", HALL_X, HALL_Z, clear_r())
     natural = {p: n for p, n in per.items()
                if NATURAL_RE.match(p) and not BUILT_RE.match(p)}
     other = {p: n for p, n in per.items()
@@ -551,7 +578,7 @@ def census(srv) -> dict:
     return {"total": total, "per_prefab": per, "clearable": natural,
             "not_clearable": other,
             "probe": f"objects_count id=* ignore=_* "
-                     f"pos={HALL_X:.2f},{HALL_Z:.2f} max={CLEAR_R:.2f}",
+                     f"pos={HALL_X:.2f},{HALL_Z:.2f} max={clear_r():.2f}",
             "method": "MEASURED: the live per-prefab contents of the exact "
                       "cylinder the removal will empty, taken in the same call "
                       "that builds the removal's prefab list",
@@ -564,11 +591,31 @@ def forbidden_pieces(recs: list[dict]) -> dict[str, list[tuple[float, float]]]:
     Read the same way `writer.py::_protected_pieces` reads it -- out of the
     site's own `spawn_plan` blob, `pos=` being z,x,y -- so the numbers this
     script probes are the numbers the ledger's own guard will probe.
+
+    AND THAT PROMISE WAS BROKEN BY A PRIVATE COPY OF THE PATTERN.  This
+    function held its own `^`-anchored per-line regex, and the wire is
+    SEMICOLON-PACKED, so it read the FIRST command of each line and
+    dropped the rest -- the fifth of five independent readers of "what did
+    this record command" in this tree, three of which were wrong the same
+    way.  MEASURED on this chain the moment `writer.parse_spawn_wire`
+    became the one reader:
+        forbidden_pieces positions   3,629 -> 4,825   (+1,196)
+        and every one of them is ONE site: lh-north   123 -> 1,319
+    `lh-north` is FORBIDDEN, which means `_flatten_forbidden_check`
+    refuses ANY movement inside its disc -- so this probe was proving
+    123 of 1,319 pieces undisturbed and reporting the site clear, 9.3 %
+    of the population it exists to defend.  A probe that promises in its
+    own docstring to read as the guard reads MUST CALL WHAT THE GUARD
+    CALLS, or the promise is prose.
     """
-    pat = re.compile(r"^spawn_object\s+(\S+)\s+pos=([^\s,]+),([^\s,]+),")
     sites: dict[str, list[tuple[float, float]]] = {}
+    # BOTH KEEP-OUT KINDS -- `writer.KEEP_OUT_KINDS`.  This probe's own
+    # docstring promises to read as the guard reads; matching the literal
+    # "FORBIDDEN" would silently drop every lamp site out of it the moment
+    # the emitters started writing RESEAT, which is the same 9.3 % hole
+    # that docstring is about, opened a second time.
     forb = {r["params"].get("site_id") for r in recs
-            if r["params"].get("flatten") == "FORBIDDEN"}
+            if r["params"].get("flatten") in ("FORBIDDEN", "RESEAT")}
     # A RETIRED PIECE IS NOT STANDING THERE.  Same rule as
     # `writer.py::_site_evidence`, and it has to be the same or this probe
     # and the guard disagree: the hub-END arch of `x-ferry-e` carried
@@ -592,11 +639,22 @@ def forbidden_pieces(recs: list[dict]) -> dict[str, list[tuple[float, float]]]:
             sha = r["params"].get("plan_sha256")
             if not sha or not (BLOBS / sha).exists():
                 continue
-            for line in (BLOBS / sha).read_text("utf-8").splitlines():
-                m = pat.match(line.strip())
-                if m:
-                    sites.setdefault(site, []).append(
-                        (float(m.group(3)), float(m.group(2))))
+            # THE ONE READER, with the record's own `command_count` as the
+            # accounting identity: a blob that will not read back at its
+            # declared size returns None, and an unreadable plan must not
+            # look like a small one to a guard that refuses on movement.
+            got = W.parse_spawn_wire((BLOBS / sha).read_text("utf-8"),
+                                     r["params"].get("command_count"))
+            if got is None:
+                raise SystemExit(
+                    "portal_hall.forbidden_pieces: spawn_plan seq "
+                    f"{r['seq']} for FORBIDDEN site {site!r} declares "
+                    f"{r['params'].get('command_count')} commands and its "
+                    "blob will not read back at that size, so the pieces "
+                    "this pad must not disturb CANNOT BE ENUMERATED. "
+                    "Refusing rather than probing a partial set.")
+            for _prefab, px, pz in got:
+                sites.setdefault(site, []).append((px, pz))
     return sites
 
 
@@ -609,8 +667,9 @@ def build_pad(recs, patches):
         "id": "portal-hall",
         "solved": {"x": HALL_X, "z": HALL_Z, "y": TARGET_Y,
                    "flatten_cost": {"target_y": TARGET_Y},
-                   "footprint_orientation": f"{PAD} m along x by {PAD} m along z"},
-        "requirement": {"footprint_xz_m": [PAD, PAD]},
+                   "footprint_orientation":
+                       "{:g} m along x by {:g} m along z".format(*hall_pad())},
+        "requirement": {"footprint_xz_m": list(hall_pad())},
     }
     stats = FL.build(place, patches, zones, PAINT, APRON, comps, op_y)
     prior_comps, prov = live_comps(recs, zones)
@@ -651,7 +710,15 @@ def main() -> int:
                                       "ringsigns", "save"))
     ap.add_argument("--dry", action="store_true")
     ap.add_argument("--only", default=None, help="one tag, for move/park")
+    worldseed.add_arguments(ap)
     args = ap.parse_args()
+
+    # Rebind the WORLD-derived paths too: a seed without its ledger is how a
+    # fresh build reads the live world's records.
+    global SEED, WORLD, LEDGER, BLOBS  # noqa: PLW0603
+    SEED, WORLD = worldseed.apply(args)
+    LEDGER = JUMPSTART / "ledger/runs" / WORLD / "ledger.jsonl"
+    BLOBS = JUMPSTART / "ledger/runs" / WORLD / "blobs"
     SCRATCH.mkdir(parents=True, exist_ok=True)
 
     if args.stage == "bays":
@@ -667,7 +734,7 @@ def main() -> int:
 
     if args.stage == "census":
         with R.Server(dry=args.dry) as srv:
-            out = {"cylinder": census(srv), "clear_radius_m": CLEAR_R,
+            out = {"cylinder": census(srv), "clear_radius_m": clear_r(),
                    "pad_zones": [list(z) for z in pad_zones()]}
             comps, prov = live_comps(recs, pad_zones())
             stats, padcomps, op_y, merged = build_pad(recs, patches)
@@ -694,8 +761,9 @@ def main() -> int:
                               "object_y": e["y"], "applied_ground_y": round(a, 3),
                               "gap_m": round(e["y"] - a, 3),
                               "road_delta_m": round(d, 3),
-                              "inside_new_pad": (abs(e["x"] - HALL_X) <= PAD / 2 + 1
-                                                 and abs(e["z"] - HALL_Z) <= PAD / 2 + 1)})
+                              "inside_new_pad": (
+                                  abs(e["x"] - HALL_X) <= hall_pad()[0] / 2 + 1
+                                  and abs(e["z"] - HALL_Z) <= hall_pad()[1] / 2 + 1)})
             out["hub_end_seats"] = seats
             print(json.dumps(out, indent=1, default=str))
         return 0
@@ -707,15 +775,15 @@ def main() -> int:
             if not ids:
                 print("nothing clearable"); return 0
             wire = (f"objects_remove id={','.join(ids)} ignore=_* "
-                    f"pos={HALL_X:g},{HALL_Z:g} max={CLEAR_R:.2f}")
+                    f"pos={HALL_X:g},{HALL_Z:g} max={clear_r():.2f}")
             res = b.emit("objects_clear", params={
-                "centre": [HALL_X, HALL_Z], "radius_m": CLEAR_R,
+                "centre": [HALL_X, HALL_Z], "radius_m": clear_r(),
                 "ids": ids, "ignore": ["_*"], "role": "portal_hall_pad",
                 "site_id": "portal-hall"},
                 wire=[wire],
                 expect={"objects_count": {
                     "ids": ",".join(ids), "ignore": "_*",
-                    "pos": [HALL_X, HALL_Z], "max": CLEAR_R,
+                    "pos": [HALL_X, HALL_Z], "max": clear_r(),
                     "total": 0, "tolerance": 0}},
                 meta={"cylinder": {k: c[k] for k in
                                    ("total", "clearable", "not_clearable")},
@@ -784,6 +852,11 @@ def main() -> int:
                      f"data={e['data_entry']}" for e in out_entries]
             res = b.emit("terrain_write", params={
                 "name": "portal-hall", "paint": PAINT,
+                # The rectangle's POSITION. `schema.py` refuses a pad write
+                # without it: pad_w and pad_d alone are a size with no place,
+                # and MEASURED on this chain the centre cannot be recovered
+                # from the blobs where a neighbour shares the target height.
+                "centre": [float(HALL_X), float(HALL_Z)],
                 "datum": f"pad target_y {TARGET_Y} m = the MEASURED applied "
                          f"ground at the T1/S1 road terminus (-292,214); "
                          f"deltas against patchscan generated heights at 1 m "
@@ -791,7 +864,7 @@ def main() -> int:
                 "entries": out_entries,
                 "location_check": location_check(probes),
                 "target_y": TARGET_Y, "apron_m": APRON,
-                "pad_w": PAD, "pad_d": PAD,
+                "pad_w": hall_pad()[0], "pad_d": hall_pad()[1],
                 "max_cut_m": stats["max_cut"], "max_fill_m": stats["max_fill"],
                 "over_clamp": stats["over_clamp"],
                 "role": "portal_hall_pad", "site_id": "portal-hall"},
@@ -862,9 +935,9 @@ def main() -> int:
                 expect={"prefab_count": [
                     {"prefab": "Piece_grausten_floor_1x1",
                      "count": prefabs["Piece_grausten_floor_1x1"],
-                     "pos": [HALL_X, HALL_Z], "max": CLEAR_R, "tolerance": 0},
+                     "pos": [HALL_X, HALL_Z], "max": clear_r(), "tolerance": 0},
                     {"prefab": "portal_wood", "count": 18,
-                     "pos": [HALL_X, HALL_Z], "max": CLEAR_R, "tolerance": 0}]},
+                     "pos": [HALL_X, HALL_Z], "max": clear_r(), "tolerance": 0}]},
                 meta={"stripped": dict(stripped),
                       "stripped_why": "the body carries 15 UNTAGGED "
                                       "portal_wood -- the random-destination "
@@ -896,8 +969,8 @@ def main() -> int:
                 if end is None:
                     raise SystemExit(f"no live hub end for {tag}")
                 if args.stage == "park":
-                    inside = (abs(end["x"] - HALL_X) <= PAD / 2 + 1
-                              and abs(end["z"] - HALL_Z) <= PAD / 2 + 1)
+                    inside = (abs(end["x"] - HALL_X) <= hall_pad()[0] / 2 + 1
+                              and abs(end["z"] - HALL_Z) <= hall_pad()[1] / 2 + 1)
                     if not inside:
                         continue
                 if (abs(end["x"] - row["x"]) < 0.01
@@ -921,7 +994,7 @@ def main() -> int:
             res = b.emit("save", params={"role": "portal_hall"},
                          wire=["save"], expect={"objects_count": {
                              "ids": "portal_wood", "ignore": "_*",
-                             "pos": [HALL_X, HALL_Z], "max": CLEAR_R,
+                             "pos": [HALL_X, HALL_Z], "max": clear_r(),
                              "total": 18, "tolerance": 0}},
                          meta={"why": "the hall, its pad and all 18 tagged "
                                       "arches are on disk"})

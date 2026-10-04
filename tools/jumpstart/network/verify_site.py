@@ -71,15 +71,18 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-import yaml
-
 HERE = Path(__file__).resolve().parent
 JUMPSTART = HERE.parent
 sys.path.insert(0, str(JUMPSTART / "terraform"))
 sys.path.insert(0, str(JUMPSTART / "clearing"))
+sys.path.insert(0, str(JUMPSTART / "ledger"))
+sys.path.append(str(JUMPSTART))
 
 from rcon import Rcon, rcon_credentials, container_ip  # noqa: E402
 import clear as clearing  # noqa: E402
+import flatten as flattenmod  # noqa: E402  terraform/, for THE placements reader
+import writer as W  # noqa: E402  ledger/, THE reader of the spawn wire format
+import worldseed  # noqa: E402
 
 AUDIT = JUMPSTART / "library" / "data" / "base_audit.json"
 FOOTPRINT_RE = re.compile(r"footprint@yaw[-\d.]+=([\d.]+)x([\d.]+)")
@@ -111,7 +114,7 @@ def collider_reach(plan_notes: str, fallback_w: float, fallback_d: float) -> tup
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--preset", required=True)
     ap.add_argument("--id", required=True)
     ap.add_argument("--index", default="/tmp/terraform/plans_wb/index.json",
@@ -129,9 +132,14 @@ def main() -> int:
     ap.add_argument("--expect-extra", type=int, default=0,
                     help="objects placed at this site beyond the plan (fixtures, portals)")
     args = ap.parse_args()
+    _seed, world = worldseed.apply(args)
 
-    path = JUMPSTART / "worlds" / args.world / args.preset / "placements.yaml"
-    doc = yaml.safe_load(path.read_text())
+    # THE PLACEMENT SET IS READ THROUGH ITS OWN HEADER, not through this path.
+    # `--world` is a live parameter as of tonight; a records file whose header
+    # names another world carries another world's absolute coordinates, and
+    # this stage counts objects at those coordinates.
+    doc = flattenmod.load_placements(world, args.preset)
+    path = flattenmod.placements_path(world, args.preset, None)
     place = next((p for p in doc["placements"] if p["id"] == args.id), None)
     if place is None:
         raise SystemExit(f"no placement {args.id} in {path}")
@@ -147,18 +155,37 @@ def main() -> int:
     reach, reach_src = collider_reach(row.get("notes", ""), float(fp[0]), float(fp[1]))
     inner = reach + 2.0
     outer = inner + args.ring
-    expected = int(row["commands"]) + args.expect_extra
 
     print(f"{args.preset}#{args.id}  {place['blueprint']}")
     print(f"  pad ({cx}, {cz}) y {pad_y}; reach {reach:.2f} m from the {reach_src}")
 
-    # The plan file IS the authority on what was sent, so the stray probe is
-    # scoped to the prefabs it actually contains rather than to a guess.
-    plan_prefabs = Counter()
-    for line in Path(row["plan"]).read_text().splitlines():
-        m = re.search(r"spawn_object\s+(\S+)", line)
-        if m:
-            plan_prefabs[m.group(1)] += 1
+    # The plan file IS the authority on what was sent, and it is read by THE
+    # reader of this wire format, not by a fifth private copy.  The copy that
+    # used to live here matched `spawn_object` once per LINE; the wire is
+    # SEMICOLON-PACKED, and the same assumption was MEASURED wrong three times
+    # elsewhere in this tree (settlements' index +11,213 placements,
+    # structures::plan_commands 226 of 421 records mis-sized,
+    # writer::_protected_pieces reading 3 of 64 protected pieces).  It was
+    # unexercised here only because today's plans happen to be one command per
+    # line -- which is not a property anything enforces.
+    parsed = W.parse_spawn_wire(Path(row["plan"]).read_text())
+    plan_prefabs = Counter(name for name, _x, _z in parsed)
+    # AND THE INDEX'S OWN COUNT IS CHECKED AGAINST IT.  `terraform/sites.py`
+    # writes `commands` as `len(splitlines())`, a LINE count, and this stage
+    # turns that number into the object count a site is passed or failed on.
+    # The two agree today (1,239 lines, 1,239 commands, MEASURED on
+    # deepnorth-sandbox__complete-station-hub.txt); the first packed plan makes
+    # them disagree, and a site verdict computed from the smaller is a pass
+    # granted for objects nobody counted.
+    declared = int(row["commands"])
+    if len(parsed) != declared:
+        raise SystemExit(
+            f"REFUSING: {row['plan']} commands {len(parsed)} object(s) but "
+            f"{args.index} declares {declared}. That index field is written as "
+            f"a LINE count (terraform/sites.py), so a semicolon-packed plan "
+            f"reads short there; the site's expected object count comes from "
+            f"it. Regenerate the index with terraform/sites.py.")
+    expected = len(parsed) + args.expect_extra
     probes = [name for name, _ in plan_prefabs.most_common(args.probe_prefabs)]
 
     a = audit_row(place["blueprint"])

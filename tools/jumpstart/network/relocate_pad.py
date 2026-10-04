@@ -89,6 +89,7 @@ JUMPSTART = HERE.parent
 sys.path.insert(0, str(JUMPSTART / "terraform"))
 sys.path.insert(0, str(JUMPSTART / "clearing"))
 sys.path.insert(0, str(JUMPSTART / "blueprints"))
+sys.path.append(str(JUMPSTART))
 
 import site_finder as SF  # noqa: E402
 import tcdata  # noqa: E402
@@ -96,6 +97,7 @@ import flatten as flattenmod  # noqa: E402
 import recost_pad  # noqa: E402
 from rcon import Rcon, container_ip, rcon_credentials  # noqa: E402
 import clear as clearing  # noqa: E402
+import worldseed  # noqa: E402
 
 GRID = Path("/tmp/fb/grid/00000.biome")
 ANCHOR_RE = re.compile(r"@\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)")
@@ -103,8 +105,11 @@ FOOTPRINT_RE = re.compile(r"footprint@yaw[-\d.]+=([\d.]+)x([\d.]+)")
 
 
 def load_place(world: str, preset: str, pid: str) -> tuple[Path, dict, dict]:
-    path = JUMPSTART / "worlds" / world / preset / "placements.yaml"
-    doc = yaml.safe_load(path.read_text())
+    # Through THE placements reader, so the records' own `world:`/`seed:`
+    # header is read.  This stage rewrites solved.x/z, so borrowing another
+    # world's records would move another world's pads.
+    path = flattenmod.placements_path(world, preset, None)
+    doc = flattenmod.load_placements(world, preset)
     place = next((p for p in doc["placements"] if p["id"] == pid), None)
     if place is None:
         raise SystemExit(f"no placement {pid} in {path}")
@@ -309,10 +314,9 @@ def confirm_centre(cx: float, cy: float, cz: float, clear_r: float,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--preset", required=True)
     ap.add_argument("--id", required=True)
-    ap.add_argument("--seed", default="Pirate68")
     ap.add_argument("--grid", default=str(GRID))
     ap.add_argument("--index", default="/tmp/terraform/plans_wb/index.json")
     ap.add_argument("--radius", type=float, default=140.0,
@@ -340,12 +344,23 @@ def main() -> int:
     ap.add_argument("--write", action="store_true",
                     help="move solved.x/z and re-cost the pad in placements.yaml")
     args = ap.parse_args()
+    seed, world = worldseed.apply(args)
 
-    path, doc, place = load_place(args.world, args.preset, args.id)
+    path, doc, place = load_place(world, args.preset, args.id)
     solved = place["solved"]
     cx0, cz0 = float(solved["x"]), float(solved["z"])
     pad_y = float((solved.get("flatten_cost") or {})["target_y"])
-    pad_w, pad_d, rect_src = pad_rect(place)
+    # THE DECLARED RECTANGLE IS A FLOOR, and the pad is the body AT ITS YAW:
+    # `flatten.placed_pad_at_yaw` (PAD_EXTENT_DEPENDS_ON), the rule every pad
+    # emitter shares.  Sized here at the solved centre; each candidate keeps
+    # that centre's fraction at an integer --step, so it keeps the pad too,
+    # and a centre where the lattice asks for more is refused below.
+    decl_w, decl_d, rect_src = pad_rect(place)
+    pe0 = flattenmod.placed_pad_at_yaw(place, (decl_w, decl_d), (cx0, cz0))
+    pad_w, pad_d = pe0["w"], pe0["d"]
+    if pe0["grew"]:
+        rect_src += (f", grown to the body at yaw {pe0['yaw_deg']:g} "
+                     f"({pe0['body_at_yaw'][0]} x {pe0['body_at_yaw'][1]} m)")
     verify_r, reach_src = collider_reach(Path(args.index), args.preset, args.id)
     verify_r += 2.0
     apron, clear_r = apron_for(pad_w, pad_d, args.margin, verify_r, args.apron_floor)
@@ -530,9 +545,19 @@ def main() -> int:
               f"{chosen['freeboard_m']:.2f} m, 8 m spread {chosen['flat_spread_m']:.2f} m"
               + (f", anchor {chosen['anchor_dist_m']} m of {p['within_m']:g} m"
                  if chosen["anchor_dist_m"] is not None else ""))
+        pe = flattenmod.placed_pad_at_yaw(place, (decl_w, decl_d),
+                                          (chosen["x"], chosen["z"]))
+        if pe["w"] > pad_w or pe["d"] > pad_d:
+            print(f"    rejected: the body at this centre needs a {pe['w']} x "
+                  f"{pe['d']} m pad, more than the {pad_w} x {pad_d} m the "
+                  f"clearing cylinder was sized for (a non-integer --step "
+                  f"moved the centre off its lattice fraction)")
+            skip.append((chosen["x"], chosen["z"], 0.05))
+            chosen = bill = None
+            continue
         zones = flattenmod.zones_for(chosen["x"], chosen["z"], pad_w, pad_d)
         out = Path("/tmp/terraform") / f"relocate_{args.preset}_{args.id}.bin"
-        patches = flattenmod.run_patchscan(sorted(zones), args.seed, out)
+        patches = flattenmod.run_patchscan(sorted(zones), seed, out)
         bill = recost_pad.cost(patches, chosen["x"], chosen["z"], pad_w, pad_d)
         print(f"    1 m bill: target_y {bill['target_y']} (freeboard "
               f"{bill['target_freeboard_m']} m), moved {bill['moved_m3']} m3, "
@@ -617,7 +642,8 @@ def main() -> int:
     solved["y"] = round(float(bill["max_generated_m"]), 2)
     solved["biome_purity"] = round(chosen["biome_purity"], 3)
     solved["freeboard_m"] = round(chosen["freeboard_m"], 2)
-    solved["footprint_orientation"] = f"{pad_w:.1f} m along x by {pad_d:.1f} m along z"
+    # The pad the writer stamps, exactly (`:g`): the body at its yaw.
+    solved["footprint_orientation"] = f"{pad_w:g} m along x by {pad_d:g} m along z"
     solved["flatten_cost"] = {k2: v for k2, v in bill.items()
                               if k2 not in ("samples", "over_clamp_samples", "min_generated_m",
                                             "max_generated_m", "min_freeboard_m",
@@ -639,6 +665,7 @@ def main() -> int:
         "search_radius_m": args.radius,
         "search_step_m": args.step,
         "pad_rect_m": [pad_w, pad_d],
+        "pad_rect_declared_m": [decl_w, decl_d],
         "pad_rect_source": rect_src,
         "clearing_radius_m": round(clear_r, 2),
         "clearing_apron_m": apron,
@@ -662,7 +689,7 @@ def main() -> int:
         "not_rechecked_basis": "whole-world graph searches; a move of "
                                f"{chosen['displacement_m']} m cannot change landmass, and the "
                                "search radius is bounded so that stays true",
-        "grid_source": "tools/seedscan/run_scan.sh STEP=8 HEIGHT=1, seed " + args.seed,
+        "grid_source": "tools/seedscan/run_scan.sh STEP=8 HEIGHT=1, seed " + seed,
         "height_source": "blueprints/run_patchscan.sh, step 1 m, rivers included",
     }
     if previous:
@@ -673,9 +700,10 @@ def main() -> int:
             solved["relocation"]["displacement_from_solved_m"] = round(
                 math.hypot(chosen["x"] - float(origin[0]), chosen["z"] - float(origin[1])), 2)
     # Two decimals, not one: the rectangle is a MEASURED collider box and
-    # rounding 34.11 to 34.1 silently shrinks the pad by 1 cm per side, which
-    # then disagrees with the number this run sized the clearing cylinder from.
-    req["footprint_xz_m"] = [round(pad_w, 2), round(pad_d, 2)]
+    # rounding 34.11 to 34.1 silently shrinks the pad by 1 cm per side.  The
+    # REQUIREMENT keeps the declared rectangle -- seed-independent -- and the
+    # pad at the body's yaw, centre-dependent, lives in the solved block.
+    req["footprint_xz_m"] = [round(decl_w, 2), round(decl_d, 2)]
     path.write_text(yaml.safe_dump(doc, default_flow_style=False, width=100, sort_keys=False))
     print(f"  written -> {path}")
     return 0

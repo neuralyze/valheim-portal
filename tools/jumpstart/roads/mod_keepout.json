@@ -1,0 +1,5710 @@
+{
+ "schema": 2,
+ "world": "Ulfsland",
+ "seed": "Pirate68",
+ "owner": "StructuresInRoads (census) / RoadClear-2, TrunkClear (schema 1 rows)",
+ "generated": "2026-09-20",
+ "why": "THE ROUTER CANNOT SEE MOD-PLACED STRUCTURES. roads/poi.py builds its forbid raster from the world-GENERATOR location dump, which is MOD-FREE by construction and cannot see More_World_Locations_AIO. MEASURED: 14 mod structures stand inside or beside a built carriageway and NONE of them is in the 12,301-instance dump. This file carries them so a future route treats them as hard forbids.",
+ "instrument": "findObjects -near <x> <road_y> <z> 8.00 UNSCOPED on the ValheimRcon socket, \"Found n objects\" header compared against parsed rows on every call and the box subdivided when they disagree (the reply truncates at ValidatePayloadLength's 4050 bytes, MEASURED: -detailed gave 33 rows for a declared 34). Positions re-filtered in XZ against the LIVE centrelines from the ledger terrain_write params.profile.nodes, last seq per segment.",
+ "coverage": "COMPLETE for the carriageways of all 25 BUILT segments: 21929 m of live centreline from the ledger's terrain_write params.profile.nodes, covered by 1450 of 1450 planned r=8 boxes in 1943 socket calls. 9 calls are recorded as FAILED READS, not as zeros: their 'Found n objects' header disagreed with the rows parsed even at r=2, which is the 4050-byte reply cap, and all nine are inside the portal hall's own grausten floor where roughly 80 pieces are therefore unseen. That does not change the portal hall's verdict (it is the road's own destination) but it is the one place in this file where the count is a floor. Everywhere else the header matched the rows on every call. Schema-1 rows are KEPT and four of them are CORRECTED: they named our own bridge deck, two Stenvik cottages and a treehouse as mod structures, on the grounds that they were absent from the mod-free generator dump -- which is true of everything we build.",
+ "population": {
+  "segments": 25,
+  "centreline_m": 21929.0,
+  "boxes_planned": 1450,
+  "boxes_done": 1450,
+  "socket_calls": 1943,
+  "failed_reads": 9,
+  "objects_seen": 10335,
+  "non_clearable_in_band": 5318,
+  "our_road_lamps_excluded": 334,
+  "bodies": 122,
+  "natural_offlist_pieces_in_band": 131,
+  "natural_offlist_blocking_in_paved": 82,
+  "natural_offlist_prefabs": {
+   "YggaShoot_small1": 48,
+   "cliff_mistlands2": 38,
+   "rock_mistlands1": 6,
+   "GuckSack": 5,
+   "YggaShoot1": 5,
+   "GuckSack_small": 4,
+   "lox_ribs": 4,
+   "YggaShoot2": 4,
+   "mudpile_beacon": 3,
+   "YggaShoot3": 3,
+   "BoneFragments": 3,
+   "giant_sword1": 3,
+   "Beehive": 2,
+   "StatueDeer": 1,
+   "HeathRockPillar": 1,
+   "giant_helmet1": 1
+  },
+  "blocking_pieces_in_paved": 1676,
+  "pieces_in_paved": 3879
+ },
+ "band": {
+  "paved_half_width_m": "per segment, 3.0 on trunk / 2.0 on spur",
+  "shoulder_m": 1.0,
+  "walker_head_clearance_m": 2.2,
+  "floor_tolerance_m": 0.5
+ },
+ "not_counted": {
+  "our_road_lamps": 334,
+  "our_road_lamps_why": "piece_groundtorch standing at half_width+0.35..0.75 m lateral with its own measured 0.65 m pivot rise -- roads/lamps.py SHOULDER_STANDOFF_M 0.55. Road furniture of ours on its own shoulder is not an obstacle.",
+  "our_bridge_and_abutment_bodies_why": "bodies matched to a bridge_body_place / bridge_assembly spawn_plan by anchor and prefab histogram (>=85% coverage) are the carriageway itself, so they are not carried as forbids. MEASURED, 18 bridge bodies: N2's seven crossings alone hold 123, 83, 82, 82, 71, 47 and 12 pieces inside the paved width, and every one of those is deck a walker stands on. The one that WAS carried as a forbid, mod-structure-03, is kept with forbid=false.",
+  "natural_offlist_pieces": 131,
+  "natural_offlist_why": "off clear.py::CLEARABLE but not structures: YggaShoot*, cliff_mistlands2, rock_mistlands1, GuckSack*, mudpile_beacon, BoneFragments, lox_ribs, giant_sword1/helmet1, Beehive, StatueDeer, HeathRockPillar. These are vegetation, terrain and carcasses, and counting them as structures is what turned 14 real bodies on N4 into 60. They are candidates for the clearance allowlist, not for a re-route.",
+  "natural_offlist_prefabs": {
+   "YggaShoot_small1": 48,
+   "cliff_mistlands2": 38,
+   "rock_mistlands1": 6,
+   "GuckSack": 5,
+   "YggaShoot1": 5,
+   "GuckSack_small": 4,
+   "lox_ribs": 4,
+   "YggaShoot2": 4,
+   "mudpile_beacon": 3,
+   "YggaShoot3": 3,
+   "BoneFragments": 3,
+   "giant_sword1": 3,
+   "Beehive": 2,
+   "StatueDeer": 1,
+   "HeathRockPillar": 1,
+   "giant_helmet1": 1
+  }
+ },
+ "protected": true,
+ "never_delete": "No remedy in this file is deletion. Every row names re-route, re-terminate, or accept-and-record, with the metres involved.",
+ "structures": [
+  {
+   "name": "mod-structure-03",
+   "x": -347.59,
+   "z": 304.94,
+   "y": 32.6,
+   "declared_m": 13.18,
+   "pieces": 60,
+   "blocking_carriageway": 57,
+   "segments": [
+    "N0_brgs2_wmid"
+   ],
+   "prefabs": {
+    "wood_floor": 28,
+    "wood_pole": 14,
+    "wood_beam": 13,
+    "wood_pole_log_4": 3,
+    "wood_wall_log_4x0.5": 2
+   },
+   "location_proxy": null,
+   "evidence": "CORRECTED 2026-09-20 by StructuresInRoads. NOT MOD-PLACED: this is our own bridge body `N0-brgs2-wmid-x01`, spawn_plan seqs 2788/2789/2790, anchor (-345.91, 304.21) which is 1.83 m from this row position. The plan histograms are wood_beam 13 + wood_floor 21 + wood_pole 14, then wood_pole_log_4 6 + wood_wall_log_4x0.5 2; this row records wood_beam 13 and wood_pole 14 EXACTLY. Independently confirmed by RoadConnectivity, which counted 43 wood_floor + 6 wood_pole_log_4 at that anchor on the socket. IT IS THE BRIDGE DECK, so the \"blocking_carriageway: 57\" in the original row counted the road as an obstacle to itself. The old evidence line -- \"absent from the mod-free world-generator dump\" -- is equally true of everything WE build, so it never distinguished ours from a mod POI.",
+   "placer": "ours",
+   "correction": "CORRECTED 2026-09-20 by StructuresInRoads. NOT MOD-PLACED: this is our own bridge body `N0-brgs2-wmid-x01`, spawn_plan seqs 2788/2789/2790, anchor (-345.91, 304.21) which is 1.83 m from this row position. The plan histograms are wood_beam 13 + wood_floor 21 + wood_pole 14, then wood_pole_log_4 6 + wood_wall_log_4x0.5 2; this row records wood_beam 13 and wood_pole 14 EXACTLY. Independently confirmed by RoadConnectivity, which counted 43 wood_floor + 6 wood_pole_log_4 at that anchor on the socket. IT IS THE BRIDGE DECK, so the \"blocking_carriageway: 57\" in the original row counted the road as an obstacle to itself. The old evidence line -- \"absent from the mod-free world-generator dump\" -- is equally true of everything WE build, so it never distinguished ours from a mod POI.",
+   "evidence_superseded": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "THIS BODY IS THE CARRIAGEWAY. our bridge_assembly `bridge-s2-portalhall-strait` (spawn_plan seq 23, anchor 68.51 m away, prefab histogram match 100%). Its 60 pieces inside the paved width are the deck a walker stands on, not an obstacle. 0 m of road to change; record it as road furniture and stop counting it as a blocker.",
+   "walk_to": {
+    "x": -350.0,
+    "z": 292.2,
+    "offset_m": 2.73,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 60,
+    "pieces_in_paved": 60,
+    "blocking_in_paved": 27,
+    "intrusion_m": 2.23,
+    "climb_m": 1.2,
+    "min_lateral_m": 0.29,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_N0_brgs2_wmid"
+    ],
+    "classes": {
+     "structure": 60
+    },
+    "kinds": {
+     "walkable_surface": 32,
+     "blocking": 27,
+     "below_road": 1
+    },
+    "placer_verdict": "ours",
+    "placer_evidence": "our bridge_assembly `bridge-s2-portalhall-strait` (spawn_plan seq 23, anchor 68.51 m away, prefab histogram match 100%)",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": false,
+   "forbid_why": "NOT A FORBID. This row is our own bridge deck `N0-brgs2-wmid-x01`; the road must cross it, so a keepout disc here would forbid the carriageway to itself. The row is kept as the RECORD that schema 1 misfiled it, and `poi.load_mod_keepout` skips rows with forbid=false."
+  },
+  {
+   "name": "mod-structure-05",
+   "x": -320.67,
+   "z": 1235.37,
+   "y": 60.15,
+   "declared_m": 8.42,
+   "pieces": 54,
+   "blocking_carriageway": 35,
+   "segments": [
+    "N0_brgs2_wmid"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 34,
+    "stone_wall_4x2": 8,
+    "wood_floor": 5,
+    "wood_pole_log_4": 4,
+    "wood_stair": 1,
+    "stone_wall_1x1": 1
+   },
+   "location_proxy": [
+    [
+     -321.0,
+     1233.72
+    ]
+   ],
+   "evidence": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.93 m away from the body over its 17 m station span plus a 20 m taper each side = 57 m of N0_brgs2_wmid re-written. The building is not touched.",
+   "walk_to": {
+    "x": -327.5,
+    "z": 1237.1,
+    "offset_m": 3.14,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 55,
+    "pieces_in_paved": 47,
+    "blocking_in_paved": 23,
+    "intrusion_m": 2.64,
+    "climb_m": 5.68,
+    "min_lateral_m": 0.07,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_N0_brgs2_wmid"
+    ],
+    "classes": {
+     "structure": 54,
+     "nonsolid": 1
+    },
+    "kinds": {
+     "blocking": 28,
+     "overhead": 14,
+     "walkable_surface": 12,
+     "blocking?": 1
+    },
+    "placer_verdict": "mod-placed",
+    "placer_evidence": "its LocationProxy at (-321.0, 1233.72) has NO row in the mod-free 12,301-instance generator dump: nearest is TrollCave02 70.2 m away",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-08",
+   "x": -138.27,
+   "z": 1994.84,
+   "y": 44.5,
+   "declared_m": 5.74,
+   "pieces": 48,
+   "blocking_carriageway": 31,
+   "segments": [
+    "N0b_wmid_wnorth"
+   ],
+   "prefabs": {
+    "stone_pillar": 26,
+    "stone_stair": 8,
+    "stone_floor_2x2": 8,
+    "stone_arch": 5,
+    "stone_floor": 1
+   },
+   "location_proxy": [
+    [
+     -139.79,
+     1994.61
+    ]
+   ],
+   "evidence": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.92 m away from the body over its 10 m station span plus a 20 m taper each side = 50 m of N0b_wmid_wnorth re-written. The building is not touched.",
+   "walk_to": {
+    "x": -134.6,
+    "z": 1995.6,
+    "offset_m": 3.42,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 53,
+    "pieces_in_paved": 46,
+    "blocking_in_paved": 34,
+    "intrusion_m": 2.92,
+    "climb_m": 4.18,
+    "min_lateral_m": 0.08,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_N0b_wmid_wnorth"
+    ],
+    "classes": {
+     "structure": 52,
+     "nonsolid": 1
+    },
+    "kinds": {
+     "blocking": 38,
+     "blocking?": 1,
+     "walkable_surface": 3,
+     "overhead": 11
+    },
+    "placer_verdict": "mod-placed",
+    "placer_evidence": "its LocationProxy at (-139.79, 1994.61) has NO row in the mod-free 12,301-instance generator dump: nearest is WoodHouse2 63.8 m away",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-11",
+   "x": 546.8,
+   "z": 930.7,
+   "y": 50.47,
+   "declared_m": 3.17,
+   "pieces": 48,
+   "blocking_carriageway": 27,
+   "segments": [
+    "T8_stenvik_wttown"
+   ],
+   "prefabs": {
+    "woodwall": 19,
+    "wood_beam": 9,
+    "wood_roof": 6,
+    "wood_floor": 6,
+    "wood_wall_roof": 4,
+    "wood_wall_roof_top": 3
+   },
+   "location_proxy": null,
+   "evidence": "CORRECTED 2026-09-20 by StructuresInRoads. NOT MOD-PLACED: this is our own `stenvik-cottage-3`, town_body spawn_plan, anchor (546.8, 930.7) -- IDENTICAL to this row to two decimal places. Plan histogram woodwall 19, wood_beam 9, wood_roof 6, wood_floor 6, wood_wall_roof 4, wood_wall_roof_top 3, wood_door 1; this row records the same counts less the door. Same reasoning as mod-structure-03 on why the original evidence could not tell them apart.",
+   "placer": "ours",
+   "correction": "CORRECTED 2026-09-20 by StructuresInRoads. NOT MOD-PLACED: this is our own `stenvik-cottage-3`, town_body spawn_plan, anchor (546.8, 930.7) -- IDENTICAL to this row to two decimal places. Plan histogram woodwall 19, wood_beam 9, wood_roof 6, wood_floor 6, wood_wall_roof 4, wood_wall_roof_top 3, wood_door 1; this row records the same counts less the door. Same reasoning as mod-structure-03 on why the original evidence could not tell them apart.",
+   "evidence_superseded": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.85 m away from the body over its 6 m station span plus a 20 m taper each side = 46 m of T8_stenvik_wttown re-written. The building is not touched.",
+   "walk_to": {
+    "x": 544.2,
+    "z": 933.4,
+    "offset_m": 3.35,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 41,
+    "pieces_in_paved": 35,
+    "blocking_in_paved": 15,
+    "intrusion_m": 2.85,
+    "climb_m": 3.93,
+    "min_lateral_m": 0.15,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_T8_stenvik_wttown"
+    ],
+    "classes": {
+     "structure": 41
+    },
+    "kinds": {
+     "blocking": 19,
+     "overhead": 12,
+     "walkable_surface": 10
+    },
+    "placer_verdict": "ours",
+    "placer_evidence": "our town_body `stenvik-cottage-3` (spawn_plan seq 137, anchor 0.08 m away, prefab histogram match 100%)",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-01",
+   "x": -516.6,
+   "z": 844.85,
+   "y": 42.55,
+   "declared_m": 4.03,
+   "pieces": 34,
+   "blocking_carriageway": 20,
+   "segments": [
+    "N0_brgs2_wmid"
+   ],
+   "prefabs": {
+    "woodwall": 12,
+    "wood_beam": 6,
+    "wood_pole2": 4,
+    "wood_floor": 4,
+    "wood_roof": 4,
+    "wood_wall_roof_top": 2
+   },
+   "location_proxy": null,
+   "evidence": "CORRECTED 2026-09-20 by StructuresInRoads. NOT MOD-PLACED: this is our own treehouse `tree-west-2`, spawn_plan anchor (-518.0, 844.3), 1.50 m from this row. Every prefab in this row is in that plan and at or below its count -- the original census box caught 34 of the treehouse's 68 pieces.",
+   "placer": "ours",
+   "correction": "CORRECTED 2026-09-20 by StructuresInRoads. NOT MOD-PLACED: this is our own treehouse `tree-west-2`, spawn_plan anchor (-518.0, 844.3), 1.50 m from this row. Every prefab in this row is in that plan and at or below its count -- the original census box caught 34 of the treehouse's 68 pieces.",
+   "evidence_superseded": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.65 m away from the body over its 9 m station span plus a 20 m taper each side = 49 m of N0_brgs2_wmid re-written. The building is not touched.",
+   "walk_to": {
+    "x": -512.1,
+    "z": 847.2,
+    "offset_m": 2.15,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 34,
+    "pieces_in_paved": 23,
+    "blocking_in_paved": 10,
+    "intrusion_m": 1.65,
+    "climb_m": 3.95,
+    "min_lateral_m": 1.35,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_N0_brgs2_wmid"
+    ],
+    "classes": {
+     "structure": 34
+    },
+    "kinds": {
+     "walkable_surface": 12,
+     "blocking": 12,
+     "overhead": 10
+    },
+    "placer_verdict": "ours",
+    "placer_evidence": "our treehouse `tree-west-2` (spawn_plan seq 687, anchor 1.51 m away, prefab histogram match 100%)",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-06",
+   "x": -212.17,
+   "z": 2254.44,
+   "y": 40.76,
+   "declared_m": 2.86,
+   "pieces": 17,
+   "blocking_carriageway": 14,
+   "segments": [
+    "N0b_wmid_wnorth"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 8,
+    "stone_wall_1x1": 5,
+    "wood_pole_log": 2,
+    "stone_arch": 1,
+    "wood_pole_log_4": 1
+   },
+   "location_proxy": null,
+   "evidence": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.5 m away from the body over its 7 m station span plus a 20 m taper each side = 47 m of N0b_wmid_wnorth re-written. The building is not touched.",
+   "walk_to": {
+    "x": -217.0,
+    "z": 2255.3,
+    "offset_m": 3.0,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 17,
+    "pieces_in_paved": 14,
+    "blocking_in_paved": 14,
+    "intrusion_m": 2.5,
+    "climb_m": 3.18,
+    "min_lateral_m": 0.5,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_N0b_wmid_wnorth"
+    ],
+    "classes": {
+     "structure": 17
+    },
+    "kinds": {
+     "overhead": 1,
+     "blocking": 16
+    },
+    "placer_verdict": "mod-placed",
+    "placer_evidence": "nearest world-generator instance is WoodHouse6 22.4 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-02",
+   "x": -504.34,
+   "z": 772.7,
+   "y": 50.1,
+   "declared_m": 2.47,
+   "pieces": 11,
+   "blocking_carriageway": 8,
+   "segments": [
+    "N0_brgs2_wmid"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 11
+   },
+   "location_proxy": null,
+   "evidence": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.5 m away from the body over its 6 m station span plus a 20 m taper each side = 46 m of N0_brgs2_wmid re-written. The building is not touched.",
+   "walk_to": {
+    "x": -500.0,
+    "z": 771.4,
+    "offset_m": 2.0,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 11,
+    "pieces_in_paved": 9,
+    "blocking_in_paved": 7,
+    "intrusion_m": 1.5,
+    "climb_m": 2.87,
+    "min_lateral_m": 1.5,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_N0_brgs2_wmid"
+    ],
+    "classes": {
+     "structure": 11
+    },
+    "kinds": {
+     "blocking": 9,
+     "overhead": 2
+    },
+    "placer_verdict": "mod-placed",
+    "placer_evidence": "nearest world-generator instance is StoneTowerRuins07 70.8 m away, outside its 9 m radius, so the mod-free 12,301-instance dump cannot see this body",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-04",
+   "x": -348.7,
+   "z": 245.76,
+   "y": 30.86,
+   "declared_m": 3.66,
+   "pieces": 14,
+   "blocking_carriageway": 8,
+   "segments": [
+    "N0_brgs2_wmid"
+   ],
+   "prefabs": {
+    "wood_floor": 8,
+    "wood_beam": 3,
+    "wood_pole": 3
+   },
+   "location_proxy": null,
+   "evidence": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "THIS BODY IS THE CARRIAGEWAY. our bridge_assembly `bridge-s2-portalhall-strait` (spawn_plan seq 23, anchor 17.51 m away, prefab histogram match 100%). Its 8 pieces inside the paved width are the deck a walker stands on, not an obstacle. 0 m of road to change; record it as road furniture and stop counting it as a blocker.",
+   "walk_to": {
+    "x": -348.8,
+    "z": 247.1,
+    "offset_m": 1.63,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 14,
+    "pieces_in_paved": 8,
+    "blocking_in_paved": 3,
+    "intrusion_m": 1.13,
+    "climb_m": 1.2,
+    "min_lateral_m": 0.94,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_N0_brgs2_wmid"
+    ],
+    "classes": {
+     "structure": 14
+    },
+    "kinds": {
+     "walkable_surface": 8,
+     "blocking": 6
+    },
+    "placer_verdict": "ours",
+    "placer_evidence": "our bridge_assembly `bridge-s2-portalhall-strait` (spawn_plan seq 23, anchor 17.51 m away, prefab histogram match 100%)",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-10",
+   "x": 495.9,
+   "z": 903.34,
+   "y": 47.98,
+   "declared_m": 1.71,
+   "pieces": 13,
+   "blocking_carriageway": 6,
+   "segments": [
+    "T8_stenvik_wttown"
+   ],
+   "prefabs": {
+    "woodwall": 6,
+    "wood_beam": 2,
+    "wood_wall_roof": 2,
+    "wood_floor": 1,
+    "wood_roof": 1,
+    "wood_wall_roof_top": 1
+   },
+   "location_proxy": null,
+   "evidence": "CORRECTED 2026-09-20 by StructuresInRoads. NOT MOD-PLACED: this is our own `stenvik-cottage-4`, town_body spawn_plan, anchor (495.2, 900.9), 2.54 m from this row. Every prefab in this row is in that plan and at or below its count -- the original census box caught 13 of the cottage's 48 pieces.",
+   "placer": "ours",
+   "correction": "CORRECTED 2026-09-20 by StructuresInRoads. NOT MOD-PLACED: this is our own `stenvik-cottage-4`, town_body spawn_plan, anchor (495.2, 900.9), 2.54 m from this row. Every prefab in this row is in that plan and at or below its count -- the original census box caught 13 of the cottage's 48 pieces.",
+   "evidence_superseded": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "remedy": "RE-TERMINATE",
+   "remedy_why": "THIS IS THE ROAD'S OWN DESTINATION, not an obstacle: our town_body `stenvik-cottage-2` (spawn_plan seq 266, anchor 18.16 m away, prefab histogram match 100%), and it holds the start of T8_stenvik_wttown (0 m from it). Its floor at road height is ground he walks on. Stop the paved band at the body's edge -- 0 m short of the present start -- instead of driving 1 m of carriageway through it, and record the arrival. 0 buildings touched.",
+   "walk_to": {
+    "x": 494.9,
+    "z": 907.1,
+    "offset_m": 1.49,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 11,
+    "pieces_in_paved": 8,
+    "blocking_in_paved": 4,
+    "intrusion_m": 0.99,
+    "climb_m": 3.9,
+    "min_lateral_m": 2.01,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_T8_stenvik_wttown"
+    ],
+    "classes": {
+     "structure": 11
+    },
+    "kinds": {
+     "walkable_surface": 2,
+     "blocking": 6,
+     "overhead": 3
+    },
+    "placer_verdict": "ours",
+    "placer_evidence": "our town_body `stenvik-cottage-2` (spawn_plan seq 266, anchor 18.16 m away, prefab histogram match 100%)",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-09",
+   "x": 438.39,
+   "z": 400.55,
+   "y": 85.37,
+   "declared_m": 3.01,
+   "pieces": 6,
+   "blocking_carriageway": 4,
+   "segments": [
+    "T4_meadhall_stathub"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 6
+   },
+   "location_proxy": null,
+   "evidence": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 1.92 m away from the body over its 5 m station span plus a 20 m taper each side = 45 m of T4_meadhall_stathub re-written. The building is not touched.",
+   "walk_to": {
+    "x": 435.2,
+    "z": 403.2,
+    "offset_m": 1.42,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 6,
+    "pieces_in_paved": 4,
+    "blocking_in_paved": 4,
+    "intrusion_m": 0.92,
+    "climb_m": 1.72,
+    "min_lateral_m": 2.08,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_T4_meadhall_stathub"
+    ],
+    "classes": {
+     "structure": 6
+    },
+    "kinds": {
+     "blocking": 6
+    },
+    "placer_verdict": "mod-placed",
+    "placer_evidence": "nearest world-generator instance is Dolmen01 58.8 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-07",
+   "x": -210.88,
+   "z": 2273.72,
+   "y": 40.09,
+   "declared_m": 1.65,
+   "pieces": 5,
+   "blocking_carriageway": 3,
+   "segments": [
+    "N0b_wmid_wnorth"
+   ],
+   "prefabs": {
+    "wood_beam_26": 2,
+    "wood_roof": 2,
+    "wood_pole_log": 1
+   },
+   "location_proxy": null,
+   "evidence": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 1.45 m away from the body over its 4 m station span plus a 20 m taper each side = 44 m of N0b_wmid_wnorth re-written. The building is not touched.",
+   "walk_to": {
+    "x": -214.9,
+    "z": 2275.3,
+    "offset_m": 0.95,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 5,
+    "pieces_in_paved": 3,
+    "blocking_in_paved": 3,
+    "intrusion_m": 0.45,
+    "climb_m": 1.95,
+    "min_lateral_m": 2.55,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_N0b_wmid_wnorth"
+    ],
+    "classes": {
+     "structure": 5
+    },
+    "kinds": {
+     "blocking": 5
+    },
+    "placer_verdict": "mod-placed",
+    "placer_evidence": "nearest world-generator instance is WoodHouse6 33.2 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-13",
+   "x": 751.86,
+   "z": 753.87,
+   "y": 35.1,
+   "declared_m": 8.39,
+   "pieces": 5,
+   "blocking_carriageway": 3,
+   "segments": [
+    "T8_stenvik_wttown"
+   ],
+   "prefabs": {
+    "wood_fence": 4,
+    "wood_beam_45": 1
+   },
+   "location_proxy": null,
+   "evidence": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.21 m away from the body over its 15 m station span plus a 20 m taper each side = 55 m of T8_stenvik_wttown re-written. The building is not touched.",
+   "walk_to": {
+    "x": 748.2,
+    "z": 751.3,
+    "offset_m": 1.71,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 5,
+    "pieces_in_paved": 3,
+    "blocking_in_paved": 3,
+    "intrusion_m": 1.21,
+    "climb_m": 1.44,
+    "min_lateral_m": 1.79,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_T8_stenvik_wttown"
+    ],
+    "classes": {
+     "structure": 5
+    },
+    "kinds": {
+     "blocking": 4,
+     "below_road": 1
+    },
+    "placer_verdict": "mod-placed",
+    "placer_evidence": "nearest world-generator instance is Dolmen03 20.5 m away, outside its 10 m radius, so the mod-free 12,301-instance dump cannot see this body",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-12",
+   "x": 723.73,
+   "z": 781.83,
+   "y": 36.82,
+   "declared_m": 6.55,
+   "pieces": 5,
+   "blocking_carriageway": 2,
+   "segments": [
+    "T8_stenvik_wttown"
+   ],
+   "prefabs": {
+    "wood_fence": 3,
+    "wood_pole": 1,
+    "wood_pole2": 1
+   },
+   "location_proxy": null,
+   "evidence": "MEASURED by findObjects carriageway census 2026-09-19; absent from the mod-free world-generator dump",
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.13 m away from the body over its 4 m station span plus a 20 m taper each side = 44 m of T8_stenvik_wttown re-written. The building is not touched.",
+   "walk_to": {
+    "x": 724.4,
+    "z": 781.3,
+    "offset_m": 2.63,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "census_2026_09_20": {
+    "pieces_seen": 4,
+    "pieces_in_paved": 2,
+    "blocking_in_paved": 2,
+    "intrusion_m": 2.13,
+    "climb_m": 1.22,
+    "min_lateral_m": 0.87,
+    "road_half_width_m": 3.0,
+    "segments": [
+     "road_T8_stenvik_wttown"
+    ],
+    "classes": {
+     "structure": 4
+    },
+    "kinds": {
+     "blocking": 3,
+     "walkable_surface": 1
+    },
+    "placer_verdict": "mod-placed",
+    "placer_evidence": "nearest world-generator instance is Dolmen01 22.0 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+    "why_this_supersedes_blocking_carriageway": "schema 1's `blocking_carriageway` counted every non-clearable piece inside the paved width. `blocking_in_paved` counts only pieces a walker has to climb or go round, decided by the prefab's own measured y extent from blueprints/data/piece_geometry.json: a piece whose top is under 0.5 m is stepped over, one whose bottom is over 2.2 m is walked under."
+   },
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "mod-structure-stenvik-shelter",
+   "x": 518.57,
+   "z": 824.78,
+   "y": 57.28,
+   "declared_m": 6.5,
+   "pieces": 33,
+   "blocking_carriageway": 0,
+   "segments": [
+    "T4_meadhall_stathub(RETIRED alignment)"
+   ],
+   "prefabs": {
+    "wood_roof": 12,
+    "wood_beam_26": 12,
+    "wood_pole_log": 6,
+    "wood_wall_log_4x0.5": 3
+   },
+   "location_proxy": [
+    [
+     517.97,
+     824.67
+    ]
+   ],
+   "evidence": "the obstacle the operator reported. Roof on posts, no walls/floor/door. LocationProxy + Music_MeadowsVillageFarm at (517.97,56.53,824.67). 17 of 33 pieces inside the RETIRED T4 carriageway, nearest 0.56 m from its centreline; 18.08 m from the LIVE T4. Nearest world-generator instance is a Dolmen02 23.2 m away, so the mod-free dump cannot see it.",
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-hall-1",
+   "x": -912.0,
+   "z": 1876.4,
+   "y": 35.29,
+   "declared_m": 13.57,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 425; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-workshop-1",
+   "x": -887.7,
+   "z": 1857.6,
+   "y": 35.4,
+   "declared_m": 12.37,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 432; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-house-1",
+   "x": -978.6,
+   "z": 1798.9,
+   "y": 34.2,
+   "declared_m": 12.68,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 438; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-house-2",
+   "x": -925.5,
+   "z": 1827.8,
+   "y": 35.14,
+   "declared_m": 12.68,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 445; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-house-3",
+   "x": -901.4,
+   "z": 1823.3,
+   "y": 34.67,
+   "declared_m": 12.68,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 452; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-hut-1",
+   "x": -964.5,
+   "z": 1816.0,
+   "y": 34.47,
+   "declared_m": 7.35,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 478; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-hut-2",
+   "x": -899.6,
+   "z": 1889.5,
+   "y": 34.37,
+   "declared_m": 7.35,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 485; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-stonehouse-1",
+   "x": -990.4,
+   "z": 1808.5,
+   "y": 35.69,
+   "declared_m": 8.51,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 495; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-stonehouse-2",
+   "x": -918.4,
+   "z": 1765.5,
+   "y": 32.46,
+   "declared_m": 8.51,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 502; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-villa-2",
+   "x": -885.2,
+   "z": 1947.9,
+   "y": 36.05,
+   "declared_m": 12.32,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 509; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "vestvik-villa-3",
+   "x": -882.5,
+   "z": 1876.3,
+   "y": 35.81,
+   "declared_m": 12.32,
+   "pieces": null,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS, not mod-placed: Vestvik settlement building, MEASURED by VestvikRoad from its own site_pad terrain_write seq 516; declared_m = max(pad-rectangle half-diagonal, spawn_plan reach_m). Carried here because roads/poi.py's generator dump cannot see our own bodies either, and the router must bend round them for the same reason it bends round a mod house.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "shed-vestvik",
+   "x": -1051.5,
+   "z": 1641.5,
+   "y": 30.6,
+   "declared_m": 17.22,
+   "pieces": 342,
+   "blocking_carriageway": 0,
+   "segments": [],
+   "prefabs": {},
+   "location_proxy": null,
+   "evidence": "OURS. Boathouse, 342/342 pieces standing and verified by HarbourBuild-2 2026-09-19. declared_m is the half-diagonal of the MEASURED census AABB x[-1067.0, -1036.0] z[1634.0, 1649.0] over all 342 pieces -- taken from what STANDS, not from a plan. Deck walking surface 30.6 m; the gangway meets the bank on the +x side near (-1036, 1646). The 4 m verge HarbourBuild-2 asked for is NOT baked in here: poi.py adds ROAD_MARGIN_M 6.0 plus the road half-width on top of declared_m, which is more.",
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "the completed carriageway census found NO piece of this body inside any built segment's paved width or 1.0 m shoulder. It is carried as a forbid so a FUTURE route bends round it, not as an obstacle in a present one. 0 m of road to change.",
+   "census_2026_09_20": "no pieces in any built carriageway",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N1_wnorth_shelf-009",
+   "x": -196.53,
+   "z": 2508.37,
+   "y": 39.67,
+   "declared_m": 27.38,
+   "pieces": 133,
+   "pieces_in_paved": 96,
+   "blocking_carriageway": 69,
+   "intrusion_m": 2.89,
+   "climb_m": 5.28,
+   "min_lateral_m": 0.11,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -216.9,
+    -171.2
+   ],
+   "bbox_z": [
+    2503.3,
+    2513.7
+   ],
+   "segments": [
+    "road_N1_wnorth_shelf"
+   ],
+   "prefabs": {
+    "wood_floor": 24,
+    "woodwall": 23,
+    "wood_pole2": 22,
+    "wood_beam_45": 22,
+    "wood_roof_45": 13,
+    "wood_beam_26": 7,
+    "wood_wall_roof_45": 4,
+    "wood_pole_log_4": 4,
+    "wood_beam": 4,
+    "wood_roof": 3,
+    "piece_chair02": 2,
+    "wood_door": 1,
+    "goblin_bed": 1,
+    "wood_roof_top_45": 1,
+    "TreasureChest_meadows": 1,
+    "piece_chair": 1
+   },
+   "classes": {
+    "structure": 133
+   },
+   "kinds": {
+    "below_road": 10,
+    "blocking": 91,
+    "walkable_surface": 4,
+    "overhead": 28
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.89 m away from the body over its 50 m station span plus a 20 m taper each side = 90 m of N1_wnorth_shelf re-written. The building is not touched.",
+   "walk_to": {
+    "x": -203.4,
+    "z": 2506.6,
+    "offset_m": 3.39,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is ShipSetting01 46.7 m away, outside its 24 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-R1_ulfsgard_t8junction-012",
+   "x": 906.55,
+   "z": 752.8,
+   "y": 35.07,
+   "declared_m": 8.46,
+   "pieces": 128,
+   "pieces_in_paved": 113,
+   "blocking_carriageway": 57,
+   "intrusion_m": 2.49,
+   "climb_m": 2.71,
+   "min_lateral_m": 0.37,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    901.2,
+    911.3
+   ],
+   "bbox_z": [
+    749.7,
+    757.1
+   ],
+   "segments": [
+    "road_R1_ulfsgard_t8junction"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 68,
+    "wood_floor": 18,
+    "wood_beam": 12,
+    "wood_roof_45": 8,
+    "wood_wall_half": 7,
+    "stone_wall_4x2": 5,
+    "stone_wall_1x1": 2,
+    "wood_stair": 1,
+    "wood_wall_roof": 1,
+    "TreasureChest_meadows": 1,
+    "wood_wall_quarter": 1,
+    "LocationProxy": 1,
+    "wood_pole": 1,
+    "wood_floor_1x1": 1,
+    "stone_arch": 1
+   },
+   "classes": {
+    "structure": 127,
+    "nonsolid": 1
+   },
+   "kinds": {
+    "walkable_surface": 25,
+    "blocking": 61,
+    "blocking?": 1,
+    "overhead": 41
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.63 m away from the body over its 11 m station span plus a 20 m taper each side = 51 m of R1_ulfsgard_t8junction re-written. The building is not touched.",
+   "walk_to": {
+    "x": 900.9,
+    "z": 756.5,
+    "offset_m": 2.99,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (906.35, 756.21) has NO row in the mod-free 12,301-instance generator dump: nearest is Runestone_Meadows 44.8 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-S1_portalhub_brgs2-014",
+   "x": -291.91,
+   "z": 211.23,
+   "y": 40.93,
+   "declared_m": 12.93,
+   "pieces": 276,
+   "pieces_in_paved": 192,
+   "blocking_carriageway": 53,
+   "intrusion_m": 1.97,
+   "climb_m": 5.46,
+   "min_lateral_m": 0.03,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    -297.0,
+    -286.5
+   ],
+   "bbox_z": [
+    201.7,
+    218.0
+   ],
+   "segments": [
+    "road_S1_portalhub_brgs2",
+    "road_T1_portalhub_temple"
+   ],
+   "prefabs": {
+    "Piece_grausten_floor_1x1": 48,
+    "Piece_grausten_pillarbase_medium": 31,
+    "Piece_grausten_pillarbase_small": 30,
+    "Piece_flametal_pillar": 28,
+    "blackmarble_column_2": 18,
+    "blackmarble_2x1x1": 17,
+    "Piece_grausten_pillarbeam_small": 16,
+    "Piece_grausten_pillarbeam_medium": 15,
+    "Piece_grausten_pillar_arch": 11,
+    "blackmarble_floor": 9,
+    "darkwood_arch": 9,
+    "ashwood_beam_1m": 9,
+    "ashwood_decowall_divider": 6,
+    "Piece_grausten_pillar_arch_small": 6,
+    "blackmarble_1x1": 5,
+    "piece_dvergr_lantern": 5,
+    "ashwood_beam_2m": 2,
+    "Piece_grausten_floor_4x4": 2,
+    "iron_floor_1x1_v2": 2,
+    "flametal_gate": 2,
+    "ashwood_wall_beam_26": 1,
+    "blackmarble_stair": 1,
+    "sign": 1,
+    "portal_wood": 1,
+    "blackmarble_arch": 1
+   },
+   "classes": {
+    "structure": 276
+   },
+   "kinds": {
+    "blocking": 73,
+    "walkable_surface": 26,
+    "overhead": 177
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "RE-TERMINATE",
+   "remedy_why": "THIS IS THE ROAD'S OWN DESTINATION, not an obstacle: our portal_hall_body `portal-hall` (spawn_plan seq 802, anchor 12.83 m away, prefab histogram match 99%), and it holds the start of S1_portalhub_brgs2 (1 m from it). Its floor at road height is ground he walks on. Stop the paved band at the body's edge -- 3 m short of the present start -- instead of driving 5 m of carriageway through it, and record the arrival. 0 buildings touched.",
+   "walk_to": {
+    "x": -297.0,
+    "z": 216.5,
+    "offset_m": 2.47,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "our portal_hall_body `portal-hall` (spawn_plan seq 802, anchor 12.83 m away, prefab histogram match 99%)",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T9_wttown_dockshore-017",
+   "x": 804.52,
+   "z": 723.82,
+   "y": 43.53,
+   "declared_m": 8.8,
+   "pieces": 146,
+   "pieces_in_paved": 116,
+   "blocking_carriageway": 44,
+   "intrusion_m": 2.8,
+   "climb_m": 3.98,
+   "min_lateral_m": 0.16,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    798.8,
+    809.8
+   ],
+   "bbox_z": [
+    718.5,
+    729.3
+   ],
+   "segments": [
+    "road_T9_wttown_dockshore"
+   ],
+   "prefabs": {
+    "stone_floor_2x2": 27,
+    "stone_wall_2x1": 26,
+    "stone_wall_1x1": 22,
+    "stone_pillar": 10,
+    "wood_beam": 10,
+    "woodwall": 6,
+    "wood_pole": 6,
+    "stone_stair": 5,
+    "wood_wall_quarter": 5,
+    "wood_roof_45": 5,
+    "stone_arch": 4,
+    "wood_pole2": 3,
+    "wood_wall_roof_upsidedown": 3,
+    "wood_stair": 2,
+    "wood_wall_roof_45": 2,
+    "wood_wall_roof": 2,
+    "wood_roof": 2,
+    "wood_floor": 1,
+    "piece_chest_wood": 1,
+    "wood_wall_half": 1,
+    "wood_beam_1": 1,
+    "wood_pole_log": 1,
+    "sign": 1
+   },
+   "classes": {
+    "structure": 146
+   },
+   "kinds": {
+    "walkable_surface": 22,
+    "blocking": 48,
+    "overhead": 76
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "RE-TERMINATE",
+   "remedy_why": "THIS IS THE ROAD'S OWN DESTINATION, not an obstacle: our watchtower `wt-town` (spawn_plan seq 388, anchor 0.55 m away, prefab histogram match 99%), and it holds the start of T9_wttown_dockshore (27 m from it). Its floor at road height is ground he walks on. Stop the paved band at the body's edge -- 45 m short of the present start -- instead of driving 36 m of carriageway through it, and record the arrival. 0 buildings touched.",
+   "walk_to": {
+    "x": 797.8,
+    "z": 723.5,
+    "offset_m": 3.3,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "our watchtower `wt-town` (spawn_plan seq 388, anchor 0.55 m away, prefab histogram match 99%)",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N1_wnorth_shelf-018",
+   "x": 17.29,
+   "z": 2736.02,
+   "y": 34.46,
+   "declared_m": 7.39,
+   "pieces": 135,
+   "pieces_in_paved": 117,
+   "blocking_carriageway": 43,
+   "intrusion_m": 2.9,
+   "climb_m": 5.04,
+   "min_lateral_m": 0.1,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    13.2,
+    21.7
+   ],
+   "bbox_z": [
+    2732.2,
+    2741.2
+   ],
+   "segments": [
+    "road_N1_wnorth_shelf"
+   ],
+   "prefabs": {
+    "wood_beam": 46,
+    "wood_pole2": 31,
+    "wood_window": 9,
+    "wood_beam_1": 7,
+    "wood_floor_1x1": 6,
+    "wood_wall_roof_top_45": 6,
+    "wood_pole": 5,
+    "wood_beam_45": 5,
+    "wood_roof": 5,
+    "wood_roof_ocorner": 3,
+    "wood_floor": 3,
+    "wood_stepladder": 3,
+    "stake_wall": 2,
+    "piece_sharpstakes": 1,
+    "LocationProxy": 1,
+    "stone_wall_4x2": 1,
+    "TreasureChest_swamp": 1
+   },
+   "classes": {
+    "structure": 134,
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking": 49,
+    "walkable_surface": 16,
+    "blocking?": 1,
+    "overhead": 69
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.9 m away from the body over its 13 m station span plus a 20 m taper each side = 53 m of N1_wnorth_shelf re-written. The building is not touched.",
+   "walk_to": {
+    "x": 21.4,
+    "z": 2736.6,
+    "offset_m": 3.4,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (16.28, 2736.06) has NO row in the mod-free 12,301-instance generator dump: nearest is Grave1 34.5 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T10_wtspawn_wtsouth-020",
+   "x": 116.74,
+   "z": -107.49,
+   "y": 79.29,
+   "declared_m": 9.27,
+   "pieces": 136,
+   "pieces_in_paved": 108,
+   "blocking_carriageway": 34,
+   "intrusion_m": 2.59,
+   "climb_m": 3.0,
+   "min_lateral_m": 0.18,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    110.3,
+    119.8
+   ],
+   "bbox_z": [
+    -113.5,
+    -102.7
+   ],
+   "segments": [
+    "road_T10_wtspawn_wtsouth"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 28,
+    "stone_wall_1x1": 24,
+    "stone_floor_2x2": 23,
+    "wood_beam": 9,
+    "woodwall": 8,
+    "wood_pole": 8,
+    "stone_pillar": 6,
+    "wood_wall_quarter": 5,
+    "wood_wall_half": 4,
+    "wood_wall_roof_45": 3,
+    "wood_pole2": 3,
+    "stone_stair": 2,
+    "stone_arch": 2,
+    "wood_floor": 2,
+    "wood_roof": 2,
+    "wood_beam_1": 2,
+    "wood_pole_log": 1,
+    "sign": 1,
+    "wood_wall_roof_upsidedown": 1,
+    "piece_chest_wood": 1,
+    "wood_roof_ocorner": 1
+   },
+   "classes": {
+    "structure": 136
+   },
+   "kinds": {
+    "walkable_surface": 16,
+    "blocking": 46,
+    "overhead": 74
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "RE-TERMINATE",
+   "remedy_why": "THIS IS THE ROAD'S OWN DESTINATION, not an obstacle: our watchtower `wt-spawn` (spawn_plan seq 360, anchor 2.78 m away, prefab histogram match 99%), and it holds the start of T10_wtspawn_wtsouth (0 m from it). Its floor at road height is ground he walks on. Stop the paved band at the body's edge -- 7 m short of the present start -- instead of driving 14 m of carriageway through it, and record the arrival. 0 buildings touched.",
+   "walk_to": {
+    "x": 116.3,
+    "z": -101.9,
+    "offset_m": 3.09,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "our watchtower `wt-spawn` (spawn_plan seq 360, anchor 2.78 m away, prefab histogram match 99%)",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-021",
+   "x": -1091.63,
+   "z": 7487.45,
+   "y": 44.37,
+   "declared_m": 16.18,
+   "pieces": 131,
+   "pieces_in_paved": 104,
+   "blocking_carriageway": 31,
+   "intrusion_m": 2.98,
+   "climb_m": 5.35,
+   "min_lateral_m": 0.02,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1098.0,
+    -1082.6
+   ],
+   "bbox_z": [
+    7478.9,
+    7500.3
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "blackmarble_2x2x2": 65,
+    "blackmarble_2x2x1": 17,
+    "dvergrprops_wood_pole": 10,
+    "blackmarble_floor_large": 8,
+    "blackmarble_1x1": 4,
+    "blackmarble_stair": 4,
+    "blackmarble_base_2": 2,
+    "blackmarble_floor_triangle": 2,
+    "dvergrprops_stool": 2,
+    "dvergrprops_chair": 2,
+    "blackmarble_slope_1x2": 2,
+    "blackmarble_slope_inverted_1x2": 2,
+    "dvergrprops_wood_stakewall": 2,
+    "blackmarble_head02": 1,
+    "blackmarble_2x2_enforced": 1,
+    "dvergrprops_banner": 1,
+    "blackmarble_floor": 1,
+    "LocationProxy": 1,
+    "dvergrprops_table": 1,
+    "piece_dvergr_metal_wall_2x2": 1,
+    "dvergrprops_lantern": 1,
+    "piece_dvergr_wood_door": 1
+   },
+   "classes": {
+    "structure": 130,
+    "nonsolid": 1
+   },
+   "kinds": {
+    "overhead": 82,
+    "blocking": 41,
+    "below_road": 4,
+    "blocking?": 1,
+    "walkable_surface": 3
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.98 m away from the body over its 25 m station span plus a 20 m taper each side = 65 m of N4_mid2_terminus re-written. The building is not touched.",
+   "walk_to": {
+    "x": -1097.5,
+    "z": 7482.8,
+    "offset_m": 3.48,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (-1094.99, 7488.03) has NO row in the mod-free 12,301-instance generator dump: nearest is Mistlands_Statue1 92.6 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N2_shelf_mid1-022",
+   "x": -817.14,
+   "z": 5239.89,
+   "y": 35.26,
+   "declared_m": 5.62,
+   "pieces": 79,
+   "pieces_in_paved": 65,
+   "blocking_carriageway": 29,
+   "intrusion_m": 2.61,
+   "climb_m": 3.18,
+   "min_lateral_m": 0.23,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -820.7,
+    -814.1
+   ],
+   "bbox_z": [
+    5236.4,
+    5242.8
+   ],
+   "segments": [
+    "road_N2_shelf_mid1"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 57,
+    "wood_pole": 3,
+    "wood_beam": 3,
+    "stone_wall_1x1": 2,
+    "wood_stair": 2,
+    "wood_roof": 2,
+    "wood_floor": 2,
+    "wood_door": 1,
+    "stone_arch": 1,
+    "stave_beam_2m": 1,
+    "piece_chair": 1,
+    "barrell": 1,
+    "TreasureChest_blackforest": 1,
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 77,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking": 36,
+    "overhead": 41,
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.77 m away from the body over its 7 m station span plus a 20 m taper each side = 47 m of N2_shelf_mid1 re-written. The building is not touched.",
+   "walk_to": {
+    "x": -821.1,
+    "z": 5241.9,
+    "offset_m": 3.11,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (-816.93, 5240.18) has NO row in the mod-free 12,301-instance generator dump: nearest is TrollCave02 45.6 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-S8_wtsouth_treesth-026",
+   "x": 535.23,
+   "z": 40.27,
+   "y": 85.47,
+   "declared_m": 6.79,
+   "pieces": 76,
+   "pieces_in_paved": 63,
+   "blocking_carriageway": 19,
+   "intrusion_m": 1.72,
+   "climb_m": 4.0,
+   "min_lateral_m": 0.17,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    530.8,
+    538.8
+   ],
+   "bbox_z": [
+    36.5,
+    44.8
+   ],
+   "segments": [
+    "road_S8_wtsouth_treesth",
+    "road_T10_wtspawn_wtsouth"
+   ],
+   "prefabs": {
+    "stone_floor_2x2": 18,
+    "stone_wall_2x1": 15,
+    "stone_wall_1x1": 10,
+    "stone_pillar": 6,
+    "stone_arch": 4,
+    "wood_pole": 4,
+    "wood_beam": 3,
+    "wood_pole2": 3,
+    "stone_stair": 2,
+    "wood_stair": 2,
+    "woodwall": 2,
+    "wood_wall_quarter": 2,
+    "wood_wall_roof_upsidedown": 1,
+    "wood_wall_roof": 1,
+    "wood_floor": 1,
+    "wood_roof": 1,
+    "piece_chest_wood": 1
+   },
+   "classes": {
+    "structure": 76
+   },
+   "kinds": {
+    "walkable_surface": 14,
+    "blocking": 22,
+    "overhead": 40
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "RE-TERMINATE",
+   "remedy_why": "THIS IS THE ROAD'S OWN DESTINATION, not an obstacle: our watchtower `wt-south` (spawn_plan seq 374, anchor 1.89 m away, prefab histogram match 100%), and it holds the start of S8_wtsouth_treesth (0 m from it). Its floor at road height is ground he walks on. Stop the paved band at the body's edge -- 4 m short of the present start -- instead of driving 8 m of carriageway through it, and record the arrival. 0 buildings touched.",
+   "walk_to": {
+    "x": 534.4,
+    "z": 43.6,
+    "offset_m": 2.22,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "our watchtower `wt-south` (spawn_plan seq 374, anchor 1.89 m away, prefab histogram match 100%)",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-R4_vestvik_harbour-027",
+   "x": -963.56,
+   "z": 1892.84,
+   "y": 38.06,
+   "declared_m": 8.64,
+   "pieces": 39,
+   "pieces_in_paved": 32,
+   "blocking_carriageway": 18,
+   "intrusion_m": 2.95,
+   "climb_m": 3.59,
+   "min_lateral_m": 0.05,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -970.0,
+    -958.0
+   ],
+   "bbox_z": [
+    1891.0,
+    1896.0
+   ],
+   "segments": [
+    "road_R4_vestvik_harbour"
+   ],
+   "prefabs": {
+    "woodwall": 9,
+    "wood_beam_45": 8,
+    "wood_floor": 7,
+    "wood_roof_45": 5,
+    "wood_wall_roof_top_45": 2,
+    "wood_wall_roof_45": 2,
+    "wood_pole2": 2,
+    "wood_roof_top_45": 2,
+    "goblin_bed": 1,
+    "TreasureChest_meadows": 1
+   },
+   "classes": {
+    "structure": 39
+   },
+   "kinds": {
+    "walkable_surface": 3,
+    "below_road": 9,
+    "blocking": 23,
+    "overhead": 4
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.95 m away from the body over its 14 m station span plus a 20 m taper each side = 54 m of R4_vestvik_harbour re-written. The building is not touched.",
+   "walk_to": {
+    "x": -966.2,
+    "z": 1887.6,
+    "offset_m": 3.45,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Dolmen03 25.2 m away, outside its 10 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N1_wnorth_shelf-028",
+   "x": 182.66,
+   "z": 2955.81,
+   "y": 34.04,
+   "declared_m": 9.17,
+   "pieces": 41,
+   "pieces_in_paved": 27,
+   "blocking_carriageway": 16,
+   "intrusion_m": 2.6,
+   "climb_m": 3.86,
+   "min_lateral_m": 0.33,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    178.1,
+    186.3
+   ],
+   "bbox_z": [
+    2950.3,
+    2959.2
+   ],
+   "segments": [
+    "road_N1_wnorth_shelf"
+   ],
+   "prefabs": {
+    "stone_floor_2x2": 13,
+    "stone_pillar": 11,
+    "stone_wall_1x1": 6,
+    "stone_arch": 6,
+    "stone_wall_2x1": 5
+   },
+   "classes": {
+    "structure": 41
+   },
+   "kinds": {
+    "blocking": 23,
+    "overhead": 18
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.67 m away from the body over its 10 m station span plus a 20 m taper each side = 50 m of N1_wnorth_shelf re-written. The building is not touched.",
+   "walk_to": {
+    "x": 180.0,
+    "z": 2960.4,
+    "offset_m": 3.1,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Grave1 39.1 m away, outside its 12 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T5_temple_dockshore-031",
+   "x": 509.79,
+   "z": -188.09,
+   "y": 41.35,
+   "declared_m": 7.79,
+   "pieces": 68,
+   "pieces_in_paved": 35,
+   "blocking_carriageway": 13,
+   "intrusion_m": 1.61,
+   "climb_m": 2.68,
+   "min_lateral_m": 1.39,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    505.4,
+    514.0
+   ],
+   "bbox_z": [
+    -191.5,
+    -183.6
+   ],
+   "segments": [
+    "road_T5_temple_dockshore"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 55,
+    "wood_beam": 4,
+    "wood_floor": 2,
+    "wood_wall_half": 2,
+    "wood_roof_45": 2,
+    "stone_wall_4x2": 1,
+    "stone_wall_1x1": 1,
+    "TreasureChest_meadows": 1
+   },
+   "classes": {
+    "structure": 68
+   },
+   "kinds": {
+    "walkable_surface": 5,
+    "blocking": 28,
+    "overhead": 35
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.61 m away from the body over its 12 m station span plus a 20 m taper each side = 52 m of T5_temple_dockshore re-written. The building is not touched.",
+   "walk_to": {
+    "x": 515.7,
+    "z": -189.3,
+    "offset_m": 2.11,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Dolmen01 22.2 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T1_portalhub_temple-032",
+   "x": -197.7,
+   "z": 41.74,
+   "y": 50.97,
+   "declared_m": 9.36,
+   "pieces": 44,
+   "pieces_in_paved": 36,
+   "blocking_carriageway": 12,
+   "intrusion_m": 2.74,
+   "climb_m": 2.56,
+   "min_lateral_m": 0.26,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -202.5,
+    -192.5
+   ],
+   "bbox_z": [
+    36.6,
+    45.0
+   ],
+   "segments": [
+    "road_T1_portalhub_temple"
+   ],
+   "prefabs": {
+    "wood_roof_45": 11,
+    "woodwall": 6,
+    "wood_floor": 6,
+    "wood_pole": 6,
+    "wood_wall_half": 5,
+    "wood_wall_roof_45": 3,
+    "wood_beam_45": 3,
+    "wood_wall_roof_top_45": 1,
+    "Music_MeadowsVillageFarm": 1,
+    "LocationProxy": 1,
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 42,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "walkable_surface": 15,
+    "blocking": 15,
+    "below_road": 12,
+    "below_road?": 2
+   },
+   "location_proxy": [
+    "LocationProxy",
+    "Music_MeadowsVillageFarm"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.74 m away from the body over its 23 m station span plus a 20 m taper each side = 63 m of T1_portalhub_temple re-written. The building is not touched.",
+   "walk_to": {
+    "x": -200.4,
+    "z": 42.2,
+    "offset_m": 3.24,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (-197.71, 42.26) has NO row in the mod-free 12,301-instance generator dump: nearest is Dolmen01 25.6 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N2_shelf_mid1-033",
+   "x": -514.17,
+   "z": 4946.83,
+   "y": 34.46,
+   "declared_m": 7.91,
+   "pieces": 32,
+   "pieces_in_paved": 20,
+   "blocking_carriageway": 12,
+   "intrusion_m": 2.54,
+   "climb_m": 3.03,
+   "min_lateral_m": 0.46,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -519.3,
+    -510.0
+   ],
+   "bbox_z": [
+    4942.6,
+    4950.7
+   ],
+   "segments": [
+    "road_N2_shelf_mid1"
+   ],
+   "prefabs": {
+    "stone_arch": 10,
+    "stone_pillar": 8,
+    "stone_wall_4x2": 7,
+    "stone_wall_1x1": 4,
+    "wood_stepladder": 2,
+    "piece_chair02": 1
+   },
+   "classes": {
+    "structure": 32
+   },
+   "kinds": {
+    "blocking": 18,
+    "overhead": 14
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.54 m away from the body over its 10 m station span plus a 20 m taper each side = 50 m of N2_shelf_mid1 re-written. The building is not touched.",
+   "walk_to": {
+    "x": -508.8,
+    "z": 4949.2,
+    "offset_m": 3.04,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Grave1 22.2 m away, outside its 12 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-S7_stathub_wtnorth-034",
+   "x": 252.92,
+   "z": 1139.01,
+   "y": 33.93,
+   "declared_m": 6.37,
+   "pieces": 20,
+   "pieces_in_paved": 13,
+   "blocking_carriageway": 11,
+   "intrusion_m": 1.75,
+   "climb_m": 3.38,
+   "min_lateral_m": 0.25,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    250.6,
+    256.6
+   ],
+   "bbox_z": [
+    1137.7,
+    1142.7
+   ],
+   "segments": [
+    "road_S7_stathub_wtnorth"
+   ],
+   "prefabs": {
+    "wood_wall_half": 6,
+    "wood_roof_45": 4,
+    "wood_floor": 3,
+    "wood_wall_roof_45": 2,
+    "woodwall": 1,
+    "wood_wall_roof_top_45": 1,
+    "TreasureChest_meadows": 1,
+    "wood_beam_45": 1,
+    "goblin_bed": 1
+   },
+   "classes": {
+    "structure": 20
+   },
+   "kinds": {
+    "blocking": 16,
+    "walkable_surface": 3,
+    "overhead": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.75 m away from the body over its 9 m station span plus a 20 m taper each side = 49 m of S7_stathub_wtnorth re-written. The building is not touched.",
+   "walk_to": {
+    "x": 250.7,
+    "z": 1136.1,
+    "offset_m": 2.25,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is WoodHouse13 25.8 m away, outside its 9 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N1_wnorth_shelf-036",
+   "x": 258.33,
+   "z": 3026.77,
+   "y": 32.88,
+   "declared_m": 3.96,
+   "pieces": 11,
+   "pieces_in_paved": 11,
+   "blocking_carriageway": 9,
+   "intrusion_m": 2.43,
+   "climb_m": 2.27,
+   "min_lateral_m": 0.57,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    256.6,
+    260.0
+   ],
+   "bbox_z": [
+    3025.8,
+    3028.1
+   ],
+   "segments": [
+    "road_N1_wnorth_shelf"
+   ],
+   "prefabs": {
+    "wood_wall_log": 4,
+    "wood_beam_1": 3,
+    "wood_beam": 2,
+    "piece_sharpstakes": 1,
+    "wood_pole": 1
+   },
+   "classes": {
+    "structure": 11
+   },
+   "kinds": {
+    "blocking": 9,
+    "overhead": 2
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.43 m away from the body over its 3 m station span plus a 20 m taper each side = 43 m of N1_wnorth_shelf re-written. The building is not touched.",
+   "walk_to": {
+    "x": 260.9,
+    "z": 3024.7,
+    "offset_m": 2.93,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Runestone_Swamps 25.1 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-W10_brgs1_treenear-038",
+   "x": -613.59,
+   "z": -233.08,
+   "y": 36.94,
+   "declared_m": 5.9,
+   "pieces": 46,
+   "pieces_in_paved": 22,
+   "blocking_carriageway": 6,
+   "intrusion_m": 1.67,
+   "climb_m": 3.93,
+   "min_lateral_m": 0.33,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    -616.3,
+    -612.0
+   ],
+   "bbox_z": [
+    -236.4,
+    -229.4
+   ],
+   "segments": [
+    "road_W10_brgs1_treenear"
+   ],
+   "prefabs": {
+    "woodwall": 12,
+    "wood_beam": 8,
+    "wood_floor": 7,
+    "wood_roof": 7,
+    "wood_pole2": 5,
+    "wood_wall_roof_top": 3,
+    "wood_door": 1,
+    "wood_wall_roof": 1,
+    "wood_pole_log": 1,
+    "sign": 1
+   },
+   "classes": {
+    "structure": 46
+   },
+   "kinds": {
+    "walkable_surface": 17,
+    "blocking": 15,
+    "overhead": 14
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "RE-TERMINATE",
+   "remedy_why": "THIS IS THE ROAD'S OWN DESTINATION, not an obstacle: our treehouse `tree-near-1` (spawn_plan seq 713, anchor 0.98 m away, prefab histogram match 96%), and it holds the end of W10_brgs1_treenear (0 m from it). Its floor at road height is ground he walks on. Stop the paved band at the body's edge -- 2 m short of the present end -- instead of driving 5 m of carriageway through it, and record the arrival. 0 buildings touched.",
+   "walk_to": {
+    "x": -613.9,
+    "z": -230.8,
+    "offset_m": 2.17,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "our treehouse `tree-near-1` (spawn_plan seq 713, anchor 0.98 m away, prefab histogram match 96%)",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T13_temple_harboursouth-039",
+   "x": -45.53,
+   "z": -68.29,
+   "y": 57.6,
+   "declared_m": 4.71,
+   "pieces": 32,
+   "pieces_in_paved": 32,
+   "blocking_carriageway": 5,
+   "intrusion_m": 2.59,
+   "climb_m": 1.95,
+   "min_lateral_m": 0.4,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -47.8,
+    -43.3
+   ],
+   "bbox_z": [
+    -70.8,
+    -65.9
+   ],
+   "segments": [
+    "road_T13_temple_harboursouth",
+    "road_T5_temple_dockshore"
+   ],
+   "prefabs": {
+    "woodwall": 17,
+    "wood_pole": 6,
+    "wood_floor": 4,
+    "wood_wall_half": 2,
+    "TreasureChest_meadows_01": 1,
+    "Music_MeadowsVillageFarm": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 30,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "below_road": 15,
+    "blocking": 5,
+    "walkable_surface": 10,
+    "below_road?": 2
+   },
+   "location_proxy": [
+    "LocationProxy",
+    "Music_MeadowsVillageFarm"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.6 m away from the body over its 6 m station span plus a 20 m taper each side = 46 m of T13_temple_harboursouth re-written. The building is not touched.",
+   "walk_to": {
+    "x": -46.2,
+    "z": -72.2,
+    "offset_m": 3.09,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (-45.57, -68.11) has NO row in the mod-free 12,301-instance generator dump: nearest is WoodHouse1 47.8 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-S7_stathub_wtnorth-040",
+   "x": 197.35,
+   "z": 1198.92,
+   "y": 31.86,
+   "declared_m": 5.4,
+   "pieces": 10,
+   "pieces_in_paved": 7,
+   "blocking_carriageway": 5,
+   "intrusion_m": 1.76,
+   "climb_m": 2.09,
+   "min_lateral_m": 0.24,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    195.3,
+    200.1
+   ],
+   "bbox_z": [
+    1196.1,
+    1200.9
+   ],
+   "segments": [
+    "road_S7_stathub_wtnorth"
+   ],
+   "prefabs": {
+    "wood_beam_26": 3,
+    "wood_roof": 2,
+    "wood_pole_log": 2,
+    "wood_wall_log_4x0.5": 1,
+    "Music_MeadowsVillageFarm": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 8,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking": 8,
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "LocationProxy",
+    "Music_MeadowsVillageFarm"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.76 m away from the body over its 5 m station span plus a 20 m taper each side = 45 m of S7_stathub_wtnorth re-written. The building is not touched.",
+   "walk_to": {
+    "x": 198.8,
+    "z": 1195.7,
+    "offset_m": 2.26,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (196.06, 1196.1) has NO row in the mod-free 12,301-instance generator dump: nearest is Dolmen01 27.3 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-041",
+   "x": -1021.5,
+   "z": 7563.15,
+   "y": 50.52,
+   "declared_m": 5.69,
+   "pieces": 4,
+   "pieces_in_paved": 4,
+   "blocking_carriageway": 4,
+   "intrusion_m": 2.06,
+   "climb_m": 9.44,
+   "min_lateral_m": 0.94,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1023.5,
+    -1017.9
+   ],
+   "bbox_z": [
+    7562.2,
+    7563.9
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "dvergrprops_crate": 3,
+    "dvergrtown_wood_crane": 1
+   },
+   "classes": {
+    "structure": 4
+   },
+   "kinds": {
+    "blocking": 4
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.06 m away from the body over its 4 m station span plus a 20 m taper each side = 44 m of N4_mid2_terminus re-written. The building is not touched.",
+   "walk_to": {
+    "x": -1020.0,
+    "z": 7560.4,
+    "offset_m": 2.56,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Mistlands_Statue1 77.8 m away, outside its 6 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-042",
+   "x": -825.17,
+   "z": 6670.91,
+   "y": 36.64,
+   "declared_m": 6.28,
+   "pieces": 12,
+   "pieces_in_paved": 4,
+   "blocking_carriageway": 4,
+   "intrusion_m": 1.19,
+   "climb_m": 3.23,
+   "min_lateral_m": 1.81,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -829.5,
+    -823.1
+   ],
+   "bbox_z": [
+    6670.2,
+    6672.2
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 3,
+    "goblin_fence": 2,
+    "goblin_pole": 2,
+    "stone_wall_1x1": 2,
+    "goblin_pole_small": 1,
+    "stone_wall_4x2": 1,
+    "stone_arch": 1
+   },
+   "classes": {
+    "structure": 12
+   },
+   "kinds": {
+    "blocking": 12
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.19 m away from the body over its 7 m station span plus a 20 m taper each side = 47 m of N4_mid2_terminus re-written. The building is not touched.",
+   "walk_to": {
+    "x": -825.0,
+    "z": 6675.7,
+    "offset_m": 1.69,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Crypt2 46.6 m away, outside its 12 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T13_temple_harboursouth-045",
+   "x": 10.48,
+   "z": -257.42,
+   "y": 31.14,
+   "declared_m": 5.31,
+   "pieces": 11,
+   "pieces_in_paved": 6,
+   "blocking_carriageway": 3,
+   "intrusion_m": 2.46,
+   "climb_m": 1.09,
+   "min_lateral_m": 0.54,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    8.7,
+    13.6
+   ],
+   "bbox_z": [
+    -259.9,
+    -256.4
+   ],
+   "segments": [
+    "road_T13_temple_harboursouth"
+   ],
+   "prefabs": {
+    "wood_floor": 4,
+    "wood_stair": 2,
+    "wood_pole": 1,
+    "wood_pole2": 1,
+    "sign": 1,
+    "piece_groundtorch": 1,
+    "wood_beam": 1
+   },
+   "classes": {
+    "structure": 11
+   },
+   "kinds": {
+    "walkable_surface": 3,
+    "blocking": 4,
+    "below_road": 4
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "RE-TERMINATE",
+   "remedy_why": "THIS IS THE ROAD'S OWN DESTINATION, not an obstacle: our spawn op harbour_place `harbour-temple-south` prefab wood_pole2, and it holds the end of T13_temple_harboursouth (0 m from it). Its floor at road height is ground he walks on. Stop the paved band at the body's edge -- 9 m short of the present end -- instead of driving 18 m of carriageway through it, and record the arrival. 0 buildings touched.",
+   "walk_to": {
+    "x": 16.1,
+    "z": -253.9,
+    "offset_m": 2.96,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "our spawn op harbour_place `harbour-temple-south` prefab wood_pole2",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-046",
+   "x": -1171.83,
+   "z": 6612.25,
+   "y": 43.46,
+   "declared_m": 3.94,
+   "pieces": 3,
+   "pieces_in_paved": 3,
+   "blocking_carriageway": 3,
+   "intrusion_m": 2.13,
+   "climb_m": 1.82,
+   "min_lateral_m": 0.87,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1173.5,
+    -1170.2
+   ],
+   "bbox_z": [
+    6611.2,
+    6613.1
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "goblin_fence": 3
+   },
+   "classes": {
+    "structure": 3
+   },
+   "kinds": {
+    "blocking": 3
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.13 m away from the body over its 4 m station span plus a 20 m taper each side = 44 m of N4_mid2_terminus re-written. The building is not touched.",
+   "walk_to": {
+    "x": -1170.1,
+    "z": 6616.6,
+    "offset_m": 2.63,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is GoblinCamp2 85.4 m away, outside its 30 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N1_wnorth_shelf-047",
+   "x": 259.61,
+   "z": 3007.93,
+   "y": 32.73,
+   "declared_m": 5.04,
+   "pieces": 6,
+   "pieces_in_paved": 3,
+   "blocking_carriageway": 3,
+   "intrusion_m": 1.67,
+   "climb_m": 4.35,
+   "min_lateral_m": 1.33,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    256.8,
+    261.6
+   ],
+   "bbox_z": [
+    3006.8,
+    3009.5
+   ],
+   "segments": [
+    "road_N1_wnorth_shelf"
+   ],
+   "prefabs": {
+    "piece_sharpstakes": 3,
+    "wood_fence": 1,
+    "stake_wall": 1,
+    "wood_pole_log_4": 1
+   },
+   "classes": {
+    "structure": 6
+   },
+   "kinds": {
+    "blocking": 6
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.67 m away from the body over its 4 m station span plus a 20 m taper each side = 44 m of N1_wnorth_shelf re-written. The building is not touched.",
+   "walk_to": {
+    "x": 255.9,
+    "z": 3010.8,
+    "offset_m": 2.17,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Runestone_Swamps 24.0 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-S8_wtsouth_treesth-051",
+   "x": 541.0,
+   "z": 484.61,
+   "y": 77.55,
+   "declared_m": 4.02,
+   "pieces": 20,
+   "pieces_in_paved": 5,
+   "blocking_carriageway": 3,
+   "intrusion_m": 0.08,
+   "climb_m": 3.9,
+   "min_lateral_m": 1.92,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    539.0,
+    543.0
+   ],
+   "bbox_z": [
+    483.9,
+    484.9
+   ],
+   "segments": [
+    "road_S8_wtsouth_treesth"
+   ],
+   "prefabs": {
+    "woodwall": 7,
+    "wood_beam": 3,
+    "wood_pole2": 2,
+    "wood_floor": 2,
+    "wood_roof": 2,
+    "wood_wall_roof": 2,
+    "wood_door": 1,
+    "wood_wall_roof_top": 1
+   },
+   "classes": {
+    "structure": 20
+   },
+   "kinds": {
+    "walkable_surface": 6,
+    "blocking": 8,
+    "overhead": 6
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "RE-TERMINATE",
+   "remedy_why": "THIS IS THE ROAD'S OWN DESTINATION, not an obstacle: our treehouse `tree-sth-1` (spawn_plan seq 648, anchor 3.29 m away, prefab histogram match 100%), and it holds the end of S8_wtsouth_treesth (0 m from it). Its floor at road height is ground he walks on. Stop the paved band at the body's edge -- 2 m short of the present end -- instead of driving 5 m of carriageway through it, and record the arrival. 0 buildings touched.",
+   "walk_to": {
+    "x": 542.2,
+    "z": 481.4,
+    "offset_m": 0.58,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "our treehouse `tree-sth-1` (spawn_plan seq 648, anchor 3.29 m away, prefab histogram match 100%)",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-052",
+   "x": -1159.22,
+   "z": 6613.91,
+   "y": 47.09,
+   "declared_m": 5.59,
+   "pieces": 3,
+   "pieces_in_paved": 2,
+   "blocking_carriageway": 2,
+   "intrusion_m": 2.23,
+   "climb_m": 1.57,
+   "min_lateral_m": 0.77,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1160.4,
+    -1157.8
+   ],
+   "bbox_z": [
+    6610.5,
+    6616.5
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "fire_pit": 1,
+    "wood_wall_log": 1,
+    "goblin_totempole": 1
+   },
+   "classes": {
+    "structure": 3
+   },
+   "kinds": {
+    "blocking": 3
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.23 m away from the body over its 3 m station span plus a 20 m taper each side = 43 m of N4_mid2_terminus re-written. The building is not touched.",
+   "walk_to": {
+    "x": -1158.1,
+    "z": 6611.3,
+    "offset_m": 2.73,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is GoblinCamp2 73.6 m away, outside its 30 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-R4_vestvik_harbour-054",
+   "x": -947.05,
+   "z": 1898.13,
+   "y": 39.64,
+   "declared_m": 4.68,
+   "pieces": 6,
+   "pieces_in_paved": 2,
+   "blocking_carriageway": 2,
+   "intrusion_m": 1.52,
+   "climb_m": 3.37,
+   "min_lateral_m": 1.48,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -948.8,
+    -946.0
+   ],
+   "bbox_z": [
+    1896.1,
+    1899.0
+   ],
+   "segments": [
+    "road_R4_vestvik_harbour"
+   ],
+   "prefabs": {
+    "woodwall": 2,
+    "wood_beam_45": 2,
+    "wood_pole2": 1,
+    "wood_wall_roof_45": 1
+   },
+   "classes": {
+    "structure": 6
+   },
+   "kinds": {
+    "blocking": 5,
+    "overhead": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.52 m away from the body over its 4 m station span plus a 20 m taper each side = 44 m of R4_vestvik_harbour re-written. The building is not touched.",
+   "walk_to": {
+    "x": -947.9,
+    "z": 1892.8,
+    "offset_m": 2.02,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Dolmen03 23.3 m away, outside its 10 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T4_meadhall_stathub-055",
+   "x": 533.17,
+   "z": 645.27,
+   "y": 78.11,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.65,
+   "climb_m": 1.47,
+   "min_lateral_m": 0.35,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    533.2,
+    533.2
+   ],
+   "bbox_z": [
+    645.3,
+    645.3
+   ],
+   "segments": [
+    "road_T4_meadhall_stathub"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 0.35 m off the centreline, so 2.53 m of intrusion and 3.23 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": 530.6,
+    "z": 642.9,
+    "offset_m": 3.15,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is WoodHouse12 39.8 m away, outside its 6 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T3_temple_meadhall-056",
+   "x": 60.68,
+   "z": -19.21,
+   "y": 73.59,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.62,
+   "climb_m": 1.41,
+   "min_lateral_m": 0.38,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    60.7,
+    60.7
+   ],
+   "bbox_z": [
+    -19.2,
+    -19.2
+   ],
+   "segments": [
+    "road_T3_temple_meadhall"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 0.38 m off the centreline, so 2.5 m of intrusion and 3.26 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": 63.1,
+    "z": -16.7,
+    "offset_m": 3.12,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Dolmen01 35.5 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T13_temple_harboursouth-057",
+   "x": -43.93,
+   "z": -121.55,
+   "y": 51.18,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.51,
+   "climb_m": 1.46,
+   "min_lateral_m": 0.49,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -43.9,
+    -43.9
+   ],
+   "bbox_z": [
+    -121.5,
+    -121.5
+   ],
+   "segments": [
+    "road_T13_temple_harboursouth"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 0.49 m off the centreline, so 2.39 m of intrusion and 3.37 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -47.4,
+    "z": -121.5,
+    "offset_m": 3.01,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Runestone_Meadows 26.3 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-058",
+   "x": -907.41,
+   "z": 7713.01,
+   "y": 41.32,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.45,
+   "climb_m": 1.51,
+   "min_lateral_m": 0.55,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -907.4,
+    -907.4
+   ],
+   "bbox_z": [
+    7713.0,
+    7713.0
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 0.55 m off the centreline, so 2.33 m of intrusion and 3.43 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -904.5,
+    "z": 7711.6,
+    "offset_m": 2.95,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Mistlands_Excavation2 130.5 m away, outside its 20 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N1_wnorth_shelf-059",
+   "x": -272.93,
+   "z": 2679.41,
+   "y": 32.11,
+   "declared_m": 2.64,
+   "pieces": 3,
+   "pieces_in_paved": 3,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.31,
+   "climb_m": 2.62,
+   "min_lateral_m": 0.69,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -273.3,
+    -272.7
+   ],
+   "bbox_z": [
+    2678.9,
+    2679.7
+   ],
+   "segments": [
+    "road_N1_wnorth_shelf"
+   ],
+   "prefabs": {
+    "RockDolmen_3": 1,
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 1,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking": 1,
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.31 m away from the body over its 2 m station span plus a 20 m taper each side = 42 m of N1_wnorth_shelf re-written. The building is not touched.",
+   "walk_to": {
+    "x": -276.8,
+    "z": 2679.0,
+    "offset_m": 2.81,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (-272.73, 2679.66) has NO row in the mod-free 12,301-instance generator dump: nearest is InfestedTree01 39.2 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T9_wttown_dockshore-060",
+   "x": 811.8,
+   "z": 699.2,
+   "y": 42.27,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.29,
+   "climb_m": 1.47,
+   "min_lateral_m": 0.71,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    811.8,
+    811.8
+   ],
+   "bbox_z": [
+    699.2,
+    699.2
+   ],
+   "segments": [
+    "road_T9_wttown_dockshore"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 0.71 m off the centreline, so 2.17 m of intrusion and 3.59 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": 809.3,
+    "z": 696.8,
+    "offset_m": 2.79,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "our road_lighting `lighting-T9` (spawn_plan seq 2226, anchor 0.01 m away, prefab histogram match 100%)",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T4_meadhall_stathub-061",
+   "x": 579.77,
+   "z": 845.07,
+   "y": 50.59,
+   "declared_m": 2.07,
+   "pieces": 3,
+   "pieces_in_paved": 3,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.28,
+   "climb_m": 0.85,
+   "min_lateral_m": 0.61,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    579.7,
+    579.8
+   ],
+   "bbox_z": [
+    845.0,
+    845.1
+   ],
+   "segments": [
+    "road_T4_meadhall_stathub"
+   ],
+   "prefabs": {
+    "RockDolmen_1": 1,
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 1,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking": 1,
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.39 m away from the body over its 1 m station span plus a 20 m taper each side = 41 m of T4_meadhall_stathub re-written. The building is not touched.",
+   "walk_to": {
+    "x": 577.2,
+    "z": 847.1,
+    "offset_m": 2.78,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (579.74, 845.08) has NO row in the mod-free 12,301-instance generator dump: nearest is Dolmen01 25.8 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T3_temple_meadhall-062",
+   "x": -11.28,
+   "z": -10.07,
+   "y": 67.51,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.22,
+   "climb_m": 1.47,
+   "min_lateral_m": 0.78,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -11.3,
+    -11.3
+   ],
+   "bbox_z": [
+    -10.1,
+    -10.1
+   ],
+   "segments": [
+    "road_T3_temple_meadhall"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 0.78 m off the centreline, so 2.1 m of intrusion and 3.66 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -14.7,
+    "z": -9.8,
+    "offset_m": 2.72,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "our road_lighting `lighting-T3` (spawn_plan seq 2211, anchor 0.01 m away, prefab histogram match 100%)",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T4_meadhall_stathub-063",
+   "x": 576.16,
+   "z": 750.45,
+   "y": 63.34,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.22,
+   "climb_m": 1.49,
+   "min_lateral_m": 0.78,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    576.2,
+    576.2
+   ],
+   "bbox_z": [
+    750.5,
+    750.5
+   ],
+   "segments": [
+    "road_T4_meadhall_stathub"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 0.78 m off the centreline, so 2.1 m of intrusion and 3.66 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": 573.1,
+    "z": 749.0,
+    "offset_m": 2.72,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is WoodHouse4 28.4 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T12_wtspawn_temple-064",
+   "x": 19.18,
+   "z": 1.65,
+   "y": 69.81,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.16,
+   "climb_m": 3.48,
+   "min_lateral_m": 0.84,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    19.2,
+    19.2
+   ],
+   "bbox_z": [
+    1.6,
+    1.6
+   ],
+   "segments": [
+    "road_T12_wtspawn_temple"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 0.84 m off the centreline, so 2.04 m of intrusion and 3.72 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": 21.8,
+    "z": 4.0,
+    "offset_m": 2.66,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Dolmen01 19.2 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-065",
+   "x": -845.5,
+   "z": 7730.0,
+   "y": 33.56,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 2.09,
+   "climb_m": 3.23,
+   "min_lateral_m": 0.91,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -845.5,
+    -845.5
+   ],
+   "bbox_z": [
+    7730.0,
+    7730.0
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "portal_wood": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.09 m away from the body over its 1 m station span plus a 20 m taper each side = 41 m of N4_mid2_terminus re-written. The building is not touched.",
+   "walk_to": {
+    "x": -846.4,
+    "z": 7727.4,
+    "offset_m": 2.59,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Mistlands_Excavation2 194.6 m away, outside its 20 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T10_wtspawn_wtsouth-066",
+   "x": 394.38,
+   "z": 16.97,
+   "y": 77.43,
+   "declared_m": 2.07,
+   "pieces": 3,
+   "pieces_in_paved": 3,
+   "blocking_carriageway": 1,
+   "intrusion_m": 1.91,
+   "climb_m": 2.38,
+   "min_lateral_m": 1.09,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    394.3,
+    394.4
+   ],
+   "bbox_z": [
+    17.0,
+    17.0
+   ],
+   "segments": [
+    "road_T10_wtspawn_wtsouth"
+   ],
+   "prefabs": {
+    "RockDolmen_1": 1,
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 1,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking": 1,
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.91 m away from the body over its 2 m station span plus a 20 m taper each side = 42 m of T10_wtspawn_wtsouth re-written. The building is not touched.",
+   "walk_to": {
+    "x": 393.8,
+    "z": 20.4,
+    "offset_m": 2.41,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (394.41, 16.96) has NO row in the mod-free 12,301-instance generator dump: nearest is Dolmen02 31.8 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-067",
+   "x": -978.05,
+   "z": 7628.56,
+   "y": 56.86,
+   "declared_m": 2.17,
+   "pieces": 3,
+   "pieces_in_paved": 3,
+   "blocking_carriageway": 1,
+   "intrusion_m": 1.75,
+   "climb_m": 1.38,
+   "min_lateral_m": 1.09,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -978.1,
+    -978.0
+   ],
+   "bbox_z": [
+    7628.4,
+    7628.6
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "blackmarble_head_big02": 1,
+    "blackmarble_2x2x2": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 2,
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking": 1,
+    "below_road": 1,
+    "below_road?": 1
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.91 m away from the body over its 1 m station span plus a 20 m taper each side = 41 m of N4_mid2_terminus re-written. The building is not touched.",
+   "walk_to": {
+    "x": -980.9,
+    "z": 7630.3,
+    "offset_m": 2.25,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (-978.08, 7628.64) has NO row in the mod-free 12,301-instance generator dump: nearest is Mistlands_Excavation2 68.3 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-W10_brgs1_treenear-068",
+   "x": -601.36,
+   "z": -225.48,
+   "y": 36.56,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 1.35,
+   "climb_m": 1.47,
+   "min_lateral_m": 0.65,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    -601.4,
+    -601.4
+   ],
+   "bbox_z": [
+    -225.5,
+    -225.5
+   ],
+   "segments": [
+    "road_W10_brgs1_treenear"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 0.65 m off the centreline, so 1.23 m of intrusion and 2.53 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -600.0,
+    "z": -227.6,
+    "offset_m": 1.85,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Crypt3 38.0 m away, outside its 11 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T4_meadhall_stathub-069",
+   "x": 553.31,
+   "z": 787.67,
+   "y": 58.9,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 1.26,
+   "climb_m": 1.43,
+   "min_lateral_m": 1.74,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    553.3,
+    553.3
+   ],
+   "bbox_z": [
+    787.7,
+    787.7
+   ],
+   "segments": [
+    "road_T4_meadhall_stathub"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 1.74 m off the centreline, so 1.14 m of intrusion and 4.62 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": 553.0,
+    "z": 784.3,
+    "offset_m": 1.76,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is WoodHouse4 45.3 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N3_mid1_mid2-070",
+   "x": -705.55,
+   "z": 5983.21,
+   "y": 34.43,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 1.25,
+   "climb_m": 1.48,
+   "min_lateral_m": 1.75,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -705.5,
+    -705.5
+   ],
+   "bbox_z": [
+    5983.2,
+    5983.2
+   ],
+   "segments": [
+    "road_N3_mid1_mid2"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 1.75 m off the centreline, so 1.13 m of intrusion and 4.63 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -705.2,
+    "z": 5979.7,
+    "offset_m": 1.75,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is InfestedTree01 86.0 m away, outside its 5 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T1_portalhub_temple-071",
+   "x": -279.12,
+   "z": 134.14,
+   "y": 42.34,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 1.22,
+   "climb_m": 1.55,
+   "min_lateral_m": 1.78,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -279.1,
+    -279.1
+   ],
+   "bbox_z": [
+    134.1,
+    134.1
+   ],
+   "segments": [
+    "road_T1_portalhub_temple"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 1.78 m off the centreline, so 1.1 m of intrusion and 4.66 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -282.5,
+    "z": 134.4,
+    "offset_m": 1.72,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Dolmen02 65.6 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-072",
+   "x": -1266.82,
+   "z": 7348.71,
+   "y": 38.22,
+   "declared_m": 4.25,
+   "pieces": 2,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 1.15,
+   "climb_m": 6.22,
+   "min_lateral_m": 1.85,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1268.9,
+    -1264.7
+   ],
+   "bbox_z": [
+    7347.9,
+    7349.6
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "blackmarble_column_3": 2
+   },
+   "classes": {
+    "structure": 2
+   },
+   "kinds": {
+    "blocking": 2
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.15 m away from the body over its 5 m station span plus a 20 m taper each side = 45 m of N4_mid2_terminus re-written. The building is not touched.",
+   "walk_to": {
+    "x": -1264.7,
+    "z": 7344.4,
+    "offset_m": 1.65,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Mistlands_Giant1 66.8 m away, outside its 11 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T3_temple_meadhall-073",
+   "x": 81.83,
+   "z": -0.44,
+   "y": 79.06,
+   "declared_m": 2.07,
+   "pieces": 3,
+   "pieces_in_paved": 3,
+   "blocking_carriageway": 1,
+   "intrusion_m": 1.1,
+   "climb_m": 1.04,
+   "min_lateral_m": 1.79,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    81.8,
+    81.9
+   ],
+   "bbox_z": [
+    -0.4,
+    -0.4
+   ],
+   "segments": [
+    "road_T3_temple_meadhall"
+   ],
+   "prefabs": {
+    "RockDolmen_1": 1,
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 1,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking": 1,
+    "overhead?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 2.21 m away from the body over its 1 m station span plus a 20 m taper each side = 41 m of T3_temple_meadhall re-written. The building is not touched.",
+   "walk_to": {
+    "x": 78.4,
+    "z": -0.5,
+    "offset_m": 1.6,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (81.79, -0.44) has NO row in the mod-free 12,301-instance generator dump: nearest is Dolmen01 27.7 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T13_temple_harboursouth-074",
+   "x": -37.75,
+   "z": -197.54,
+   "y": 37.22,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 1.03,
+   "climb_m": 1.42,
+   "min_lateral_m": 1.97,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -37.8,
+    -37.8
+   ],
+   "bbox_z": [
+    -197.5,
+    -197.5
+   ],
+   "segments": [
+    "road_T13_temple_harboursouth"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 1.97 m off the centreline, so 0.91 m of intrusion and 4.85 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -40.5,
+    "z": -199.7,
+    "offset_m": 1.53,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Dolmen01 29.1 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N1_wnorth_shelf-075",
+   "x": 158.56,
+   "z": 2844.09,
+   "y": 31.65,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 0.88,
+   "climb_m": 1.47,
+   "min_lateral_m": 2.12,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    158.6,
+    158.6
+   ],
+   "bbox_z": [
+    2844.1,
+    2844.1
+   ],
+   "segments": [
+    "road_N1_wnorth_shelf"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 2.12 m off the centreline, so 0.76 m of intrusion and 5.0 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": 158.2,
+    "z": 2840.6,
+    "offset_m": 1.38,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is InfestedTree01 71.7 m away, outside its 5 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-W10_brgs1_treenear-076",
+   "x": -479.68,
+   "z": -220.55,
+   "y": 38.98,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 0.5,
+   "climb_m": 1.46,
+   "min_lateral_m": 1.5,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    -479.7,
+    -479.7
+   ],
+   "bbox_z": [
+    -220.6,
+    -220.6
+   ],
+   "segments": [
+    "road_W10_brgs1_treenear"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 1.5 m off the centreline, so 0.38 m of intrusion and 3.38 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -479.2,
+    "z": -223.0,
+    "offset_m": 1.0,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Runestone_Meadows 82.2 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-W10_brgs1_treenear-077",
+   "x": -510.68,
+   "z": -220.55,
+   "y": 42.7,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 0.5,
+   "climb_m": 1.51,
+   "min_lateral_m": 1.5,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    -510.7,
+    -510.7
+   ],
+   "bbox_z": [
+    -220.6,
+    -220.6
+   ],
+   "segments": [
+    "road_W10_brgs1_treenear"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 1.5 m off the centreline, so 0.38 m of intrusion and 3.38 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -510.3,
+    "z": -223.0,
+    "offset_m": 1.0,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Crypt3 70.6 m away, outside its 11 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-W10_brgs1_treenear-078",
+   "x": -552.68,
+   "z": -220.55,
+   "y": 43.02,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 0.5,
+   "climb_m": 1.41,
+   "min_lateral_m": 1.5,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    -552.7,
+    -552.7
+   ],
+   "bbox_z": [
+    -220.6,
+    -220.6
+   ],
+   "segments": [
+    "road_W10_brgs1_treenear"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 1.5 m off the centreline, so 0.38 m of intrusion and 3.38 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -552.3,
+    "z": -223.0,
+    "offset_m": 1.0,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Crypt3 37.9 m away, outside its 11 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T13_temple_harboursouth-079",
+   "x": -38.12,
+   "z": -78.97,
+   "y": 58.42,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 0.35,
+   "climb_m": 1.37,
+   "min_lateral_m": 2.65,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -38.1,
+    -38.1
+   ],
+   "bbox_z": [
+    -79.0,
+    -79.0
+   ],
+   "segments": [
+    "road_T13_temple_harboursouth"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 2.65 m off the centreline, so 0.23 m of intrusion and 5.53 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -41.2,
+    "z": -77.8,
+    "offset_m": 0.85,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "our road_lighting `lighting-T13` (spawn_plan seq 2206, anchor 0.00 m away, prefab histogram match 100%)",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T5_temple_dockshore-080",
+   "x": 136.42,
+   "z": -233.49,
+   "y": 48.68,
+   "declared_m": 4.96,
+   "pieces": 4,
+   "pieces_in_paved": 4,
+   "blocking_carriageway": 1,
+   "intrusion_m": 0.32,
+   "climb_m": 0.88,
+   "min_lateral_m": 0.4,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    135.3,
+    139.4
+   ],
+   "bbox_z": [
+    -233.8,
+    -233.3
+   ],
+   "segments": [
+    "road_T5_temple_dockshore"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 1,
+    "RockDolmen_2": 1,
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 2,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "below_road": 1,
+    "blocking": 1,
+    "below_road?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 3.6 m away from the body over its 4 m station span plus a 20 m taper each side = 44 m of T5_temple_dockshore re-written. The building is not touched.",
+   "walk_to": {
+    "x": 138.2,
+    "z": -231.1,
+    "offset_m": 0.82,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "its LocationProxy at (135.33, -233.35) has NO row in the mod-free 12,301-instance generator dump: nearest is Dolmen01 15.5 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-081",
+   "x": -1141.66,
+   "z": 6611.27,
+   "y": 46.43,
+   "declared_m": 4.23,
+   "pieces": 10,
+   "pieces_in_paved": 7,
+   "blocking_carriageway": 1,
+   "intrusion_m": 0.3,
+   "climb_m": 1.61,
+   "min_lateral_m": 2.06,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1143.8,
+    -1139.5
+   ],
+   "bbox_z": [
+    6610.2,
+    6611.9
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "goblin_woodwall_1m": 7,
+    "goblin_roof_45d_corner": 1,
+    "goblin_roof_45d": 1,
+    "goblin_pole_small": 1
+   },
+   "classes": {
+    "structure": 10
+   },
+   "kinds": {
+    "walkable_surface": 6,
+    "blocking": 3,
+    "below_road": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 1.94 m away from the body over its 6 m station span plus a 20 m taper each side = 46 m of N4_mid2_terminus re-written. The building is not touched.",
+   "walk_to": {
+    "x": -1143.1,
+    "z": 6614.8,
+    "offset_m": 0.8,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is GoblinCamp2 56.0 m away, outside its 30 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-083",
+   "x": -1128.18,
+   "z": 6611.61,
+   "y": 49.8,
+   "declared_m": 4.53,
+   "pieces": 17,
+   "pieces_in_paved": 6,
+   "blocking_carriageway": 1,
+   "intrusion_m": 0.17,
+   "climb_m": 1.33,
+   "min_lateral_m": 2.22,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1130.3,
+    -1126.6
+   ],
+   "bbox_z": [
+    6610.2,
+    6613.0
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "goblin_woodwall_1m": 8,
+    "goblin_pole": 4,
+    "goblin_stepladder": 2,
+    "goblin_roof_45d": 1,
+    "goblin_pole_small": 1,
+    "stone_wall_2x1": 1
+   },
+   "classes": {
+    "structure": 17
+   },
+   "kinds": {
+    "blocking": 4,
+    "overhead": 12,
+    "below_road": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "RE-ROUTE",
+   "remedy_why": "shift the centreline 1.78 m away from the body over its 3 m station span plus a 20 m taper each side = 43 m of N4_mid2_terminus re-written. The building is not touched.",
+   "walk_to": {
+    "x": -1129.6,
+    "z": 6615.3,
+    "offset_m": 0.67,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is GoblinCamp2 43.5 m away, outside its 30 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T5_temple_dockshore-084",
+   "x": 577.08,
+   "z": -127.9,
+   "y": 33.88,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 0.03,
+   "climb_m": 1.48,
+   "min_lateral_m": 2.97,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    577.1,
+    577.1
+   ],
+   "bbox_z": [
+    -127.9,
+    -127.9
+   ],
+   "segments": [
+    "road_T5_temple_dockshore"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 2.97 m off the centreline, so -0.09 m of intrusion and 5.85 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": 574.7,
+    "z": -130.4,
+    "offset_m": 0.53,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is ShipSetting01 68.0 m away, outside its 24 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-085",
+   "x": -1355.01,
+   "z": 7145.11,
+   "y": 32.7,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 1,
+   "intrusion_m": 0.0,
+   "climb_m": 1.49,
+   "min_lateral_m": 3.0,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1355.0,
+    -1355.0
+   ],
+   "bbox_z": [
+    7145.1,
+    7145.1
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "a single slender post, MEASURED footprint radius 0.12 m from the prefab's own collider. It stands 3.0 m off the centreline, so -0.12 m of intrusion and 5.88 m of clear paved width on the other side. A walker goes round it. Recorded, not re-routed. 0 m of road to change.",
+   "walk_to": {
+    "x": -1358.5,
+    "z": 7144.9,
+    "offset_m": 0.5,
+    "why": "centreline beside the worst piece, offset to the clear side"
+   },
+   "evidence": "nearest world-generator instance is Mistlands_RockSpire1 51.2 m away, outside its 4 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T12_wtspawn_temple-086",
+   "x": 72.03,
+   "z": -66.31,
+   "y": 65.71,
+   "declared_m": 4.52,
+   "pieces": 8,
+   "pieces_in_paved": 3,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 1.1,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    69.8,
+    72.8
+   ],
+   "bbox_z": [
+    -68.2,
+    -64.2
+   ],
+   "segments": [
+    "road_T12_wtspawn_temple"
+   ],
+   "prefabs": {
+    "wood_roof_45": 3,
+    "wood_floor": 1,
+    "woodwall": 1,
+    "wood_wall_roof_top_45": 1,
+    "wood_beam_45": 1,
+    "wood_wall_roof_45": 1
+   },
+   "classes": {
+    "structure": 8
+   },
+   "kinds": {
+    "below_road": 7,
+    "walkable_surface": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 3 pieces inside the paved width are 7 below_road, 1 walkable_surface; nearest is 1.1 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Dolmen01 16.1 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T5_temple_dockshore-087",
+   "x": -57.1,
+   "z": -37.92,
+   "y": 68.06,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 0.21,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -57.1,
+    -57.1
+   ],
+   "bbox_z": [
+    -37.9,
+    -37.9
+   ],
+   "segments": [
+    "road_T5_temple_dockshore"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "overhead": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 overhead; nearest is 0.21 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is WoodHouse1 28.2 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T3_temple_meadhall-088",
+   "x": 253.99,
+   "z": 331.37,
+   "y": 77.68,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 2.82,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    254.0,
+    254.0
+   ],
+   "bbox_z": [
+    331.4,
+    331.4
+   ],
+   "segments": [
+    "road_T3_temple_meadhall"
+   ],
+   "prefabs": {
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking?": 1
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 blocking?; nearest is 2.82 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (253.99, 331.37) has NO row in the mod-free 12,301-instance generator dump: nearest is Dolmen02 64.0 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T10_wtspawn_wtsouth-089",
+   "x": 133.87,
+   "z": -106.04,
+   "y": 76.75,
+   "declared_m": 2.0,
+   "pieces": 2,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.96,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    133.9,
+    133.9
+   ],
+   "bbox_z": [
+    -106.0,
+    -106.0
+   ],
+   "segments": [
+    "road_T10_wtspawn_wtsouth"
+   ],
+   "prefabs": {
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 2 blocking?; nearest is 3.96 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (133.87, -106.04) has NO row in the mod-free 12,301-instance generator dump: nearest is WoodHouse12 41.4 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T4_meadhall_stathub-090",
+   "x": 363.46,
+   "z": 364.3,
+   "y": 82.99,
+   "declared_m": 2.07,
+   "pieces": 3,
+   "pieces_in_paved": 3,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 1.7,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    363.4,
+    363.5
+   ],
+   "bbox_z": [
+    364.3,
+    364.3
+   ],
+   "segments": [
+    "road_T4_meadhall_stathub"
+   ],
+   "prefabs": {
+    "RockDolmen_1": 1,
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 1,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "overhead": 1,
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 3 pieces inside the paved width are 1 overhead, 2 blocking?; nearest is 1.7 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (363.5, 364.3) has NO row in the mod-free 12,301-instance generator dump: nearest is WoodHouse9 31.3 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T4_meadhall_stathub-091",
+   "x": 586.13,
+   "z": 1003.54,
+   "y": 34.64,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 2.62,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    586.1,
+    586.1
+   ],
+   "bbox_z": [
+    1003.5,
+    1003.5
+   ],
+   "segments": [
+    "road_T4_meadhall_stathub"
+   ],
+   "prefabs": {
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking?": 1
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 blocking?; nearest is 2.62 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (586.13, 1003.54) has NO row in the mod-free 12,301-instance generator dump: nearest is WoodHouse7 51.9 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-S7_stathub_wtnorth-092",
+   "x": 610.0,
+   "z": 1087.45,
+   "y": 33.51,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 2.55,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    610.0,
+    610.0
+   ],
+   "bbox_z": [
+    1087.5,
+    1087.5
+   ],
+   "segments": [
+    "road_S7_stathub_wtnorth"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "below_road": 1
+   },
+   "location_proxy": null,
+   "placer": "ours",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 1 below_road; nearest is 2.55 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "our road_lighting `lighting-S7` (spawn_plan seq 2181, anchor 0.00 m away, prefab histogram match 100%)",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T8_stenvik_wttown-093",
+   "x": 653.2,
+   "z": 872.59,
+   "y": 39.01,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 1.21,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    653.2,
+    653.2
+   ],
+   "bbox_z": [
+    872.6,
+    872.6
+   ],
+   "segments": [
+    "road_T8_stenvik_wttown"
+   ],
+   "prefabs": {
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "below_road?": 1
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 below_road?; nearest is 1.21 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (653.2, 872.59) has NO row in the mod-free 12,301-instance generator dump: nearest is ShipSetting01 46.0 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T8_stenvik_wttown-094",
+   "x": 720.15,
+   "z": 787.32,
+   "y": 36.32,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.88,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    720.1,
+    720.1
+   ],
+   "bbox_z": [
+    787.3,
+    787.3
+   ],
+   "segments": [
+    "road_T8_stenvik_wttown"
+   ],
+   "prefabs": {
+    "wood_fence": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 1 blocking; nearest is 3.88 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Dolmen01 22.7 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T9_wttown_dockshore-095",
+   "x": 876.89,
+   "z": 643.12,
+   "y": 44.21,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 1.46,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    876.9,
+    876.9
+   ],
+   "bbox_z": [
+    643.1,
+    643.1
+   ],
+   "segments": [
+    "road_T9_wttown_dockshore"
+   ],
+   "prefabs": {
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking?": 1
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 blocking?; nearest is 1.46 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (876.89, 643.12) has NO row in the mod-free 12,301-instance generator dump: nearest is Runestone_Meadows 26.9 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T5_temple_dockshore-096",
+   "x": 80.74,
+   "z": -179.86,
+   "y": 54.42,
+   "declared_m": 3.6,
+   "pieces": 6,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.21,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    79.9,
+    81.0
+   ],
+   "bbox_z": [
+    -180.5,
+    -178.5
+   ],
+   "segments": [
+    "road_T5_temple_dockshore"
+   ],
+   "prefabs": {
+    "wood_beam": 2,
+    "wood_fence": 1,
+    "wood_beam_1": 1,
+    "wood_pole2": 1,
+    "wood_wall_half": 1
+   },
+   "classes": {
+    "structure": 6
+   },
+   "kinds": {
+    "walkable_surface": 3,
+    "below_road": 3
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 3 walkable_surface, 3 below_road; nearest is 3.21 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Runestone_Boars 69.4 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T5_temple_dockshore-097",
+   "x": 168.45,
+   "z": -262.7,
+   "y": 44.16,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 0.3,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    168.4,
+    168.4
+   ],
+   "bbox_z": [
+    -262.7,
+    -262.7
+   ],
+   "segments": [
+    "road_T5_temple_dockshore"
+   ],
+   "prefabs": {
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "below_road?": 1
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 below_road?; nearest is 0.3 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (168.45, -262.7) has NO row in the mod-free 12,301-instance generator dump: nearest is Dolmen01 44.9 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T5_temple_dockshore-098",
+   "x": 596.36,
+   "z": -132.93,
+   "y": 36.53,
+   "declared_m": 3.0,
+   "pieces": 2,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.75,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    595.4,
+    597.4
+   ],
+   "bbox_z": [
+    -132.9,
+    -132.9
+   ],
+   "segments": [
+    "road_T5_temple_dockshore"
+   ],
+   "prefabs": {
+    "woodwall": 1,
+    "wood_wall_roof_45": 1
+   },
+   "classes": {
+    "structure": 2
+   },
+   "kinds": {
+    "overhead": 2
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 2 overhead; nearest is 3.75 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is ShipSetting01 65.3 m away, outside its 24 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-S8_wtsouth_treesth-099",
+   "x": 519.84,
+   "z": 80.95,
+   "y": 81.85,
+   "declared_m": 2.64,
+   "pieces": 3,
+   "pieces_in_paved": 2,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 1.95,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    519.6,
+    520.4
+   ],
+   "bbox_z": [
+    80.6,
+    81.2
+   ],
+   "segments": [
+    "road_S8_wtsouth_treesth"
+   ],
+   "prefabs": {
+    "RockDolmen_3": 1,
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 1,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "overhead": 1,
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 2 pieces inside the paved width are 1 overhead, 2 blocking?; nearest is 1.95 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (519.59, 81.15) has NO row in the mod-free 12,301-instance generator dump: nearest is Dolmen01 28.2 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-S7_stathub_wtnorth-100",
+   "x": 237.73,
+   "z": 1148.12,
+   "y": 32.39,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 2.95,
+   "road_half_width_m": 2.0,
+   "bbox_x": [
+    237.7,
+    237.7
+   ],
+   "bbox_z": [
+    1148.1,
+    1148.1
+   ],
+   "segments": [
+    "road_S7_stathub_wtnorth"
+   ],
+   "prefabs": {
+    "wood_fence": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 1 blocking; nearest is 2.95 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is WoodHouse13 22.8 m away, outside its 9 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-T1_portalhub_temple-101",
+   "x": -259.01,
+   "z": 77.99,
+   "y": 46.12,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.54,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -259.0,
+    -259.0
+   ],
+   "bbox_z": [
+    78.0,
+    78.0
+   ],
+   "segments": [
+    "road_T1_portalhub_temple"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 1 blocking; nearest is 3.54 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Dolmen02 27.0 m away, outside its 8 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N0_brgs2_wmid-103",
+   "x": -434.19,
+   "z": 571.13,
+   "y": 45.93,
+   "declared_m": 2.35,
+   "pieces": 2,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.8,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -434.2,
+    -434.2
+   ],
+   "bbox_z": [
+    570.8,
+    571.5
+   ],
+   "segments": [
+    "road_N0_brgs2_wmid"
+   ],
+   "prefabs": {
+    "stone_wall_2x1": 2
+   },
+   "classes": {
+    "structure": 2
+   },
+   "kinds": {
+    "below_road": 1,
+    "walkable_surface": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 1 below_road, 1 walkable_surface; nearest is 3.8 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Greydwarf_camp1 60.0 m away, outside its 10 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N0_brgs2_wmid-104",
+   "x": -498.19,
+   "z": 700.86,
+   "y": 43.41,
+   "declared_m": 2.0,
+   "pieces": 2,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.84,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -498.2,
+    -498.2
+   ],
+   "bbox_z": [
+    700.9,
+    700.9
+   ],
+   "segments": [
+    "road_N0_brgs2_wmid"
+   ],
+   "prefabs": {
+    "Music_GreydwarfCamp": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "LocationProxy",
+    "Music_GreydwarfCamp"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 2 blocking?; nearest is 3.84 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (-498.19, 700.86) has NO row in the mod-free 12,301-instance generator dump: nearest is Ruin2 25.9 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N0_brgs2_wmid-105",
+   "x": -501.73,
+   "z": 836.96,
+   "y": 41.18,
+   "declared_m": 2.0,
+   "pieces": 2,
+   "pieces_in_paved": 2,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 2.32,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -501.7,
+    -501.7
+   ],
+   "bbox_z": [
+    837.0,
+    837.0
+   ],
+   "segments": [
+    "road_N0_brgs2_wmid"
+   ],
+   "prefabs": {
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 2 pieces inside the paved width are 2 blocking?; nearest is 2.32 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (-501.73, 836.96) has NO row in the mod-free 12,301-instance generator dump: nearest is Greydwarf_camp1 35.6 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N0_brgs2_wmid-106",
+   "x": -522.55,
+   "z": 889.6,
+   "y": 40.62,
+   "declared_m": 2.0,
+   "pieces": 2,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.45,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -522.5,
+    -522.5
+   ],
+   "bbox_z": [
+    889.6,
+    889.6
+   ],
+   "segments": [
+    "road_N0_brgs2_wmid"
+   ],
+   "prefabs": {
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 2 blocking?; nearest is 3.45 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (-522.55, 889.6) has NO row in the mod-free 12,301-instance generator dump: nearest is StoneHouse4 33.2 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N0_brgs2_wmid-107",
+   "x": -521.82,
+   "z": 940.46,
+   "y": 35.12,
+   "declared_m": 2.0,
+   "pieces": 2,
+   "pieces_in_paved": 2,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 0.21,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -521.8,
+    -521.8
+   ],
+   "bbox_z": [
+    940.5,
+    940.5
+   ],
+   "segments": [
+    "road_N0_brgs2_wmid"
+   ],
+   "prefabs": {
+    "Music_GreydwarfCamp": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "LocationProxy",
+    "Music_GreydwarfCamp"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 2 pieces inside the paved width are 2 blocking?; nearest is 0.21 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (-521.82, 940.46) has NO row in the mod-free 12,301-instance generator dump: nearest is StoneHouse4 37.1 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N1_wnorth_shelf-108",
+   "x": 255.84,
+   "z": 3016.26,
+   "y": 32.26,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 2.18,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    255.8,
+    255.8
+   ],
+   "bbox_z": [
+    3016.3,
+    3016.3
+   ],
+   "segments": [
+    "road_N1_wnorth_shelf"
+   ],
+   "prefabs": {
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking?": 1
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 blocking?; nearest is 2.18 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (255.84, 3016.26) has NO row in the mod-free 12,301-instance generator dump: nearest is Runestone_Swamps 19.4 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N3_mid1_mid2-109",
+   "x": -660.31,
+   "z": 5444.1,
+   "y": 52.1,
+   "declared_m": 2.0,
+   "pieces": 2,
+   "pieces_in_paved": 2,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 2.88,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -660.3,
+    -660.3
+   ],
+   "bbox_z": [
+    5444.1,
+    5444.1
+   ],
+   "segments": [
+    "road_N3_mid1_mid2"
+   ],
+   "prefabs": {
+    "Music_GreydwarfCamp": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 2
+   },
+   "kinds": {
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "LocationProxy",
+    "Music_GreydwarfCamp"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 2 pieces inside the paved width are 2 blocking?; nearest is 2.88 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (-660.31, 5444.1) has NO row in the mod-free 12,301-instance generator dump: nearest is StoneTowerRuins07 18.1 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N3_mid1_mid2-110",
+   "x": -717.63,
+   "z": 5964.24,
+   "y": 34.31,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 1.41,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -717.6,
+    -717.6
+   ],
+   "bbox_z": [
+    5964.2,
+    5964.2
+   ],
+   "segments": [
+    "road_N3_mid1_mid2"
+   ],
+   "prefabs": {
+    "MistArea_edge": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking?": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 blocking?; nearest is 1.41 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is InfestedTree01 63.5 m away, outside its 5 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N3_mid1_mid2-111",
+   "x": -662.22,
+   "z": 6016.99,
+   "y": 37.37,
+   "declared_m": 4.26,
+   "pieces": 6,
+   "pieces_in_paved": 6,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 1.54,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -664.4,
+    -660.1
+   ],
+   "bbox_z": [
+    6016.0,
+    6017.9
+   ],
+   "segments": [
+    "road_N3_mid1_mid2"
+   ],
+   "prefabs": {
+    "blackmarble_column_3": 2,
+    "blackmarble_head_big02": 1,
+    "blackmarble_column_2": 1,
+    "blackmarble_head_big01": 1,
+    "blackmarble_floor": 1
+   },
+   "classes": {
+    "structure": 6
+   },
+   "kinds": {
+    "below_road": 4,
+    "walkable_surface": 2
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 6 pieces inside the paved width are 4 below_road, 2 walkable_surface; nearest is 1.54 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is InfestedTree01 104.0 m away, outside its 5 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-112",
+   "x": -637.73,
+   "z": 6086.79,
+   "y": 37.49,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 0.34,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -637.7,
+    -637.7
+   ],
+   "bbox_z": [
+    6086.8,
+    6086.8
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "MistArea": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "below_road?": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 below_road?; nearest is 0.34 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Mistlands_Giant1 65.9 m away, outside its 11 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-113",
+   "x": -619.22,
+   "z": 6612.22,
+   "y": 39.58,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 1.3,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -619.2,
+    -619.2
+   ],
+   "bbox_z": [
+    6612.2,
+    6612.2
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "MistArea_edge": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking?": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 blocking?; nearest is 1.3 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Mistlands_Statue2 64.4 m away, outside its 6 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-114",
+   "x": -1369.94,
+   "z": 6965.22,
+   "y": 47.26,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.33,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1369.9,
+    -1369.9
+   ],
+   "bbox_z": [
+    6965.2,
+    6965.2
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "piece_groundtorch": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "blocking": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 1 blocking; nearest is 3.33 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Mistlands_RoadPost1 41.0 m away, outside its 6 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-115",
+   "x": -1226.16,
+   "z": 7411.11,
+   "y": 35.85,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.84,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1226.2,
+    -1226.2
+   ],
+   "bbox_z": [
+    7411.1,
+    7411.1
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "MistArea": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking?": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 1 blocking?; nearest is 3.84 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Mistlands_DvergrTownEntrance1 136.9 m away, outside its 20 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-116",
+   "x": -1183.16,
+   "z": 7429.34,
+   "y": 35.33,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 0.66,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1183.2,
+    -1183.2
+   ],
+   "bbox_z": [
+    7429.3,
+    7429.3
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "MistArea": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking?": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 blocking?; nearest is 0.66 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Mistlands_Excavation1 110.3 m away, outside its 20 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-117",
+   "x": -1074.06,
+   "z": 7505.81,
+   "y": 40.01,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 2.92,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1074.1,
+    -1074.1
+   ],
+   "bbox_z": [
+    7505.8,
+    7505.8
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "MistArea": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "blocking?": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 blocking?; nearest is 2.92 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Mistlands_Statue1 74.0 m away, outside its 6 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-118",
+   "x": -1005.69,
+   "z": 7573.22,
+   "y": 50.89,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.6,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1005.7,
+    -1005.7
+   ],
+   "bbox_z": [
+    7573.2,
+    7573.2
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "blackmarble_1x1": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "below_road": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 1 below_road; nearest is 3.6 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Mistlands_Statue1 85.6 m away, outside its 6 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-N4_mid2_terminus-119",
+   "x": -920.74,
+   "z": 7693.76,
+   "y": 43.73,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 1.77,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -920.7,
+    -920.7
+   ],
+   "bbox_z": [
+    7693.8,
+    7693.8
+   ],
+   "segments": [
+    "road_N4_mid2_terminus"
+   ],
+   "prefabs": {
+    "MistArea_edge": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "below_road?": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 below_road?; nearest is 1.77 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Mistlands_Excavation2 112.6 m away, outside its 20 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-R3_n0bjunction_vestvik-120",
+   "x": -445.27,
+   "z": 2047.63,
+   "y": 41.4,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 0,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 3.42,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -445.3,
+    -445.3
+   ],
+   "bbox_z": [
+    2047.6,
+    2047.6
+   ],
+   "segments": [
+    "road_R3_n0bjunction_vestvik"
+   ],
+   "prefabs": {
+    "TreasureChest_meadows_buried": 1
+   },
+   "classes": {
+    "structure": 1
+   },
+   "kinds": {
+    "below_road": 1
+   },
+   "location_proxy": null,
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 0 pieces inside the paved width are 1 below_road; nearest is 3.42 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "nearest world-generator instance is Dolmen03 19.0 m away, outside its 10 m radius, so the mod-free 12,301-instance dump cannot see this body",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-R3_n0bjunction_vestvik-121",
+   "x": -455.08,
+   "z": 2047.45,
+   "y": 43.43,
+   "declared_m": 2.0,
+   "pieces": 1,
+   "pieces_in_paved": 1,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 0.44,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -455.1,
+    -455.1
+   ],
+   "bbox_z": [
+    2047.5,
+    2047.5
+   ],
+   "segments": [
+    "road_R3_n0bjunction_vestvik"
+   ],
+   "prefabs": {
+    "LocationProxy": 1
+   },
+   "classes": {
+    "nonsolid": 1
+   },
+   "kinds": {
+    "below_road?": 1
+   },
+   "location_proxy": [
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 1 pieces inside the paved width are 1 below_road?; nearest is 0.44 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (-455.08, 2047.45) has NO row in the mod-free 12,301-instance generator dump: nearest is Dolmen03 18.8 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  },
+  {
+   "name": "census-R4_vestvik_harbour-122",
+   "x": -1016.31,
+   "z": 1878.38,
+   "y": 39.0,
+   "declared_m": 2.07,
+   "pieces": 3,
+   "pieces_in_paved": 3,
+   "blocking_carriageway": 0,
+   "intrusion_m": 0.0,
+   "climb_m": 0.0,
+   "min_lateral_m": 2.17,
+   "road_half_width_m": 3.0,
+   "bbox_x": [
+    -1016.3,
+    -1016.2
+   ],
+   "bbox_z": [
+    1878.4,
+    1878.4
+   ],
+   "segments": [
+    "road_R4_vestvik_harbour"
+   ],
+   "prefabs": {
+    "RockDolmen_1": 1,
+    "BlackForestLocationMusic": 1,
+    "LocationProxy": 1
+   },
+   "classes": {
+    "structure": 1,
+    "nonsolid": 2
+   },
+   "kinds": {
+    "overhead": 1,
+    "blocking?": 2
+   },
+   "location_proxy": [
+    "BlackForestLocationMusic",
+    "LocationProxy"
+   ],
+   "placer": "mod-placed",
+   "remedy": "ACCEPT-AND-RECORD",
+   "remedy_why": "nothing a walker meets: the 3 pieces inside the paved width are 1 overhead, 2 blocking?; nearest is 2.17 m off the centreline and clears the 2.2 m a walker needs. 0 m of road to change.",
+   "walk_to": null,
+   "evidence": "its LocationProxy at (-1016.34, 1878.39) has NO row in the mod-free 12,301-instance generator dump: nearest is WoodHouse3 37.1 m away",
+   "forbid": true,
+   "forbid_why": "a protected body the router must bend around: re-route, re-terminate or accept-and-record, never delete."
+  }
+ ],
+ "forbid_contract": "Every row is a MEASUREMENT. `forbid` says whether that measurement is also a routing constraint. A body that IS the carriageway -- our own bridge decks -- is recorded with forbid=false so the record survives without forbidding the road to itself. poi.load_mod_keepout returns only forbid=true rows."
+}

@@ -1,4 +1,4 @@
-world: Ulfsland
+world: Fresh42
 settlement: tree-near
 placements:
 - id: tree-near-1
@@ -15,22 +15,22 @@ placements:
     - 16.0
     - 16.0
   solved:
-    seed: Pirate68
-    x: -614.3
-    z: -232.4
-    y: 35.27
+    seed: Fresh42
+    x: 399.6
+    z: -591.2
+    y: 32.99
     footprint_orientation: 16 m along x by 16 m along z
     flatten_cost:
-      target_y: 35.27
+      target_y: 32.99
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 38.8
-    nearest_location: StoneTowerRuins03
-    nearest_location_standoff_m: 23.470001220703125
+    nearest_location_m: 44.9
+    nearest_location: StoneHouse3
+    nearest_location_standoff_m: 18.0
   settlement:
     site: tree-near
     role: treehouse
-    patch: westisle
+    patch: trunk-primary
 - id: tree-near-2
   blueprint: hs_meadows_stilt_house.blueprint
   sha256: 9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4
@@ -45,22 +45,22 @@ placements:
     - 16.0
     - 16.0
   solved:
-    seed: Pirate68
-    x: -629.0
-    z: -240.3
-    y: 36.16
+    seed: Fresh42
+    x: 393.9
+    z: -595.1
+    y: 32.99
     footprint_orientation: 16 m along x by 16 m along z
     flatten_cost:
-      target_y: 36.16
+      target_y: 32.99
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 30.9
-    nearest_location: StoneTowerRuins03
-    nearest_location_standoff_m: 23.470001220703125
+    nearest_location_m: 40.6
+    nearest_location: StoneHouse3
+    nearest_location_standoff_m: 18.0
   settlement:
     site: tree-near
     role: treehouse
-    patch: westisle
+    patch: trunk-primary
 - id: tree-near-3
   blueprint: hs_meadows_stilt_house.blueprint
   sha256: 9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4
@@ -75,19 +75,19 @@ placements:
     - 16.0
     - 16.0
   solved:
-    seed: Pirate68
-    x: -613.7
-    z: -239.3
-    y: 35.27
+    seed: Fresh42
+    x: 400.2
+    z: -598.1
+    y: 32.99
     footprint_orientation: 16 m along x by 16 m along z
     flatten_cost:
-      target_y: 35.27
+      target_y: 32.99
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 32.2
-    nearest_location: StoneTowerRuins03
-    nearest_location_standoff_m: 23.470001220703125
+    nearest_location_m: 38.2
+    nearest_location: StoneHouse3
+    nearest_location_standoff_m: 18.0
   settlement:
     site: tree-near
     role: treehouse
-    patch: westisle
+    patch: trunk-primary

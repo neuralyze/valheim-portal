@@ -110,6 +110,59 @@ OPERATIONS = FIRST_LOAD_OPERATIONS + 2
 # record makes both branches clear the same grass.
 ZONE_GRASS_RESET_M = ZONE_SIZE / 2.0
 
+# ---------------------------------------------------------------------------
+# PAD_CLAMP_DEPENDS_ON -- THE COUNT OF SAMPLES THIS WORLD'S OWN GROUND CANNOT
+# REACH, AND NOTHING THE PLAN ASSERTS.
+#
+# Lives HERE, beside CLAMP_M, because EVERY emitter of a levelled pad must ask
+# it and they cannot all import each other: settlements/build.py imports
+# terraform/flatten.py, so a verdict kept in build.py was unreachable from the
+# installation writer -- which printed "442 beyond the +/-8 m apply clamp" for
+# iron-era-workshop and WROTE IT (Fresh42 seq 561).  The settlement emitter
+# refused the same condition through this function; one rule, two emitters,
+# one of them asking.
+#
+# It needs no declaration to be true: `over_clamp` is measured by the bill and
+# written into the ledger record.  MEASURED over both recorded ledgers:
+# Ulfsland 73 pad writes, `over_clamp` non-zero in 0; Fresh42's contaminated
+# build, 45 pad writes, non-zero in 43.  A pad the engine cannot reach is not a
+# pad: the delta is clamped, the ground stops short, and the body stands on a
+# datum the terrain never got to (wt-peak's floating watchtower, generalised).
+PAD_CLAMP_DEPENDS_ON = ("over_clamp_samples", "max_fill_m", "max_cut_m")
+
+
+def clamp_verdict(stats: dict,
+                  depends_on: tuple = PAD_CLAMP_DEPENDS_ON) -> dict:
+    """Can this world's ground actually reach the datum being written?
+
+    A VERDICT, not an assert: it returns the numbers it judged on so a refusal
+    carries its own evidence and a pass can be read.
+
+    `depends_on` is the neuter surface:
+      * without `over_clamp_samples` the gate has only the fill and cut
+        extremes, and a write whose extremes sit inside the clamp but whose
+        samples do not PASSES -- the pre-fix state;
+      * without `max_fill_m` and `max_cut_m` the same write is still REFUSED,
+        because the sample count alone carries it.
+    """
+    over = int(stats.get("over_clamp") or 0) if (
+        "over_clamp_samples" in depends_on) else 0
+    fill = float(stats.get("max_fill") if "max_fill" in stats
+                 else stats.get("max_fill_m") or 0.0)
+    cut = float(stats.get("max_cut") if "max_cut" in stats
+                else stats.get("max_cut_m") or 0.0)
+    if "max_fill_m" not in depends_on:
+        fill = 0.0
+    if "max_cut_m" not in depends_on:
+        cut = 0.0
+    beyond = max(abs(fill), abs(cut)) > CLAMP_M
+    return {"verdict": "refused" if (over or beyond) else "clear",
+            "over_clamp_samples": over,
+            "max_fill_m": round(fill, 3), "max_cut_m": round(cut, 3),
+            "clamp_m": CLAMP_M, "clamp_source": "terraform/tcdata.py::CLAMP_M",
+            "depends_on": list(depends_on)}
+
+
 # Heightmap's paint constants, as (r, g, b, a).
 PAINT_DIRT = (1.0, 0.0, 0.0, 1.0)
 PAINT_CULTIVATED = (0.0, 1.0, 0.0, 1.0)

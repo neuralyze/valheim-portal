@@ -1,0 +1,928 @@
+{
+  "owner": "TrunkNorth",
+  "world": "Ulfsland",
+  "seed": "Pirate68",
+  "instrument": "tools/jumpstart/roads/north.py report",
+  "slide_limit": 0.781,
+  "design_grade_trunk": 0.08,
+  "design_grade_mountain": 0.18,
+  "legs": [
+    {
+      "leg": "W2-brgs2-wmid",
+      "length_m": 1578.1,
+      "technique": "graded terrain only",
+      "graded_m": 1578.1,
+      "boardwalk_deck_m": 0.0,
+      "fords_terrain": 1,
+      "bridges_free_span": 0,
+      "ferries": 0,
+      "grade_limit_designed": 0.25,
+      "worst_gradient_8m": 0.254,
+      "worst_gradient_8m_at": [
+        -477.04,
+        321.04
+      ],
+      "worst_gradient_1m": 0.3654,
+      "slide_limit": 0.781,
+      "headroom_to_slide_limit": 0.5273,
+      "walkable_vs_slide_limit": true,
+      "cut_max_m": -5.18,
+      "fill_max_m": 6.52,
+      "clamp_m": 8.0,
+      "stations_over_clamp": 0,
+      "biome_pct": {
+        "BlackForest": 82.9,
+        "Meadows": 17.1
+      },
+      "zones": 33,
+      "max_pile_m": 0.0,
+      "pile_reach_m": 20.0
+    },
+    {
+      "leg": "W3-wmid-wnorth",
+      "length_m": 1565.6,
+      "technique": "graded terrain only",
+      "graded_m": 1565.6,
+      "boardwalk_deck_m": 0.0,
+      "fords_terrain": 2,
+      "bridges_free_span": 0,
+      "ferries": 0,
+      "grade_limit_designed": 0.08,
+      "worst_gradient_8m": 0.1096,
+      "worst_gradient_8m_at": [
+        -222.0,
+        2461.0
+      ],
+      "worst_gradient_1m": 0.1159,
+      "slide_limit": 0.781,
+      "headroom_to_slide_limit": 0.6716,
+      "walkable_vs_slide_limit": true,
+      "cut_max_m": -6.02,
+      "fill_max_m": 6.02,
+      "clamp_m": 8.0,
+      "stations_over_clamp": 0,
+      "biome_pct": {
+        "Meadows": 95.5,
+        "BlackForest": 4.5
+      },
+      "zones": 34,
+      "max_pile_m": 0.0,
+      "pile_reach_m": 20.0
+    },
+    {
+      "leg": "N0-brgs2-wmid",
+      "length_m": 1541.6,
+      "technique": "graded terrain + 1 piled boardwalk(s)",
+      "graded_m": 1517.6,
+      "boardwalk_deck_m": 24.0,
+      "fords_terrain": 3,
+      "bridges_free_span": 0,
+      "ferries": 0,
+      "grade_limit_designed": 0.25,
+      "worst_gradient_8m": 0.2579,
+      "worst_gradient_8m_at": [
+        -479.95,
+        671.95
+      ],
+      "worst_gradient_1m": 0.2703,
+      "slide_limit": 0.781,
+      "headroom_to_slide_limit": 0.5234,
+      "walkable_vs_slide_limit": true,
+      "cut_max_m": -2.14,
+      "fill_max_m": 2.39,
+      "clamp_m": 8.0,
+      "stations_over_clamp": 0,
+      "biome_pct": {
+        "BlackForest": 78.9,
+        "Meadows": 21.1
+      },
+      "zones": 31,
+      "max_pile_m": 1.95,
+      "pile_reach_m": 20.0
+    },
+    {
+      "leg": "N0b-wmid-wnorth",
+      "length_m": 1220.5,
+      "technique": "graded terrain only",
+      "graded_m": 1220.5,
+      "boardwalk_deck_m": 0.0,
+      "fords_terrain": 0,
+      "bridges_free_span": 0,
+      "ferries": 0,
+      "grade_limit_designed": 0.18,
+      "worst_gradient_8m": 0.1833,
+      "worst_gradient_8m_at": [
+        -58.89,
+        1794.89
+      ],
+      "worst_gradient_1m": 0.1952,
+      "slide_limit": 0.781,
+      "headroom_to_slide_limit": 0.598,
+      "walkable_vs_slide_limit": true,
+      "cut_max_m": -3.43,
+      "fill_max_m": 3.43,
+      "clamp_m": 8.0,
+      "stations_over_clamp": 0,
+      "biome_pct": {
+        "Meadows": 94.1,
+        "BlackForest": 5.9
+      },
+      "zones": 24,
+      "max_pile_m": 0.0,
+      "pile_reach_m": 20.0
+    },
+    {
+      "leg": "N1-wnorth-shelf",
+      "length_m": 3159.5,
+      "technique": "graded terrain + 5 piled boardwalk(s)",
+      "graded_m": 2913.5,
+      "boardwalk_deck_m": 246.0,
+      "fords_terrain": 24,
+      "bridges_free_span": 0,
+      "ferries": 0,
+      "grade_limit_designed": 0.18,
+      "worst_gradient_8m": 0.1855,
+      "worst_gradient_8m_at": [
+        -225.31,
+        2509.31
+      ],
+      "worst_gradient_1m": 0.1977,
+      "slide_limit": 0.781,
+      "headroom_to_slide_limit": 0.5958,
+      "walkable_vs_slide_limit": true,
+      "cut_max_m": -3.12,
+      "fill_max_m": 4.59,
+      "clamp_m": 8.0,
+      "stations_over_clamp": 0,
+      "biome_pct": {
+        "Swamp": 41.5,
+        "Plains": 40.8,
+        "Meadows": 9.9,
+        "BlackForest": 7.8
+      },
+      "zones": 67,
+      "max_pile_m": 3.12,
+      "pile_reach_m": 20.0
+    },
+    {
+      "leg": "N2-shelf-mid1",
+      "length_m": 1776.7,
+      "technique": "graded terrain + 7 piled boardwalk(s)",
+      "graded_m": 1346.7,
+      "boardwalk_deck_m": 430.0,
+      "fords_terrain": 11,
+      "bridges_free_span": 0,
+      "ferries": 0,
+      "grade_limit_designed": 0.18,
+      "worst_gradient_8m": 0.1801,
+      "worst_gradient_8m_at": [
+        -823.79,
+        5316.21
+      ],
+      "worst_gradient_1m": 0.1808,
+      "slide_limit": 0.781,
+      "headroom_to_slide_limit": 0.6012,
+      "walkable_vs_slide_limit": true,
+      "cut_max_m": -3.19,
+      "fill_max_m": 6.8,
+      "clamp_m": 8.0,
+      "stations_over_clamp": 0,
+      "biome_pct": {
+        "Swamp": 38.1,
+        "Plains": 35.1,
+        "BlackForest": 26.8
+      },
+      "zones": 36,
+      "max_pile_m": 2.27,
+      "pile_reach_m": 20.0
+    },
+    {
+      "leg": "N3-mid1-mid2",
+      "length_m": 773.7,
+      "technique": "graded terrain + 2 piled boardwalk(s)",
+      "graded_m": 671.7,
+      "boardwalk_deck_m": 102.0,
+      "fords_terrain": 3,
+      "bridges_free_span": 0,
+      "ferries": 0,
+      "grade_limit_designed": 0.25,
+      "worst_gradient_8m": 0.2502,
+      "worst_gradient_8m_at": [
+        -694.19,
+        5997.81
+      ],
+      "worst_gradient_1m": 0.251,
+      "slide_limit": 0.781,
+      "headroom_to_slide_limit": 0.5311,
+      "walkable_vs_slide_limit": true,
+      "cut_max_m": -6.69,
+      "fill_max_m": 6.69,
+      "clamp_m": 8.0,
+      "stations_over_clamp": 0,
+      "biome_pct": {
+        "BlackForest": 54.2,
+        "Swamp": 23.9,
+        "Mistlands": 21.9
+      },
+      "zones": 16,
+      "max_pile_m": 2.06,
+      "pile_reach_m": 20.0
+    },
+    {
+      "leg": "N4-mid2-terminus",
+      "length_m": 3038.4,
+      "technique": "graded terrain + 1 piled boardwalk(s)",
+      "graded_m": 3022.4,
+      "boardwalk_deck_m": 16.0,
+      "fords_terrain": 10,
+      "bridges_free_span": 0,
+      "ferries": 0,
+      "grade_limit_designed": 0.25,
+      "worst_gradient_8m": 0.2503,
+      "worst_gradient_8m_at": [
+        -1366.76,
+        7158.76
+      ],
+      "worst_gradient_1m": 0.2517,
+      "slide_limit": 0.781,
+      "headroom_to_slide_limit": 0.531,
+      "walkable_vs_slide_limit": true,
+      "cut_max_m": -7.48,
+      "fill_max_m": 7.42,
+      "clamp_m": 8.0,
+      "stations_over_clamp": 0,
+      "biome_pct": {
+        "Mistlands": 61.9,
+        "Plains": 25.2,
+        "BlackForest": 9.5,
+        "Mountain": 3.4
+      },
+      "zones": 61,
+      "max_pile_m": 2.74,
+      "pile_reach_m": 20.0
+    }
+  ],
+  "totals": {
+    "length_m": 14654.1,
+    "graded_m": 13836.1,
+    "boardwalk_deck_m": 818.0,
+    "zones": 302,
+    "worst_gradient_8m": 0.2579,
+    "worst_cut_m": -7.48,
+    "worst_fill_m": 7.42,
+    "stations_over_clamp": 0
+  },
+  "swamp": {
+    "skirted": {
+      "what": "wet ground the road SKIRTS rather than decks",
+      "how_measured": "1 m ford-components: (land | water within the 1.0 m ford depth), 8-connected, per patch, with component identity checked across the patch overlaps",
+      "result": "the whole west isle plus the northern swamp archipelago is ONE component z 2400..4199, and the northern landmass is ONE component z 4075..7744, so the route needed exactly ONE structural crossing between them. Every other wet run on the four legs is either a ford in terrain or a short piled deck across a pool the corridor could not walk round.",
+      "fords_in_terrain": 51,
+      "decked_crossings": 16
+    },
+    "decked": [
+      {
+        "leg": "N0-brgs2-wmid",
+        "crossing": "N0-brgs2-wmid-x01",
+        "span_m": 21.54,
+        "bank_a_xz": [
+          -350.0,
+          294.0
+        ],
+        "bank_b_xz": [
+          -342.0,
+          314.0
+        ],
+        "water_depth_below_plane_m": 1.35,
+        "pile_length_m": 1.95,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 1.95 m, which is 10% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N1-wnorth-shelf",
+        "crossing": "N1-wnorth-shelf-x01",
+        "span_m": 36.0,
+        "bank_a_xz": [
+          -86.0,
+          2710.0
+        ],
+        "bank_b_xz": [
+          -50.0,
+          2710.0
+        ],
+        "water_depth_below_plane_m": 1.02,
+        "pile_length_m": 1.62,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 1.62 m, which is 8% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N1-wnorth-shelf",
+        "crossing": "N1-wnorth-shelf-x02",
+        "span_m": 50.99,
+        "bank_a_xz": [
+          48.0,
+          2768.0
+        ],
+        "bank_b_xz": [
+          94.0,
+          2790.0
+        ],
+        "water_depth_below_plane_m": 1.04,
+        "pile_length_m": 1.64,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 1.64 m, which is 8% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N1-wnorth-shelf",
+        "crossing": "N1-wnorth-shelf-x03",
+        "span_m": 48.83,
+        "bank_a_xz": [
+          376.0,
+          3168.0
+        ],
+        "bank_b_xz": [
+          404.0,
+          3208.0
+        ],
+        "water_depth_below_plane_m": 1.42,
+        "pile_length_m": 2.02,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 2.02 m, which is 10% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N1-wnorth-shelf",
+        "crossing": "N1-wnorth-shelf-x04",
+        "span_m": 58.0,
+        "bank_a_xz": [
+          434.0,
+          3260.0
+        ],
+        "bank_b_xz": [
+          434.0,
+          3318.0
+        ],
+        "water_depth_below_plane_m": 1.42,
+        "pile_length_m": 2.02,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 2.02 m, which is 10% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N1-wnorth-shelf",
+        "crossing": "N1-wnorth-shelf-x05",
+        "span_m": 21.26,
+        "bank_a_xz": [
+          22.0,
+          4114.0
+        ],
+        "bank_b_xz": [
+          8.0,
+          4130.0
+        ],
+        "water_depth_below_plane_m": 2.52,
+        "pile_length_m": 3.12,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 3.12 m, which is 16% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N2-shelf-mid1",
+        "crossing": "N2-shelf-mid1-x01",
+        "span_m": 38.83,
+        "bank_a_xz": [
+          -518.0,
+          4748.0
+        ],
+        "bank_b_xz": [
+          -496.0,
+          4780.0
+        ],
+        "water_depth_below_plane_m": 1.66,
+        "pile_length_m": 2.26,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 2.26 m, which is 11% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N2-shelf-mid1",
+        "crossing": "N2-shelf-mid1-x02",
+        "span_m": 55.32,
+        "bank_a_xz": [
+          -506.0,
+          4820.0
+        ],
+        "bank_b_xz": [
+          -518.0,
+          4874.0
+        ],
+        "water_depth_below_plane_m": 1.67,
+        "pile_length_m": 2.27,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 2.27 m, which is 11% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N2-shelf-mid1",
+        "crossing": "N2-shelf-mid1-x03",
+        "span_m": 42.94,
+        "bank_a_xz": [
+          -518.0,
+          4888.0
+        ],
+        "bank_b_xz": [
+          -498.0,
+          4926.0
+        ],
+        "water_depth_below_plane_m": 1.29,
+        "pile_length_m": 1.89,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 1.89 m, which is 9% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N2-shelf-mid1",
+        "crossing": "N2-shelf-mid1-x04",
+        "span_m": 66.21,
+        "bank_a_xz": [
+          -546.0,
+          4954.0
+        ],
+        "bank_b_xz": [
+          -606.0,
+          4982.0
+        ],
+        "water_depth_below_plane_m": 1.41,
+        "pile_length_m": 2.01,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 2.01 m, which is 10% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N2-shelf-mid1",
+        "crossing": "N2-shelf-mid1-x05",
+        "span_m": 43.27,
+        "bank_a_xz": [
+          -610.0,
+          4986.0
+        ],
+        "bank_b_xz": [
+          -634.0,
+          5022.0
+        ],
+        "water_depth_below_plane_m": 1.27,
+        "pile_length_m": 1.87,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 1.87 m, which is 9% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N2-shelf-mid1",
+        "crossing": "N2-shelf-mid1-x06",
+        "span_m": 60.46,
+        "bank_a_xz": [
+          -650.0,
+          5042.0
+        ],
+        "bank_b_xz": [
+          -684.0,
+          5092.0
+        ],
+        "water_depth_below_plane_m": 1.19,
+        "pile_length_m": 1.79,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 1.79 m, which is 9% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N2-shelf-mid1",
+        "crossing": "N2-shelf-mid1-x07",
+        "span_m": 63.25,
+        "bank_a_xz": [
+          -758.0,
+          5162.0
+        ],
+        "bank_b_xz": [
+          -810.0,
+          5198.0
+        ],
+        "water_depth_below_plane_m": 1.3,
+        "pile_length_m": 1.9,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 1.90 m, which is 10% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N3-mid1-mid2",
+        "crossing": "N3-mid1-mid2-x01",
+        "span_m": 44.0,
+        "bank_a_xz": [
+          -706.0,
+          5806.0
+        ],
+        "bank_b_xz": [
+          -706.0,
+          5850.0
+        ],
+        "water_depth_below_plane_m": 1.3,
+        "pile_length_m": 1.9,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 1.90 m, which is 10% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N3-mid1-mid2",
+        "crossing": "N3-mid1-mid2-x02",
+        "span_m": 49.48,
+        "bank_a_xz": [
+          -718.0,
+          5888.0
+        ],
+        "bank_b_xz": [
+          -730.0,
+          5936.0
+        ],
+        "water_depth_below_plane_m": 1.46,
+        "pile_length_m": 2.06,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 2.06 m, which is 10% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      },
+      {
+        "leg": "N4-mid2-terminus",
+        "crossing": "N4-mid2-terminus-x01",
+        "span_m": 14.14,
+        "bank_a_xz": [
+          -1354.0,
+          7302.0
+        ],
+        "bank_b_xz": [
+          -1344.0,
+          7312.0
+        ],
+        "water_depth_below_plane_m": 2.14,
+        "pile_length_m": 2.74,
+        "pile_reach_m": 20.0,
+        "within_pile_reach": true,
+        "free_span_needed": false,
+        "why_not_a_free_span": "the bed carries piles at 2.74 m, which is 14% of the MEASURED ~20 m reach, so every bay is supported and the 96 m FREE-SPAN ceiling does not apply. Quoting that ceiling against a piled deck is comparing two different structures.",
+        "deck_datum_y": 30.6,
+        "approach_arrives_on": "the deck datum 30.6 m, pinned before grading, so the graded approach meets the deck with no step -- the defect DECK_DATUM_Y exists to prevent, measured once at +0.648 m on T13",
+        "bay_spacing_m": 4.0
+      }
+    ]
+  },
+  "mountain_passes": [
+    {
+      "leg": "N0-brgs2-wmid",
+      "saddle_xz": [
+        -286.5,
+        1269.5
+      ],
+      "crest_profile_y": 65.54,
+      "generated_y_at_crest": 66.26,
+      "generated_relief_over_pass_m": 12.85,
+      "grade_achieved_up": 0.066,
+      "grade_achieved_down": 0.0975,
+      "needs": "cut and fill",
+      "cut_m": -0.72,
+      "fill_m": 0.52,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N4-mid2-terminus",
+      "saddle_xz": [
+        -991.3,
+        7616.7
+      ],
+      "crest_profile_y": 60.32,
+      "generated_y_at_crest": 62.33,
+      "generated_relief_over_pass_m": 20.41,
+      "grade_achieved_up": 0.1326,
+      "grade_achieved_down": 0.133,
+      "needs": "cut and fill",
+      "cut_m": -4.12,
+      "fill_m": 2.88,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N3-mid1-mid2",
+      "saddle_xz": [
+        -678.0,
+        5546.4
+      ],
+      "crest_profile_y": 56.66,
+      "generated_y_at_crest": 56.96,
+      "generated_relief_over_pass_m": 11.8,
+      "grade_achieved_up": 0.0272,
+      "grade_achieved_down": 0.0977,
+      "needs": "cut and fill",
+      "cut_m": -0.4,
+      "fill_m": 0.4,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N4-mid2-terminus",
+      "saddle_xz": [
+        -1253.5,
+        6610.0
+      ],
+      "crest_profile_y": 54.05,
+      "generated_y_at_crest": 54.05,
+      "generated_relief_over_pass_m": 11.96,
+      "grade_achieved_up": 0.0624,
+      "grade_achieved_down": 0.0439,
+      "needs": "cut and fill",
+      "cut_m": -0.28,
+      "fill_m": 0.28,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N4-mid2-terminus",
+      "saddle_xz": [
+        -1378.0,
+        6986.8
+      ],
+      "crest_profile_y": 53.92,
+      "generated_y_at_crest": 57.42,
+      "generated_relief_over_pass_m": 14.13,
+      "grade_achieved_up": 0.0228,
+      "grade_achieved_down": 0.0789,
+      "needs": "cut and fill",
+      "cut_m": -3.53,
+      "fill_m": 4.88,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N0-brgs2-wmid",
+      "saddle_xz": [
+        -464.4,
+        652.4
+      ],
+      "crest_profile_y": 53.61,
+      "generated_y_at_crest": 53.63,
+      "generated_relief_over_pass_m": 10.72,
+      "grade_achieved_up": 0.0559,
+      "grade_achieved_down": 0.0437,
+      "needs": "cut and fill",
+      "cut_m": -0.76,
+      "fill_m": 0.76,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N1-wnorth-shelf",
+      "saddle_xz": [
+        387.5,
+        4060.5
+      ],
+      "crest_profile_y": 53.19,
+      "generated_y_at_crest": 53.28,
+      "generated_relief_over_pass_m": 6.93,
+      "grade_achieved_up": 0.0504,
+      "grade_achieved_down": 0.0401,
+      "needs": "cut and fill",
+      "cut_m": -0.83,
+      "fill_m": 0.83,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N0b-wmid-wnorth",
+      "saddle_xz": [
+        -214.0,
+        2178.3
+      ],
+      "crest_profile_y": 47.26,
+      "generated_y_at_crest": 47.34,
+      "generated_relief_over_pass_m": 8.7,
+      "grade_achieved_up": 0.0195,
+      "grade_achieved_down": 0.0674,
+      "needs": "cut and fill",
+      "cut_m": -0.56,
+      "fill_m": 0.39,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N4-mid2-terminus",
+      "saddle_xz": [
+        -1147.8,
+        7434.0
+      ],
+      "crest_profile_y": 43.91,
+      "generated_y_at_crest": 46.58,
+      "generated_relief_over_pass_m": 15.53,
+      "grade_achieved_up": 0.0515,
+      "grade_achieved_down": 0.0209,
+      "needs": "cut and fill",
+      "cut_m": -4.09,
+      "fill_m": 4.93,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N0b-wmid-wnorth",
+      "saddle_xz": [
+        -42.0,
+        1711.9
+      ],
+      "crest_profile_y": 43.54,
+      "generated_y_at_crest": 43.54,
+      "generated_relief_over_pass_m": 11.73,
+      "grade_achieved_up": 0.0237,
+      "grade_achieved_down": 0.0844,
+      "needs": "cut and fill",
+      "cut_m": -2.71,
+      "fill_m": 2.53,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N4-mid2-terminus",
+      "saddle_xz": [
+        -617.8,
+        6597.8
+      ],
+      "crest_profile_y": 41.81,
+      "generated_y_at_crest": 43.88,
+      "generated_relief_over_pass_m": 13.71,
+      "grade_achieved_up": 0.0089,
+      "grade_achieved_down": 0.0367,
+      "needs": "cut and fill",
+      "cut_m": -3.84,
+      "fill_m": 4.87,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N2-shelf-mid1",
+      "saddle_xz": [
+        -530.0,
+        4551.0
+      ],
+      "crest_profile_y": 41.6,
+      "generated_y_at_crest": 41.78,
+      "generated_relief_over_pass_m": 12.63,
+      "grade_achieved_up": 0.0483,
+      "grade_achieved_down": 0.0895,
+      "needs": "cut and fill",
+      "cut_m": -1.38,
+      "fill_m": 2.09,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N4-mid2-terminus",
+      "saddle_xz": [
+        -654.0,
+        6185.1
+      ],
+      "crest_profile_y": 39.55,
+      "generated_y_at_crest": 41.78,
+      "generated_relief_over_pass_m": 12.46,
+      "grade_achieved_up": 0.0256,
+      "grade_achieved_down": 0.0172,
+      "needs": "cut and fill",
+      "cut_m": -2.34,
+      "fill_m": 2.95,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N4-mid2-terminus",
+      "saddle_xz": [
+        -1323.9,
+        7332.1
+      ],
+      "crest_profile_y": 38.21,
+      "generated_y_at_crest": 38.62,
+      "generated_relief_over_pass_m": 12.57,
+      "grade_achieved_up": 0.0499,
+      "grade_achieved_down": 0.0014,
+      "needs": "cut and fill",
+      "cut_m": -3.47,
+      "fill_m": 4.67,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N1-wnorth-shelf",
+      "saddle_xz": [
+        414.0,
+        3459.7
+      ],
+      "crest_profile_y": 37.38,
+      "generated_y_at_crest": 37.72,
+      "generated_relief_over_pass_m": 8.19,
+      "grade_achieved_up": 0.0263,
+      "grade_achieved_down": 0.0115,
+      "needs": "cut and fill",
+      "cut_m": -0.69,
+      "fill_m": 1.48,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N4-mid2-terminus",
+      "saddle_xz": [
+        -816.6,
+        6674.0
+      ],
+      "crest_profile_y": 36.69,
+      "generated_y_at_crest": 36.69,
+      "generated_relief_over_pass_m": 10.98,
+      "grade_achieved_up": 0.0277,
+      "grade_achieved_down": 0.0157,
+      "needs": "cut and fill",
+      "cut_m": -6.46,
+      "fill_m": 2.04,
+      "inside_usable_clamp": true
+    },
+    {
+      "leg": "N1-wnorth-shelf",
+      "saddle_xz": [
+        -270.0,
+        2640.5
+      ],
+      "crest_profile_y": 35.84,
+      "generated_y_at_crest": 35.95,
+      "generated_relief_over_pass_m": 7.56,
+      "grade_achieved_up": 0.0122,
+      "grade_achieved_down": 0.0406,
+      "needs": "cut and fill",
+      "cut_m": -1.95,
+      "fill_m": 1.9,
+      "inside_usable_clamp": true
+    }
+  ],
+  "refusals": [
+    {
+      "what": "a boardwalk to the 195 m2 islet at z +7744.5 .. +7760.5",
+      "span_m": 79.2,
+      "max_pile_m": 18.77,
+      "pile_reach_m": 20.0,
+      "northing_bought_m": 21.0,
+      "why": "79.2 m of deck on piles at 94 % of the MEASURED pile reach, to stand 21.0 m further north on 195 m2 of rock that goes nowhere. The ferry crosses from the main shore regardless, so the islet is not on the way to anything."
+    },
+    {
+      "what": "a bridge across the final 278.0 m chord to the Deep North",
+      "span_m": 278.0,
+      "span_ceiling_m": 96.0,
+      "why": "2.90x the MEASURED 96 m absolute span ceiling, over a bed at the 0.00 ocean-floor clamp needing a 30.6 m pile against ~20 m of reach. Both ceilings exceeded in one chord: ferry."
+    }
+  ]
+}

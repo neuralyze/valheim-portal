@@ -1,0 +1,90 @@
+{
+  "route_id": "ferry-north-deepnorth",
+  "why": "the ONLY way north of z +7740 on this seed. Both ceilings are exceeded in the same chord and the pier-at-the-limit test above rules out the bridge a reader will ask for.",
+  "decision": {
+    "shore_gap_m": 278.0,
+    "shore_gap_over_ceiling": 2.9,
+    "free_span_ceiling_m": 96.0,
+    "span_verdict": "REFUSED",
+    "sail_depth_min_m": 9.51,
+    "sail_depth_max_m": 30.0,
+    "ocean_floor_clamp_m": 30.0,
+    "pile_reach_m": 20.0,
+    "pile_verdict": "REFUSED",
+    "piers_at_absolute_pile_limit": {
+      "south_head_z": 7806.0,
+      "south_head_pile_m": 19.93,
+      "north_head_z": 7962.0,
+      "north_head_pile_m": 19.67,
+      "residual_head_to_head_m": 156.0,
+      "residual_over_ceiling": 1.62,
+      "conclusion": "no pier length makes this a bridge"
+    }
+  },
+  "distances": {
+    "shore_gap_m": 278.0,
+    "head_to_head_m": 244.0,
+    "sail_m": 228.0,
+    "which_goes_on_the_guidepost": "sail_m -- it is what a passenger travels"
+  },
+  "ends": {
+    "ferry-terminal-north-south": {
+      "shore_xz": [
+        -844.0,
+        7740.0
+      ],
+      "shore_h": 30.18,
+      "biome": "Mistlands",
+      "head_xz": [
+        -844.0,
+        7754.0
+      ],
+      "head_pile_m": 6.1,
+      "pier_length_m": 14.0,
+      "berth_xz": [
+        -844.0,
+        7762.0
+      ],
+      "berth_depth_m": 9.51,
+      "deck_top_y": 30.6,
+      "seaward_bearing_deg": 0.0,
+      "guidepost": "FERRY NORTH - to the Deep North terminal, 228 m across open water."
+    },
+    "ferry-terminal-north-deepnorth": {
+      "shore_xz": [
+        -844.0,
+        8018.0
+      ],
+      "shore_h": 30.86,
+      "biome": "DeepNorth",
+      "head_xz": [
+        -844.0,
+        7998.0
+      ],
+      "head_pile_m": 7.84,
+      "pier_length_m": 20.0,
+      "berth_xz": [
+        -844.0,
+        7990.0
+      ],
+      "berth_depth_m": 10.14,
+      "deck_top_y": 30.6,
+      "seaward_bearing_deg": 180.0,
+      "guidepost": "FERRY SOUTH - to the north road terminus, 228 m across open water."
+    }
+  },
+  "deck_datum_shared": true,
+  "landing": {
+    "biome": "DeepNorth",
+    "north_shore_xz": [
+      -844.0,
+      8018.0
+    ],
+    "component_z_from": 8017.5,
+    "component_z_to_at_least": 8209.5,
+    "component_area_m2_in_window": 94194,
+    "what_it_means": "the Deep North inner edge is z +8000 and this landing is at z +8018, i.e. 18 m INSIDE it. From the north terminal a player walks in the Deep North."
+  },
+  "both_guideposts_name_the_other_end": true,
+  "refused": "a bridge, and a one-ended terminal. A missing far terminal is a missing road as well as a missing dock: S14-eastlobe-ferryeast was validated and deliberately not built because its terminal had zero pieces in the world."
+}

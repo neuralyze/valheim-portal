@@ -1,0 +1,43 @@
+{
+  "x1": {
+    "span_m": 11.2,
+    "south_xz": [
+      -40.5,
+      4070.5
+    ],
+    "north_xz": [
+      -45.5,
+      4080.5
+    ],
+    "south_h": 29.08,
+    "north_h": 29.31,
+    "bed_min_h": 27.33,
+    "max_pile_m": 3.27,
+    "deck_datum_y": 30.6,
+    "frac_chord_past_pile_reach": 0.0,
+    "technique": "boardwalk on piles",
+    "within_span_ceiling": true,
+    "within_pile_reach": true
+  },
+  "ferry_chord": null,
+  "islet": {
+    "span_m": 79.2,
+    "south_xz": [
+      -1095.5,
+      7691.5
+    ],
+    "north_xz": [
+      -1153.5,
+      7745.5
+    ],
+    "south_h": 29.06,
+    "north_h": 29.03,
+    "bed_min_h": 11.83,
+    "max_pile_m": 18.77,
+    "deck_datum_y": 30.6,
+    "frac_chord_past_pile_reach": 0.0,
+    "technique": "boardwalk on piles",
+    "within_span_ceiling": true,
+    "within_pile_reach": true
+  }
+}

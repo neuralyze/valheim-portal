@@ -19,6 +19,27 @@ terraform, and steps 0 and 1 below are measured rather than reasoned.
 Steps 0 and 1 are both owned by `tools/jumpstart/clearing/`; they are listed
 separately because the reason they are two steps is easy to get wrong.
 
+## Every step writes THROUGH THE LEDGER
+
+Each step appends its write to the world's ledger BEFORE sending it
+(`terraform/flatten.py::install_emit` -> `ledger/live.py` `LiveBuilder.emit`),
+and each takes `--actor`: `clear.py apply` (zones_generate + objects_clear),
+`flatten.py apply` (one `terrain_write role=site_pad` per placement, unioned
+with the ledger's claims in its zones), `sites.py --flattened --apply` (one
+`spawn_plan role=site_body` per plan it could make, and rc 1 naming every one
+it could not) and `stock.py` (one `spawn`/`portal role=site_prop` per fixture;
+it refuses a site whose body has no live `spawn_plan`).
+
+Why this is an ordering rule and not bookkeeping: a zone holds ONE
+`_TerrainCompiler` and every terrain write deletes it before spawning its own,
+keeping earlier ground only by re-reading it out of the ledger. A pad the
+ledger never saw is erased by the next write in its zone. MEASURED: the
+previous Fresh42 drive ran steps 0-2 and 4 as 39 unit-runs at rc 0 that appended
+ZERO records, and on the current route 10 of the 36 installation-pad zones
+(2,092 samples) sit under a later road write. `INSTALLATION_WRITE_PATH_DEPENDS_ON`
+in `flatten.py` is the declaration; `flatten.py selftest` and `buildstage.py
+selftest` neuter both of its terms on an in-memory world.
+
 ## 0. Generate the site's zones, before touching anything else
 
 With no players online the site's zones have not been generated, so its trees
@@ -86,6 +107,60 @@ distance to their CENTRE; `flatten.py`'s `zones_for` selects any zone whose
 65-sample lattice touches the pad, i.e. centre within `32.5 + pad_half_extent`.
 Since `half_diagonal >= pad_half_extent`, the clearing reach exceeds the flatten
 set by at least 14.75 m on every axis.
+
+## 0b. For a ROAD: census the zones you just generated, BEFORE routing
+
+A site's zones are generated for its own pad, and the next thing that happens
+to them is a clearing pass that deletes vegetation. A ROAD's zones are
+different in one way that turned out to matter: the road is PLANNED before its
+zones exist, so the plan cannot see anything generating those zones creates.
+
+Generating a zone is the moment a `More_World_Locations_AIO` structure is
+CREATED. `ribbon.py`'s live path generated every zone the finished road
+crosses (its STEP 0) and then asked exactly one question about each --
+`objects_count id=_ZoneCtrl`, i.e. "did a controller appear" -- before writing
+terrain through it. It never asked what was standing there, and the router
+could not have known either: it planned against the world GENERATOR's location
+dump, which is mod-free by construction.
+
+MEASURED on Ulfsland: the gap from a zone's creation to its paving is a median
+of 6 ledger steps and ranges from 1 to 206; 5,318 non-clearable objects stand
+in the paved width plus a 1 m shoulder over 122 bodies; 641 pieces in 48 bodies
+block a walker; and 42 of those 48 bodies were ALREADY STANDING when their road
+was written.
+
+So a road has two extra steps, and they go between 0 and 1:
+
+```
+0.  GENERATE THE ZONES   roads/precensus.py survey   (per zone, then...)
+0b. CENSUS THEM          roads/precensus.py survey   (...read that zone, now)
+0c. ROUTE                roads/network.py plan --census <artefact>
+1.  CLEAR / PAVE         roads/clear.py, roads/ribbon.py build --census
+```
+
+Each step refuses to run out of order, and the refusals are the point:
+
+* `network.py plan` with no `--census` REFUSES and names the three commands.
+  `--poi-source {all,generator}` is gone; neither of its populations was a
+  reading of the world the road will cross.
+* `precensus.py survey` generates a zone and reads it IN THE SAME CALL, so no
+  cell is ever censused before it exists. The artefact records both timestamps.
+* the router is CONFINED to the censused cells, and `coverage_gate` then proves
+  the finished line never left them. The constraint and the check share one
+  cell set, so they cannot drift.
+* `ribbon.py build` REFUSES a plan carrying no census verdict, re-checks
+  coverage at the write, and re-checks FRESHNESS -- a zone regenerated after
+  the census holds objects the census never saw. `--census-waiver "<reason>"`
+  is the only way past, the reason is required, and it goes in the ledger.
+
+The coverage gate's reference is a socket census, which is a DIFFERENT artefact
+from the PatchScan field the route was planned on. That is deliberate: the
+walkability check that declared 84 impassable locations WALKABLE composed its
+reference from the same field as the thing under test, and could not fail.
+
+The bill is visible before any call is made: `precensus.py cells` prints cells,
+zones and boxes per segment. For Ulfsland's 39 built segments at the default
+16 m band half it is 5,003 cells, 622 zones, 25,015 boxes.
 
 ## 1. Clear vegetation, after generating and either side of the flatten
 
@@ -302,8 +377,140 @@ Distance is measured to the pad RECTANGLE, not to the pad centre: that is
 strictly tighter than a half-diagonal circle and needs no margin for its own
 shape. The refusal is measured to fire on the pad that suffered the defect --
 re-running pad C's flatten now reports the marker at 0.0 m against a 58 m
-stand-off and writes nothing -- and a clean pad passes. `--allow-near-location`
-overrides it and prints the full violation list; there is no silent override.
+stand-off and writes nothing -- and a clean pad passes. There is no override:
+the pad goes through the ledger, and the ledger's schema refuses any
+`terrain_write` whose `location_check.verdict` is not `clear`, for every writer.
 
 Re-measuring the 11 m overshoot for more location types is the honest
 improvement still outstanding, and it belongs to whoever owns the dump.
+
+A location with an INTERIOR is not bounded by any radius about its marker.
+Its interior is built in the sky (y ~5000) and fills its marker's whole 64 m
+zone, and `objects_remove`/`objects_count` filter by `Utils.DistanceXZ`, so a
+clearing cylinder that reaches the zone reaches the interior. MEASURED on
+Fresh42 drive 5: 992 of 992 objects above y 1000 lie in the zone square of a
+location declaring `interiorRadius` > 0, up to 45.0 m from the marker and
+1.24 m from the zone edge; wt-south and wt-east were refused at step 5 on
+Crypt4's and Crypt3's interior doors and torches after siting and the dump
+gate had both passed them. `clearance.Locations.cylinder_room`
+(`CLEARING_POPULATION_DEPENDS_ON`: pieces, interior_zone) is now the one rule,
+asked through `settlements/build.py::clearing_gate`. `settlements/plan.py`
+sites every searched outlier pad and every town plot by the full population
+(`CLEARING_GATE_DEPENDS_ON`), so such a pad is never placed; a DECLARED pad is
+not moved and carries the verdict (`pad.clearing_gate`). The build's own
+pre-generation gate stays on `pieces` (`BUILD_ROOM_DEPENDS_ON`) and records
+the full room, because the live cylinder census after it is exact and the
+zone is only an upper bound (on Ulfsland's save it would refuse six standing
+units whose cylinders hold no non-natural interior object).
+`plan.py --selftest` neuters it to pieces-only on wt-south's drive-5 spot.
+Stage 7 asks the same rule (`blueprints/solve_placements.py::
+clearing_room_refusal`, `CLEARING_ROOM_DEPENDS_ON`): a candidate whose body
+pad's step-1 cylinder reaches one is recorded as a `clearing_room_m`
+violation, and a ring pad that does is dropped as a neighbour's.
+
+## The third gate: a pad that does not stand under its whole body
+
+A pad was sized on the body UNTURNED (`settlements/layout.py`: yaw-0 footprint
+plus 2 x 3 m) and stamped axis-aligned, while the body is placed turned to its
+street. `Heightmap.GetHeight` answers every query with its nearest 1 m vertex,
+so the ground a body stands on is the set of vertices under its footprint AT
+ITS YAW, and a vertex outside the pad keeps its generated height under a wall.
+MEASURED 2026-09-24, piece-exact: on `plan.Fresh42.json` 1 of 49 units
+(`vestvik-hall-1`, yaw 50, 1.740 m, 13 of 172 vertices); on Ulfsland's
+`plan.json` 3 of 50, all standing (`vestvik-hall-1` yaw 70 1.920 m 19/169,
+`stenvik-longhouse-1`/`-2` yaw 30 0.482 m 4/169 and 6/170). The gate passed
+all three: `pad_coverage` is populated by the pad's own rectangle and
+`pad_flatness` by the samples the pad wrote, and neither contains ground
+outside the pad.
+
+`terraform/flatten.py::pad_extent_at_yaw` derives the pad from the body's
+footprint at its yaw (`PAD_EXTENT_DEPENDS_ON`: declared pad as a floor, body
+footprint plus margin, the emitter's own `xz_footprint` at the yaw, completed
+on the lattice the writer stamps). `settlements/build.py::unit_records` hands
+every consumer that pad. `flatten.placed_body_cover` is the check:
+`build.py emit_pad` and `flatten.py apply` REFUSE a pad that leaves any
+vertex under the body unstamped, before anything is written.
+`flatten.py selftest` neuters each term on geometry built in memory.
+
+Every tool that decides a pad under a body asks that one rule; none restates
+it. The installation solver (`blueprints/solve_placements.py::written_pad`,
+stage 7) and the installation re-costs (`network/recost_pad.py`,
+`relocate_pad.py`) go through `flatten.placed_pad_at_yaw` at the preset
+path's zero margin, with the rectangle the search assumed as the floor; the
+block's `footprint_orientation` is that pad, `pad_extent` records the
+derivation, and `site_finder.engine_bill` bills it. Before this, stage 7
+wrote the searched rectangle axis-aligned and the live Fresh42 build's step 2
+REFUSED 8 of 13 installations on it (worst `mountain-outpost`, searched on
+the swapped rectangle: 308 of 748 vertices, 6.588 m); Ulfsland's set holds
+the same 8 (worst `sandbox-harbour` 7.348 m). The harbour terraces
+(`settlements/harbour_city.py::house_seat`) and the portal hall
+(`settlements/portal_hall.py::hall_pad`) are on it too.
+`solve_placements.py --selftest` neuters it on the emitter itself.
+
+A pad that grows changes step 1 as well: `clearing/area.py` sizes the
+clearing cylinder from the same `pad_extent` (Fresh42 `mountain-outpost`
+20.44 -> 24.50 m), so a unit cleared on the old pad has an uncleared ring.
+`buildstage --resume` keys a step on its argv, which names the placements
+file and not its content: re-run step 1 for a re-solved unit explicitly.
+
+## The fourth gate: a fixture that stands off the ground levelled for it
+
+Step 6 (`terraform/stock.py`) stands stations, props, chests and portals at
+the PAD height, and step 5 (`settlements/build.py::hub_spots`) stands the
+hall's settlement arches and their boards there too. The search reached the
+site square (`requirement.footprint_m / 2`) while step 2 levelled the body's
+rectangle. MEASURED on Fresh42 drive 2 against the drive-2 applied ground:
+`mistlands-blackforge-base` 28 of 32 fixtures off its 18.8 x 12.8 m pad (the
+cartography table, seq 1978, 1.6 m past its edge with its top 1.98 m under the
+bank); the portal hall 76 of 106 fixtures, arches and board pieces off its
+34.8 m pad; over the other 10 installations 93 of 164.
+
+Two things now hold it:
+
+* `PAD_EXTENT_DEPENDS_ON` `fixture_ring`: stage 7 sizes the pad for what will
+  stand on it. `stock.fixture_ring` is step 6's own solve (and, for the hub,
+  step 5's arch-and-board packing over the declared settlement tags) as box
+  offsets from the centre, so one solve serves every candidate; the block
+  records it under `solved.fixture_ring`. A ring pad the clamp or a
+  neighbour (the step-1 clearing cylinder reaching a location) forbids is
+  dropped for the body's pad and recorded `refused` with its numbers; the
+  site is never lost to its fixtures.
+* `stock.SEAT_DEPENDS_ON` `written_pad`: every fixture search asks
+  `stock.PadSeat`, the writer's own `stamps` over `answering_vertices`, and a
+  fixture the written pad does not reach is REFUSED with its number (the
+  metres its site-square spot stands past the pad's edge) and the rest of the
+  site is stocked. `settlements/build.py` seats the hall's arches and boards
+  and each settlement's site end and board the same way.
+
+Seating each fixture on the natural ground under it was measured and lost:
+at a 0.5 m level tolerance it seats blackforge's 32 but leaves its station
+row 2.2-2.9 m below the pad across a bank, and seats 2 of the hall's 16
+settlement arches. The ring pads at the drive-2 sites seat all of them
+(blackforge 44.8 x 34.8 m, cut 7.14 m; the hall 56.8 m, cut 6.25 m).
+`stock.py selftest`, `flatten.py selftest` and `build.py selftest` neuter
+both. A declared duplicate (`flatten.declared_duplicate`, the one predicate
+steps 1, 2 and 6 ask) is neither cleared, levelled nor stocked: drive 2
+levelled `sandbox-harbour`'s pad twice (seqs 565 and 568).
+
+### The yard is not worth the site (`LEVELLABLE_PAD_DEPENDS_ON`)
+
+The declared `footprint_m` pad is a floor under the body, and the ring fallback
+above drops to "the body's pad" -- which carries the same floor. Where the
+floor is the whole problem that is the same rectangle again. MEASURED on Fresh42
+drive 11: `pre-bonemass#iron-era-workshop` declares 70 m over a 22.3 x 23.9 m
+body, all 13 candidates were past the +/-8 m clamp on it (chosen site: 442 of
+5041 samples, cut 10.54 m, fill 9.569 m), stage 7 recorded the block REFUSED,
+and build step 1 refused the unit -- while the same centre levels a 50 m pad.
+
+`blueprints/solve_placements.py::level_pool` bills the pool on the declared
+pad first; only where NO candidate levels it does the floor give way, 5 m at a
+time, the whole pool re-billed at each step and never below the body at its yaw
+plus its fixture ring. The pad written is the largest any candidate levels and
+the block records `pad_extent.floor` and `pad_ladder` (every rung with its
+numbers); a candidate that levels its declared pad is untouched. Where nothing
+levels on any rung `rank_pool` takes the candidate least past the clamp and the
+block is REFUSED with every rung's numbers, as before. Fresh42's
+iron-era-workshop now stands at the same centre on 55 x 55 m (cut 7.869 m, fill
+7.58 m); `clearing/area.py` sizes its cylinder from that pad (51.50 -> 40.89 m),
+so step 1 clears the smaller area. A re-solved unit's step 1 must be re-run
+against the new placements file: `buildstage --resume` keys a step on its argv.

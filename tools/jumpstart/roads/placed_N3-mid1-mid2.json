@@ -1,0 +1,6 @@
+{
+  "objects": [],
+  "method": "MEASURED from the Ulfsland ledger (op in spawn/spawn_plan/portal), NOT a live census. Scope: pieces this project has placed within 40 m of the centreline. Vegetation is NOT in this map -- the corridor's zones are ungenerated until ribbon.py's own zones_generate runs, so no vegetation ZDO exists to census before the write; it is handled by clearance AFTER the write. Vanilla locations are handled by ribbon.poi_standoff_discs.",
+  "reach_m": 40.0,
+  "retired_skipped": 0
+}

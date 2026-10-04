@@ -1,0 +1,363 @@
+world: Ulfsland
+settlement: harbour-village-sudrvik
+placements:
+- id: sudrvik-vestrbakki-1
+  blueprint: fb_viking_house_06
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 90.0
+  requirement:
+    biome: Meadows
+    footprint_m: 24.0
+    footprint_xz_m:
+    - 24.0
+    - 19.5
+  solved:
+    seed: Pirate68
+    x: 1116.0
+    z: 436.0
+    y: 32.52
+    footprint_orientation: 24 m along x by 19.5 m along z
+    flatten_cost:
+      target_y: 32.52
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 37.0
+    nearest_location: WoodHouse8
+    nearest_location_standoff_m: 22.0
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-vestrbakki-2
+  blueprint: fb_house_03
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 90.0
+  requirement:
+    biome: Meadows
+    footprint_m: 20.1
+    footprint_xz_m:
+    - 16.9
+    - 20.1
+  solved:
+    seed: Pirate68
+    x: 1136.0
+    z: 458.0
+    y: 32.608
+    footprint_orientation: 16.9 m along x by 20.1 m along z
+    flatten_cost:
+      target_y: 32.608
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 56.3
+    nearest_location: WoodFarm1
+    nearest_location_standoff_m: 44.0
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-vestrbakki-3
+  blueprint: fb_viking_house_08
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 90.0
+  requirement:
+    biome: Meadows
+    footprint_m: 17.4
+    footprint_xz_m:
+    - 17.4
+    - 17.0
+  solved:
+    seed: Pirate68
+    x: 1116.0
+    z: 478.0
+    y: 37.371
+    footprint_orientation: 17.4 m along x by 17 m along z
+    flatten_cost:
+      target_y: 37.371
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 47.5
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-vestrbakki-4
+  blueprint: fb_viking_house_04
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 90.0
+  requirement:
+    biome: Meadows
+    footprint_m: 19.8
+    footprint_xz_m:
+    - 16.5
+    - 19.8
+  solved:
+    seed: Pirate68
+    x: 1154.0
+    z: 464.0
+    y: 32.604
+    footprint_orientation: 16.5 m along x by 19.8 m along z
+    flatten_cost:
+      target_y: 32.604
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 48.0
+    nearest_location: WoodFarm1
+    nearest_location_standoff_m: 44.0
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-vestrbakki-5
+  blueprint: fb_house_02
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 90.0
+  requirement:
+    biome: Meadows
+    footprint_m: 15.6
+    footprint_xz_m:
+    - 11.4
+    - 15.6
+  solved:
+    seed: Pirate68
+    x: 1118.0
+    z: 456.0
+    y: 34.032
+    footprint_orientation: 11.4 m along x by 15.6 m along z
+    flatten_cost:
+      target_y: 34.032
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 45.8
+    nearest_location: Dolmen02
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-austrbakki-6
+  blueprint: fb_viking_house_06
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 270.0
+  requirement:
+    biome: Meadows
+    footprint_m: 24.0
+    footprint_xz_m:
+    - 24.0
+    - 19.5
+  solved:
+    seed: Pirate68
+    x: 1256.0
+    z: 486.0
+    y: 33.029
+    footprint_orientation: 24 m along x by 19.5 m along z
+    flatten_cost:
+      target_y: 33.029
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 57.7
+    nearest_location: Runestone_Boars
+    nearest_location_standoff_m: 25.520000457763672
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-austrbakki-7
+  blueprint: fb_house_03
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 270.0
+  requirement:
+    biome: Meadows
+    footprint_m: 20.1
+    footprint_xz_m:
+    - 16.9
+    - 20.1
+  solved:
+    seed: Pirate68
+    x: 1234.0
+    z: 490.0
+    y: 32.011
+    footprint_orientation: 16.9 m along x by 20.1 m along z
+    flatten_cost:
+      target_y: 32.011
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 71.9
+    nearest_location: Runestone_Boars
+    nearest_location_standoff_m: 25.520000457763672
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-austrbakki-8
+  blueprint: fb_house_02
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 270.0
+  requirement:
+    biome: Meadows
+    footprint_m: 15.6
+    footprint_xz_m:
+    - 11.4
+    - 15.6
+  solved:
+    seed: Pirate68
+    x: 1272.0
+    z: 458.0
+    y: 32.139
+    footprint_orientation: 11.4 m along x by 15.6 m along z
+    flatten_cost:
+      target_y: 32.139
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 26.3
+    nearest_location: Runestone_Boars
+    nearest_location_standoff_m: 25.520000457763672
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-fjordhead-10
+  blueprint: fb_house_03
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 180.0
+  requirement:
+    biome: Meadows
+    footprint_m: 20.1
+    footprint_xz_m:
+    - 20.1
+    - 16.9
+  solved:
+    seed: Pirate68
+    x: 1240.0
+    z: 510.0
+    y: 34.185
+    footprint_orientation: 20.1 m along x by 16.9 m along z
+    flatten_cost:
+      target_y: 34.185
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 74.1
+    nearest_location: WoodHouse6
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-fjordhead-12
+  blueprint: fb_house_02
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 180.0
+  requirement:
+    biome: Meadows
+    footprint_m: 15.6
+    footprint_xz_m:
+    - 15.6
+    - 11.4
+  solved:
+    seed: Pirate68
+    x: 1210.0
+    z: 550.0
+    y: 38.219
+    footprint_orientation: 15.6 m along x by 11.4 m along z
+    flatten_cost:
+      target_y: 38.219
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 25.8
+    nearest_location: WoodHouse6
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-fjordhead-13
+  blueprint: fb_house_02
+  pieces: 1
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 180.0
+  requirement:
+    biome: Meadows
+    footprint_m: 15.6
+    footprint_xz_m:
+    - 15.6
+    - 11.4
+  solved:
+    seed: Pirate68
+    x: 1228.0
+    z: 562.0
+    y: 40.677
+    footprint_orientation: 15.6 m along x by 11.4 m along z
+    flatten_cost:
+      target_y: 40.677
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 26.7
+    nearest_location: WoodHouse6
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: harbour-village-sudrvik
+    role: town_body
+    patch: villB
+- id: sudrvik-roadhead
+  blueprint: none - levelled ground only
+  pieces: 0
+  sha256: ''
+  align: floor-center
+  rotation:
+    yaw: 0.0
+  requirement:
+    biome: Meadows
+    footprint_m: 12.0
+    footprint_xz_m:
+    - 12.0
+    - 8.0
+  solved:
+    seed: Pirate68
+    x: 1210.0
+    z: 557.0
+    y: 38.219
+    footprint_orientation: 12 m along x by 8 m along z
+    flatten_cost:
+      target_y: 38.219
+      resolution_m: 1.0
+      estimated: false
+    nearest_location_m: 19.0
+    nearest_location: WoodHouse6
+    nearest_location_standoff_m: 20.0
+  settlement:
+    site: harbour-village-sudrvik
+    role: street_head
+    patch: villB

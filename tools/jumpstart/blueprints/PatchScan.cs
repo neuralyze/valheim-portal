@@ -39,6 +39,62 @@
 //   instance.GetBiome(float wx, float wy)  -> Heightmap.Biome
 //   instance.GetHeight(float wx, float wy) -> float, relative to the water plane
 //
+// TWO SURFACES, AND THEY ARE NOT THE SAME FUNCTION.  This is the defect that
+// put the wt-peak watchtower 9 m in the air, MEASURED from the deployed
+// assembly's IL (assembly_valheim.dll, container
+// /opt/valheim/bepinex/valheim_server_Data/Managed, md5
+// 47df8869abdf95abedf859fce3deb022):
+//
+//   WorldGenerator::GetHeight(wx, wy)
+//       = GetBiomeHeight(GetBiome(wx, wy), wx, wy)      -- THE POINT'S OWN BIOME
+//
+//   HeightmapBuilder::Build(data)   -- what the game actually RENDERS
+//       corner  = centre - (W*s/2, 0, W*s/2)
+//       b0 = GetBiome(corner.x,       corner.z)
+//       b1 = GetBiome(corner.x + W*s, corner.z)
+//       b2 = GetBiome(corner.x,       corner.z + W*s)
+//       b3 = GetBiome(corner.x + W*s, corner.z + W*s)   -- THE ZONE'S FOUR CORNERS
+//       per vertex (ix, iz), wx = corner.x + ix*s, wz = corner.z + iz*s:
+//         if (b1 == b0 && b2 == b0 && b3 == b0)
+//             h = GetBiomeHeight(b0, wx, wz, out mask, false, true)
+//         else
+//             tx = DUtils.SmoothStep(0, 1, ix / (float)W)
+//             tz = DUtils.SmoothStep(0, 1, iz / (float)W)
+//             h  = DUtils.Lerp(DUtils.Lerp(h_b0, h_b1, tx),
+//                              DUtils.Lerp(h_b2, h_b3, tx), tz)
+//       (IL_0114..IL_01bb for the corners, IL_02ee..IL_039c for the blend; the
+//        two trailing flags on every GetBiomeHeight call are ldc.i4.0 then
+//        ldc.i4.1, i.e. preGeneration=false, riverPreDN=true.)
+//
+// THE EXACT IMMUNITY PREDICATE, and the obvious version of it is WRONG.  "The
+// four corners agree" is NOT immunity: the fast path then evaluates corner
+// b0's height function over the WHOLE zone, so a zone whose corners agree but
+// whose INTERIOR holds another biome still diverges.  The sufficient and
+// necessary test is:
+//
+//     all four corner biomes equal  AND  every interior sample's OWN biome
+//     is that same biome
+//
+// MEASURED over all 435 written zones of Ulfsland, both surfaces scanned:
+// 335 zones immune, 100 not, and the predicate has ZERO exceptions in either
+// direction -- no immune zone disagrees by more than 1 cm, and no non-immune
+// zone agrees to within 1 cm.  92 of the 100 disagree by more than 1 m; the
+// worst is zone (-22,107) at 46.034 m, a Plains/Mistlands boundary under the
+// northern trunk road.
+//
+// The settlement case that found this: Ulfsland zone (22,24), corners
+// Meadows/Meadows/Meadows/Mountain with 2,736 of 4,225 interior samples
+// Mountain.  The blend is almost pure Meadows away from the single Mountain
+// corner, so `wt-peak`'s pad -- levelled to a `GetHeight` datum of 102.310 --
+// sits over ground the engine draws at 93.885..99.427, and its 212-piece
+// watchtower stands in 3.17..13.54 m of air.  Validated against 1,186
+// worldgen-placed trees and rocks on unwritten ground, whose ZDO y IS their
+// ground contact point: residual to this surface median -0.001 m with 8 of
+// 1,186 over 1 m, against GetHeight's 43 over 1 m and a -10.516 m tail.
+//
+// So `PATCHSCAN_SURFACE` selects which question is asked, and a flatten datum
+// MUST ask `heightmap`.
+//
 // Env vars:
 //   PATCHSCAN_REQ   request file, TSV, one patch per line, '#' comments ok:
 //                       <id>\t<centre_x>\t<centre_z>\t<half_extent_m>\t<step_m>
@@ -47,6 +103,18 @@
 //                   JSON parser is a liability nobody needs.
 //   PATCHSCAN_SEED  seed string (required)
 //   PATCHSCAN_OUT   output file (required)
+//   PATCHSCAN_SURFACE
+//                   `worldgen` (default) -> WorldGenerator.GetHeight, the
+//                   point's own biome.  Site FINDING and biome questions.
+//                   `heightmap` -> HeightmapBuilder's per-zone corner-biome
+//                   blend, the surface a player stands on.  Any FLATTEN DATUM
+//                   must use this.  Each sample is resolved into its own zone
+//                   by ZoneSystem's rule, floor((c + 32) / 64), so a request
+//                   need not be zone-aligned; a sample exactly on a zone seam
+//                   is answered by the zone that rule picks, which is the same
+//                   choice `terraform/tcdata.zone_of` and `roads/applied.py`
+//                   already make, and the seam disagreement between two
+//                   compilers is a known and separately documented hole.
 //
 // Output "VHPATCH1":
 //   magic[8] "VHPATCH1", int32 seedHash, int32 seedNameLen, seedName utf8,
@@ -82,7 +150,19 @@ namespace JumpstartPatchScan
                 SSys.Console.Error.WriteLine("[patchscan] PATCHSCAN_REQ/OUT/SEED not set; idle");
                 return;
             }
-            try { Run(req, outPath, seed); }
+            string surface = SSys.Environment.GetEnvironmentVariable("PATCHSCAN_SURFACE");
+            if (string.IsNullOrEmpty(surface)) surface = "worldgen";
+            surface = surface.Trim().ToLowerInvariant();
+            if (surface != "worldgen" && surface != "heightmap")
+            {
+                SSys.Console.Error.WriteLine("[patchscan] PATCHSCAN_SURFACE must be "
+                    + "`worldgen` or `heightmap`, got " + surface + "; refusing rather than "
+                    + "guessing, because the two differ by up to 10 m and the wrong one is "
+                    + "silently plausible");
+                Die();
+                return;
+            }
+            try { Run(req, outPath, seed, surface); }
             catch (SSys.Exception e)
             {
                 SSys.Console.Error.WriteLine("[patchscan] FATAL " + e.GetType().FullName + ": "
@@ -106,7 +186,64 @@ namespace JumpstartPatchScan
             public float Cx, Cz, Half, Step;
         }
 
-        static void Run(string reqPath, string outPath, string seedName)
+        // ZoneSystem's own zone rule and zone origin.  Restated here rather than
+        // read off ZoneSystem.instance because no ZoneSystem exists in this
+        // process -- there is no game scene, only a WorldGenerator.
+        const float ZoneSize = 64f;
+        const int HmapWidth = 64;       // Heightmap.m_width on a zone
+        const float HmapScale = 1f;     // Heightmap.m_scale on a zone
+
+        static int ZoneIndex(float c)
+        {
+            return (int)SSys.Math.Floor((c + (ZoneSize * 0.5f)) / ZoneSize);
+        }
+
+        // One zone's four corner biomes, cached: a 65x65 patch asks for the same
+        // zone 4,225 times and GetBiome is not free.
+        sealed class ZoneCorners
+        {
+            public float CornerX, CornerZ;
+            public Heightmap.Biome B0, B1, B2, B3;
+            public bool Uniform;
+        }
+
+        static ZoneCorners CornersFor(WorldGenerator wg, int zx, int zz)
+        {
+            float cx = zx * ZoneSize, cz = zz * ZoneSize;
+            float span = HmapWidth * HmapScale;
+            var zc = new ZoneCorners();
+            zc.CornerX = cx - (span * 0.5f);
+            zc.CornerZ = cz - (span * 0.5f);
+            zc.B0 = wg.GetBiome(zc.CornerX, zc.CornerZ);
+            zc.B1 = wg.GetBiome(zc.CornerX + span, zc.CornerZ);
+            zc.B2 = wg.GetBiome(zc.CornerX, zc.CornerZ + span);
+            zc.B3 = wg.GetBiome(zc.CornerX + span, zc.CornerZ + span);
+            zc.Uniform = (zc.B1 == zc.B0 && zc.B2 == zc.B0 && zc.B3 == zc.B0);
+            return zc;
+        }
+
+        // HeightmapBuilder::Build's height for one world point, evaluated in the
+        // zone that owns it.  The weights are the vertex INDEX fractions, not the
+        // raw offsets: Build computes SmoothStep(0, 1, ix / (float)m_width) where
+        // ix is the integer vertex index, and an off-lattice point's fraction is
+        // its own offset divided by the zone span, which is the same quantity
+        // continued between vertices.
+        static float HeightmapHeight(WorldGenerator wg, ZoneCorners zc, float wx, float wz)
+        {
+            global::UnityEngine.Color mask;
+            if (zc.Uniform)
+                return wg.GetBiomeHeight(zc.B0, wx, wz, out mask, false, true);
+            float span = HmapWidth * HmapScale;
+            float tx = DUtils.SmoothStep(0f, 1f, (wx - zc.CornerX) / span);
+            float tz = DUtils.SmoothStep(0f, 1f, (wz - zc.CornerZ) / span);
+            float h0 = wg.GetBiomeHeight(zc.B0, wx, wz, out mask, false, true);
+            float h1 = wg.GetBiomeHeight(zc.B1, wx, wz, out mask, false, true);
+            float h2 = wg.GetBiomeHeight(zc.B2, wx, wz, out mask, false, true);
+            float h3 = wg.GetBiomeHeight(zc.B3, wx, wz, out mask, false, true);
+            return DUtils.Lerp(DUtils.Lerp(h0, h1, tx), DUtils.Lerp(h2, h3, tx), tz);
+        }
+
+        static void Run(string reqPath, string outPath, string seedName, string surface)
         {
             var patches = new SCG.List<Patch>();
             foreach (string raw in SIO.File.ReadAllLines(reqPath))
@@ -126,7 +263,8 @@ namespace JumpstartPatchScan
                     throw new SSys.FormatException("non-positive half/step: " + line);
                 patches.Add(p);
             }
-            SSys.Console.Error.WriteLine("[patchscan] seed=" + seedName + " patches=" + patches.Count);
+            SSys.Console.Error.WriteLine("[patchscan] seed=" + seedName + " patches="
+                + patches.Count + " surface=" + surface);
 
             // Full pregeneration: rivers and lakes must be in the heights, which
             // is the whole reason a patch is more trustworthy than the grid.
@@ -163,6 +301,9 @@ namespace JumpstartPatchScan
 
                     float[] hgt = new float[n * n];
                     byte[] bio = new byte[n * n];
+                    bool hmap = (surface == "heightmap");
+                    int zoneX = int.MinValue, zoneZ = int.MinValue;
+                    ZoneCorners zc = null;
                     int k = 0;
                     for (int i = 0; i < n; i++)
                     {
@@ -170,7 +311,20 @@ namespace JumpstartPatchScan
                         for (int j = 0; j < n; j++)
                         {
                             float wx = p.Cx - p.Half + (j * p.Step) + (p.Step * 0.5f);
-                            hgt[k] = wg.GetHeight(wx, wz);
+                            if (hmap)
+                            {
+                                int zx = ZoneIndex(wx), zz = ZoneIndex(wz);
+                                if (zc == null || zx != zoneX || zz != zoneZ)
+                                {
+                                    zc = CornersFor(wg, zx, zz);
+                                    zoneX = zx; zoneZ = zz;
+                                }
+                                hgt[k] = HeightmapHeight(wg, zc, wx, wz);
+                            }
+                            else
+                            {
+                                hgt[k] = wg.GetHeight(wx, wz);
+                            }
                             bio[k] = BiomeCode(wg.GetBiome(wx, wz));
                             k++;
                         }

@@ -161,7 +161,7 @@ def peaks(mask: np.ndarray, value: np.ndarray, sep_cells: int, limit: int
 
 def best_pad(f: T.Field, x: float, z: float, width_m: float, depth_m: float,
              search_m: float = 12.0, stride_m: float = 2.0, yaw_deg: float = 0.0,
-             must_clear=None) -> dict:
+             must_clear=None, bill=None) -> dict:
     """Slide the pad inside a +/-`search_m` box and keep the cheapest offset
     that is BUILDABLE and, where `must_clear` is given, LEGAL.
 
@@ -179,6 +179,11 @@ def best_pad(f: T.Field, x: float, z: float, width_m: float, depth_m: float,
 
     `cleared_offsets` and `offsets_tried` are reported so a zero result can be
     told apart from a narrow one.
+
+    `bill(px, pz)` prices one offset.  Absent, it is `terrain1m.pad_bill` on
+    this FINDING field, which is right for ranking where to look; a pad that
+    is going to be WRITTEN is billed by `settlements/plan.py::site_bill` on
+    the surface the engine levels, over the samples the writer stamps.
     """
     best = None
     reach = math.hypot(width_m, depth_m) / 2 + search_m + 2
@@ -197,13 +202,14 @@ def best_pad(f: T.Field, x: float, z: float, width_m: float, depth_m: float,
             elif must_clear is not None:
                 continue
             try:
-                bill = T.pad_bill(f, px, pz, width_m, depth_m, yaw_deg)
+                got = (T.pad_bill(f, px, pz, width_m, depth_m, yaw_deg)
+                       if bill is None else bill(px, pz))
             except ValueError:
                 continue
-            bill["x"], bill["z"] = px, pz
-            key = (not bill["clamp_ok"], bill["moved_m3"])
+            got["x"], got["z"] = px, pz
+            key = (not got["clamp_ok"], got["moved_m3"])
             if best is None or key < (not best["clamp_ok"], best["moved_m3"]):
-                best = bill
+                best = got
     if best is None:
         raise ValueError(
             f"no pad offset inside patch {f.id} at ({x}, {z}): {tried} offsets tried, "
@@ -277,7 +283,49 @@ def ocean_distance(f: T.Field) -> np.ndarray:
     return ndi.distance_transform_edt(~sea, sampling=f.step).astype(np.float32)
 
 
-def existing_installations(world_dir: str | Path) -> list[dict]:
+# SITE_INSTALLATIONS_DEPENDS_ON: WHICH WORLD'S BUILDINGS A SETTLEMENT KEEPS OFF,
+# and it is THIS world's SOLVED placements -- nothing else and nothing less.
+#
+# THE KEY NAMED ANOTHER WORLD.  `Picker.__init__` defaulted `world_dir` to
+# `worlds/Ulfsland` and `plan.py` never passed one, so EVERY seed's site solve
+# kept its settlements 60 m off ULFSLAND's 13 solved installations (seed
+# Pirate68) and could not see one of its own.  MEASURED 2026-09-24 on Fresh42:
+# the certified plan.Fresh42.json was solved against Ulfsland's 13 discs, and
+# Fresh42's own 13 (portal hub, harbour, starter hall, station hub, ...) were
+# never read.  Nothing refused, because this reader never asked which seed a
+# placement set declares.  On THIS seed it moved nothing -- 0 of the plan's 45
+# settlement points stand inside either set of discs -- which is why it was
+# silent, and on the next seed it is a town on top of a portal hall.
+#
+# AND THE ORDER WAS INVERTED WITH IT.  `pipeline.py` ran `sites` BEFORE
+# `placements` and declared the reverse dependency; the site solve only ever
+# ran because a previous drive had left a `worlds/<World>/` behind.  From
+# scratch it refused at the end of a 137.5 s solve (roads/spec.py's import-time
+# `installation_xz`).  `pipeline.audit_reads` now checks the table against
+# `worldseed.installations_read`, the one declaration of where a world's solved
+# installations live, which this reader globs too.
+def installations_dir(world: str) -> Path:
+    """The directory holding `world`'s placement sets -- the one place a
+    settlement solve learns where this world's own buildings stand."""
+    if not world:
+        raise SystemExit(
+            "REFUSING: a site solve needs the WORLD whose buildings it keeps "
+            "off, and none was given. A settlement plan is a function of the "
+            "seed AND of the installations already solved for this world; "
+            "set $VH_WORLD.")
+    return _worldseed().installations_read(world)[0]
+
+
+def _worldseed():
+    if str(HERE.parent) not in sys.path:
+        sys.path.append(str(HERE.parent))
+    import worldseed                                        # noqa: PLC0415
+    return worldseed
+
+
+
+def existing_installations(world_dir: str | Path, *, seed_: str | None = None,
+                           world_: str | None = None) -> list[dict]:
     """The installations already recorded for this world, as exclusion discs.
 
     MEASURED reason this is here rather than assumed away: the castle search's
@@ -290,20 +338,46 @@ def existing_installations(world_dir: str | Path) -> list[dict]:
     The disc radius is the recorded `requirement.footprint_m` half-diagonal
     plus `KEEP_CLEAR_M`, which is a TASTE PICK (a settlement should not crowd
     an installation) and not a measurement.
+
+    EVERY placement set is scope-checked against the seed/world being planned
+    (`worldseed.require_scope`), and UNREAD IS NOT CLEAR: no placement set, or
+    a placement without its `solved` block, is REFUSED -- an empty list here
+    would read as "this world has no buildings to keep off".
     """
     import yaml
-    out = []
-    for f in sorted(Path(world_dir).glob("*/placements.yaml")):
+    worldseed = _worldseed()
+    glob, key = worldseed.INSTALLATIONS_GLOB, worldseed.INSTALLATIONS_KEY
+    files = sorted(Path(world_dir).glob(glob))
+    if not files:
+        raise SystemExit(
+            f"REFUSING: {world_dir}/{glob} matches nothing, so "
+            f"this site solve cannot know where the world's own installations "
+            f"stand. Solve them first: pipeline stage `placements` "
+            f"(blueprints/solve_placements.py).")
+    out, unsolved = [], []
+    for f in files:
         doc = yaml.safe_load(f.read_text()) or {}
+        worldseed.require_scope(
+            "installation placement set", f, found_seed=doc.get("seed"),
+            found_world=doc.get("world"), seed_=seed_, world_=world_,
+            produced_by="blueprints/solve_placements.py for the world being "
+                        "planned")
         for pl in (doc.get("placements") or []):
-            s = pl.get("solved") or {}
+            s = pl.get(key) or {}
             if s.get("x") is None:
+                unsolved.append(f"{f.parent.name}/{pl.get('id')}")
                 continue
             fp = float((pl.get("requirement") or {}).get("footprint_m") or 32.0)
             out.append({"id": f"{f.parent.name}/{pl.get('id')}",
                         "x": float(s["x"]), "z": float(s["z"]),
                         "footprint_m": fp,
                         "radius_m": fp * math.sqrt(2) / 2 + KEEP_CLEAR_M})
+    if unsolved or not out:
+        raise SystemExit(
+            f"REFUSING: {len(unsolved)} placement(s) under {world_dir} carry "
+            f"no {key!r} block ({', '.join(unsolved[:6])}) and "
+            f"{len(out)} do. A settlement kept off a subset of this world's "
+            f"buildings is not kept off its buildings.")
     return out
 
 
@@ -312,14 +386,76 @@ def existing_installations(world_dir: str | Path) -> list[dict]:
 KEEP_CLEAR_M = 60.0
 
 
+def trunk_patches(fields: dict) -> tuple[str, ...]:
+    """The windows a TOWN may stand in, named BY ROLE and resolved per field.
+
+    `mainland` and `westisle` are Ulfsland's landmass names, and they were the
+    default of `Picker.town` -- so a fresh seed's field, whose windows are
+    named for what they DO (`trunk-primary` holds the spawn and the priority-1
+    trunk, `trunk-secondary` is the next landmass), returned ZERO town
+    candidates and the planner refused on ground it had never looked at.
+    `worldseed.aliases` already carries both names for each role, so Ulfsland's
+    binary resolves to exactly the same two patches in exactly the same order.
+
+    REFUSES rather than searching whatever is left: a town is defined as
+    standing on a TRUNK landmass, and quietly demoting that to "any window in
+    the file" would plant a town on an outlier island the roads cannot reach.
+    """
+    if str(HERE.parent) not in sys.path:
+        sys.path.append(str(HERE.parent))
+    import worldseed                                        # noqa: PLC0415
+    out: list[str] = []
+    for role in (worldseed.TRUNK_PRIMARY, worldseed.TRUNK_SECONDARY):
+        hit = next((a for a in worldseed.aliases(role) if a in fields), None)
+        if hit is not None and hit not in out:
+            out.append(hit)
+    if not out:
+        raise ValueError(
+            f"this field holds {sorted(fields)} and none of them is a trunk "
+            f"window ({worldseed.TRUNK_PRIMARY} / "
+            f"{worldseed.TRUNK_SECONDARY}, or their Ulfsland names "
+            f"{worldseed.LEGACY_OF.get(worldseed.TRUNK_PRIMARY)!r} / "
+            f"{worldseed.LEGACY_OF.get(worldseed.TRUNK_SECONDARY)!r}), so "
+            f"there is nowhere a town is defined to stand. Scan this seed's "
+            f"trunk landmasses first: roads/field.py request derives the "
+            f"window set from the seed's own land.")
+    return tuple(out)
+
+
+def all_patches(fields: dict) -> tuple[str, ...]:
+    """EVERY window in this field, trunk windows first, then the rest by name.
+
+    For the kinds that are not confined to a trunk landmass -- a castle stands
+    on the highest ground there is, wherever that is.  `Picker.castle`'s
+    default was `("mtn7114", "mainland", "westisle", "south33")`: four of
+    Ulfsland's seven window ids, hand-ordered, inside what reads as a general
+    default.  On a derived field it names nothing at all.
+    """
+    trunks = trunk_patches(fields)
+    return trunks + tuple(sorted(p for p in fields if p not in trunks))
+
+
 class Picker:
-    def __init__(self, patch_path: str, loc_path: str,
-                 world_dir: str | Path = HERE.parent / "worlds/Ulfsland"):
+    def __init__(self, patch_path: str, loc_path: str, world_dir: str | Path,
+                 *, seed_: str | None = None, world_: str | None = None):
+        # The inputs are KEPT, not just consumed: `plan.py` stamps the seed it
+        # actually ran on into `sites.yaml`, and it can only do that if the
+        # artefacts it read are still nameable.  Before 2026-09-21 that stamp
+        # was the literal `Pirate68`, so a plan solved on ANY seed declared
+        # itself Pirate68 and every downstream scope check read a constant.
+        #
+        # `world_dir` HAS NO DEFAULT: it was `worlds/Ulfsland`, which made
+        # every seed's settlements keep off Ulfsland's buildings.  See
+        # SITE_INSTALLATIONS_DEPENDS_ON above.
+        self.patch_path = str(patch_path)
+        self.loc_path = str(loc_path)
         self.fields = T.load(patch_path)
         self.loc = clearance.load(loc_path)
         self.blocks = {k: decimate(v) for k, v in self.fields.items()}
         self.wdist: dict[str, np.ndarray] = {}
-        self.installations = existing_installations(world_dir)
+        self.world_dir = Path(world_dir)
+        self.installations = existing_installations(
+            world_dir, seed_=seed_, world_=world_)
 
     def installation_conflict(self, x: float, z: float, half_diag_m: float) -> dict | None:
         for inst in self.installations:
@@ -373,7 +509,7 @@ class Picker:
     # --- kinds ------------------------------------------------------------
     def town(self, district_m: float = 176.0, square_m: float = 24.0,
              purity: float = 0.90, max_relief: float = 20.0, limit: int = 10,
-             patches: tuple[str, ...] = ("mainland", "westisle")) -> list[Site]:
+             patches: tuple[str, ...] | None = None) -> list[Site]:
         """A town DISTRICT, not one pad.
 
         MEASURED, and it is the finding that set the whole layout: a 176 m
@@ -391,7 +527,9 @@ class Picker:
         """
         out: list[Site] = []
         mead = T.BIOME_CODE["Meadows"]
-        for pid in patches:
+        # BY ROLE, not by Ulfsland's landmass names -- see `trunk_patches`.
+        for pid in (patches if patches is not None
+                    else trunk_patches(self.fields)):
             blk = self.blocks[pid]
             rel = win_relief(blk, district_m)
             pure = win_biome(blk, mead, district_m)
@@ -423,9 +561,10 @@ class Picker:
 
     def watchtower(self, pad: float = 16.0, min_rise: float = 12.0,
                    max_relief: float = 7.0, limit: int = 14,
-                   patches: tuple[str, ...] = ("mainland", "westisle")) -> list[Site]:
+                   patches: tuple[str, ...] | None = None) -> list[Site]:
         out: list[Site] = []
-        for pid in patches:
+        for pid in (patches if patches is not None
+                    else trunk_patches(self.fields)):
             blk = self.blocks[pid]
             rel = win_relief(blk, pad + 8)
             rise = win_rise(blk, 160.0)
@@ -443,8 +582,7 @@ class Picker:
 
     def castle(self, pad: float = 44.0, min_h: float = 100.0,
                max_relief: float = 22.0, limit: int = 10, search_m: float = 40.0,
-               patches: tuple[str, ...] = ("mtn7114", "mainland", "westisle",
-                                           "south33")) -> list[Site]:
+               patches: tuple[str, ...] | None = None) -> list[Site]:
         """A castle on high ground, priced against the clamp rather than hoped at.
 
         MEASURED, and it is the finding that shapes this: the best-scoring
@@ -462,7 +600,11 @@ class Picker:
         """
         out: list[Site] = []
         mtn = T.BIOME_CODE["Mountain"]
-        for pid in patches:
+        # EVERY window: a castle stands on the highest ground there is, which
+        # is not confined to a trunk landmass.  This default was four of
+        # Ulfsland's seven window ids, hand-ordered.
+        for pid in (patches if patches is not None
+                    else all_patches(self.fields)):
             blk = self.blocks[pid]
             rel = win_relief(blk, pad + 8)
             mfrac = win_biome(blk, mtn, pad + 8)
@@ -482,9 +624,10 @@ class Picker:
 
     def lighthouse(self, pad: float = 16.0, max_water_m: float = 30.0,
                    min_rise: float = 6.0, limit: int = 10,
-                   patches: tuple[str, ...] = ("mainland", "westisle")) -> list[Site]:
+                   patches: tuple[str, ...] | None = None) -> list[Site]:
         out: list[Site] = []
-        for pid in patches:
+        for pid in (patches if patches is not None
+                    else trunk_patches(self.fields)):
             blk = self.blocks[pid]
             f = self.fields[pid]
             rel = win_relief(blk, pad + 8)
@@ -511,10 +654,11 @@ class Picker:
 
     def treehouse(self, pad: float = 14.0, purity: float = 0.85,
                   max_relief: float = 6.0, limit: int = 10,
-                  patches: tuple[str, ...] = ("mainland", "westisle")) -> list[Site]:
+                  patches: tuple[str, ...] | None = None) -> list[Site]:
         out: list[Site] = []
         bf = T.BIOME_CODE["BlackForest"]
-        for pid in patches:
+        for pid in (patches if patches is not None
+                    else trunk_patches(self.fields)):
             blk = self.blocks[pid]
             rel = win_relief(blk, pad + 8)
             pure = win_biome(blk, bf, 96.0)
@@ -545,6 +689,11 @@ def dedupe(p: "Picker", sites: list[Site], within_m: float = 40.0) -> list[Site]
     Keeping both would put two towns on one hill. The survivor is the one whose
     patch centre is nearest, which is `terrain1m.field_for`'s rule, so a site's
     patch is decided the same way wherever it is asked.
+
+    THIS IS NOT THE OVERLAP CHECK.  It compares candidates of ONE kind, found
+    by one search, and nothing else -- it never saw a treehouse 5.7 m from a
+    lighthouse.  Whose ground a site may stand on is decided over every site
+    of every kind by `plan.py::SiteClaims` (SITE_CLAIM_DEPENDS_ON).
     """
     out: list[Site] = []
     for s in sites:
@@ -557,14 +706,25 @@ def dedupe(p: "Picker", sites: list[Site], within_m: float = 40.0) -> list[Site]
     return out
 
 
+def run_picker(patch_path: str, loc_path: str) -> Picker:
+    """A `Picker` keeping off THIS run's world's installations, resolved the
+    way every tool here resolves its scope (`$VH_WORLD` / `$VH_SEED`)."""
+    if str(HERE.parent) not in sys.path:
+        sys.path.append(str(HERE.parent))
+    import worldseed                                        # noqa: PLC0415
+    return Picker(patch_path, loc_path, installations_dir(worldseed.world()),
+                  seed_=worldseed.seed(), world_=worldseed.world())
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--patches", default="/tmp/settle/h1m.bin")
-    ap.add_argument("--locations", default="/tmp/settle/loc3/f6fe167f4fcd.json")
+    ap.add_argument("--locations", default=None,
+                    help="default: THIS seed's dump (clearance.location_dump)")
     ap.add_argument("--kind", default="all")
     ap.add_argument("--json", default="")
     a = ap.parse_args()
-    p = Picker(a.patches, a.locations)
+    p = run_picker(a.patches, a.locations or clearance.location_dump())
     print(f"# patches {sorted(p.fields)} locations {len(p.loc)} spawn {p.loc.spawn}")
     kinds = (["town", "watchtower", "castle", "lighthouse", "treehouse"]
              if a.kind == "all" else a.kind.split(","))

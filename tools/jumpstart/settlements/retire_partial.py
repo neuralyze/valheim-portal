@@ -39,10 +39,11 @@ def main() -> int:
 
     sys.argv = [sys.argv[0]]
     import build as B  # noqa: E402  (argparse-free import)
+    import worldseed  # noqa: E402  (on sys.path through build)
     import verify_placement as VP  # noqa: E402
     from live import LiveBuilder  # noqa: E402
 
-    plan = json.loads((HERE / "plan.json").read_text())
+    plan = json.loads(worldseed.plan_path().read_text())   # THIS seed's
     unit = next(u for u in B.unit_records(plan, a.site) if u["id"] == a.unit)
     rows = VP.plan_rows(B.SCRATCH / a.site / f"{a.unit}.plan")
 

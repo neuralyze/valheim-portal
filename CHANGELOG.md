@@ -9,6 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tools/jumpstart/buildstage.py` step 6.5 `decks` — THE BUILD NOW BUILDS A CROSSING.
+  None of the 8 build steps built a bridge: pipeline row 12 handed the build the seed's
+  `crossings` contract and no step consumed it, so every declared crossing on a fresh world
+  stayed a hole (Fresh42: 9 declared, S4-meadhall-southeast-x01 carrying 0 of 27 m; all 22 of
+  Ulfsland's bridges were laid by agents running tools by hand). The step runs
+  `roads/boardwalk.py plan|build --from-network --spans <crossing>` — the one seed-driven deck
+  builder; `crossings/` supplies its geometry — one unit per crossing in
+  `crossings.<Seed>.yaml`, after `bodies` (the last step that writes ground) and before
+  `roadside`/`recheck`, which now require it. A crossing whose bank's road step 4 refused is
+  BLOCKED by name through the corpus's own pairing (`BuildStep.stands_on`); every other unit
+  gets the builder's own verdict (terrain precondition, six guards incl. the structural and
+  water-legality verdict). New import-time check `unbuilt_defects`: a label the pipeline hands
+  the build that no commanded step consumes refuses the table ("a declared crossing with no
+  builder"). Bridge roles are their own record kind, so Ulfsland's 4 false S1/S2 OUT_OF_ORDER
+  rows are gone, and a deck is owed the recheck of the segment it stands on, taken after its
+  last piece. `boardwalk.py`: `--spans` now selects AFTER the whole-population channel
+  collapse (T8-stenvik-wttown-x01 is T3-temple-meadhall-x01's water and is SERVED BY it, not
+  decked twice), every deck batch is stamped `meta.stands_on`, and `burial_guard` reads the
+  gate's own lattice-vertex reduction (`assemble.bed_under`) — it had refused T3-x01 at
+  "0.083 m" on a pole whose top sits exactly on the vertex the gate reads.
+
+- `tools/jumpstart/pipeline.py` — THE THIRTEEN BUILD STAGES, DECLARED IN SOURCE, IN ORDER.
+  Ulfsland was built by a sequence of agent decisions: every stage is a real tool with a real
+  CLI and a real refusal, and the ORDER was nowhere but in the head of whoever was driving, so
+  a fresh seed could not be re-run. The table declares what each stage PRODUCES and what it
+  REQUIRES, by label, and `audit_graph()` refuses at IMPORT a table in which any requirement is
+  UNOWNED (no stage makes it) or INVERTED (a later stage makes it). It caught a real defect on
+  its own first run: the table put `route` before `census` and required it, which is a cycle —
+  the resolution is that ROUTE HAPPENS TWICE, and `roads/network.py --provisional` already
+  existed for exactly that. Artefacts are keyed BY SEED where their readers are
+  (`spec.sites_path`, `geography.geography_path`) and scope-checked through
+  `worldseed.require_scope` against the run's own seed/world, never against the file's name.
+  Four states, not two: MISSING, OUT_OF_SCOPE, PRODUCER_SLOT_MISSING (the readers key per seed
+  and the writer does not) and STALE (present, right seed, and OLDER THAN THE INPUT IT WAS
+  DERIVED FROM — the fifth blocker, which no existence-or-header check can see). The default
+  work directory is `ledger/runs/<World>/pipeline`, not `/tmp`: five of Ulfsland's thirteen
+  stages left their interchange in `/tmp` and it is gone, which `pipeline.py status --world
+  Ulfsland` now says out loud. `run` REFUSES the live `Pirate68`/`Ulfsland` pair outright
+  (exit 5) because stages 5, 6 and 11 write the corpus the gate reads, in place.
+  `pipeline.py selftest` is 9 cases through `accept/registry.py`'s own `run_cases`, on five
+  DECLARED dependencies (`ordinal`, `owner_map`, `scope_header`, `presence`, `freshness`) each
+  neutered IN BOTH DIRECTIONS — an `off` arm a must-REFUSE case flips under, and a
+  wrong-answer arm (`reversed`, `blind`, `always-stale`) a must-ACCEPT case flips under.
+  MEASURED on the first run: all four one-direction neuters failed to prove their cases,
+  because switching a check off only ever protects the accepting arm. 9/9 PASS, every proof
+  `verdict` and not one `assert`, and every neuter reported with the OTHER dependencies that
+  still refuse under it, so a neuter that emptied the instrument cannot stamp a case PROVEN.
+  DRIVEN 2026-09-23 on seed `Fresh42`, a world this tree had never built: stages 1-6 green
+  (world save `28d54240…`, 34,426,919-byte grid, 12,555-entry location dump, 26-window
+  1,105,747,603-byte VHPATCH1 field, 21 geography nodes, 16 solved sites), and stage 7 named
+  as the wall — `worlds/<World>/world.yaml` and `worlds/<World>/<preset>/placements.yaml` have
+  NO PRODUCER IN THIS TREE, which `worlds/README.md` has said in its own words all along.
+
 - TEMPORARY, and deliberately easy to remove: `Smoothbrain-ServerCharacters` 1.4.17.1 reaches
   the Ulfsland server and the clients of its four editions from ONE archive that
   `tools/servercharacters/build.sh` compiles from upstream `bb7d3cd6` plus the patches in
@@ -319,6 +372,393 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operators, which preserves the previous behaviour exactly.
 
 ### Fixed
+
+- `tools/jumpstart/blueprints/solve_placements.py` (`LEVELLABLE_PAD_DEPENDS_ON`) — AN
+  INSTALLATION IS WRITTEN WITH A PAD THE ENGINE CAN LEVEL, OR REFUSED WITH THE NUMBERS. The
+  declared `footprint_m` pad is a floor (`flatten.PAD_EXTENT_DEPENDS_ON` `declared_pad`) and
+  the only thing the solver did with a pad beyond the +/-8 m apply clamp was drop the fixture
+  ring, "the body's pad is written" — a pad carrying the same floor, so on a site where the
+  floor is the whole problem it re-billed the rectangle it had just refused. Fresh42 drive 11:
+  pre-bonemass#iron-era-workshop declares 70 m over a 22.3 x 23.9 m body; all 13 candidates
+  were past the clamp on 70 m (chosen site: 442 of 5041 samples, cut 10.54 m / fill 9.569 m),
+  the block was recorded REFUSED and build step 1 refused the unit, losing the installation
+  and everything standing on it — while the same centre levels a 50 m pad. Where NO candidate
+  levels its declared pad, the floor now gives way 5 m at a time (the whole pool re-billed at
+  each step, never below the body at its yaw and its fixture ring), and the pad written is the
+  largest any candidate levels; a pool in which nothing levels on any rung is ranked by how far
+  each candidate is past the clamp, and the least bad is recorded REFUSED with every rung's
+  numbers (`pad_ladder`). A candidate that levels its declared pad is untouched. Offline
+  re-solve, Fresh42: iron-era-workshop stays at (-844.5, 4995.5) on a 55 x 55 m pad, cut 7.869
+  m / fill 7.58 m, 0 samples over (the writer's own `flatten.build`: 3192 samples, 0 over;
+  step-1 `levelling_refusal`: none); the other 12 installations' solved blocks are
+  byte-identical, and all 13 of Pirate68's are byte-identical to the shipped rule.
+  `solve_placements.py --selftest` 63/63 (16 new, each stated with its neuter); `--verify`
+  now audits a recorded block's own bill against the clamp.
+
+- `tools/jumpstart/roads/network.py` (`BANK_CEILING_DEPENDS_ON`) — A DETECTED CROSSING'S LEVEL
+  RUN NOW TAKES THE WALKED-RAY CEILING. `writer_water` asked a drop only of dry stations, so a
+  refused ray whose foot fell on the deck's own stations asked nothing; and `build_segment`
+  pinned both banks to one median-chosen height before the ceiling ran, which then skipped the
+  closed bounds. Fresh42 drive 6: W9-vestvik-lhwest refused at build step 4 (0.9003 m rim step
+  at (-770,601) beside crossing x01, held at 33.304 m), so its three crossings were never built.
+  The drop is now asked of the deck stations when both foot stations are bridged, and the
+  ceiling narrows the window's legal interval before its one height is chosen, never below
+  deck clearance. Re-plan: W9 CLEAR by `ceiling 1 + terminal trim`, x01 at 32.797 m, all three
+  crossings kept; the writer's own stamp: 0 caused rim steps, 0 drained, 0 approach failures.
+
+- `tools/jumpstart/roads/network.py`, `roads/ribbon.py` — THE PLAN ASKS THE WRITER'S OWN QUESTION.
+  `writer_water` stamped the half-grid routing field, which smooths away one-metre shore steps,
+  and stamped with no pad keep-outs, so a batter the writer clips at a planned pad read CLEAR.
+  Fresh42 drive 6: S7-stathub-wtnorth planned CLEAR and was refused at step 4 (4 steps, worst
+  1.3868 m, `refused pad`). The plan now stamps the writer's integer Heightmap patches with the
+  writer's pad and POI keep-outs, counts pad-owned rim steps, and judges each approach onto a
+  pad by the acceptance gate's own lattice walk (`PadKeepOut.arrival_walks`), grading the whole
+  gap with a bounded foundation collar. S4-meadhall-southeast (berm 0.573 m, step 1.3401 m at
+  lh-south) and T5-temple-dockshore (step 0.8482 m at early-dock) now stamp with 0 caused rim
+  steps and 0 approach failures. The first drive-7 plan LOST four legs to the stricter check
+  (T1, S8, S11, T6 refused at plan time, all laid by the real writer in drive 6); three rules
+  bring the plan to the writer's own reading: `ribbon.ARRIVAL_PADS_DEPENDS_ON` (a road's earthwork
+  is pinned to, and collared around, only the pads it ARRIVES at, within its own reach; a cell the
+  writer would veto is an anchor, not skipped), `PLAN_REFUSAL_DEPENDS_ON` (only rows the stamp
+  explains -- `refused water_fill|pad|poi` -- refuse a leg; rows owed to a planned pad are split
+  off as `ribbon.main` does), and `ARRIVAL_ADVISORY_DEPENDS_ON` (an approach the grading cannot
+  fix is recorded for the gate, not a reason to delete the road). `PROBE_PAD_DEPENDS_ON`: the
+  band-free probe judges a leg before the joint solve, so a probe refused ONLY on pad-boundary
+  steps is SERVABLE and names its cells for the census -- S8's confined search found "no route"
+  while its probe said "not the census's", a fixed point that disconnected wt-south. Drive-7
+  plan: the same 15 legs as drive 6 (18,070 m), 9 crossings (drive 6: 5), every leg CLEAR after
+  the joint solve. The first full drive-8 build then refused 5 of those 15 at step 4 (T1 25 steps /
+  3.0465 m, T4 2, T6 4, S7 2, W9 1) -- all virgin ground beside the pad collar, owned by nobody --
+  and the offline harness matched those counts exactly, so it is the instrument to iterate on.
+  `ribbon.COLLAR_EDGE_DEPENDS_ON` (the ground just outside the collar is an anchor, so a cell at
+  the edge is graded against it), `COLLAR_PEEL_DEPENDS_ON` (a collar cell that stands over the slide
+  limit of ground or a pad cell this write leaves alone is put back to its previous height, repeated
+  to a fixed point: a cell that cannot be graded all the way down is not graded), and a collar that
+  is gated on a graded approach. Harness, 15 legs: 0 caused steps on 14; S11's 4 are the virgin-
+  ground over-report at lh-south (the writer builds S11 after S4 has graded that edge and laid it
+  clean). `network.COLLAR_CHOICE_DEPENDS_ON` asks a leg the collar leaves refused both ways;
+  `buildstage.COLLAR_RETRY_DEPENDS_ON` asks the REAL writer once more without the collar
+  (`ribbon.py build --no-connection-collar`) when `road_ground` refuses, because a refused write
+  sends nothing and the plan cannot see the order-dependent ground. A plan that refuses every
+  earthwork row instead lost S11 (unroutable) and T6 (rejected): 13 of 15 legs.
+  `network.PAD_BATTER_DEPENDS_ON`: the router's pad keep-out grows 6 m more for an INSTALLATION pad,
+  which the build lays at step 2 before any road and whose claimed ring the road's batter then
+  cannot meet. Fresh42 drive 9, real writer: S5 and S11 both refused 3 steps (1.3009 / 1.2944 m) at
+  the portal hub's north-west corner, `rim ground owned by sandbox-portal-hub#680`, collar on and
+  off. They now route 19.5 m off the hub (were 8.1 m) and no leg is lost (15 legs, 9 crossings). A
+  margin on every pad was measured and lost S4, T6 and W9: site pads are laid after the roads and
+  claim nothing yet. `merge_pad_claims` gives a written pad its PLANNED role, because the ledger
+  calls every pad a writer lays a `site_pad`, installations included.
+
+- Fresh42 drive 10 closed 14 of the last 15 and showed the remaining defects were in the fixes
+  themselves. `ribbon.COLLAR_PEEL`: the peel put a cell back as a modified cell at delta 0, which
+  writes the generated ground over whatever an earlier leg left there -- W9 cut 1.14 m out of S5's
+  fill (5 rim steps, worst 1.9211 m); it now restores the compiler's own flags exactly. `ribbon.
+  SNAP_SHARED`: a leg that runs within 1.5 m of a built leg for 8+ stations lies on it (W9 ran 0.9 m
+  off S5 and S11 at one height for 110 m). `network.BANK_BED`: a detected crossing's deck is never
+  chosen under the dry ground at its two banks -- the walked-ray ceiling had put W9-x01 at 32.797 m
+  against banks at 33.252 m and the gate refused it (`IS NOT A CROSSING`, +0.455 m); W9 now plans
+  CLEAR at 33.5 m. `buildstage`: `--resume` treats a laid collar retry as the unit's answer.
+  `boardwalk`: parallel crossings share an existing deck (S11-x01 onto T3-x01, datum merged within
+  the bank-step limit, nothing removed); landfalls ramp up to 0.30 m per tile; the route guard asks
+  the gate's blockers at every point of the carriageway, not only its 1 m stations (an existing T3
+  rail post sat 0.0001 m short of one). `terraform/stock.py`: step 6 reads the seed before seating
+  fixtures, so a chest no longer closes the arch face a tree left open (u-stathub).
+
+- Fresh42 drive 11 passed every acceptance section but one: `roads` traversability, 1C, T7-stathub-
+  stenvik station 222 at (336.6, 344.49997) -- a station on a half-lattice line, where the gate
+  snaps half-way UP and the engine's RoundToInt snaps to EVEN, so one vertex read 81.7624 m and
+  81.8475 m. `ribbon.HALF_LATTICE_DEPENDS_ON` moves a node 2 cm when a station of the gate's own
+  resampling lies within 1 mm of one (bridged nodes and ends never move; a move that needs an
+  unscanned zone is not made). The same drive left the workshop unbuilt: step 1 and, once
+  `solve_placements` could pad it (above), step 5 refused `iron-era-workshop` on one roof hole in
+  `halvar-master-refinery.blueprint`. `blueprints/data/authored_repairs.json` gained one
+  checksum-bound roof panel for it and one checksum-bound pose correction for the source's row 573
+  (`wood_wall_roof_45`, yaw 247.5 -> 67.5): the gate judged it inverted by a 0.3 m seam margin the
+  plan's rounding hid. Both refuse on a base or row mismatch; the corpus file is untouched.
+  `buildstage.py` resumes a laid collar retry as the unit's answer, and `roads/network.py` keeps
+  the arrival-reach fixture on the centreline mask.
+
+- `tools/jumpstart/roads/boardwalk.py` — A DECK'S RAILS NO LONGER STAND IN ANOTHER ROAD. The
+  furniture guard read only the bridge's own straight span at its deck datum, so T3-temple-
+  meadhall-x01's rail poles and beams stood across S11's built carriageway (Fresh42 drive 6
+  `roads/obstruction`, 14 of 181 pieces, ACTIONABLE, owner step 6.5). The builder now reads the
+  built roads' standing surfaces through the gate's own instruments and opens the rail where a
+  road passes, keeping deck, piles and caps; any remaining obstruction still refuses. T3-x01:
+  13 rail pieces opened at S11, 0 remaining blockers, structural verdict true.
+
+- `tools/jumpstart/blueprints` — `blackforest-walled-base`'s AUTHORED ROOF GAPS ARE CLOSED. The
+  selected `fox-0123456.blueprint` (third-party, not vendored) carries an open joint between
+  its 45° and 26° roof courses and open chimney gable ends: `structures/roof_skin` 3 gaps,
+  worst 4.677 m. `blueprints/data/authored_repairs.json` binds a project-owned additive
+  blueprint of 10 timber pieces to the source's SHA-256, and `to_rcon_plan.read_objects`
+  composes it for every consumer; a mismatched base or changed addition refuses. Emitted plan:
+  0 roof_skin gaps, shelter check passes, chimney outlets kept.
+
+- `tools/jumpstart/roads/ribbon.py` (`INTERSTICE_APRON_DEPENDS_ON`) — THE GROUND BETWEEN TWO
+  ROADS THAT SHARE A CORRIDOR IS LAID AS A TAPER FROM ONE CARRIAGEWAY EDGE TO THE OTHER. The
+  corridor rule's own test was "a batter-grade surface joins the two edges across this gap", but
+  it then levelled the gap flush with the higher road. That left the whole height difference as
+  one step at the lower edge, and the earth budget often clipped it on its first sample. Fresh42
+  drive 5, step 4: J-southcape-wtsouth runs 8 m beside S8 out of wt-south, 66.13 against 64.65.
+  It was refused rc 7 with 8 steps, worst 2.5455 m at (-676,-440) against S8's fill batter. The
+  plan's claim boundary had approved that edge (1.484 m against an allowance of 1.824 m). The
+  apron now descends 66.133 → 65.672 → 65.161 → 64.649 (steps ≤ 0.512 m), and J is CLEAR
+  against S8's recorded write. An offline sequential step 4 on a scratch re-plan, from the
+  drive-5 ledger cut, lays all 14 legs with 0 caused rim steps; 887 aprons were tapered. The
+  known-bad case is `selftest_interstice_taper` (neuter `_INTERSTICE_APRON_MODE="flush"`).
+  `selftest_interstice_trigger` now proves its trigger by the ground a neutered trigger would pave
+  past its own toe (1081 samples), because under the taper the rim gate passes that case.
+
+- `tools/jumpstart/roads/network.py`, `roads/boardwalk.py`, `crossings/assemble.py` — A CROSSING'S
+  BANKS LIE ON THE LINE THE ROAD WRITES, AND A DECK'S RAILS STAND OFF THE ROAD IT CARRIES. On
+  Fresh42 drive 3, 6 of 12 crossing records put a bank 3.25-4.98 m off their own
+  `centreline_straight_from_to`. The detector took each bank from the searched polyline, snapped
+  it to a 2 m grid, and never re-read it after `straighten` replaced the window with its chord.
+  Overlapping windows on W9 moved each other's chords by up to 2.90 m. So step 6.5 refused
+  T1-x02, T5-x01 and T13-x01 on `span_coverage`. `build_segment` now writes the banks from the
+  straightened free-run ends and keeps windows disjoint (`CROSSING_BANKS_DEPENDS_ON`), and it
+  stamps `terminal_banks` where a free run reaches the segment's own end. The offline re-emit has
+  0 of 12 banks off their line (worst 0.006 m), and T1-x02 now builds. Every built deck's
+  wood_poles were rail posts 0.20 m inside the carriageway (T1-x01 36/36, T3-x01 24/24, S4-x01
+  32/32), which the gate refused as `roads/obstruction`. A deck is now as wide as the ribbon's
+  levelled bench (8 m trunk, 6 m spur), which puts the rails at 3.8 / 2.8 m. A new `carriageway`
+  guard asks the gate's obstruction question before a build. `assemble.bridge` drops rails and
+  outer rows that the bank has swallowed whole: at 6 m, S4-x01's hillside buried them by up to
+  0.669 m. `trim_buried_overhang` also drops an overhang station the burial guard would refuse
+  (S13-x01, 0.065 m). `tile_covers` now counts a tile seam as covered. The abutment refusal on a
+  terminal bank names the segment's terminus as the owner.
+
+- `tools/jumpstart/roads/network.py` (`ARRIVAL_DEPENDS_ON`), `roads/junction.py`
+  (`PAD_GAP_DEPENDS_ON`), `roads/ribbon.py` (`PLANNED_PAD_RIM_DEPENDS_ON`): A ROAD ARRIVES ON THE PAD
+  IT SERVES. A* can only start outside a pad's grown mask, so every leg to a pad ended 7-10 m short
+  of it. `enforce_pad_edge` trimmed nothing, nobody paved the gap between, and the junction solve
+  never read the pad. On Fresh42 drive 3 the plan's 16 legs had 0 road-vs-pad pairs against 59
+  live pads. That gave 5 `terminus_step` 1B risers onto `complete-station-hub` (the road at 79.45,
+  the pad at 77.67, a 0.907 m cut face), 1 onto `sandbox-portal-hub` (1.045 m, even though the
+  datums agree), and step-4 rim refusals on T8 (road at 50.01, wt-town at 56.0) and S8. Now a
+  searched line carries a straight spur toward its node until the level cap meets the pad edge.
+  The spur stops short at water, a POI or unread census ground, or another site's pad. The
+  road-to-pad gap is read from the level footprint, so the joint solve holds the terminus to the
+  pad datum. At step 4, a rim sample inside a pad the plan will lay next is judged against that
+  pad's datum and recorded as `rim.owed_to_planned_pads`. Offline on the drive-3 plan, S8 goes
+  from 16 refused steps to 0 caused and rc 0 (worst 0.2514 m against 72.48). T8 still refuses,
+  and the datum owns that.
+
+- `tools/jumpstart/roads/route.py` (`JUNCTION_CONFLICT_DEPENDS_ON`), `roads/network.py`
+  (`ARRIVAL_REACH_DEPENDS_ON`, `WATER_CAP_DEPENDS_ON`): ONE LEG THAT CANNOT MEET ITS PAD NO
+  LONGER COSTS THE PLAN TEN OTHERS, A LEG TO A PAD STARTS WHERE THE PAD'S DATUM CAN BE MET, AND
+  ONE LEG'S WATER CEILING NO LONGER REFUSES ITS NEIGHBOUR. The Pirate68 provisional re-plan of
+  2026-09-26 had 11 junction refusals and 562 pairs in 10 places over the allowance. Every
+  refusal named one empty station, T4 754 [35.238, 34.794]. The stathub search had started at
+  (640, 1090), on a knoll 40 m high, 7.47 m of spur from `complete-station-hub` (datum 31.85).
+  Stage one refused one leg of the worst disagreement anywhere in the connected component (the
+  temple, (505,1129), (1247,567), ...), and refused T4 itself only after ten others. It also
+  climbed eight legs to 0.25 that the conflict never involved. Now:
+  - A climb or a refusal is owed only to an irreducible conflict: the smallest set of legs, grown
+    outward from the empty station, that has no profile and gets one back if any member is
+    removed.
+  - Where the nearest cell's spur cannot meet its pad's datum at the ceiling rung, the search
+    starts at the ring cell nearest the one it replaces whose spur can. For stathub that is
+    (640, 1086).
+  - A walked-water ceiling that would refuse a leg the uncapped joint solve joined is withheld.
+    The capped leg keeps its own writer-water refusal. On the first re-plan, S13's dock ceiling
+    had refused S7.
+
+  Re-plan with all three: Pirate68 has 2 places / 71 pairs over the allowance, 27 legs joined and
+  1 refused (T6, as before the arrival spur). No leg that routed before is lost, and T4 keeps its
+  4 water steps. Fresh42 (drive-4 census, pads cut at 608): the same 13 legs on the same lines, 0
+  pairs over, 0 refused, and T1, T3, T5, S4, S5 and T7 no longer climbed past their design grade.
+
+- `tools/jumpstart/settlements/build.py` (`site_portal_spot`, `seed_census`,
+  `SITE_SEED_DEPENDS_ON`), `terraform/stock.py` (`Walkins(extra=)`, `gate_solid(s)`) — THE
+  SETTLEMENT END OF EVERY PORTAL PAIR KEEPS ITS WALK-IN. On Fresh42 drive 4 the gate's `portals`
+  approach_ray refused 5 of the 14 settlement-end arches (save af96bfb62427): u-wtspawn,
+  u-wtpeak, u-wtnorth, u-lhwest and u-treenear. Each had our own piece on one face (the tower's
+  stone_pillar 1.5 m behind the arch, the lighthouse's stone_wall_2x1, sibling tree-near-3's
+  wood_door) and a seed Birch1, Beech1, Pinetree_01 or rock4 on the other, standing past the
+  16.14 m clearing with its bounding box reaching the corridor. The hall had the walk-in book;
+  the site end had none, and it was solved against `units[0]` alone. The site end is now solved
+  through `stock.Walkins`. The book holds every sibling body whose pad reaches it (the arch must
+  clear those too) and the seed's own trees and rocks round the pad. Those are read off the live
+  world before the solve: an `objects_count id=*` tile census gives the names, a bounded
+  `findObjects -detailed` stepped in height gives position and rotation, and the read is ledgered
+  as an `observe`. A read the listing cannot complete refuses the pair. The body's yaw is tried
+  first, then a quarter turn; with no spot left, the pair is refused with `walkin_reason`. The
+  site board walks with the book. The remedy is to site the arch, not to clear seed objects, and
+  that was chosen by measurement: offline over the frozen save, 14 of 14 site ends have a walk-in
+  judged by the gate (9 before). 5 arches move 1.0–3.6 m on their pads, and nothing is deleted. A
+  corridor clear would have deleted 11 seed ZDOs, among them a rock4_forest and four rock4_coast
+  22.9–26.9 m out, on the strength of bounding boxes the gate books as upper bounds.
+
+- `tools/jumpstart/terraform/stock.py`, `network/waypoints.py`, `settlements/build.py`,
+  `blueprints/fixtures.py` (`free_spot(accept=)`) — EVERY ARCH KEEPS ITS WALK-IN, BY THE GATE'S
+  OWN RULE. On Fresh42 drive 3 the gate's `portals` approach_ray refused 10 of the hall's 25
+  arches (save 05eb7c6c05de), and every blocker was ours: neighbouring arches, a neighbour's board,
+  the hall's own brazier (u-sudrberg stopped at 3.75 m by u-stenvik's board; u-wtspawn at 4.25 and
+  5.25 m by arches; u-stathub / u-blacbase / u-meadhall 2 m apart on one facing axis). The packing
+  tested each arch as a box among boxes. Now `stock.Walkins` (`WALKIN_DEPENDS_ON`) admits a
+  fixture, arch or board only if every arch still has a face that the gate's `check_approach`
+  can walk the Player capsule into (its `APPROACH_SPAN_M`/`START`/`STEP`, `_approach.approach_reach`
+  over the gate's own `Solid`s, the capsule from `fixtures.walker_capsule`). An arch that has no
+  such spot is refused with its number (`walkin_reason`). `hub_arch`, `solve_placement`,
+  `pack_settlement_arches`, `portal_guidepost` and `fixture_ring` share one book, so stage 7
+  sizes the ring for the arches' walk-ins. Measured offline on the drive-3 hall (real body,
+  written 56.8 m pad): 27 of 27 arches (11 installation, 16 settlement) have a walk-in, judged by
+  the gate over the frozen save's census with the re-solve's arches, boards and posts; before, 15 of
+  25 built. 16 of 16 boards stand nearest their own arch, and the stage-7 ring still needs a 56.8 m
+  pad. On the drive-3 state the book refuses the same 10 arches the gate does.
+
+- `tools/jumpstart/terraform/stock.py`, `terraform/flatten.py`, `blueprints/solve_placements.py`,
+  `settlements/build.py`, `network/waypoints.py` — A FIXTURE STANDS ON THE GROUND THAT WAS LEVELLED
+  FOR IT. Step 6 stood stations, props, chests and portals at the pad height anywhere in the site
+  square (`footprint_m / 2`) while step 2 levelled only the body's rectangle: on Fresh42 drive 2
+  28 of 32 fixtures at `mistlands-blackforge-base` stood off their pad, from 2.95 m in the air to
+  the cartography table (seq 1978) 1.6 m past the edge with its top 1.98 m under the bank. In the
+  offline hall packing, 76 of 106 fixtures, arches and board pieces stood off the pad, among them
+  13 of 16 settlement arches. Stage 7 now sizes each pad for its fixture ring
+  (`flatten.PAD_EXTENT_DEPENDS_ON` `fixture_ring`, solved by `stock.fixture_ring`). The ring is
+  dropped, and the site kept, where the clamp or the step-1 clearing bound forbids it. Every
+  fixture, hall arch, board and settlement site end is searched on the written pad
+  (`stock.SEAT_DEPENDS_ON`, the writer's own `stamps`), and one the pad does not reach is refused
+  with its number. Measured offline at the drive-2 sites, the ring pads seat 106 of 106 (hall) and
+  32 of 32 (blackforge) within the clamp. `flatten.declared_duplicate` is the one `duplicate_of`
+  predicate for clear, flatten, stock and sites: drive 2 levelled `sandbox-harbour`'s pad twice
+  (seqs 565 and 568).
+
+- `tools/jumpstart/settlements/*`, `terraform/flatten.py`, `network/build_site.py` — EVERY FIXED
+  WORLD/SEED READ IN THE SETTLEMENT, FLATTEN AND SITE TOOLS IS RESOLVED AT CALL TIME. The
+  generator location dump (Pirate68's by content hash, in 9 files; drive 2's step-2 pad records
+  carry it) now goes through `roads/poi.location_dump` (`clearance.location_dump`,
+  `flatten.location_dump_path`). Ulfsland's ledger by path (7 sites) goes through
+  `worldseed.ledger_path()`, `plan.json` by name (5) through `worldseed.plan_path()`, and
+  `build._world_src` through `accept/instruments.world_save`, which refuses a save that is not
+  the world's. The terminus-camp save directory and the build-site status file are keyed on the
+  run's world. On the default seed every one resolves to the same path and bytes as before
+  (MEASURED). `worldseed.py fixed-names`: 0 open in these files.
+
+- `tools/jumpstart/roads/network.py`, `roads/route.py` — THE ROUTER ASKS THE WRITER ABOUT WATER
+  BEFORE IT PLANS A ROAD. `route.WET_DEPENDS_ON` kept the batter out of the planner's wet test
+  ("water inside it is not water this write removes"); `BATTER_WATER_DEPENDS_ON` then made
+  `water_fill` refuse exactly that batter, and the planner kept approving it: on Fresh42 drive 2,
+  T1, T5, S5, T9 and S13 were refused at step 4 on water-owned rim steps. `network.writer_water`
+  now runs the WRITER'S OWN `ribbon.stamp` over the generated field, the build's
+  `junction.rim_transfer` over the surface it leaves, `ribbon.rim_step_owner` and
+  `ribbon.water_sign` (`route.WALKED_WET_DEPENDS_ON`) — the rays it walks, the feather and closure
+  that repair what they can, and the TERMINAL CAP no station samples. MEASURED on the drive-2
+  plan it refuses exactly the five legs step 4 refused and clears the other nine, including S4
+  and T8 whose `water_fill` clips the feather closes. A refused leg gets, in order, the ALIGNMENT
+  (`route.water_standoff_forbid`: an A* stand-off from the water the writer refused, sized by the
+  refused ray's own reach `(y - 30) / 0.7813`, grown per round), a TERMINAL TRIM, and only then a
+  CEILING on the stations whose walked rays are still refused; a leg the writer lays clear is
+  never touched, and the joint junction solve is re-run with the ceiling in a leg's own bounds
+  where it lifts one back into water. What is left is REJECTED at plan time with its number and
+  its owner. `network.py selftest` carries BANK (the pond) and SHORE (the dock cap), each red on
+  the shipped key (`_WET_TEST = "footprint"`) and the BANK ordering red on the ceiling alone
+  (`_WET_REMEDY = "profile"`: it serves by cutting 1.91 m into the bank; the alignment cuts 0).
+- `tools/jumpstart/roads/ribbon.py` — at step 4 the writer's pad keep-out now uses the pads the
+  plan will lay (`planned_pad_claims`, moved here from `roads/network.py` so the router and the
+  writer read one population), not a `pad_radius_m` disc per settlement. That disc was a town's
+  100 m district or a watchtower's circumscribed circle plus 2 m. Before the change it looked
+  harmless only because `sites_path` read Pirate68's `settlements/sites.yaml` on Fresh42. Once
+  the path resolves by seed, T3, T7, S4, S7 and S8 refused at the rim inside those discs, 4.2 to
+  26.5 m outside every planned pad. MEASURED offline: T3, T7, S4 and S7 lay again, S8 goes
+  41 → 16 and T8 51 → 14 steps. The steps that remain sit inside real planned pads whose datum
+  stands 3.7 to 6.9 m above the road beside them.
+- `tools/jumpstart/roads/ribbon.py` — step 4 lays corridors it used to refuse at the rim.
+  Replayed offline (`build --validate`, nothing sent) against the ledger each Fresh42 drive-2
+  segment saw — the replay reproduces all nine refusals to the step and the metre — T4, T7 and
+  T13 now pass the rim gate (3 → 0, 1 → 0, 4 → 0 caused steps), T8 65 → 1 and S13 154 → 102, and
+  the five segments step 4 already laid still pass. Two classes closed. ANOTHER ROAD'S BATTER
+  IS GROUND (`FOREIGN_BATTER_DEPENDS_ON`): the corridor rule read every sample another road
+  authored as that road's carriageway, so beside another road's batter it left the ray
+  ungraded; now a claimed batter cell is walked like ground (their surface is what the plane
+  meets) and written only inside the other road's own band from its plan, their carriageway
+  ends the ray, and the toe feather reads the live surface the rim gate reads (99 caused steps
+  on five segments). THE RIM NO RAY OWNED (`RIM_CLOSURE_DEPENDS_ON`): where the line comes back
+  beside itself the first cell outboard of one branch belongs to the other branch's ray, which
+  had met ground; `close_rim` moves such cells, outward from the road, into the interval their
+  written neighbours allow inside their own claim band and the gates (T4, T5, T7, T8, T9, S13).
+  Also: `--validate` no longer writes the world's `blobs/index.json` through the guard
+  sandbox's symlink (Ulfsland's index carries `guardcheck` entries from it), and
+  `roads/boardwalk.py` resolves its crossing and segment corpora by seed. The water class
+  (T1, T5, S5, T9, S13: 268 steps where the batter may not fill seed water) stays refused by
+  name; its remedy is the route — see the RimWater report. `ribbon.py --selftest` gains three
+  cases, each red on the shipped rule.
+- `tools/jumpstart/blueprints/preflight.py`, `to_rcon_plan.py`, `base_geometry.py`,
+  `terraform/sites.py` — step 5's installation bodies. MEASURED on the Fresh42 drive: 6 of 12
+  bodies refused at plan, and two of those reasons were never printed, because `sites.py`
+  kept the FIRST FOUR stderr lines of a refused plan and the emitter prints its repairs before
+  its refusals (early-dock's only refusal, `co_located_rows` 6, and ashlands' second, 12, were
+  cut away). The status is now every line from the first refusal line to the end, the notes
+  are printed, the whole stderr goes to `index.json` (`sites.py --selftest`, the shipped rule
+  red on both). The emitter's repairs, all DEFAULT, each named row by row: `upright_plan`
+  matched the instrument's published rows by a double rounding (23.91052 → 23.9105 → 23.91 vs
+  23.911) and handed over 31 of blackforest-walled-base's 35 inverted panels — now keyed at the
+  instrument's own precision, a key two rows share is resolved by the instrument, a yaw that
+  cures nothing is restored and named (sandbox-portal-hub's apex); `--drop-co-located-copies`
+  drops a row the duplicate census calls a copy, by the section's own `buried_fraction` against
+  KEPT siblings (complete-station-hub 1, early-dock 6, ashlands 12; every shared pivot kept);
+  `--reorient-upside-down-panels` turns a face-down panel over IN ITS OWN SOLID — own prefab
+  under the 24 frame rotations or its `_upsidedown` twin, vertices within 1 cm, the instrument
+  choosing — and leaves one whose only upright pose rises away (ashlands 3 turned, 1 left, −0.674
+  m); `--seat-sunk-props` lifts a `props_below_floor` prop onto the plane unless it would enter
+  another physical solid (ashlands' hearth lifted 0.50 m, its table under the blackforge left).
+  `shelter_plan` stays unapplied: 22 of the 23 holes it was ever pointed at are flues over a
+  fire. The preflight now holds the gate corpus for the process: `structures._basis` caches by
+  `id(part)` and never evicts, so a corpus reloaded per call lets a new part read a freed one's
+  basis (reproduced in isolation: a y 5..6 box read as 0..1); 2 of ~120 early-dock runs under
+  the per-call reload refused `unsheltered_deck` on a body the rest emitted [cause inferred].
+  Offline plan, all 12 bodies: 6 → 9 clean; the 23 plans that emitted before on Fresh42 are
+  byte-identical. Preflight selftest 39 → 68 checks, each new key neutered both ways, all
+  verdicts.
+- `tools/jumpstart/pipeline.py` — a stage is current only if its PRODUCER is. `satisfied` was
+  keyed on the artefacts' existence, never on which version of their producer made them: MEASURED
+  2026-09-25, `blueprints/solve_placements.py` was fixed twice, `worlds/Fresh42/*/placements.yaml`
+  was the pre-fix solver's, and `status` read stage 7 `ok` (11 of 13 stages `ok`, stage 12 among
+  them mid-build); the only escape was `--force`, which re-runs worldgen. Every successful stage
+  now records a sha256 of its producer in `<work>/producers.json` — the files its Python
+  processes actually loaded, read and executed under `tools/` (an audit hook injected for that
+  stage only), the files its shell scripts name, and its own row — and `status` reports STALE
+  naming the changed file, or UNKNOWN PRODUCER for anything with no record (UNREAD IS NOT CLEAR).
+  `run` re-runs exactly the non-current stages and their descendants; `--from K` re-runs K and
+  later and never an earlier stage; `--force` is unchanged. Stages that write the live world (1
+  worldgen, 10 census, 12 build) run automatically only to create their output and are otherwise
+  REFUSED (exit 6) with the reason and the `--from` command. Stage 12 also declares
+  `<work>/build/buildstage.json`, because the census appends to the world ledger before any build.
+  Selftest 14 → 25 cases, every new dependency neutered both ways, all proofs `verdict`.
+
+- `tools/jumpstart/roads/network.py` now asks, AT PLAN TIME, whether a road's own branches can be
+  joined — and re-profiles or refuses the line with its number instead of letting `ribbon.py`'s
+  rim gate discover it at build step 4. MEASURED on seed `Fresh42`: step 4 held at 2 of 14 for
+  three waves, five segments refused at the rim (T4 22 caused steps, T6 3, T7 7, T9 49, S13 1)
+  and 60 of their 71 caused steps sat between two legs of one switchback; the refusal key
+  `|y1 - y2| - BATTER_GRADE * (run1 + run2)` has no ground term, so it was a routing fact nobody
+  asked. `route.fit_ladder` puts the line's own branches in the profile's constraint set, keyed on
+  `route.SELF_ADJACENCY_DEPENDS_ON` (design height at both claiming feet, run past each claim's
+  bench edge, one lattice edge of slide) over every 4-adjacent lattice pair the WRITER's own
+  `ribbon.lateral_and_y_grid` hands to two feet of the line; the join is exact difference-
+  constraint propagation, so an empty interval is a proof and the line is REFUSED with its two
+  samples, stations, design heights and unabsorbable metres. On the plan step 4 ran against the key
+  fires on exactly those five segments plus T8. Re-planned (after `SiteSurface`'s 18:47 site
+  re-solve): 8 lines joined at plan time, 4 unchanged, 0 refused; `ribbon.py build --validate`,
+  serial, takes S13 to rc 0 (3 of 14, from 2) and the rim's caused steps T6 3 → 2, T7 7 → 1,
+  T4 22 → 15. Four `accept` roads cases, each proved by a flipped verdict: drop the check and the
+  known-bad U returns at step 4 with 55 caused steps.
+
+- `settlements/plan.py` no longer throws away a completed solve because its `--out` directory is
+  absent. MEASURED 2026-09-23 driving seed `Fresh42`: the planner ran for 181.4 s, passed its own
+  `emitscope.require_emission_scope` check on both documents, and then died in `write_text` with
+  `FileNotFoundError` — every number lost, nothing on disk, exit 1. `--out` defaults to the
+  package's own directory and so was never absent on the path anyone had run; a fresh seed's
+  output directory is new BY DEFINITION. It now creates `--out` before emitting.
+
+- `pipeline.py`'s VHPATCH1 scope read asks `roads/field.py::header()` and not `load()`. `load()`
+  parses the whole file and THROWS THE HEADER AWAY (field.py:263 skips the seed hash, :265 skips
+  the name), so a scope check built on it reported "carries no seed declaration" about a
+  1,105,747,603-byte field whose first 4 KiB name `Fresh42` verbatim — MEASURED, and it refused
+  a correct artefact rather than admitting a wrong one, which is the safe direction and still
+  wrong.
 
 - A jumpstart character no longer wakes up in the sea, and the two halves of the system that let
   it happen are now wired together. `tools/jumpstart/worlds/derive.py` copied the template's

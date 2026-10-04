@@ -205,6 +205,58 @@ class Refusals(unittest.TestCase):
         self.assertAlmostEqual(CA.surface_y(no_cost), 70.86, places=2)
 
 
+class ASolveRefusedPadIsNotCleared(unittest.TestCase):
+    """MEASURED 2026-09-25, Fresh42 drive 2: stage 7 recorded
+    iron-era-workshop REFUSED in its own block (442 samples beyond the +/-8 m
+    apply clamp, cut 10.54 m, fill 9.569 m); build step 1 still generated its
+    zones and removed 196 objects, and step 2 refused the unit on the same
+    numbers.  Step 1 is `clear.py`, so its entry point is what is run here."""
+
+    REFUSED_BILL = {"verdict": "refused", "target_y": 61.27, "max_cut_m": 10.54,
+                    "max_fill_m": 9.569, "samples": 5041, "over_clamp": 442}
+    CLEAR_BILL = {"verdict": "clear", "target_y": 70.91, "max_cut_m": 4.32,
+                  "max_fill_m": 4.05, "samples": 5041, "over_clamp": 0}
+
+    def _plan(self, bill: dict) -> tuple[int, str]:
+        import contextlib
+        import io
+        import os
+        import tempfile
+        entry = place(solved={"flatten_cost": bill})
+        saved_argv = sys.argv
+        saved_env = {k: os.environ.get(k) for k in ("VH_SEED", "VH_WORLD")}
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "placements.yaml"
+            path.write_text(yaml.safe_dump({"world": "Fresh42", "seed": "Fresh42",
+                                            "placements": [entry]}))
+            sys.argv = ["clear.py", "plan", "--placements", str(path),
+                        "--id", entry["id"], "--seed", "Fresh42", "--world", "Fresh42"]
+            out = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(out):
+                    rc = CL.main()
+            finally:
+                sys.argv = saved_argv
+                for k, v in saved_env.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+        return rc, out.getvalue()
+
+    def test_a_pad_the_solve_refused_is_refused_before_anything_is_cleared(self):
+        rc, out = self._plan(self.REFUSED_BILL)
+        self.assertEqual(rc, 1, out)
+        self.assertIn("REFUSED", out)
+        self.assertIn("442 samples", out)
+        self.assertNotIn("objects_remove", out, "a refused pad must plan no removal")
+
+    def test_a_pad_the_engine_can_level_is_still_cleared(self):
+        rc, out = self._plan(self.CLEAR_BILL)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("objects_remove", out)
+
+
 class Commands(unittest.TestCase):
     def test_removal_command_names_ids_because_ignore_alone_removes_nothing(self):
         area = CA.clearing_area(place())

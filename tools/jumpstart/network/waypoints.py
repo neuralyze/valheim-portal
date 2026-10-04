@@ -310,7 +310,8 @@ def _separation(a: tuple[float, ...], b: tuple[float, ...]) -> float:
 
 
 def _walk_clear(seed: float, step_dir: tuple[float, float],
-                place: Any, obstacles: list[tuple[float, ...]]) -> float:
+                place: Any, obstacles: list[tuple[float, ...]],
+                admit: Any = None) -> float:
     """Smallest offset along `step_dir` at which `place(offset)` clears everything.
 
     `place(offset)` returns the boxes the waypoint would occupy at that offset. The
@@ -318,17 +319,23 @@ def _walk_clear(seed: float, step_dir: tuple[float, float],
     has to reason about a rotated box's world AABB, and the version of this file that
     did that was wrong at 45 degrees. Walking against the audit's OWN box builder
     cannot disagree with the audit.
+
+    `admit(offset)`, when given, is the caller's last word on an offset whose
+    boxes are clear: `portal_guidepost` asks its walk-in book there.
     """
     offset = seed
     while offset <= OFFSET_SEARCH_LIMIT_M:
         boxes = place(offset)
         if all(_separation(box, obstacle) >= MIN_GAP_M
-               for box in boxes for obstacle in obstacles):
+               for box in boxes for obstacle in obstacles) and (
+                   admit is None or admit(offset)):
             return offset
         offset += OFFSET_SEARCH_STEP_M
     raise WaypointError(
         f"no offset up to {OFFSET_SEARCH_LIMIT_M} m along {step_dir} clears the "
-        f"{len(obstacles)} obstacle(s) by {MIN_GAP_M} m; this waypoint has nowhere "
+        f"{len(obstacles)} obstacle(s) by {MIN_GAP_M} m"
+        + (" and leaves every arch a walk-in" if admit is not None else "")
+        + "; this waypoint has nowhere "
         f"to stand and the caller has to choose another side or another spot")
 
 
@@ -387,9 +394,47 @@ def guidepost(x: float, z: float, ground_y: float, facing_yaw: float,
     return _post_and_board(x, z, ground_y, facing_yaw, reach, text)
 
 
+# THE BOARD MUST NAME THE ARCH IT STANDS NEAREST.  The gate binds a board to an
+# arch by TEXT and then asks whether that arch is the nearest one to the board
+# (`accept/sections/portals.py::check_guideposts`, 3-D pivot distance): a walker
+# reads a board at the door beside it.  This solver used to clear the board of
+# ITS OWN arch and nothing else, so wherever arches stand closer together than
+# about twice the board's side offset, the board walks past the midpoint.
+# MEASURED on Fresh42 drive 2, the settlement ring at 5 m pitch, yaw 135: the
+# boards stood 3.535 m from their own arch and 2.559-3.350 m from a neighbour
+# at u-wttown, u-lheast, u-stenvik and u-castle -- 4 of the gate's findings.
+#
+# So the caller hands every OTHER arch it knows of (`neighbours`, (x, y, z,
+# yaw)) and every other solid it knows of (`obstacles`, fixture boxes); the
+# walk clears all of them, and the board it stops at must stand nearer its own
+# arch than any neighbour by BIND_MARGIN_M, or this side REFUSES and the caller
+# tries the other one.  A board that would name the wrong door is not placed.
+BIND_MARGIN_M = 0.25
+# GUIDEPOST_BIND_DEPENDS_ON: "neighbour_arches" -- drop it and the shipped
+# solver returns (own arch only), which the neuter in
+# `settlements/build.py::selftest` shows re-creates the 4 drive-2 findings.
+GUIDEPOST_BIND_DEPENDS_ON = ("neighbour_arches",)
+
+
+def board_binding(pieces: list[Piece], own: tuple[float, float, float],
+                  neighbours) -> dict:
+    """How far this guidepost's BOARD stands from its own arch and from the
+    nearest other one, by the gate's own metric (3-D pivot distance)."""
+    board = next(p for p in pieces if p.prefab == BOARD_PREFAB)
+    at = (board.x, board.y, board.z)
+    own_m = math.dist(at, own)
+    near = min(neighbours, key=lambda n: math.dist(at, n[:3]), default=None)
+    near_m = math.inf if near is None else math.dist(at, near[:3])
+    return {"own_m": own_m, "nearest_other_m": near_m,
+            "nearest_other": None if near is None else tuple(near[:3]),
+            "binds": own_m + BIND_MARGIN_M <= near_m}
+
+
 def portal_guidepost(portal_x: float, portal_y: float, portal_z: float,
                      portal_yaw: float, text: str,
-                     side: str = "left") -> list[Piece]:
+                     side: str = "left", neighbours=(), obstacles=(),
+                     depends_on: tuple = GUIDEPOST_BIND_DEPENDS_ON,
+                     seat=None, walkins=None) -> list[Piece]:
     """A guidepost beside a portal, naming where that portal GOES.
 
     The post stands to one side of the arch along the arch's own width axis, and its
@@ -410,28 +455,81 @@ def portal_guidepost(portal_x: float, portal_y: float, portal_z: float,
     assumption about the CALLER's placement and not about terrain, and it is why this
     takes the arch's transform rather than a bare coordinate: whoever placed the arch
     knows where its foot is and nobody else does.
+
+    `neighbours` / `obstacles`: see BIND_MARGIN_M.  Raises `WaypointError` when
+    this side has no clear spot or its first clear spot names the wrong door.
+
+    `seat` is the ground levelled for the arch (`terraform/stock.py::
+    PadSeat`): the post is driven into the arch's own surface, so a post or
+    board whose footprint that ground does not reach would stand at the
+    arch's height over ground nobody levelled -- this side REFUSES instead,
+    naming how far off it stands, and the caller tries the other one.
+
+    `walkins` is the site's walk-in book (`terraform/stock.py::Walkins`, the
+    gate's own `approach_ray` rule): the walk also refuses every offset at
+    which the post or the board would close the last walk-in of any arch --
+    this one included, which may not yet be committed to the book -- so a
+    board never stands in a doorway.  MEASURED on Fresh42 drive 3: u-sudrberg
+    and u-lhsouth stopped at 3.75 and 3.00 m by a neighbour's board.
     """
     if side not in ("left", "right"):
         raise WaypointError(f"side must be 'left' or 'right', got {side!r}")
     problem = sign_text_problem(text)
     if problem:
         raise WaypointError(problem)
+    if "neighbour_arches" not in depends_on:
+        neighbours, obstacles = (), ()
     # The arch's width axis is perpendicular to its facing. yaw is clockwise from
     # +Z, so facing is (sin, cos) and the right-hand side is (cos, -sin).
     radians = math.radians(portal_yaw)
     hand = 1.0 if side == "right" else -1.0
     step = (math.cos(radians) * hand, -math.sin(radians) * hand)
-    arch = _fixtures().fixture_box("portal_wood", portal_x, portal_y, portal_z,
-                                   portal_yaw)
+    fx = _fixtures()
+    blockers = [fx.fixture_box("portal_wood", portal_x, portal_y, portal_z,
+                               portal_yaw)]
+    blockers += [fx.fixture_box("portal_wood", nx, ny, nz, nyaw)
+                 for nx, ny, nz, nyaw in neighbours]
+    blockers += [tuple(b) for b in obstacles]
 
     def at(offset: float) -> list[tuple[float, ...]]:
         px = portal_x + step[0] * offset
         pz = portal_z + step[1] * offset
         return _boxes(guidepost(px, pz, portal_y, portal_yaw, text))
 
-    offset = _walk_clear(PORTAL_SIDE_SEED_M, step, at, [arch])
-    return guidepost(portal_x + step[0] * offset, portal_z + step[1] * offset,
-                     portal_y, portal_yaw, text)
+    admit = None
+    if walkins is not None:
+        own = ("portal_wood", portal_x, portal_y, portal_z, portal_yaw)
+
+        def admit(offset: float) -> bool:
+            pieces = guidepost(portal_x + step[0] * offset,
+                               portal_z + step[1] * offset, portal_y,
+                               portal_yaw, text)
+            return walkins.admit([(p.prefab, p.x, p.y, p.z, p.yaw)
+                                  for p in pieces], pending=[own])
+
+    offset = _walk_clear(PORTAL_SIDE_SEED_M, step, at, blockers, admit)
+    pieces = guidepost(portal_x + step[0] * offset, portal_z + step[1] * offset,
+                       portal_y, portal_yaw, text)
+    bind = board_binding(pieces, (portal_x, portal_y, portal_z), neighbours)
+    if not bind["binds"]:
+        raise WaypointError(
+            f"the first clear board on the {side} stands {bind['own_m']:.3f} m "
+            f"from its own arch and {bind['nearest_other_m']:.3f} m from the "
+            f"arch at {tuple(round(v, 2) for v in bind['nearest_other'])}: a "
+            f"walker would read it at the wrong door (margin "
+            f"{BIND_MARGIN_M} m)")
+    if seat is not None:
+        for p, box in zip(pieces, _boxes(pieces)):
+            foot = (box[0], box[1], box[4], box[5])
+            if seat(foot) is None:
+                miss = seat.miss(foot) if hasattr(seat, "miss") else {}
+                raise WaypointError(
+                    f"the {side} {p.prefab} would stand off the levelled "
+                    f"ground: {miss.get('unstamped', '?')} of "
+                    f"{miss.get('vertices', '?')} vertices under it "
+                    f"unlevelled, {miss.get('outside_pad_m', '?')} m past the "
+                    f"pad's edge")
+    return pieces
 
 
 def wrap_for_board(text: str) -> str:

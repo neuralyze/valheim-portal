@@ -1,0 +1,266 @@
+# WORLD-AGNOSTIC facts for every world in this tree.
+#
+# WHY THIS FILE EXISTS.  `worlds/<World>/world.yaml` was described by
+# `worlds/README.md` as "the only hand-edited file here", and MEASURED
+# 2026-09-23: NO TOOL IN THIS TREE HAS EVER WRITTEN ONE.  `derive.py` READS it
+# (`load_world`, ~:166) and exits if it is absent; its only two write sites
+# (~:2125, ~:2212) write `<preset>/` files.  The single write to `worlds/**`
+# anywhere in the repo is a tempdir fixture in `accept/sections/emission.py`.
+# So a hand-authored artefact sat in the middle of an automated pipeline and
+# every fresh seed had always been blocked at it.
+#
+# THE DEFECT CLASS.  A KEY THAT NAMES A SUPERSET OF WHAT THE QUANTITY ACTUALLY
+# DEPENDS ON.  Of the thirteen top-level keys in Ulfsland's `world.yaml`, five
+# -- `baseline`, `inventory`, `skills`, `servercharacters`,
+# `spawn_points_source` -- do not depend on the world AT ALL.  They are
+# properties of the DEPLOYED MOD SET and of the FLEET's launch policy:
+# ItemStacksRewrite's table, ServerCharacters' template path shape, which
+# Smoothbrain skills are inert, what `Resources` the fleet runs at.  Keying
+# them by WORLD says "these numbers are Ulfsland's" when all they can know is
+# "these numbers are this mod set's", and the price was that a second world
+# could not exist without a human retyping them.
+#
+# WHAT IS STILL THE WORLD'S.  `world`, `seed`, `disposable`, `notes`,
+# `profiles`, `admin_edition`, `server_config_root`.  Six of those seven are
+# DERIVED from the world's name through `profile_suffixes` below; `notes` is
+# authored prose and is the only thing `derive.py init` writes from scratch.
+#
+# TOKENS.  Exactly two, substituted by literal replacement (never `str.format`,
+# because prose may hold braces):
+#     {world}            the world's directory name, e.g. Ulfsland
+#     {server_profile}   profiles.server, e.g. ulfsland-dn
+#
+# EVIDENCE PROVENANCE.  The prose in `inventory`, `skills` and
+# `servercharacters` records measurements taken on the world named in
+# `measured_on`.  They carry to a new world because they are readings of the
+# MOD SET, which is shared; they are NOT re-measurements on the new world and
+# `derive.py init` stamps that at the head of every file it emits.
+#
+# DRIFT IS REFUSED, NOT TOLERATED.  `derive.py check-facts <World>` re-derives
+# every key this file owns and exits 1 on any disagreement, so the two homes
+# cannot drift apart silently.  That check is what makes one home out of two.
+version: 1
+
+measured_on:
+  world: Ulfsland
+  seed: Pirate68
+  note: >-
+    Every MEASURED claim in the blocks below was taken on this world's deployed
+    profiles. They are readings of the mod set, not of the terrain, so they
+    carry to any world running the same profiles -- and a world running a
+    DIFFERENT mod set must re-measure rather than inherit.
+
+# A world's four editions are its name, lowercased, plus a role suffix. MEASURED
+# on Ulfsland: ulfsland-dn / ulfsland-admin / ulfsland-flat / ulfsland-vr, and
+# `admin_edition` is exactly `profiles.admin`, `server_config_root` exactly
+# `profiles/<profiles.server>/server-config`. Three keys, one fact.
+profile_suffixes:
+  server: dn
+  admin: admin
+  flat: flat
+  vr: vr
+
+# Which role `server_config_root` and `admin_edition` are built from.
+server_config_role: server
+admin_edition_role: admin
+
+# The keys DERIVED from the world name, listed so `check-facts` cannot silently
+# stop checking one of them.
+derived_keys:
+- profiles
+- admin_edition
+- server_config_root
+
+# The keys this file OWNS outright. `check-facts` compares each of these,
+# parsed, against the world's own file.
+owned_keys:
+- baseline
+- inventory
+- skills
+- servercharacters
+- spawn_points_source
+
+baseline:
+  launch_preset: Normal
+  world_modifiers:
+    Resources: MuchMore
+    Portals: Casual
+  pinned:
+  - Resources
+  - Portals
+  measured:
+    resources_more: resourcerate 150
+    portals_casual: teleportall
+    resources_muchmore: resourcerate 200
+  owner: YieldDesign owns the Resources value. It settled on MuchMore; if that changes again
+    this is the one token to edit.
+inventory:
+  slots: 32
+  slots_evidence: MEASURED
+  stack_table: profiles/{server_profile}/server-config/ItemStacksRewrite/fortis.mods.itemstacksrewrite.stacks.cfg
+  stack_fallbacks:
+    ArrowBloodGold: 100
+    BoltBloodGold: 100
+    BarkaBranch: 50
+    BombDynamite: 20
+    BloodGoldKey: 1
+    CryptKey: 1
+    FaderEmber: 50
+    FrostCore: 10
+    FrozenFuel: 50
+    Gold: 30
+    GoldOre: 30
+    HatefulBlood: 20
+    NornThread: 50
+    SealBlubber: 50
+    SealHide: 50
+    SealSoup: 10
+  weight_table: tools/jumpstart/data/item_weights.json
+  carry_capacity_kg: 300.0
+  carry_capacity_evidence: MEASURED
+  carry_budget_fraction: 0.7
+  carry_bonus_status_effects:
+    BeltStrength: 150.0
+    MeadStrength: 250.0
+    GP_Moder: 300.0
+    CorpseRun: 150.0
+  carry_mods:
+    95Shade-CarryWeightSkill:
+      effect: 'MEASURED from plugins/CarrySkill.dll (monodis): a Harmony POSTFIX on Player::GetMaxCarryWeight
+        does `__result += GetSkillLevel(carry) * 3f`, so +3 kg per level, +300 at 100. The
+        skill is registered through JOTUNN''s SkillManager (SkillConfig Identifier "com.shadymods.carryskill.carry_weight_v1",
+        Name "Carry Weight"), and Jotunn PREFIXES Skills::CheatRaiseSkill matching SkillConfig.IsFromName,
+        which compares Name case-insensitively OR Identifier ordinally -- so the template
+        COULD reach it as `Carry Weight`.'
+      server_authoritative: false
+      verdict: 'REJECTED as a lever. MEASURED: the manifest says scope `shared`, but the DLL
+        is only in profiles/{server_profile}/manager-cache/client/BepInEx/plugins and is absent
+        from both the server cache tree and the live plugin directory {world}/data/bepinex/BepInEx/plugins.
+        The bonus is therefore computed on the client alone. A kit that only fits for a player
+        whose client happens to carry that package is a kit that does not fit, and it would
+        fail silently for exactly the player who did not get it. Do not budget against it.
+        (It is still fine as a gameplay mod; it just cannot hold up a capacity guarantee.)'
+    MidnightMods-ImpactfulSkills:
+      effect: 'MEASURED from the deployed MidnightsFX.ImpactfulSkills.cfg: [Hauling] EnableCarryWeightBonus
+        = true, HaulingMaxWeightBonus = 50, i.e. +0.5 kg per Hauling level.'
+      server_authoritative: true
+      verdict: 'Contributes 0 on spawn. Hauling is NOT template-settable -- see skills.reachability.not_reachable:
+        ImpactfulSkills registers no SkillManager skill and does not patch CheatRaiseSkill
+        -- so a new character starts it at 0. It grows in play, which is the right direction
+        for a budget to ignore.'
+    Fortis-ItemStacksRewrite:
+      effect: Would rewrite every item weight and stack size from its own config.
+      server_authoritative: false
+      verdict: 'NOT INSTALLED. MEASURED: no ItemStacksRewrite entry in any of the four ulfsland-*
+        profile manifests, and no plugin directory for it in the live tree. The cfg pair under
+        server-config is a leftover that deploy keeps copying forward. It is still USEFUL
+        as evidence -- BepInEx recorded the game''s own value in each entry''s `Default value`
+        comment and ZERO of the 1587 weight and 810 stack entries override that default --
+        so reading it measures vanilla, which is what is actually running. If this mod is
+        ever installed, both the weight table and the stack table must be regenerated from
+        the ACTIVE values, not the defaults.'
+skills:
+  yield_drivers:
+    ore_and_stone:
+    - Mining
+    - Pickaxes
+    wood:
+    - Lumberjacking
+    berries_and_mushrooms:
+    - Foraging
+    - Farming
+    crops:
+    - Farming
+    meat_and_hide: []
+  omit:
+    WoodCutting: Inert, and DOUBLY so. (1) Lumberjacking prefixes CheatRaiseSkill with RemoveWoodcuttingFromSkillFunctions,
+      which rewrites the literal "Woodcutting" to "Woodcutting " (trailing space) so it matches
+      nothing. (2) Even if a differently-cased name slipped past that guard into the vanilla
+      loop, Lumberjacking also prefixes Skills.GetSkill with ReturnDummyWoodcuttingSkill,
+      so the raise lands on a throwaway object and is discarded -- IsSkillValid (WoodCutting)
+      is false and the level is permanently 0. ImpactfulSkills' WoodCuttingLootFactor = 3
+      is therefore dead code. Wood yield comes from Lumberjacking alone. Emitting it wastes
+      a line and misleads the next reader into thinking wood is covered twice.
+  reachability:
+    answer: YES, all five, by plain name, case-insensitively. Not partial. Two different mechanisms
+      carry it, and the distinction matters if the mod set changes.
+    vanilla_path: MEASURED. Skills::.cctor sets `s_allSkills = Enum.GetValues(typeof(SkillType))`
+      into an `initonly` static, and CheatRaiseSkill walks that array comparing `SkillType.ToString().ToLower()`
+      against `name.ToLower()`. So unaided it can only ever reach a member of the vanilla
+      enum; it skips SkillType 0 and 999, the literal name "all" raises everything, and the
+      write is `m_level += value` clamped to 0..100 -- an ADD, which equals a set on a brand-new
+      character but would STACK on a re-application. Skills.GetSkill creates the entry on
+      demand via GetSkillDef (which SkillManager postfixes), so a never-used custom skill
+      can go straight from absent to n.
+    custom_path: 'MEASURED. SkillManager, ILRepacked separately into each Smoothbrain plugin,
+      Harmony-PREFIXES Skills.CheatRaiseSkill with Patch_Skills_CheatRaiseskill. The prefix
+      walks its own registry, compares each skill''s `internalSkillName` with String.Equals(a,
+      b, StringComparison.CurrentCultureIgnoreCase) -- the IL operand is ldc.i4.1, which is
+      CurrentCultureIgnoreCase, NOT Ordinal -- and on a match raises the skill and returns
+      false to consume the call; otherwise it returns true and the chain continues. Because
+      each mod carries its own copy there are three independent prefixes, each matching only
+      its own skill, so there is no ordering hazard. Live patch chain on CheatRaiseSkill,
+      MEASURED: Jotunn''s SkillManager patch (inert here), then the three org.bepinex.helpers.skillmanager
+      prefixes from Foraging / Lumberjacking / Mining, plus Lumberjacking''s own RemoveWoodcuttingFromSkillFunctions.Prefix.'
+    skill_ids: 'MEASURED from the live registries. SkillType is (SkillType)englishName.GetStableHashCode(),
+      so none of these is an enum member and the prefix is the ONLY route to them: Mining
+      = 1408976878, Foraging = 47719919, Lumberjacking = 1363793286.'
+    exact_string_form: '`internalSkillName`, which is Regex.Replace(englishName, "[^a-zA-Z]",
+      "_"). MEASURED english names: Mining registers "Mining", Foraging registers "Foraging",
+      Lumberjacking registers "Lumberjacking" -- all pure alpha, so internal == display ==
+      what you type, and no mangling applies. Matching is case-insensitive, but the templates
+      use the exact casing above anyway. A skill whose display name contained a space or a
+      digit would need the underscored form, which is why this is written down rather than
+      assumed.'
+    applied_client_side: 'MEASURED. The template is applied on the CLIENT, in ServerCharacters.ClientSide.InitializePlayerFromTemplate.Postfix
+      -> Player.m_localPlayer.GetSkills().CheatRaiseSkill(key, value, true). So the three
+      Smoothbrain mods must reach the client for the custom lines to land. They do: all four
+      are `scope: shared` in the {server_profile} manifest, verified identical under both
+      ServerCharacters 1.4.16 and 1.4.17.'
+    blacksmithing: BlacksmithingExpanded is a SkillManager skill too (SkillManager is ILRepacked
+      into it) so the same prefix applies, but its english-name literal is behind a wrapper
+      ctor and was not read directly. That "Blacksmithing" is the registered name is INFERRED.
+      It is not a yield driver, so nothing economic rests on it.
+    not_reachable: ImpactfulSkills does NOT use SkillManager and does NOT patch CheatRaiseSkill,
+      so its own non-vanilla skills (Hauling, Voyager) cannot be set from a template at all.
+      Neither drives yield, so no preset asks for them.
+    precedence_trap: 'A prefix that matches consumes the call, so a custom skill whose internalSkillName
+      collides with a vanilla name WINS and the vanilla skill of that name is never raised.
+      This is live history, not theory: Smoothbrain-Farming registered "Farming" and would
+      have captured it. It was removed during tonight''s 1.0 migration, so today "Farming"
+      falls through to the vanilla skill. Re-adding it would silently re-capture the name
+      and change what every template''s `Farming:` line means.'
+  resolved:
+    Farming: 'RESOLVED, and the earlier note was wrong in one detail. MEASURED from the Skills/SkillType
+      enum in this exact build: vanilla `Farming` is 0x6a = 106. The "SkillType 106" attributed
+      to ImpactfulSkills IS vanilla Farming under 1.0 numbering (the "id 15" figure is pre-1.0).
+      ImpactfulSkills.dll contains no reference to SkillManager at all, so it registers no
+      custom skill and simply reads vanilla Farming. With Smoothbrain-Farming gone there is
+      exactly ONE Farming, `CheatRaiseSkill("Farming", v)` reaches it by the vanilla path,
+      and it is the one ImpactfulSkills reads. The crop half of every tier''s economy is therefore
+      correctly addressed. Also MEASURED from the same enum: Pickaxes = 12 and WoodCutting
+      = 13.'
+servercharacters:
+  plugin_dir_live: '{world}/data/bepinex/BepInEx/plugins/ServerCharacters'
+  plugin_dir_staging: '{world}/config_merged/bepinex/plugins/ServerCharacters'
+  durable_path: '{world}/mods/generated/ServerCharacters/CharacterTemplate.yml'
+  template_filename: CharacterTemplate.yml
+  equips_nothing: true
+  quality_hardcoded_to: 1
+  requires_version: 1.4.17
+  version_note: 'MEASURED: 1.4.17 exists only as upstream commit bb7d3cd6 (2026-09-09, "fix
+    for deep north"); Thunderstore still publishes 1.4.16 from May 2025. 1.4.16 MUST NOT be
+    installed -- it hard-fails on Valheim 1.0.12 (it resolves PlayerProfile.GetCharacterFolderPath
+    from Initialize(), which 1.0 moved to SaveSystem) and ServerSync rejects a 1.4.16 client
+    against a 1.4.17 server.'
+  status: LIVE
+  status_note: 'MEASURED 2026-09-14 on the running server: the client handshake logs "Received
+    Server Characters version 1.4.17 and minimum version 1.4.17 from the client", so the in-house
+    1.4.17 build now reaches the client and ServerSync agrees end to end. The earlier block
+    (valheim-profile-sync pulls every package from the Thunderstore CDN and checks it against
+    the SHA256 in the published profile definition, so an in-house build could not reach a
+    client) was cleared by embedding the build in the sync binary. The SERVER side was already
+    proven: WebInterfaceAPI GetModList returned "Server Characters 1.4.17", RaiseSkill rewrote
+    an offline stored character, and the server read and live-reloaded CharacterTemplate.yml.'
+  single_active_preset: true
+spawn_points_source: derive.py spawn -> <preset>/spawn.yaml (1 m river-inclusive probe)

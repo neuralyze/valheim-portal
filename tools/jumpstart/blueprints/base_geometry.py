@@ -108,10 +108,11 @@ the decision is auditable rather than silent:
                            0.6-0.8 m under `PuP_house10`'s floor, a
                            `piece_chest_wood` on bare terrain beside
                            `instairtower`. Floors define the datum anyway,
-                           because burying a floor makes a building unenterable
-                           and a barrel standing 0.7 m proud of a flat pad is
-                           cosmetic. The depth is reported as
-                           `props_below_floor_m`.
+                           because burying a floor makes a building unenterable;
+                           on a flat pad at the floor plane such a prop is SUNK
+                           into the pad by the difference, which the emitter's
+                           `preflight.props_plan` lifts where it can. The depth
+                           is reported as `props_below_floor_m`.
 
 A blueprint whose body spans several storeys on a captured slope has NO single
 correct datum, and this module does not pretend otherwise: it reports every
@@ -429,6 +430,12 @@ class Geometry:
 
     def has_solid(self, prefab: str) -> bool:
         return bool(self._prefabs.get(prefab))
+
+    def physical_parts(self, prefab: str) -> list | None:
+        """The prefab's measured parts with its TRIGGER VOLUMES dropped, in
+        the `piece_geometry.json` part format - the solids a thing standing
+        beside this piece can actually run into.  None when unmeasured."""
+        return self._prefabs.get(prefab) or None
 
     def local_aabb(self, prefab: str) -> tuple[float, float, float, float, float, float] | None:
         """Unrotated prefab-local AABB of the solids, for shape tests."""
@@ -1194,17 +1201,23 @@ def floor_datum(objects, geom: Geometry | None = None) -> FloorDatum:
         # the building's floor -- three `piece_chest_barrel` 0.6-0.8 m below the
         # floor of `PuP_house10`, a `piece_chest_wood` on bare terrain beside
         # `instairtower`. Honouring those would bury the building's door sill,
-        # which makes it unenterable; leaving them proud of a flat pad is
-        # cosmetic. Floors win, and the cost is reported rather than hidden.
+        # which makes it unenterable. Floors win, and the cost is reported
+        # rather than hidden. THE COST IS A SUNK PROP, NOT A PROUD ONE: the pad
+        # is laid at the floor plane, so a prop whose base is below that plane
+        # is in the pad by the difference. This note said "stand proud" and "a
+        # floating barrel" until Fresh42's ashlands-forward-base put a hearth
+        # 0.50 m and a table 0.55 m INTO its pad. `preflight.props_plan` lifts
+        # each such prop onto the plane where that enters no other solid.
         out.props_below_floor_m = round(chosen.y - lowest_resting, 3)
         violations.append({
             "code": "props_below_floor",
             "detail": f"a ground-resting piece sits at y={lowest_resting:.3f}, "
                       f"{chosen.y - lowest_resting:.2f} m below the chosen floor plane "
-                      f"y={chosen.y:.3f}; on a flat pad it will stand proud of the "
-                      f"ground by that much. Floors define the datum because burying a "
-                      f"floor makes a building unenterable and a floating barrel does "
-                      f"not.",
+                      f"y={chosen.y:.3f}; on a flat pad at that plane it is SUNK into "
+                      f"the ground by that much. Floors define the datum because "
+                      f"burying a floor makes a building unenterable; the emitter's "
+                      f"props repair lifts the prop onto the plane where that enters "
+                      f"no other solid.",
         })
 
     out.base_y = chosen.y

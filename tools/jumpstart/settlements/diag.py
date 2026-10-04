@@ -34,13 +34,14 @@ def funnel(name: str, masks: list[tuple[str, np.ndarray]]) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--patches", default="/tmp/settle/h1m.bin")
-    ap.add_argument("--locations", default="/tmp/settle/loc3/f6fe167f4fcd.json")
+    ap.add_argument("--locations", default=None,
+                    help="default: THIS seed's dump (clearance.location_dump)")
     ap.add_argument("--district", type=float, default=176.0)
     ap.add_argument("--purity", type=float, default=0.92)
     ap.add_argument("--relief", type=float, default=12.0)
     a = ap.parse_args()
 
-    p = S.Picker(a.patches, a.locations)
+    p = S.run_picker(a.patches, a.locations or clearance.location_dump())
     mead = T.BIOME_CODE["Meadows"]
     for pid in ("mainland", "westisle"):
         blk = p.blocks[pid]

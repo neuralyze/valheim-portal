@@ -185,18 +185,43 @@ class Op:
                server skips already-done work)
       "guard"  re-running DUPLICATES, so replay must measure first and skip
       "n/a"    nothing is sent
+
+    `first_only_per_zone` IS THE ORDERING HALF OF `idempotent="yes"`, AND IT
+    IS A DIFFERENT QUESTION.  `idempotent` answers "is re-running SAFE"; this
+    answers "does re-running CHANGE THE ZONE", and only the second one can
+    date a zone's contents.  When set, the string is the MEASURED citation for
+    "the SECOND and later records of this op on the same zone changed
+    nothing", so the moment that zone's contents came into being is its FIRST
+    record and never its last.
+
+    WHY IT HAD TO BE DECLARED HERE.  `precensus.freshness_gate` asks "was this
+    zone generated after the census read it?" and the only key it had was the
+    LAST `zones_generate` record per zone -- which names "the last time anyone
+    SENT the verb", a strict SUPERSET of "the last time the zone's contents
+    changed".  MEASURED 2026-09-23 on the fresh seed Fresh42: 568 of 568
+    `zones_generate` records were written by the census survey itself (actor
+    CensusRun, seq 1-568) because 20 segment bands overlap and each band
+    generates every zone it touches; the following build step emitted 814
+    `objects_clear` and ZERO generations.  Under the last-record key 295 of
+    295 censused zones read STALE -- THE ARTEFACT WAS REFUSED AGAINST ITS OWN
+    SURVEY'S NO-OPS -- and stage 12 step 4 could not start on any fresh seed,
+    ever.  The reader cannot infer this from `idempotent`: a `guard` op and a
+    `yes` op can both be content-changing on every send.
     """
 
-    __slots__ = ("kind", "mutating", "idempotent", "required", "optional", "why")
+    __slots__ = ("kind", "mutating", "idempotent", "required", "optional",
+                 "why", "first_only_per_zone")
 
     def __init__(self, kind: str, *, mutating: bool, idempotent: str,
-                 required: tuple[str, ...], optional: tuple[str, ...], why: str):
+                 required: tuple[str, ...], optional: tuple[str, ...], why: str,
+                 first_only_per_zone: str = ""):
         self.kind = kind
         self.mutating = mutating
         self.idempotent = idempotent
         self.required = required
         self.optional = optional
         self.why = why
+        self.first_only_per_zone = first_only_per_zone
 
 
 _ROLE = ("role", "provisional", "site_id", "installation_id", "flatten",
@@ -231,7 +256,25 @@ OPS: dict[str, Op] = {
             "`expect.zone_marked_generated` rather than `zone_ctrl`: an "
             "empty-marked zone has no `_ZoneCtrl` until `zones_restore` puts "
             "one there, and a check for one would fail for the right reason "
-            "at the wrong time."),
+            "at the wrong time.",
+        first_only_per_zone=(
+            "MEASURED, two independent readings.  (1) Upgrade World 1.82: "
+            "`ZonesGenerate` sets `TargetZones = Ungenerated`, so "
+            "`Zones.GetZones` can only ever hand it zones that are NOT in the "
+            "save's generated set, and `SpawnZone` skips a zone that "
+            "`IsZoneGenerated`.  (2) NOTHING IN THIS VOCABULARY PUTS A ZONE "
+            "BACK: `zones_restore` targets GENERATED zones and adds a "
+            "`_ZoneCtrl` without removing anything, and the one destructive "
+            "sibling `zones_reset` is deliberately not modelled here.  So a "
+            "zone's membership of the generated set is MONOTONIC and its "
+            "contents were created by the FIRST record only.  The `empty` "
+            "flag does not change this: an empty mark adds the zone to the "
+            "set while spawning nothing, so it FORFEITS the content rather "
+            "than deferring it, and every later record on that zone is "
+            "skipped for the same reason.  A reader that dates a zone by the "
+            "LAST record is answering 'when was the verb last SENT', which "
+            "is a superset of 'when did this zone's contents change' by "
+            "exactly the no-ops.")),
 
     # A GENERATED ZONE WITH NO CONTROL OBJECT, and why this is its own op
     # rather than a relabelled `zones_generate`.  The two commands do not
@@ -292,8 +335,23 @@ OPS: dict[str, Op] = {
         # target height, a road has a longitudinal profile, and neither shape
         # can express the other.
         required=("name", "paint", "datum", "entries", "location_check"),
+        # `centre` IS IN THIS LIST BECAUSE `_validate_params` REQUIRES IT.
+        # MEASURED by PeakFix 2026-09-19: the pad-centre requirement below
+        # was added without adding the field here, so every pad write was
+        # refused in BOTH directions -- omit `centre` and you get "centre is
+        # REQUIRED on a pad write", supply it and you get "'centre' is not in
+        # the schema".  `settlements/build.py::terrain_record` emits it, so
+        # no pad could be written at all until this line existed.  A required
+        # field that is not an allowed field is a gate with no open position.
+        # `reseats` NAMES THE KEEP-OUT CLAIMS THIS WRITE ACCEPTS A DEBT FOR.
+        # A `flatten: "RESEAT"` record -- a roadside lamp, whose claim is on
+        # its OWN SEATING and not on the ground -- is passed only by a write
+        # that names its seq here, and `writer._reseat_debt_check` refuses a
+        # declaration naming a FORBIDDEN seq, a retired seq, or a site this
+        # write does not reach.  See `writer.KEEP_OUT_KINDS`.
         optional=_ROLE + ("target_y", "profile", "apron_m", "pad_w", "pad_d",
-                          "max_cut_m", "max_fill_m", "over_clamp"),
+                          "centre", "max_cut_m", "max_fill_m", "over_clamp",
+                          "reseats"),
         why="The `_TerrainCompiler` write: a `deleteObjects -zone` then a "
             "`spawn_object _TerrainCompiler from=cx,cz,0 data=<entry>` per "
             "zone.  Idempotent BECAUSE of the delete -- which is also why it "
@@ -337,8 +395,10 @@ OPS: dict[str, Op] = {
     "retire": Op(
         "retire", mutating=True, idempotent="yes",
         required=("prefab", "pos", "radius_m", "retires"),
-        optional=_ROLE + ("reason",),
-        why="`deleteObjects -prefab P -near x y z r -force`.  A demolition, "
+        optional=_ROLE + ("reason", "pieces"),
+        why="`deleteObjects -prefab P -near x y z r -force`, or "
+            "`deleteObjects -id <id:userid> -force` when the piece to remove "
+            "shares a pivot with one that must STAY.  A demolition, "
             "recorded so that a REPLAY ENDS WITH THE OBJECTS GONE rather than "
             "faithfully rebuilding litter.  `retires` names the seq numbers "
             "this removes, which is what lets the portal-pair invariant stop "
@@ -348,7 +408,62 @@ OPS: dict[str, Op] = {
             "1,907-piece building was demolished and re-placed and that "
             "history had nowhere to go.  The reply is one line PER DELETED "
             "OBJECT (155 bytes MEASURED), so a retire must be scoped small "
-            "enough that its ANSWER is short."),
+            "enough that its ANSWER is short.\n"
+            "\n"
+            "`pieces` IS THE BATCH FORM AND IT EXISTS BECAUSE THE PROJECTION "
+            "USED TO LOSE N-1 OF THEM.  `project.py::_op_retire` modelled "
+            "EXACTLY ONE sphere out of `params` and ignored the wire, so a "
+            "record carrying 50 `deleteObjects` lines removed one placement "
+            "from the projection and left 49 standing -- the ledger then "
+            "asserted something true about the log and false about the "
+            "world, which is the one thing a retire record exists to "
+            "prevent.  The only safe way to batch was therefore one record "
+            "per piece, and ApplyStructRepair wrote 330 records for 330 "
+            "pieces.  With `pieces` each entry is `{prefab, pos:[x,y,z], "
+            "radius_m}` plus optional `zdo_id` and `keeps`, the projection "
+            "folds EVERY entry, and `params.prefab`/`pos`/`radius_m` MUST "
+            "equal `pieces[0]` so the summary fields are not a lie.\n"
+            "\n"
+            "`zdo_id` IS RECORDED AND NEVER REPLAYED.  MEASURED across a "
+            "container restart: 414 objects came back at byte-identical "
+            "coordinates with DIFFERENT ids, so a record keyed on an id is "
+            "unreplayable.  The id is the evidence of WHICH of two "
+            "co-located pieces was removed on the night; `prefab` + the full "
+            "3D `pos` + `keeps` is what a replay acts on."),
+
+    # A ROTATION DEFECT IS REPAIRED BY ROTATING THE PIECE, NOT BY DESTROYING
+    # AND REBUILDING IT.  385 inverted roof panels were a yaw error, and the
+    # only modelled remedy was retire + spawn: two mutations, a window in
+    # which the roof has a hole, a new ZDO id, and the loss of whatever the
+    # old ZDO carried (health, crafter, data).  `modifyObject` changes the
+    # rotation in place -- MEASURED in ValheimRcon IL:
+    # `RotationModification::Apply` is `Quaternion.Euler(v)` then
+    # `ZDO.SetRotation`, followed by `ZdoUtils.SetZdoModified`.
+    #
+    # THE POSTCONDITION CANNOT BE POSITIONAL.  A 180 degree yaw moves neither
+    # the pivot, nor the footprint, nor the AABB; count, position-at-
+    # tolerance-0 and plane-coverage all read IDENTICAL before and after.
+    # That is exactly how "349/349 at tolerance 0" was reported over 349
+    # inverted panels.  So `expect.rotation` is mandatory and is read back
+    # off the object's own `findObjects -detailed` line.
+    "modify": Op(
+        "modify", mutating=True, idempotent="yes",
+        required=("prefab", "pos", "rotation_deg", "from_rotation_deg",
+                  "reason"),
+        optional=_ROLE + ("pieces",),
+        why="`modifyObject <id:userid> -rotation <x> <y> <z>`.  A pose "
+            "correction on an EXISTING ZDO: the piece is never destroyed, "
+            "gets no new id, and there is no frame in which it is missing. "
+            "`rotation_deg` and `from_rotation_deg` are Unity euler "
+            "(x, y, z) in the order `modifyObject` parses them, which is "
+            "`Quaternion.Euler(Vector3(x, y, z))` -- NOT the `y,x,z` order "
+            "`spawn_object rot=` takes.  The two commands disagree and the "
+            "difference is recorded here so nobody derives one from the "
+            "other.  `pieces` batches, exactly as on `retire`, with each "
+            "entry `{prefab, pos:[x,y,z], from_rotation_deg, rotation_deg}` "
+            "and `params.prefab`/`pos`/`rotation_deg`/`from_rotation_deg` "
+            "equal to `pieces[0]`.  Idempotent: setting a rotation that is "
+            "already set changes nothing."),
 
     "save": Op(
         "save", mutating=True, idempotent="yes",
@@ -392,7 +507,19 @@ OPS: dict[str, Op] = {
     "note": Op(
         "note", mutating=False, idempotent="n/a",
         required=("text",),
-        optional=_ROLE,
+        # `corrects_*` / `field` / `value` carry a `role: param_correction`:
+        # a field a record SHOULD have carried, supplied later by APPEND
+        # because the chain is never rewritten.  MODELLED rather than left in
+        # `meta` on purpose -- `meta` is free-form and unverified, and a
+        # replay that has to READ a correction to place a pad cannot take it
+        # from an unverified field.  That is the exact mistake being
+        # corrected: 51 pad writes carry their centre only in
+        # `meta.zone_checks[0].world`, which nothing has ever checked.
+        optional=_ROLE + ("corrects_seq", "corrects_name", "field", "value",
+                          "source", "recomputed_from_chain",
+                          "recomputation_residual_m",
+                          "recomputation_decisive",
+                          "recomputation_method", "not_decisive_reason"),
         why="A boundary agreement or a rationale.  'Fords are RoadNet terrain, "
             "not Crossings structures' will be re-litigated in three months by "
             "whoever reads this, and it belongs in the log rather than in a "
@@ -406,6 +533,9 @@ MUTATING = {k for k, v in OPS.items() if v.mutating}
 KNOWN_ROLES = {
     # RoadNet
     "road_segment", "ford", "road_junction", "road_shoulder",
+    # buildstage step 8: `roads/clear.py census --recheck`, the re-read of a
+    # finished corridor that the replay's UNVERIFIED class counts
+    "corridor_recheck",
     # Crossings
     "bridge_assembly", "bridge_body_place", "dock_place", "harbour_place",
     "boathouse_place", "ferry_terminal_place", "boat_spawn_moor",
@@ -435,6 +565,72 @@ KNOWN_ROLES = {
     # grep, and so the day somebody adds a write-time guard for object
     # placement it has a name to hang on.
     "road_lighting",
+    # CensusRun -- GENERATE-BEFORE-CENSUS.  `roads/precensus.py::survey`
+    # generates a corridor zone and then READS what generating it created,
+    # before any route is committed to that ground.  MEASURED 2026-09-23 on
+    # the fresh seed Fresh42: the op has been emitted by that function since
+    # it was written and this vocabulary never carried its role, so seq 1 of
+    # Fresh42's ledger was REFUSED -- i.e. stage 10 had never once been run
+    # through the ledger on any world.  Its own role and not
+    # `road_surface_clearing`: this op writes NO terrain and removes NOTHING;
+    # it creates a zone's own contents by generating it, which is the one
+    # write whose entire purpose is to be measured immediately afterwards.
+    "road_census",
+    # RoadsConnect -- a change to what a GUARD MEANS.  Its own role because a
+    # guard's semantics changing is a bigger event than any build it lets
+    # through, and the operator must be able to grep for every one of them
+    # without reading road notes.  The record must carry, in `meta`, the
+    # before/after quantity and a proof in BOTH directions: the case that now
+    # passes AND the case that must still refuse.  A guard shown only to pass
+    # has not been shown to be a guard.
+    "guard_semantics_change",
+    # GroundingFix -- a field a record SHOULD have carried and did not, added
+    # by APPEND because the chain is append-only and a record is never
+    # rewritten.  Its own role so a replay can find every correction in one
+    # pass rather than by reading prose, and so an operator can see how many
+    # of them a build needed.  The record must name the seq it corrects, the
+    # dotted field path, the value, and HOW the value was established --
+    # including, where it exists, an independent recomputation from the chain
+    # and the residual between the two.  A correction whose provenance is "the
+    # metadata said so" launders an unvalidated field into a validated one.
+    "param_correction",
+    # ParSpawnBeds -- A SPAWN SEAT, which is not furniture.  A claimable bed
+    # is where the world delivers a player who has just died, so it is judged
+    # against the Player prefab's OWN measured capsule (0.490 m radius x
+    # 1.850 m) rather than the fixture margins every other prop uses, and the
+    # acceptance gate has a whole section for it.  Its own role because a
+    # re-seat is a `retire` + `spawn` pair that MUST NOT be separable: a bed
+    # removed and not replaced is a LOST SPAWN, a worse defect than the one
+    # being closed, and an operator has to be able to grep every such pair in
+    # one pass and check that each retire has its spawn.  Object-only by
+    # construction - it writes no terrain and levels nothing.
+    "spawn_seat",
+    # OpenChannel / RegradeSteps / SettleVestvik -- A CUT-ONLY WRITE OVER AN
+    # EXPLICIT LATTICE SET.  `roads/regrade.py` moves NAMED VERTICES DOWNWARD
+    # ONLY, to absolute per-vertex targets, and it is neither a pad nor a
+    # fitted road: it has no datum, no width and no carriageway, so it states
+    # its footprint in `profile.nodes` with `half_width_m` 0.0 and `interp`
+    # "none".  Its own role because CUT-ONLY is a property an operator has to
+    # be able to grep for: it is what makes `ribbon.water_sign` unable to
+    # refuse a restoration, and `max_fill_m` on one of these records is 0.0
+    # BY CONSTRUCTION rather than by luck.  MEASURED 2026-09-22: this
+    # emitter's records failed validation on 24 counts before the role
+    # existed, and one of the 24 was the role itself.
+    "regrade_cut",
+
+    # A PIECE THAT LIES COMPLETELY UNDER THE APPLIED SURFACE, retired
+    # because it is invisible.  Distinct from every other retire in this
+    # vocabulary: it is not a duplicate, not a re-site and not a
+    # demolition, so a retire with NO matching spawn under this role is
+    # correct rather than a lost spawn.  The population is the acceptance
+    # gate's own `buried` finding (`numbers.buried_at`: prefab + full 3D
+    # position + depth), filtered by the game's own support algorithm
+    # (`crossings/assemble.py::verify`) run BEFORE and AFTER the removal -
+    # because an invisible piece is not necessarily an IDLE one.  MEASURED
+    # on Ulfsland: 2 of 44 bodies got WORSE and 3 pieces were left
+    # standing.  Object-only by construction: it writes no terrain and
+    # levels nothing.
+    "buried_piece",
 }
 
 TAG_RE = re.compile(r"^[A-Za-z0-9._-]{1,10}$")
@@ -558,6 +754,44 @@ def _xz(v: Any) -> bool:
 def _xyz(v: Any) -> bool:
     return isinstance(v, (list, tuple)) and len(v) == 3 and all(
         isinstance(c, (int, float)) for c in v)
+
+
+# THE SUMMARY FIELDS OF A BATCH MUST NOT BE A LIE.  A `retire` or `modify`
+# record that carries `pieces` still has to answer `params.prefab` /
+# `params.pos` to every reader that predates the batch form, and the only
+# honest answer is the FIRST entry -- not the last, not a centroid, not the
+# most common prefab.  This is enforced rather than documented because the
+# failure it prevents is silent: a batch whose summary names a piece it did
+# not touch reads, to every existing consumer, as a record about a different
+# object.
+def _batch_pieces(op: str, p: dict, mirror: tuple) -> list[str]:
+    pieces = p.get("pieces")
+    if pieces is None:
+        return []
+    bad: list[str] = []
+    if not isinstance(pieces, list) or not pieces:
+        return [f"{op}: `pieces` must be a non-empty list of entries"]
+    for i, e in enumerate(pieces):
+        if not isinstance(e, dict):
+            bad.append(f"{op}: pieces[{i}] must be an object")
+            continue
+        if not str(e.get("prefab", "")).strip():
+            bad.append(f"{op}: pieces[{i}].prefab is required")
+        if not _xyz(e.get("pos")):
+            bad.append(f"{op}: pieces[{i}].pos must be [x, y, z] in WORLD "
+                       f"order")
+    first = pieces[0] if isinstance(pieces[0], dict) else {}
+    for key in mirror:
+        if key not in first:
+            bad.append(f"{op}: pieces[0].{key} is required -- the record's "
+                       f"own params.{key} mirrors it")
+        elif first.get(key) != p.get(key):
+            bad.append(f"{op}: params.{key} is {p.get(key)!r} but "
+                       f"pieces[0].{key} is {first.get(key)!r}.  The summary "
+                       f"fields of a batch MUST equal its first entry, or "
+                       f"every reader that predates `pieces` is told about "
+                       f"an object this record did not touch.")
+    return bad
 
 
 def validate(record: dict) -> list[str]:
@@ -845,6 +1079,40 @@ def _validate_params(op: str, p: dict) -> list[str]:
                        "`objects_remove` with only `ignore=` answers "
                        "'Error: Missing ids.' and removes nothing, silently.")
 
+    elif op == "note" and p.get("role") == "param_correction":
+        # A correction is READ BY A REPLAY, so it is validated like the field
+        # it replaces rather than trusted like prose.
+        if not isinstance(p.get("corrects_seq"), int):
+            bad.append("note[param_correction]: corrects_seq must be the "
+                       "integer seq of the record being corrected -- a "
+                       "correction nothing can be joined to is prose.")
+        if not str(p.get("field", "")).strip():
+            bad.append("note[param_correction]: `field` must be the dotted "
+                       "path being supplied, e.g. 'params.centre'.")
+        if "value" not in p:
+            bad.append("note[param_correction]: `value` is required.")
+        if not str(p.get("source", "")).strip():
+            bad.append("note[param_correction]: `source` must say where the "
+                       "value came from. 'the metadata said so' launders an "
+                       "unvalidated field into a validated one, which is the "
+                       "defect this role exists to repair.")
+        # A CORRECTION MUST DECLARE WHETHER IT WAS INDEPENDENTLY CHECKED, and
+        # an unchecked one must say why. MEASURED on the 51 pad centres: 47
+        # recompute from the chain to within half a 1 m sample, and 4 cannot
+        # be recomputed at all because an adjacent pad shares their target
+        # height and their sample components merge -- worst recovered error
+        # 6.0 m. Those four are still worth recording; what is not acceptable
+        # is not knowing which kind you are reading.
+        if "recomputation_decisive" not in p:
+            bad.append("note[param_correction]: `recomputation_decisive` "
+                       "(true/false) is required -- whether an independent "
+                       "recomputation confirmed the value.")
+        elif p.get("recomputation_decisive") is False and not str(
+                p.get("not_decisive_reason", "") or "").strip():
+            bad.append("note[param_correction]: recomputation_decisive is "
+                       "false, so `not_decisive_reason` must state why the "
+                       "independent check could not settle it.")
+
 
     elif op == "terrain_write":
         has_target = "target_y" in p
@@ -857,6 +1125,49 @@ def _validate_params(op: str, p: dict) -> list[str]:
                 "half_width_m, shoulder_m, interp}, and it is what lets a "
                 "replay RE-DERIVE deltas after a worldgen change instead of "
                 "only detecting the change and stopping.")
+        # A PAD MUST STATE ITS CENTRE, and until 2026-09-19 none of them did.
+        #
+        # MEASURED over the 52 pad-role `terrain_write` records on Ulfsland:
+        # every one carries `target_y`, `pad_w`, `pad_d`, `paint` and
+        # `apron_m`, and NOT ONE carries the centre those dimensions are
+        # about.  51 of the 52 mention it only in `meta.zone_checks[0].world`,
+        # which is advisory metadata this file has never required or checked,
+        # and `ulfsgard-dredge` seq 2666 does not mention it anywhere.  So a
+        # replay that re-derives a pad -- which it MUST, because `target_y`
+        # was solved against the wrong generated surface and has to be
+        # re-solved rather than replayed -- cannot place the rectangle it is
+        # re-deriving.
+        #
+        # AND IT IS NOT RECOVERABLE FROM THE BYTES.  The obvious recovery is
+        # "every sample whose composed height equals target_y", split into
+        # connected components and matched against pad_w x pad_d.  MEASURED:
+        # that agrees with the metadata to within half a sample on 47 of 51
+        # and FAILS on 4 -- tree-sth-1/-2/-3 all target 75.70 and are
+        # adjacent, tree-west-1 abuts tree-west-2 at 40.82/40.83, so the
+        # components merge and the bbox belongs to nobody.  Worst recovered
+        # error 6.0 m.  A pad whose neighbour shares its height has no centre
+        # in the chain at all.
+        #
+        # Required for the RECTANGLE shape.  A road states its geometry in
+        # `profile.nodes`, which already carries position.  51 of the 52
+        # pad-role writes declare `pad_w` and `pad_d`; the 52nd,
+        # `ulfsgard-dredge` seq 2666, declares a `target_y` and NO FOOTPRINT
+        # OF ANY KIND -- not a rectangle, not a centre, not a region list.
+        # It is the least re-derivable record in the chain and it is left to
+        # its owner rather than given a centre guessed here from its zone
+        # extents, because a guessed footprint is exactly the class of input
+        # this check exists to stop.
+        if ("pad_w" in p or "pad_d" in p) and not _xz(p.get("centre")):
+            bad.append(
+                "terrain_write: params.centre is REQUIRED on a pad write -- "
+                "[x, z] of the rectangle params.pad_w x params.pad_d "
+                "describes. pad_w and pad_d without a centre are a size with "
+                "no position, and MEASURED on this chain the centre is NOT "
+                "recoverable from the blobs: four of the 52 pads share a "
+                "target height with an adjacent pad, their sample components "
+                "merge, and the recovered centre is out by up to 6.0 m. "
+                "`meta.zone_checks[0].world` is advisory and unvalidated and "
+                "is not a substitute.")
         # BLOCKING, and it is structural here because it is not wired
         # anywhere else.  MEASURED tonight: `flatten.py` has NO location
         # check and cut 6.65 m of ground out from under a `LocationProxy`
@@ -1012,19 +1323,89 @@ def _validate_params(op: str, p: dict) -> list[str]:
         if not _xyz(p.get("pos")):
             bad.append("retire: pos must be [x, y, z] in WORLD order -- "
                        "`deleteObjects -near` takes a cube about that point")
-        if not isinstance(p.get("retires"), list) or not p["retires"] or \
-                not all(isinstance(s, int) for s in p["retires"]):
-            bad.append("retire: `retires` must name the seq numbers this "
-                       "removes.  Without it the portal-pair invariant keeps "
-                       "counting a deleted end and the ledger asserts "
-                       "something true about the log and false about the "
-                       "world.")
+        # `retires` NAMES SUPERSEDED RECORDS, AND "NONE" MUST BE SAYABLE.
+        #
+        # THE DEFECT THIS REPLACES, MEASURED ON THIS CHAIN: the list was
+        # required to be NON-EMPTY, so a retire that supersedes no prior
+        # record -- a duplicate cull, a re-site, a buried piece -- had no
+        # way to say so.  Five agents independently wrote the only thing
+        # that passed, `[0]`, and seq 0 IS A REAL RECORD: the
+        # `world_manifest` carrying the seed, `fwl_sha256`, the mod set and
+        # the schema version.  123 records now assert that the world's own
+        # identity record has been REMOVED -- FixOrientDupes 25, FixAnnulus
+        # 29, ParLighting 16, ParSpawnBeds 9, ParBuried 44.
+        #
+        # It is INERT TODAY and that was measured, not assumed: all five
+        # readers of `writer.retired_seqs` filter on `op` first or
+        # alongside -- `terrain_write` (writer.py:961), `portal`
+        # (1271, 1915), `params.flatten == "FORBIDDEN"` (1412) and
+        # protected-piece records (618) -- and `world_manifest` matches
+        # none of them.  But `retires` is the field a future guard will ask
+        # "does this world still have an unretired manifest", and the
+        # answer is already no.  A latent lie in an append-only log cannot
+        # be corrected later: the 123 records stand forever, so the only
+        # place to fix it is here, before the 124th.
+        #
+        # So: an EMPTY list is now the honest way to say "this removes
+        # objects, not records", and naming a NON-MUTATING op is refused
+        # outright.  A retire supersedes a record that PUT SOMETHING
+        # THERE; a manifest, an observation or a save put nothing
+        # anywhere, and naming one is a category error rather than a
+        # bookkeeping choice.
+        rs = p.get("retires")
+        if not isinstance(rs, list) or not all(isinstance(s, int)
+                                               for s in rs):
+            bad.append("retire: `retires` must be a list of the seq numbers "
+                       "this removes -- EMPTY when it supersedes no record. "
+                       "Without it the portal-pair invariant keeps counting "
+                       "a deleted end and the ledger asserts something true "
+                       "about the log and false about the world.")
+        elif any(s <= 0 for s in rs):
+            bad.append(
+                "retire: `retires` names seq "
+                + ", ".join(str(s) for s in sorted(s for s in rs if s <= 0))
+                + ", which is not a record this retire can supersede -- seq "
+                  "0 is the `world_manifest` holding the seed, fwl_sha256, "
+                  "the mod set and the schema version, and a retire removes "
+                  "OBJECTS a record placed, not the world's identity. If "
+                  "this retire supersedes nothing, say so with `retires: "
+                  "[]`; 123 records on this chain used `[0]` to mean that "
+                  "because an empty list was refused, and they now assert "
+                  "the manifest is gone.")
         if float(p.get("radius_m", 0)) > 20.0:
             bad.append("retire: radius_m > 20 -- `deleteObjects` echoes ONE "
                        "LINE PER DELETED OBJECT (155 bytes MEASURED), so a "
                        "wide cube is a question whose answer is long, and a "
                        "290 KB reply on the Unity main thread is what killed "
                        "the console sink.  Split it.")
+        bad += _batch_pieces("retire", p, ("prefab", "pos", "radius_m"))
+
+    elif op == "modify":
+        if not _xyz(p.get("pos")):
+            bad.append("modify: pos must be [x, y, z] in WORLD order -- the "
+                       "piece is identified by where it STANDS, because a ZDO "
+                       "id is not durable across a container restart "
+                       "(MEASURED: 414 objects returned at byte-identical "
+                       "coordinates with different ids)")
+        for k in ("rotation_deg", "from_rotation_deg"):
+            if not _xyz(p.get(k)):
+                bad.append(f"modify: {k} must be [x, y, z] Unity euler "
+                           f"degrees, the order `modifyObject -rotation` "
+                           f"parses -- NOT the y,x,z `spawn_object rot=` "
+                           f"takes")
+        if _xyz(p.get("rotation_deg")) and _xyz(p.get("from_rotation_deg")) \
+                and list(p["rotation_deg"]) == list(p["from_rotation_deg"]):
+            bad.append("modify: rotation_deg equals from_rotation_deg -- a "
+                       "record that changes nothing cannot be told apart "
+                       "from one that failed, and a 180 degree yaw moves "
+                       "neither pivot nor AABB, so nothing else in the "
+                       "record would catch it")
+        if not str(p.get("reason", "")).strip():
+            bad.append("modify: `reason` must state the MEASURED defect this "
+                       "pose corrects")
+        bad += _batch_pieces("modify", p,
+                             ("prefab", "pos", "rotation_deg",
+                              "from_rotation_deg"))
 
     elif op == "observe":
         method = str(p.get("method", ""))

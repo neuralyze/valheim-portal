@@ -190,17 +190,45 @@ def flattest_bearing(f: T.Field, cx: float, cz: float, length_m: float,
 
 
 class TownPlanner:
-    def __init__(self, picker: S.Picker, audit_rows: list[dict] | None = None):
+    def __init__(self, picker: S.Picker, audit_rows: list[dict] | None = None,
+                 bill=None, claims=None, clearing=None):
         self.p = picker
         self.rows = audit_rows if audit_rows is not None else BD.load_audit()
         self.by_name = {r["name"]: r for r in self.rows}
+        # HOW A BUILDING PAD IS PRICED.  Absent, `terrain1m.pad_bill` on the
+        # finding field; `settlements/plan.py::build` hands in `site_bill` on
+        # the surface the engine levels, because a pad is a WRITE and its
+        # clamp verdict is only true of the ground the writer adds to.
+        self.bill = bill or (lambda f, x, z, w, d, yaw_deg=0.0:
+                             T.pad_bill(f, x, z, w, d, yaw_deg))
+        # WHOSE GROUND IS WHOSE.  `settlements/plan.py::SiteClaims`, handed in
+        # by `build`: every write already in the plan, other towns' buildings
+        # and this town's own included.  A plot whose WRITTEN pad -- the unit
+        # `build.unit_records` derives, not the rectangle this file assumes --
+        # shares a lattice sample with another write, or stamps within
+        # `clearance.TERRAIN_SPREAD_M` of another building's body, is not a
+        # plot: MEASURED on Fresh42, 15 building pairs wrote each other's
+        # samples at targets up to 2.79 m apart, because the gap below was
+        # measured between BODIES and every pad is its body plus
+        # `BD.PAD_MARGIN_M` on each side.  Absent (this file's own `main`),
+        # nothing is claimed.
+        self.claims = claims
+        # THE BUILD'S CLEARING GATE, handed in by `settlements/plan.py::build`
+        # (`plan.clearing_refusals` over the unit the writer derives): a plot
+        # whose clearing cylinder the build would refuse is not a plot.
+        # `clearing(site, patch, stub)` returns the refusals; empty passes.
+        # Absent (this file's own `main`), no plot is asked.
+        self.clearing = clearing
 
     # --- plots ---------------------------------------------------------
     def place(self, out: list[Building], f: T.Field, bid: str, role: str,
               row: dict, street: Street, side: int, along_m: float,
-              pad_margin_m: float = BD.PAD_MARGIN_M) -> Building | None:
+              pad_margin_m: float = BD.PAD_MARGIN_M, site: str | None = None,
+              tally: dict | None = None) -> Building | None:
         """Try to stand one body on one plot, sliding along the street until a
-        position is buildable, legal and clear of its neighbours."""
+        position is buildable, legal, clear of its neighbours and on ground no
+        other write claims.  `tally` counts the plots refused on claimed
+        ground and whose ground it was, so an unplaced building says so."""
         w = float(row["footprint_x_m"])
         d = float(row["footprint_z_m"])
         pad_w, pad_d = w + 2 * pad_margin_m, d + 2 * pad_margin_m
@@ -215,16 +243,40 @@ class TownPlanner:
                 s = along_m + direction * slide * PLOT_PITCH_M
                 px = cx0 + dx * s + nx * offset * side
                 pz = cz0 + dz * s + nz * offset * side
-                if not f.contains(px, pz, max(pad_w, pad_d)):
+                stub = {"id": bid, "role": role, "body": row["name"],
+                        "sha256": row["sha256"], "x": round(px, 1),
+                        "z": round(pz, 1), "yaw_deg": round(yaw, 1),
+                        "footprint": (w, d), "pieces": int(row["pieces"]),
+                        "pad": {"width_m": pad_w, "depth_m": pad_d,
+                                "target_y": 0.0}}
+                # THE PAD THAT WILL BE WRITTEN is the pad that is kept inside
+                # the window, cleared of every stand-off and billed: its extent
+                # is asked of the writer's unit, never assumed here.
+                bw, bd = pad_w, pad_d
+                if self.claims is not None:
+                    unit = self.claims.building_unit(site, f.id, stub)
+                    bw, bd = float(unit["pad_w"]), float(unit["pad_d"])
+                if not f.contains(px, pz, max(bw, bd)):
                     continue
-                halfdiag = math.hypot(pad_w, pad_d) / 2
+                halfdiag = math.hypot(bw, bd) / 2
                 viol = self.p.loc.violations(px, pz, halfdiag)
                 if viol:
                     continue
                 if self.p.installation_conflict(px, pz, halfdiag) is not None:
                     continue
+                if self.clearing is not None:
+                    gated = self.clearing(site, f.id, stub)
+                    if gated:
+                        if tally is not None:
+                            tally["clearing_refused_slots"] = (
+                                tally.get("clearing_refused_slots", 0) + 1)
+                            by = tally.setdefault("clearing_bound_by", {})
+                            for g in gated:
+                                k = str(g["location"])
+                                by[k] = by.get(k, 0) + 1
+                        continue
                 try:
-                    pad = T.pad_bill(f, px, pz, pad_w, pad_d, yaw)
+                    pad = self.bill(f, px, pz, bw, bd, yaw)
                 except ValueError:
                     continue
                 if not pad["clamp_ok"] or pad["wet_samples"]:
@@ -232,6 +284,38 @@ class TownPlanner:
                 cand = (px, pz, w, d, yaw)
                 if any(obb_gap(cand, b.rect()) < MIN_BUILDING_GAP_M for b in out):
                     continue
+                if self.claims is not None:
+                    hits = self.claims.conflicts(
+                        self.claims.building(site, f.id, {**stub, "pad": pad}))
+                    # THE SOLVER'S OTHER MOVE.  Ground this town's own
+                    # neighbour claims is one terrace if both pads are
+                    # written at ONE datum: the samples they share then hold
+                    # the same height whichever lands last, and each bill is
+                    # still its write.  Tried at each such neighbour's target,
+                    # clamp-checked like any bill.  Ground another SITE
+                    # claims is never shared.
+                    for t in sorted({h["targets"][1] for h in hits
+                                     if h.get("against") == site
+                                     and h["targets"][1] is not None}):
+                        try:
+                            alt = self.bill(f, px, pz, bw, bd, yaw, target_y=t)
+                        except (TypeError, ValueError):
+                            continue
+                        if not alt["clamp_ok"] or alt["wet_samples"]:
+                            continue
+                        if not self.claims.conflicts(self.claims.building(
+                                site, f.id, {**stub, "pad": alt})):
+                            pad, hits = alt, []
+                            break
+                    if hits:
+                        if tally is not None:
+                            tally["claim_refused_slots"] = (
+                                tally.get("claim_refused_slots", 0) + 1)
+                            by = tally.setdefault("claimed_by", {})
+                            for h in hits:
+                                k = str(h.get("against_unit") or h.get("against"))
+                                by[k] = by.get(k, 0) + 1
+                        continue
                 pad["x"], pad["z"] = px, pz
                 return Building(
                     id=bid, role=role, body=row["name"], sha256=row["sha256"],
@@ -259,6 +343,18 @@ class TownPlanner:
         streets = [main, cross]
 
         buildings: list[Building] = []
+        # WHAT WAS ASKED FOR AND NOT PLACED, carried on the record.  Until
+        # 2026-09-22 a building that found no plot was announced with a `!`
+        # line on STDOUT and then simply not appended, so `totals()` counted
+        # WHAT GOT PLACED and the plan document said nothing at all.
+        # MEASURED: Fresh42 asks for 31 town buildings and places 29;
+        # Ulfsland's default path is one short (vestvik-villa-1); plan.json
+        # recorded neither, and totals.buildings/beds/stations were all
+        # post-drop figures presented as the plan.  A shortfall whose only
+        # witness is stdout is not recorded -- and an absence that is STABLE is
+        # invisible to a diff, which is why the REQUESTED count has to be
+        # declared rather than inferred from what survived.
+        unplaced: list[dict] = []
         # Four frontages: both sides of both streets. Plots are dealt ROUND
         # ROBIN from a rotating start rather than "first slot that fits",
         # because first-fit put 17 of 18 Stenvik buildings on one side of one
@@ -275,6 +371,7 @@ class TownPlanner:
             for k in range(count):
                 bid = f"{name}-{role}-{k + 1}"
                 placed = None
+                tally: dict = {}
                 order = slots[dealt % len(slots):] + slots[:dealt % len(slots)]
                 dealt += 1
                 for street, side in order:
@@ -283,13 +380,33 @@ class TownPlanner:
                     pitch = max(float(row["footprint_x_m"]),
                                 float(row["footprint_z_m"])) + MIN_BUILDING_GAP_M + 3
                     a_m = along[id(street)] + ((n // 2) + 1) * pitch * (1 if n % 2 == 0 else -1)
-                    placed = self.place(buildings, f, bid, role, row, street, side, a_m)
+                    placed = self.place(buildings, f, bid, role, row, street,
+                                        side, a_m, site=name, tally=tally)
                     step[key] = n + 1
                     if placed:
                         buildings.append(placed)
+                        if self.claims is not None:
+                            self.claims.add(self.claims.building(
+                                name, f.id, placed.__dict__))
                         break
                 if placed is None:
                     print(f"  ! no plot for {bid} ({body_name})")
+                    miss = {
+                        "id": bid, "role": role, "body": body_name,
+                        "slots_tried": len(order),
+                        "claim_refused_slots": tally.get("claim_refused_slots", 0),
+                        "claimed_by": tally.get("claimed_by", {}),
+                        "why": "no frontage slot on either side of either "
+                               "street cleared the pad, the POI stand-off, "
+                               "the building gap and the ground other writes "
+                               "already claim"}
+                    if tally.get("clearing_refused_slots"):
+                        miss["clearing_refused_slots"] = tally[
+                            "clearing_refused_slots"]
+                        miss["clearing_bound_by"] = tally["clearing_bound_by"]
+                        miss["why"] += (", nor the build's clearing gate "
+                                        "(clearing_bound_by)")
+                    unplaced.append(miss)
         square = T.pad_bill(f, cx, cz, site.notes.get("square_m", 24.0),
                             site.notes.get("square_m", 24.0))
         square["x"], square["z"] = cx, cz
@@ -299,17 +416,26 @@ class TownPlanner:
             "square": square,
             "streets": [s.__dict__ | {"walkable": s.walkable} for s in streets],
             "buildings": [b.__dict__ for b in buildings],
-            "totals": self.totals(buildings, square),
+            "unplaced": unplaced,
+            "totals": self.totals(buildings, square, unplaced),
         }
 
     @staticmethod
-    def totals(buildings: list[Building], square: dict) -> dict:
+    def totals(buildings: list[Building], square: dict,
+               unplaced: list[dict] | None = None) -> dict:
         moved = sum(b.pad["moved_m3"] for b in buildings) + square["moved_m3"]
         pieces = sum(b.pieces for b in buildings)
         worst = max((b.pad["clamp_headroom_m"] for b in buildings), default=0.0)
         tight = min((b.pad["clamp_headroom_m"] for b in buildings), default=0.0)
+        short = list(unplaced or ())
         return {
             "buildings": len(buildings),
+            # REQUESTED BESIDE PLACED, always, so "placed everything" is
+            # readable without counting rows.  `buildings` alone cannot say
+            # which of the two happened, and every figure below it -- beds,
+            # stations, pieces -- is a post-drop number.
+            "buildings_requested": len(buildings) + len(short),
+            "buildings_unplaced": len(short),
             "pieces_total": pieces,
             "zdo_estimate": pieces + len(buildings),   # +1 portal/sign allowance each
             "earthwork_m3": round(moved, 1),
@@ -384,10 +510,11 @@ VESTVIK_SPEC = [
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--patches", default="/tmp/settle/h1m.bin")
-    ap.add_argument("--locations", default="/tmp/settle/loc3/f6fe167f4fcd.json")
+    ap.add_argument("--locations", default=None,
+                    help="default: THIS seed's dump (clearance.location_dump)")
     ap.add_argument("--json", default="")
     a = ap.parse_args()
-    p = S.Picker(a.patches, a.locations)
+    p = S.run_picker(a.patches, a.locations or clearance.location_dump())
     planner = TownPlanner(p)
     towns = S.dedupe(p, p.town())
     out = {}

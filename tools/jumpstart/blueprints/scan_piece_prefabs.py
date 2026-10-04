@@ -38,8 +38,12 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SIBLING = HERE.parent / "extract_prefab_names.py"
+JUMPSTART = HERE.parent
+sys.path.append(str(JUMPSTART))
 
+import worldseed  # noqa: E402
+
+SIBLING = JUMPSTART / "extract_prefab_names.py"
 # Two passes. The plain pass is the sibling module's shape. The dotted pass
 # exists because a handful of real Valheim piece prefabs carry a decimal in the
 # name -- `wood_wall_log_4x0.5` is the load-bearing example, it is the single
@@ -104,15 +108,22 @@ def scan_mod_dlls(plugins: Path, log) -> dict[str, set[str]]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--valheim-root", default="/media/big4/projects/game/valheim")
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--out", default=str(HERE / "data" / "piece_prefabs.json"))
     ap.add_argument("--skip-mods", action="store_true")
     args = ap.parse_args(argv)
+    # NOT SEED-SCOPED, AND SAID SO DELIBERATELY.  `--world` here names an
+    # INSTALL directory -- game bundles and the mod plugin tree -- and the
+    # tokens it extracts are properties of the binaries, identical on every
+    # seed.  So there is no artefact declaration to read and `require_scope`
+    # would be theatre.  The resolver is still used, because the world NAME
+    # must come from one place.
+    _seed, world = worldseed.apply(args)
 
     def log(msg: str) -> None:
         print(msg, file=sys.stderr, flush=True)
 
-    root = Path(args.valheim_root) / args.world
+    root = Path(args.valheim_root) / world
     bundle_dir = root / "data" / "server" / "valheim_server_Data" / "StreamingAssets" / "SoftRef" / "Bundles"
     plugins = root / "config_merged" / "bepinex" / "plugins"
 

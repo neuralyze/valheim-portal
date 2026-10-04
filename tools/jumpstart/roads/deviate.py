@@ -53,14 +53,51 @@ import numpy as np
 import yaml
 
 HERE = Path(__file__).resolve().parent
+JUMPSTART = HERE.parent
+# ORDER MATTERS AND IT BIT TWICE.  `tools/jumpstart/network/` is a PACKAGE and
+# `tools/jumpstart/roads/network.py` is a module; whichever directory comes
+# FIRST on sys.path wins `import network`.
+#
+# So JUMPSTART is APPENDED, never inserted.  The obvious spelling --
+# `insert(0, JUMPSTART)` guarded by `not in sys.path` -- puts the package
+# ahead of this directory when run AS A SCRIPT, because Python has already
+# put the script's own directory at sys.path[0] and the guard then skips it
+# while still inserting JUMPSTART in front. MEASURED: `python3 north.py plan`
+# died on `module 'network' has no attribute 'MAX_BRIDGE_SPAN_M'`, i.e. it had
+# imported the package. JUMPSTART only has to supply `worldseed`, which no
+# other directory defines, so the end of the path is the right place for it.
 sys.path.insert(0, str(HERE))
+if str(JUMPSTART) not in sys.path:
+    sys.path.append(str(JUMPSTART))
 
 import field as fieldmod  # noqa: E402
 import route as routemod  # noqa: E402
 import poi as poimod  # noqa: E402
+import precensus as censusmod  # noqa: E402
 import structures as ST  # noqa: E402
+import worldseed  # noqa: E402
 
 PATCH_FILE = Path("/tmp/roads/h1m.bin")
+
+# RESOLVED, not literal.  `main()` rebinds both from `--seed`/`--world`.
+SEED = worldseed.seed()
+WORLD = worldseed.world()
+
+# WHICH KEEP-OUT POPULATION A DEVIATION IS SOLVED AGAINST.  This module exists
+# to bend a road around a body it can see, and it was reading the MOD-FREE
+# generator dump -- so the one population it most needed was the one it could
+# not see.  `--poi-source {all,generator}` is gone: "all" folded in
+# `roads/mod_keepout.json`, a survey of ONE world's finished carriageways, and
+# a survey file is not a reading of the ground this deviation has to fit
+# through.  The set is now the dump (the [SEED] question) plus a CENSUS read
+# live after the zones were generated.  `main()` rebinds `CENSUS` or refuses.
+CENSUS: censusmod.Census | None = None
+POI_SOURCE = "generator+census"
+
+
+def routing_pois() -> list:
+    """The keep-out set a deviation is solved against."""
+    return poimod.load() + ([] if CENSUS is None else CENSUS.pois())
 
 # HOW FAR BEYOND THE CONFLICT THE DEVIATION IS ALLOWED TO START, i.e. how much
 # of the existing alignment it may rewrite on each side.  A deviation has to
@@ -114,7 +151,8 @@ def load_field(patch: str):
         raise SystemExit(f"{PATCH_FILE} is missing: the 1 m PatchScan field is "
                          f"the height source for every number here and there "
                          f"is no fallback that measures the same thing")
-    return fieldmod.load(PATCH_FILE)[patch]
+    fieldmod.require_seed(PATCH_FILE, SEED)
+    return worldseed.resolve(fieldmod.load(PATCH_FILE), patch)
 
 
 def body_points(report: dict, seg_id: str) -> list[dict]:
@@ -265,12 +303,35 @@ def deviate(seg: dict, report: dict, claims: ST.Claims, pieces: list[dict],
     half = seg["width_m"] / 2.0 + 1.0  # carriageway half + shoulder
     g_max = float(seg.get("grade_limit") or 0.08)
     corr = routemod.Corridor(fld=fld, cell_m=4.0, grade_max=g_max)
-    pois = poimod.load()
+    # THE KEEP-OUT FIX, WIRED IN. Was `poimod.load()`, the MOD-FREE dump.
+    pois = routing_pois()
     pf, ps, _touch = poimod.masks(pois, corr.x0, corr.z0, corr.cell_m, corr.m,
                                   half)
     own, meta = build_forbid(corr, pad_rects(claims), pieces, half,
                              margin_m=margin_m)
     corr.forbid = pf | own
+    # `cells_forbidden` above counts the PAD-AND-PIECE mask only; the POI mask
+    # is a separate population and reporting one total for both would hide
+    # which of them moved a line. Counted separately, and named.
+    meta["poi_source"] = POI_SOURCE
+    meta["poi_instances"] = len(pois)
+    meta["poi_generator_instances"] = len(pois) - (
+        0 if CENSUS is None else len(CENSUS.bodies))
+    meta["poi_census_bodies"] = 0 if CENSUS is None else len(CENSUS.bodies)
+    meta["poi_census_cells_read"] = 0 if CENSUS is None else len(CENSUS.cells)
+    meta["poi_census_measured_utc"] = (None if CENSUS is None
+                                       else CENSUS.measured_utc)
+    # A DEVIATION IS A ROUTE, so it answers the coverage question too: a bend
+    # onto ground nobody read is the same defect as a route onto it.
+    meta["poi_census_coverage"] = (
+        {"verdict": "NO_CENSUS",
+         "why": "solved against the mod-free dump alone; this deviation can "
+                "bend into a standing body"}
+        if CENSUS is None else
+        censusmod.coverage_gate([(float(x), float(z))
+                                 for x, z in seg["nodes"]], CENSUS))
+    meta["poi_cells_forbidden"] = int(pf.sum())
+    meta["poi_cells_forbidden_beyond_pads"] = int((pf & ~own).sum())
     nodes = np.asarray(seg["nodes"], dtype=np.float64)
     al = along_of(nodes)
     if hug:
@@ -376,7 +437,56 @@ def deviate(seg: dict, report: dict, claims: ST.Claims, pieces: list[dict],
     return out
 
 
-def splice(seg: dict, dev: dict, patch: str) -> dict:
+# WHERE THE GROUND MAY NOT MOVE AT ALL, read from the one authority that
+# owns the question.  `ledger/writer.py::_flatten_forbidden_check` is the
+# write-time guard; this is the same population read at PLAN time, so a
+# splice finds out before the console is taken rather than after.  Asked of
+# the ledger's own records and its own `_site_evidence`, never re-derived:
+# one reader per question is this project's rule and a second copy of a
+# footprint is a second answer.
+def forbidden_footprints(ledger_path: Path | None = None,
+                         pad_m: float = 2.0) -> list[tuple[float, float, float]]:
+    """(x, z, radius) for every live `flatten: FORBIDDEN` extent.
+
+    `pad_m` widens each piece to the sample lattice around it, because the
+    guard refuses movement AT the structure and a terrain sample 1 m away
+    blends into it.
+    """
+    sys.path.insert(0, str(JUMPSTART / "ledger"))
+    import writer as W  # noqa: PLC0415
+    led = Path(ledger_path or (JUMPSTART / "ledger" / "runs" / WORLD
+                               / "ledger.jsonl"))
+    if not led.exists():
+        return []
+    prior = [json.loads(ln) for ln in led.read_text().splitlines() if ln.strip()]
+    retired = W.retired_seqs(prior)
+    # `_site_evidence` reads a record's protected-piece BLOB, so it needs the
+    # ledger object, not just the lines.  Opened read-only: nothing here
+    # appends, and the actor name says who is asking.
+    ledger = W.Ledger.open(WORLD, actor="deviate-forbidden-footprints",
+                           root=led.parent, heavy_fingerprint=False)
+    out: list[tuple[float, float, float]] = []
+    for r in prior:
+        p = r.get("params") or {}
+        # BOTH KEEP-OUT KINDS.  `writer.KEEP_OUT_KINDS` splits `FORBIDDEN`
+        # (the ground is the hazard) from `RESEAT` (a lamp, dischargeable by
+        # a write that names its seq) -- and THIS function is the alignment
+        # planner's keep-out, which cannot promise a re-seat.  It keeps out
+        # of both, as it did when both read FORBIDDEN.  Matching the literal
+        # string here would have silently dropped every lamp out of this set
+        # the moment the emitters started writing RESEAT.
+        if W.keep_out_kind(p) is None or r.get("seq") in retired:
+            continue
+        pieces, discs = W._site_evidence(r, prior, ledger)
+        if pieces:
+            out += [(float(px), float(pz), pad_m) for px, pz in pieces]
+        elif discs:
+            out += [(float(dx), float(dz), float(rad) + pad_m)
+                    for dx, dz, rad in discs]
+    return out
+
+
+def splice(seg: dict, dev: dict, patch: str, forbidden_xz=None) -> dict:
     """A COMPLETE, self-consistent segment record for the deviated alignment.
 
     A deviation is a polyline; `ribbon.py build` needs a SEGMENT: nodes,
@@ -530,20 +640,144 @@ def splice(seg: dict, dev: dict, patch: str) -> dict:
     # keeps its ordinary terrain-derived band; outside it the built road does
     # not move.
     PIN_BLEND_M = 100.0
+    # AND INSIDE A flatten=FORBIDDEN FOOTPRINT THE BAND IS THE STORAGE
+    # QUANTUM, NOT 5 cm.
+    #
+    # PIN_EPS_M exists to absorb `segments.yaml`'s 3-decimal rounding, and it
+    # is a BAND, so `fit_profile` is free to sit anywhere in it -- and being
+    # an interval propagation it takes the edge.  MEASURED on this splice:
+    # 35 retained stations of N0-brgs2-wmid, all more than 100 m past the
+    # blend, moved EXACTLY 0.050 m, and one of them is at (-342.7, 317.9),
+    # 994 m from the joint and inside the 15.3 m footprint of our own
+    # over-water bridge at ledger seq 2789/2790. `writer._flatten_forbidden_
+    # check` refuses ANY movement there -- "filling this channel to road
+    # freeboard would permanently drain it, which is the unrepairable
+    # direction" -- so the whole repair was refused before the write, for
+    # 5 cm of drift a kilometre away that nothing asked for.
+    #
+    # The fix is not to loosen that guard and not to shrink PIN_EPS_M for
+    # every station (lo == hi everywhere was MEASURED to prove 25 spans
+    # infeasible across a kilometre of already-built road).  It is that a
+    # station standing inside a footprint where ground may not move gets the
+    # tightest band the file can express -- half the stored quantum -- while
+    # its neighbours keep the 5 cm that makes the fit feasible.
+    PIN_EXACT_M = 0.0005
     joints = [float(s[ia]), float(s[ia + len(dev_pts) - 1])]
     pinned_n = 0
+    pinned_exact = 0
+    # A RETAINED RUN END IS A JUNCTION NODE AND GETS THE QUANTUM TOO.
+    # Same defect as the forbidden footprint, different owner: a segment's
+    # terminal is the point every other road meeting there was fitted to, so
+    # the 5 cm band is 5 cm of somebody else's datum.  MEASURED on this
+    # splice of T1-portalhub-temple: 75 of 273 retained stations took the
+    # band edge EXACTLY, and station 0 -- (-292.0, 214.0), the portal hall
+    # apron and a five-way node -- moved +0.050 m.  It is inside the blend
+    # (it IS a joint neighbour) so the loop below would skip it entirely and
+    # leave it to the fit; pinning it at the quantum makes the end the one
+    # thing a re-fit may not trade.
+    ends = {0, len(pts) - 1}
     for knew, kold in retained:
         if not (0 <= knew < len(pts)):
             continue
-        if min(abs(float(s[knew]) - j) for j in joints) <= PIN_BLEND_M:
+        x, z = pts[knew]
+        inside = any(math.hypot(x - fx, z - fz) <= fr
+                     for fx, fz, fr in (forbidden_xz or ()))
+        exact = inside or knew in ends
+        if not exact and min(abs(float(s[knew]) - j)
+                             for j in joints) <= PIN_BLEND_M:
             continue
-        lo[knew] = float(old_prof[kold]) - PIN_EPS_M
-        hi[knew] = float(old_prof[kold]) + PIN_EPS_M
+        # AN AGREEMENT IS PINNED lo == hi, NOT TO A BAND.  PIN_EXACT_M is a
+        # BAND of half a storage quantum and `fit_profile`, being an interval
+        # propagation, takes the edge -- which `segments.yaml`'s own 3-decimal
+        # rounding then prints as 0.001 m, one FULL quantum.  MEASURED twice
+        # tonight, independently, on two different agreements:
+        #   T1 station 0, (-292.0,214.0), the portal-hall apron and a
+        #     five-way node: the band took it from +0.050 m to +0.001 m.
+        #   N0 inside the 15.3 m footprint of our own over-water bridge at
+        #     ledger seq 2789/2790: the band took it from 0.0500 m to
+        #     0.0010 m.
+        # Same residual, two different things being broken, and 0.001 m is
+        # still the splice moving ground somebody else was fitted to --
+        # `writer._flatten_forbidden_check` refuses ANY movement, so 0.001 m
+        # refuses the write exactly as 0.050 m did.  A tightened band is not
+        # a pin.  Both cases are pinned to the STORED value itself, which is
+        # already exact, so there is nothing to absorb.
+        #
+        # SCOPED, and it stays scoped: lo == hi for EVERY retained station
+        # was MEASURED to prove 25 spans infeasible across a kilometre of
+        # already-built road.  Exactness is for ground something else has
+        # agreed on -- a flatten=FORBIDDEN footprint and a run end -- and the
+        # ordinary retained station keeps the 5 cm that keeps the fit
+        # feasible.
+        if exact:
+            lo[knew] = hi[knew] = float(old_prof[kold])
+        else:
+            lo[knew] = float(old_prof[kold]) - PIN_EPS_M
+            hi[knew] = float(old_prof[kold]) + PIN_EPS_M
         pinned_n += 1
+        pinned_exact += 1 if exact else 0
     g_max = float(seg["grade_limit"])
     fit = routemod.fit_profile(t, s, g_max, lo=lo, hi=hi)
     bad = [(p, q) for p, q in fit["infeasible_spans"] if not free[p:q + 1].all()]
     y = np.asarray(fit["y"], dtype=np.float64)
+
+    # WHOSE INFEASIBILITY IS IT.  The re-fit pins every retained station
+    # outside the blend to the height that is ON THE GROUND, so a span of
+    # retained stations can come back infeasible for a reason the deviation
+    # never touched -- the RECORDED profile is already over its own declared
+    # grade there.  MEASURED on T1-portalhub-temple: the deviation replaces
+    # stations 183-247 around `LocationProxy@-198,42` and the re-fit refused
+    # over (366, 376), 120 stations past the far joint, where T1's own stored
+    # polyline walks 0.1085 to 0.1472 node-to-node against a declared 0.08 --
+    # five days old, already in the ground, and nothing to do with the house.
+    # Refusing the whole splice for that is a tool declining to make the one
+    # repair it exists for because of a defect it did not cause and cannot
+    # reach.
+    #
+    # So the two are separated by POSITION, which is exact: outside the
+    # rewritten window every node is byte-identical to the record's, so the
+    # spacings and therefore the grades there are the record's own.  An
+    # introduced span REFUSES.  A pre-existing span is RESTORED to the
+    # heights a player is standing on -- never re-graded silently by a fit
+    # that could not satisfy its own pins -- and REPORTED with its numbers,
+    # so it stays a defect somebody has to fix rather than becoming this
+    # record's problem or this record's secret.
+    win_lo, win_hi = int(ia), int(ia + len(dev_pts) - 1)
+    old_at = {int(knew): int(kold) for knew, kold in retained}
+
+    def _overlaps_window(p, q):
+        return not (q < win_lo or p > win_hi)
+
+    introduced = [(p, q) for p, q in bad if _overlaps_window(p, q)]
+    pre_existing = []
+    for p, q in bad:
+        if _overlaps_window(p, q):
+            continue
+        ks = [k for k in range(int(p), int(q) + 1) if k in old_at]
+        if len(ks) != int(q) - int(p) + 1:
+            # A span that is not wholly retained cannot be attributed to the
+            # record: fail closed and treat it as introduced.
+            introduced.append((p, q))
+            continue
+        worst = 0.0
+        for k in ks[:-1]:
+            run = float(s[k + 1] - s[k])
+            rise = abs(float(old_prof[old_at[k + 1]] - old_prof[old_at[k]]))
+            worst = max(worst, rise / max(run, 1e-9))
+        for k in ks:
+            y[k] = float(old_prof[old_at[k]])
+        pre_existing.append({
+            "stations": [int(p), int(q)],
+            "old_stations": [old_at[ks[0]], old_at[ks[-1]]],
+            "worst_recorded_grade": round(worst, 4),
+            "declared_grade_limit": g_max,
+            "restored_to": "the RECORDED profile_y, unchanged",
+            "why": ("outside the rewritten window every node is the "
+                    "record's own, so this span's grades are the recorded "
+                    "road's and were over its declared limit before this "
+                    "deviation existed"),
+        })
+    bad = introduced
     grade = np.abs(np.diff(y)) / np.maximum(np.diff(s), 1e-9)
     cf = (y - t)[~free]
     out = dict(seg)
@@ -568,7 +802,11 @@ def splice(seg: dict, dev: dict, patch: str) -> dict:
         # segment in this file carries the narrower carriageway-only set that
         # `network.py` put there.  Filling one record from a different
         # function would make the column mean two things.
-        "zones": sorted([list(z) for z in NW.zones_of_segment(
+        #
+        # IN MEMORY THE COLUMN IS `zones_carriageway`; `zones` is the ON-DISK
+        # name and is re-instated by `ST.carriageway_to_disk` at the splice
+        # write below, which is the only serialisation boundary this tool has.
+        "zones_carriageway": sorted([list(z) for z in NW.zones_of_segment(
             {"width_m": seg["width_m"],
              "nodes": [[float(x), float(z)] for x, z in pts],
              "is_bridge": [bool(v) for v in free]})]),
@@ -584,18 +822,34 @@ def splice(seg: dict, dev: dict, patch: str) -> dict:
             "detour_m": dev["detour_m"],
             "clearance": dev["clearance"],
             "infeasible_spans_after_splice": [[int(p), int(q)] for p, q in bad],
+            "rewritten_window_new_stations": [win_lo, win_hi],
+            "pre_existing_infeasible_spans": pre_existing,
             "pinned": pinned,
             "retained_stations_pinned": pinned_n,
+            "retained_stations_pinned_exactly_in_a_forbidden_footprint":
+                pinned_exact,
+            "forbidden_footprints_consulted": len(forbidden_xz or ()),
             "pin_band_m": PIN_EPS_M,
             "pin_blend_m": PIN_BLEND_M,
             "instrument": "roads/deviate.py::splice",
         }],
     })
+    if pre_existing:
+        print(f"  {seg['id']}: {len(pre_existing)} PRE-EXISTING infeasible "
+              f"span(s) OUTSIDE the rewritten window "
+              f"[{win_lo},{win_hi}] -- the recorded road is already over its "
+              f"declared grade there and this deviation neither caused it "
+              f"nor moved it: "
+              + "; ".join(
+                  f"new {p['stations']} (old {p['old_stations']}) worst "
+                  f"{p['worst_recorded_grade']} vs limit "
+                  f"{p['declared_grade_limit']}" for p in pre_existing))
     if bad:
         raise SystemExit(
-            f"{seg['id']} spliced profile is INFEASIBLE over {bad} -- refusing "
-            f"to write a segment record whose profile is not proven; a road "
-            f"that cannot hold its grade inside the clamp is not a fix")
+            f"{seg['id']} spliced profile is INFEASIBLE over {bad} INSIDE or "
+            f"ACROSS the rewritten window [{win_lo},{win_hi}] -- refusing to "
+            f"write a segment record whose profile is not proven; a road that "
+            f"cannot hold its grade inside the clamp is not a fix")
     return out
 
 
@@ -625,18 +879,77 @@ def main() -> int:
                          "'cheapest line avoiding these bodies', which is a "
                          "DIFFERENT question: on T4 it returns an 87 m bypass "
                          "of the town whose street the operator likes.")
+    worldseed.add_arguments(ap)
+    ap.add_argument("--census",
+                    help="the census artefact `precensus.py survey` wrote "
+                         "AFTER generating the zones this deviation crosses")
+    ap.add_argument("--provisional", action="store_true",
+                    help="solve with NO census; the result is stamped "
+                         "NO_CENSUS and cannot be paved")
     a = ap.parse_args()
+
+    global POI_SOURCE, SEED, WORLD, CENSUS
+    SEED, WORLD = worldseed.apply(a)
+    if a.provisional and a.census:
+        raise SystemExit("--provisional and --census are the two ends of the "
+                         "same pipeline; pass one")
+    CENSUS = (None if a.provisional
+              else censusmod.require(Path(a.census) if a.census else None,
+                                     world=WORLD, seed=SEED))
+    POI_SOURCE = ("generator dump ONLY (PROVISIONAL)" if CENSUS is None
+                  else f"generator dump + census {a.census}")
 
     report = json.loads(Path(a.report).read_text())
     segs = ST.segment_map()
     claims = ST.Claims()
-    for sid in ST.WRITTEN:
-        claims.add_proxies(json.loads(
-            Path(report["sources"][sid]).read_text())["objects"])
+    # THE PROXY POPULATION IS THE REPORT'S, AND ITS SHORTFALL IS NAMED.
+    # `written_segments()` is read from this world's ledger on every run and
+    # GROWS; the report on disk was taken on one day over the segments
+    # written by then.  Indexing `report["sources"]` by today's written set
+    # raised a bare `KeyError: 'N0-brgs2-wmid'` -- a crash where the honest
+    # answer is "this report predates six segments, here they are".  A
+    # missing proxy file cannot hide a body on the segment being deviated
+    # (its own census IS in the report, or the segment is refused below); it
+    # can only narrow the LocationProxy set that names bodies elsewhere, so
+    # it is a disclosed narrowing, not a silent one.
+    sources = report.get("sources") or {}
+    written = ST.written_segments()
+    missing = [sid for sid in written if sid not in sources]
+    for sid in written:
+        if sid in sources:
+            claims.add_proxies(json.loads(
+                Path(sources[sid]).read_text())["objects"])
+    if missing:
+        print(f"report {a.report} carries {len(sources)} of "
+              f"{len(written)} written segments; NO LocationProxy census "
+              f"for {missing}")
+    for sid in a.segment:
+        if sid not in sources:
+            raise SystemExit(
+                f"REFUSED: {sid} is not in {a.report} -- this report was "
+                f"taken before that segment was censused, so nothing here "
+                f"knows what stands in its carriageway. Re-run "
+                f"`roads/structures.py` over {sid} and deviate against the "
+                f"new report; deviating against a report that never looked "
+                f"is how a road gets re-routed around nothing.")
     pieces = body_points(report, "")
 
-    doc = yaml.safe_load(ST.SEGMENTS.read_text())
-    patch_of = {s["id"]: s["patch"] for s in doc["segments"]}
+    # WHICH FILE EACH SEGMENT LIVES IN, because there are two and a splice
+    # that writes a segment back into the wrong one creates the same id in
+    # both.  On Pirate68 `north.py` owns `north_segments.yaml` (the N-series
+    # and the R-series, 10 of the ledger's 25 built segments) and
+    # `segments.yaml` holds the rest; reading only the second is why this
+    # tool could not address the northern network at all.  WHICH files is the
+    # seed's, asked here: an import-time tuple of Pirate68's names read
+    # Ulfsland's 45 runs on every seed.
+    patch_of: dict[str, str] = {}
+    file_of: dict[str, Path] = {}
+    for p in worldseed.segment_files():
+        if not p.exists():
+            continue
+        for s in (yaml.safe_load(p.read_text()) or {}).get("segments", ()):
+            patch_of[s["id"]] = s["patch"]
+            file_of[s["id"]] = p
 
     all_out = {}
     for sid in a.segment:
@@ -672,6 +985,19 @@ def main() -> int:
     order = sorted(a.splice or [],
                    key=lambda sp: -all_out[sp.split(":")[0]]["deviations"][
                        int(sp.split(":")[1])]["anchor_station"][0])
+    # `forbidden_xz` DEFAULTS TO None AND A MISSING ARGUMENT IS A SILENT 5 cm.
+    # `forbidden_footprints` was written, tested and then consulted by NO
+    # caller on this path, so every splice this CLI has ever taken handed a
+    # station standing inside a live `flatten: FORBIDDEN` extent the same
+    # PIN_EPS_M band as open ground.  That is precisely the drift
+    # `writer._flatten_forbidden_check` refuses AT THE CONSOLE, a kilometre
+    # from the joint, after the plan has already been signed off.  A guard you
+    # did not pass is indistinguishable from a guard that passed, so it is
+    # read here, once, from the ledger that owns the question.
+    forbidden_xz = forbidden_footprints() if order else []
+    if order:
+        print(f"forbidden footprints consulted: {len(forbidden_xz)} "
+              f"(pinned at the storage quantum, not the 5 cm band)")
     for spec in order:
         sid, _, idx = spec.partition(":")
         d = all_out[sid]["deviations"][int(idx)]
@@ -684,22 +1010,29 @@ def main() -> int:
         # second against the start-up snapshot would place it by an index that
         # no longer means what it meant.  Splice DESCENDING by station so the
         # indices of the ones still to come are the ones that did not move.
-        doc2 = yaml.safe_load(ST.SEGMENTS.read_text())
+        target = file_of[sid]
+        doc2 = yaml.safe_load(target.read_text())
         cur = next(sg for sg in doc2["segments"] if sg["id"] == sid)
-        rec = splice(cur, d, patch_of[sid])
+        rec = splice(cur, d, patch_of[sid], forbidden_xz=forbidden_xz)
+        # READ THE COLUMN BY ITS MEMORY NAME, then convert the record at the
+        # SERIALISATION BOUNDARY so the file keeps the on-disk name its other
+        # 38 segments carry.  `doc2` came from a bare `yaml.safe_load` and is
+        # written straight back, so only `rec` is ever in the memory name.
+        n_carriageway = len(rec["zones_carriageway"])
+        ST.carriageway_to_disk(rec)
         for k, sg in enumerate(doc2["segments"]):
             if sg["id"] == sid:
                 doc2["segments"][k] = rec
                 break
         else:
-            raise SystemExit(f"no {sid} in {ST.SEGMENTS}")
-        ST.SEGMENTS.write_text(yaml.safe_dump(doc2, sort_keys=True,
-                                              default_flow_style=False))
+            raise SystemExit(f"no {sid} in {target}")
+        target.write_text(yaml.safe_dump(doc2, sort_keys=True,
+                                         default_flow_style=False))
         print(f"spliced {sid} deviation {idx}: length {rec['length_m']} m, "
               f"grade_max {rec['grade_max_measured']}, "
               f"cut {rec['cut_max_m']} fill {rec['fill_max_m']}, "
               f"over_clamp {rec['stations_over_clamp']}, "
-              f"zones {len(rec['zones'])} -> {ST.SEGMENTS}")
+              f"carriageway zones {n_carriageway} -> {target}")
     return 0
 
 

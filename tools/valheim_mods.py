@@ -1692,6 +1692,69 @@ def validate_server_cache(root, manifest):
             f'clients install it. Install the server copy first: {repair}'
         )
 
+# Key in a profile manifest listing the packages that are not convenience mods but the
+# build harness's ABI. Unknown to every other reader: the Go profile-definition-builder
+# decodes the managed manifest with a plain json.Unmarshal, so an extra top-level key is
+# ignored there, and nothing in the published client definition carries it.
+HARNESS_REQUIRED_KEY = 'harness_required_packages'
+
+def harness_requirements(manifest):
+    return [item for item in manifest.get(HARNESS_REQUIRED_KEY, []) if isinstance(item, dict)]
+
+def harness_requirement_failures(root, manifest):
+    """Declared harness dependencies that this deploy would NOT put on the server.
+
+    MEASURED 2026-09-19: the 04:30:16Z profile scope rebuild moved
+    JereKuusela-World_Edit_Commands from `shared` to `client-only` on ulfsland-dn, the
+    SERVER profile, and the 11:22Z deploy correctly honoured it. `spawn_object` - the
+    only verb in the whole toolchain that CREATES anything - left the server, and
+    because `deleteObjects` is a ValheimRcon native and kept working, every
+    delete-then-respawn terrain write destroyed a zone's `_TerrainCompiler` and put
+    nothing back for nine hours. `InvokeConsoleCommand.OnHandle` answers
+    "Command '<x>' executed." unconditionally, so nothing said a word.
+
+    The classifier that moved it was reasoning about how a PLAYER uses the package and
+    was right about that - it IS a client-side convenience tool. It had no category for
+    "client-side tool the server must nonetheless run". This function is that category,
+    written where the scope lives so a future rebuild cannot move one of these in
+    silence: a declared entry that is not `shared` fails the deploy instead of shipping.
+
+    Returns [(identifier, reason)]; empty means every declared dependency is server-side.
+    """
+    selected = {item['identifier']: item for item in all_packages(manifest)}
+    failures = []
+    for requirement in harness_requirements(manifest):
+        identifier = requirement.get('identifier')
+        if not isinstance(identifier, str):
+            failures.append(('<malformed entry>', f'{HARNESS_REQUIRED_KEY} entry has no identifier'))
+            continue
+        verbs = ', '.join(requirement.get('verbs', [])) or 'no verbs declared'
+        item = selected.get(identifier)
+        if item is None:
+            failures.append((identifier, f'not selected by this profile at all; it owns {verbs}'))
+            continue
+        if item.get('scope') != 'shared':
+            failures.append((identifier,
+                             f"scope is {item.get('scope', 'client-only')!r}, so the deploy "
+                             f'installs no server copy; it owns {verbs}'))
+            continue
+        if not cached_plugin(root, 'server', package_install_name(identifier)).is_dir():
+            failures.append((identifier, f'no server copy in the cache; it owns {verbs}'))
+    return failures
+
+def validate_harness_requirements(root, manifest):
+    failures = harness_requirement_failures(root, manifest)
+    if not failures:
+        return
+    detail = '; '.join(f'{identifier}: {reason}' for identifier, reason in failures)
+    raise RuntimeError(
+        f'Harness dependency would not reach the server: {detail}. These packages are '
+        f'declared in {HARNESS_REQUIRED_KEY} because the build toolchain sends their '
+        f'console verbs; losing one is silent, because the RCON reply is a delivery '
+        f'receipt and not a result. Restore the scope to "shared" and run '
+        f'"valheim_mods.py --profile {root.name} sync <identifier>" before deploying.'
+    )
+
 SERVER_CONFIG_DIR = 'server-config'
 OVERRIDE_DIR = 'overrides'
 
@@ -1838,6 +1901,8 @@ def cmd_deploy(root,m,args):
             print(f'cache_stale={identifier} missing={",".join(path.as_posix() for path in missing[:4])}')
         for identifier, _ in missing_server_copies(root, m):
             print(f'cache_missing_server={identifier}')
+        for identifier, reason in harness_requirement_failures(root, m):
+            print(f'harness_dependency_broken={identifier} reason={reason}')
         # What --apply would do to each hand-patched assembly, resolved without staging: the
         # layers copy <entry>/<rest>, so a source's copy of a live file is at <source>/<rel>
         # and the last layer that has it is the one that wins.
@@ -1854,6 +1919,11 @@ def cmd_deploy(root,m,args):
     if not server_plugins.is_dir() or not manual_plugins.is_dir() or not target.parent.is_dir():
         raise RuntimeError('Profile deployment directories are incomplete')
     require_release_cutover_complete(world_root)
+    # Before the cache checks, because this one answers "would the server still be able
+    # to BUILD after this deploy?" and a deploy that silently drops a harness verb is
+    # worse than one that ships a stale plugin: the loss is invisible until a two-part
+    # operation lands its destructive half alone.
+    validate_harness_requirements(root, m)
     validate_server_cache(root, m)
     with tempfile.TemporaryDirectory(dir=target.parent) as temp:
         staged=Path(temp)/'plugins'

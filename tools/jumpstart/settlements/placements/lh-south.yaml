@@ -1,4 +1,4 @@
-world: Ulfsland
+world: Fresh42
 settlement: lh-south
 placements:
 - id: lh-south
@@ -15,19 +15,19 @@ placements:
     - 22.0
     - 22.0
   solved:
-    seed: Pirate68
-    x: -106.0
-    z: -900.0
-    y: 33.12
+    seed: Fresh42
+    x: 369.9
+    z: -610.8
+    y: 34.96
     footprint_orientation: 22 m along x by 22 m along z
     flatten_cost:
-      target_y: 33.12
+      target_y: 34.96
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 119.5
-    nearest_location: Greydwarf_camp1
-    nearest_location_standoff_m: 22.0
+    nearest_location_m: 34.0
+    nearest_location: StoneHouse3
+    nearest_location_standoff_m: 18.0
   settlement:
     site: lh-south
     role: lighthouse
-    patch: mainland
+    patch: trunk-primary

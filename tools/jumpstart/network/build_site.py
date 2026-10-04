@@ -18,8 +18,15 @@ exists because skipping it broke something real:
                   `_TerrainCompiler`. Terrain edits cost ZERO persistent ZDOs
                   (MEASURED across three fleet worlds: 111,784 persistent
                   objects, not one TerrainModifier).
-  3    PLACE      `terraform/place.py` -- the hardened batched sender.
+  3    PLACE      `terraform/sites.py --flattened --apply --only <preset>/<id>`
+                  -- the body as one ledgered `spawn_plan`.
   4    VERIFY     `network/verify_site.py` -- counts only, never a listing.
+
+EVERY WRITE GOES THROUGH THE LEDGER and carries `--actor`: clear, flatten and
+place each append their record before they send it (see
+`terraform/flatten.py::INSTALLATION_WRITE_PATH_DEPENDS_ON`).  This driver used
+to send the body with `terraform/place.py` over raw RCON, so the ledger never
+knew the building stood and the next write in its zone could erase its pad.
 
 FIXTURES (`terraform/stock.py`) are deliberately NOT run here. They depend on
 the body's interior mask, they are cheap to run later, and discovering that a
@@ -34,8 +41,8 @@ against a 10.89 m reach -- 17 cm of building outside the cleared ground -- and
 an apron of 2 m covers every site's reach with margin.
 
 Usage:
-    network/build_site.py --preset pre-moder --id mountain-outpost
-    network/build_site.py --preset pre-moder --id mountain-outpost --skip clear
+    network/build_site.py --preset pre-moder --id mountain-outpost --actor <you>
+    network/build_site.py --preset pre-moder --id mountain-outpost --actor <you> --skip clear
 """
 
 from __future__ import annotations
@@ -48,7 +55,20 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 JUMPSTART = HERE.parent
-STATUS = Path("/media/big4/projects/game/valheim/Ulfsland/data/htdocs/status.json")
+sys.path.append(str(JUMPSTART))
+
+import worldseed  # noqa: E402
+
+
+
+def status_path() -> Path:
+    """THIS run's server's web status file, asked at CALL time:
+    `<install root>/<world>/data/htdocs/status.json`, under the root
+    `accept/instruments.py::WORLD_ROOT` reads (`$VALHEIM_WORLD_ROOT`).  It
+    was Ulfsland's server's for every world."""
+    from accept import instruments as AI  # noqa: PLC0415
+    return (Path(AI.WORLD_ROOT) / worldseed.world() / "data" / "htdocs"
+            / "status.json")
 
 
 def players_online() -> int:
@@ -60,7 +80,7 @@ def players_online() -> int:
     the earlier, cheaper stop so a clearing pass does not start either.
     """
     try:
-        return int(json.loads(STATUS.read_text()).get("player_count") or 0)
+        return int(json.loads(status_path().read_text()).get("player_count") or 0)
     except Exception:
         return -1
 
@@ -78,14 +98,18 @@ def run(step: str, cmd: list[str], tail: int = 14) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--preset", required=True)
     ap.add_argument("--id", required=True)
     ap.add_argument("--apron", type=float, default=2.0)
     ap.add_argument("--plans", default="/tmp/terraform/plans_wb")
     ap.add_argument("--skip", action="append", default=[],
                     choices=["clear", "baseline", "flatten", "place", "verify"])
+    ap.add_argument("--actor", required=True,
+                    help="the agent running this: every write is appended to the "
+                         "world's ledger under this name before it is sent")
     args = ap.parse_args()
+    seed, world = worldseed.apply(args)
 
     n = players_online()
     if n != 0:
@@ -98,20 +122,27 @@ def main() -> int:
         raise SystemExit(f"no plan at {plan}; run terraform/sites.py --flattened --out {args.plans}")
     baseline = Path("/tmp/terraform") / f"baseline_{args.preset}__{args.id}.json"
 
-    common = ["--world", args.world, "--preset", args.preset, "--id", args.id]
+    # BOTH names travel to every child, explicitly.  `worldseed.apply` also
+    # publishes them to the environment, so a child that resolves them itself
+    # gets the same pair -- but a driver that only set the environment would be
+    # invisible in the command line it prints, and this driver's output is the
+    # record of what was run.
+    common = ["--world", world, "--seed", seed,
+              "--preset", args.preset, "--id", args.id]
     if "clear" not in args.skip:
         run("CLEAR", [JUMPSTART / "clearing" / "clear.py", "apply", *common,
-                      "--apron", str(args.apron)], tail=8)
+                      "--apron", str(args.apron), "--actor", args.actor], tail=8)
     if "baseline" not in args.skip:
         run("BASELINE", [HERE / "verify_site.py", *common, "--index", f"{args.plans}/index.json",
                          "--baseline", baseline, "--capture-baseline"], tail=6)
     if "flatten" not in args.skip:
-        run("FLATTEN", [JUMPSTART / "terraform" / "flatten.py", "apply",
-                        "--world", args.world, "--preset", args.preset, "--id", args.id], tail=10)
+        run("FLATTEN", [JUMPSTART / "terraform" / "flatten.py", "apply", *common,
+                        "--actor", args.actor], tail=10)
     if "place" not in args.skip:
-        run("PLACE", [JUMPSTART / "terraform" / "place.py", plan,
-                      "--checkpoint", f"/tmp/terraform/ck_{args.preset}__{args.id}.json",
-                      "--save-every", "1000"], tail=8)
+        run("PLACE", [JUMPSTART / "terraform" / "sites.py", "--flattened", "--apply",
+                      "--only", f"{args.preset}/{args.id}", "--out", args.plans,
+                      "--world", world, "--seed", seed, "--actor", args.actor],
+            tail=8)
     if "verify" not in args.skip:
         run("VERIFY", [HERE / "verify_site.py", *common, "--index", f"{args.plans}/index.json",
                        "--baseline", baseline], tail=14)

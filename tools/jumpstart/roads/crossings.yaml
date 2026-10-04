@@ -1,811 +1,973 @@
-schema_version: 2
-owner: RoadNet
+abutment_handoffs:
+- cls: spur
+  end: b
+  level_run_m: 6.0
+  level_y: 30.6
+  node: brg-s2-e
+  outbound_bearing_deg: 315.0
+  ribbon_end_xz:
+  - -316.0
+  - 230.0
+  ribbon_width_m: 4.0
+  segment_id: S1-portalhub-brgs2
+  within_clamp: true
+  worst_cut_fill_m: 1.397
+- cls: trunk
+  end: a
+  level_run_m: 6.0
+  level_y: 30.6
+  node: brg-s2-w
+  outbound_bearing_deg: 135.0
+  ribbon_end_xz:
+  - -350.0
+  - 246.0
+  ribbon_width_m: 6.0
+  segment_id: W2-brgs2-wmid
+  within_clamp: true
+  worst_cut_fill_m: 1.92
+- cls: spur
+  end: a
+  level_run_m: 6.0
+  level_y: 30.6
+  node: brg-s1-w
+  outbound_bearing_deg: 350.35
+  ribbon_end_xz:
+  - -326.0
+  - -66.0
+  ribbon_width_m: 4.0
+  segment_id: W5-brgs1-wsouth
+  within_clamp: true
+  worst_cut_fill_m: 0.95
+- cls: trunk
+  end: a
+  level_run_m: 6.0
+  level_y: 30.6
+  node: brg-s2-w
+  outbound_bearing_deg: 135.0
+  ribbon_end_xz:
+  - -350.0
+  - 246.0
+  ribbon_width_m: 6.0
+  segment_id: W8-brgs2-vestvik
+  within_clamp: true
+  worst_cut_fill_m: 1.92
+- cls: spur
+  end: a
+  level_run_m: 6.0
+  level_y: 30.6
+  node: brg-s1-w
+  outbound_bearing_deg: 350.35
+  ribbon_end_xz:
+  - -326.0
+  - -66.0
+  ribbon_width_m: 4.0
+  segment_id: W10-brgs1-treenear
+  within_clamp: true
+  worst_cut_fill_m: 0.95
+- cls: spur
+  end: a
+  level_run_m: 6.0
+  level_y: 30.6
+  node: brg-s1-e
+  outbound_bearing_deg: 336.14
+  ribbon_end_xz:
+  - -312.0
+  - -62.0
+  ribbon_width_m: 4.0
+  segment_id: S12-brgs1-boathouse
+  within_clamp: true
+  worst_cut_fill_m: 1.354
 consumer: Crossings
-world: Ulfsland
-seed: Pirate68
-measurement: generated heights from PatchScan at 1 m WITH rivers; bank coordinates snapped to 2 m per Crossings' MEASURED deck pitch
-precedence: DECLARED crossings carry Crossings' own measurements and are authoritative. DETECTED crossings are mine, from routing over the 1 m field. Where they describe the same channel, Crossings' numbers
-  win and mine are marked superseded.
 contract:
+  bank_level_run_m: 6.0
+  centreline_straight_across_window: true
+  deck_datum_y: 30.6
   ribbon_stops_at_bank: true
   stand_off_m: 0.0
-  bank_level_run_m: 6.0
-  deck_datum_y: 30.6
-  centreline_straight_across_window: true
 declared:
-- crossing_id: S1
-  owner: Crossings
-  status: declared
-  measured_by: Crossings, 1 m distance transform over /tmp/roads/h1m.bin
-  joins:
-  - spawn
-  - west
-  bank_a:
+- bank_a:
+    bearing_deg: 270.0
+    ground_y: 30.72
     node: brg-s1-e
+    road_deck_y: 30.6
     xz:
     - -312.0
     - -64.0
-    ground_y: 30.72
-    road_deck_y: 30.6
-    bearing_deg: 270.0
   bank_b:
+    bearing_deg: 90.0
+    ground_y: 30.64
     node: brg-s1-w
+    road_deck_y: 30.6
     xz:
     - -324.0
     - -64.0
-    ground_y: 30.64
-    road_deck_y: 30.6
-    bearing_deg: 90.0
-  span_m: 12.0
+  crossing_id: S1
   gap_min_y: 27.48
-  water_surface_y: 30.0
-  why_terrain_failed: water_body
-  significance: the join between the two halves of the largest landmass in the world; 260 m from StartTemple
-  poi_clear: nearest WoodHouse7 at 47.9 m (exteriorRadius 8); Eikthyrnir altar 146.5 m -- MEASURED by Crossings
-- crossing_id: S2
-  owner: Crossings
-  status: declared
-  measured_by: Crossings, 1 m distance transform over /tmp/roads/h1m.bin
   joins:
   - spawn
   - west
-  bank_a:
+  measured_by: Crossings, 1 m distance transform over /tmp/roads/h1m.bin
+  owner: Crossings
+  poi_clear: nearest WoodHouse7 at 47.9 m (exteriorRadius 8); Eikthyrnir altar 146.5
+    m -- MEASURED by Crossings
+  significance: the join between the two halves of the largest landmass in the world;
+    260 m from StartTemple
+  span_m: 12.0
+  status: declared
+  water_surface_y: 30.0
+  why_terrain_failed: water_body
+- bank_a:
+    bearing_deg: 298.07
+    ground_y: 30.26
     node: brg-s2-e
+    road_deck_y: 30.6
     xz:
     - -318.0
     - 230.0
-    ground_y: 30.26
-    road_deck_y: 30.6
-    bearing_deg: 298.07
   bank_b:
+    bearing_deg: 118.07
+    ground_y: 30.02
     node: brg-s2-w
+    road_deck_y: 30.6
     xz:
     - -348.0
     - 246.0
-    ground_y: 30.02
-    road_deck_y: 30.6
-    bearing_deg: 118.07
-  span_m: 34.0
+  crossing_id: S2
   gap_min_y: 25.14
+  joins:
+  - spawn
+  - west
+  measured_by: Crossings, 1 m distance transform over /tmp/roads/h1m.bin
+  owner: Crossings
+  poi_clear: nearest WoodHouse5 at 46.1 m (exteriorRadius 8) -- MEASURED by Crossings
+  significance: second join; makes the network a loop rather than an out-and-back
+  span_m: 34.0
+  status: declared
   water_surface_y: 30.0
   why_terrain_failed: water_body
-  significance: second join; makes the network a loop rather than an out-and-back
-  poi_clear: nearest WoodHouse5 at 46.1 m (exteriorRadius 8) -- MEASURED by Crossings
+- bank_a:
+    ground_y: 30.6
+    road_deck_y: 30.6
+    xz: &id001
+    - 677.0
+    - -94.0
+  bank_b:
+    ground_y: 30.205
+    road_deck_y: 30.6
+    xz: &id002
+    - 683.0
+    - -94.0
+  bank_level_run_m: 6.0
+  centreline_straight_from_to:
+  - *id001
+  - *id002
+  crossing_id: T9-wttown-dockshore-sb01
+  drop_into_the_channel_m: 1.774
+  endpoint_standoff_m:
+    dockshore: 9.1
+    wttown: 0.0
+  gap_min_y: 28.826
+  in_endpoint_standoff: B
+  joins:
+  - T9-wttown-dockshore
+  - dockshore
+  kind: bridge
+  legal_deck_y_interval:
+  - 30.6
+  - 30.6
+  measured: roads/premise.py::standoff_scan over the APPLIED engine bed at 1 m, from
+    this segment's own last station to [691.0, -94.0]; bank_a.ground_y AND THE TWO
+    FIELDS DERIVED FROM IT RE-STATED AS OF terrain_write seq 5429 (roads/regrade.py,
+    actor T9Close), which cut (677,-94) from 31.000 to the declared deck datum 30.600.
+    An APPLIED reading that does not carry the seq it was taken at cannot be told
+    from one a later write falsified, so this one carries it.
+  measured_after_seq: 5429
+  measured_by: RoadNet, roads/premise.py::standoff_scan over the APPLIED engine bed
+    at 1 m
+  derived_from_bank_a_ground_y:
+  - 'drop_into_the_channel_m = bank_a.ground_y - gap_min_y = 30.600 - 28.826 = 1.774,
+    was 2.174 against the pre-cut ground of 31.000'
+  - 'legal_deck_y_interval upper bound IS bank_a.ground_y; the cut collapses the band
+    to the single point 30.600, which is also required_deck_y and also the bench.
+    A band whose top stands 0.400 m above ground that no longer exists is a licence
+    to build in the air.'
+  - 'gap_min_y is NOT derived and is NOT patched -- the channel floor was never touched.
+    MEASURED after the write, applied at z=-94 for x=678..682 -- 28.8265, 28.8409,
+    29.1772, 29.5083, 29.9902.'
+  owner: Crossings
+  required_deck_y: 30.6
+  ribbon_width_m: 6.0
+  segment_id: T9-wttown-dockshore
+  significance: the last 19 m between T9 and the dock it is named for. INSIDE the
+    9.1 m dockshore stand-off, which network.build_segment trims BEFORE route.find_crossings
+    runs, so this channel has never been in any detector population.
+  single_H_both_banks: true
+  span_m: 6.0
+  status: declared
+  water_surface_y: 30.0
+  wet_m: 5
+  why_terrain_failed: water_body
 detected:
-- segment_id: T4-meadhall-stathub
-  bank_a:
+- bank_a:
+    bearing_deg: 27.6
+    ground_y: 31.51
+    road_deck_y: 32.672
     xz:
     - 560.0
     - 1034.0
-    ground_y: 31.51
-    bearing_deg: 27.6
-    road_deck_y: 32.672
   bank_b:
+    bearing_deg: 207.6
+    ground_y: 31.13
+    road_deck_y: 32.672
     xz:
     - 568.0
     - 1042.0
-    ground_y: 31.13
-    bearing_deg: 207.6
-    road_deck_y: 32.672
-  span_m: 11.31
-  stations:
-  - 697
-  - 702
-  gap_min_y: 27.57
-  water_surface_y: 30.0
-  clamp_evidence:
-    worst_required_delta_m: 3.72
-    required_fill_to_freeboard_m: 3.43
-    max_depth_below_plane_m: 2.43
-    run_m: 14.0
-    clamp_m: 8.0
-    usable_clamp_m: 7.0
-    stations_flagged: 6
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: T4-meadhall-stathub-x01
-  owner: Crossings
-  kind: bridge
-  status: detected
-  ribbon_width_m: 6.0
   bank_level_run_m: 6.0
-  required_deck_y: 32.672
-  single_H_both_banks: true
-  legal_deck_y_interval:
-  - 32.5
-  - 38.358
   centreline_straight_from_to:
   - - 560.0
     - 1027.47
   - - 570.09
     - 1046.78
-  why_terrain_failed: water_body
-- segment_id: T4-meadhall-stathub
-  bank_a:
-    xz:
-    - 568.0
-    - 1048.0
-    ground_y: 31.45
-    bearing_deg: 47.1
-    road_deck_y: 32.5
-  bank_b:
-    xz:
-    - 602.0
-    - 1082.0
-    ground_y: 31.59
-    bearing_deg: 227.1
-    road_deck_y: 32.5
-  span_m: 48.08
-  stations:
-  - 707
-  - 731
-  gap_min_y: 25.01
-  water_surface_y: 30.0
   clamp_evidence:
-    worst_required_delta_m: 6.51
-    required_fill_to_freeboard_m: 5.99
-    max_depth_below_plane_m: 4.99
-    run_m: 52.0
     clamp_m: 8.0
+    max_depth_below_plane_m: 2.43
+    required_fill_to_freeboard_m: 3.43
+    run_m: 14.0
+    stations_flagged: 6
     usable_clamp_m: 7.0
-    stations_flagged: 25
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: T4-meadhall-stathub-x02
-  owner: Crossings
+    worst_required_delta_m: 3.72
+  crossing_id: T4-meadhall-stathub-x01
+  gap_min_y: 27.57
   kind: bridge
-  status: detected
-  ribbon_width_m: 6.0
-  bank_level_run_m: 6.0
-  required_deck_y: 32.5
-  single_H_both_banks: true
   legal_deck_y_interval:
   - 32.5
   - 38.358
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.672
+  ribbon_width_m: 6.0
+  segment_id: T4-meadhall-stathub
+  single_H_both_banks: true
+  span_m: 11.31
+  stations:
+  - 697
+  - 702
+  status: detected
+  water_surface_y: 30.0
+  why_terrain_failed: water_body
+- bank_a:
+    bearing_deg: 47.1
+    ground_y: 31.45
+    road_deck_y: 32.5
+    xz:
+    - 568.0
+    - 1048.0
+  bank_b:
+    bearing_deg: 227.1
+    ground_y: 31.59
+    road_deck_y: 32.5
+    xz:
+    - 602.0
+    - 1082.0
+  bank_level_run_m: 6.0
   centreline_straight_from_to:
   - - 566.15
     - 1043.12
   - - 608.15
     - 1082.15
+  clamp_evidence:
+    clamp_m: 8.0
+    max_depth_below_plane_m: 4.99
+    required_fill_to_freeboard_m: 5.99
+    run_m: 52.0
+    stations_flagged: 25
+    usable_clamp_m: 7.0
+    worst_required_delta_m: 6.51
+  crossing_id: T4-meadhall-stathub-x02
+  gap_min_y: 25.01
+  kind: bridge
+  legal_deck_y_interval:
+  - 32.5
+  - 38.358
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.5
+  ribbon_width_m: 6.0
+  segment_id: T4-meadhall-stathub
+  single_H_both_banks: true
+  span_m: 48.08
+  stations:
+  - 707
+  - 731
+  status: detected
+  water_surface_y: 30.0
   why_terrain_failed: water_body
-- segment_id: T5-temple-dockshore
-  bank_a:
-    xz:
-    - 644.0
-    - -90.0
-    ground_y: 31.2
+- bank_a:
     bearing_deg: 90.8
+    ground_y: 31.2
     road_deck_y: 32.5
+    xz:
+    - 643.951
+    - -93.618
   bank_b:
+    bearing_deg: 270.8
+    ground_y: 30.65
+    road_deck_y: 32.5
     xz:
     - 672.0
     - -94.0
-    ground_y: 30.65
-    bearing_deg: 270.8
-    road_deck_y: 32.5
-  span_m: 28.28
-  stations:
-  - 506
-  - 525
-  gap_min_y: 28.95
-  water_surface_y: 30.0
-  clamp_evidence:
-    worst_required_delta_m: 2.11
-    required_fill_to_freeboard_m: 2.05
-    max_depth_below_plane_m: 1.05
-    run_m: 38.65
-    clamp_m: 8.0
-    usable_clamp_m: 7.0
-    stations_flagged: 20
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: T5-temple-dockshore-x01
-  owner: Crossings
-  kind: bridge
-  status: detected
-  ribbon_width_m: 6.0
   bank_level_run_m: 6.0
-  required_deck_y: 32.5
-  single_H_both_banks: true
-  legal_deck_y_interval:
-  - 32.5
-  - 37.959
+  bank_reconciled_to_centreline:
+    by: roads/boardwalk.py::reconcile_declared_lines
+    declared_line:
+      bed_above_deck: 0
+      samples: 29
+      span_m: 28.284
+      wet: 17
+      worst_bed_above_deck_m: 0.0
+    lateral_off_centreline_m:
+      bank_a: -3.618
+      bank_b: -0.0
+    projected_line:
+      bed_above_deck: 0
+      samples: 29
+      span_m: 28.052
+      wet: 17
+      worst_bed_above_deck_m: 0.0
+    was_xz:
+      bank_a:
+      - 644.0
+      - -90.0
+      bank_b:
+      - 672.0
+      - -94.0
   centreline_straight_from_to:
   - - 640.43
     - -93.57
   - - 672.0
     - -94.0
+  clamp_evidence:
+    clamp_m: 8.0
+    max_depth_below_plane_m: 1.05
+    required_fill_to_freeboard_m: 2.05
+    run_m: 38.65
+    stations_flagged: 20
+    usable_clamp_m: 7.0
+    worst_required_delta_m: 2.11
+  crossing_id: T5-temple-dockshore-x01
+  gap_min_y: 28.95
+  kind: bridge
+  legal_deck_y_interval:
+  - 32.5
+  - 37.959
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.5
+  ribbon_width_m: 6.0
+  segment_id: T5-temple-dockshore
+  single_H_both_banks: true
+  span_m: 28.28
+  stations:
+  - 506
+  - 525
+  status: detected
+  water_surface_y: 30.0
   why_terrain_failed: water_body
-- segment_id: S2-stathub-eastlobe
-  bank_a:
+- bank_a:
+    bearing_deg: 209.5
+    ground_y: 31.53
+    road_deck_y: 32.5
     xz:
     - 604.0
     - 1078.0
-    ground_y: 31.53
-    bearing_deg: 209.5
-    road_deck_y: 32.5
   bank_b:
+    bearing_deg: 29.5
+    ground_y: 31.44
+    road_deck_y: 32.5
     xz:
     - 584.0
     - 1030.0
-    ground_y: 31.44
-    bearing_deg: 29.5
-    road_deck_y: 32.5
-  span_m: 52.0
-  stations:
-  - 31
-  - 59
-  gap_min_y: 26.12
-  water_surface_y: 30.0
-  clamp_evidence:
-    worst_required_delta_m: 5.38
-    required_fill_to_freeboard_m: 4.88
-    max_depth_below_plane_m: 3.88
-    run_m: 60.0
-    clamp_m: 8.0
-    usable_clamp_m: 7.0
-    stations_flagged: 29
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: S2-stathub-eastlobe-x01
-  owner: Crossings
-  kind: bridge
-  status: detected
-  ribbon_width_m: 4.0
   bank_level_run_m: 6.0
-  required_deck_y: 32.5
-  single_H_both_banks: true
-  legal_deck_y_interval:
-  - 32.5
-  - 37.965
   centreline_straight_from_to:
   - - 610.97
     - 1078.0
   - - 581.6
     - 1026.0
+  clamp_evidence:
+    clamp_m: 8.0
+    max_depth_below_plane_m: 3.88
+    required_fill_to_freeboard_m: 4.88
+    run_m: 60.0
+    stations_flagged: 29
+    usable_clamp_m: 7.0
+    worst_required_delta_m: 5.38
+  crossing_id: S2-stathub-eastlobe-x01
+  gap_min_y: 26.12
+  kind: bridge
+  legal_deck_y_interval:
+  - 32.5
+  - 37.965
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.5
+  ribbon_width_m: 4.0
+  segment_id: S2-stathub-eastlobe
+  single_H_both_banks: true
+  span_m: 52.0
+  stations:
+  - 31
+  - 59
+  status: detected
+  water_surface_y: 30.0
   why_terrain_failed: water_body
-- segment_id: W5-brgs1-wsouth
-  bank_a:
+- bank_a:
+    bearing_deg: 170.3
+    ground_y: 31.55
+    road_deck_y: 32.5
     xz:
     - -326.0
     - -66.0
-    ground_y: 31.55
-    bearing_deg: 170.3
-    road_deck_y: 32.5
   bank_b:
+    bearing_deg: 350.3
+    ground_y: 31.43
+    road_deck_y: 32.5
     xz:
     - -310.0
     - -154.0
-    ground_y: 31.43
-    bearing_deg: 350.3
-    road_deck_y: 32.5
-  span_m: 89.44
-  stations:
-  - 1
-  - 48
-  gap_min_y: 26.72
-  water_surface_y: 30.0
-  clamp_evidence:
-    worst_required_delta_m: 4.76
-    required_fill_to_freeboard_m: 4.28
-    max_depth_below_plane_m: 3.28
-    run_m: 98.0
-    clamp_m: 8.0
-    usable_clamp_m: 7.0
-    stations_flagged: 48
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: W5-brgs1-wsouth-x01
-  owner: Crossings
-  kind: bridge
-  status: detected
-  ribbon_width_m: 4.0
   bank_level_run_m: 6.0
-  required_deck_y: 32.5
-  single_H_both_banks: true
-  legal_deck_y_interval:
-  - 32.5
-  - 39.061
   centreline_straight_from_to:
   - - -326.0
     - -66.0
   - - -310.0
     - -160.06
+  clamp_evidence:
+    clamp_m: 8.0
+    max_depth_below_plane_m: 3.28
+    required_fill_to_freeboard_m: 4.28
+    run_m: 98.0
+    stations_flagged: 48
+    usable_clamp_m: 7.0
+    worst_required_delta_m: 4.76
+  crossing_id: W5-brgs1-wsouth-x01
+  gap_min_y: 26.72
+  kind: bridge
+  legal_deck_y_interval:
+  - 32.5
+  - 39.061
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.5
+  ribbon_width_m: 4.0
+  segment_id: W5-brgs1-wsouth
+  single_H_both_banks: true
+  span_m: 89.44
+  stations:
+  - 1
+  - 48
+  status: detected
+  water_surface_y: 30.0
   why_terrain_failed: water_body
-- segment_id: W7-wwest-wnorthwest
-  bank_a:
+- bank_a:
+    bearing_deg: 290.0
+    ground_y: 31.01
+    road_deck_y: 32.5
     xz:
     - -1142.0
     - 1778.0
-    ground_y: 31.01
-    bearing_deg: 290.0
-    road_deck_y: 32.5
   bank_b:
+    bearing_deg: 110.0
+    ground_y: 31.23
+    road_deck_y: 32.5
     xz:
     - -1164.0
     - 1788.0
-    ground_y: 31.23
-    bearing_deg: 110.0
-    road_deck_y: 32.5
-  span_m: 24.17
-  stations:
-  - 695
-  - 706
-  gap_min_y: 28.85
-  water_surface_y: 30.0
-  clamp_evidence:
-    worst_required_delta_m: 2.32
-    required_fill_to_freeboard_m: 2.15
-    max_depth_below_plane_m: 1.15
-    run_m: 26.0
-    clamp_m: 8.0
-    usable_clamp_m: 7.0
-    stations_flagged: 12
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: W7-wwest-wnorthwest-x01
-  owner: Crossings
-  kind: bridge
-  status: detected
-  ribbon_width_m: 4.0
   bank_level_run_m: 6.0
-  required_deck_y: 32.5
-  single_H_both_banks: true
-  legal_deck_y_interval:
-  - 32.5
-  - 37.839
   centreline_straight_from_to:
   - - -1136.84
     - 1778.0
   - - -1169.87
     - 1790.0
+  clamp_evidence:
+    clamp_m: 8.0
+    max_depth_below_plane_m: 1.15
+    required_fill_to_freeboard_m: 2.15
+    run_m: 26.0
+    stations_flagged: 12
+    usable_clamp_m: 7.0
+    worst_required_delta_m: 2.32
+  crossing_id: W7-wwest-wnorthwest-x01
+  gap_min_y: 28.85
+  kind: bridge
+  legal_deck_y_interval:
+  - 32.5
+  - 37.839
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.5
+  ribbon_width_m: 4.0
+  segment_id: W7-wwest-wnorthwest
+  single_H_both_banks: true
+  span_m: 24.17
+  stations:
+  - 695
+  - 706
+  status: detected
+  water_surface_y: 30.0
   why_terrain_failed: water_body
-- segment_id: T7-stathub-stenvik
-  bank_a:
+- bank_a:
+    bearing_deg: 220.0
+    ground_y: 31.26
+    road_deck_y: 32.519
     xz:
     - 600.0
     - 1086.0
-    ground_y: 31.26
-    bearing_deg: 220.0
-    road_deck_y: 32.519
   bank_b:
+    bearing_deg: 40.0
+    ground_y: 31.52
+    road_deck_y: 32.519
     xz:
     - 568.0
     - 1048.0
-    ground_y: 31.52
-    bearing_deg: 40.0
-    road_deck_y: 32.519
-  span_m: 49.68
-  stations:
-  - 32
-  - 58
-  gap_min_y: 24.99
-  water_surface_y: 30.0
-  clamp_evidence:
-    worst_required_delta_m: 6.4
-    required_fill_to_freeboard_m: 6.01
-    max_depth_below_plane_m: 5.01
-    run_m: 56.0
-    clamp_m: 8.0
-    usable_clamp_m: 7.0
-    stations_flagged: 27
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: T7-stathub-stenvik-x01
-  owner: Crossings
-  kind: bridge
-  status: detected
-  ribbon_width_m: 6.0
   bank_level_run_m: 6.0
-  required_deck_y: 32.519
-  single_H_both_banks: true
-  legal_deck_y_interval:
-  - 32.5
-  - 39.143
   centreline_straight_from_to:
   - - 605.66
     - 1086.0
   - - 567.95
     - 1041.09
-  why_terrain_failed: water_body
-- segment_id: T7-stathub-stenvik
-  bank_a:
-    xz:
-    - 568.0
-    - 1042.0
-    ground_y: 31.06
-    bearing_deg: 217.3
-    road_deck_y: 32.884
-  bank_b:
-    xz:
-    - 562.0
-    - 1032.0
-    ground_y: 31.64
-    bearing_deg: 37.3
-    road_deck_y: 32.884
-  span_m: 11.66
-  stations:
-  - 63
-  - 67
-  gap_min_y: 27.47
-  water_surface_y: 30.0
   clamp_evidence:
-    worst_required_delta_m: 3.88
-    required_fill_to_freeboard_m: 3.53
-    max_depth_below_plane_m: 2.53
-    run_m: 12.0
     clamp_m: 8.0
+    max_depth_below_plane_m: 5.01
+    required_fill_to_freeboard_m: 6.01
+    run_m: 56.0
+    stations_flagged: 27
     usable_clamp_m: 7.0
-    stations_flagged: 5
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: T7-stathub-stenvik-x02
-  owner: Crossings
+    worst_required_delta_m: 6.4
+  crossing_id: T7-stathub-stenvik-x01
+  gap_min_y: 24.99
   kind: bridge
-  status: detected
-  ribbon_width_m: 6.0
-  bank_level_run_m: 6.0
-  required_deck_y: 32.884
-  single_H_both_banks: true
   legal_deck_y_interval:
   - 32.5
-  - 39.15
+  - 39.143
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.519
+  ribbon_width_m: 6.0
+  segment_id: T7-stathub-stenvik
+  single_H_both_banks: true
+  span_m: 49.68
+  stations:
+  - 32
+  - 58
+  status: detected
+  water_surface_y: 30.0
+  why_terrain_failed: water_body
+- bank_a:
+    bearing_deg: 217.3
+    ground_y: 31.06
+    road_deck_y: 32.884
+    xz:
+    - 568.402
+    - 1041.694
+  bank_b:
+    bearing_deg: 37.3
+    ground_y: 31.64
+    road_deck_y: 32.884
+    xz:
+    - 561.373
+    - 1032.478
+  bank_level_run_m: 6.0
+  bank_reconciled_to_centreline:
+    by: roads/boardwalk.py::reconcile_declared_lines
+    declared_line:
+      bed_above_deck: 0
+      samples: 13
+      span_m: 11.662
+      wet: 6
+      worst_bed_above_deck_m: 0.0
+    lateral_off_centreline_m:
+      bank_a: 0.505
+      bank_b: -0.789
+    projected_line:
+      bed_above_deck: 0
+      samples: 13
+      span_m: 11.591
+      wet: 7
+      worst_bed_above_deck_m: 0.0
+    was_xz:
+      bank_a:
+      - 568.0
+      - 1042.0
+      bank_b:
+      - 562.0
+      - 1032.0
   centreline_straight_from_to:
   - - 571.32
     - 1045.52
   - - 557.82
     - 1027.82
-  why_terrain_failed: water_body
-- segment_id: S6-stenvik-hognest
-  bank_a:
-    xz:
-    - 464.0
-    - 1034.0
-    ground_y: 31.15
-    bearing_deg: 306.7
-    road_deck_y: 32.5
-  bank_b:
-    xz:
-    - 434.0
-    - 1060.0
-    ground_y: 31.15
-    bearing_deg: 126.7
-    road_deck_y: 32.5
-  span_m: 39.7
-  stations:
-  - 118
-  - 137
-  gap_min_y: 25.37
-  water_surface_y: 30.0
   clamp_evidence:
-    worst_required_delta_m: 5.78
-    required_fill_to_freeboard_m: 5.63
-    max_depth_below_plane_m: 4.63
-    run_m: 42.0
     clamp_m: 8.0
+    max_depth_below_plane_m: 2.53
+    required_fill_to_freeboard_m: 3.53
+    run_m: 12.0
+    stations_flagged: 5
     usable_clamp_m: 7.0
-    stations_flagged: 20
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: S6-stenvik-hognest-x01
-  owner: Crossings
+    worst_required_delta_m: 3.88
+  crossing_id: T7-stathub-stenvik-x02
+  gap_min_y: 27.47
   kind: bridge
-  status: detected
-  ribbon_width_m: 4.0
-  bank_level_run_m: 6.0
-  required_deck_y: 32.5
-  single_H_both_banks: true
   legal_deck_y_interval:
   - 32.5
-  - 38.069
+  - 39.15
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.884
+  ribbon_width_m: 6.0
+  segment_id: T7-stathub-stenvik
+  single_H_both_banks: true
+  span_m: 11.66
+  stations:
+  - 63
+  - 67
+  status: detected
+  water_surface_y: 30.0
+  why_terrain_failed: water_body
+- bank_a:
+    bearing_deg: 306.7
+    ground_y: 31.15
+    road_deck_y: 32.5
+    xz:
+    - 466.183
+    - 1036.928
+  bank_b:
+    bearing_deg: 126.7
+    ground_y: 31.15
+    road_deck_y: 32.5
+    xz:
+    - 434.441
+    - 1060.592
+  bank_level_run_m: 6.0
+  bank_reconciled_to_centreline:
+    by: roads/boardwalk.py::reconcile_declared_lines
+    declared_line:
+      bed_above_deck: 0
+      samples: 41
+      span_m: 39.699
+      wet: 32
+      worst_bed_above_deck_m: 0.0
+    lateral_off_centreline_m:
+      bank_a: -3.652
+      bank_b: -0.739
+    projected_line:
+      bed_above_deck: 0
+      samples: 41
+      span_m: 39.592
+      wet: 34
+      worst_bed_above_deck_m: 0.0
+    was_xz:
+      bank_a:
+      - 464.0
+      - 1034.0
+      bank_b:
+      - 434.0
+      - 1060.0
   centreline_straight_from_to:
   - - 470.11
     - 1034.0
   - - 430.38
     - 1063.62
+  clamp_evidence:
+    clamp_m: 8.0
+    max_depth_below_plane_m: 4.63
+    required_fill_to_freeboard_m: 5.63
+    run_m: 42.0
+    stations_flagged: 20
+    usable_clamp_m: 7.0
+    worst_required_delta_m: 5.78
+  crossing_id: S6-stenvik-hognest-x01
+  gap_min_y: 25.37
+  kind: bridge
+  legal_deck_y_interval:
+  - 32.5
+  - 38.069
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.5
+  ribbon_width_m: 4.0
+  segment_id: S6-stenvik-hognest
+  single_H_both_banks: true
+  span_m: 39.7
+  stations:
+  - 118
+  - 137
+  status: detected
+  water_surface_y: 30.0
   why_terrain_failed: water_body
-- segment_id: W9-vestvik-lhwest
-  bank_a:
+- bank_a:
+    bearing_deg: 290.0
+    ground_y: 31.04
+    road_deck_y: 32.5
     xz:
     - -1142.0
     - 1778.0
-    ground_y: 31.04
-    bearing_deg: 290.0
-    road_deck_y: 32.5
   bank_b:
+    bearing_deg: 110.0
+    ground_y: 31.06
+    road_deck_y: 32.5
     xz:
     - -1164.0
     - 1788.0
-    ground_y: 31.06
-    bearing_deg: 110.0
-    road_deck_y: 32.5
-  span_m: 24.17
-  stations:
-  - 135
-  - 146
-  gap_min_y: 28.87
-  water_surface_y: 30.0
-  clamp_evidence:
-    worst_required_delta_m: 2.19
-    required_fill_to_freeboard_m: 2.13
-    max_depth_below_plane_m: 1.13
-    run_m: 26.0
-    clamp_m: 8.0
-    usable_clamp_m: 7.0
-    stations_flagged: 12
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: W9-vestvik-lhwest-x01
-  owner: Crossings
-  kind: bridge
-  status: detected
-  ribbon_width_m: 4.0
   bank_level_run_m: 6.0
-  required_deck_y: 32.5
-  single_H_both_banks: true
-  legal_deck_y_interval:
-  - 32.5
-  - 37.864
   centreline_straight_from_to:
   - - -1136.52
     - 1778.0
   - - -1169.55
     - 1790.0
-  why_terrain_failed: water_body
-- segment_id: W9-vestvik-lhwest
-  bank_a:
-    xz:
-    - -1382.0
-    - 2206.0
-    ground_y: 31.1
-    bearing_deg: 22.2
-    road_deck_y: 32.5
-  bank_b:
-    xz:
-    - -1362.0
-    - 2274.0
-    ground_y: 31.13
-    bearing_deg: 202.2
-    road_deck_y: 32.5
-  span_m: 70.88
-  stations:
-  - 445
-  - 481
-  gap_min_y: 25.14
-  water_surface_y: 30.0
   clamp_evidence:
-    worst_required_delta_m: 5.97
-    required_fill_to_freeboard_m: 5.86
-    max_depth_below_plane_m: 4.86
-    run_m: 76.0
     clamp_m: 8.0
+    max_depth_below_plane_m: 1.13
+    required_fill_to_freeboard_m: 2.13
+    run_m: 26.0
+    stations_flagged: 12
     usable_clamp_m: 7.0
-    stations_flagged: 37
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: W9-vestvik-lhwest-x02
-  owner: Crossings
+    worst_required_delta_m: 2.19
+  crossing_id: W9-vestvik-lhwest-x01
+  gap_min_y: 28.87
   kind: bridge
-  status: detected
-  ribbon_width_m: 4.0
-  bank_level_run_m: 6.0
-  required_deck_y: 32.5
-  single_H_both_banks: true
   legal_deck_y_interval:
   - 32.5
-  - 38.423
+  - 37.864
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.5
+  ribbon_width_m: 4.0
+  segment_id: W9-vestvik-lhwest
+  single_H_both_banks: true
+  span_m: 24.17
+  stations:
+  - 135
+  - 146
+  status: detected
+  water_surface_y: 30.0
+  why_terrain_failed: water_body
+- bank_a:
+    bearing_deg: 22.2
+    ground_y: 31.1
+    road_deck_y: 32.5
+    xz:
+    - -1384.405
+    - 2206.984
+  bank_b:
+    bearing_deg: 202.2
+    ground_y: 31.13
+    road_deck_y: 32.5
+    xz:
+    - -1357.716
+    - 2272.248
+  bank_level_run_m: 6.0
+  bank_reconciled_to_centreline:
+    by: roads/boardwalk.py::reconcile_declared_lines
+    declared_line:
+      bed_above_deck: 0
+      samples: 72
+      span_m: 70.88
+      wet: 52
+      worst_bed_above_deck_m: 0.0
+    lateral_off_centreline_m:
+      bank_a: 2.599
+      bank_b: -4.628
+    projected_line:
+      bed_above_deck: 0
+      samples: 72
+      span_m: 70.51
+      wet: 53
+      worst_bed_above_deck_m: 0.0
+    was_xz:
+      bank_a:
+      - -1382.0
+      - 2206.0
+      bank_b:
+      - -1362.0
+      - 2274.0
   centreline_straight_from_to:
   - - -1386.75
     - 2201.25
   - - -1357.0
     - 2274.0
+  clamp_evidence:
+    clamp_m: 8.0
+    max_depth_below_plane_m: 4.86
+    required_fill_to_freeboard_m: 5.86
+    run_m: 76.0
+    stations_flagged: 37
+    usable_clamp_m: 7.0
+    worst_required_delta_m: 5.97
+  crossing_id: W9-vestvik-lhwest-x02
+  gap_min_y: 25.14
+  kind: bridge
+  legal_deck_y_interval:
+  - 32.5
+  - 38.423
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.5
+  ribbon_width_m: 4.0
+  segment_id: W9-vestvik-lhwest
+  single_H_both_banks: true
+  span_m: 70.88
+  stations:
+  - 445
+  - 481
+  status: detected
+  water_surface_y: 30.0
   why_terrain_failed: water_body
-- segment_id: W10-brgs1-treenear
-  bank_a:
+- bank_a:
+    bearing_deg: 170.3
+    ground_y: 31.55
+    road_deck_y: 32.5
     xz:
     - -326.0
     - -66.0
-    ground_y: 31.55
-    bearing_deg: 170.3
-    road_deck_y: 32.5
   bank_b:
+    bearing_deg: 350.3
+    ground_y: 31.43
+    road_deck_y: 32.5
     xz:
     - -310.0
     - -154.0
-    ground_y: 31.43
-    bearing_deg: 350.3
-    road_deck_y: 32.5
-  span_m: 89.44
-  stations:
-  - 1
-  - 48
-  gap_min_y: 26.72
-  water_surface_y: 30.0
-  clamp_evidence:
-    worst_required_delta_m: 4.76
-    required_fill_to_freeboard_m: 4.28
-    max_depth_below_plane_m: 3.28
-    run_m: 98.0
-    clamp_m: 8.0
-    usable_clamp_m: 7.0
-    stations_flagged: 48
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: W10-brgs1-treenear-x01
-  owner: Crossings
-  kind: bridge
-  status: detected
-  ribbon_width_m: 4.0
   bank_level_run_m: 6.0
-  required_deck_y: 32.5
-  single_H_both_banks: true
-  legal_deck_y_interval:
-  - 32.5
-  - 39.061
   centreline_straight_from_to:
   - - -326.0
     - -66.0
   - - -310.0
     - -160.06
+  clamp_evidence:
+    clamp_m: 8.0
+    max_depth_below_plane_m: 3.28
+    required_fill_to_freeboard_m: 4.28
+    run_m: 98.0
+    stations_flagged: 48
+    usable_clamp_m: 7.0
+    worst_required_delta_m: 4.76
+  crossing_id: W10-brgs1-treenear-x01
+  gap_min_y: 26.72
+  kind: bridge
+  legal_deck_y_interval:
+  - 32.5
+  - 39.061
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.5
+  ribbon_width_m: 4.0
+  segment_id: W10-brgs1-treenear
+  single_H_both_banks: true
+  span_m: 89.44
+  stations:
+  - 1
+  - 48
+  status: detected
+  water_surface_y: 30.0
   why_terrain_failed: water_body
-- segment_id: S12-brgs1-boathouse
-  bank_a:
+- bank_a:
+    bearing_deg: 156.1
+    ground_y: 29.25
+    road_deck_y: 33.87
     xz:
     - -312.0
     - -62.0
-    ground_y: 29.25
-    bearing_deg: 156.1
-    road_deck_y: 33.87
   bank_b:
+    bearing_deg: 336.1
+    ground_y: 31.4
+    road_deck_y: 33.87
     xz:
     - -284.0
     - -138.0
-    ground_y: 31.4
-    bearing_deg: 336.1
-    road_deck_y: 33.87
-  span_m: 80.99
-  stations:
-  - 0
-  - 44
-  gap_min_y: 25.24
-  water_surface_y: 30.0
-  clamp_evidence:
-    worst_required_delta_m: 5.45
-    required_fill_to_freeboard_m: 5.76
-    max_depth_below_plane_m: 4.76
-    run_m: 90.0
-    clamp_m: 8.0
-    usable_clamp_m: 7.0
-    stations_flagged: 45
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: S12-brgs1-boathouse-x01
-  owner: Crossings
-  kind: bridge
-  status: detected
-  ribbon_width_m: 4.0
   bank_level_run_m: 6.0
-  required_deck_y: 33.87
-  single_H_both_banks: true
-  legal_deck_y_interval:
-  - 32.5
-  - 40.569
   centreline_straight_from_to:
   - - -312.0
     - -62.0
   - - -280.28
     - -133.72
+  clamp_evidence:
+    clamp_m: 8.0
+    max_depth_below_plane_m: 4.76
+    required_fill_to_freeboard_m: 5.76
+    run_m: 90.0
+    stations_flagged: 45
+    usable_clamp_m: 7.0
+    worst_required_delta_m: 5.45
+  crossing_id: S12-brgs1-boathouse-x01
+  gap_min_y: 25.24
+  kind: bridge
+  legal_deck_y_interval:
+  - 32.5
+  - 40.569
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 33.87
+  ribbon_width_m: 4.0
+  segment_id: S12-brgs1-boathouse
+  single_H_both_banks: true
+  span_m: 80.99
+  stations:
+  - 0
+  - 44
+  status: detected
+  water_surface_y: 30.0
   why_terrain_failed: water_body
-- segment_id: S13-stathub-dock
-  bank_a:
+- bank_a:
+    bearing_deg: 146.2
+    ground_y: 31.21
+    road_deck_y: 32.5
     xz:
     - 476.0
     - 1094.0
-    ground_y: 31.21
-    bearing_deg: 146.2
-    road_deck_y: 32.5
   bank_b:
+    bearing_deg: 326.2
+    ground_y: 29.52
+    road_deck_y: 32.5
     xz:
     - 504.0
     - 1062.0
-    ground_y: 29.52
-    bearing_deg: 326.2
-    road_deck_y: 32.5
-  span_m: 42.52
-  stations:
-  - 104
-  - 126
-  gap_min_y: 27.06
-  water_surface_y: 30.0
-  clamp_evidence:
-    worst_required_delta_m: 3.24
-    required_fill_to_freeboard_m: 3.94
-    max_depth_below_plane_m: 2.94
-    run_m: 45.48
-    clamp_m: 8.0
-    usable_clamp_m: 7.0
-    stations_flagged: 23
-  measured: generated heights from PatchScan at 1 m, seed Pirate68
-  crossing_id: S13-stathub-dock-x01
-  owner: Crossings
-  kind: bridge
-  status: detected
-  ribbon_width_m: 4.0
   bank_level_run_m: 6.0
-  required_deck_y: 32.5
-  single_H_both_banks: true
-  legal_deck_y_interval:
-  - 32.5
-  - 37.784
   centreline_straight_from_to:
   - - 479.92
     - 1097.92
   - - 504.0
     - 1062.0
+  clamp_evidence:
+    clamp_m: 8.0
+    max_depth_below_plane_m: 2.94
+    required_fill_to_freeboard_m: 3.94
+    run_m: 45.48
+    stations_flagged: 23
+    usable_clamp_m: 7.0
+    worst_required_delta_m: 3.24
+  crossing_id: S13-stathub-dock-x01
+  gap_min_y: 27.06
+  kind: bridge
+  legal_deck_y_interval:
+  - 32.5
+  - 37.784
+  measured: generated heights from PatchScan at 1 m, seed Pirate68
+  owner: Crossings
+  required_deck_y: 32.5
+  ribbon_width_m: 4.0
+  segment_id: S13-stathub-dock
+  single_H_both_banks: true
+  span_m: 42.52
+  stations:
+  - 104
+  - 126
+  status: detected
+  water_surface_y: 30.0
   why_terrain_failed: water_body
-abutment_handoffs:
-- node: brg-s2-e
-  end: b
-  level_y: 30.6
-  level_run_m: 6.0
-  worst_cut_fill_m: 1.397
-  within_clamp: true
-  ribbon_width_m: 4.0
-  outbound_bearing_deg: 315.0
-  ribbon_end_xz:
-  - -316.0
-  - 230.0
-  segment_id: S1-portalhub-brgs2
-  cls: spur
-- node: brg-s2-w
-  end: a
-  level_y: 30.6
-  level_run_m: 6.0
-  worst_cut_fill_m: 1.92
-  within_clamp: true
-  ribbon_width_m: 6.0
-  outbound_bearing_deg: 135.0
-  ribbon_end_xz:
-  - -350.0
-  - 246.0
-  segment_id: W2-brgs2-wmid
-  cls: trunk
-- node: brg-s1-w
-  end: a
-  level_y: 30.6
-  level_run_m: 6.0
-  worst_cut_fill_m: 0.95
-  within_clamp: true
-  ribbon_width_m: 4.0
-  outbound_bearing_deg: 350.35
-  ribbon_end_xz:
-  - -326.0
-  - -66.0
-  segment_id: W5-brgs1-wsouth
-  cls: spur
-- node: brg-s2-w
-  end: a
-  level_y: 30.6
-  level_run_m: 6.0
-  worst_cut_fill_m: 1.92
-  within_clamp: true
-  ribbon_width_m: 6.0
-  outbound_bearing_deg: 135.0
-  ribbon_end_xz:
-  - -350.0
-  - 246.0
-  segment_id: W8-brgs2-vestvik
-  cls: trunk
-- node: brg-s1-w
-  end: a
-  level_y: 30.6
-  level_run_m: 6.0
-  worst_cut_fill_m: 0.95
-  within_clamp: true
-  ribbon_width_m: 4.0
-  outbound_bearing_deg: 350.35
-  ribbon_end_xz:
-  - -326.0
-  - -66.0
-  segment_id: W10-brgs1-treenear
-  cls: spur
-- node: brg-s1-e
-  end: a
-  level_y: 30.6
-  level_run_m: 6.0
-  worst_cut_fill_m: 1.354
-  within_clamp: true
-  ribbon_width_m: 4.0
-  outbound_bearing_deg: 336.14
-  ribbon_end_xz:
-  - -312.0
-  - -62.0
-  segment_id: S12-brgs1-boathouse
-  cls: spur
+measurement: generated heights from PatchScan at 1 m WITH rivers; bank coordinates
+  snapped to 2 m per Crossings' MEASURED deck pitch
+owner: RoadNet
+precedence: DECLARED crossings carry Crossings' own measurements and are authoritative.
+  DETECTED crossings are mine, from routing over the 1 m field. Where they describe
+  the same channel, Crossings' numbers win and mine are marked superseded.
+schema_version: 2
+seed: Pirate68
+world: Ulfsland

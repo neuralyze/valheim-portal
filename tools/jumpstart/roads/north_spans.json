@@ -1,0 +1,601 @@
+{
+  "owner": "Crossings (handed over by RoadNorthFinish)",
+  "world": "Ulfsland",
+  "seed": "Pirate68",
+  "what": "every decked span on the six-leg northern trunk, with the numbers needed to build it. 16 spans, 707.1 m total, ZERO pieces standing at any of them (verified against the canonical ledger: 283 positioned pieces, 0 within a span of any crossing midpoint).",
+  "why_it_matters": "a decked crossing is a STRUCTURE and leaves the road's terrain entirely. Until it is built the road is walkable up to the bank and the player swims. The terrain legs are complete and correct either way; this is the other half.",
+  "ceilings": {
+    "free_span_ceiling_m": 96.0,
+    "pile_reach_m": 20.0,
+    "worst_span_on_this_route_m": 66.5,
+    "worst_pile_on_this_route_m": 2.74,
+    "verdict": "EVERY span is inside BOTH ceilings by a wide margin -- 1.45x headroom on the worst span and 7.3x on the worst pile. None of these is a ferry question and none needs a free span."
+  },
+  "deck_datum_note": "DECK_DATUM_Y 30.6 is the datum for a SEA deck. These are inland channels whose banks stand at 31-32 m and whose road profile was solved to a single level H per crossing (`bank_level.level_at_y`). Build each deck at ITS OWN H, not at 30.6: the road arrives at H and a deck at 30.6 would put a 1.9 m step at both abutments -- section 4.4's defect with the sign reversed.",
+  "spans": [
+    {
+      "crossing_id": "N0-brgs2-wmid-x01",
+      "segment": "N0-brgs2-wmid",
+      "span_m": 21.54,
+      "bank_a": {
+        "xz": [
+          -350.0,
+          294.0
+        ],
+        "ground_y": 31.43,
+        "bearing_deg": 22.0
+      },
+      "bank_b": {
+        "xz": [
+          -342.0,
+          314.0
+        ],
+        "ground_y": 31.03,
+        "bearing_deg": 202.0
+      },
+      "bed_min_y": 28.65,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        38.358
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.85,
+      "pile_fraction_of_reach": 0.193,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 33,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.35
+    },
+    {
+      "crossing_id": "N1-wnorth-shelf-x01",
+      "segment": "N1-wnorth-shelf",
+      "span_m": 36.0,
+      "bank_a": {
+        "xz": [
+          -86.0,
+          2710.0
+        ],
+        "ground_y": 31.27,
+        "bearing_deg": 90.0
+      },
+      "bank_b": {
+        "xz": [
+          -50.0,
+          2710.0
+        ],
+        "ground_y": 31.2,
+        "bearing_deg": 270.0
+      },
+      "bed_min_y": 28.98,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        38.557
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.52,
+      "pile_fraction_of_reach": 0.176,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 54,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.02
+    },
+    {
+      "crossing_id": "N1-wnorth-shelf-x02",
+      "segment": "N1-wnorth-shelf",
+      "span_m": 50.99,
+      "bank_a": {
+        "xz": [
+          48.0,
+          2768.0
+        ],
+        "ground_y": 31.1,
+        "bearing_deg": 63.1
+      },
+      "bank_b": {
+        "xz": [
+          94.0,
+          2790.0
+        ],
+        "ground_y": 31.1,
+        "bearing_deg": 243.1
+      },
+      "bed_min_y": 28.96,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        37.166
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.54,
+      "pile_fraction_of_reach": 0.177,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 75,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.04
+    },
+    {
+      "crossing_id": "N1-wnorth-shelf-x03",
+      "segment": "N1-wnorth-shelf",
+      "span_m": 48.83,
+      "bank_a": {
+        "xz": [
+          376.0,
+          3168.0
+        ],
+        "ground_y": 31.37,
+        "bearing_deg": 37.0
+      },
+      "bank_b": {
+        "xz": [
+          404.0,
+          3208.0
+        ],
+        "ground_y": 31.03,
+        "bearing_deg": 217.0
+      },
+      "bed_min_y": 28.58,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        38.208
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.92,
+      "pile_fraction_of_reach": 0.196,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 72,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.42
+    },
+    {
+      "crossing_id": "N1-wnorth-shelf-x04",
+      "segment": "N1-wnorth-shelf",
+      "span_m": 58.0,
+      "bank_a": {
+        "xz": [
+          434.0,
+          3260.0
+        ],
+        "ground_y": 31.16,
+        "bearing_deg": 356.8
+      },
+      "bank_b": {
+        "xz": [
+          434.0,
+          3318.0
+        ],
+        "ground_y": 34.92,
+        "bearing_deg": 176.8
+      },
+      "bed_min_y": 28.58,
+      "deck_y_REQUIRED": 33.243,
+      "legal_deck_y_interval": [
+        32.5,
+        37.321
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 4.66,
+      "pile_fraction_of_reach": 0.233,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 87,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.42
+    },
+    {
+      "crossing_id": "N1-wnorth-shelf-x05",
+      "segment": "N1-wnorth-shelf",
+      "span_m": 21.26,
+      "bank_a": {
+        "xz": [
+          22.0,
+          4114.0
+        ],
+        "ground_y": 31.89,
+        "bearing_deg": 297.9
+      },
+      "bank_b": {
+        "xz": [
+          8.0,
+          4130.0
+        ],
+        "ground_y": 31.12,
+        "bearing_deg": 117.9
+      },
+      "bed_min_y": 27.48,
+      "deck_y_REQUIRED": 32.64,
+      "legal_deck_y_interval": [
+        32.5,
+        38.278
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 5.16,
+      "pile_fraction_of_reach": 0.258,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 33,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 2.52
+    },
+    {
+      "crossing_id": "N2-shelf-mid1-x01",
+      "segment": "N2-shelf-mid1",
+      "span_m": 38.83,
+      "bank_a": {
+        "xz": [
+          -518.0,
+          4748.0
+        ],
+        "ground_y": 31.2,
+        "bearing_deg": 37.6
+      },
+      "bank_b": {
+        "xz": [
+          -496.0,
+          4780.0
+        ],
+        "ground_y": 31.17,
+        "bearing_deg": 217.6
+      },
+      "bed_min_y": 28.34,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        36.654
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 4.16,
+      "pile_fraction_of_reach": 0.208,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 57,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.66
+    },
+    {
+      "crossing_id": "N2-shelf-mid1-x02",
+      "segment": "N2-shelf-mid1",
+      "span_m": 55.32,
+      "bank_a": {
+        "xz": [
+          -506.0,
+          4820.0
+        ],
+        "ground_y": 31.08,
+        "bearing_deg": 349.5
+      },
+      "bank_b": {
+        "xz": [
+          -518.0,
+          4874.0
+        ],
+        "ground_y": 31.28,
+        "bearing_deg": 169.5
+      },
+      "bed_min_y": 28.33,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        36.92
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 4.17,
+      "pile_fraction_of_reach": 0.209,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 84,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.67
+    },
+    {
+      "crossing_id": "N2-shelf-mid1-x03",
+      "segment": "N2-shelf-mid1",
+      "span_m": 42.94,
+      "bank_a": {
+        "xz": [
+          -518.0,
+          4888.0
+        ],
+        "ground_y": 31.13,
+        "bearing_deg": 26.2
+      },
+      "bank_b": {
+        "xz": [
+          -498.0,
+          4926.0
+        ],
+        "ground_y": 31.21,
+        "bearing_deg": 206.2
+      },
+      "bed_min_y": 28.71,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        37.31
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.79,
+      "pile_fraction_of_reach": 0.189,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 63,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.29
+    },
+    {
+      "crossing_id": "N2-shelf-mid1-x04",
+      "segment": "N2-shelf-mid1",
+      "span_m": 66.21,
+      "bank_a": {
+        "xz": [
+          -546.0,
+          4954.0
+        ],
+        "ground_y": 31.2,
+        "bearing_deg": 295.7
+      },
+      "bank_b": {
+        "xz": [
+          -606.0,
+          4982.0
+        ],
+        "ground_y": 31.54,
+        "bearing_deg": 115.7
+      },
+      "bed_min_y": 28.59,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        36.132
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.91,
+      "pile_fraction_of_reach": 0.196,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 99,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.41
+    },
+    {
+      "crossing_id": "N2-shelf-mid1-x05",
+      "segment": "N2-shelf-mid1",
+      "span_m": 43.27,
+      "bank_a": {
+        "xz": [
+          -610.0,
+          4986.0
+        ],
+        "ground_y": 31.78,
+        "bearing_deg": 319.0
+      },
+      "bank_b": {
+        "xz": [
+          -634.0,
+          5022.0
+        ],
+        "ground_y": 31.29,
+        "bearing_deg": 139.0
+      },
+      "bed_min_y": 28.73,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        36.724
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.77,
+      "pile_fraction_of_reach": 0.188,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 66,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.27
+    },
+    {
+      "crossing_id": "N2-shelf-mid1-x06",
+      "segment": "N2-shelf-mid1",
+      "span_m": 60.46,
+      "bank_a": {
+        "xz": [
+          -650.0,
+          5042.0
+        ],
+        "ground_y": 31.07,
+        "bearing_deg": 324.6
+      },
+      "bank_b": {
+        "xz": [
+          -684.0,
+          5092.0
+        ],
+        "ground_y": 31.83,
+        "bearing_deg": 144.6
+      },
+      "bed_min_y": 28.81,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        36.956
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.69,
+      "pile_fraction_of_reach": 0.185,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 90,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.19
+    },
+    {
+      "crossing_id": "N2-shelf-mid1-x07",
+      "segment": "N2-shelf-mid1",
+      "span_m": 63.25,
+      "bank_a": {
+        "xz": [
+          -758.0,
+          5162.0
+        ],
+        "ground_y": 31.1,
+        "bearing_deg": 306.3
+      },
+      "bank_b": {
+        "xz": [
+          -810.0,
+          5198.0
+        ],
+        "ground_y": 31.7,
+        "bearing_deg": 126.3
+      },
+      "bed_min_y": 28.7,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        37.214
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.8,
+      "pile_fraction_of_reach": 0.19,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 96,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.3
+    },
+    {
+      "crossing_id": "N3-mid1-mid2-x01",
+      "segment": "N3-mid1-mid2",
+      "span_m": 44.0,
+      "bank_a": {
+        "xz": [
+          -706.0,
+          5806.0
+        ],
+        "ground_y": 31.21,
+        "bearing_deg": 5.7
+      },
+      "bank_b": {
+        "xz": [
+          -706.0,
+          5850.0
+        ],
+        "ground_y": 31.51,
+        "bearing_deg": 185.7
+      },
+      "bed_min_y": 28.7,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        37.544
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.8,
+      "pile_fraction_of_reach": 0.19,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 66,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.3
+    },
+    {
+      "crossing_id": "N3-mid1-mid2-x02",
+      "segment": "N3-mid1-mid2",
+      "span_m": 49.48,
+      "bank_a": {
+        "xz": [
+          -718.0,
+          5888.0
+        ],
+        "ground_y": 31.0,
+        "bearing_deg": 348.9
+      },
+      "bank_b": {
+        "xz": [
+          -730.0,
+          5936.0
+        ],
+        "ground_y": 31.0,
+        "bearing_deg": 168.9
+      },
+      "bed_min_y": 28.54,
+      "deck_y_REQUIRED": 32.5,
+      "legal_deck_y_interval": [
+        32.5,
+        36.325
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 3.96,
+      "pile_fraction_of_reach": 0.198,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 75,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 1.46
+    },
+    {
+      "crossing_id": "N4-mid2-terminus-x01",
+      "segment": "N4-mid2-terminus",
+      "span_m": 14.14,
+      "bank_a": {
+        "xz": [
+          -1354.0,
+          7302.0
+        ],
+        "ground_y": 31.94,
+        "bearing_deg": 29.7
+      },
+      "bank_b": {
+        "xz": [
+          -1344.0,
+          7312.0
+        ],
+        "ground_y": 31.53,
+        "bearing_deg": 209.7
+      },
+      "bed_min_y": 27.86,
+      "deck_y_REQUIRED": 32.535,
+      "legal_deck_y_interval": [
+        32.5,
+        35.492
+      ],
+      "single_H_both_banks": true,
+      "pile_bed_to_deck_m": 4.67,
+      "pile_fraction_of_reach": 0.234,
+      "deck_width_m": 6.0,
+      "deck_tiles_2m_est": 21,
+      "bank_level_run_m": 6.0,
+      "why_terrain_failed": "water_body",
+      "water_surface_y": 30.0,
+      "depth_below_plane_m": 2.14
+    }
+  ],
+  "totals": {
+    "spans": 16,
+    "span_metres": 714.5,
+    "deck_tiles_2m_est": 1071,
+    "worst_span_m": 66.21,
+    "worst_pile_m": 5.16,
+    "all_single_H": true
+  }
+}

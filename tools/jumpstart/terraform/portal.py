@@ -22,6 +22,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+import worldseed  # noqa: E402
+
 BASE = "http://127.0.0.1:18080"
 TOKEN_PATH = "/etc/valheim-portal/admin-token"
 CSRF_RE = re.compile(r'name="csrf"\s+value="([^"]+)"')
@@ -83,15 +86,20 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("op", choices=["analysis", "regenerate"])
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--out")
     args = ap.parse_args()
+    # NOT SEED-SCOPED, AND SAID SO.  `--world` here is a path segment in the
+    # admin portal's own URL space; the portal owns the artefact and answers
+    # for the world it is asked about, so there is no local file carrying a
+    # declaration to read back.  `require_scope` would have nothing to read.
+    _seed, world = worldseed.apply(args)
 
     portal = Portal()
     if args.op == "regenerate":
-        portal.post(f"/admin/worlds/{args.world}/analysis", f"/admin/worlds/{args.world}/map")
-        print(f"regenerate posted for {args.world}")
-    body = portal.get(f"/admin/worlds/{args.world}/analysis.json")
+        portal.post(f"/admin/worlds/{world}/analysis", f"/admin/worlds/{world}/map")
+        print(f"regenerate posted for {world}")
+    body = portal.get(f"/admin/worlds/{world}/analysis.json")
     if args.out:
         Path(args.out).write_text(body)
         print(f"analysis -> {args.out} ({len(body)} bytes)")

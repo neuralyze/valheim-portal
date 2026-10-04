@@ -89,20 +89,40 @@ def cmd_landmasses(fld: W.Field, args) -> None:
     print(json.dumps(rows, indent=1))
 
 
-def gap_between(fld: W.Field, ma: np.ndarray, mb: np.ndarray, top: int, sep_m: float):
+def approaches(fld: W.Field, ma: np.ndarray, mb: np.ndarray,
+               max_gap_m: float = 2000.0):
+    """EVERY approach from component B to component A, with no truncation.
+
+    `gap_between` below answers "show me the N narrowest gaps, one per
+    neighbourhood", which is the right question for a human reading a strait
+    report and the WRONG population for any selection rule that is not
+    "narrowest".  MEASURED: the S2 crossing -- chosen because bridge span PLUS
+    spur from the portal hall is least -- is suppressed out of the top-6
+    `--sep 200` list by a narrower neighbour 130 m away, so a rule evaluated on
+    that list cannot find the bank that is actually built.  A selection rule
+    has to see the whole population it is selecting from; that is this project's
+    one repeated finding, in its smallest possible form.
+
+    Returns (gap_m, near_i, near_j, far_i, far_j) as parallel arrays over every
+    sample of B within `max_gap_m` of A, `near_*` being B's nearest sample on A.
+    """
     dt, ix = ndimage.distance_transform_edt(~ma, return_indices=True)
     d = np.where(mb, dt, np.inf)
-    cand = np.argwhere(np.isfinite(d) & (d < 2000))
-    if not len(cand):
+    fi, fj = np.nonzero(np.isfinite(d) & (d <= max_gap_m))
+    return d[fi, fj], ix[0][fi, fj], ix[1][fi, fj], fi, fj
+
+
+def gap_between(fld: W.Field, ma: np.ndarray, mb: np.ndarray, top: int, sep_m: float):
+    """The `top` narrowest gaps, at least `sep_m` apart: one per neighbourhood."""
+    gaps, ni, nj, fi, fj = approaches(fld, ma, mb, 2000.0)
+    if not len(gaps):
         return []
-    vals = d[cand[:, 0], cand[:, 1]]
     out = []
-    for t in np.argsort(vals):
-        i, j = cand[t]
+    for t in np.argsort(gaps):
+        i, j = int(fi[t]), int(fj[t])
         if any((i - pi) ** 2 + (j - pj) ** 2 < sep_m ** 2 for pi, pj, _, _, _ in out):
             continue
-        ai, aj = int(ix[0][i, j]), int(ix[1][i, j])
-        out.append((int(i), int(j), float(vals[t]), ai, aj))
+        out.append((i, j, float(gaps[t]), int(ni[t]), int(nj[t])))
         if len(out) >= top:
             break
     return out

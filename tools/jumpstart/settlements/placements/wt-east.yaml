@@ -1,4 +1,4 @@
-world: Ulfsland
+world: Fresh42
 settlement: wt-east
 placements:
 - id: wt-east
@@ -15,19 +15,19 @@ placements:
     - 20.0
     - 20.0
   solved:
-    seed: Pirate68
-    x: 1858.0
-    z: 145.0
-    y: 55.33
+    seed: Fresh42
+    x: -418.1
+    z: -708.8
+    y: 35.19
     footprint_orientation: 20 m along x by 20 m along z
     flatten_cost:
-      target_y: 55.33
+      target_y: 35.19
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 66.9
-    nearest_location: Crypt4
-    nearest_location_standoff_m: 33.0
+    nearest_location_m: 34.6
+    nearest_location: StoneTowerRuins09
+    nearest_location_standoff_m: 19.0
   settlement:
     site: wt-east
     role: watchtower
-    patch: mainland
+    patch: trunk-primary

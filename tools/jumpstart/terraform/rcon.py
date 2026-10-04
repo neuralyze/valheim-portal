@@ -78,6 +78,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import socket
 import struct
@@ -86,8 +87,153 @@ import sys
 import time
 from pathlib import Path
 
-CONTAINER = "valheim-server-Ulfsland"
-CONFIG = Path("/media/big4/projects/game/valheim/Ulfsland/config_merged/bepinex/org.tristan.rcon.cfg")
+# THE WORLD IS A PARAMETER WITH AN ULFSLAND DEFAULT.
+#
+# It used to be a constant, and that is a fact about replayability rather
+# than a tidiness complaint: every tool in this tree reaches the server
+# through this module, so a hard-coded container name means the toolchain
+# can only ever drive the world it was written against.  MEASURED while
+# testing whether the ledger replays -- a fresh same-seed world could be
+# provisioned and started, and nothing in `terraform/` or `ledger/` could
+# address it, because `replay.py::restart_and_wait` imports this constant
+# and restarts it by name.  A rebuild is exactly the case where the target
+# is NOT Ulfsland.
+#
+# The default is unchanged so that every existing caller and every live
+# agent keeps the behaviour it was measured with; only an explicit
+# `VALHEIM_WORLD` (or a full `VALHEIM_CONTAINER` / `VALHEIM_RCON_CONFIG`
+# override) points the transport somewhere else.
+#
+# TRANSPORT_WORLD_DEPENDS_ON: the world this run is driving -- and the literal
+# fallback was a SECOND, INDEPENDENT HOME for that one quantity.  MEASURED
+# 2026-09-24: `pipeline.Scope.env()` publishes `VH_SEED` and `VH_WORLD` and
+# NOTHING ELSE, `ledger/replay.py:447` constructs `Rcon(timeout=30.0)` with no
+# config, and `LiveBuilder` reaches the socket through exactly that.  So
+# `buildstage.py run --world Fresh42` with no transport override RECORDED INTO
+# FRESH42'S LEDGER AND SENT EVERY COMMAND TO CONTAINER
+# `valheim-server-Ulfsland` -- the record and the ground disagreeing silently,
+# against the one world this project holds untouchable.
+#
+# `worldseed.world()` is `$VH_WORLD` else "Ulfsland", so:
+#   nothing set                     -> Ulfsland, exactly as before
+#   VALHEIM_WORLD set               -> that world, exactly as before (the
+#                                      documented two-axis case: `--world`
+#                                      selects the RECORDS, $VALHEIM_WORLD the
+#                                      CONTAINER -- see
+#                                      blueprints/remove_placement.py:101)
+#   only VH_WORLD set               -> that world, instead of silently
+#                                      Ulfsland.  A world with no container of
+#                                      that name then fails LOUDLY in
+#                                      `container_ip`, which is the outcome
+#                                      this fallback exists to produce.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import worldseed                                            # noqa: E402
+
+WORLD = os.environ.get("VALHEIM_WORLD") or worldseed.world()
+WORLD_ROOT = Path(os.environ.get("VALHEIM_WORLD_ROOT",
+                                 "/media/big4/projects/game/valheim"))
+CONTAINER = os.environ.get("VALHEIM_CONTAINER", f"valheim-server-{WORLD}")
+CONFIG = Path(os.environ.get(
+    "VALHEIM_RCON_CONFIG",
+    str(WORLD_ROOT / WORLD / "config_merged" / "bepinex"
+        / "org.tristan.rcon.cfg")))
+# AND THE TRANSPORT'S ADDRESS IS NOT "WHICHEVER CONTAINER IS NAMED AFTER THE
+# WORLD".  `container_ip()` resolves a docker bridge IP, which keys the
+# address on "this world runs in a container" -- a SUPERSET of what the
+# address actually depends on, which is only "a ValheimRcon socket is
+# listening somewhere".  MEASURED 2026-09-23 driving the fresh seed Fresh42:
+# its server is a bare `valheim_server.x86_64` on the host with no container
+# at all, so every tool in this tree reached it through
+# `sudo docker inspect valheim-server-Fresh42` and raised
+# CalledProcessError -- a fresh seed could not be addressed by the toolchain
+# that is supposed to build it.  `VALHEIM_RCON_HOST` names the socket
+# directly and is the only thing `Rcon` ever needed.
+RCON_HOST = os.environ.get("VALHEIM_RCON_HOST", "")
+
+
+# WHAT THE TRANSPORT DECLARES ABOUT ITS OWN WORLD, AND HOW STRONGLY.
+#
+# `Rcon.__init__` resolves `host or RCON_HOST or container_ip()`, so the
+# socket can be addressed three ways and only two of them name a world.  A
+# CALLER THAT IS ABOUT TO RECORD INTO ONE WORLD'S LEDGER MUST BE ABLE TO ASK
+# WHICH WORLD IT IS ABOUT TO TALK TO -- and get "I do not know" when that is
+# the true answer, because `$VALHEIM_RCON_HOST` names a SOCKET, NOT A WORLD,
+# and a socket that is assumed to be this world is the disagreement this
+# module's TRANSPORT_WORLD_DEPENDS_ON block exists to make impossible.
+#
+# Read at CALL TIME for the same reason `console_log_is_a_file` is: drivers
+# set these while choosing a transport.
+_CONTAINER_WORLD = re.compile(r"^valheim-server-(.+)$")
+
+
+def transport_scope(resolved: str | None = None) -> dict:
+    """`{"world": str, "how": str, "declared": bool}` for the live socket.
+
+    `declared` False means NOBODY SAID -- never that it is this world.
+
+    `resolved` is the fallback when no env key names a world, and it is a
+    PARAMETER so the shipped known-bad -- the literal "Ulfsland" this module
+    carried until 2026-09-24 -- can be handed in and the check watched to
+    refuse under it.  See TRANSPORT_WORLD_DEPENDS_ON above.
+    """
+    host = os.environ.get("VALHEIM_RCON_HOST", "")
+    named = os.environ.get("VALHEIM_CONTAINER", "")
+    stated = os.environ.get("VALHEIM_WORLD", "")
+    if host:
+        if stated:
+            return {"world": stated, "how": "VALHEIM_WORLD beside a direct "
+                                            "VALHEIM_RCON_HOST socket",
+                    "declared": True}
+        return {"world": "", "how": f"VALHEIM_RCON_HOST={host!r} names a "
+                                    f"socket, not a world, and VALHEIM_WORLD "
+                                    f"is unset", "declared": False}
+    if named:
+        m = _CONTAINER_WORLD.match(named)
+        if m:
+            return {"world": m.group(1), "how": f"VALHEIM_CONTAINER={named!r}",
+                    "declared": True}
+        return {"world": "", "how": f"VALHEIM_CONTAINER={named!r} does not "
+                                    f"carry a world name", "declared": False}
+    if stated:
+        return {"world": stated, "how": "VALHEIM_WORLD", "declared": True}
+    return {"world": WORLD if resolved is None else resolved,
+            "how": "worldseed.world() -- $VH_WORLD else the default, the SAME "
+                   "resolver the ledger uses", "declared": True}
+
+
+def transport_disagreement(ledger_world: str, scope: dict) -> str:
+    """Why this session must not open, or "" when it may.
+
+    A PURE FUNCTION so both arms of TRANSPORT_AGREEMENT_DEPENDS_ON can be
+    driven without a socket, a container or a world.  An UNDECLARED transport
+    is NOT a disagreement -- a fresh seed's bare server is addressed by
+    `$VALHEIM_RCON_HOST` alone and refusing that would forbid every fresh
+    build -- it is recorded on every record instead.
+    """
+    if not scope.get("declared"):
+        return ""
+    if scope.get("world") == ledger_world:
+        return ""
+    return (f"REFUSED: this session records into {ledger_world!r} and the "
+            f"transport belongs to {scope.get('world')!r} "
+            f"({scope.get('how')}). Every command would move "
+            f"{scope.get('world')!r}'s ground while the chain said "
+            f"{ledger_world!r} -- the record and the world disagreeing "
+            f"silently, which is the one failure this ledger cannot detect "
+            f"afterwards. Set VALHEIM_WORLD / VALHEIM_CONTAINER to "
+            f"{ledger_world!r}, or drive the world you are recording.")
+
+
+def console_log_is_a_file() -> bool:
+    """Is this server's stdout read from a file rather than from a container?
+
+    Read at CALL TIME, not import time: `terraform/console.py` and this
+    module are imported by long-lived drivers that set the variable while
+    choosing a transport, and a constant captured at import would answer for
+    the wrong server.
+    """
+    return bool(os.environ.get("VALHEIM_SERVER_LOG", ""))
+
 
 SERVERDATA_AUTH = 3
 SERVERDATA_AUTH_RESPONSE = 2
@@ -584,11 +730,47 @@ def keep_sink_clear(name: str = CONTAINER, note: str = "") -> dict:
     drainable wait, and say what happened.  Raises only for the shape a drain
     cannot fix, so a loop can call this every few dozen calls and keep going.
     """
+    # SINK_WATCH_DEPENDS_ON: THE EXISTENCE OF A supervisord/syslogd PIPE PAIR.
+    #
+    # The hazard this valve exists for is a CONTAINER's circular wait --
+    # supervisord in `unix_wait_for_peer` while syslogd sits in `pipe_write`.
+    # A server whose stdout this process reads from a plain file has no such
+    # pair and cannot enter that wait at all.  MEASURED 2026-09-23 on the
+    # fresh seed Fresh42, 34 s into stage 10's first cell census: `docker top
+    # valheim-server-Fresh42` names nothing, `host_sink_state` returned
+    # verdict "unknown" with no `remedy` key, and the valve raised
+    # KeyError('remedy') -- the protector killing the run because the thing
+    # it protects against does not exist here.  `VALHEIM_SERVER_LOG` is the
+    # declaration that the console is read from a file, so it is also the
+    # declaration that there is no sink to keep clear.
+    if console_log_is_a_file():
+        return {"action": "none", "verdict": "no_sink",
+                "why": "this server's stdout is read from a file "
+                       "($VALHEIM_SERVER_LOG); there is no supervisord/"
+                       "syslogd pipe pair to stall",
+                "note": note}
     st = host_sink_state(name)
     if st["verdict"] == "healthy":
         return {"action": "none", "verdict": "healthy", "note": note}
     if st["verdict"] == "circular_wait":
         got = drain_log_sink_host(name)
+        # THE SINK CAN CLEAR BETWEEN THE TWO MEASUREMENTS, and since a
+        # central sink watchdog started running that is the COMMON case, not
+        # a corner.  `drain_log_sink_host` re-measures at its top and, if it
+        # finds the sink already healthy, returns {"drained": False, "why":
+        # ..., "state": ...} -- a dict with no `verdict` and no `seconds`.
+        # Reading them unconditionally raised KeyError('verdict') and took
+        # down a live build mid-stage at shed-vestvik batch 7, after the
+        # record had been emitted and sent.
+        #
+        # A safety valve that crashes the thing it is protecting because the
+        # hazard went away is worse than no valve.  The two measurements are
+        # of a MOVING quantity and the caller must not assume the second
+        # agrees with the first.
+        if not got.get("drained"):
+            return {"action": "cleared_before_we_drained",
+                    "verdict": (got.get("state") or {}).get("verdict"),
+                    "seconds": 0.0, "why": got.get("why"), "note": note}
         return {"action": "drained", "verdict": got["verdict"],
                 "seconds": got["seconds"], "note": note}
     raise RuntimeError(
@@ -653,7 +835,7 @@ class Rcon:
     def __init__(self, host: str | None = None, port: int | None = None,
                  password: str | None = None, timeout: float = 20.0):
         cfg_port, cfg_password = rcon_credentials()
-        self.host = host or container_ip()
+        self.host = host or RCON_HOST or container_ip()
         self.port = port or cfg_port
         self.password = password or cfg_password
         self.timeout = timeout
@@ -782,7 +964,11 @@ def main() -> int:
     ap.add_argument("--file")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--delay", type=float, default=0.0)
-    ap.add_argument("--max-print", type=int, default=600)
+    ap.add_argument("--max-print", type=int, default=None,
+                    help="truncate the displayed reply to N characters; 0 means "
+                         "unlimited. Defaults to 600 when stdout is a TTY and to "
+                         "UNLIMITED otherwise, because a pipe is a parser and a "
+                         "parser must never be handed an abbreviated reply.")
     ap.add_argument("--probe", action="store_true",
                     help="measure main-thread liveness and exit")
     args = ap.parse_args()
@@ -806,7 +992,15 @@ def main() -> int:
         for cmd in cmds:
             reply = rc.command(cmd)
             if not args.quiet:
-                shown = reply if len(reply) <= args.max_print else reply[:args.max_print] + f"... [{len(reply)} bytes]"
+                # Truncation is a human-comfort feature and it is a LIE to a parser:
+                # `findObjects` announces "Found 41 objects" in the first 600 bytes
+                # and then loses 35 rows to the cut, so the header and the rows
+                # disagree while both look plausible. Only abbreviate for a terminal.
+                limit = args.max_print
+                if limit is None:
+                    limit = 600 if sys.stdout.isatty() else 0
+                shown = (reply if limit <= 0 or len(reply) <= limit
+                         else reply[:limit] + f"... [truncated, {len(reply)} bytes total]")
                 print(f"> {cmd}\n{shown}")
             if args.delay:
                 time.sleep(args.delay)

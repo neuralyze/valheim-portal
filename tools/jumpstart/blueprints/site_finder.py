@@ -67,13 +67,25 @@ Usage
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import os
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
+
+# THE WRITER, as a library: its zone rule, its datum surface, its lattice.  A
+# bill that restates them instead of asking is a second definition of the
+# pad, and the two drift -- which is the defect `SITE_BILL_SURFACE_DEPENDS_ON`
+# below exists to close.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "terraform"))
+import flatten as FL  # noqa: E402  terraform/flatten.py
+import heights as VHP  # noqa: E402  terraform/heights.py, the VHPATCH1 reader
+import tcdata  # noqa: E402  terraform/tcdata.py, the TerrainComp lattice
 
 MAGIC = b"VHBIOME4"
 PATCH_MAGIC = b"VHPATCH1"
@@ -148,8 +160,40 @@ WEIGHTS = {
 # Resolution of the land graph used for overland routing (metres).
 ROUTE_STEP = 32.0
 
+HERE = Path(__file__).resolve().parent
+JUMPSTART = HERE.parent
+
+
+def _worldseed():
+    """`worldseed`, imported LAZILY with the jumpstart root APPENDED, never
+    inserted -- `network/` is a package that shadows `roads/network.py` for
+    every later importer if it gets in front of a sibling directory.  Same
+    loader `roads/field.py` uses, and for the same reason.
+    """
+    if str(JUMPSTART) not in sys.path:
+        sys.path.append(str(JUMPSTART))
+    import worldseed  # noqa: PLC0415
+    return worldseed
+
 
 def load_grid(path: Path) -> dict:
+    """The coarse VHBIOME4 search plane, REFUSED if it is another seed's world.
+
+    MEASURED 2026-09-21: this reader parsed the seed name out of the header at
+    line `seed = blob[off:off+namelen]` and handed it back as data, and every
+    caller but one ignored it.  `VH_SEED=Fresh42 site_finder --grid <a Pirate68
+    grid>` returned Ulfsland's land and said nothing -- the same unread
+    declaration that let 12,301 Pirate68 locations into a Fresh42 run.  The
+    grid is the FIRST artefact in the fresh-seed chain (it is what the scan
+    windows are derived from), so an unchecked one puts Ulfsland's geography
+    under everything downstream of it.
+
+    The expectation is `worldseed.seed(default=<the grid's own seed>)`: an
+    explicit `--seed`/`$VH_SEED` must match, and a run that asked for nothing
+    keeps working on whatever it was handed.  That is exactly the rule
+    `settlements/plan.py` already applies to the height field.
+    """
+    path = Path(path)
     blob = path.read_bytes()
     if blob[:8] != MAGIC:
         raise ValueError(f"{path}: bad magic {blob[:8]!r}")
@@ -159,6 +203,12 @@ def load_grid(path: Path) -> dict:
     off += namelen
     (seed_hash,) = struct.unpack_from("<i", blob, off)
     off += 4
+    ws = _worldseed()
+    ws.require_scope(
+        "coarse biome grid", path, found_seed=seed,
+        seed_=ws.seed(default=seed),
+        produced_by="tools/seedscan/run_scan.sh with SEEDS=<this seed> and "
+                    "HEIGHT=1")
     grid = np.frombuffer(blob, dtype=np.uint8, count=n * n, offset=off).reshape(n, n)
     off += n * n
     if planes < 2:
@@ -516,13 +566,25 @@ def overland(g: dict, src: tuple[float, float], dst: tuple[float, float]) -> dic
 def reach_plane(g: dict, spawn_xz: tuple[float, float] | None) -> np.ndarray | None:
     """Per-cell mask: is this cell on the same landmass as the spawn?
 
-    MEASURED on Pirate68: 17 land components, the two biggest holding 137 k and
-    92 k of 279 k coarse land cells, and their closest approach anywhere is 64 m
-    of open water. A base on the wrong one is a boat trip every time, which is a
-    real difference between two otherwise identical sites -- so it is scored,
-    not merely reported. It is never a hard gate: whole biomes (Deep North,
-    Ash Lands) can sit on their own landmass, and refusing to place there would
-    be worse than saying "bring a longship".
+    RE-MEASURED 2026-09-21 and the number this docstring used to carry CANNOT
+    BE REPRODUCED by the code under it.  It said "17 land components, the two
+    biggest holding 137 k and 92 k of 279 k coarse land cells".  On a freshly
+    generated Pirate68 grid (tools/seedscan/run_scan.sh STEP=8 EXTENT=10496
+    HEIGHT=1) `_land_graph` labels 460 components over 145,147 land blocks, the
+    biggest 13,068.  The old figure is not merely stale, it is arithmetically
+    impossible for THIS instrument: at ROUTE_STEP over that extent there are
+    only 656 x 656 = 430,336 blocks in the whole world square, so 279 k land
+    blocks is 65% land -- and Fresh42, scanned the same way the same evening,
+    measures 148,550, within 2.3% of Pirate68.  The likeliest reading is that
+    it predates the y=30 water datum this file now documents at WATER_LEVEL: a
+    `height > 0` mask calls half the ocean floor land, which both floods the
+    count and melts hundreds of islands into seventeen.
+
+    A base on the wrong landmass is a boat trip every time, which is a real
+    difference between two otherwise identical sites -- so it is scored, not
+    merely reported. It is never a hard gate: whole biomes (Deep North, Ash
+    Lands) can sit on their own landmass, and refusing to place there would be
+    worse than saying "bring a longship".
     """
     if spawn_xz is None:
         return None
@@ -543,6 +605,128 @@ def reach_plane(g: dict, spawn_xz: tuple[float, float] | None) -> np.ndarray | N
     plane[: big.shape[0], : big.shape[1]] = big[: g["n"], : g["n"]]
     cache[key] = plane
     return plane
+
+
+def land_components(g: dict) -> list[dict]:
+    """EVERY LANDMASS THIS SEED HAS, biggest first, in world metres.
+
+    THE INSTRUMENT: the coarse VHBIOME4 height plane -- `WorldGenerator.
+    GetHeight` sampled by `tools/seedscan/run_scan.sh` with HEIGHT=1, over the
+    whole world -- reduced by `_land_graph` to ROUTE_STEP (32 m) blocks with
+    `any cell above WATER_LEVEL in the block`, then 8-connected-labelled.
+
+    THE POPULATION: every 32 m block of the seed's own world that holds any
+    land at all.  Deliberately the SAME labelling `overland()` and
+    `reach_plane()` use, so "one landmass" means one thing in this tree: a
+    component is exactly a set of blocks a player can walk between without a
+    boat.  A second definition here -- a raw cell-level label, say -- would
+    call a one-block isthmus two landmasses while the router called it one, and
+    the two answers would disagree only on the seeds where it matters.
+
+    Per component: `cells` and `area_m2` (its size), `x0/x1/z0/z1` (the world
+    bounding box, block edges, not centres), `cx/cz` (the LAND centroid, which
+    is not the bbox centre for anything but a rectangle), `biome` (the biome
+    holding the most of its land) and `name` -- `f"{biome}{label}"`, which is
+    the convention Ulfsland's own window ids already use (`plains23` is land
+    component 23, mostly Plains).
+
+    MEASURED 2026-09-21 on freshly generated 8 m grids, both seeds scanned the
+    same way: Pirate68 has 460 components over 145,147 land blocks (biggest
+    13,068 = 13.4 km2) and Fresh42 has 446 over 148,550 (biggest 9,687 =
+    9.9 km2). Two unrelated seeds agreeing on total land to 2.3% is the check
+    that this is measuring land and not an artefact of the labelling; see
+    `reach_plane` for the older figure that is not reproducible.
+    """
+    hit = g.get("_components")
+    if hit is not None:
+        return hit
+    lg = _land_graph(g)
+    lab, cell, extent = lg["label"], lg["cell"], lg["extent"]
+    step, n = g["step"], g["n"]
+    f = max(1, int(round(ROUTE_STEP / step)))
+    landcell = g["height"] > WATER_LEVEL
+    out: list[dict] = []
+    for label in range(1, int(lab.max()) + 1):
+        mask = lab == label
+        rr, cc = np.nonzero(mask)
+        if not rr.size:
+            continue
+        # Majority biome over the component's own LAND CELLS, not its blocks: a
+        # block is land if ANY cell in it is, so counting blocks would let the
+        # sea a coastal block mostly is vote for the landmass's name.
+        big = np.kron(mask, np.ones((f, f), dtype=bool))
+        cellmask = np.zeros((n, n), dtype=bool)
+        cellmask[: big.shape[0], : big.shape[1]] = big[:n, :n]
+        cellmask &= landcell
+        counts = np.bincount(g["biome"][cellmask], minlength=len(BIOME_NAME))
+        bid = int(counts.argmax()) if counts.sum() else 0
+        out.append({
+            "label": int(label),
+            "cells": int(rr.size),
+            "area_m2": float(rr.size) * cell * cell,
+            "x0": float(-extent + cc.min() * cell),
+            "x1": float(-extent + (cc.max() + 1) * cell),
+            "z0": float(-extent + rr.min() * cell),
+            "z1": float(-extent + (rr.max() + 1) * cell),
+            "cx": float(-extent + (cc.mean() + 0.5) * cell),
+            "cz": float(-extent + (rr.mean() + 0.5) * cell),
+            "biome": BIOME_NAME.get(bid, "None"),
+            "name": f"{BIOME_NAME.get(bid, 'none').lower()}{int(label)}",
+        })
+    out.sort(key=lambda c: -c["cells"])
+    g["_components"] = out
+    return out
+
+
+def component_at(g: dict, xz: tuple[float, float]) -> dict | None:
+    """The land component a world point stands on, or None if it is at sea.
+
+    `_snap`'s 96 m search is kept: the spawn point this is asked about is a
+    ZoneSystem location whose recorded xz can sit a block off the land it was
+    placed on, and a spawn that resolves to "no landmass" would silently cost
+    the trunk window its centre.
+    """
+    lg = _land_graph(g)
+    node = _snap(lg, xz[0], xz[1])
+    if node is None:
+        return None
+    label = int(lg["label"][lg["rr"][node], lg["cc"][node]])
+    for c in land_components(g):
+        if c["label"] == label:
+            return c
+    return None
+
+
+def separation_m(g: dict, a_label: int, b_label: int) -> float:
+    """Closest approach between two landmasses, in metres of open water.
+
+    THE QUESTION THIS EXISTS TO STOP PEOPLE INFERRING.  `trunk-primary` and
+    `trunk-secondary` are two WINDOW ids, and on Ulfsland their windows overlap
+    because the two landmasses are 12 m apart across a channel the build
+    BRIDGES.  Reading "the two trunk windows overlap" as "the second landmass
+    is reachable on foot or by bridge" is fitting a topology to Ulfsland's
+    coastline: MEASURED 2026-09-21 on Fresh42, the two trunk landmasses are
+    4,346.6 m apart and nothing spans that -- the second one is portal-only.
+    A consumer that needs to know asks HERE; the window id does not say.
+
+    0.0 means the two components touch, which cannot happen for two distinct
+    labels of one labelling and is returned rather than special-cased so a
+    caller comparing against a span never has to guess at a sentinel.
+    """
+    from scipy.spatial import cKDTree
+
+    lg = _land_graph(g)
+    cell, extent = lg["cell"], lg["extent"]
+
+    def points(label: int) -> np.ndarray:
+        rr, cc = np.nonzero(lg["label"] == label)
+        if not rr.size:
+            raise KeyError(f"no land component labelled {label} in this grid")
+        return np.column_stack([-extent + (cc + 0.5) * cell,
+                                -extent + (rr + 0.5) * cell])
+
+    d, _ = cKDTree(points(b_label)).query(points(a_label), k=1)
+    return float(d.min())
 
 
 # --------------------------------------------------------------------------
@@ -631,6 +815,7 @@ def _planes(
     avoid_xz: np.ndarray | None,
     exclude: list[tuple[float, float, float]] | None,
     spawn_xz: tuple[float, float] | None = None,
+    mask: np.ndarray | None = None,
 ) -> dict:
     """Full-grid HARD-constraint mask plus the planes every score needs.
 
@@ -667,6 +852,11 @@ def _planes(
     reach = reach_plane(g, spawn_xz)
     if p["require_overland"] and reach is not None:
         ok &= reach
+    # A caller's own HARD plane over the same grid (solve_placements'
+    # NETWORK_LAND_DEPENDS_ON): applied here, before anything is truncated, for
+    # the reason every other hard constraint is.
+    if mask is not None:
+        ok &= mask
 
     if p["near_biome"]:
         bdist = _biome_edt(g, BIOME_ID[str(p["near_biome"]).lower()])
@@ -797,6 +987,309 @@ def flatten_cost(window: np.ndarray) -> dict:
     }
 
 
+# ===========================================================================
+# THE SITE BILL IS MADE ON THE SURFACE THE ENGINE WRITES TO, OVER THE SAMPLES
+# THE WRITER STAMPS.  NOT ON THE FIELD THE SITE WAS FOUND ON.
+#
+# SITE_BILL_SURFACE_DEPENDS_ON = (engine_surface, written_samples):
+#
+#   engine_surface   the heights are `HeightmapBuilder::Build`'s per-zone
+#                    corner-biome blend -- `flatten.DATUM_SURFACE`, the ground
+#                    `TerrainComp::ApplyToHeightmap` adds the delta to -- READ
+#                    per zone by PatchScan `SURFACE=heightmap`, the exact
+#                    artefact `settlements/build.py::flatten_pad` hands the
+#                    writer.  NOT `WorldGenerator.GetHeight`, which is what
+#                    the 1 m finding field holds: the point's OWN biome.
+#   written_samples  the population is the TerrainComp lattice inside the pad
+#                    rectangle exactly as `flatten.build` stamps it -- every
+#                    zone `flatten.zones_for` names, the shared seam rows in
+#                    both zones, axis-aligned, edge tolerance and all -- and
+#                    the deviations are taken from the target that will be
+#                    WRITTEN (two decimals), not from the unrounded median.
+#
+# BOTH SITING SOLVERS BILLED ON THE OTHER SURFACE, AND ON THE OTHER SAMPLES.
+# `settlements/plan.py` priced every pad with `terrain1m.pad_bill` on the
+# FINDING field, and `blueprints/solve_placements.py` records `flatten_cost`
+# from a worldgen 1 m patch over the `footprint_m` SQUARE -- the right surface
+# for "where is high Mountain ground" and the wrong one for "can the engine
+# level this".  MEASURED 2026-09-24 on Fresh42 (no ground written):
+#   * plan.Fresh42.json: 48 of 49 units agree with the write, and
+#     sudrberg-keep, billed over_clamp 0 / max_fill 6.53 m, writes at
+#     over_clamp 279 / max_fill 17.403 m -- 10.873 m the plan called clean;
+#   * worlds/Fresh42 presets: blackforest-walled-base's surfaces differ by
+#     3.750 m under its pad and its recorded fill 6.12 m writes 7.578 m;
+#     mistlands-blackforge-base records cut 13.65 m over an 80 m square and
+#     writes a 17.5 x 10.9 m rectangle at cut 3.515 m.
+# Ulfsland's floating wt-peak is the same shape: 8.807 m between the surfaces
+# under its pad, datum 102.31 chosen on the field, over_clamp 13 at write.
+# `flatten.DATUM_SURFACE` fixed the WRITER on 2026-09-20; the solvers went on
+# choosing datums on the other surface.  A datum from the wrong surface is
+# right wherever a zone holds no biome boundary and wrong, in either
+# direction, wherever it does.
+#
+# UNREAD IS NOT CLEAR: a pad whose zones this surface has not read gets the
+# verdict `unread`, which REFUSES; it never falls back to the finding field.
+SITE_BILL_SURFACE = FL.DATUM_SURFACE
+SITE_BILL_SURFACE_DEPENDS_ON = ("engine_surface", "written_samples")
+# `flatten.build`'s EDGE_EPS_M, a local there.  Restated rather than imported
+# because it cannot be, and CERTIFIED rather than trusted:
+# `settlements/plan.py::certify_plan` runs `flatten.build` itself on every
+# recorded pad and refuses any disagreement.
+WRITE_EDGE_EPS_M = 0.25
+# A zone's 65 x 65 TerrainComp lattice is PatchScan's half 32.5 / step 1
+# request on the zone centre -- `flatten.run_patchscan`'s own request.
+ZONE_REQUEST_HALF_M = 32.5
+PATCHSCAN_SH = HERE / "run_patchscan.sh"
+# THE SOLVERS' OWN SANDBOX, because `run_patchscan.sh` begins with
+# `rm -rf "$SANDBOX/BepInEx"` and a shared one is stomped by any concurrent
+# scan (the stomp the caller then blames on the patch file).
+PATCHSCAN_SANDBOX = os.environ.get("SITE_PATCHSCAN_SANDBOX",
+                                   "/tmp/patchscan/siteplan")
+
+
+def vhpatch_seed(path) -> tuple[int, str]:
+    """The seed hash and seed NAME a VHPATCH1 file declares in its header.
+    `heights.load` reads past the name; a cache that cannot say whose ground
+    it holds is refused, so it is read here."""
+    with open(path, "rb") as fh:
+        head = fh.read(16 + 256)
+    if head[:8] != VHP.MAGIC:
+        raise ValueError(f"{path} is not a VHPATCH1 file")
+    seed_hash, n = struct.unpack_from("<ii", head, 8)
+    return seed_hash, head[16:16 + n].decode()
+
+
+def scan_zones(seed: str, zones, out_dir: Path, surface: str,
+               vh_src: str | None = None) -> Path:
+    """ONE PatchScan run for `zones` on `surface`, each at its zone lattice.
+
+    The output is keyed by what it holds -- seed, surface, zone set -- and a
+    JSON sidecar DECLARES the surface, because a VHPATCH1 header carries the
+    seed and not the surface, and the two surfaces differ by metres.
+    """
+    zones = sorted(set((int(a), int(b)) for a, b in zones))
+    # ABSOLUTE, because `run_patchscan.sh` cd's into its sandbox before the
+    # server reads REQ and writes OUT: a relative cache directory is a scan
+    # that reads no request and writes nothing (MEASURED: 90 s, raw_exit 137).
+    out_dir = Path(out_dir).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tag = hashlib.sha256(
+        f"{seed}|{surface}|{zones}".encode()).hexdigest()[:16]
+    req = out_dir / f"{surface}-{tag}.req.tsv"
+    out = out_dir / f"{surface}-{tag}.bin"
+    req.write_text("".join(
+        f"z_{zx}_{zz}\t{zx * tcdata.ZONE_SIZE:g}\t{zz * tcdata.ZONE_SIZE:g}\t"
+        f"{ZONE_REQUEST_HALF_M}\t1\n" for zx, zz in zones))
+    env = {**os.environ,
+           "VH_SRC": vh_src or os.environ.get("VH_SRC") or str(FL.VH_SRC),
+           "SEED": seed, "REQ": str(req), "OUT": str(out),
+           "SURFACE": surface, "SANDBOX": PATCHSCAN_SANDBOX}
+    proc = subprocess.run(["bash", str(PATCHSCAN_SH)], env=env,
+                          capture_output=True, text=True)
+    if not out.exists() or out.stat().st_size == 0:
+        raise SystemExit(f"patchscan produced nothing for {len(zones)} "
+                         f"{surface} zones of seed {seed}:\n"
+                         f"{proc.stderr[-2000:]}")
+    seed_hash, name = vhpatch_seed(out)
+    if name != seed:
+        raise SystemExit(f"{out} declares seed {name!r}; {seed!r} was asked")
+    out.with_suffix(".json").write_text(json.dumps({
+        "seed": seed, "seed_hash": seed_hash, "surface": surface,
+        "file": out.name, "zones": [list(z) for z in zones],
+        "request": {"half_m": ZONE_REQUEST_HALF_M, "step_m": 1.0,
+                    "centre": "zone centre (zx*64, zz*64)"},
+        "produced_by": f"blueprints/run_patchscan.sh SURFACE={surface}",
+        "sandbox": PATCHSCAN_SANDBOX}, indent=1))
+    return out
+
+
+class EngineSurface:
+    """ONE surface of ONE seed, per zone, on the TerrainComp lattice.
+
+    `h[(zx, zz)]` is the 65 x 65 array `flatten.build` reads as `generated`:
+    row = mask y (z), column = mask x (x).  Zones come from memory (fixtures),
+    from a cache directory of `scan_zones` outputs whose sidecar declares this
+    surface and seed, or -- when `fetch` is set -- from a PatchScan run made on
+    demand.  Nothing is ever substituted for a zone that was not read.
+    """
+
+    def __init__(self, seed: str, surface: str = SITE_BILL_SURFACE,
+                 zones: dict | None = None, cache_dir=None,
+                 fetch: bool = False, halo: int = 2,
+                 vh_src: str | None = None):
+        self.seed = str(seed)
+        self.surface = surface
+        self.h: dict[tuple[int, int], np.ndarray] = {}
+        self.b: dict[tuple[int, int], np.ndarray] = {}
+        self.cache_dir = Path(cache_dir) if cache_dir else None
+        self.fetch = fetch
+        self.halo = halo
+        self.vh_src = vh_src
+        self.scans: list[dict] = []
+        for zone, hb in (zones or {}).items():
+            h, b = hb if isinstance(hb, tuple) else (hb, None)
+            self.put(zone, h, b)
+        if self.cache_dir is not None and self.cache_dir.is_dir():
+            for meta_path in sorted(self.cache_dir.glob(f"{surface}-*.json")):
+                meta = json.loads(meta_path.read_text())
+                if (meta.get("surface") != surface
+                        or meta.get("seed") != self.seed):
+                    continue
+                self._ingest(meta_path.with_name(meta["file"]), meta)
+
+    def put(self, zone, h, b=None) -> None:
+        h = np.asarray(h, dtype=np.float64).reshape(tcdata.PITCH, tcdata.PITCH)
+        self.h[(int(zone[0]), int(zone[1]))] = h
+        self.b[(int(zone[0]), int(zone[1]))] = (
+            np.zeros(h.shape, np.uint8) if b is None
+            else np.frombuffer(bytes(b), dtype=np.uint8).reshape(h.shape)
+            if isinstance(b, (bytes, bytearray))
+            else np.asarray(b, dtype=np.uint8).reshape(h.shape))
+
+    def _ingest(self, path: Path, meta: dict) -> None:
+        _hash, name = vhpatch_seed(path)
+        if name != self.seed:
+            raise SystemExit(f"{path} declares seed {name!r} but its sidecar "
+                             f"says {meta.get('seed')!r}; refusing both")
+        for pid, p in VHP.load(path).items():
+            zx, zz = (int(v) for v in pid[2:].split("_"))
+            if (p.n != tcdata.PITCH or p.cx != zx * tcdata.ZONE_SIZE
+                    or p.cz != zz * tcdata.ZONE_SIZE
+                    or p.half != ZONE_REQUEST_HALF_M or p.step != 1.0):
+                raise SystemExit(f"{path}:{pid} is not zone ({zx},{zz})'s "
+                                 f"lattice (n {p.n} centre {p.cx},{p.cz} "
+                                 f"half {p.half} step {p.step})")
+            self.put((zx, zz), p.heights, bytes(p.biomes))
+        self.scans.append({"file": str(path), "zones": len(meta["zones"]),
+                           "surface": meta["surface"], "seed": meta["seed"]})
+
+    def missing(self, zones) -> list[tuple[int, int]]:
+        return sorted(z for z in set(zones) if z not in self.h)
+
+    def ensure(self, zones) -> list[tuple[int, int]]:
+        """Read what is missing (with a halo, so a search sliding next door
+        costs no second scan) and return what is STILL missing."""
+        miss = self.missing(zones)
+        if miss and self.fetch and self.cache_dir is not None:
+            want = {(zx + i, zz + j) for zx, zz in miss
+                    for i in range(-self.halo, self.halo + 1)
+                    for j in range(-self.halo, self.halo + 1)}
+            path = scan_zones(self.seed, self.missing(want), self.cache_dir,
+                              self.surface, self.vh_src)
+            self._ingest(path, json.loads(path.with_suffix(".json").read_text()))
+            miss = self.missing(zones)
+        return miss
+
+    def patch(self, zone) -> VHP.Patch:
+        """Zone `zone` as the `heights.Patch` `flatten.build` indexes."""
+        zx, zz = zone
+        return VHP.Patch(f"z_{zx}_{zz}", zx * tcdata.ZONE_SIZE,
+                         zz * tcdata.ZONE_SIZE, ZONE_REQUEST_HALF_M, 1.0,
+                         tcdata.PITCH, [float(v) for v in self.h[zone].ravel()],
+                         [int(v) for v in self.b[zone].ravel()])
+
+
+def written_samples(x: float, z: float, w: float, d: float,
+                    apron_m: float = 0.0) -> list[tuple]:
+    """`[(zone, rows, cols), ...]`: every lattice sample `flatten.build`
+    stamps for a `w` x `d` pad centred on (x, z), per zone, seams in both."""
+    half_w, half_d = w / 2 + apron_m, d / 2 + apron_m
+    off = (np.arange(tcdata.PITCH) - tcdata.PITCH // 2) * tcdata.SCALE
+    out = []
+    for zx, zz in FL.zones_for(float(x), float(z), w + 2 * apron_m,
+                               d + 2 * apron_m):
+        zcx, zcz = tcdata.zone_centre(zx, zz)
+        cols = np.nonzero(np.abs(zcx + off - x) <= half_w + WRITE_EDGE_EPS_M)[0]
+        rows = np.nonzero(np.abs(zcz + off - z) <= half_d + WRITE_EDGE_EPS_M)[0]
+        if cols.size and rows.size:
+            out.append(((zx, zz), rows, cols))
+    return out
+
+
+def engine_samples(surface: EngineSurface, pads, w: float, d: float,
+                   apron_m: float = 0.0) -> tuple[np.ndarray, np.ndarray, list]:
+    """`(heights, biomes, unread zones)` of every sample the writer stamps for
+    `pads` -- `w` x `d` pad centres -- read on `surface`.  A zone the surface
+    could not read contributes NOTHING and is named; it is never filled."""
+    hs, bs, unread = [], [], []
+    for px, pz in pads:
+        stamp = written_samples(float(px), float(pz), w, d, apron_m)
+        miss = surface.ensure([zone for zone, _r, _c in stamp])
+        unread += miss
+        for zone, rows, cols in stamp:
+            if zone not in miss:
+                hs.append(surface.h[zone][np.ix_(rows, cols)].ravel())
+                bs.append(surface.b[zone][np.ix_(rows, cols)].ravel())
+    return (np.concatenate(hs) if hs else np.zeros(0),
+            np.concatenate(bs) if bs else np.zeros(0, np.uint8),
+            sorted(set(unread)))
+
+
+def bill_stats(h: np.ndarray, b: np.ndarray, target_y: float | None = None,
+               unread: list | None = None) -> dict:
+    """The bill over one population, as the WRITER will see it.
+
+    `target_y` None chooses it: the median, rounded to the two decimals every
+    recorded datum carries, and every deviation is taken from THAT number --
+    so `over_clamp`, `max_fill_m` and `max_cut_m` are the figures
+    `flatten.build` reports writing it.  The extremes start at 0.0 as the
+    writer's do.  `unread` zones make the verdict `unread`: no figure is given
+    and `clamp_ok` is False, because a refusal is the only honest bill of
+    ground nobody read.
+    """
+    if unread:
+        return {"verdict": "unread",
+                "unread_zones": [list(z) for z in sorted(set(unread))],
+                "clamp_ok": False, "over_clamp": None, "samples": None,
+                "moved_m3": math.inf, "wet_samples": None, "target_y": None}
+    if h.size == 0:
+        raise ValueError("the pad covers no samples")
+    target = (round(float(np.median(h)), 2) if target_y is None
+              else float(target_y))
+    dev = h - target                      # + = ground above target = cut
+    cut = float(dev[dev > 0].sum())
+    fill = float(-dev[dev < 0].sum())
+    worst = float(dev.max() if dev.max() >= -dev.min() else dev.min())
+    over = int((np.abs(dev) > tcdata.CLAMP_M).sum())
+    counts: dict[str, int] = {}
+    for code, cnt in zip(*np.unique(b, return_counts=True)):
+        counts[BIOME_NAME.get(int(code), "?")] = int(cnt)
+    return {"verdict": "refused" if over else "clear",
+            "target_y": round(target, 2),
+            "cut_m3": round(cut, 1), "fill_m3": round(fill, 1),
+            "moved_m3": round(cut + fill, 1),
+            "mean_move_m": round((cut + fill) / h.size, 3),
+            "rms_m": round(float(np.sqrt((dev * dev).mean())), 3),
+            "max_cut_m": round(max(float(dev.max()), 0.0), 3),
+            "max_fill_m": round(max(float(-dev.min()), 0.0), 3),
+            "samples": int(h.size),
+            "over_clamp": over,
+            "clamp_ok": over == 0,
+            "clamp_headroom_m": round(tcdata.CLAMP_M
+                                      - float(np.abs(dev).max()), 2),
+            "worst_delta_m": round(worst, 2),
+            "wet_samples": int((h <= WATER_LEVEL).sum()),
+            "freeboard_m": round(target - WATER_LEVEL, 2),
+            "biome_counts": counts}
+
+
+STAMP_POPULATION = ("flatten.build's stamp: TerrainComp lattice, axis-aligned, "
+                    "every zone zones_for names")
+
+
+def engine_bill(surface: EngineSurface, pads, w: float, d: float,
+                target_y: float | None = None, apron_m: float = 0.0) -> dict:
+    """THE SITE BILL: `pads` written at one target, billed on the surface the
+    engine levels over the samples the writer stamps -- both terms of
+    SITE_BILL_SURFACE_DEPENDS_ON, and declared on the result."""
+    h, b, unread = engine_samples(surface, pads, w, d, apron_m)
+    return {**bill_stats(h, b, target_y, unread),
+            "surface": surface.surface, "population": STAMP_POPULATION,
+            "width_m": w, "depth_m": d, "apron_m": apron_m,
+            "pads": [[float(px), float(pz)] for px, pz in pads],
+            "depends_on": ["engine_surface", "written_samples"]}
+
+
 def miss_vector(cand: dict, req: dict) -> np.ndarray:
     """Total metres by which each candidate breaks the DECLARED requirement.
 
@@ -862,6 +1355,7 @@ def search(
     separation_m: float | None = None,
     spawn_xz: tuple[float, float] | None = None,
     declared_req: dict | None = None,
+    mask: np.ndarray | None = None,
 ) -> list[dict]:
     """Ranked, spatially separated candidate sites for one requirement.
 
@@ -874,7 +1368,7 @@ def search(
     a coarse gate set exactly at `max_flat_m` throws away sites that are flat in
     reality. Recall is the coarse pass's job; the verdict belongs to `refine`.
     """
-    pl = _planes(g, req, anchor_xz, avoid_xz, exclude, spawn_xz)
+    pl = _planes(g, req, anchor_xz, avoid_xz, exclude, spawn_xz, mask)
     p, ok, step = pl["p"], pl["ok"], g["step"]
     flat, pure, hmax = pl["flat"], pl["pure"], pl["hmax"]
     hmin = pl["hmin"]

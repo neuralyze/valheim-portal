@@ -77,6 +77,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from extract_prefab_names import read_bundle_node  # noqa: E402  (same directory)
+import worldseed  # noqa: E402
 
 WEIGHT_ENTRY_RE = re.compile(
     r"# Default value: ([0-9.eE+-]+)\n# Acceptable[^\n]*\n([A-Za-z0-9_]+)_weight = ([0-9.eE+-]+)"
@@ -647,7 +648,7 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--valheim-root", default="/media/big4/projects/game/valheim")
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--out", type=Path, default=HERE / "data" / "item_weights.json")
     ap.add_argument(
         "--cross-check",
@@ -655,8 +656,13 @@ def main(argv: list[str] | None = None) -> int:
         help="compare bundle weights against the ItemStacksRewrite ObjectDB dump",
     )
     args = ap.parse_args(argv)
+    # NOT SEED-SCOPED: `--world` names an INSTALL tree and the weights read out
+    # of the bundles are properties of the binaries, identical on every seed.
+    # Nothing here declares a scope, so there is nothing for `require_scope` to
+    # read; the resolver is used so the world NAME has one source.
+    _seed, world = worldseed.apply(args)
 
-    root = Path(args.valheim_root) / args.world
+    root = Path(args.valheim_root) / world
     bundles = root / "data/bepinex/valheim_server_Data/StreamingAssets/SoftRef/Bundles"
     if not bundles.is_dir():
         ap.error(f"no bundle directory at {bundles}")

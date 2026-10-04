@@ -36,6 +36,10 @@ import numpy as np  # noqa: E402
 
 sys.path.insert(0, str(JUMPSTART / "blueprints"))
 sys.path.insert(0, str(JUMPSTART / "settlements"))
+# `roads/applied.py` is the ONE reader of the ledger's terrain deltas, and
+# `profiles()` below composes them so a pile is driven to the surface a
+# player will stand on rather than to the generated bed.
+sys.path.insert(0, str(JUMPSTART / "roads"))
 
 import clearance as CLR  # noqa: E402
 import data_entry as DE  # noqa: E402
@@ -262,18 +266,42 @@ def ferry_routes(fields: dict, records: dict) -> list[dict]:
     return out
 
 
-def profiles(fld: W.Field):
-    """Ground and bed samplers. Same function for both: the generated height IS
-    the bed under water and the ground on land, and conflating them is the point
-    -- a pile is embedded relative to whatever the generator produced."""
+def profiles(fld: W.Field, actor: str = "CrossingsPlan"):
+    """Ground and bed samplers, AS A PLAYER WILL FIND THEM.
+
+    Same function for both: the height IS the bed under water and the ground
+    on land, and conflating those two is the point -- a pile is embedded
+    relative to whatever is actually there.
+
+    WHAT THIS USED TO RETURN, AND WHAT IT COST.  It returned `fld.height_at`
+    bare: a raw PatchScan field, the GENERATED world, with none of the
+    ledger's terrain writes composed onto it.  `waterfront.py::cmd_newbuild`
+    handed that straight to `assemble.jetty`/`slip` as the bed, so every
+    pile at every dock and ferry terminal on this world was driven to the
+    height the GENERATOR produced.  That is correct exactly until somebody
+    writes terrain there, and then every pole is under the new ground:
+    MEASURED on Ulfsland as `dock-dockshore` 32 of 112 pieces buried, worst
+    `wood_pole_log_4` 1.700 m, and `dock-northcape` 7 of 128 at 0.893 m.
+
+    So the delta is composed here, once, where the sampler is made, and the
+    result is labelled `Bed.applied` so `assemble` can tell the difference.
+    `applied.Applied` is the same reader `roads/boardwalk.py::surface_fn` and
+    `settlements/waterfront.py::Surface` already use -- this stops being the
+    third answer to one question.
+    """
+    import applied as AP                             # noqa: PLC0415  roads/
+    live = AP.Applied(actor=actor)
 
     def ground(x: float, z: float) -> float:
         if not fld.contains(x, z, 1.0):
             raise SystemExit(f"({x}, {z}) is outside patch {fld.id}; "
                              "widen the patch rather than guessing a height")
-        return fld.height_at(x, z)
+        return fld.height_at(x, z) + live.delta_at(x, z)
 
-    return ground, ground
+    bed = A.Bed.applied(
+        ground, f"PatchScan {fld.id} + ledger terrain deltas via "
+                f"roads/applied.py::Applied(actor={actor!r})")
+    return bed, bed
 
 
 def aim_seaward(fld: W.Field, near: tuple[float, float], length_m: float,
@@ -364,7 +392,11 @@ def zone_of(x: float, z: float) -> tuple[int, int]:
 
 
 
-POI_DUMP = "/tmp/settle/loc3/f6fe167f4fcd.json"
+# THE LOCATION DUMP IS THE RUN'S SEED'S, RESOLVED WHEN ASKED.  This was the
+# literal "/tmp/settle/loc3/f6fe167f4fcd.json" -- Pirate68's dump named by its
+# content hash -- so on any other seed the POI gate judged this build against
+# Ulfsland's locations.  `roads/poi.py::location_dump` resolves by seed and
+# header-checks the file (see LOCATION_DUMP_DEPENDS_ON there).
 _POI = None
 
 
@@ -381,7 +413,8 @@ def poi():
     """
     global _POI
     if _POI is None:
-        _POI = CLR.load(POI_DUMP)
+        import poi as poimod  # noqa: PLC0415  (roads/, on sys.path above)
+        _POI = CLR.load(poimod.location_dump())
     return _POI
 
 
@@ -852,27 +885,57 @@ def build(fields: dict, default_patch: str) -> dict:
 
 
 
-def write_structures_yaml(path: Path, res: dict) -> None:
+def write_structures_yaml(path: Path, res: dict, field_path: str = FIELD) -> None:
     """The interchange file Main assigned to Crossings: one record per
     structure, one file, one producer, read-only to every consumer.
 
     It is emitted rather than hand-maintained so it cannot drift from the
     measurements: every number in it came out of this run, and re-running
     `plan.py` is the only way to change it.
+
+    WHICH WORLD AND WHICH SEED ARE READ, NEVER DECLARED, and this is the same
+    class as `roads/flatten.py`'s data_dir and `roads/regrade.py`'s
+    `Ledger.open("Ulfsland", ...)`: a quantity that names THE RUN, frozen
+    into the producer as a literal.  This header read `world="Ulfsland"`,
+    `seed="Pirate68"`, `seed_hash=147627509` whatever `--field` was pointed
+    at, so planning a fresh seed's crossings emitted a document stamped with
+    the OPERATOR'S PROTECTED WORLD -- and `structures.yaml` is read-only to
+    every consumer, which means every one of them would have inherited the
+    wrong scope from a file that looks authoritative.
+
+    The seed and its hash now come out of the VHPATCH1 header of the field
+    this run actually measured, and the world out of `worldseed.world()`,
+    which is the one place the scope lives.  A literal cannot be checked
+    against anything; a header can, and `worldseed.require_scope` refuses a
+    field belonging to another seed before a single number is copied.
     """
     try:
         import yaml
     except ImportError:
         path.with_suffix(".json").write_text(json.dumps(res, indent=1))
         return
+    import field as fieldmod                               # noqa: PLC0415
+    import worldseed                                       # noqa: PLC0415
+    world = worldseed.world()
+    seed = worldseed.seed()
+    head = fieldmod.header(fieldmod.require_field(field_path, seed))
+    worldseed.require_scope(
+        "height field", field_path, found_seed=head["seed"], seed_=seed,
+        produced_by="tools/jumpstart/roads/field.py::request_for_seed, which "
+                    "derives the windows from the seed's own land and runs "
+                    "blueprints/run_patchscan.sh; pass --field")
     doc = dict(
         owner="Crossings",
         generated_by="tools/jumpstart/crossings/plan.py",
-        world="Ulfsland",
-        seed="Pirate68",
-        seed_hash=147627509,
+        world=world,
+        seed=head["seed"],
+        seed_hash=head["seed_hash"],
+        scope_source=("world from worldseed.world(); seed and seed_hash from "
+                      "the VHPATCH1 header of the field this run measured -- "
+                      "never literals, because a literal cannot be checked "
+                      "against the ground it claims to describe"),
         height_field=dict(
-            path=FIELD, format="VHPATCH1", step_m=1.0, rivers=True,
+            path=field_path, format="VHPATCH1", step_m=1.0, rivers=True,
             provenance=("produced by tools/jumpstart/blueprints/run_patchscan.sh, "
                         "which runs WorldGenerator.Initialize with full "
                         "pregeneration. NOT the 8 m .biome overview grid, which is "
@@ -927,7 +990,13 @@ def main(argv=None) -> int:
     ap.add_argument("--field", default=FIELD)
     ap.add_argument("--patch", default=PATCH)
     ap.add_argument("--out", default=str(HERE / "out"))
+    # THE SCOPE IS AN ARGUMENT, not a constant in the emitter.  Without this
+    # the only way to plan another seed's crossings was to point `--field`
+    # somewhere else and let the emitted document keep saying Ulfsland.
+    import worldseed                                       # noqa: PLC0415
+    worldseed.add_arguments(ap)
     args = ap.parse_args(argv)
+    worldseed.apply(args)
 
     wanted = {args.patch} | {s.get("patch", args.patch)
                              for s in list(BRIDGES) + list(WATERFRONT)}
@@ -946,7 +1015,7 @@ def main(argv=None) -> int:
     for sid, cmds in res["commands"].items():
         (outdir / f"{sid}.commands.txt").write_text("\n".join(cmds) + "\n")
 
-    write_structures_yaml(HERE / "structures.yaml", res)
+    write_structures_yaml(HERE / "structures.yaml", res, args.field)
     total = sum(r["zdo_cost"] for r in res["structures"])
     bad = [r["id"] for r in res["structures"] if not r["structural"]["ok"]]
     summary = dict(structures=len(res["structures"]), zdo_total=total,

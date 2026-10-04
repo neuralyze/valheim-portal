@@ -357,6 +357,30 @@ feasible pads at grade 10 %: 0 at `min_height 0.5`, 0 at 0.0, 0 at −1.0, **10 
 separately by `derive.py`, so a submerged jetty foot does not put a character in
 the water.
 
+A waterfront the roads serve must also be **walkable to** from the network
+(`solve_placements.NETWORK_LAND_DEPENDS_ON`). A `coastal` placement that is its
+own building, whose anchor stands on the network's land, is judged on the
+router's own labelling — `crossings/survey.label_land` over stage 4's 1 m field
+(`--field`, `<work>/<seed>_1m.bin`), the window where the portal hub's
+component is the largest: its pad must hold land samples of that component
+(the landward apron). The coarse search is masked to such footprints before
+the pool is truncated; if neither the declared band nor the compromise holds
+one, the grade band alone opens ×2 (`NETWORK_GRADE_WIDEN`); if still none, the
+unmasked site is recorded with a `network_land` violation in metres. MEASURED
+on Fresh42 drive 5: `early-dock` solved to a pad whose 2,014 samples were all
+under water, 72.4 m from the network's land, and T5 stopped 67.46 m short of it.
+A Deep North landing (anchor off the network's land) is not judged.
+
+A waterfront's **yaw is solved**, not inherited (`WATERFRONT_YAW_DEPENDS_ON`).
+Per candidate, before its pad is sized, the `facing_check` rays (400 m, four
+cardinal yaws, open water = coarse height ≤ 30.0) are read: the inherited yaw
+stands while it is within 0.1 of the best, otherwise the best is written to
+`rotation.yaw` (ties to the smallest turn) with the evidence in
+`solved.yaw_solved`; the pad, fixture ring and engine bill are all made at that
+yaw, and a `duplicate_of` placement takes its principal's yaw. No yaw finding
+water is a `facing_water` violation. MEASURED: early-dock's inherited yaw 90
+faced 0.24 open water at its Fresh42 site against 0.90 at 270.
+
 `grade_cap` is floored at **twice** `max_flat_m`. Flooring it at exactly
 `max_flat_m` was the first attempt and was wrong in the mirror-image way: the
 hard gate became identical to the costed cheap-threshold and went back to
@@ -608,14 +632,24 @@ beside it and `flatten_cost` is what actually prices the site. MEASURED:
 `pre-moder`'s mountain outpost is 6.17 m worst-case, 4.06 m across the middle
 90 %, and 1781 m³ of work.
 
-### 6. Intra-preset exclusion
+### 6. Exclusion across the whole save
 
 Each solved site excludes the next by 1.5 footprints, enforced against the final
-refined coordinates rather than the coarse ones. Presets do *not* exclude each
-other: they are alternative world states that never coexist, so two presets
-resolving to the same meadow is correct. Without this, `pre-kall`'s two
-placements resolved to the identical cell and the camp landed inside the portal
-shelter.
+refined coordinates rather than the coarse ones, **across every preset of the
+world**: `buildstage.py` builds every preset's solved placement into the one
+save, so two presets resolving to the same meadow stacks two buildings on it
+(`SEPARATION_SCOPE_DEPENDS_ON`). MEASURED on Fresh42 before this rule: the
+portal hub, the early dock and the starter hall solved onto one meadow, pads
+overlapping by up to 27.5 x 32.9 m at datums up to 4.31 m apart. Without the
+rule within a preset, `pre-kall`'s two placements resolved to the identical cell
+and the camp landed inside the portal shelter.
+
+A placement that declares `duplicate_of` is its principal's building, not a
+second one: it claims no ground and is not judged against its principal. When
+no candidate is clear, the chosen site is recorded with a `separation_m`
+violation instead of being accepted silently, and a final pass refuses the
+solve (exit 1, `!! OVERLAP` lines) if any two built pads share ground; `--verify`
+runs the same pad-versus-pad audit on the recorded blocks.
 
 ## File formats, both MEASURED from InfinityHammer.dll
 

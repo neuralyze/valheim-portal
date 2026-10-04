@@ -77,6 +77,7 @@ answering is (2); frozen plus answering is (3) -- call
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -104,6 +105,64 @@ class OutputNotFound(RuntimeError):
     missing `Total:` line is what kept a clock race to two lost minutes instead
     of a removal aimed at nothing; this is the same refusal one layer down.
     """
+
+class UnrecognizedVerb(RuntimeError):
+    """`Terminal` does not know this verb, so the command DID NOT RUN.
+
+    THE ELEVENTH INSTANCE OF THE KEY CLASS, AND IT WAS FOUND BY THE FIRST
+    SEED THAT WAS NEVER ULFSLAND.
+    ==========================================================================
+    `replay.Server.require_cheats` declares that a write session's writes can
+    land, and keys that on ONE thing: `Terminal.m_cheat`.  That is a SUBSET of
+    what the quantity actually depends on.  `Terminal.TryRunCommand` has TWO
+    ways to refuse a command while `RconProxy` still returns
+    `Command '<cmd>' executed.` over the socket:
+
+        registered, IsCheat=true, m_cheat false
+            -> "'<verb>' is not valid in the current context."     REQUIRE_CHEATS
+        NOT REGISTERED AT ALL (the plugin providing it is not loaded)
+            -> "'<verb>' is not a recognized command. ..."         NOTHING
+
+    MEASURED 2026-09-23 driving stage 12 on Fresh42: `require_cheats()`
+    returned `enabled by this session`, and step 2 `site_ground` then reported
+    **rc 0 on 13 of 13 units** while EVERY ONE of its 33 `spawn_object
+    _TerrainCompiler` commands came back `'spawn_object' is not a recognized
+    command.`  Not one cubic metre of terrain moved, 13 pads read as levelled,
+    and the build walked on to step 3.  `spawn_object` and `deleteObjects` are
+    registered by the `World_Edit_Commands` plugin, which Ulfsland's server
+    carries among 100 mods a human installed and a fresh seed's server does
+    not carry at all -- so this precondition had never been declared either,
+    in exactly the way `devcommands` had never been declared.
+
+    So the refusal lives HERE, at the one place every driver in this tree
+    reads console output through -- `clearing/clear.py`, `terraform/flatten.py`,
+    `terraform/sites.py` and `terraform/stock.py` go straight to `Rcon` and
+    never open a `LiveBuilder`, so a guard that lived only in the session
+    would name a SUBSET of the writers a second time.
+    """
+
+
+# HOW A TERMINAL SAYS "I DO NOT KNOW THIS VERB", AND THERE ARE TWO OF THEM.
+# Matched on the CONSOLE line, never on the socket reply: the socket reply is
+# `InvokeConsoleCommand.OnHandle`'s own echo and never carries the console's
+# answer (see rcon.py's module docstring).
+#
+# BOTH WORDINGS ARE MEASURED, ON THE SAME SERVER, TWENTY SECONDS APART.
+# 2026-09-23 on Fresh42, probing verbs one at a time:
+#     Console: 'spawn_object' is not a recognized command. Type 'help' ...
+#     Console: Unknown command 'deleteObjects'. Type 'help' ...
+# The first is vanilla `Terminal.TryRunCommand`; the second is the Terminal
+# that `Server_devcommands` installs over it. A checker that knew only the
+# vanilla sentence would pass every unregistered verb on every server that
+# has the mod every other verb here needs -- a key naming a SUBSET of the
+# ways the answer is spelled.
+UNKNOWN_MARKERS = ("is not a recognized command", "Unknown command")
+NOT_RECOGNIZED = UNKNOWN_MARKERS[0]
+# The other refusal in the same family: registered, but IsCheat with cheats
+# off.  `replay.Server.require_cheats` owns the response to this one; it is
+# named here so both are spelled in one place and neither is re-derived.
+NOT_VALID_HERE = "is not valid in the current context"
+
 
 
 # THE CONSOLE OUTPUT IS READ FROM THE CONTAINER'S OWN FILE, NOT FROM
@@ -137,8 +196,32 @@ class OutputNotFound(RuntimeError):
 # one rather than reading a wrong offset.
 SUP_LOG_GLOB = "/var/log/supervisor/valheim-server-stdout---supervisor-*.log"
 
+# CONSOLE_LOG_DEPENDS_ON: WHERE THIS SERVER WRITES ITS STDOUT.  Nothing else.
+#
+# Both readers above went through `docker exec <container>`, which keys the
+# console's output on "the server runs in a supervisord container" -- a
+# SUPERSET of what the output depends on, which is only "the server's stdout
+# is in a file this process can read".  MEASURED 2026-09-23 on the fresh seed
+# Fresh42, whose server is a bare `valheim_server.x86_64` on the host: the
+# first `zones_generate` of stage 10 sent fine over the socket and then
+# `run_console` raised OutputNotFound -- "the command's output is UNKNOWN,
+# not empty" -- for every command, because `docker exec
+# valheim-server-Fresh42` names nothing.  A world that is not in a container
+# had no console at all, so no fresh seed could ever be surveyed.
+#
+# `VALHEIM_SERVER_LOG` names the file directly.  Unset, every existing caller
+# takes the container path it was measured with, byte offset and rotation
+# fallback unchanged -- this is one branch on the TRANSPORT, not a second
+# reader.
+HOST_LOG = os.environ.get("VALHEIM_SERVER_LOG", "")
+LOG_GLOB = HOST_LOG or SUP_LOG_GLOB
+
 
 def _exec(script: str, timeout: float = 30.0) -> str:
+    if HOST_LOG:
+        out = subprocess.run(["bash", "-c", script], capture_output=True,
+                             text=True, timeout=timeout)
+        return out.stdout
     out = subprocess.run(["sudo", "-n", "docker", "exec", CONTAINER, "bash",
                           "-c", script], capture_output=True, text=True,
                          timeout=timeout)
@@ -147,7 +230,7 @@ def _exec(script: str, timeout: float = 30.0) -> str:
 
 def sup_log_size() -> tuple[str, int] | None:
     """(path, byte size) of the container's live server-stdout log."""
-    got = _exec(f"f=$(ls -t {SUP_LOG_GLOB} 2>/dev/null | head -1); "
+    got = _exec(f"f=$(ls -t {LOG_GLOB} 2>/dev/null | head -1); "
                 f"[ -n \"$f\" ] && echo \"$f $(wc -c < \"$f\")\"").strip()
     if not got:
         return None
@@ -240,6 +323,76 @@ def slice_for(lines: list[str], cmd: str) -> list[str]:
     return console_output(lines[start:end])
 
 
+# Both spellings, with the verb captured from whichever side it sits on:
+#   'spawn_object' is not a recognized command.
+#   Unknown command 'deleteObjects'.
+_UNKNOWN_RE = re.compile(
+    r"'([^']+)'\s+is not a recognized command|Unknown command\s+'([^']+)'")
+
+
+def unrecognized_verbs(out: list[str]) -> list[str]:
+    """Every verb in this console slice the game said it does not know."""
+    return [m.group(1) or m.group(2)
+            for line in out if (m := _UNKNOWN_RE.search(line))]
+
+
+class DataEntryMissing(RuntimeError):
+    """`spawn_object ... data=<entry>` named a definition this server has not
+    loaded, so the object -- and its terrain -- was NOT created.
+
+    THE THIRD WAY THIS SESSION GOT A SUCCESSFUL ECHO FOR A COMMAND THAT MOVED
+    NOTHING, MEASURED THE SAME HOUR AS THE OTHER TWO.  Fresh42, stage 12 step
+    2, after the unregistered-verb refusal was fixed: `Command 'spawn_object
+    _TerrainCompiler from=64,320,0 data=complete_station_hub_z1_5' executed.`
+    over the socket, `Error: Can't find data entry: complete_station_hub_z1_5`
+    on the console, 18 of 18, and `flatten.py apply` returned 0 for every pad.
+    The entries had been written to the world's `config_merged/bepinex/data`
+    while the server serving that world watches its own install's
+    `<BepInEx>/config/data` -- see `flatten.data_dir`.
+    """
+
+
+NO_DATA_ENTRY = "Can't find data entry:"
+_NO_ENTRY_RE = re.compile(re.escape(NO_DATA_ENTRY) + r"\s*(\S+)")
+
+
+def missing_data_entries(out: list[str]) -> list[str]:
+    """Every data definition in this slice the server could not find."""
+    return [m.group(1) for line in out if (m := _NO_ENTRY_RE.search(line))]
+
+
+def check_recognized(cmd: str, out: list[str]) -> list[str]:
+    """`out`, or a refusal if the game did not actually run the command.
+
+    A COMMAND THAT DID NOT RUN, WITH THE SOCKET SAYING IT DID, IS THE ONE
+    FAILURE SHAPE THIS WHOLE TRANSPORT HAS.  Returning the slice unread is how
+    13 pads reported rc 0 with no terrain written, twice, for two different
+    reasons -- see `UnrecognizedVerb` and `DataEntryMissing`.  The check is
+    here rather than in each driver because the four terrain drivers reach the
+    console directly, without a `LiveBuilder`, so a session-level guard names
+    a SUBSET of the writers.
+    """
+    bad = unrecognized_verbs(out)
+    if bad:
+        raise UnrecognizedVerb(
+            f"the game does not know {sorted(set(bad))} -- `{cmd[:120]}` was "
+            f"REFUSED by Terminal.TryRunCommand and the RCON socket still "
+            f"answered `Command '...' executed.`, so nothing about the world "
+            f"may be assumed here. The verb is registered by a PLUGIN; a "
+            f"server missing that plugin cannot run this build. Console said: "
+            f"{[ln for ln in out if any(k in ln for k in UNKNOWN_MARKERS)][:2]}")
+    gone = missing_data_entries(out)
+    if gone:
+        raise DataEntryMissing(
+            f"this server has no data entry {sorted(set(gone))} -- "
+            f"`{cmd[:120]}` was accepted by the socket and created NOTHING. "
+            f"The definition is loaded by ServerDevcommands' watcher from the "
+            f"RUNNING INSTALL's data directory; a file written anywhere else "
+            f"is not a definition. Set $VALHEIM_BEPINEX_DATA to that "
+            f"directory (terraform/flatten.py::data_dir).")
+    return out
+
+
 def run_console(rc: Rcon, cmd: str, settle: float = 1.2,
                 waits: int = 4) -> list[str]:
     """Send a console command and return what the console printed.
@@ -250,19 +403,25 @@ def run_console(rc: Rcon, cmd: str, settle: float = 1.2,
     written by supervisord afterwards -- so a missing echo is re-read a few
     times before it is called missing.  `OutputNotFound` still means UNKNOWN,
     never empty.
+
+    AND A VERB THE GAME DOES NOT KNOW IS `UnrecognizedVerb`, NOT OUTPUT.  The
+    socket's `Command '...' executed.` is `InvokeConsoleCommand`'s own echo and
+    is returned for a command `Terminal` refused outright, so the ONLY place
+    that refusal is visible is this slice -- see `UnrecognizedVerb`.
     """
     got = sup_log_size()
     if got is None:
         rc.console(cmd)
         time.sleep(settle)
-        return slice_for(logs_window(), cmd)
+        return check_recognized(cmd, slice_for(logs_window(), cmd))
     path, offset = got
     rc.console(cmd)
     last = None
     for i in range(waits):
         time.sleep(settle if i == 0 else 1.0)
         try:
-            return slice_for(sup_log_since(path, offset), cmd)
+            return check_recognized(cmd, slice_for(sup_log_since(path, offset),
+                                                   cmd))
         except OutputNotFound as exc:
             last = exc
             # A MISSING ECHO IS USUALLY THE SINK, SO REPAIR THE SINK AND LOOK

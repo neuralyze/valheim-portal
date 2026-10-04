@@ -106,6 +106,7 @@ sys.path.insert(0, str(JUMPSTART / "settlements"))
 sys.path.insert(0, str(JUMPSTART))
 
 import ribbon as RB  # noqa: E402
+import worldseed  # noqa: E402
 
 # WHO IS ACTUALLY RUNNING.  `RoadClear` built this module and censused the
 # corridors; `RoadEmit` runs the removals.  A module-level default recorded
@@ -1155,9 +1156,19 @@ def annotate(seg: dict, objects: dict, per_station, lat_of) -> None:
         o["in_clear_width"] = bool(o["lat_m"] is not None
                                    and o["lat_m"] <= o["clear_half_m"])
 
+# THE CHEAP GATE'S TRIAL BUDGET, DENOMINATED IN THE THING IT SPENDS.
+# Sixty seconds is a trade, not a measurement, and it is defensible only
+# because the gate then compares that spend against the socket time its
+# skipped boxes actually saved ON THE SAME RUN and records both sides.
+# The previous threshold was 20 CELLS, which at the 77 s/cell this gate
+# MEASURED on N3 would have cost 26 minutes to learn what cell three showed.
+GATE_TRIAL_S = 60.0
+
+
 
 def census_zoned(srv, seg: dict, cells: list | None = None,
-                 progress: bool = True, partial: Path | None = None) -> dict:
+                 progress: bool = True, partial: Path | None = None,
+                 gate: bool = True) -> dict:
     """WHAT IS STANDING IN THIS ROAD, censused once per object, socket only.
 
     Same output shape as `census` -- including `tiles`, which stay the REMOVAL
@@ -1189,22 +1200,95 @@ def census_zoned(srv, seg: dict, cells: list | None = None,
             done_cells = set(prev.get("cells_done", []))
             print(f"  resuming: {len(done_cells)} cells already censused, "
                   f"{len(objects)} objects carried forward", flush=True)
+    # ---- THE CHEAP GATE, AND IT MEASURES ITSELF -------------------------
+    #
+    # WHY IT EXISTS.  `findObjects` logs its FULL reply inline on the Unity
+    # main thread, and MEASURED on 2026-09-19 that alone is sufficient to
+    # wedge this server: 325 object rows over 52 calls in 21 s, a wedge
+    # within ~30 further calls, and NO concurrent writer.  Five y-level
+    # boxes per cell is the heaviest question this module asks, so the
+    # cheapest useful thing to know first is whether the cell holds anything
+    # at all.
+    #
+    # `objects_count id=* ignore=_*` answers that in ONE line for an empty
+    # cylinder, and its cylinder has NO HEIGHT BOUND -- so a zero from it is
+    # a stronger statement than five stacked cubes covering y+/-40, not a
+    # weaker one.  The radius is the cell's own circumradius, so the
+    # cylinder CONTAINS the square the boxes would have covered and a zero
+    # cannot hide an object in a corner.
+    #
+    # WHY IT CAN TURN ITSELF OFF, and this is the honest half.  A NON-empty
+    # `objects_count id=*` answers with ONE SYSLOG DATAGRAM PER PREFAB, and
+    # ~160 of those back to back is what killed the sink outright earlier in
+    # this project (see `count_star`).  Worse, its answer comes back through
+    # the CONTAINER LOG SLICE while `findObjects` comes back on the SOCKET:
+    # a cheap call read through an expensive channel is not a cheap
+    # measurement, and that inverts the assumption a two-stage design rests
+    # on.  MEASURED on N3-mid1-mid2, 2026-09-19: 77 s per cell with the gate
+    # on against ~2 s without, zero empty cells in the first seven, i.e.
+    # 35 hours for a 1,565-cell pass to save nothing.
+    #
+    # IT AUDITS ITSELF IN THE CURRENCY IT SPENDS, WHICH IS SECONDS.  An
+    # earlier version tripped on a hit rate over 20 CELLS -- but the thing
+    # the gate spends is TIME, and at 77 s a cell that trial costs 26
+    # minutes to learn what cell three already showed.  A budget denominated
+    # in the wrong unit is not a budget.  So: once the gate has spent
+    # `GATE_TRIAL_S` seconds, it compares that against the socket time its
+    # skipped boxes actually saved, measured on this same run, and switches
+    # off the moment it is behind.  The record says which way it went and
+    # what both sides of the comparison were.
+    gate_stats = {"asked": 0, "empty": 0, "boxes_saved": 0,
+                  "gate_seconds": 0.0, "box_seconds": 0.0, "boxes_timed": 0,
+                  "seconds_saved_estimate": 0.0, "disabled_after": None,
+                  "disabled_why": None}
+    gate_on = bool(gate)
+    gate_r = CENSUS_CELL_HALF_M * math.sqrt(2.0)
     for i, (cx, cz) in enumerate(cell_list):
         key = f"{cx:.1f},{cz:.1f}"
         if key in done_cells:
             continue
         got = lat_of(cx, cz)
         y = got[1] if got else 0.0
-        for dy in CENSUS_Y_LEVELS:
-            f, un, n, eng = list_box(srv, cx, y + dy, cz)
-            objects.update(f)
-            engine.update(eng)
-            unlisted += un
-            calls += n
+        empty = False
+        if gate_on:
+            t0 = time.time()
+            cnt = count_star(srv, cx, cz, gate_r)
+            gate_stats["gate_seconds"] += time.time() - t0
+            gate_stats["asked"] += 1
+            if cnt["total"] == 0:
+                empty = True
+                gate_stats["empty"] += 1
+                gate_stats["boxes_saved"] += len(CENSUS_Y_LEVELS)
+            per_box = (gate_stats["box_seconds"]
+                       / max(gate_stats["boxes_timed"], 1))
+            saved = gate_stats["boxes_saved"] * per_box
+            gate_stats["seconds_saved_estimate"] = round(saved, 1)
+            if (gate_stats["gate_seconds"] >= GATE_TRIAL_S
+                    and gate_stats["gate_seconds"] > saved):
+                gate_on = False
+                gate_stats["disabled_after"] = gate_stats["asked"]
+                gate_stats["disabled_why"] = (
+                    f"spent {gate_stats['gate_seconds']:.0f}s to save an "
+                    f"estimated {saved:.0f}s ({gate_stats['empty']} empty "
+                    f"cells of {gate_stats['asked']}, {per_box:.2f}s per "
+                    f"box avoided)")
+                print(f"  [gate] OFF after {gate_stats['asked']} cells: "
+                      f"{gate_stats['disabled_why']}", flush=True)
+        if not empty:
+            for dy in CENSUS_Y_LEVELS:
+                tb = time.time()
+                f, un, n, eng = list_box(srv, cx, y + dy, cz)
+                gate_stats["box_seconds"] += time.time() - tb
+                gate_stats["boxes_timed"] += 1
+                objects.update(f)
+                engine.update(eng)
+                unlisted += un
+                calls += n
         done_cells.add(key)
         if progress:
-            print(f"  cell {i + 1}/{len(cell_list)} ({cx:.0f},{cz:.0f}) "
-                  f"objects so far {len(objects)} ({calls} socket calls, "
+            print(f"  cell {i + 1}/{len(cell_list)} ({cx:.0f},{cz:.0f})"
+                  + ("  [gate: empty, 5 boxes skipped]" if empty else "")
+                  + f" objects so far {len(objects)} ({calls} socket calls, "
                   f"{_ECHO['socket_reply_lines']} echoed lines)", flush=True)
         if partial:
             partial.write_text(json.dumps(
@@ -1233,6 +1317,22 @@ def census_zoned(srv, seg: dict, cells: list | None = None,
         "cells": [[round(a, 2), round(b, 2)] for a, b in cell_list],
         "cell_m": CENSUS_CELL_M,
         "y_levels": list(CENSUS_Y_LEVELS),
+        "cheap_gate": dict(
+            gate_stats,
+            radius_m=round(gate_r, 2),
+            probe="objects_count id=* ignore=_* pos=<cell centre> "
+                  "max=<cell circumradius>",
+            why="the cylinder CONTAINS the 16 m cell square and has no "
+                "height bound, so a zero from it is stronger than the five "
+                "stacked cubes it skips. But its answer returns through the "
+                "CONTAINER LOG SLICE while findObjects returns on the "
+                "SOCKET, and a non-zero costs one console line per prefab -- "
+                "so after "
+                f"{GATE_TRIAL_S:.0f}s of its own time it compares that spend "
+                "against the socket seconds its skipped boxes actually "
+                "saved on THIS run and switches off the moment it is "
+                "behind. `disabled_why` carries both sides of that "
+                "comparison; `disabled_after: null` means it paid its way."),
         "prefabs_asked": ["*  (unscoped findObjects: no name list at all)"],
         "prefabs_found": sorted({o["prefab"] for o in objects.values()}),
         "socket_calls": calls,
@@ -1274,29 +1374,41 @@ def census_zoned(srv, seg: dict, cells: list | None = None,
 
 def placed_objects(censuses: list[dict]) -> dict:
     """The batter's gate input: every object we did NOT put there and will NOT
-    remove, by position.
+    remove, by position AND BY PREFAB.
 
     `ribbon.stamp` refuses to move ground within one lattice pitch of any of
-    these.  It is the same list the clearing skips, which is the point -- one
-    live measurement answers both "may I delete this" and "may I move the
-    ground under it", and the two answers cannot disagree.
+    these WHOSE PREFAB `clear.blocks` -- see `ribbon.batter_freezes_on`.  The
+    prefab is carried because the consumer's question is not this producer's
+    question: "may I delete this" and "may I move the ground under it" have
+    DIFFERENT populations, and the docstring that used to stand here claimed
+    "the two answers cannot disagree" on the strength of one live measurement
+    answering both.  MEASURED on Fresh42, 2026-09-24: 11,814 kept objects,
+    296 of them property or POI content and 11,518 of them CLEARABLE
+    vegetation -- a 40x superset, and it cost T1-portalhub-temple 223 of its
+    292 unwalkable rim steps.
+
+    Position-only artefacts still exist on disk; the consumer fails CLOSED on
+    them (every position freezes the batter) and says so.
     """
-    keep: list[list[float]] = []
+    keep: list[dict] = []
     per_prefab: dict[str, int] = {}
     for c in censuses:
         for o in c["objects"]:
             if o["clearable"] and o["in_clear_width"]:
                 continue
-            keep.append([round(o["x"], 2), round(o["z"], 2)])
+            keep.append({"x": round(o["x"], 2), "z": round(o["z"], 2),
+                         "prefab": o["prefab"]})
             per_prefab[o["prefab"]] = per_prefab.get(o["prefab"], 0) + 1
     return {
         "objects": keep, "per_prefab": per_prefab,
         "segments": [c["segment"] for c in censuses],
         "method": ("MEASURED live: every ZDO found in the road corridors that "
                    "is either not on clear.py::CLEARABLE or lies outside the "
-                   "measured clear width, so it stays -- and therefore its "
-                   "ground must not move. Positions from findObjects, "
-                   "deduplicated by ZDO id."),
+                   "measured clear width, so it STAYS. Positions and PREFAB "
+                   "NAMES from findObjects, deduplicated by ZDO id; the "
+                   "consumer keys the ground-movement gate on the prefab, "
+                   "because 'do not delete this' and 'do not move the ground "
+                   "under it' are different questions."),
         "tool": "tools/jumpstart/roads/clear.py::placed_objects",
     }
 
@@ -1345,13 +1457,16 @@ def placed_after(cen: dict, emitted: list[dict]) -> dict:
     So the set is the census MINUS the verified removals, and nothing else.
     """
     gone = removed_ids(cen, emitted)
-    keep: list[list[float]] = []
+    keep: list[dict] = []
     per_prefab: dict[str, int] = {}
     standing_in_width: list[dict] = []
     for o in cen["objects"]:
         if o["id"] in gone:
             continue
-        keep.append([round(o["x"], 2), round(o["z"], 2)])
+        # THE PREFAB TRAVELS WITH THE POSITION, for the reason given on
+        # `placed_objects`: the consumer's gate is keyed on it.
+        keep.append({"x": round(o["x"], 2), "z": round(o["z"], 2),
+                     "prefab": o["prefab"]})
         per_prefab[o["prefab"]] = per_prefab.get(o["prefab"], 0) + 1
         if o["clearable"] and o["in_clear_width"]:
             standing_in_width.append(
@@ -1902,13 +2017,17 @@ def location_gate(cen: dict, plan: dict) -> dict:
         own extent, so the road is cleared UP TO a POI and never through it.
     """
     import clearance  # noqa: PLC0415
+    import poi as poimod  # noqa: PLC0415
 
-    dump = next((p for p in ("/tmp/settle/loc3/f6fe167f4fcd.json",
-                             "/tmp/settle/loc2/f6fe167f4fcd.json")
-                 if Path(p).exists()), None)
-    if dump is None:
-        raise SystemExit("no location dump: refusing to delete anything near "
-                         "generated content without the canonical check")
+    # THE DUMP IS RESOLVED BY SEED, NEVER BY PATH.  These two lines used to
+    # name `f6fe167f4fcd.json` -- Pirate68's content hash -- so a clearance
+    # gate on any other seed budgeted against Ulfsland's locations.  MEASURED
+    # through the identical fault in `ribbon.py::location_check` on Fresh42:
+    # `S7-stathub-wtnorth` was refused by a `ShipSetting01` at (124.2, 263.8)
+    # that exists in Pirate68's dump and in NO other; Fresh42 holds zero
+    # instances within reach+9 m of that centreline.  See
+    # `poi.LOCATION_DUMP_DEPENDS_ON`.
+    dump = str(poimod.location_dump())
     L = clearance.load(dump)
     # Every id this op can ever send, checked against CLEARABLE before the
     # budget is chosen: the loosened rule is granted to a PREFAB-SCOPED
@@ -2331,7 +2450,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("op", choices=["census", "plan", "emit", "placed"])
     ap.add_argument("--segment")
-    ap.add_argument("--segments", default=str(HERE / "segments.yaml"))
+    ap.add_argument("--segments", default=None,
+                    help="the plan file (default: this run's seed's, "
+                         "worldseed.segments_path())")
     ap.add_argument("--census")
     ap.add_argument("--census-glob")
     ap.add_argument("--out")
@@ -2346,7 +2467,34 @@ def main() -> int:
                     help="census on the removal discs with the 139-name "
                          "universe -- the OLD shape, kept only so the cheap "
                          "one can be measured against it (census_equiv.py)")
+    ap.add_argument("--no-gate", action="store_true",
+                    help="skip the cheap `objects_count` cell gate and send "
+                         "all five findObjects boxes at every cell. The gate "
+                         "turns itself off when it stops paying, so this is "
+                         "for MEASURING it, not for routine use.")
+    ap.add_argument("--recheck", action="store_true",
+                    help="this census is build step 8's RE-READ of a finished "
+                         "corridor: append a corridor_recheck record to the "
+                         "world's ledger.  Without it the reading lived only in "
+                         "--out, and buildstage's replay -- which reads the "
+                         "LEDGER -- reported every rechecked road UNVERIFIED "
+                         "(MEASURED on Fresh42: T1, S4, S7, S8).  Off for step "
+                         "3's pre-clear census, which is not a recheck.")
     args = ap.parse_args()
+
+    # THE OUTPUT DIRECTORY IS THIS DRIVER'S TO MAKE, AND NOT MAKING IT COST A
+    # TRACEBACK INSTEAD OF A VERDICT.  MEASURED 2026-09-23, stage 12 step 3 on
+    # the fresh seed Fresh42: `census` ran its first cell, then
+    # `census_zoned`'s resume file raised FileNotFoundError on
+    # `<out>.census.json.partial` because `ledger/runs/Fresh42/pipeline/build/
+    # corridor/` had never been created -- on Ulfsland it exists because some
+    # earlier run happened to make it. An output path whose parent is assumed
+    # to exist is a key naming a SUPERSET: it depends on "a previous run of
+    # something chose this directory", not on this run. Every `--out` write in
+    # this file -- placed, census (final AND partial), emit -- is covered by
+    # the one mkdir, at the edge where the path is first known.
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
 
     if args.op == "placed":
         files = sorted(Path("/").glob(args.census_glob.lstrip("/")))
@@ -2357,7 +2505,8 @@ def main() -> int:
               f"-> {args.out}")
         return 0
 
-    seg = load_segment(args.segment, Path(args.segments))
+    seg = load_segment(args.segment,
+                       Path(args.segments or worldseed.segments_path()))
     per_station, widest = clear_half_width(seg)
     names = universe()
     cells = census_cells(seg, per_station)
@@ -2377,7 +2526,8 @@ def main() -> int:
             doc = (census(srv, seg, names) if args.per_station
                    else census_zoned(srv, seg, cells,
                                      partial=(Path(str(args.out) + ".partial")
-                                              if args.out else None)))
+                                              if args.out else None),
+                                     gate=not args.no_gate))
             doc["echo"] = dict(_ECHO)
         Path(args.out).write_text(json.dumps(doc, indent=1))
         clearable = [o for o in doc["objects"]
@@ -2388,6 +2538,25 @@ def main() -> int:
               f"{_ECHO['socket_reply_lines']} echoed lines, "
               f"{_ECHO['console_calls']} console calls / "
               f"{_ECHO['console_reply_lines']} table lines -> {args.out}")
+        if args.recheck:
+            from buildstage import RECHECK_ROLE  # noqa: PLC0415
+            from live import LiveBuilder  # noqa: PLC0415
+            in_width = [o for o in doc["objects"] if o["in_clear_width"]]
+            with LiveBuilder(actor=args.actor, dry=args.dry) as b:
+                rec = b.observe(
+                    f"{RECHECK_ROLE}::{seg['id']}",
+                    method=("MEASURED -- a live census of the finished "
+                            "corridor, taken after bodies, fixtures and "
+                            "roadside lamps stand (build step 8)"),
+                    tool="tools/jumpstart/roads/clear.py::census --recheck",
+                    value={"segment": seg["id"],
+                           "objects_censused": len(doc["objects"]),
+                           "in_clear_width": len(in_width),
+                           "in_clear_width_clearable": len(clearable),
+                           "census_file": str(args.out)},
+                    role=RECHECK_ROLE, site_id=seg["id"])
+            print(f"{RECHECK_ROLE} recorded for {seg['id']} "
+                  f"(seq {rec.get('seq') if isinstance(rec, dict) else '?'})")
         return 0
 
     cen = json.loads(Path(args.census).read_text())

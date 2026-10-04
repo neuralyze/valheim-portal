@@ -18,6 +18,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import clearance  # noqa: E402
 import sites as S  # noqa: E402
 import terrain1m as T  # noqa: E402
 
@@ -25,7 +26,8 @@ import terrain1m as T  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--patches", default="/tmp/settle/h1m.bin")
-    ap.add_argument("--locations", default="/tmp/settle/loc3/f6fe167f4fcd.json")
+    ap.add_argument("--locations", default=None,
+                    help="default: THIS seed's dump (clearance.location_dump)")
     ap.add_argument("--patch", default="mtn7114")
     ap.add_argument("--pad", type=float, default=44.0)
     ap.add_argument("--min-h", type=float, default=120.0)
@@ -33,7 +35,7 @@ def main() -> int:
     ap.add_argument("--mfrac", type=float, default=0.6)
     a = ap.parse_args()
 
-    p = S.Picker(a.patches, a.locations)
+    p = S.run_picker(a.patches, a.locations or clearance.location_dump())
     blk = p.blocks[a.patch]
     f = p.fields[a.patch]
     mtn = T.BIOME_CODE["Mountain"]

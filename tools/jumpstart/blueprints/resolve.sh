@@ -30,6 +30,11 @@ SEED="${SEED:?set SEED to the world seed string}"
 WORK="${WORK:-/tmp/jumpstart-solve}"
 SANDBOX="${SANDBOX:-/tmp/jumpstart-solve/vh}"
 STEP="${STEP:-8}"
+# The seed's 1 m field, stage 4's `roads/field.py request --out
+# <work>/<seed>_1m.bin`: the router's land labelling, which a waterfront the
+# roads serve is judged on (solve_placements NETWORK_LAND_DEPENDS_ON). Absent,
+# every such waterfront is recorded unread and REFUSED, never waved through.
+FIELD="${FIELD:-$WORK/${SEED}_1m.bin}"
 
 HASH="$(printf '%s' "$SEED" | md5sum | cut -c1-12)"
 GRID_DIR="$WORK/grid-$HASH"
@@ -69,5 +74,6 @@ exec python3 "$HERE/solve_placements.py" \
   --vh-src "$VH_SRC" \
   --patch "$WORK/patch-$HASH.bin" \
   --patch-sandbox "$SANDBOX" \
+  --field "$FIELD" \
   ${WRITE:+--write} \
   "$@"

@@ -2,7 +2,7 @@
 """The append-only writer, the blob store, and the environment fingerprint.
 
     from ledger import Ledger
-    led = Ledger.open("Ulfsland", actor="RoadNet")
+    led = Ledger.open(worldseed.world(), actor="RoadNet")   # never a literal
     sha = led.blob(tcdata_bytes, note="segment-04 zone -12,7")
     led.append("terrain_write", params={...}, wire=[...],
                requires={"mods": [...], "blobs": [sha]},
@@ -42,6 +42,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+if str(HERE.parent) not in sys.path:
+    sys.path.append(str(HERE.parent))
+import worldseed  # noqa: E402
 
 # Importable both as `ledger.writer` (package) and as `./writer.py` (script);
 # without this the two paths produce two distinct `schema` module objects and
@@ -221,7 +224,29 @@ def tool_fingerprint() -> dict:
             "python": platform.python_version()}
 
 
-def fingerprint(world: str = "Ulfsland", *, game_build_anchor: str | None = None,
+def _stat_size_settled(worlds: Path, chosen: Path | None) -> int | None:
+    """Size of the newest db2.  The server may rotate it away between
+    choosing and stat-ing; re-resolve by generation rather than crash a build
+    unit (MEASURED: a live Fresh42 unit died here on _main.9.db2)."""
+    for _ in range(40):
+        if chosen is None:
+            return None
+        try:
+            return chosen.stat().st_size
+        except FileNotFoundError:
+            time.sleep(0.25)
+            chosen = worldseed.newest_save(worlds, "db2")
+    raise FileNotFoundError(f"{worlds}: newest _main.*.db2 never settled")
+
+
+# WORLD_MANIFEST_DEPENDS_ON: the world whose save is being fingerprinted, and
+# nothing else.  This default read `world: str = "Ulfsland"` -- a CONSTANT
+# standing for a quantity that depends on the run, the same shape as
+# `LiveBuilder(world="Ulfsland")` (36 of 40 callsites passing none) and
+# `applied.Applied(world="Ulfsland")` (17 of 19).  `worldseed.world()` is
+# argument > $VH_WORLD > "Ulfsland", so an unset environment resolves exactly
+# what the literal did and NO existing caller moves.
+def fingerprint(world: str = "", *, game_build_anchor: str | None = None,
                 heavy: bool = True, probe_modifiers: bool = True) -> dict:
     """The `world_manifest` payload, measured from the host.
 
@@ -229,11 +254,12 @@ def fingerprint(world: str = "Ulfsland", *, game_build_anchor: str | None = None
     world identity.  A manifest written with heavy=False records that, so a
     replay does not mistake "not measured" for "no mods".
     """
+    world = world or worldseed.world()
     base = VALHEIM_ROOT / world
     worlds = base / "config_merged" / "worlds_local" / world
-    fwls = sorted(worlds.glob("_main.*.fwl2")) if worlds.is_dir() else []
-    wf = read_fwl(fwls[-1]) if fwls else {}
-    dbs = sorted(worlds.glob("_main.*.db2")) if worlds.is_dir() else []
+    newest_fwl = worldseed.newest_save(worlds, "fwl2")
+    wf = read_fwl(newest_fwl) if newest_fwl else {}
+    newest_db = worldseed.newest_save(worlds, "db2")
     plugins = base / "config_merged" / "bepinex" / "plugins"
     mods = mod_inventory(plugins) if heavy else []
 
@@ -275,7 +301,7 @@ def fingerprint(world: str = "Ulfsland", *, game_build_anchor: str | None = None
                  "dlls": mods},
         "tool": tool_fingerprint(),
         "fwl_sha256": wf.get("fwl_sha256"),
-        "db_bytes": dbs[-1].stat().st_size if dbs else None,
+        "db_bytes": _stat_size_settled(worlds, newest_db),
         "host": platform.node(),
         "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
@@ -294,6 +320,119 @@ FLATTEN_PROBE_M = 0.5
 # How far a same-`role` record may sit from the protected one and
 # still count as the same SITE when neither declares a site_id.
 _SITE_RADIUS_M = 64.0
+
+# Whether `_protected_pieces` may read a record's OWN `wire` when the plan
+# blob was never stored.  ALWAYS TRUE IN PRODUCTION.  It exists as a named
+# switch so the gate's case can restore the defect it fixes -- MEASURED on
+# this chain: with it False, 79 of 79 `bridge_body_place` records recover
+# ZERO pieces and the flatten guard falls back to discs of 26-33 m; with it
+# True the same 79 recover 19,595 exact piece positions.
+READ_RECORD_WIRE = True
+
+# WHAT A KEEP-OUT IS A FUNCTION OF.  Declared, so that a neuter can take one
+# term away and the gate can require the answer to move.
+#
+#   kind            `params.flatten`: WHOSE hazard this keep-out protects.
+#   site_evidence   the pieces/discs `_site_evidence` recovers for the site.
+#   retirement      a retired piece is not standing there.
+#   discharge       `terrain_write.params.reseats`: the debt a write accepts
+#                   when it moves ground a RESEAT claim stands on.
+KEEP_OUT_DEPENDS_ON = ("kind", "site_evidence", "retirement", "discharge")
+
+# THE TWO KINDS, AND THE DIFFERENCE IS WHERE THE HAZARD LIVES.
+#
+# `FORBIDDEN`  THE GROUND IS THE HAZARD.  A bridge pile stands on the
+#              generated bed of a channel: cut it and the water the piles are
+#              driven into is gone, and no tool in this tree can put water
+#              back.  The ground must not move, full stop.
+# `RESEAT`     THE PIECE IS THE HAZARD, AND IT IS RECOVERABLE.  A roadside
+#              lamp's only claim on the ground is that it must not be left
+#              hanging in the air above it -- and `roads/relight.py` retires
+#              and re-spawns lamps as a recorded, verified operation, so the
+#              claim is DISCHARGEABLE by re-seating rather than by freezing.
+#
+# WHY THIS DISTINCTION EXISTS, MEASURED ON ULFSLAND save bc484171e3039bc0.
+# Four of that world's nine impassable road steps -- N4-mid2-terminus
+# stations 2962/2964/2965/2967, rises 2.107 / 2.416 / 2.538 / 3.041 m against
+# a 0.7813 m slide limit -- came back `1A_FORBIDDEN` owned by
+# `road_lighting seq 2784`, A LAMP.  Its own `flatten_reason` reads "lamps
+# stand ON the road the segment already graded. A terrain_write here would
+# re-level ground the road owns", which is a statement about the ROAD'S
+# interest and not about any hazard the lamp carries, asserted at a point in
+# the pipeline where NOTHING HAS PROVEN THE ROAD WALKABLE: `buildstage.py`
+# declares `roadside` (step 7) after `road_ground` (4) and the only step that
+# re-reads the graded corridor is `recheck` (8), AFTER the lamps -- MEASURED
+# from BUILD_STEPS by FinishFresh, 2026-09-23.  So a lamp froze a 3.041 m
+# step in a carriageway and step 8 could only report it.
+#
+# THE REACH IS NOT THE DEFECT AND SHRINKING A RADIUS CANNOT FIX IT.  A piece
+# contributes a disc of radius 0.0 and is probed EXACTLY, and 338 of this
+# world's 388 corridor torches stand at half_width + 0.55 m -- on the
+# SHOULDER, outside the carriageway.  What reaches across the carriageway is
+# the REPAIR: a cone that lowers a vertex by `d` must touch out to
+# `d / slide_limit`, so a 2.26 m overage reaches 4.3 m and unavoidably lands
+# on the shoulder the lamp stands on.  The lamp's claim is real -- cut the
+# road and the lamp hangs 2.26 m in the air -- but it is a claim ON ITS OWN
+# SEATING, and the answer to it is to re-seat the lamp, not to make the road
+# permanently unwalkable.
+KEEP_OUT_KINDS = ("FORBIDDEN", "RESEAT")
+
+# NEUTER SWITCHES, NEVER FALSE IN PRODUCTION.  Each takes ONE named term out
+# of `KEEP_OUT_DEPENDS_ON`, in opposite directions, so the gate's cases can
+# put each half of the defect back and be required to come out the other way.
+#
+#   READ_KEEP_OUT_KIND     False -> every keep-out reads FORBIDDEN (the
+#                          `kind` term is lost, the keep-out WIDENS, and the
+#                          lamp's spurious freeze RETURNS).
+#   READ_RESEAT_DISCHARGE  False -> a RESEAT claim is ignored outright (the
+#                          `discharge` term is lost, the keep-out NARROWS,
+#                          and a write may move a lamp's ground without ever
+#                          naming the debt).
+# A bridge's FORBIDDEN keep-out must REFUSE under BOTH: it depends on neither
+# term, and it is the denominator no neuter here can patch.
+READ_KEEP_OUT_KIND = True
+READ_RESEAT_DISCHARGE = True
+
+
+def keep_out_kind(p: dict) -> str | None:
+    """Which kind of keep-out this record declares, or None for no keep-out.
+
+    NONE MAY NEVER STAND FOR AN ANSWER: an UNRECOGNISED value is read as
+    `FORBIDDEN`, not as "no keep-out".  A typo in an emitter must cost a
+    refused write, never a silently unprotected structure.
+    """
+    v = p.get("flatten")
+    if not isinstance(v, str) or not v:
+        return None
+    if not READ_KEEP_OUT_KIND:
+        return "FORBIDDEN"
+    return v if v in KEEP_OUT_KINDS else "FORBIDDEN"
+
+
+def declared_reseats(rec: dict) -> set:
+    """The seqs a `terrain_write` DECLARES it will re-seat.
+
+    Reads the record only.  The `READ_RESEAT_DISCHARGE` neuter belongs at the
+    point where the CLAIM is weighed, not here: emptying this set would make
+    the guard refuse MORE, and the direction this neuter has to restore is
+    the one where a RESEAT claim stops refusing anything at all.
+    """
+    out = set()
+    for s in ((rec.get("params") or {}).get("reseats") or []):
+        try:
+            out.add(int(s))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+# WHICH OPS STATE WHERE A SITE IS, as opposed to where one thing IN it is.
+# `zones_generate` is the ground the site reserved, `objects_clear` the
+# cylinder it cleared, `spawn_plan` the body's anchor -- each one is about the
+# SITE.  `portal` and `spawn` are about a single arch or a single sign, and
+# reading one of those as the site's position moves the portal hall's whole
+# 37.4 x 37.4 m footprint 8.9 m.  See `_pad_footprint`.
+_SITE_EXTENT_OPS = ("zones_generate", "objects_clear", "spawn_plan")
+
 
 
 def _record_xz(p: dict) -> tuple | None:
@@ -321,6 +460,117 @@ def _record_xz(p: dict) -> tuple | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# SIGNAGE OUTLIVING ITS DESTINATION
+#
+# THE DEFECT, MEASURED ON ULFSLAND.  `PortalTriage` dropped seven tags at
+# seq 2510-2523 by retiring BOTH ends of each - `prefab: portal_wood`, one
+# record per end, correct and complete for the arches.  Four of those tags
+# were named by a standing guidepost board, each board emitted by the SAME
+# pass that placed the arch and each carrying the tag in its own
+# `meta.tag`: 'Tree Near u-treenear' (-612.00, -232.11), 'Wt Spawn
+# u-wtspawn' (111.30, -102.66), 'Wt South u-wtsouth' (533.30, 47.34), 'Wt
+# Town u-wttown' (801.30, 729.34).  Nothing retired the boards, so the
+# world kept four signposts pointing at arches that are not there, and the
+# gate's `portals` section refuses all four.
+#
+# It is NOT four typos.  The cascade was computable from the ledger alone
+# at the moment of the drop - the sign spawn records name the tag - and no
+# rule required anyone to compute it.  This is that rule: a retire that
+# takes a tag's LAST live end is refused while signage naming that tag is
+# still standing.  A re-seat (retire one end, re-place it at the same tag)
+# is untouched, because the tag still has an end.
+# ---------------------------------------------------------------------------
+PORTAL_PREFAB = "portal_wood"
+SIGNAGE_PREFABS = ("sign", "sign_notext")
+
+
+def _pos3(p: dict) -> tuple | None:
+    pos = p.get("pos")
+    if isinstance(pos, (list, tuple)) and len(pos) == 3:
+        return (float(pos[0]), float(pos[1]), float(pos[2]))
+    return None
+
+
+def _retire_removes(rec: dict, prior: list[dict]) -> set[int]:
+    """Indices into `prior` this retire record removes.
+
+    INDICES AND NOT `seq`: the chain forked at file line 47 and carries
+    duplicate seq labels, so `seq` is not a total order on this artefact -
+    `applied.py`, `lamps.segments_from_ledger` and this function all use
+    file order for the same reason.
+    """
+    p = rec["params"]
+    named = {int(s) for s in p.get("retires", []) or ()}
+    out = {i for i, q in enumerate(prior) if q.get("seq") in named and named}
+    pos, pf = _pos3(p), p.get("prefab")
+    if pos is None or not pf:
+        return out
+    r = max(float(p.get("radius_m") or 0.0), 0.01)
+    for i, q in enumerate(prior):
+        if q["op"] not in ("spawn", "portal"):
+            continue
+        qp = q["params"]
+        if qp.get("prefab") != pf:
+            continue
+        qpos = _pos3(qp)
+        if qpos is not None and math.dist(pos, qpos) <= r:
+            out.add(i)
+    return out
+
+
+def _tag_of(rec: dict) -> str:
+    """The portal tag a record carries, from its params or its meta."""
+    p, m = rec.get("params") or {}, rec.get("meta") or {}
+    for v in (p.get("tag"), (p.get("zdo_strings") or {}).get("tag"),
+              m.get("tag")):
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
+
+
+def live_portal_ends(records: list[dict]) -> dict[str, list[int]]:
+    """tag -> indices of the portal records still standing, in file order."""
+    dead: set[int] = set()
+    for i, r in enumerate(records):
+        if r["op"] == "retire":
+            dead |= {j for j in _retire_removes(r, records[:i])}
+    out: dict[str, list[int]] = {}
+    for i, r in enumerate(records):
+        if r["op"] != "portal" or i in dead:
+            continue
+        tag = _tag_of(r)
+        if tag:
+            out.setdefault(tag, []).append(i)
+    return out
+
+
+def live_signage_naming(records: list[dict], tag: str) -> list[dict]:
+    """Every standing sign this ledger records as naming `tag`.
+
+    A sign NAMES a tag when its own record says so (`meta.tag`, which the
+    guidepost emitter writes) or when the tag appears verbatim in the text
+    it was spawned with - which is what a player reads and therefore the
+    only other definition worth having.
+    """
+    dead: set[int] = set()
+    for i, r in enumerate(records):
+        if r["op"] == "retire":
+            dead |= {j for j in _retire_removes(r, records[:i])}
+    out = []
+    for i, r in enumerate(records):
+        if r["op"] != "spawn" or i in dead:
+            continue
+        p = r["params"]
+        if p.get("prefab") not in SIGNAGE_PREFABS:
+            continue
+        text = ((p.get("zdo_strings") or {}).get("text") or "")
+        if (r.get("meta") or {}).get("tag") == tag or tag in text:
+            out.append(dict(seq=r.get("seq"), file_index=i,
+                            pos=_pos3(p), text=text.splitlines()[:1]))
+    return out
+
+
 def _protected_discs(rec: dict) -> list[tuple]:
     """(x, z, radius) discs a protected structure actually occupies.
 
@@ -339,6 +589,62 @@ def _protected_discs(rec: dict) -> list[tuple]:
 
 
 _SPAWN_POS_RE = re.compile(r"^spawn_object\s+(\S+)\s+pos=([^\s,]+),([^\s,]+),")
+
+
+def parse_spawn_wire(text: str, declared: int | None = None
+                     ) -> list[tuple[str, float, float]] | None:
+    """`(prefab, x, z)` for every `spawn_object` in a wire or a plan blob, or
+    None when the text cannot be trusted to have been read WHOLE.
+
+    ONE READER OF THIS FORMAT, AND THE COUNT IS THE REASON IT IS ONE.
+    MEASURED on 2026-09-21, this tree held FOUR independent implementations of
+    "what did this record command", and THREE of them were wrong in the same
+    way - they matched an anchored pattern per LINE, and the wire is
+    SEMICOLON-PACKED:
+
+      `settlements`' declaration index      13,138 -> 24,351 placements (+11,213)
+      `structures::plan_commands`           226 of 421 records mis-sized
+      `writer::_protected_pieces`           21 of 289 blobs short; lh-north
+                                            read 3 of 64 PROTECTED pieces, 4.7%,
+                                            and that set gates every builder's
+                                            keep-out and the terrain-write guard
+      `network/verify_site.py`              same ceiling, cosmetic, named
+
+    A wire format with a packed form and a line-oriented reader grows a new
+    wrong copy every time somebody needs the answer somewhere else.  So this
+    is the reader; `roads/relight.py` and `accept/sections/structures.py` call
+    it, and anything that needs to parse a spawn wire calls it rather than
+    writing a fifth.
+
+    `declared` IS THE ACCOUNTING IDENTITY, not decoration: a record's own
+    `params.command_count` says how many commands it sent, so a parse that
+    does not produce that many has not read the text, and a short read must
+    never be able to look like a small body.  Passing it makes a disagreement
+    UNREADABLE (None) instead of quietly short; omitting it says the caller
+    has no declaration to check against and accepts what is there.
+
+    `pos=` IS z,x,y - `Parse::VectorZXYRange` - so field 0 is Z and field 1 is
+    X.  MEASURED twice independently (`to_rcon_plan.pos_arg`'s IL-read
+    docstring, and RoadBuild cross-checking three structures' plan fields
+    against their own `expect.prefab_count`), and it cannot be caught
+    downstream: swapping x and z for every point is an ISOMETRY, so every
+    distance, every cluster and every extent is unchanged by a transposed
+    read.  It has to be right here.
+    """
+    out: list[tuple[str, float, float]] = []
+    for raw in text.splitlines():
+        for cmd in raw.split(";"):
+            m = _SPAWN_POS_RE.match(cmd.strip())
+            if not m:
+                continue
+            try:
+                z, x = float(m.group(2)), float(m.group(3))
+            except ValueError:
+                continue
+            out.append((m.group(1), x, z))
+    if isinstance(declared, int) and declared > 0 and len(out) != declared:
+        return None
+    return out
 
 
 def _protected_pieces(rec: dict, ledger: "Ledger") -> list[tuple] | None:
@@ -364,6 +670,27 @@ def _protected_pieces(rec: dict, ledger: "Ledger") -> list[tuple] | None:
 
     Returns None when the pieces cannot be read, which the caller must treat
     as "cannot measure" rather than "nothing there".
+
+    AND THE EVIDENCE IS NOT ONLY IN THE BLOBS.  MEASURED on this chain
+    2026-09-22: EVERY `bridge_body_place` record -- 23 of them, every decked
+    crossing this project has ever built -- carries `requires.blobs: []` and a
+    `plan_sha256` of a blob NOBODY EVER STORED, because `boardwalk` hashes the
+    wire and hands the wire itself to `emit` inline.  `emit` persists it: the
+    record holds `wire` as a literal list of 48 `spawn_object` commands.  This
+    reader looked only at the blob store, found nothing, and returned None --
+    so `_flatten_forbidden_check` fell back to the record's BOUNDING DISC,
+    26.16 to 33.13 m, AND REFUSED EVERY LATER `terrain_write` INSIDE 2,150 TO
+    3,450 m2 PER BRIDGE.  Three of one agent's nineteen validated road repairs
+    were refused by that fallback tonight, one of them by a deck landed an hour
+    earlier, and on the trajectory that was permanent: NOTHING COULD EVER BE
+    GRADED NEAR ANY BRIDGE THIS PROJECT BUILDS.
+
+    Fail-closed was right.  The missing evidence was not, and it was never
+    missing -- it was in the record, in the field named `wire`, which is the
+    same text the blob would have held.  The record is chained, so its own
+    `wire` is no weaker a witness than a blob digest; and `command_count` is
+    asserted against it exactly as it is against a blob, so a short read is
+    still UNREADABLE rather than a small body.
     """
     p = rec.get("params", {})
     if rec.get("op") in ("spawn", "portal"):
@@ -373,19 +700,51 @@ def _protected_pieces(rec: dict, ledger: "Ledger") -> list[tuple] | None:
         return None
     shas = [p.get("plan_sha256")] + list(
         (rec.get("requires") or {}).get("blobs", []))
+    texts: list[str] = []
     for sha in [s for s in shas if s]:
         try:
-            text = ledger.read_blob(sha).decode("utf-8", "replace")
+            texts.append(ledger.read_blob(sha).decode("utf-8", "replace"))
         except LedgerError:
             continue
-        pts = []
-        for line in text.splitlines():
-            m = _SPAWN_POS_RE.match(line.strip())
-            if m:
-                try:
-                    pts.append((float(m.group(3)), float(m.group(2))))
-                except ValueError:
-                    continue
+    # THE RECORD'S OWN WIRE, LAST, so a stored blob still wins: the blob is
+    # content-addressed and the inline copy is not, and where both exist they
+    # are the same bytes by construction.
+    #
+    # `READ_RECORD_WIRE` exists so the gate's own case can put the defect
+    # BACK and be required to come out the other way.  It is never set False
+    # in production; a case that can only be shown to pass has not been shown
+    # to be a case.
+    inline = rec.get("wire") if READ_RECORD_WIRE else None
+    if isinstance(inline, list) and inline:
+        texts.append("\n".join(str(c) for c in inline))
+    for text in texts:
+        # SPLIT ON ';' BEFORE MATCHING, AND CHECK THE TOTAL.
+        #
+        # The blob is the literal command list and a command list is
+        # SEMICOLON-PACKED: MEASURED on this chain, 21 of 289 spawn_plan
+        # blobs pack many commands onto one line, and seq 2269-2284
+        # `lh-north` declares 64 commands that this reader saw as THREE
+        # because the pattern is `^`-anchored and was applied per line.  It
+        # returned 4.7% of the pieces of a body whose whole purpose here is
+        # to be the thing that must not move - and this function's own
+        # docstring is an argument for pieces OVER a disc on the grounds
+        # that the disc got all seven road segments wrong.  A reader that
+        # silently returns 3 of 64 is worse than the disc, because it looks
+        # like evidence.
+        #
+        # Same defect, same evening, in three separate readers of one wire
+        # format: `settlements`' declaration index (11,213 placements
+        # missing) and `structures`' plan reader.  `project.py::_commands`
+        # already split on ';' and was the one that was right.
+        # ONE READER, and the count asserted inside it: a blob that does not
+        # yield the number of commands its own record declared is UNREADABLE,
+        # and this function's contract already says None means "cannot
+        # measure" rather than "nothing there" - the safe direction for a
+        # guard that protects somebody else's building.
+        got = parse_spawn_wire(text, p.get("command_count"))
+        if got is None:
+            return None
+        pts = [(x, z) for _pf, x, z in got]
         if pts:
             return pts
     return None
@@ -594,6 +953,106 @@ class _DeltaField:
                     worst, at = d, (px, pz)
         return worst, at
 
+class _PriorDeltaField(_DeltaField):
+    """The applied delta that is ALREADY on the compiler, for the same zones
+    a `terrain_write` is about to replace.
+
+    WHY THIS EXISTS, AND IT IS A CORRECTION RATHER THAN A RELAXATION.
+    `_flatten_forbidden_check` says, in its own refusal text, that the write
+    "would move the ground by X m" at a protected piece.  It computed X as
+    the ABSOLUTE delta the new blob carries there.  Those are the same number
+    only when the protected piece stands on ground nobody has written.
+
+    MEASURED, 2026-09-19, the first time a write ever unioned a zone holding
+    a road lamp: `road_T8_stenvik_wttown`'s own earlier write put -1.5462 at
+    (812.5446, 741.55) and `Lampposts` seq 2221 then seated a lamp ON that
+    graded road.  A zone holds exactly ONE `_TerrainCompiler` and this op
+    deletes before it spawns, so any later write to zone (13,12) MUST union
+    T8's samples forward VERBATIM or destroy them -- `_zone_clobber_check`
+    requires exactly that.  The unioned blob therefore carries -1.5462 at the
+    lamp, identical to the bit, and the old test read that as "would move the
+    ground by 1.546 m" and refused.  The ground moves by 0.0000 m.  Two of
+    this project's own invariants were in direct contradiction and the road
+    that makes Ulfsgard reachable was the thing caught between them.
+
+    So the guard now measures the CHANGE: the new blob's delta at the piece
+    minus the delta the live compiler already holds there, composed from the
+    prior `terrain_write` records in FILE ORDER with later writers winning
+    per sample -- the same composition `roads/applied.py` documents and the
+    same one the game performs, restricted to the zones this record touches
+    because nothing outside them changes.
+
+    NOT A WEAKENING, and provable in both directions:
+      * a write that re-levels a protected piece's ground by any amount above
+        `FLATTEN_TOLERANCE_M` still refuses, because the difference is
+        non-zero;
+      * a write that carries the existing ground forward unchanged passes,
+        because the difference is zero;
+      * a first write over a protected piece on natural ground still refuses,
+        because the prior delta is 0 and the difference is the full delta.
+    An unreadable prior blob is still fatal: it lands in `unreadable` and the
+    caller refuses rather than assuming the ground was flat.
+    """
+
+    def __init__(self, ledger: "Ledger", rec: dict, prior: list[dict]):
+        want = {(int(e["zone"][0]), int(e["zone"][1]))
+                for e in rec["params"]["entries"]}
+        self.zones: dict[tuple, tuple] = {}
+        self.unreadable: set[tuple] = set()
+        # FILE ORDER, not seq: the chain forked at file line 47 and carries
+        # duplicate seq labels 43-46, so seq is not a total order on this
+        # artefact.  `prior` is already in file order.
+        for r in prior:
+            if r.get("op") != "terrain_write":
+                continue
+            for e in r["params"].get("entries", []):
+                key = (int(e["zone"][0]), int(e["zone"][1]))
+                if key not in want:
+                    continue
+                try:
+                    blob = ledger.read_blob(e["blob_sha256"])
+                except LedgerError:
+                    self.unreadable.add(key)
+                    continue
+                decoded = _decode_tcdata(blob)
+                if decoded is None:
+                    self.unreadable.add(key)
+                    continue
+                prev = self.zones.get(key)
+                if prev is None:
+                    self.zones[key] = (tuple(e["centre"]), decoded)
+                    continue
+                # Union per sample index, later writer wins -- which is what
+                # the live compiler holds.
+                (cx, cz), (pm, pl, ps) = prev
+                modified, level, smooth = decoded
+                pm = list(pm)
+                pl = list(pl)
+                ps = list(ps)
+                for k in range(len(modified)):
+                    if modified[k]:
+                        pm[k], pl[k], ps[k] = modified[k], level[k], smooth[k]
+                self.zones[key] = (tuple(e["centre"]), (pm, pl, ps))
+
+class _ChangeField(_DeltaField):
+    """How much a `terrain_write` MOVES the ground: new delta minus the
+    delta already on the compiler, at any world position.
+
+    Inherits `worst_delta_over_disc` unchanged, so the disc sweep and the
+    exact-piece probe both ask the corrected question with no second
+    implementation to drift.
+    """
+
+    def __init__(self, new: _DeltaField, prior: _DeltaField):
+        self._new = new
+        self._prior = prior
+        self.zones = new.zones
+        self.unreadable = set(new.unreadable) | set(prior.unreadable)
+
+    def delta_at(self, x: float, z: float) -> float:
+        return self._new.delta_at(x, z) - self._prior.delta_at(x, z)
+
+
 
 def _decode_tcdata(blob: bytes):
     """(modified_height[], level_delta[], smooth_delta[]) out of a gzip'd
@@ -664,6 +1123,41 @@ def _pad_footprint(rec: dict, prior_through: list[dict]) -> dict | None:
     the same site's sibling records, which do carry one: `objects_clear`'s
     `centre`, the body `spawn_plan`'s `anchor`/`pos`.  MEASURED on this
     ledger: all 50 pad writes resolve a position this way, 0 do not.
+
+    THE LAST SIBLING BEFORE THE WRITE, NOT THE FIRST, and reading it the
+    other way round put a TWELFTH of this world's pad footprints on ground
+    the building is not standing on.  A site that was NUDGED reserves its
+    first choice and then reserves again: `stenvik-cottage-2` has a
+    `zones_generate` at (484.7, 901.7) at seq 127 and a second at
+    (477.7, 902.7) at seq 260, and its pad write (seq 265), its
+    `objects_clear`, its `spawn_plan` and `settlements/placements/*.yaml` all
+    say the SECOND.  Scanning forward returned the ABANDONED first attempt.
+
+    MEASURED over this chain, claim centre against the position the site's
+    own `spawn_plan`/`objects_clear` records: 12 of 32 resolvable pads were
+    displaced, worst `tree-near-2` by 9.85 m, `stenvik-cottage-2` by 7.07 m,
+    `stenvik-hut-1` by 5.00 m.  Every consequence is the defect this file
+    keeps finding: the keep-out and this guard protected a rectangle nobody
+    built on (unwritten ground a road is refused and no pad will ever lay --
+    the annulus, displaced bodily), while the pad's REAL edge sat outside
+    every rectangle and was protected only by per-sample authorship.
+
+    AND IT MUST BE A RECORD ABOUT THE SITE, NOT ABOUT ONE THING IN IT.  Three
+    ops state where the SITE is -- `zones_generate` (the ground it reserved),
+    `objects_clear` (the cylinder it cleared) and `spawn_plan` (the body's
+    anchor).  `portal` and `spawn` state where ONE MEMBER is, and taking one
+    of those is how "the last sibling" alone gets the portal hall wrong: its
+    `objects_clear` (seq 764) and its `spawn_plan` (seq 802) both say
+    (-280.0, 216.0), and between them sit EIGHTEEN `portal` records, one per
+    arch around a 26 m ring.  The last of them, seq 800 at
+    (-271.279, 214.195), moved the hall's whole 37.4 x 37.4 m footprint 8.9 m
+    east -- off the very edge, (-298.7, 214.0), that this session's headline
+    defect is measured against.  So the scan is the LAST SITE-EXTENT RECORD
+    at or before the write, which is both rules at once and neither alone.
+
+    The last such sibling is the attempt the write belongs to, by
+    construction: a later attempt has not happened yet when the pad is
+    judged, and an abandoned earlier one has been superseded.
     """
     p = rec.get("params", {})
     if not _is_pad(p):
@@ -672,7 +1166,9 @@ def _pad_footprint(rec: dict, prior_through: list[dict]) -> dict | None:
     if not sid:
         return None
     pos = None
-    for r in prior_through:
+    for r in reversed(prior_through):
+        if r.get("op") not in _SITE_EXTENT_OPS:
+            continue
         rp = r.get("params", {})
         if rp.get("site_id") != sid:
             continue
@@ -789,9 +1285,18 @@ class Ledger:
     # -- construction ------------------------------------------------------
 
     @classmethod
-    def open(cls, world: str = "Ulfsland", *, actor: str,
+    def open(cls, world: str = "", *, actor: str,
              root: Path | None = None, manifest: dict | None = None,
              heavy_fingerprint: bool = True) -> "Ledger":
+        # LEDGER_ROOT_DEPENDS_ON: the world being written.  The default was
+        # the literal "Ulfsland", i.e. THE ONE UNTOUCHABLE WORLD IN THIS
+        # PROJECT sitting behind an omitted argument.  MEASURED 2026-09-24:
+        # 0 of the 23 `Ledger.open(` callsites in this tree omit the world,
+        # so the live exposure of this default is ZERO -- it is a trap that
+        # has not yet been stepped in, not a defect with a body.  Closed
+        # anyway, because the cost of the next caller writing
+        # `Ledger.open(actor=...)` is 26,619,627 bytes of quarantined chain.
+        world = world or worldseed.world()
         root = root or (RUNS / world)
         root.mkdir(parents=True, exist_ok=True)
         led = cls(root, actor)
@@ -1004,6 +1509,7 @@ class Ledger:
 
         if op == "terrain_write":
             bad += self._zone_clobber_check(rec, prior)
+            bad += self._reseat_debt_check(rec, prior)
             bad += self._flatten_forbidden_check(rec, prior)
             bad += self._pad_footprint_check(rec, prior)
 
@@ -1021,7 +1527,63 @@ class Ledger:
                     f"string equality and then draws Random.Range(0, count). "
                     f"Two ends per tag, no more.")
 
+        if op == "retire" and p.get("prefab") == PORTAL_PREFAB:
+            bad += self._signage_orphan_check(rec, prior)
+
         return bad
+
+    def _signage_orphan_check(self, rec: dict, prior: list[dict]) -> list[str]:
+        """No dropping a tag's last arch while its signpost still stands.
+
+        MEASURED, live on Ulfsland: seq 2510-2517 retired both ends of
+        u-treenear, u-wtsouth, u-wtspawn and u-wttown and left all four
+        guidepost boards standing, each still reading the tag it was
+        emitted with.  The boards' own spawn records carry `meta.tag`, so
+        the cascade was computable from this file at the moment of the drop
+        and no rule asked for it.
+
+        The predicate is the LAST END, not any end: a re-seat (seq 773-778
+        retired four hub ends and re-placed them at the same tags) leaves
+        the tag live and its board correct, and must not be refused.
+        """
+        p = rec["params"]
+        pos = _pos3(p)
+        if pos is None:
+            return []
+        # WHICH TAG THIS RECORD IS TAKING DOWN.  Its own meta first - the
+        # drop pass writes it - then the portal record standing at the
+        # position it names, because a retire that names only a position
+        # must still be answerable.
+        tag = _tag_of(rec)
+        removed = _retire_removes(rec, prior)
+        if not tag:
+            for i in sorted(removed):
+                if prior[i]["op"] == "portal":
+                    tag = _tag_of(prior[i])
+                    if tag:
+                        break
+        if not tag:
+            return []
+        ends = live_portal_ends(prior).get(tag, [])
+        remaining = [i for i in ends if i not in removed]
+        if remaining:
+            return []
+        boards = live_signage_naming(prior, tag)
+        if not boards:
+            return []
+        where = ", ".join(
+            f"{(b['text'] or [''])[0]!r} at "
+            f"({(b['pos'] or (0, 0, 0))[0]:.2f}, "
+            f"{(b['pos'] or (0, 0, 0))[2]:.2f}) seq {b['seq']}"
+            for b in boards)
+        return [
+            f"this retire takes the LAST live end of portal tag {tag!r} "
+            f"({len(ends)} end(s) known, {len(removed)} removed here, 0 "
+            f"left) while {len(boards)} sign(s) this ledger placed still "
+            f"NAME that tag: {where}.  A board pointing at an arch that is "
+            f"not there is a signpost to nowhere, and the gate's `portals` "
+            f"section refuses one per board.  Retire the signage in this "
+            f"same pass - or re-place the arch - and then drop the tag."]
 
     def _zone_clobber_check(self, rec: dict, prior: list[dict]) -> list[str]:
         """One zone holds one compiler, so the second write erases the first.
@@ -1067,6 +1629,100 @@ class Ledger:
                     f"and name them anyway if the overwrite is deliberate.")
         return bad
 
+    def _reseat_debt_check(self, rec: dict, prior: list[dict]) -> list[str]:
+        """A `reseats` declaration MUST name a live RESEAT claim, and nothing
+        else.
+
+        THE DISCHARGE IS THE ONLY WAY PAST A KEEP-OUT IN THIS FILE, so it is
+        the only thing worth forging, and every way of forging it is named
+        here rather than left to the next reader:
+
+          * naming a `FORBIDDEN` seq -- laundering a bridge pile into a
+            re-seatable lamp.  That is exactly the owner exception this
+            guard has never had and must not grow: a deck's keep-out
+            refuses its OWN owner, and that is the property that stopped a
+            deck burying its own tiles.
+          * naming a retired seq, or a seq that is not in the chain --
+            a promise about nothing, which reads as a discharge.
+          * naming a seq this write never touches -- harmless, and still
+            refused, because a declaration that is not about this write is
+            a habit that makes the honest ones unreadable.
+
+        Nothing is loosened by refusing these: a write with no `reseats`
+        key reaches `_flatten_forbidden_check` exactly as before.
+        """
+        declared = declared_reseats(rec)
+        if not declared:
+            return []
+        bad: list[str] = []
+        gone = retired_seqs(prior)
+        by_seq = {r.get("seq"): r for r in prior}
+        zones = {tuple(e["zone"]) for e in rec["params"]["entries"]}
+        for s in sorted(declared):
+            r = by_seq.get(s)
+            if r is None:
+                bad.append(
+                    f"terrain_write declares reseats={s}, and this chain has "
+                    f"no record at that seq. A discharge is the only thing "
+                    f"that gets a write past a keep-out; one that names "
+                    f"nothing is a promise about nothing.")
+                continue
+            if s in gone:
+                bad.append(
+                    f"terrain_write declares reseats={s}, which is RETIRED. "
+                    f"There is nothing standing there to re-seat, so this "
+                    f"declaration discharges a claim that no longer exists.")
+                continue
+            kind = keep_out_kind(r.get("params") or {})
+            if kind != "RESEAT":
+                bad.append(
+                    f"terrain_write declares reseats={s}, but seq {s} "
+                    f"({(r.get('params') or {}).get('role')}) declares "
+                    f"flatten={kind!r}, not RESEAT. Only a structure whose "
+                    f"claim is on its OWN SEATING may be discharged by a "
+                    f"promise to put it back; a FORBIDDEN keep-out protects "
+                    f"the GROUND -- cut the bed under a pile and no tool in "
+                    f"this tree puts the water back. There is no owner "
+                    f"exception here and this is not one.")
+                continue
+            if not self._keep_out_reaches(r, prior, zones):
+                bad.append(
+                    f"terrain_write declares reseats={s} "
+                    f"({(r.get('params') or {}).get('role')}), and no piece "
+                    f"or disc of that site reaches any zone this write "
+                    f"claims ({sorted(zones)}). A discharge that is not "
+                    f"about this write is noise, and noise is what makes "
+                    f"the honest declarations unreadable.")
+        return bad
+
+    def _keep_out_reaches(self, protected: dict, prior: list[dict],
+                          zones: set) -> bool:
+        """Does any piece or disc of `protected`'s SITE reach one of `zones`?
+
+        THE SAME TRIGGER `_flatten_forbidden_check` USES, and deliberately
+        the same function, so a discharge can never be about a site the
+        guard would not have asked about.  Zone-granular and cheap: no blob
+        is decoded, because this answers "is this declaration about this
+        write" and not "does this write move that ground".
+        """
+        import math
+        pieces, site_discs = _site_evidence(protected, prior, self)
+        discs = ([(px, pz, 0.0) for px, pz in pieces] if pieces
+                 else site_discs)
+        if not discs:
+            xz = _record_xz(protected.get("params") or {})
+            if xz is None:
+                return False
+            discs = [(float(xz[0]), float(xz[1]), 0.0)]
+        for dx, dz, _rad in discs:
+            zx = math.floor((float(dx) + 32.0) / 64.0)
+            zz = math.floor((float(dz) + 32.0) / 64.0)
+            if {(zx + i, zz + j) for i in range(-1, 2)
+                    for j in range(-1, 2)} & zones:
+                return True
+        return False
+
+
     def _flatten_forbidden_check(self, rec: dict, prior: list[dict]) -> list[str]:
         """No levelling under an over-water structure.
 
@@ -1098,8 +1754,57 @@ class Ledger:
         bad = []
         retired = retired_seqs(prior)
         forbidden = [r for r in prior
-                     if r["params"].get("flatten") == "FORBIDDEN"
+                     if keep_out_kind(r["params"]) is not None
                      and r["seq"] not in retired]
+        discharged = declared_reseats(rec)
+        # WHAT THIS GUARD ACTUALLY READ, recorded into the record itself.
+        #
+        # MEASURED by PeakFix / VestvikRoad / HarbourBuild-2, 2026-09-19: this
+        # function has TWO paths to a clean return and they were reported with
+        # the same silence.  Path (a): no FORBIDDEN record's extent reaches any
+        # zone this write touches, the `reach & zones` trigger at the bottom
+        # never fires, `field` is NEVER DECODED, and the guard returns []
+        # having measured nothing.  Path (b): the trigger fires, the change
+        # field is built and every piece and disc is probed, and the guard
+        # returns [] having measured something.  Both read as PASS.
+        #
+        # That ambiguity was not academic.  R3-n0bjunction-vestvik took path
+        # (a) -- 0 of 285 live FORBIDDEN records reach its zones -- and its
+        # clean return was quoted as evidence the write had been checked.  R4
+        # took path (b) with 25 triggers behind it.  Same word, two different
+        # facts.  And the failing direction is worse: an un-registered blob
+        # produces a REFUSAL naming an over-water structure the author has
+        # never heard of, which reads as a real violation.
+        #
+        # So the guard now states its population the way every other number in
+        # this project must: instrument, count, and what it looked at.  It is
+        # written into `rec["meta"]` because the record is the only place a
+        # reader will still have it a week from now, and because a verdict
+        # whose provenance lives in a transcript is a verdict without one.
+        by_kind: dict = {}
+        for r in forbidden:
+            k = keep_out_kind(r["params"]) or "?"
+            by_kind[k] = by_kind.get(k, 0) + 1
+        census = {"forbidden_live": len(forbidden), "reached_this_write": 0,
+                  "triggered_by_seq": [], "field_decoded": False,
+                  "keep_out_live_by_kind": dict(sorted(by_kind.items())),
+                  "reseats_declared": sorted(discharged),
+                  "reseats_honoured": [],
+                  "why": "reached_this_write is the number of live "
+                         "keep-out records whose readable extent "
+                         "touches a zone this write claims. 0 means this "
+                         "guard measured NOTHING and its pass is vacuous -- "
+                         "safe, but not evidence. Non-zero with "
+                         "field_decoded true means every one of those "
+                         "records' pieces and discs was probed against this "
+                         "write's own TCData. keep_out_live_by_kind splits "
+                         "them: FORBIDDEN is ground that must not move, "
+                         "RESEAT is a piece that must not be LEFT hanging "
+                         "and whose claim a write discharges by naming the "
+                         "seq in params.reseats -- see KEEP_OUT_KINDS."}
+        meta = rec.setdefault("meta", {})
+        if isinstance(meta, dict):
+            meta["flatten_guard"] = census
         if not forbidden:
             return bad
         zones = {tuple(e["zone"]) for e in rec["params"]["entries"]}
@@ -1107,6 +1812,25 @@ class Ledger:
 
         for r in forbidden:
             p = r["params"]
+            kind = keep_out_kind(p)
+            # A RESEAT CLAIM THIS WRITE HAS ACCEPTED IS DISCHARGED, AND
+            # NOTHING ELSE IS.  The write NAMED this seq in `params.reseats`,
+            # which is a recorded, chained promise to put the piece back on
+            # the surface it is about to create -- `roads/relight.py` is the
+            # tool that keeps it, and `_reseat_debt_check` refuses a
+            # declaration that names anything else.  This is NOT an owner
+            # exception: a deck declares FORBIDDEN and still refuses ITS OWN
+            # owner, which is the property that stopped a deck burying its
+            # own tiles and must not be re-opened.
+            # AND `READ_RESEAT_DISCHARGE` FALSE RESTORES THE OTHER HALF OF
+            # THE DEFECT: the claim is dropped outright and nothing has to be
+            # named, which is the shape a keep-out takes when it refuses
+            # nothing.  Never False in production.
+            if kind == "RESEAT" and (not READ_RESEAT_DISCHARGE
+                                     or r["seq"] in discharged):
+                if r["seq"] not in census["reseats_honoured"]:
+                    census["reseats_honoured"].append(r["seq"])
+                continue
             # PIECES FIRST: the disc is a bounding circle over a probe
             # radius, the pieces are what must not move, and both are already
             # recorded.  Fall back to the disc only when the pieces cannot be
@@ -1137,14 +1861,19 @@ class Ledger:
                 if (zx, zz) in zones:
                     bad.append(
                         f"terrain_write touches zone {[zx, zz]}, which holds "
-                        f"the over-water structure at seq {r['seq']} "
-                        f"({p.get('role')}) declared flatten=FORBIDDEN: "
+                        f"the protected structure at seq {r['seq']} "
+                        f"({p.get('role')}) declared flatten={kind}: "
                         f"{p.get('flatten_reason', 'no reason recorded')}. "
                         f"That record carries NO measurable extent (no "
                         f"`expect.prefab_count` with pos+max), so the precise "
                         f"test cannot run and the whole zone is refused. Add "
                         f"the structure's disc to its record to get a "
-                        f"footprint-granular answer.")
+                        f"footprint-granular answer."
+                        + ("" if kind != "RESEAT" else
+                           f" This is a RESEAT claim: it is dischargeable, "
+                           f"but not blind -- name seq {r['seq']} in "
+                           f"params.reseats only once its extent is readable "
+                           f"and you can put the pieces back."))
                 continue
 
             for disc in discs:
@@ -1156,8 +1885,19 @@ class Ledger:
                          for i in range(-1, 2) for j in range(-1, 2)}
                 if not (reach & zones):
                     continue
+                census["reached_this_write"] += 1
+                if r["seq"] not in census["triggered_by_seq"]:
+                    census["triggered_by_seq"].append(r["seq"])
                 if field is None:
-                    field = _DeltaField(self, rec)
+                    # THE CHANGE, NOT THE ABSOLUTE DELTA.  The refusal below
+                    # says "would move the ground by"; this is the field that
+                    # actually measures that.  See `_PriorDeltaField` for the
+                    # measurement that forced the correction -- a union that
+                    # carries -1.5462 forward to the bit under a lamp moves
+                    # the ground by 0.0000 m and used to be refused as 1.546.
+                    field = _ChangeField(_DeltaField(self, rec),
+                                         _PriorDeltaField(self, rec, prior))
+                    census["field_decoded"] = True
                 blind = field.unreadable & reach
                 if blind:
                     bad.append(
@@ -1168,7 +1908,17 @@ class Ledger:
                         f"the applied height change inside its "
                         f"{radius:.1f} m footprint is UNKNOWN. Refusing "
                         f"rather than assuming zero -- an unreadable blob is "
-                        f"not a flat one.")
+                        f"not a flat one. WHAT THIS GUARD READ: "
+                        f"{census['reached_this_write']} of "
+                        f"{census['forbidden_live']} live FORBIDDEN records "
+                        f"reach this write's zones; the unreadable bytes are "
+                        f"THIS record's own, named in "
+                        f"entries[].blob_sha256. MEASURED cause on two of "
+                        f"three occurrences: the blobs were not yet in the "
+                        f"store. Register them with `Ledger.blob` BEFORE "
+                        f"pre-flighting this guard -- a refusal that names a "
+                        f"structure you have never heard of is usually this, "
+                        f"not a violation.")
                     continue
                 if radius <= 0.0:
                     # A piece: probe it exactly. `delta_at` is the bilinear
@@ -1178,20 +1928,40 @@ class Ledger:
                 else:
                     worst, at = field.worst_delta_over_disc(dx, dz, radius)
                 if worst > FLATTEN_TOLERANCE_M:
-                    bad.append(
-                        f"terrain_write would move the ground by {worst:.3f} m "
-                        f"at ({at[0]:.1f}, {at[1]:.1f}), "
-                        + (f"AT A PIECE of the over-water structure "
-                           if radius <= 0.0 else
-                           f"inside the {radius:.1f} m footprint of the "
-                           f"over-water structure ") +
-                        f"at seq {r['seq']} ({p.get('role')}) declared "
-                        f"flatten=FORBIDDEN: "
-                        f"{p.get('flatten_reason', 'no reason recorded')}. "
-                        f"Levelling there removes the water the structure "
-                        f"stands over -- the early-dock defect. Move the "
-                        f"route, or stop writing samples inside that disc; "
-                        f"there is no flag that waives this.")
+                    where = (f"terrain_write would move the ground by "
+                             f"{worst:.3f} m at ({at[0]:.1f}, {at[1]:.1f}), "
+                             + (f"AT A PIECE of the protected structure "
+                                if radius <= 0.0 else
+                                f"inside the {radius:.1f} m footprint of the "
+                                f"protected structure ") +
+                             f"at seq {r['seq']} ({p.get('role')}) declared "
+                             f"flatten={kind}: "
+                             f"{p.get('flatten_reason', 'no reason recorded')}. ")
+                    if kind == "RESEAT":
+                        # DISCHARGEABLE, AND THE REFUSAL SAYS HOW.  The claim
+                        # is on the PIECE's seating, not on the ground, so it
+                        # is answered by putting the piece back -- and the
+                        # write must SAY SO, in the chain, before it lands.
+                        bad.append(
+                            where +
+                            f"That is a RESEAT claim: what this structure "
+                            f"owns is its own SEATING, not this ground, and "
+                            f"a cut here leaves it hanging {worst:.3f} m in "
+                            f"the air. Discharge it -- put `{r['seq']}` in "
+                            f"this write's `params.reseats` and re-seat the "
+                            f"pieces afterwards (roads/relight.py retires "
+                            f"and re-spawns lamps as one recorded "
+                            f"operation). Declaring it without re-seating "
+                            f"leaves a floating piece the structures "
+                            f"grounding census will find.")
+                    else:
+                        bad.append(
+                            where +
+                            f"Levelling there removes the water the "
+                            f"structure stands over -- the early-dock "
+                            f"defect. Move the route, or stop writing "
+                            f"samples inside that disc; there is no flag "
+                            f"that waives this.")
         return bad
 
     def _pad_footprint_check(self, rec: dict, prior: list[dict]) -> list[str]:
@@ -1423,24 +2193,52 @@ class Ledger:
         if bad:
             return bad
 
-        # A PAD'S FOOTPRINT IS ITS RECTANGLE **OR** THE GROUND IT ITSELF
-        # LEVELLED, WHICHEVER IS WIDER, and the second half is not redundant.
+        # A PAD'S FOOTPRINT IS THE GROUND IT ITSELF LEVELLED -- and the
+        # DECLARED RECTANGLE only for a pad that has levelled NOTHING.
+        #
         # MEASURED on this ledger, per pad, over each pad's own AUTHORED
         # samples: `stenvik-stonehouse-1` seq 272 authored 165 and only 60 of
         # them are inside its 11.0 x 15.0 m rectangle; `wt-town` seq 387
         # authored 17 outside its 20 x 20; the portal hall authored 1,349,
-        # all inside its 37.4 x 37.4, reaching 25.5 m from the centre -- so
-        # the pad does fill its corners and the rectangle is the right SHAPE,
-        # not a disc.  A pad levels its rectangle AND feathers past it, so a
-        # rectangle-only test misses a third of what the pad laid, and "a
-        # pad's written extent is not its nominal radius" is what the T4
-        # clobber cost to learn.  The rectangle catches ground the pad owns
-        # and has not levelled yet; the levelled set catches ground it
-        # levelled outside its rectangle.  Neither contains the other.
+        # all inside its 37.4 x 37.4, reaching 25.5 m from the centre.  A pad
+        # levels its rectangle AND feathers past it, so the levelled set is
+        # the wider half where it matters and "a pad's written extent is not
+        # its nominal radius" is what the T4 clobber cost to learn.
+        #
+        # THE OTHER HALF -- "the rectangle catches ground the pad owns and
+        # has not levelled yet" -- WAS THE UNWRITTEN ANNULUS, and it is
+        # removed here.  `_pad_footprint` half-extents are
+        # `pad_w / 2 + apron_m`, strictly wider than what any pad writes:
+        # MEASURED over this chain, 21,666 lattice samples lie inside the 58
+        # live pad rectangles and 3,564 have never been levelled by any pad
+        # (1,355 in `sudrberg-keep`, 666 of `stenvik-hall-1`'s 676).  This
+        # guard refused a road those samples and the pad never wrote them, so
+        # no participant could repair them -- the pit at (-299, 214) beside
+        # the portal hall is one, and it cost 28 of 28 portal destinations.
+        # There is no floor on ground nobody levelled, so there is no floor
+        # to regrade; a PIECE standing there is protected by the piece gates,
+        # which measure the piece instead of a rectangle it sits in.
+        # `ribbon.PadKeepOut` applies the identical rule, so the rasteriser
+        # and this guard cannot disagree about what a foundation is.
+        #
+        # "LEVELLED NOTHING" IS ASKED OF THE PAD'S OWN RECORD, not of the
+        # samples this write happens to hold.  `pad_authored` is scoped to
+        # `ours`, so a pad whose floor lies just outside this write would
+        # read as unlaid and its rectangle would gate again -- the annulus,
+        # reintroduced as a neighbourhood artefact.
+        laid_sites: set[str] = set()
+        for q in near:
+            rp = prior[q["file_line"]]["params"]
+            for e in rp.get("entries", []):
+                got = _entry_samples(e, self)
+                if got:
+                    laid_sites.add(q["site_id"])
+                    break
         hits: dict[str, list] = {}
         for (sx, sz), (lvl, sm) in ours.items():
             guards = [q for q in near
-                      if abs(sx - q["x"]) <= q["hw"]
+                      if q["site_id"] not in laid_sites
+                      and abs(sx - q["x"]) <= q["hw"]
                       and abs(sz - q["z"]) <= q["hd"]]
             for line, laid in pad_authored.items():
                 q = pad_lines[line]
@@ -1583,25 +2381,66 @@ class Ledger:
         }
 
 
+def require_run_scope(root: Path, world: str | None = None,
+                      seed: str | None = None) -> dict:
+    """REFUSE a ledger run whose seq-0 manifest is not this run's world/seed.
+
+    THE LEDGER DECLARES ITS OWN SCOPE AND NOBODY READ IT.  Seq 0 is the
+    `world_manifest`, written for exactly this reason -- its own `meta.why`
+    says "seq 0 pins the world and the environment; replay refuses on mismatch
+    rather than substituting" -- and it carries `world`, `seed` (the numeric
+    hash) and `seed_name`.  `replay.py` honours it; every OTHER reader took the
+    run directory's NAME as the answer, and `--root` bypasses the name
+    entirely.
+
+    So the declaration is read here, by the one function, and compared against
+    the run's resolved pair.  An empty or unreadable run is not refused: there
+    is no declaration yet to disagree with, and `Ledger.open` writes seq 0 on
+    first use.
+    """
+    path = Path(root) / "ledger.jsonl"
+    if not path.is_file() or path.stat().st_size == 0:
+        return {}
+    with path.open("r", encoding="utf-8") as fh:
+        first = fh.readline()
+    try:
+        rec = json.loads(first)
+    except ValueError:
+        return {}
+    if rec.get("op") != "world_manifest":
+        return {}
+    params = rec.get("params") or {}
+    return worldseed.require_scope(
+        "ledger run", path,
+        found_seed=params.get("seed_name"), found_world=params.get("world"),
+        seed_=seed, world_=world,
+        produced_by="ledger/writer.py Ledger.open (seq 0 world_manifest)")
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("op", choices=["spec", "fingerprint", "verify", "report"])
-    ap.add_argument("--world", default="Ulfsland")
+    worldseed.add_arguments(ap)
     ap.add_argument("--root")
     ap.add_argument("--light", action="store_true",
                     help="fingerprint without hashing the plugin DLLs")
     args = ap.parse_args()
+    seed, world = worldseed.apply(args)
 
     if args.op == "spec":
         print(schema.describe())
         return 0
     if args.op == "fingerprint":
-        print(json.dumps(fingerprint(args.world, heavy=not args.light),
+        print(json.dumps(fingerprint(world, heavy=not args.light),
                          indent=1)[:4000])
         return 0
 
-    root = Path(args.root) if args.root else RUNS / args.world
+    root = Path(args.root) if args.root else RUNS / world
+    # BEFORE the chain is opened, and it matters most with `--root`: that flag
+    # detaches the run from the directory name, so the name can no longer be
+    # even a weak claim about which world these records belong to.
+    require_run_scope(root, world, seed)
     led = Ledger(root, actor="cli")
     if args.op == "verify":
         # `led.seq` is the LAST LINE's seq LABEL, and after a fork that label

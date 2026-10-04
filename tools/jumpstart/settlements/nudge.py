@@ -65,6 +65,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import build as B  # noqa: E402
+import worldseed  # noqa: E402  (on sys.path through build)
 import clearance  # noqa: E402
 import terrain1m as T  # noqa: E402
 
@@ -91,7 +92,7 @@ SIBLING_MARGIN_M = 2.0
 
 
 def ledger_records() -> list[dict]:
-    path = B.JUMPSTART / "ledger/runs/Ulfsland/ledger.jsonl"
+    path = worldseed.ledger_path()   # THIS run's world, at call time
     return [json.loads(line) for line in path.read_text().splitlines()]
 
 
@@ -393,7 +394,8 @@ def main() -> int:
     ap.add_argument("op", choices=["solve", "accept"])
     ap.add_argument("--site", default="stenvik")
     ap.add_argument("--units", default="")
-    ap.add_argument("--plan-json", default=str(HERE / "plan.json"))
+    ap.add_argument("--plan-json", default=None,
+                    help="default: THIS seed's plan (worldseed.plan_path)")
     ap.add_argument("--shortlist", type=int, default=120,
                     help="offline-legal cells collected per pad before the "
                          "live census starts choosing")
@@ -406,7 +408,7 @@ def main() -> int:
     ap.add_argument("--actor", default="SiteFinish")
     a = ap.parse_args()
 
-    plan_path = Path(a.plan_json)
+    plan_path = Path(a.plan_json) if a.plan_json else worldseed.plan_path()
     plan = json.loads(plan_path.read_text())
     records = ledger_records()
     built = built_units(records)
@@ -414,7 +416,7 @@ def main() -> int:
                          else refused_units(records)) if u]
     units = [u for u in units if u.startswith(a.site)]
     fields = T.load(plan["patch_file"])
-    loc = clearance.load(B.LOCATIONS)
+    loc = clearance.load(B.locations_dump(plan))
     standing = standing_rects(plan, a.site, built)
 
     report = {"site": a.site, "standing": [s["id"] for s in standing],

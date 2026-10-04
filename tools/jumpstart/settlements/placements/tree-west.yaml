@@ -1,4 +1,4 @@
-world: Ulfsland
+world: Fresh42
 settlement: tree-west
 placements:
 - id: tree-west-1
@@ -15,22 +15,22 @@ placements:
     - 16.0
     - 16.0
   solved:
-    seed: Pirate68
-    x: -509.7
-    z: 857.3
-    y: 40.82
+    seed: Fresh42
+    x: -241.8
+    z: 816.5
+    y: 35.19
     footprint_orientation: 16 m along x by 16 m along z
     flatten_cost:
-      target_y: 40.82
+      target_y: 35.19
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 46.2
-    nearest_location: Greydwarf_camp1
-    nearest_location_standoff_m: 22.0
+    nearest_location_m: 71.8
+    nearest_location: Runestone_Greydwarfs
+    nearest_location_standoff_m: 20.0
   settlement:
     site: tree-west
     role: treehouse
-    patch: westisle
+    patch: trunk-primary
 - id: tree-west-2
   blueprint: hs_meadows_stilt_house.blueprint
   sha256: 9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4
@@ -45,22 +45,22 @@ placements:
     - 16.0
     - 16.0
   solved:
-    seed: Pirate68
-    x: -518.0
-    z: 844.3
-    y: 40.83
+    seed: Fresh42
+    x: -248.1
+    z: 813.5
+    y: 35.19
     footprint_orientation: 16 m along x by 16 m along z
     flatten_cost:
-      target_y: 40.83
+      target_y: 35.19
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 51.7
-    nearest_location: Greydwarf_camp1
-    nearest_location_standoff_m: 22.0
+    nearest_location_m: 71.1
+    nearest_location: TrollCave02
+    nearest_location_standoff_m: 47.77000045776367
   settlement:
     site: tree-west
     role: treehouse
-    patch: westisle
+    patch: trunk-primary
 - id: tree-west-3
   blueprint: hs_meadows_stilt_house.blueprint
   sha256: 9c6dfa5c6ec774307420eda9b145bc252b742efbd58a3c0a5fce34e94fd215a4
@@ -75,19 +75,19 @@ placements:
     - 16.0
     - 16.0
   solved:
-    seed: Pirate68
-    x: -512.3
-    z: 840.4
-    y: 40.83
+    seed: Fresh42
+    x: -242.4
+    z: 809.6
+    y: 35.19
     footprint_orientation: 16 m along x by 16 m along z
     flatten_cost:
-      target_y: 40.83
+      target_y: 35.19
       resolution_m: 1.0
       estimated: false
-    nearest_location_m: 45.9
-    nearest_location: Greydwarf_camp1
-    nearest_location_standoff_m: 22.0
+    nearest_location_m: 67.6
+    nearest_location: Runestone_Greydwarfs
+    nearest_location_standoff_m: 20.0
   settlement:
     site: tree-west
     role: treehouse
-    patch: westisle
+    patch: trunk-primary

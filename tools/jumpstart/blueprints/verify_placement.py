@@ -192,6 +192,11 @@ class Listing:
 
 
 def plan_rows(path: Path) -> list[tuple[str, float, float, float, float]]:
+    """(prefab, x, y, z, yaw) per `spawn_object` line of the plan file."""
+    return plan_text_rows(path.read_text("utf-8"))
+
+
+def plan_text_rows(text: str) -> list[tuple[str, float, float, float, float]]:
     """(prefab, x, y, z, yaw) per `spawn_object` line.
 
     `pos=` is z,x,y (`Parse::VectorZXYRange`) and `rot=` is euler y,x,z
@@ -200,7 +205,7 @@ def plan_rows(path: Path) -> list[tuple[str, float, float, float, float]]:
     positionally as x,y,z silently swaps axes, so both are unpacked by name.
     """
     out = []
-    for line in path.read_text("utf-8").splitlines():
+    for line in text.splitlines():
         parts = line.split()
         if len(parts) < 2 or parts[0] != "spawn_object":
             continue
