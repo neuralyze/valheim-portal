@@ -1,0 +1,6 @@
+spawn_object wood_floor pos=681,1117,30.5031 rot=0,0,0 from=0,0,0
+spawn_object wood_floor pos=683,1117,30.5031 rot=0,0,0 from=0,0,0
+spawn_object wood_floor pos=685,1117,30.5031 rot=0,0,0 from=0,0,0
+spawn_object wood_floor pos=681,1119,30.5031 rot=0,0,0 from=0,0,0
+spawn_object wood_floor pos=683,1119,30.5031 rot=0,0,0 from=0,0,0
+spawn_object wood_floor pos=685,1119,30.5031 rot=0,0,0 from=0,0,0

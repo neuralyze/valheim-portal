@@ -1,0 +1,1607 @@
+{
+ "prefabs_asked": [
+  "piece_groundtorch_wood",
+  "piece_groundtorch",
+  "piece_groundtorch_green",
+  "piece_groundtorch_blue"
+ ],
+ "prefabs_found": [
+  "piece_groundtorch",
+  "piece_groundtorch_wood"
+ ],
+ "cells": 58,
+ "cell_m": 512.0,
+ "reach_m": 300.0,
+ "socket_calls": 256,
+ "unlisted": [],
+ "lamps": [
+  {
+   "prefab": "piece_groundtorch",
+   "id": "39685:1",
+   "x": -309.58,
+   "y": 32.96,
+   "z": 219.98,
+   "segment": "S1-portalhub-brgs2",
+   "station_m": 19.0,
+   "lat_m": 2.546
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "14086:1",
+   "x": -286.6,
+   "y": 33.44,
+   "z": -116.08,
+   "segment": "S12-brgs1-boathouse",
+   "station_m": 59.73,
+   "lat_m": 1.355
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "160245:1",
+   "x": 620.17,
+   "y": 40.37,
+   "z": 956.8,
+   "segment": "S2-stathub-eastlobe",
+   "station_m": 191.86,
+   "lat_m": 20.527
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "137132:1",
+   "x": 494.51,
+   "y": 82.61,
+   "z": 444.91,
+   "segment": "S4-meadhall-southeast",
+   "station_m": 229.25,
+   "lat_m": 2.546
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "28701:1",
+   "x": -19.83,
+   "y": 58.07,
+   "z": -85.15,
+   "segment": "S5-temple-southcape",
+   "station_m": 123.97,
+   "lat_m": 0.721
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "97604:1",
+   "x": 541.33,
+   "y": 33.17,
+   "z": 1115.45,
+   "segment": "S7-stathub-wtnorth",
+   "station_m": 130.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "97503:1",
+   "x": 469.2,
+   "y": 34.9,
+   "z": 1095.45,
+   "segment": "S7-stathub-wtnorth",
+   "station_m": 210.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "97415:1",
+   "x": 389.2,
+   "y": 40.2,
+   "z": 1095.45,
+   "segment": "S7-stathub-wtnorth",
+   "station_m": 290.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "97207:1",
+   "x": 333.2,
+   "y": 37.42,
+   "z": 1095.45,
+   "segment": "S7-stathub-wtnorth",
+   "station_m": 346.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "98401:1",
+   "x": 265.34,
+   "y": 34.12,
+   "z": 1121.05,
+   "segment": "S7-stathub-wtnorth",
+   "station_m": 422.0,
+   "lat_m": 2.553
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "98237:1",
+   "x": 218.54,
+   "y": 32.13,
+   "z": 1175.85,
+   "segment": "S7-stathub-wtnorth",
+   "station_m": 496.0,
+   "lat_m": 2.553
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "101043:1",
+   "x": 173.77,
+   "y": 33.61,
+   "z": 1195.45,
+   "segment": "S7-stathub-wtnorth",
+   "station_m": 551.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "122344:1",
+   "x": 495.39,
+   "y": 81.84,
+   "z": 99.01,
+   "segment": "S8-wtsouth-treesth",
+   "station_m": 82.0,
+   "lat_m": 2.546
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "122345:1",
+   "x": 481.45,
+   "y": 77.45,
+   "z": 150.45,
+   "segment": "S8-wtsouth-treesth",
+   "station_m": 137.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "125284:1",
+   "x": 481.45,
+   "y": 81.42,
+   "z": 192.45,
+   "segment": "S8-wtsouth-treesth",
+   "station_m": 179.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "128132:1",
+   "x": 481.45,
+   "y": 78.14,
+   "z": 250.45,
+   "segment": "S8-wtsouth-treesth",
+   "station_m": 237.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "130971:1",
+   "x": 473.45,
+   "y": 82.73,
+   "z": 312.39,
+   "segment": "S8-wtsouth-treesth",
+   "station_m": 302.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "131182:1",
+   "x": 485.45,
+   "y": 83.09,
+   "z": 345.71,
+   "segment": "S8-wtsouth-treesth",
+   "station_m": 340.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "133475:1",
+   "x": 485.45,
+   "y": 85.73,
+   "z": 377.71,
+   "segment": "S8-wtsouth-treesth",
+   "station_m": 372.0,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "133476:1",
+   "x": 480.97,
+   "y": 86.98,
+   "z": 409.48,
+   "segment": "S8-wtsouth-treesth",
+   "station_m": 407.44,
+   "lat_m": 2.51
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "137133:1",
+   "x": 512.12,
+   "y": 79.74,
+   "z": 469.73,
+   "segment": "S8-wtsouth-treesth",
+   "station_m": 479.0,
+   "lat_m": 2.553
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "43357:1",
+   "x": -281.34,
+   "y": 42.12,
+   "z": 168.25,
+   "segment": "T1-portalhub-temple",
+   "station_m": 89.81,
+   "lat_m": 3.406
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "36952:1",
+   "x": -279.12,
+   "y": 42.34,
+   "z": 134.14,
+   "segment": "T1-portalhub-temple",
+   "station_m": 164.44,
+   "lat_m": 1.725
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "34870:1",
+   "x": -259.01,
+   "y": 46.12,
+   "z": 77.99,
+   "segment": "T1-portalhub-temple",
+   "station_m": 256.4,
+   "lat_m": 3.521
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "35109:1",
+   "x": -221.61,
+   "y": 51.35,
+   "z": 60.26,
+   "segment": "T1-portalhub-temple",
+   "station_m": 329.7,
+   "lat_m": 3.338
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "35110:1",
+   "x": -192.47,
+   "y": 52.9,
+   "z": 36.56,
+   "segment": "T1-portalhub-temple",
+   "station_m": 417.36,
+   "lat_m": 0.47
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "33468:1",
+   "x": -180.55,
+   "y": 57.59,
+   "z": -20.26,
+   "segment": "T1-portalhub-temple",
+   "station_m": 489.17,
+   "lat_m": 3.45
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "17561:1",
+   "x": -117.49,
+   "y": 62.68,
+   "z": -53.37,
+   "segment": "T1-portalhub-temple",
+   "station_m": 568.88,
+   "lat_m": 3.37
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "17694:1",
+   "x": -83.76,
+   "y": 65.76,
+   "z": -64.73,
+   "segment": "T1-portalhub-temple",
+   "station_m": 635.8,
+   "lat_m": 3.542
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "17695:1",
+   "x": -60.18,
+   "y": 66.24,
+   "z": -46.82,
+   "segment": "T1-portalhub-temple",
+   "station_m": 685.56,
+   "lat_m": 0.707
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "17696:1",
+   "x": -57.1,
+   "y": 68.06,
+   "z": -37.92,
+   "segment": "T1-portalhub-temple",
+   "station_m": 706.56,
+   "lat_m": 0.08
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "27042:1",
+   "x": 171.91,
+   "y": 77.57,
+   "z": -106.45,
+   "segment": "T10-wtspawn-wtsouth",
+   "station_m": 77.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "27212:1",
+   "x": 251.91,
+   "y": 79.47,
+   "z": -106.45,
+   "segment": "T10-wtspawn-wtsouth",
+   "station_m": 157.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "116001:1",
+   "x": 351.97,
+   "y": 80.89,
+   "z": -13.01,
+   "segment": "T10-wtspawn-wtsouth",
+   "station_m": 317.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "116166:1",
+   "x": 420.89,
+   "y": 79.16,
+   "z": 21.55,
+   "segment": "T10-wtspawn-wtsouth",
+   "station_m": 397.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "119283:1",
+   "x": 510.03,
+   "y": 79.39,
+   "z": 41.55,
+   "segment": "T10-wtspawn-wtsouth",
+   "station_m": 506.93,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "119284:1",
+   "x": 520.45,
+   "y": 82.83,
+   "z": 47.24,
+   "segment": "T10-wtspawn-wtsouth",
+   "station_m": 537.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "119282:1",
+   "x": 490.01,
+   "y": 77.81,
+   "z": 41.03,
+   "segment": "T11-wtsouth-wtspawn",
+   "station_m": 81.7,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "29729:1",
+   "x": 293.75,
+   "y": 83.3,
+   "z": -63.5,
+   "segment": "T11-wtsouth-wtspawn",
+   "station_m": 321.3,
+   "lat_m": 3.4
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "28885:1",
+   "x": 45.85,
+   "y": 68.05,
+   "z": -40.87,
+   "segment": "T12-wtspawn-temple",
+   "station_m": 90.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "115155:1",
+   "x": 19.18,
+   "y": 69.81,
+   "z": 1.65,
+   "segment": "T12-wtspawn-temple",
+   "station_m": 142.15,
+   "lat_m": 0.827
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "115159:1",
+   "x": 15.33,
+   "y": 69.81,
+   "z": 1.78,
+   "segment": "T12-wtspawn-temple",
+   "station_m": 150.99,
+   "lat_m": 0.629
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "17697:1",
+   "x": -38.12,
+   "y": 58.42,
+   "z": -78.97,
+   "segment": "T13-temple-harboursouth",
+   "station_m": 82.33,
+   "lat_m": 2.332
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "14761:1",
+   "x": -43.93,
+   "y": 51.18,
+   "z": -121.55,
+   "segment": "T13-temple-harboursouth",
+   "station_m": 178.14,
+   "lat_m": 0.411
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "14762:1",
+   "x": -40.29,
+   "y": 44.84,
+   "z": -152.69,
+   "segment": "T13-temple-harboursouth",
+   "station_m": 250.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "11072:1",
+   "x": -37.75,
+   "y": 37.22,
+   "z": -197.54,
+   "segment": "T13-temple-harboursouth",
+   "station_m": 342.44,
+   "lat_m": 1.916
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "22324:1",
+   "x": -11.76,
+   "y": 34.54,
+   "z": -225.22,
+   "segment": "T13-temple-harboursouth",
+   "station_m": 385.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "22321:1",
+   "x": -7.45,
+   "y": 31.25,
+   "z": -273.49,
+   "segment": "T13-temple-harboursouth",
+   "station_m": 442.31,
+   "lat_m": 24.864
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "22322:1",
+   "x": 9.52,
+   "y": 31.25,
+   "z": -256.52,
+   "segment": "T13-temple-harboursouth",
+   "station_m": 442.31,
+   "lat_m": 2.888
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "115157:1",
+   "x": -28.45,
+   "y": 69.07,
+   "z": -29.64,
+   "segment": "T3-temple-meadhall",
+   "station_m": 33.02,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "115156:1",
+   "x": -14.95,
+   "y": 67.51,
+   "z": -14.28,
+   "segment": "T3-temple-meadhall",
+   "station_m": 81.88,
+   "lat_m": 1.339
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "115158:1",
+   "x": -11.28,
+   "y": 67.51,
+   "z": -10.07,
+   "segment": "T3-temple-meadhall",
+   "station_m": 94.71,
+   "lat_m": 0.72
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "115247:1",
+   "x": 60.68,
+   "y": 73.59,
+   "z": -19.21,
+   "segment": "T3-temple-meadhall",
+   "station_m": 245.06,
+   "lat_m": 0.375
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "115248:1",
+   "x": 80.45,
+   "y": 78.19,
+   "z": 17.42,
+   "segment": "T3-temple-meadhall",
+   "station_m": 317.44,
+   "lat_m": 3.499
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "117848:1",
+   "x": 112.1,
+   "y": 79.1,
+   "z": 42.92,
+   "segment": "T3-temple-meadhall",
+   "station_m": 416.39,
+   "lat_m": 3.408
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "121193:1",
+   "x": 147.22,
+   "y": 78.11,
+   "z": 102.24,
+   "segment": "T3-temple-meadhall",
+   "station_m": 490.01,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "124144:1",
+   "x": 180.45,
+   "y": 81.01,
+   "z": 165.77,
+   "segment": "T3-temple-meadhall",
+   "station_m": 570.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "127244:1",
+   "x": 204.15,
+   "y": 85.02,
+   "z": 239.11,
+   "segment": "T3-temple-meadhall",
+   "station_m": 649.47,
+   "lat_m": 3.507
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "130382:1",
+   "x": 244.8,
+   "y": 79.74,
+   "z": 303.82,
+   "segment": "T3-temple-meadhall",
+   "station_m": 730.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "130383:1",
+   "x": 267.03,
+   "y": 78.26,
+   "z": 350.05,
+   "segment": "T3-temple-meadhall",
+   "station_m": 785.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "132852:1",
+   "x": 286.33,
+   "y": 80.15,
+   "z": 373.35,
+   "segment": "T3-temple-meadhall",
+   "station_m": 816.01,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "133070:1",
+   "x": 373.35,
+   "y": 83.69,
+   "z": 369.55,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 77.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "133071:1",
+   "x": 406.42,
+   "y": 86.21,
+   "z": 389.41,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 117.97,
+   "lat_m": 3.41
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "133244:1",
+   "x": 432.94,
+   "y": 85.54,
+   "z": 403.97,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 153.0,
+   "lat_m": 3.557
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "136802:1",
+   "x": 462.64,
+   "y": 82.72,
+   "z": 433.66,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 194.99,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "137134:1",
+   "x": 492.34,
+   "y": 80.1,
+   "z": 463.36,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 237.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "140203:1",
+   "x": 507.89,
+   "y": 80.65,
+   "z": 498.89,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 278.67,
+   "lat_m": 3.536
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "140204:1",
+   "x": 535.18,
+   "y": 81.45,
+   "z": 530.2,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 321.01,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "143367:1",
+   "x": 544.45,
+   "y": 80.35,
+   "z": 565.51,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 363.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "143084:1",
+   "x": 536.57,
+   "y": 77.55,
+   "z": 600.41,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 404.01,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "145935:1",
+   "x": 518.64,
+   "y": 79.89,
+   "z": 633.55,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 455.88,
+   "lat_m": 1.509
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "145936:1",
+   "x": 533.17,
+   "y": 78.11,
+   "z": 645.27,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 492.83,
+   "lat_m": 0.311
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "145937:1",
+   "x": 515.21,
+   "y": 76.17,
+   "z": 665.77,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 530.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "148493:1",
+   "x": 516.85,
+   "y": 69.74,
+   "z": 705.55,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 610.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "148752:1",
+   "x": 546.02,
+   "y": 68.83,
+   "z": 729.53,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 689.6,
+   "lat_m": 3.53
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "152054:1",
+   "x": 576.16,
+   "y": 63.34,
+   "z": 750.45,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 774.7,
+   "lat_m": 0.716
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "152055:1",
+   "x": 553.31,
+   "y": 58.9,
+   "z": 787.67,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 837.8,
+   "lat_m": 1.67
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "154798:1",
+   "x": 572.46,
+   "y": 52.18,
+   "z": 828.51,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 875.3,
+   "lat_m": 33.213
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "157256:1",
+   "x": 521.08,
+   "y": 46.85,
+   "z": 888.7,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1013.15,
+   "lat_m": 6.802
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "157258:1",
+   "x": 529.31,
+   "y": 46.85,
+   "z": 889.77,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1019.73,
+   "lat_m": 1.739
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "157255:1",
+   "x": 529.52,
+   "y": 46.56,
+   "z": 893.06,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1025.29,
+   "lat_m": 0.41
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "157257:1",
+   "x": 524.03,
+   "y": 46.85,
+   "z": 893.19,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1026.65,
+   "lat_m": 4.726
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "157254:1",
+   "x": 525.92,
+   "y": 46.56,
+   "z": 895.11,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1027.3,
+   "lat_m": 2.72
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "157963:1",
+   "x": 553.08,
+   "y": 50.52,
+   "z": 907.2,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1047.26,
+   "lat_m": 9.298
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "157964:1",
+   "x": 556.03,
+   "y": 50.52,
+   "z": 911.69,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1075.89,
+   "lat_m": 11.094
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "157961:1",
+   "x": 557.92,
+   "y": 50.23,
+   "z": 913.61,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1087.05,
+   "lat_m": 10.724
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "157962:1",
+   "x": 561.52,
+   "y": 50.23,
+   "z": 911.56,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1087.05,
+   "lat_m": 14.652
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "157965:1",
+   "x": 561.31,
+   "y": 50.52,
+   "z": 908.27,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1087.05,
+   "lat_m": 17.027
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "96301:1",
+   "x": 584.18,
+   "y": 35.98,
+   "z": 996.79,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1264.9,
+   "lat_m": 2.1
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "97768:1",
+   "x": 614.02,
+   "y": 33.72,
+   "z": 1082.54,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1395.44,
+   "lat_m": 3.46
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "97769:1",
+   "x": 642.84,
+   "y": 35.67,
+   "z": 1093.55,
+   "segment": "T4-meadhall-stathub",
+   "station_m": 1425.65,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "26490:1",
+   "x": 41.86,
+   "y": 59.68,
+   "z": -130.84,
+   "segment": "T5-temple-dockshore",
+   "station_m": 170.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "24400:1",
+   "x": 98.43,
+   "y": 55.13,
+   "z": -187.41,
+   "segment": "T5-temple-dockshore",
+   "station_m": 250.01,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "22632:1",
+   "x": 154.99,
+   "y": 50.8,
+   "z": -243.97,
+   "segment": "T5-temple-dockshore",
+   "station_m": 329.99,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "22765:1",
+   "x": 210.0,
+   "y": 53.09,
+   "z": -287.23,
+   "segment": "T5-temple-dockshore",
+   "station_m": 403.49,
+   "lat_m": 3.44
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "21600:1",
+   "x": 279.72,
+   "y": 50.76,
+   "z": -290.74,
+   "segment": "T5-temple-dockshore",
+   "station_m": 478.67,
+   "lat_m": 3.341
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "23040:1",
+   "x": 332.42,
+   "y": 45.13,
+   "z": -256.56,
+   "segment": "T5-temple-dockshore",
+   "station_m": 558.01,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "23289:1",
+   "x": 407.38,
+   "y": 42.86,
+   "z": -234.59,
+   "segment": "T5-temple-dockshore",
+   "station_m": 638.1,
+   "lat_m": 3.527
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "25602:1",
+   "x": 470.94,
+   "y": 41.58,
+   "z": -218.45,
+   "segment": "T5-temple-dockshore",
+   "station_m": 718.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "25929:1",
+   "x": 527.95,
+   "y": 38.01,
+   "z": -169.03,
+   "segment": "T5-temple-dockshore",
+   "station_m": 798.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "28216:1",
+   "x": 577.08,
+   "y": 33.88,
+   "z": -127.9,
+   "segment": "T5-temple-dockshore",
+   "station_m": 865.75,
+   "lat_m": 2.805
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "28217:1",
+   "x": 604.95,
+   "y": 33.41,
+   "z": -120.03,
+   "segment": "T5-temple-dockshore",
+   "station_m": 925.17,
+   "lat_m": 2.646
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "28293:1",
+   "x": 626.87,
+   "y": 32.05,
+   "z": -98.11,
+   "segment": "T5-temple-dockshore",
+   "station_m": 964.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "97767:1",
+   "x": 610.0,
+   "y": 33.51,
+   "z": 1087.45,
+   "segment": "T7-stathub-stenvik",
+   "station_m": 51.57,
+   "lat_m": 1.45
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "96302:1",
+   "x": 571.42,
+   "y": 33.08,
+   "z": 1043.16,
+   "segment": "T7-stathub-stenvik",
+   "station_m": 110.82,
+   "lat_m": 1.504
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "159978:1",
+   "x": 594.41,
+   "y": 49.71,
+   "z": 963.67,
+   "segment": "T7-stathub-stenvik",
+   "station_m": 241.25,
+   "lat_m": 1.67
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "159977:1",
+   "x": 590.26,
+   "y": 49.71,
+   "z": 962.56,
+   "segment": "T7-stathub-stenvik",
+   "station_m": 243.36,
+   "lat_m": 2.679
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "159983:1",
+   "x": 564.22,
+   "y": 48.62,
+   "z": 933.55,
+   "segment": "T8-stenvik-wttown",
+   "station_m": 78.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "158320:1",
+   "x": 629.44,
+   "y": 44.55,
+   "z": 905.58,
+   "segment": "T8-stenvik-wttown",
+   "station_m": 158.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "158321:1",
+   "x": 620.46,
+   "y": 46.06,
+   "z": 891.48,
+   "segment": "T8-stenvik-wttown",
+   "station_m": 161.62,
+   "lat_m": 12.77
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "155178:1",
+   "x": 675.62,
+   "y": 41.87,
+   "z": 843.4,
+   "segment": "T8-stenvik-wttown",
+   "station_m": 238.54,
+   "lat_m": 3.506
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "152609:1",
+   "x": 722.98,
+   "y": 37.56,
+   "z": 784.05,
+   "segment": "T8-stenvik-wttown",
+   "station_m": 318.0,
+   "lat_m": 3.557
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "152825:1",
+   "x": 761.87,
+   "y": 37.4,
+   "z": 745.15,
+   "segment": "T8-stenvik-wttown",
+   "station_m": 373.01,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "152929:1",
+   "x": 812.54,
+   "y": 40.62,
+   "z": 741.55,
+   "segment": "T8-stenvik-wttown",
+   "station_m": 428.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "149885:1",
+   "x": 811.8,
+   "y": 42.27,
+   "z": 699.2,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 95.07,
+   "lat_m": 0.707
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "147080:1",
+   "x": 865.18,
+   "y": 44.57,
+   "z": 657.84,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 170.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "144372:1",
+   "x": 919.31,
+   "y": 45.11,
+   "z": 598.22,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 249.51,
+   "lat_m": 3.52
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "141627:1",
+   "x": 923.55,
+   "y": 44.86,
+   "z": 518.88,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 330.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "138599:1",
+   "x": 890.58,
+   "y": 44.37,
+   "z": 455.56,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 409.01,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "134703:1",
+   "x": 839.15,
+   "y": 38.14,
+   "z": 400.12,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 489.0,
+   "lat_m": 3.557
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "131990:1",
+   "x": 781.25,
+   "y": 34.23,
+   "z": 350.28,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 567.52,
+   "lat_m": 3.514
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "131991:1",
+   "x": 752.45,
+   "y": 35.11,
+   "z": 325.09,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 609.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "131992:1",
+   "x": 780.88,
+   "y": 33.54,
+   "z": 311.9,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 689.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "129414:1",
+   "x": 799.55,
+   "y": 33.7,
+   "z": 256.65,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 769.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "126392:1",
+   "x": 795.55,
+   "y": 32.91,
+   "z": 181.21,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 849.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "123271:1",
+   "x": 791.55,
+   "y": 33.82,
+   "z": 102.77,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 929.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "117120:1",
+   "x": 762.75,
+   "y": 33.62,
+   "z": 30.48,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 1008.55,
+   "lat_m": 3.52
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "30783:1",
+   "x": 735.7,
+   "y": 34.65,
+   "z": -35.32,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 1089.0,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "30784:1",
+   "x": 696.81,
+   "y": 32.3,
+   "z": -74.21,
+   "segment": "T9-wttown-dockshore",
+   "station_m": 1143.99,
+   "lat_m": 3.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "9879:1",
+   "x": -473.27,
+   "y": 38.26,
+   "z": -220.76,
+   "segment": "W10-brgs1-treenear",
+   "station_m": 295.38,
+   "lat_m": 2.468
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "9881:1",
+   "x": -479.68,
+   "y": 38.98,
+   "z": -220.55,
+   "segment": "W10-brgs1-treenear",
+   "station_m": 301.13,
+   "lat_m": 1.45
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "7750:1",
+   "x": -510.29,
+   "y": 42.65,
+   "z": -224.55,
+   "segment": "W10-brgs1-treenear",
+   "station_m": 331.74,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "9693:1",
+   "x": -510.68,
+   "y": 42.7,
+   "z": -220.55,
+   "segment": "W10-brgs1-treenear",
+   "station_m": 332.13,
+   "lat_m": 1.45
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "7751:1",
+   "x": -540.29,
+   "y": 43.89,
+   "z": -224.55,
+   "segment": "W10-brgs1-treenear",
+   "station_m": 361.74,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "9576:1",
+   "x": -552.68,
+   "y": 43.02,
+   "z": -220.55,
+   "segment": "W10-brgs1-treenear",
+   "station_m": 374.13,
+   "lat_m": 1.45
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "7610:1",
+   "x": -575.29,
+   "y": 40.49,
+   "z": -224.55,
+   "segment": "W10-brgs1-treenear",
+   "station_m": 396.74,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "9577:1",
+   "x": -594.68,
+   "y": 38.16,
+   "z": -220.55,
+   "segment": "W10-brgs1-treenear",
+   "station_m": 416.13,
+   "lat_m": 1.45
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "7611:1",
+   "x": -601.36,
+   "y": 36.56,
+   "z": -225.48,
+   "segment": "W10-brgs1-treenear",
+   "station_m": 429.98,
+   "lat_m": 0.541
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "174055:1",
+   "x": -1013.12,
+   "y": 41.39,
+   "z": 1674.88,
+   "segment": "W12-vestvik-harbour",
+   "station_m": 250.18,
+   "lat_m": 8.485
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "10229:1",
+   "x": -343.99,
+   "y": 38.48,
+   "z": -211.6,
+   "segment": "W5-brgs1-wsouth",
+   "station_m": 159.74,
+   "lat_m": 2.553
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "10230:1",
+   "x": -347.6,
+   "y": 38.48,
+   "z": -207.99,
+   "segment": "W5-brgs1-wsouth",
+   "station_m": 159.74,
+   "lat_m": 2.553
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "9878:1",
+   "x": -423.75,
+   "y": 33.82,
+   "z": -219.64,
+   "segment": "W5-brgs1-wsouth",
+   "station_m": 239.25,
+   "lat_m": 2.5
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "9880:1",
+   "x": -421.16,
+   "y": 33.82,
+   "z": -215.25,
+   "segment": "W5-brgs1-wsouth",
+   "station_m": 240.22,
+   "lat_m": 2.504
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "9400:1",
+   "x": -636.31,
+   "y": 39.01,
+   "z": -220.55,
+   "segment": "W5-brgs1-wsouth",
+   "station_m": 456.88,
+   "lat_m": 2.542
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "7314:1",
+   "x": -665.04,
+   "y": 37.09,
+   "z": -248.65,
+   "segment": "W5-brgs1-wsouth",
+   "station_m": 498.74,
+   "lat_m": 2.553
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "6810:1",
+   "x": -694.74,
+   "y": 33.48,
+   "z": -278.35,
+   "segment": "W5-brgs1-wsouth",
+   "station_m": 540.74,
+   "lat_m": 2.553
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "5815:1",
+   "x": -721.11,
+   "y": 32.83,
+   "z": -292.55,
+   "segment": "W5-brgs1-wsouth",
+   "station_m": 570.74,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "5784:1",
+   "x": -751.11,
+   "y": 33.06,
+   "z": -292.55,
+   "segment": "W5-brgs1-wsouth",
+   "station_m": 600.74,
+   "lat_m": 2.55
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "179162:1",
+   "x": -884.92,
+   "y": 36.07,
+   "z": 1861.08,
+   "segment": "W8-brgs2-vestvik",
+   "station_m": 2756.25,
+   "lat_m": 15.08
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "179161:1",
+   "x": -886.79,
+   "y": 36.07,
+   "z": 1861.95,
+   "segment": "W8-brgs2-vestvik",
+   "station_m": 2758.12,
+   "lat_m": 15.95
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "179163:1",
+   "x": -890.54,
+   "y": 36.07,
+   "z": 1854.0,
+   "segment": "W8-brgs2-vestvik",
+   "station_m": 2761.87,
+   "lat_m": 8.0
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "178980:1",
+   "x": -903.12,
+   "y": 35.65,
+   "z": 1877.65,
+   "segment": "W8-brgs2-vestvik",
+   "station_m": 2774.45,
+   "lat_m": 31.65
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "178979:1",
+   "x": -904.56,
+   "y": 35.65,
+   "z": 1881.53,
+   "segment": "W8-brgs2-vestvik",
+   "station_m": 2775.89,
+   "lat_m": 35.53
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "178983:1",
+   "x": -905.39,
+   "y": 35.94,
+   "z": 1875.27,
+   "segment": "W8-brgs2-vestvik",
+   "station_m": 2776.72,
+   "lat_m": 29.27
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "178982:1",
+   "x": -907.24,
+   "y": 35.94,
+   "z": 1881.28,
+   "segment": "W9-vestvik-lhwest",
+   "station_m": 1.24,
+   "lat_m": 35.28
+  },
+  {
+   "prefab": "piece_groundtorch_wood",
+   "id": "178981:1",
+   "x": -912.38,
+   "y": 35.94,
+   "z": 1879.74,
+   "segment": "W9-vestvik-lhwest",
+   "station_m": 6.38,
+   "lat_m": 33.74
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "212763:1",
+   "x": -1352.3,
+   "y": 35.73,
+   "z": 2352.7,
+   "segment": "W9-vestvik-lhwest",
+   "station_m": 1064.58,
+   "lat_m": 3.633
+  },
+  {
+   "prefab": "piece_groundtorch",
+   "id": "212764:1",
+   "x": -1349.71,
+   "y": 35.73,
+   "z": 2353.8,
+   "segment": "W9-vestvik-lhwest",
+   "station_m": 1066.35,
+   "lat_m": 2.482
+  }
+ ],
+ "method": "MEASURED live over the RCON SOCKET ONLY: `findObjects -prefab P -near cx cy cz 256` on a disjoint 512 m lattice clipped to 300 m of every road centreline, one call per prefab per cell, subdivided into eight TILING children whenever the `Found n objects` header exceeds 18 rows so no reply approaches the 4050-byte truncation. Deduplicated by ZDO id. Segment, station and lateral offset are computed locally by projecting the returned position onto each polyline's EDGES.",
+ "tool": "tools/jumpstart/roads/lamps.py::census",
+ "echo": {
+  "socket_calls": 256,
+  "socket_reply_lines": 496,
+  "console_calls": 0,
+  "console_reply_lines": 0
+ }
+}

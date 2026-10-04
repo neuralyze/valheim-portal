@@ -1,0 +1,223 @@
+[
+ {
+  "sign_zdo": "38837:1",
+  "pos": [
+   -303.6,
+   37.26,
+   199.92
+  ],
+  "text": "Tree West\nNNW 680 m",
+  "names_tag": "u-treewest",
+  "dist_to_named_arch_m": 38.733,
+  "nearest_arch_tag": "u-lhsouth",
+  "dist_to_nearest_arch_m": 16.084
+ },
+ {
+  "sign_zdo": "39680:1",
+  "pos": [
+   -290.15,
+   38.55,
+   209.17
+  ],
+  "text": "East Watchtower\nE 2139 m",
+  "names_tag": "u-wteast",
+  "dist_to_named_arch_m": 3.229,
+  "nearest_arch_tag": "u-lhsouth",
+  "dist_to_nearest_arch_m": 2.206
+ },
+ {
+  "sign_zdo": "39682:1",
+  "pos": [
+   -292.22,
+   38.55,
+   213.55
+  ],
+  "text": "South Lighthouse\nS 1122 m",
+  "names_tag": "u-lhsouth",
+  "dist_to_named_arch_m": 2.858,
+  "nearest_arch_tag": "u-lhsouth",
+  "dist_to_nearest_arch_m": 2.858
+ },
+ {
+  "sign_zdo": "39683:1",
+  "pos": [
+   -289.95,
+   38.55,
+   223.96
+  ],
+  "text": "East Lighthouse\nE 2634 m",
+  "names_tag": "u-lheast",
+  "dist_to_named_arch_m": 3.206,
+  "nearest_arch_tag": "u-lhwest",
+  "dist_to_nearest_arch_m": 2.33
+ },
+ {
+  "sign_zdo": "39889:1",
+  "pos": [
+   -274.6,
+   41.45,
+   200.92
+  ],
+  "text": "Tree Near\nSW 550 m",
+  "names_tag": "u-treenear",
+  "dist_to_named_arch_m": 23.345,
+  "nearest_arch_tag": "u-wttown",
+  "dist_to_nearest_arch_m": 2.494
+ },
+ {
+  "sign_zdo": "39891:1",
+  "pos": [
+   -273.6,
+   40.52,
+   210.92
+  ],
+  "text": "Sudrberg Keep\nSE 4490 m",
+  "names_tag": "u-sudrberg",
+  "dist_to_named_arch_m": 9.832,
+  "nearest_arch_tag": "x-vestvik",
+  "dist_to_nearest_arch_m": 0.939
+ },
+ {
+  "sign_zdo": "43341:1",
+  "pos": [
+   -267.79,
+   38.55,
+   222.83
+  ],
+  "text": "Vestvik\nNNW 1784 m",
+  "names_tag": "u-vestvik",
+  "dist_to_named_arch_m": 3.216,
+  "nearest_arch_tag": "u-castle",
+  "dist_to_nearest_arch_m": 2.213
+ },
+ {
+  "sign_zdo": "43343:1",
+  "pos": [
+   -265.69,
+   38.55,
+   218.46
+  ],
+  "text": "Hognest Castle\nNE 1375 m",
+  "names_tag": "u-castle",
+  "dist_to_named_arch_m": 2.86,
+  "nearest_arch_tag": "u-sudrberg",
+  "dist_to_nearest_arch_m": 2.534
+ },
+ {
+  "sign_zdo": "43345:1",
+  "pos": [
+   -265.47,
+   38.55,
+   213.28
+  ],
+  "text": "Sudrberg Keep\nSE 4481 m",
+  "names_tag": "u-sudrberg",
+  "dist_to_named_arch_m": 2.717,
+  "nearest_arch_tag": "u-wtspawn",
+  "dist_to_nearest_arch_m": 2.687
+ },
+ {
+  "sign_zdo": "43347:1",
+  "pos": [
+   -267.98,
+   38.55,
+   208.02
+  ],
+  "text": "Spawn Watchtower\nSE 507 m",
+  "names_tag": "u-wtspawn",
+  "dist_to_named_arch_m": 3.206,
+  "nearest_arch_tag": "u-wtsouth",
+  "dist_to_nearest_arch_m": 2.197
+ },
+ {
+  "sign_zdo": "43349:1",
+  "pos": [
+   -272.14,
+   38.55,
+   204.8
+  ],
+  "text": "South Watchtower\nESE 833 m",
+  "names_tag": "u-wtsouth",
+  "dist_to_named_arch_m": 3.229,
+  "nearest_arch_tag": "u-wttown",
+  "dist_to_nearest_arch_m": 2.206
+ },
+ {
+  "sign_zdo": "43351:1",
+  "pos": [
+   -276.53,
+   38.55,
+   202.73
+  ],
+  "text": "Town Watchtower\nENE 1199 m",
+  "names_tag": "u-wttown",
+  "dist_to_named_arch_m": 2.868,
+  "nearest_arch_tag": "u-wtpeak",
+  "dist_to_nearest_arch_m": 2.499
+ },
+ {
+  "sign_zdo": "43353:1",
+  "pos": [
+   -281.68,
+   38.55,
+   202.53
+  ],
+  "text": "Peak Watchtower\nNE 2164 m",
+  "names_tag": "u-wtpeak",
+  "dist_to_named_arch_m": 2.716,
+  "nearest_arch_tag": "u-wtnorth",
+  "dist_to_nearest_arch_m": 2.687
+ },
+ {
+  "sign_zdo": "43355:1",
+  "pos": [
+   -286.94,
+   38.55,
+   205.04
+  ],
+  "text": "North Watchtower\nNNE 1072 m",
+  "names_tag": "u-wtnorth",
+  "dist_to_named_arch_m": 3.206,
+  "nearest_arch_tag": "u-wteast",
+  "dist_to_nearest_arch_m": 2.172
+ },
+ {
+  "sign_zdo": "46563:1",
+  "pos": [
+   -270.98,
+   38.55,
+   226.98
+  ],
+  "text": "Stenvik\nNE 1036 m",
+  "names_tag": "u-stenvik",
+  "dist_to_named_arch_m": 3.201,
+  "nearest_arch_tag": "u-vestvik",
+  "dist_to_nearest_arch_m": 2.181
+ },
+ {
+  "sign_zdo": "46565:1",
+  "pos": [
+   -285.73,
+   38.55,
+   227.3
+  ],
+  "text": "West Lighthouse\nNNW 2394 m",
+  "names_tag": "u-lhwest",
+  "dist_to_named_arch_m": 3.229,
+  "nearest_arch_tag": "u-treesth",
+  "dist_to_nearest_arch_m": 2.079
+ },
+ {
+  "sign_zdo": "46567:1",
+  "pos": [
+   -281.43,
+   38.55,
+   229.27
+  ],
+  "text": "South Treehouse\nENE 870 m",
+  "names_tag": "u-treesth",
+  "dist_to_named_arch_m": 2.858,
+  "nearest_arch_tag": "u-treewest",
+  "dist_to_nearest_arch_m": 2.551
+ }
+]

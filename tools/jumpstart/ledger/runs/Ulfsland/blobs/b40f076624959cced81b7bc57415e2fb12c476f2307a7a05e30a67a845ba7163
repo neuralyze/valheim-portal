@@ -1,0 +1,10 @@
+spawn_object fb_fortress_wall pos=752,1082.477,24.43 rot=0,0,0 from=0,0,0
+spawn_object fb_fortress_wall_stair_right pos=752,1102.486,25.547 rot=0,0,0 from=0,0,0
+spawn_object fb_fortress_wall pos=752,1050.523,26.111 rot=0,0,0 from=0,0,0
+spawn_object fb_fortress_wall_stair_left pos=752,1030.514,26.992 rot=0,0,0 from=0,0,0
+spawn_object fb_fortress_wall_tower pos=752,1010.505,30.435 rot=0,0,0 from=0,0,0
+spawn_object fb_fortress_wall_tower pos=752,1122.495,30.522 rot=0,0,0 from=0,0,0
+spawn_object fb_fortress_wall_tower pos=768,1006,31.786 rot=0,0,0 from=0,0,0
+spawn_object piece_groundtorch pos=752,1010.505,41.3176 rot=0,0,0 from=0,0,0
+spawn_object piece_groundtorch pos=752,1122.495,41.4046 rot=0,0,0 from=0,0,0
+spawn_object piece_groundtorch pos=768,1006,42.6686 rot=0,0,0 from=0,0,0

@@ -1,0 +1,491 @@
+{
+ "sight_m": 30.0,
+ "corridor_m": 20.0,
+ "probe_step_m": 2.0,
+ "segments_measured": 15,
+ "worst_mid_segment_dark_m": 116.0,
+ "worst_mid_segment": "T4-meadhall-stathub",
+ "segments_with_zero_mid_dark": 2,
+ "segments": [
+  {
+   "segment": "T1-portalhub-temple",
+   "length_m": 716.7,
+   "lamps_in_corridor": 11,
+   "dark_mid_m": 32.0,
+   "dark_end_m": 0.0,
+   "dark_total_m": 138.0,
+   "mid_runs": [
+    [
+     48.0,
+     60.0,
+     12.0
+    ],
+    [
+     120.0,
+     136.0,
+     16.0
+    ],
+    [
+     196.0,
+     228.0,
+     32.0
+    ],
+    [
+     288.0,
+     300.0,
+     12.0
+    ],
+    [
+     360.0,
+     388.0,
+     28.0
+    ],
+    [
+     448.0,
+     460.0,
+     12.0
+    ],
+    [
+     520.0,
+     540.0,
+     20.0
+    ],
+    [
+     600.0,
+     606.0,
+     6.0
+    ]
+   ]
+  },
+  {
+   "segment": "T3-temple-meadhall",
+   "length_m": 837.4,
+   "lamps_in_corridor": 16,
+   "dark_mid_m": 40.0,
+   "dark_end_m": 0.0,
+   "dark_total_m": 148.0,
+   "mid_runs": [
+    [
+     126.0,
+     136.0,
+     10.0
+    ],
+    [
+     204.0,
+     216.0,
+     12.0
+    ],
+    [
+     276.0,
+     288.0,
+     12.0
+    ],
+    [
+     348.0,
+     388.0,
+     40.0
+    ],
+    [
+     448.0,
+     462.0,
+     14.0
+    ],
+    [
+     522.0,
+     542.0,
+     20.0
+    ],
+    [
+     602.0,
+     620.0,
+     18.0
+    ],
+    [
+     680.0,
+     702.0,
+     22.0
+    ]
+   ]
+  },
+  {
+   "segment": "T4-meadhall-stathub",
+   "length_m": 1442.8,
+   "lamps_in_corridor": 36,
+   "dark_mid_m": 116.0,
+   "dark_end_m": 48.0,
+   "dark_total_m": 242.0,
+   "mid_runs": [
+    [
+     560.0,
+     580.0,
+     20.0
+    ],
+    [
+     640.0,
+     660.0,
+     20.0
+    ],
+    [
+     720.0,
+     746.0,
+     26.0
+    ],
+    [
+     806.0,
+     808.0,
+     2.0
+    ],
+    [
+     868.0,
+     984.0,
+     116.0
+    ],
+    [
+     1296.0,
+     1306.0,
+     10.0
+    ]
+   ]
+  },
+  {
+   "segment": "T5-temple-dockshore",
+   "length_m": 1014.3,
+   "lamps_in_corridor": 16,
+   "dark_mid_m": 22.0,
+   "dark_end_m": 20.0,
+   "dark_total_m": 194.0,
+   "mid_runs": [
+    [
+     122.0,
+     142.0,
+     20.0
+    ],
+    [
+     202.0,
+     222.0,
+     20.0
+    ],
+    [
+     282.0,
+     300.0,
+     18.0
+    ],
+    [
+     360.0,
+     374.0,
+     14.0
+    ],
+    [
+     434.0,
+     450.0,
+     16.0
+    ],
+    [
+     510.0,
+     530.0,
+     20.0
+    ],
+    [
+     590.0,
+     610.0,
+     20.0
+    ],
+    [
+     670.0,
+     688.0,
+     18.0
+    ],
+    [
+     748.0,
+     770.0,
+     22.0
+    ],
+    [
+     830.0,
+     836.0,
+     6.0
+    ]
+   ]
+  },
+  {
+   "segment": "S1-portalhub-brgs2",
+   "length_m": 30.6,
+   "lamps_in_corridor": 1,
+   "dark_mid_m": 0.0,
+   "dark_end_m": 0.0,
+   "dark_total_m": 0,
+   "mid_runs": []
+  },
+  {
+   "segment": "W5-brgs1-wsouth",
+   "length_m": 623.6,
+   "lamps_in_corridor": 18,
+   "dark_mid_m": 20.0,
+   "dark_end_m": 130.0,
+   "dark_total_m": 150.0,
+   "mid_runs": [
+    [
+     190.0,
+     210.0,
+     20.0
+    ]
+   ]
+  },
+  {
+   "segment": "T8-stenvik-wttown",
+   "length_m": 435.5,
+   "lamps_in_corridor": 10,
+   "dark_mid_m": 20.0,
+   "dark_end_m": 40.0,
+   "dark_total_m": 96.0,
+   "mid_runs": [
+    [
+     108.0,
+     128.0,
+     20.0
+    ],
+    [
+     192.0,
+     210.0,
+     18.0
+    ],
+    [
+     270.0,
+     288.0,
+     18.0
+    ]
+   ]
+  },
+  {
+   "segment": "T9-wttown-dockshore",
+   "length_m": 1175.5,
+   "lamps_in_corridor": 16,
+   "dark_mid_m": 30.0,
+   "dark_end_m": 2.0,
+   "dark_total_m": 264.0,
+   "mid_runs": [
+    [
+     36.0,
+     66.0,
+     30.0
+    ],
+    [
+     126.0,
+     140.0,
+     14.0
+    ],
+    [
+     200.0,
+     220.0,
+     20.0
+    ],
+    [
+     280.0,
+     300.0,
+     20.0
+    ],
+    [
+     360.0,
+     380.0,
+     20.0
+    ],
+    [
+     440.0,
+     460.0,
+     20.0
+    ],
+    [
+     520.0,
+     538.0,
+     18.0
+    ],
+    [
+     640.0,
+     660.0,
+     20.0
+    ],
+    [
+     720.0,
+     740.0,
+     20.0
+    ],
+    [
+     800.0,
+     820.0,
+     20.0
+    ],
+    [
+     880.0,
+     900.0,
+     20.0
+    ],
+    [
+     960.0,
+     980.0,
+     20.0
+    ],
+    [
+     1040.0,
+     1060.0,
+     20.0
+    ]
+   ]
+  },
+  {
+   "segment": "T10-wtspawn-wtsouth",
+   "length_m": 559.7,
+   "lamps_in_corridor": 8,
+   "dark_mid_m": 20.0,
+   "dark_end_m": 48.0,
+   "dark_total_m": 148.0,
+   "mid_runs": [
+    [
+     108.0,
+     128.0,
+     20.0
+    ],
+    [
+     188.0,
+     208.0,
+     20.0
+    ],
+    [
+     268.0,
+     288.0,
+     20.0
+    ],
+    [
+     348.0,
+     368.0,
+     20.0
+    ],
+    [
+     428.0,
+     448.0,
+     20.0
+    ]
+   ]
+  },
+  {
+   "segment": "T12-wtspawn-temple",
+   "length_m": 318.0,
+   "lamps_in_corridor": 8,
+   "dark_mid_m": 12.0,
+   "dark_end_m": 62.0,
+   "dark_total_m": 74.0,
+   "mid_runs": [
+    [
+     182.0,
+     194.0,
+     12.0
+    ]
+   ]
+  },
+  {
+   "segment": "S7-stathub-wtnorth",
+   "length_m": 576.7,
+   "lamps_in_corridor": 10,
+   "dark_mid_m": 20.0,
+   "dark_end_m": 0.0,
+   "dark_total_m": 88.0,
+   "mid_runs": [
+    [
+     82.0,
+     102.0,
+     20.0
+    ],
+    [
+     162.0,
+     182.0,
+     20.0
+    ],
+    [
+     242.0,
+     262.0,
+     20.0
+    ],
+    [
+     378.0,
+     394.0,
+     16.0
+    ],
+    [
+     454.0,
+     466.0,
+     12.0
+    ]
+   ]
+  },
+  {
+   "segment": "S8-wtsouth-treesth",
+   "length_m": 514.8,
+   "lamps_in_corridor": 14,
+   "dark_mid_m": 4.0,
+   "dark_end_m": 6.0,
+   "dark_total_m": 14.0,
+   "mid_runs": [
+    [
+     50.0,
+     54.0,
+     4.0
+    ],
+    [
+     268.0,
+     272.0,
+     4.0
+    ]
+   ]
+  },
+  {
+   "segment": "W10-brgs1-treenear",
+   "length_m": 452.1,
+   "lamps_in_corridor": 13,
+   "dark_mid_m": 20.0,
+   "dark_end_m": 130.0,
+   "dark_total_m": 150.0,
+   "mid_runs": [
+    [
+     190.0,
+     210.0,
+     20.0
+    ]
+   ]
+  },
+  {
+   "segment": "T13-temple-harboursouth",
+   "length_m": 442.3,
+   "lamps_in_corridor": 8,
+   "dark_mid_m": 36.0,
+   "dark_end_m": 0.0,
+   "dark_total_m": 80.0,
+   "mid_runs": [
+    [
+     114.0,
+     150.0,
+     36.0
+    ],
+    [
+     210.0,
+     222.0,
+     12.0
+    ],
+    [
+     282.0,
+     314.0,
+     32.0
+    ]
+   ]
+  },
+  {
+   "segment": "S12-brgs1-boathouse",
+   "length_m": 126.4,
+   "lamps_in_corridor": 1,
+   "dark_mid_m": 0.0,
+   "dark_end_m": 38.0,
+   "dark_total_m": 68.0,
+   "mid_runs": []
+  }
+ ],
+ "method": "MEASURED from the census positions: the centreline is probed every 2 m and a probe is LIT when some lamp within 20 m of that centreline projects to within 30 m of it along the polyline. Runs touching s=0 or s=L are junction approaches (dark_end_m), not mid-segment holes.",
+ "tool": "tools/jumpstart/roads/lamps.py::dark_stretches"
+}

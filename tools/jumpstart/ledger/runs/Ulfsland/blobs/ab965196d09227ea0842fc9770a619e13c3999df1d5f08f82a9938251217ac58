@@ -1,0 +1,13 @@
+spawn_object fb_house_02 pos=503.229,1221.892,31.941 rot=270,0,0 from=0,0,0
+spawn_object fb_house_03 pos=491.297,1234.004,32.011 rot=270,0,0 from=0,0,0
+spawn_object fb_house_02 pos=459.229,1275.892,32.139 rot=270,0,0 from=0,0,0
+spawn_object fb_viking_house_06 pos=437.489,1112.149,32.52 rot=90,0,0 from=0,0,0
+spawn_object fb_viking_house_04 pos=464.012,1149.22,32.604 rot=90,0,0 from=0,0,0
+spawn_object fb_house_03 pos=456.703,1135.996,32.608 rot=90,0,0 from=0,0,0
+spawn_object fb_viking_house_06 pos=484.511,1259.851,33.029 rot=270,0,0 from=0,0,0
+spawn_object fb_viking_house_01 pos=520.35,1217.01,33.986 rot=180,0,0 from=0,0,0
+spawn_object fb_house_02 pos=454.771,1114.108,34.032 rot=90,0,0 from=0,0,0
+spawn_object fb_house_03 pos=509.996,1241.297,34.185 rot=180,0,0 from=0,0,0
+spawn_object fb_viking_house_08 pos=478.001,1113.236,37.371 rot=90,0,0 from=0,0,0
+spawn_object fb_house_02 pos=546.108,1211.229,38.219 rot=180,0,0 from=0,0,0
+spawn_object fb_house_02 pos=558.108,1229.229,40.677 rot=180,0,0 from=0,0,0

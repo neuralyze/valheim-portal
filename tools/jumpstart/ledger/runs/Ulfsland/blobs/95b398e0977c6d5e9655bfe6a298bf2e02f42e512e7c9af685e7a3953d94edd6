@@ -1,0 +1,6 @@
+spawn_object fb_fortress_portcullis pos=752,1062.518,23.774 rot=90,0,0 from=0,0,0
+spawn_object fb_fortress_portcullis pos=752,1066.5,23.774 rot=90,0,0 from=0,0,0
+spawn_object fb_fortress_portcullis pos=752,1070.482,23.774 rot=90,0,0 from=0,0,0
+spawn_object fb_fortress_portcullis pos=752,1062.518,29.481 rot=90,0,0 from=0,0,0
+spawn_object fb_fortress_portcullis pos=752,1066.5,29.481 rot=90,0,0 from=0,0,0
+spawn_object fb_fortress_portcullis pos=752,1070.482,29.481 rot=90,0,0 from=0,0,0

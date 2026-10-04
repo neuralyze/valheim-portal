@@ -1,0 +1,2513 @@
+{
+ "count": 158,
+ "nn_min_m": 2.062,
+ "nn_p5_m": 2.796,
+ "nn_p25_m": 10.031,
+ "nn_p50_m": 31.341,
+ "nn_p75_m": 54.573,
+ "nn_p95_m": 76.471,
+ "nn_max_m": 217.048,
+ "nn_mean_m": 35.208,
+ "under_min_pairs": 86,
+ "under_min_pairs_same_height": 86,
+ "min_spacing_m": 30.0,
+ "y_half_m": 10.0,
+ "pairs": [
+  {
+   "dist_m": 2.062,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "179162:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -884.92,
+     36.07,
+     1861.08
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2756.25,
+    "lat_m": 15.08
+   },
+   "b": {
+    "id": "179161:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -886.79,
+     36.07,
+     1861.95
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2758.12,
+    "lat_m": 15.95
+   }
+  },
+  {
+   "dist_m": 2.692,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "178979:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -904.56,
+     35.65,
+     1881.53
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2775.89,
+    "lat_m": 35.53
+   },
+   "b": {
+    "id": "178982:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -907.24,
+     35.94,
+     1881.28
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 1.24,
+    "lat_m": 35.28
+   }
+  },
+  {
+   "dist_m": 2.694,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157257:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     524.03,
+     46.85,
+     893.19
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1026.65,
+    "lat_m": 4.726
+   },
+   "b": {
+    "id": "157254:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     525.92,
+     46.56,
+     895.11
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1027.3,
+    "lat_m": 2.72
+   }
+  },
+  {
+   "dist_m": 2.694,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157964:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     556.03,
+     50.52,
+     911.69
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1075.89,
+    "lat_m": 11.094
+   },
+   "b": {
+    "id": "157961:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     557.92,
+     50.23,
+     913.61
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 10.724
+   }
+  },
+  {
+   "dist_m": 2.814,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "212763:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -1352.3,
+     35.73,
+     2352.7
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 1064.58,
+    "lat_m": 3.633
+   },
+   "b": {
+    "id": "212764:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -1349.71,
+     35.73,
+     2353.8
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 1066.35,
+    "lat_m": 2.482
+   }
+  },
+  {
+   "dist_m": 3.289,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "178980:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -903.12,
+     35.65,
+     1877.65
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2774.45,
+    "lat_m": 31.65
+   },
+   "b": {
+    "id": "178983:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -905.39,
+     35.94,
+     1875.27
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2776.72,
+    "lat_m": 29.27
+   }
+  },
+  {
+   "dist_m": 3.297,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157258:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     529.31,
+     46.85,
+     889.77
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1019.73,
+    "lat_m": 1.739
+   },
+   "b": {
+    "id": "157255:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     529.52,
+     46.56,
+     893.06
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1025.29,
+    "lat_m": 0.41
+   }
+  },
+  {
+   "dist_m": 3.297,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157962:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     561.52,
+     50.23,
+     911.56
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 14.652
+   },
+   "b": {
+    "id": "157965:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     561.31,
+     50.52,
+     908.27
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 17.027
+   }
+  },
+  {
+   "dist_m": 3.852,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "115155:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     19.18,
+     69.81,
+     1.65
+    ],
+    "segment": "T12-wtspawn-temple",
+    "station_m": 142.15,
+    "lat_m": 0.827
+   },
+   "b": {
+    "id": "115159:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     15.33,
+     69.81,
+     1.78
+    ],
+    "segment": "T12-wtspawn-temple",
+    "station_m": 150.99,
+    "lat_m": 0.629
+   }
+  },
+  {
+   "dist_m": 4.019,
+   "dy_m": 0.05,
+   "cluster": true,
+   "a": {
+    "id": "7750:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -510.29,
+     42.65,
+     -224.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 331.74,
+    "lat_m": 2.55
+   },
+   "b": {
+    "id": "9693:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -510.68,
+     42.7,
+     -220.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 332.13,
+    "lat_m": 1.45
+   }
+  },
+  {
+   "dist_m": 4.139,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "178980:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -903.12,
+     35.65,
+     1877.65
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2774.45,
+    "lat_m": 31.65
+   },
+   "b": {
+    "id": "178979:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -904.56,
+     35.65,
+     1881.53
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2775.89,
+    "lat_m": 35.53
+   }
+  },
+  {
+   "dist_m": 4.143,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "157255:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     529.52,
+     46.56,
+     893.06
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1025.29,
+    "lat_m": 0.41
+   },
+   "b": {
+    "id": "157254:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     525.92,
+     46.56,
+     895.11
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1027.3,
+    "lat_m": 2.72
+   }
+  },
+  {
+   "dist_m": 4.143,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "157961:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     557.92,
+     50.23,
+     913.61
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 10.724
+   },
+   "b": {
+    "id": "157962:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     561.52,
+     50.23,
+     911.56
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 14.652
+   }
+  },
+  {
+   "dist_m": 4.296,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "159978:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     594.41,
+     49.71,
+     963.67
+    ],
+    "segment": "T7-stathub-stenvik",
+    "station_m": 241.25,
+    "lat_m": 1.67
+   },
+   "b": {
+    "id": "159977:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     590.26,
+     49.71,
+     962.56
+    ],
+    "segment": "T7-stathub-stenvik",
+    "station_m": 243.36,
+    "lat_m": 2.679
+   }
+  },
+  {
+   "dist_m": 5.097,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "9878:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -423.75,
+     33.82,
+     -219.64
+    ],
+    "segment": "W5-brgs1-wsouth",
+    "station_m": 239.25,
+    "lat_m": 2.5
+   },
+   "b": {
+    "id": "9880:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -421.16,
+     33.82,
+     -215.25
+    ],
+    "segment": "W5-brgs1-wsouth",
+    "station_m": 240.22,
+    "lat_m": 2.504
+   }
+  },
+  {
+   "dist_m": 5.105,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "10229:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -343.99,
+     38.48,
+     -211.6
+    ],
+    "segment": "W5-brgs1-wsouth",
+    "station_m": 159.74,
+    "lat_m": 2.553
+   },
+   "b": {
+    "id": "10230:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -347.6,
+     38.48,
+     -207.99
+    ],
+    "segment": "W5-brgs1-wsouth",
+    "station_m": 159.74,
+    "lat_m": 2.553
+   }
+  },
+  {
+   "dist_m": 5.366,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "178982:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -907.24,
+     35.94,
+     1881.28
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 1.24,
+    "lat_m": 35.28
+   },
+   "b": {
+    "id": "178981:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -912.38,
+     35.94,
+     1879.74
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 6.38,
+    "lat_m": 33.74
+   }
+  },
+  {
+   "dist_m": 5.372,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "157256:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     521.08,
+     46.85,
+     888.7
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1013.15,
+    "lat_m": 6.802
+   },
+   "b": {
+    "id": "157257:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     524.03,
+     46.85,
+     893.19
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1026.65,
+    "lat_m": 4.726
+   }
+  },
+  {
+   "dist_m": 5.372,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "157963:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     553.08,
+     50.52,
+     907.2
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1047.26,
+    "lat_m": 9.298
+   },
+   "b": {
+    "id": "157964:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     556.03,
+     50.52,
+     911.69
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1075.89,
+    "lat_m": 11.094
+   }
+  },
+  {
+   "dist_m": 5.491,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "178980:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -903.12,
+     35.65,
+     1877.65
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2774.45,
+    "lat_m": 31.65
+   },
+   "b": {
+    "id": "178982:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -907.24,
+     35.94,
+     1881.28
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 1.24,
+    "lat_m": 35.28
+   }
+  },
+  {
+   "dist_m": 5.492,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157255:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     529.52,
+     46.56,
+     893.06
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1025.29,
+    "lat_m": 0.41
+   },
+   "b": {
+    "id": "157257:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     524.03,
+     46.85,
+     893.19
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1026.65,
+    "lat_m": 4.726
+   }
+  },
+  {
+   "dist_m": 5.492,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157964:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     556.03,
+     50.52,
+     911.69
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1075.89,
+    "lat_m": 11.094
+   },
+   "b": {
+    "id": "157962:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     561.52,
+     50.23,
+     911.56
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 14.652
+   }
+  },
+  {
+   "dist_m": 5.585,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "115156:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -14.95,
+     67.51,
+     -14.28
+    ],
+    "segment": "T3-temple-meadhall",
+    "station_m": 81.88,
+    "lat_m": 1.339
+   },
+   "b": {
+    "id": "115158:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -11.28,
+     67.51,
+     -10.07
+    ],
+    "segment": "T3-temple-meadhall",
+    "station_m": 94.71,
+    "lat_m": 0.72
+   }
+  },
+  {
+   "dist_m": 6.288,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "178983:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -905.39,
+     35.94,
+     1875.27
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2776.72,
+    "lat_m": 29.27
+   },
+   "b": {
+    "id": "178982:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -907.24,
+     35.94,
+     1881.28
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 1.24,
+    "lat_m": 35.28
+   }
+  },
+  {
+   "dist_m": 6.291,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "157258:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     529.31,
+     46.85,
+     889.77
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1019.73,
+    "lat_m": 1.739
+   },
+   "b": {
+    "id": "157257:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     524.03,
+     46.85,
+     893.19
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1026.65,
+    "lat_m": 4.726
+   }
+  },
+  {
+   "dist_m": 6.291,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "157964:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     556.03,
+     50.52,
+     911.69
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1075.89,
+    "lat_m": 11.094
+   },
+   "b": {
+    "id": "157965:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     561.31,
+     50.52,
+     908.27
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 17.027
+   }
+  },
+  {
+   "dist_m": 6.315,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "178979:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -904.56,
+     35.65,
+     1881.53
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2775.89,
+    "lat_m": 35.53
+   },
+   "b": {
+    "id": "178983:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -905.39,
+     35.94,
+     1875.27
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2776.72,
+    "lat_m": 29.27
+   }
+  },
+  {
+   "dist_m": 6.325,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157258:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     529.31,
+     46.85,
+     889.77
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1019.73,
+    "lat_m": 1.739
+   },
+   "b": {
+    "id": "157254:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     525.92,
+     46.56,
+     895.11
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1027.3,
+    "lat_m": 2.72
+   }
+  },
+  {
+   "dist_m": 6.325,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157961:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     557.92,
+     50.23,
+     913.61
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 10.724
+   },
+   "b": {
+    "id": "157965:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     561.31,
+     50.52,
+     908.27
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 17.027
+   }
+  },
+  {
+   "dist_m": 6.346,
+   "dy_m": 0.21,
+   "cluster": true,
+   "a": {
+    "id": "97768:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     614.02,
+     33.72,
+     1082.54
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1395.44,
+    "lat_m": 3.46
+   },
+   "b": {
+    "id": "97767:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     610.0,
+     33.51,
+     1087.45
+    ],
+    "segment": "T7-stathub-stenvik",
+    "station_m": 51.57,
+    "lat_m": 1.45
+   }
+  },
+  {
+   "dist_m": 6.413,
+   "dy_m": 0.72,
+   "cluster": true,
+   "a": {
+    "id": "9879:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -473.27,
+     38.26,
+     -220.76
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 295.38,
+    "lat_m": 2.468
+   },
+   "b": {
+    "id": "9881:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -479.68,
+     38.98,
+     -220.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 301.13,
+    "lat_m": 1.45
+   }
+  },
+  {
+   "dist_m": 8.022,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "178979:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -904.56,
+     35.65,
+     1881.53
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2775.89,
+    "lat_m": 35.53
+   },
+   "b": {
+    "id": "178981:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -912.38,
+     35.94,
+     1879.74
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 6.38,
+    "lat_m": 33.74
+   }
+  },
+  {
+   "dist_m": 8.032,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157256:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     521.08,
+     46.85,
+     888.7
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1013.15,
+    "lat_m": 6.802
+   },
+   "b": {
+    "id": "157254:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     525.92,
+     46.56,
+     895.11
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1027.3,
+    "lat_m": 2.72
+   }
+  },
+  {
+   "dist_m": 8.032,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157963:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     553.08,
+     50.52,
+     907.2
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1047.26,
+    "lat_m": 9.298
+   },
+   "b": {
+    "id": "157961:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     557.92,
+     50.23,
+     913.61
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 10.724
+   }
+  },
+  {
+   "dist_m": 8.297,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "178983:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -905.39,
+     35.94,
+     1875.27
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2776.72,
+    "lat_m": 29.27
+   },
+   "b": {
+    "id": "178981:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -912.38,
+     35.94,
+     1879.74
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 6.38,
+    "lat_m": 33.74
+   }
+  },
+  {
+   "dist_m": 8.299,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "157256:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     521.08,
+     46.85,
+     888.7
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1013.15,
+    "lat_m": 6.802
+   },
+   "b": {
+    "id": "157258:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     529.31,
+     46.85,
+     889.77
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1019.73,
+    "lat_m": 1.739
+   }
+  },
+  {
+   "dist_m": 8.299,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "157963:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     553.08,
+     50.52,
+     907.2
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1047.26,
+    "lat_m": 9.298
+   },
+   "b": {
+    "id": "157965:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     561.31,
+     50.52,
+     908.27
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 17.027
+   }
+  },
+  {
+   "dist_m": 8.302,
+   "dy_m": 1.6,
+   "cluster": true,
+   "a": {
+    "id": "9577:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -594.68,
+     38.16,
+     -220.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 416.13,
+    "lat_m": 1.45
+   },
+   "b": {
+    "id": "7611:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -601.36,
+     36.56,
+     -225.48
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 429.98,
+    "lat_m": 0.541
+   }
+  },
+  {
+   "dist_m": 8.79,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "179161:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -886.79,
+     36.07,
+     1861.95
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2758.12,
+    "lat_m": 15.95
+   },
+   "b": {
+    "id": "179163:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -890.54,
+     36.07,
+     1854.0
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2761.87,
+    "lat_m": 8.0
+   }
+  },
+  {
+   "dist_m": 9.039,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "179162:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -884.92,
+     36.07,
+     1861.08
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2756.25,
+    "lat_m": 15.08
+   },
+   "b": {
+    "id": "179163:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -890.54,
+     36.07,
+     1854.0
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2761.87,
+    "lat_m": 8.0
+   }
+  },
+  {
+   "dist_m": 9.418,
+   "dy_m": 1.82,
+   "cluster": true,
+   "a": {
+    "id": "17695:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -60.18,
+     66.24,
+     -46.82
+    ],
+    "segment": "T1-portalhub-temple",
+    "station_m": 685.56,
+    "lat_m": 0.707
+   },
+   "b": {
+    "id": "17696:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -57.1,
+     68.06,
+     -37.92
+    ],
+    "segment": "T1-portalhub-temple",
+    "station_m": 706.56,
+    "lat_m": 0.08
+   }
+  },
+  {
+   "dist_m": 9.493,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "178980:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -903.12,
+     35.65,
+     1877.65
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2774.45,
+    "lat_m": 31.65
+   },
+   "b": {
+    "id": "178981:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -912.38,
+     35.94,
+     1879.74
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 6.38,
+    "lat_m": 33.74
+   }
+  },
+  {
+   "dist_m": 9.5,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157256:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     521.08,
+     46.85,
+     888.7
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1013.15,
+    "lat_m": 6.802
+   },
+   "b": {
+    "id": "157255:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     529.52,
+     46.56,
+     893.06
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1025.29,
+    "lat_m": 0.41
+   }
+  },
+  {
+   "dist_m": 9.5,
+   "dy_m": 0.29,
+   "cluster": true,
+   "a": {
+    "id": "157963:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     553.08,
+     50.52,
+     907.2
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1047.26,
+    "lat_m": 9.298
+   },
+   "b": {
+    "id": "157962:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     561.52,
+     50.23,
+     911.56
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 14.652
+   }
+  },
+  {
+   "dist_m": 11.872,
+   "dy_m": 3.44,
+   "cluster": true,
+   "a": {
+    "id": "119283:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     510.03,
+     79.39,
+     41.55
+    ],
+    "segment": "T10-wtspawn-wtsouth",
+    "station_m": 506.93,
+    "lat_m": 3.55
+   },
+   "b": {
+    "id": "119284:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     520.45,
+     82.83,
+     47.24
+    ],
+    "segment": "T10-wtspawn-wtsouth",
+    "station_m": 537.0,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 13.02,
+   "dy_m": 0.87,
+   "cluster": true,
+   "a": {
+    "id": "7751:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -540.29,
+     43.89,
+     -224.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 361.74,
+    "lat_m": 2.55
+   },
+   "b": {
+    "id": "9576:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -552.68,
+     43.02,
+     -220.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 374.13,
+    "lat_m": 1.45
+   }
+  },
+  {
+   "dist_m": 16.717,
+   "dy_m": 1.51,
+   "cluster": true,
+   "a": {
+    "id": "158320:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     629.44,
+     44.55,
+     905.58
+    ],
+    "segment": "T8-stenvik-wttown",
+    "station_m": 158.0,
+    "lat_m": 3.55
+   },
+   "b": {
+    "id": "158321:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     620.46,
+     46.06,
+     891.48
+    ],
+    "segment": "T8-stenvik-wttown",
+    "station_m": 161.62,
+    "lat_m": 12.77
+   }
+  },
+  {
+   "dist_m": 18.577,
+   "dy_m": 2.51,
+   "cluster": true,
+   "a": {
+    "id": "137132:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     494.51,
+     82.61,
+     444.91
+    ],
+    "segment": "S4-meadhall-southeast",
+    "station_m": 229.25,
+    "lat_m": 2.546
+   },
+   "b": {
+    "id": "137134:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     492.34,
+     80.1,
+     463.36
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 237.0,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 18.668,
+   "dy_m": 1.78,
+   "cluster": true,
+   "a": {
+    "id": "145935:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     518.64,
+     79.89,
+     633.55
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 455.88,
+    "lat_m": 1.509
+   },
+   "b": {
+    "id": "145936:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     533.17,
+     78.11,
+     645.27
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 492.83,
+    "lat_m": 0.311
+   }
+  },
+  {
+   "dist_m": 19.306,
+   "dy_m": 0.35,
+   "cluster": true,
+   "a": {
+    "id": "28701:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -19.83,
+     58.07,
+     -85.15
+    ],
+    "segment": "S5-temple-southcape",
+    "station_m": 123.97,
+    "lat_m": 0.721
+   },
+   "b": {
+    "id": "17697:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -38.12,
+     58.42,
+     -78.97
+    ],
+    "segment": "T13-temple-harboursouth",
+    "station_m": 82.33,
+    "lat_m": 2.332
+   }
+  },
+  {
+   "dist_m": 19.798,
+   "dy_m": 2.33,
+   "cluster": true,
+   "a": {
+    "id": "7610:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -575.29,
+     40.49,
+     -224.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 396.74,
+    "lat_m": 2.55
+   },
+   "b": {
+    "id": "9577:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -594.68,
+     38.16,
+     -220.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 416.13,
+    "lat_m": 1.45
+   }
+  },
+  {
+   "dist_m": 20.027,
+   "dy_m": 1.58,
+   "cluster": true,
+   "a": {
+    "id": "119283:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     510.03,
+     79.39,
+     41.55
+    ],
+    "segment": "T10-wtspawn-wtsouth",
+    "station_m": 506.93,
+    "lat_m": 3.55
+   },
+   "b": {
+    "id": "119282:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     490.01,
+     77.81,
+     41.03
+    ],
+    "segment": "T11-wtsouth-wtspawn",
+    "station_m": 81.7,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 20.449,
+   "dy_m": 1.56,
+   "cluster": true,
+   "a": {
+    "id": "115157:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -28.45,
+     69.07,
+     -29.64
+    ],
+    "segment": "T3-temple-meadhall",
+    "station_m": 33.02,
+    "lat_m": 3.55
+   },
+   "b": {
+    "id": "115156:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -14.95,
+     67.51,
+     -14.28
+    ],
+    "segment": "T3-temple-meadhall",
+    "station_m": 81.88,
+    "lat_m": 1.339
+   }
+  },
+  {
+   "dist_m": 20.78,
+   "dy_m": 0.36,
+   "cluster": true,
+   "a": {
+    "id": "137133:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     512.12,
+     79.74,
+     469.73
+    ],
+    "segment": "S8-wtsouth-treesth",
+    "station_m": 479.0,
+    "lat_m": 2.553
+   },
+   "b": {
+    "id": "137134:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     492.34,
+     80.1,
+     463.36
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 237.0,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 20.912,
+   "dy_m": 1.61,
+   "cluster": true,
+   "a": {
+    "id": "157961:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     557.92,
+     50.23,
+     913.61
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 10.724
+   },
+   "b": {
+    "id": "159983:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     564.22,
+     48.62,
+     933.55
+    ],
+    "segment": "T8-stenvik-wttown",
+    "station_m": 78.0,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 22.155,
+   "dy_m": 1.61,
+   "cluster": true,
+   "a": {
+    "id": "157962:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     561.52,
+     50.23,
+     911.56
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 14.652
+   },
+   "b": {
+    "id": "159983:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     564.22,
+     48.62,
+     933.55
+    ],
+    "segment": "T8-stenvik-wttown",
+    "station_m": 78.0,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 22.653,
+   "dy_m": 0.42,
+   "cluster": true,
+   "a": {
+    "id": "179161:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -886.79,
+     36.07,
+     1861.95
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2758.12,
+    "lat_m": 15.95
+   },
+   "b": {
+    "id": "178980:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -903.12,
+     35.65,
+     1877.65
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2774.45,
+    "lat_m": 31.65
+   }
+  },
+  {
+   "dist_m": 22.878,
+   "dy_m": 0.13,
+   "cluster": true,
+   "a": {
+    "id": "179161:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -886.79,
+     36.07,
+     1861.95
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2758.12,
+    "lat_m": 15.95
+   },
+   "b": {
+    "id": "178983:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -905.39,
+     35.94,
+     1875.27
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2776.72,
+    "lat_m": 29.27
+   }
+  },
+  {
+   "dist_m": 22.961,
+   "dy_m": 2.53,
+   "cluster": true,
+   "a": {
+    "id": "9576:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -552.68,
+     43.02,
+     -220.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 374.13,
+    "lat_m": 1.45
+   },
+   "b": {
+    "id": "7610:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -575.29,
+     40.49,
+     -224.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 396.74,
+    "lat_m": 2.55
+   }
+  },
+  {
+   "dist_m": 23.344,
+   "dy_m": 1.9,
+   "cluster": true,
+   "a": {
+    "id": "157964:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     556.03,
+     50.52,
+     911.69
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1075.89,
+    "lat_m": 11.094
+   },
+   "b": {
+    "id": "159983:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     564.22,
+     48.62,
+     933.55
+    ],
+    "segment": "T8-stenvik-wttown",
+    "station_m": 78.0,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 23.999,
+   "dy_m": 0.0,
+   "cluster": true,
+   "a": {
+    "id": "22321:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -7.45,
+     31.25,
+     -273.49
+    ],
+    "segment": "T13-temple-harboursouth",
+    "station_m": 442.31,
+    "lat_m": 24.864
+   },
+   "b": {
+    "id": "22322:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     9.52,
+     31.25,
+     -256.52
+    ],
+    "segment": "T13-temple-harboursouth",
+    "station_m": 442.31,
+    "lat_m": 2.888
+   }
+  },
+  {
+   "dist_m": 24.613,
+   "dy_m": 0.42,
+   "cluster": true,
+   "a": {
+    "id": "179162:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -884.92,
+     36.07,
+     1861.08
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2756.25,
+    "lat_m": 15.08
+   },
+   "b": {
+    "id": "178980:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -903.12,
+     35.65,
+     1877.65
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2774.45,
+    "lat_m": 31.65
+   }
+  },
+  {
+   "dist_m": 24.907,
+   "dy_m": 0.13,
+   "cluster": true,
+   "a": {
+    "id": "179162:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -884.92,
+     36.07,
+     1861.08
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2756.25,
+    "lat_m": 15.08
+   },
+   "b": {
+    "id": "178983:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -905.39,
+     35.94,
+     1875.27
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2776.72,
+    "lat_m": 29.27
+   }
+  },
+  {
+   "dist_m": 25.447,
+   "dy_m": 1.9,
+   "cluster": true,
+   "a": {
+    "id": "157965:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     561.31,
+     50.52,
+     908.27
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1087.05,
+    "lat_m": 17.027
+   },
+   "b": {
+    "id": "159983:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     564.22,
+     48.62,
+     933.55
+    ],
+    "segment": "T8-stenvik-wttown",
+    "station_m": 78.0,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 25.941,
+   "dy_m": 0.13,
+   "cluster": true,
+   "a": {
+    "id": "179163:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -890.54,
+     36.07,
+     1854.0
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2761.87,
+    "lat_m": 8.0
+   },
+   "b": {
+    "id": "178983:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -905.39,
+     35.94,
+     1875.27
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2776.72,
+    "lat_m": 29.27
+   }
+  },
+  {
+   "dist_m": 26.034,
+   "dy_m": 1.56,
+   "cluster": true,
+   "a": {
+    "id": "115157:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -28.45,
+     69.07,
+     -29.64
+    ],
+    "segment": "T3-temple-meadhall",
+    "station_m": 33.02,
+    "lat_m": 3.55
+   },
+   "b": {
+    "id": "115158:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -11.28,
+     67.51,
+     -10.07
+    ],
+    "segment": "T3-temple-meadhall",
+    "station_m": 94.71,
+    "lat_m": 0.72
+   }
+  },
+  {
+   "dist_m": 26.087,
+   "dy_m": 3.93,
+   "cluster": true,
+   "a": {
+    "id": "7610:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -575.29,
+     40.49,
+     -224.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 396.74,
+    "lat_m": 2.55
+   },
+   "b": {
+    "id": "7611:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -601.36,
+     36.56,
+     -225.48
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 429.98,
+    "lat_m": 0.541
+   }
+  },
+  {
+   "dist_m": 26.25,
+   "dy_m": 5.54,
+   "cluster": true,
+   "a": {
+    "id": "28885:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     45.85,
+     68.05,
+     -40.87
+    ],
+    "segment": "T12-wtspawn-temple",
+    "station_m": 90.0,
+    "lat_m": 3.55
+   },
+   "b": {
+    "id": "115247:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     60.68,
+     73.59,
+     -19.21
+    ],
+    "segment": "T3-temple-meadhall",
+    "station_m": 245.06,
+    "lat_m": 0.375
+   }
+  },
+  {
+   "dist_m": 26.441,
+   "dy_m": 0.42,
+   "cluster": true,
+   "a": {
+    "id": "179161:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -886.79,
+     36.07,
+     1861.95
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2758.12,
+    "lat_m": 15.95
+   },
+   "b": {
+    "id": "178979:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -904.56,
+     35.65,
+     1881.53
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2775.89,
+    "lat_m": 35.53
+   }
+  },
+  {
+   "dist_m": 26.66,
+   "dy_m": 9.34,
+   "cluster": true,
+   "a": {
+    "id": "160245:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     620.17,
+     40.37,
+     956.8
+    ],
+    "segment": "S2-stathub-eastlobe",
+    "station_m": 191.86,
+    "lat_m": 20.527
+   },
+   "b": {
+    "id": "159978:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     594.41,
+     49.71,
+     963.67
+    ],
+    "segment": "T7-stathub-stenvik",
+    "station_m": 241.25,
+    "lat_m": 1.67
+   }
+  },
+  {
+   "dist_m": 26.788,
+   "dy_m": 0.42,
+   "cluster": true,
+   "a": {
+    "id": "179163:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -890.54,
+     36.07,
+     1854.0
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2761.87,
+    "lat_m": 8.0
+   },
+   "b": {
+    "id": "178980:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -903.12,
+     35.65,
+     1877.65
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2774.45,
+    "lat_m": 31.65
+   }
+  },
+  {
+   "dist_m": 27.255,
+   "dy_m": 1.94,
+   "cluster": true,
+   "a": {
+    "id": "145936:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     533.17,
+     78.11,
+     645.27
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 492.83,
+    "lat_m": 0.311
+   },
+   "b": {
+    "id": "145937:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     515.21,
+     76.17,
+     665.77
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 530.0,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 27.478,
+   "dy_m": 3.96,
+   "cluster": true,
+   "a": {
+    "id": "157255:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     529.52,
+     46.56,
+     893.06
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1025.29,
+    "lat_m": 0.41
+   },
+   "b": {
+    "id": "157963:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     553.08,
+     50.52,
+     907.2
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1047.26,
+    "lat_m": 9.298
+   }
+  },
+  {
+   "dist_m": 28.14,
+   "dy_m": 0.13,
+   "cluster": true,
+   "a": {
+    "id": "179161:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -886.79,
+     36.07,
+     1861.95
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2758.12,
+    "lat_m": 15.95
+   },
+   "b": {
+    "id": "178982:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -907.24,
+     35.94,
+     1881.28
+    ],
+    "segment": "W9-vestvik-lhwest",
+    "station_m": 1.24,
+    "lat_m": 35.28
+   }
+  },
+  {
+   "dist_m": 28.354,
+   "dy_m": 0.42,
+   "cluster": true,
+   "a": {
+    "id": "179162:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -884.92,
+     36.07,
+     1861.08
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2756.25,
+    "lat_m": 15.08
+   },
+   "b": {
+    "id": "178979:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     -904.56,
+     35.65,
+     1881.53
+    ],
+    "segment": "W8-brgs2-vestvik",
+    "station_m": 2775.89,
+    "lat_m": 35.53
+   }
+  },
+  {
+   "dist_m": 28.608,
+   "dy_m": 1.9,
+   "cluster": true,
+   "a": {
+    "id": "157963:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     553.08,
+     50.52,
+     907.2
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1047.26,
+    "lat_m": 9.298
+   },
+   "b": {
+    "id": "159983:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     564.22,
+     48.62,
+     933.55
+    ],
+    "segment": "T8-stenvik-wttown",
+    "station_m": 78.0,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 28.96,
+   "dy_m": 0.47,
+   "cluster": true,
+   "a": {
+    "id": "28216:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     577.08,
+     33.88,
+     -127.9
+    ],
+    "segment": "T5-temple-dockshore",
+    "station_m": 865.75,
+    "lat_m": 2.805
+   },
+   "b": {
+    "id": "28217:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     604.95,
+     33.41,
+     -120.03
+    ],
+    "segment": "T5-temple-dockshore",
+    "station_m": 925.17,
+    "lat_m": 2.646
+   }
+  },
+  {
+   "dist_m": 29.129,
+   "dy_m": 2.3,
+   "cluster": true,
+   "a": {
+    "id": "115159:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     15.33,
+     69.81,
+     1.78
+    ],
+    "segment": "T12-wtspawn-temple",
+    "station_m": 150.99,
+    "lat_m": 0.629
+   },
+   "b": {
+    "id": "115158:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -11.28,
+     67.51,
+     -10.07
+    ],
+    "segment": "T3-temple-meadhall",
+    "station_m": 94.71,
+    "lat_m": 0.72
+   }
+  },
+  {
+   "dist_m": 29.465,
+   "dy_m": 0.91,
+   "cluster": true,
+   "a": {
+    "id": "137133:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     512.12,
+     79.74,
+     469.73
+    ],
+    "segment": "S8-wtsouth-treesth",
+    "station_m": 479.0,
+    "lat_m": 2.553
+   },
+   "b": {
+    "id": "140203:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     507.89,
+     80.65,
+     498.89
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 278.67,
+    "lat_m": 3.536
+   }
+  },
+  {
+   "dist_m": 29.476,
+   "dy_m": 3.67,
+   "cluster": true,
+   "a": {
+    "id": "157258:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     529.31,
+     46.85,
+     889.77
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1019.73,
+    "lat_m": 1.739
+   },
+   "b": {
+    "id": "157963:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     553.08,
+     50.52,
+     907.2
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1047.26,
+    "lat_m": 9.298
+   }
+  },
+  {
+   "dist_m": 29.611,
+   "dy_m": 0.48,
+   "cluster": true,
+   "a": {
+    "id": "17694:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -83.76,
+     65.76,
+     -64.73
+    ],
+    "segment": "T1-portalhub-temple",
+    "station_m": 635.8,
+    "lat_m": 3.542
+   },
+   "b": {
+    "id": "17695:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -60.18,
+     66.24,
+     -46.82
+    ],
+    "segment": "T1-portalhub-temple",
+    "station_m": 685.56,
+    "lat_m": 0.707
+   }
+  },
+  {
+   "dist_m": 29.729,
+   "dy_m": 3.96,
+   "cluster": true,
+   "a": {
+    "id": "157254:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     525.92,
+     46.56,
+     895.11
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1027.3,
+    "lat_m": 2.72
+   },
+   "b": {
+    "id": "157963:1",
+    "prefab": "piece_groundtorch_wood",
+    "pos": [
+     553.08,
+     50.52,
+     907.2
+    ],
+    "segment": "T4-meadhall-stathub",
+    "station_m": 1047.26,
+    "lat_m": 9.298
+   }
+  },
+  {
+   "dist_m": 29.822,
+   "dy_m": 1.01,
+   "cluster": true,
+   "a": {
+    "id": "17696:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -57.1,
+     68.06,
+     -37.92
+    ],
+    "segment": "T1-portalhub-temple",
+    "station_m": 706.56,
+    "lat_m": 0.08
+   },
+   "b": {
+    "id": "115157:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -28.45,
+     69.07,
+     -29.64
+    ],
+    "segment": "T3-temple-meadhall",
+    "station_m": 33.02,
+    "lat_m": 3.55
+   }
+  },
+  {
+   "dist_m": 29.879,
+   "dy_m": 1.19,
+   "cluster": true,
+   "a": {
+    "id": "9693:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -510.68,
+     42.7,
+     -220.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 332.13,
+    "lat_m": 1.45
+   },
+   "b": {
+    "id": "7751:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -540.29,
+     43.89,
+     -224.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 361.74,
+    "lat_m": 2.55
+   }
+  },
+  {
+   "dist_m": 29.95,
+   "dy_m": 0.65,
+   "cluster": true,
+   "a": {
+    "id": "6810:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -694.74,
+     33.48,
+     -278.35
+    ],
+    "segment": "W5-brgs1-wsouth",
+    "station_m": 540.74,
+    "lat_m": 2.553
+   },
+   "b": {
+    "id": "5815:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -721.11,
+     32.83,
+     -292.55
+    ],
+    "segment": "W5-brgs1-wsouth",
+    "station_m": 570.74,
+    "lat_m": 2.55
+   }
+  },
+  {
+   "dist_m": 30.0,
+   "dy_m": 1.24,
+   "cluster": true,
+   "a": {
+    "id": "7750:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -510.29,
+     42.65,
+     -224.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 331.74,
+    "lat_m": 2.55
+   },
+   "b": {
+    "id": "7751:1",
+    "prefab": "piece_groundtorch",
+    "pos": [
+     -540.29,
+     43.89,
+     -224.55
+    ],
+    "segment": "W10-brgs1-treenear",
+    "station_m": 361.74,
+    "lat_m": 2.55
+   }
+  }
+ ],
+ "method": "MEASURED: full pairwise horizontal distance matrix over the live census positions; nearest-neighbour is the row minimum excluding self. Percentiles are over the per-lamp nearest-neighbour distances, not over all pairs.",
+ "tool": "tools/jumpstart/roads/lamps.py::nearest_neighbours"
+}

@@ -1,0 +1,6 @@
+spawn_object piece_groundtorch pos=1634,-1066,31.2536 rot=0,0,0 from=0,0,0
+spawn_object piece_groundtorch pos=1646,-1066,31.2536 rot=0,0,0 from=0,0,0
+spawn_object piece_groundtorch pos=1634,-1054,31.2536 rot=0,0,0 from=0,0,0
+spawn_object piece_groundtorch pos=1646,-1054,31.2536 rot=0,0,0 from=0,0,0
+spawn_object piece_groundtorch pos=1648,-1042,31.2536 rot=0,0,0 from=0,0,0
+spawn_object piece_groundtorch pos=1634,-1040,31.2536 rot=0,0,0 from=0,0,0
