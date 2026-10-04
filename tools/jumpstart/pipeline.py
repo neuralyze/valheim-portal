@@ -284,6 +284,25 @@ FIELD_WINDOWS_DEPENDS_ON = ("declared_windows_for_the_default_seed",)
 _FIELD_WINDOWS_MODE = "declared"    # declared | derived
 
 
+# PLAN_NAME_DEPENDS_ON: STAGE 10 READS THE FILE STAGE 9 WROTE, BY ITS NAME.
+# `network.py plan --out` writes `worldseed.road_plan_names(seed)["segments"]`:
+# `segments.yaml` for the default seed, `segments.<seed>.yaml` for any other.
+# Stage 10's `--plan` hard-coded the second form, so on the default pair it
+# asked for `segments.Pirate68.yaml`, which nothing writes -- MEASURED on the
+# from-scratch Ulfsland regeneration: census died in 0.5 s with
+# FileNotFoundError after 74 min of provisional routing.  NEUTER
+# `_PLAN_NAME_MODE = "seeded"`: the shipped literal.  Proven by
+# `_census_reads_the_plan_stage_nine_wrote`.
+PLAN_NAME_DEPENDS_ON = ("the_name_stage_nine_emits",)
+_PLAN_NAME_MODE = "emitted"    # emitted | seeded
+
+
+def provisional_plan_name(seed: str) -> str:
+    if _PLAN_NAME_MODE == "seeded":
+        return f"segments.{seed}.yaml"
+    return worldseed.road_plan_names(seed)["segments"]
+
+
 def field_window_flags(seed: str) -> list[str]:
     """The extra `roads/field.py request` arguments for this seed."""
     if _FIELD_WINDOWS_MODE == "declared" and seed == worldseed.DEFAULT_SEED:
@@ -737,7 +756,7 @@ STAGES: tuple[Stage, ...] = (
           command=lambda s: [sys.executable,
                              str(HERE / "roads" / "precensus.py"), "survey",
                              "--plan", str(s.work / "route-provisional"
-                                           / f"segments.{s.seed}.yaml"),
+                                           / provisional_plan_name(s.seed)),
                              "--field", str(s.work / f"{s.seed}_1m.bin"),
                              "--out", str(HERE / "roads" / "census"),
                              # THE ACTOR IS WHOEVER RUNS THIS, NOT A WORD.
@@ -2257,6 +2276,8 @@ _NEUTERS: dict[str, tuple[str, str, object]] = {
     "adopt skips identical": ("adopt_restamp", "_ADOPT_MODE", "skip"),
     # FIELD_WINDOWS_DEPENDS_ON.
     "field windows derived": ("field_windows", "_FIELD_WINDOWS_MODE", "derived"),
+    # PLAN_NAME_DEPENDS_ON.
+    "plan name seeded": ("plan_name", "_PLAN_NAME_MODE", "seeded"),
 }
 
 
@@ -2299,7 +2320,8 @@ def survivors(label: str) -> list[str]:
               ("world_guard", _stale_world_stage_refused),
               ("census_loop", _wanted_ground_read_and_rerouted),
               ("adopt_restamp", _identical_adoption_restamped),
-              ("field_windows", _default_seed_scans_declared))
+              ("field_windows", _default_seed_scans_declared),
+              ("plan_name", _census_reads_the_plan_stage_nine_wrote))
     return [n for n, probe in probes if n != dropped and probe()]
 
 
@@ -2807,6 +2829,20 @@ def _replaced_world_refused() -> bool:
         return rc == 0 and seen == [STALE, STALE]
 
 
+def _census_reads_the_plan_stage_nine_wrote() -> bool:
+    """For the default seed AND a fresh one, stage 10's `--plan` names the file
+    `network.py plan` emits (the same `road_plan_names` stage 9 is keyed on)."""
+    import dataclasses                                      # noqa: PLC0415
+    census = next(st for st in STAGES if st.name == "census")
+    for seed in (worldseed.DEFAULT_SEED, "Fresh42"):
+        sc = dataclasses.replace(_ROW_PROBE, seed=seed)
+        argv = [str(a) for a in census.command(sc)]
+        named = Path(argv[argv.index("--plan") + 1]).name
+        if named != worldseed.road_plan_names(seed)["segments"]:
+            return False
+    return True
+
+
 def _default_seed_scans_declared() -> bool:
     """Stage 4 asks for the declared windows on the default seed and for
     derived windows on every other."""
@@ -2964,6 +3000,15 @@ def selftest() -> int:
                                "the declared stage table has no ordering defect",
                                stages=len(STAGES)),
                neuter=_neuter("ordinal reversed"), neuters="ordinal reversed"),
+        R.Case("census_reads_the_plan_file_stage_nine_wrote", False,
+               lambda: finding(_census_reads_the_plan_stage_nine_wrote(),
+                               "stage 10 names the segments file stage 9 emits, "
+                               "for the default seed and a fresh one", seeds=2),
+               prior_state="MEASURED on the from-scratch Ulfsland regeneration: "
+                           "census asked for segments.Pirate68.yaml after stage "
+                           "9 wrote segments.yaml, FileNotFoundError in 0.5 s",
+               neuter=_neuter("plan name seeded"),
+               neuters="plan name seeded"),
         R.Case("the_default_seed_is_scanned_on_its_declared_windows", False,
                lambda: finding(_default_seed_scans_declared(),
                                "stage 4 scans Pirate68 on ULFSLAND_WINDOWS and "
