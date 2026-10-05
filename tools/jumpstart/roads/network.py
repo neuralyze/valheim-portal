@@ -230,6 +230,54 @@ BANK_CEILING_DEPENDS_ON = ("the_drop_at_the_decks_own_stations",
 _BANK_CEILING_MODE = "interval"     # interval | after (the shipped order)
 
 
+# ABUTMENT_BENCH_DEPENDS_ON: FRESHWATER FREEBOARD ALONE DOES NOT MAKE A DECLARED
+# ABUTMENT'S LEVEL RUN A CROSSING.
+#
+# `route.footprint_wet` calls a station wet when the lowest ground under its
+# levelled bench stands within `ROAD_FREEBOARD_M` (1.0 m) of the plane, and a
+# declared abutment is a bench at the crossing's own deck datum (30.6 m: 0.6 m
+# over the plane, by Crossings' declaration) on a shore.  So every leg that
+# starts at one reads wet at its first stations ON FREEBOARD ALONE, the
+# detector joins them to the one shoulder sample that dips under the plane, and
+# the whole run becomes a terminal crossing: `build_segment`'s pin of the
+# abutment datum, which the profile solve skips at a free (deck) station, is
+# lost and the leg climbs from the node on a deck-free ramp.  MEASURED on the
+# Ulfsland regen, W2-brgs2-wmid and W8-brgs2-vestvik: stations 0-3 at brg-s2-w
+# are bridged (a 6.0 m "crossing x01", `terminal_banks: bank_a`; footprint floor
+# 29.84 / 30.2 / 30.5 / 31.33 m), deck H 32.817, profile 34.1 m AT THE NODE
+# against the declared 30.6 m and the committed plan's 30.6 m for the same four
+# stations (dry, a 1.9 m cut, then the 25 % climb); the writer's walked batter
+# then leaves 18 `water_fill` faces of up to 2.04 m at rim [-347,250..253].
+# THE RULE: inside a declared abutment's level run a footprint sample that
+# stands ON OR ABOVE the plane is not wet for the detector -- the abutment pin
+# (`lo = hi = level_y`) holds those stations at the declared datum, as it does
+# at S1's and W5's.  A sample UNDER the plane stays wet: a bench cannot be
+# filled over water (`ribbon.water_sign`), so the shoulder cell that dips under
+# is still a deck at the node (W2: one station), and a run whose shore is
+# mostly under water (S12 at brg-s1-e: 30 drained samples when the whole run
+# is treated as dry) stays refused by `writer_water` with its number.
+# NEUTER `_ABUTMENT_BENCH_MODE = "detected"`: the run is read like any other
+# ground.  Proven by `selftest_abutment_bench`.
+ABUTMENT_BENCH_DEPENDS_ON = ("the_declared_abutment_level_run",
+                             "a_footprint_sample_on_or_above_the_plane")
+_ABUTMENT_BENCH_MODE = "pinned"    # pinned | detected
+
+
+def abutment_bench_dry(t_foot, abut_windows):
+    """`t_foot` with, inside each declared abutment's level run, every sample
+    that stands on or above the plane lifted out of the freeboard band
+    (ABUTMENT_BENCH_DEPENDS_ON); a sample under the plane is left as read."""
+    out = np.array(t_foot, dtype=np.float64)
+    if _ABUTMENT_BENCH_MODE != "pinned":
+        return out
+    clear = WATER_LEVEL + routemod.ROAD_FREEBOARD_M
+    for _which, _node, _level_y, lo_i, hi_i in abut_windows:
+        run = out[lo_i:hi_i + 1]
+        out[lo_i:hi_i + 1] = np.where((run >= WATER_LEVEL) & (run <= clear),
+                                      clear + 1e-6, run)
+    return out
+
+
 def drop_stations(k: int, bridged: list[bool]) -> list[int]:
     """The stations a walked-ray drop at the foot run `k -> k+1` is asked of
     (BANK_CEILING_DEPENDS_ON): the dry ones, or the deck's own when both
@@ -1691,13 +1739,24 @@ def _writer_water_once(seg: dict, fld, keepouts=None) -> dict:
     # a planned pad lays next, within one slide limit of that pad's datum, is
     # OWED to the pad, not refused (PLANNED_PAD_RIM_DEPENDS_ON).  The plan
     # counted every such row as a refusal the writer never made.
+    # THE REMEDY SEARCH SCORES ON THE FIRST TERM OF THE OWED RULE ALONE; the
+    # leg's FINAL verdict also takes the pad's own cliff
+    # (PLANNED_PAD_CLIFF_DEPENDS_ON, `judged` below).
     rim_kept, _owed = ribbonmod.planned_pad_owed(rim["caused_rows"], pads,
-                                                 J.SLIDE_PER_M)
+                                                 J.SLIDE_PER_M, cliff=False)
     labels = [(r, ribbonmod.rim_step_owner(r, refused_at, None, J.SLIDE_PER_M))
               for r in rim_kept]
     keep_rows = [r for r, lab in labels if "poi" in lab]
     pad_rows = [r for r, lab in labels if "pad" in lab]
     rows = plan_refusal_rows(labels)      # PLAN_REFUSAL_DEPENDS_ON
+    # WHAT THE STAMP REFUSED EACH ROW FOR, for `water_owner`
+    # (OWNER_CAUSE_DEPENDS_ON): `refused a+b` -> {a, b}.
+    row_causes: dict[tuple[int, int], set] = {}
+    for r, lab in labels:
+        if lab.startswith("refused "):
+            row_causes.setdefault(
+                (int(r["rim_xz"][0]), int(r["rim_xz"][1])), set()
+            ).update(lab[len("refused "):].split("+"))
     sign = ribbonmod.water_sign(taken_gen, taken_after)
     nodes = np.asarray(seg["nodes"], dtype=np.float64)
     prof = np.asarray(seg["profile_y"], dtype=np.float64)
@@ -1744,6 +1803,21 @@ def _writer_water_once(seg: dict, fld, keepouts=None) -> dict:
     rows = rows + keep_rows + pad_rows
     steps = len(rows)
     arrivals = pads.arrivals(seg, finished)
+    # THE LEG'S FINAL READING (PLANNED_PAD_CLIFF_DEPENDS_ON): the rows left once
+    # the planned pads' own cliffs are owed to them.  Never fewer than the
+    # search's reading would leave on a leg with no planned pad at its rim.
+    j_kept, _j_owed = ribbonmod.planned_pad_owed(rim["caused_rows"], pads,
+                                                 J.SLIDE_PER_M)
+    j_labels = [(r, ribbonmod.rim_step_owner(r, refused_at, None,
+                                             J.SLIDE_PER_M))
+                for r in j_kept]
+    j_steps = (len(plan_refusal_rows(j_labels))
+               + sum(1 for _r, lab in j_labels if "poi" in lab)
+               + sum(1 for _r, lab in j_labels if "pad" in lab))
+    judged = {"steps": j_steps,
+              "verdict": "REFUSED" if (j_steps or sign["drained_samples"] or (
+                  arrivals and _ARRIVAL_REFUSAL_MODE == "refuse"))
+              else "CLEAR"}
     return {
         "verdict": "REFUSED" if (steps or sign["drained_samples"] or (
             arrivals and _ARRIVAL_REFUSAL_MODE == "refuse")) else "CLEAR",
@@ -1765,6 +1839,8 @@ def _writer_water_once(seg: dict, fld, keepouts=None) -> dict:
                       "the finished pad surface, ribbon.rim_step_owner, "
                       "ribbon.water_sign (network.writer_water)",
         "_seeds": [(x, z, y) for (x, z), y in sorted(seeds.items())],
+        "_causes": {k: sorted(v) for k, v in row_causes.items()},
+        "_judged": judged,
         "_drops": drops,
         "_feet": feet,
         "_keepout": sorted(keepout.values()),
@@ -1805,30 +1881,70 @@ def _water_score(ww: dict) -> int:
                if _ARRIVAL_REFUSAL_MODE == "refuse" else 0))
 
 
+def judged_public(ww: dict) -> dict:
+    """The leg's FINAL reading (PLANNED_PAD_CLIFF_DEPENDS_ON) as record keys,
+    only where it differs from the search's: a leg whose two readings agree
+    carries nothing new, so a plan that never needed the second is unchanged
+    to the byte."""
+    j = ww.get("_judged")
+    if not j or (j["verdict"], j["steps"]) == (ww["verdict"], ww["steps"]):
+        return {}
+    return {"judged_verdict": j["verdict"], "judged_steps": j["steps"]}
+
+
 def water_public(ww: dict) -> dict:
     """`writer_water`'s verdict without the remedies' private keys."""
     return {k: v for k, v in ww.items() if not k.startswith("_")}
+
+
+# OWNER_CAUSE_DEPENDS_ON: A WATER REFUSAL IS NAMED FOR WHAT THE STAMP REFUSED IT
+# FOR, AND FOR THE NEAREST END, NOT FOR THE FIRST ONE NAMED.  `water_owner`
+# put every row that stood within batter reach of an end under "terminus <the
+# first end>: its approach (deck/jetty)" and every other row under "the profile
+# floor and the census band", whatever the stamp had refused it for.  MEASURED
+# on the Ulfsland regen: T6-stathub-northcape's 4 rows are `refused
+# shared_corridor` (the line's own second branch 5 m off, 2.4412 m) and
+# W2/W3/W4/W8's [-77,1787] rows are `refused steeper_than_batter` (3.8962 m, a
+# cliff beside the carriageway), all labelled "profile floor / census band" --
+# an owner no census read or ceiling can serve -- and S12's rows read "terminus
+# brg-s1-e" where the boathouse end was 12.9 m away and brg-s1-e 80 m.
+# NEUTER `_OWNER_CAUSE_MODE = "position"`: position alone and the first end
+# named, as before.  Proven by `selftest_owner_cause`.
+OWNER_CAUSE_DEPENDS_ON = ("the_cause_the_stamp_refused_the_row_for",
+                          "the_nearest_end")
+_OWNER_CAUSE_MODE = "cause"    # cause | position
 
 
 def water_owner(seg: dict, ww: dict, near_end_m: float) -> dict[str, int]:
     """WHO OWNS each water refusal no remedy here served, counted per owner.
 
     A refusal within batter reach of a terminal node is that node's approach
-    (the dock or jetty a road cannot pave onto); one whose foot is on a
-    crossing's level bank run stands at the deck datum `Crossings` owns; any
-    other has a ceiling under the floor in force and no alignment inside
-    the ground this leg may be routed over (the census band) -- the census
-    is what a wider move needs."""
+    (the dock or jetty a road cannot pave onto) -- the NEAREST end's, not the
+    first end named: S12-brgs1-boathouse is 32 m long and every row of it
+    stood within reach of both ends, so its rows read `terminus brg-s1-e`
+    where the nearer end was the boathouse (OWNER_CAUSE_DEPENDS_ON); one whose
+    foot is on a crossing's level bank run stands at the deck datum
+    `Crossings` owns; one the stamp refused for the line's OWN SECOND BRANCH
+    (`shared_corridor`), for ground steeper than the batter plane or for ground
+    past the apply clamp names that, because no ceiling or census band is the
+    remedy of a line that folds back on itself or runs under a cliff; any other
+    has a ceiling under the floor in force and no alignment inside the ground
+    this leg may be routed over (the census band) -- the census is what a wider
+    move needs."""
     nodes = seg["nodes"]
     ends = ((seg["from"], nodes[0]), (seg["to"], nodes[-1]))
     bridged = [i for i, b in enumerate(seg["is_bridge"]) if b]
+    causes = ww.get("_causes") or {}
     out: dict[str, int] = {}
     for x, z, _y in ww["_seeds"]:
         k = ww["_feet"].get((x, z))
-        near = [nid for nid, (ex, ez) in ends
+        near = [(math.hypot(x - ex, z - ez), nid) for nid, (ex, ez) in ends
                 if math.hypot(x - ex, z - ez) <= near_end_m]
+        if _OWNER_CAUSE_MODE == "cause":
+            near.sort()
+        why = set(causes.get((x, z)) or ())
         if near:
-            who = f"terminus {near[0]}: its approach (deck/jetty)"
+            who = f"terminus {near[0][1]}: its approach (deck/jetty)"
         elif (k is not None and bridged and seg["crossings"]
               and min(abs(k - b) for b in bridged) * STATION_M
               <= BANK_LEVEL_M + STATION_M):
@@ -1837,6 +1953,14 @@ def water_owner(seg: dict, ww: dict, near_end_m: float) -> dict[str, int]:
                 for s in ("bank_a", "bank_b")))
             who = (f"crossing {c['crossing_id']}: its bank level run at the "
                    f"deck datum {c.get('required_deck_y')}")
+        elif "shared_corridor" in why and _OWNER_CAUSE_MODE == "cause":
+            who = ("this leg's own second branch beside the line "
+                   "(shared_corridor): the alignment folds back on itself")
+        elif ("steeper_than_batter" in why or "over_clamp" in why) \
+                and _OWNER_CAUSE_MODE == "cause":
+            who = ("ground beside the line steeper than the batter plane or "
+                   "past the apply clamp (steeper_than_batter / over_clamp): "
+                   "the alignment")
         else:
             who = ("the profile floor (freeboard/clamp) and the census band "
                    "the alignment may move in")
@@ -2134,15 +2258,10 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
             f"`roads/field.py request` for this seed with a window that "
             f"reaches {routemod.footprint_half_m(width_m):g} m past the "
             f"centreline.")
-    fit1 = routemod.fit_profile(t, s, g_max)
-    detected, _flag, fords = routemod.find_crossings(
-        edge["id"], pts, s, t, fit1["infeasible_spans"], t_foot=tw0_lo)
-
-    # Geometry second: mark the deck stations, straighten each crossing window
-    # and each declared-abutment window over ranges that never overlap
-    # (CROSSING_BANKS_DEPENDS_ON), then re-sample the terrain because
-    # straightening moved the stations.
-    free, windows = crossing_windows(pts, s, detected)
+    # THE ABUTMENT'S LEVEL RUN IS THE DECLARED BANK, NOT A SECOND CROSSING
+    # (ABUTMENT_BENCH_DEPENDS_ON): stations inside a declared abutment's
+    # level run are pinned at its datum below, so the detector is asked
+    # about them with the freeboard-only wetness taken off.
     abut_windows = []
     for which, node_id in (("a", edge["a"]), ("b", edge["b"])):
         node = specmod.NODES[node_id]
@@ -2154,6 +2273,16 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
             sel = np.nonzero(s >= s[-1] - BANK_LEVEL_M)[0]
         abut_windows.append((which, node_id, float(node["level_y"]),
                              int(sel.min()), int(sel.max())))
+    fit1 = routemod.fit_profile(t, s, g_max)
+    detected, _flag, fords = routemod.find_crossings(
+        edge["id"], pts, s, t, fit1["infeasible_spans"],
+        t_foot=abutment_bench_dry(tw0_lo, abut_windows))
+
+    # Geometry second: mark the deck stations, straighten each crossing window
+    # and each declared-abutment window over ranges that never overlap
+    # (CROSSING_BANKS_DEPENDS_ON), then re-sample the terrain because
+    # straightening moved the stations.
+    free, windows = crossing_windows(pts, s, detected)
     pts, windows = straighten_windows(pts, s, windows, abut_windows)
     if windows or abut_windows:
         t = np.array([fld.bilinear(x, z) for x, z in pts], dtype=np.float64)
@@ -2738,6 +2867,201 @@ def plan_refusal(seg: dict, gen_pois: list, seed: str, *,
     return None
 
 
+# ---------------------------------------------------------------------------
+# SPAN_REPRICE_DEPENDS_ON: A ROUTE THE SPAN CEILING REFUSES IS A ROUTE TO
+# RE-PRICE, NOT PROOF THAT THE LEG HAS NO LAND ROUTE.
+#
+# THE DEFECT, MEASURED on the regenerated Ulfsland (seed Pirate68), W10-brgs1-
+# treenear and W9-vestvik-lhwest, "UNROUTABLE: no route found" -- band-free
+# too, so not the census's.  The committed plan routes both.
+#
+# THE CAUSE.  `water_forbidden` encodes the 96 m span ceiling as "no water
+# cell further than 48 m from land", which is exact on the 4 m cell grid and
+# loose on the 1 m field the crossing is MEASURED on: W10's first route bridges
+# 84 m of cells and MEASURES 96.37 m (bank_a is the declared abutment
+# brg-s1-w, station 0), 0.37 m past the ceiling.  The retry that follows the
+# measurement forbids ALL water -- and a leg that needs even one honest bridge
+# (this one needs 65.75 m; the committed plan's W10 has an 89.44 m one) has no
+# land-only route at all, so the retry's "no route found" reads as a proof
+# when it is a consequence of the retry.  The comment on it says as much ("if
+# none exists the rejection is a proof rather than a tuning artefact"); it
+# is a proof only of the land-only question.
+#
+# THE RULE.  When the land-only answer does not exist, ask the SAME search
+# with water dearer, ladder SPAN_REPRICE_FACTORS times
+# `Corridor.bridge_per_m_cost`, and take the first rung whose finished leg
+# MEASURES inside the ceiling.  Water stays traversable at every rung, so a
+# crossing the ceiling permits is never lost to the retry; the price rising
+# without bound drives the search to the fewest bridged metres a route can
+# have, so when the top rung still measures past the ceiling the leg is
+# refused with that measured minimum -- a proof about bridges, which is the
+# question the ceiling asks.
+#   the_measured_span_past_the_ceiling  the trigger is the MEASURED span
+#       (find_crossings on the 1 m field), not the cell run the search sees
+#   water_dearer_not_forbidden          the price is the only thing that moves
+#   the_land_only_answer_first          a leg that has a land route keeps it:
+#       the shipped retry runs first and this runs only where it raised
+# NEUTER `_SPAN_REPRICE_MODE = "land_only"`: the shipped retry, its "no route
+# found" standing as the leg's refusal.  Proven by `selftest_span_reprice`.
+# ---------------------------------------------------------------------------
+SPAN_REPRICE_DEPENDS_ON = ("the_measured_span_past_the_ceiling",
+                           "water_dearer_not_forbidden",
+                           "the_land_only_answer_first")
+_SPAN_REPRICE_MODE = "reprice"          # reprice | land_only (the shipped)
+SPAN_REPRICE_FACTORS = (2.0, 4.0, 16.0, 64.0)
+
+
+def span_worst(rec: dict) -> float:
+    """The longest bridged run this leg MEASURES, in metres."""
+    return max((c["span_m"] for c in rec["crossings"]), default=0.0)
+
+
+def at_water_price(corr: routemod.Corridor, factor: float | None, fn):
+    """`fn()` with the corridor's bridged-metre price times `factor` (None:
+    as it stands), put back whatever `fn` does."""
+    if factor is None:
+        return fn()
+    base = corr.bridge_per_m_cost
+    corr.bridge_per_m_cost = base * factor
+    try:
+        return fn()
+    finally:
+        corr.bridge_per_m_cost = base
+
+
+def span_reprice(corr: routemod.Corridor, attempt, *, first_worst: float,
+                 land_exc: ValueError) -> tuple[tuple, dict]:
+    """SPAN_REPRICE_DEPENDS_ON.  `attempt()` builds the leg on `corr` as it
+    stands and returns a tuple whose first item is the leg's record; `land_
+    exc` is what the land-only retry raised.  Returns that tuple for the
+    first rung that measures inside the ceiling, with the record of the
+    ladder; raises ValueError, naming the measured minimum, when none does."""
+    if _SPAN_REPRICE_MODE == "land_only":
+        raise land_exc
+    rungs: list[dict] = []
+    for f in SPAN_REPRICE_FACTORS:
+        try:
+            out = at_water_price(corr, f, attempt)
+        except DrownedFootprint:
+            raise       # the drowned-terminus trim's, not a refused rung
+        except ValueError as exc:
+            rungs.append({"factor": f, "refused": str(exc)[:200]})
+            continue
+        worst = span_worst(out[0])
+        rungs.append({"factor": f, "worst_span_m": worst,
+                      "length_m": out[0]["length_m"]})
+        if worst <= MAX_BRIDGE_SPAN_M:
+            return out, {
+                "depends_on": list(SPAN_REPRICE_DEPENDS_ON), "factor": f,
+                "first_attempt_worst_span_m": first_worst,
+                "land_only": str(land_exc)[:160], "rungs": rungs,
+                "why": "first route proposed a bridged run past Crossings' "
+                       f"{MAX_BRIDGE_SPAN_M:g} m absolute span ceiling and no "
+                       "land-only route exists; re-routed with bridged metres "
+                       f"priced x{f:g}"}
+    measured = [r["worst_span_m"] for r in rungs if "worst_span_m" in r]
+    raise ValueError(
+        f"no route found inside the {MAX_BRIDGE_SPAN_M:g} m span ceiling: the "
+        f"first route bridges {first_worst:.1f} m, the land-only retry found "
+        f"none ({str(land_exc)[:80]}), and bridged metres priced up to "
+        f"x{SPAN_REPRICE_FACTORS[-1]:g} "
+        + (f"still bridge {min(measured):.1f} m at the least"
+           if measured else "are refused: "
+           + "; ".join(r["refused"][:80] for r in rungs[-1:]))
+        + "; key = network.SPAN_REPRICE_DEPENDS_ON")
+
+
+# ---------------------------------------------------------------------------
+# ADJACENCY_REROUTE_DEPENDS_ON: A LINE WHOSE OWN BRANCHES NO EARTHWORK CAN
+# JOIN IS A LINE TO RE-ROUTE, AND `self_adjacency_rejection` SAYS SO.
+#
+# THE DEFECT, MEASURED on the regenerated Ulfsland (seed Pirate68),
+# S14-eastlobe-ferryeast: the confined search found nothing, and the band-free
+# probe's line (760.9 m, no bridge) was "REFUSED self_adjacency" -- 68 lattice
+# edges between stations 362 and 370, 15.69 m of line and 2.82 m of design
+# height apart, 6.2 m apart on the ground, 2.04 m UNABSORBABLE at every rung
+# to the 25 % ceiling.  The refusal text ends "re-route the leg so its
+# switchback legs stand apart" and NOTHING DID: A* prices a corridor cell, not
+# the lattice two of its own legs share, so on a hillside it takes a hairpin
+# whose branches stand closer than the earthwork can reconcile, the leg is
+# refused, and the census, the joint solve and the report all read the leg as
+# one with no route.  W1-brgs1-wmid (558 edges) and the rest of the self-
+# adjacency refusals are the same shape.
+#
+# THE RULE.  A leg whose finished line is REFUSED by its own branches is
+# searched again with a DISC THE SEARCH MAY NOT ENTER laid on the later foot of
+# the worst pair the refusal names, radius ADJACENCY_DISC_M, one
+# ADJACENCY_DISC_GROW_M wider per round, the discs of earlier rounds kept;
+# the first round whose line is not refused is the leg.  A leg the first
+# search leaves clear is not touched (the extra search is not made), and a leg
+# no round joins -- or whose re-search raises -- is returned EXACTLY AS ROUTED,
+# so the repair can only turn a refusal into a leg, never a leg into another
+# refusal.  Every later gate (write gate, water, joint datum, census) judges
+# the re-routed line as it would any other.
+#   the_worst_pairs_later_foot       the station of the pair the refusal names
+#   a_disc_the_search_may_not_enter  a mask over the corridor, not a penalty
+#   the_leg_as_routed_when_no_round_joins  nothing is lost by asking
+# NEUTER `_ADJACENCY_REROUTE_MODE = "off"`: the shipped plan, the refused line
+# standing.  Proven by `selftest_adjacency_reroute`.
+# ---------------------------------------------------------------------------
+ADJACENCY_REROUTE_DEPENDS_ON = ("the_worst_pairs_later_foot",
+                                "a_disc_the_search_may_not_enter",
+                                "the_leg_as_routed_when_no_round_joins")
+_ADJACENCY_REROUTE_MODE = "reroute"     # reroute | off (the shipped plan)
+ADJACENCY_DISC_M = 8.0                  # two corridor cells: taste pick
+ADJACENCY_DISC_GROW_M = 2.0             # one more half-cell per round
+ADJACENCY_ROUNDS = 8
+
+
+def adjacency_mask(corr: routemod.Corridor, discs) -> np.ndarray:
+    """The corridor cells whose centre lies inside any `(x, z, r)` disc."""
+    out = np.zeros((corr.m, corr.m), dtype=bool)
+    for x, z, r in discs:
+        j0 = max(0, int(math.floor((x - r - corr.x0) / corr.cell_m)))
+        j1 = min(corr.m - 1, int(math.ceil((x + r - corr.x0) / corr.cell_m)))
+        i0 = max(0, int(math.floor((z - r - corr.z0) / corr.cell_m)))
+        i1 = min(corr.m - 1, int(math.ceil((z + r - corr.z0) / corr.cell_m)))
+        if j0 > j1 or i0 > i1:
+            continue
+        ii, jj = np.mgrid[i0:i1 + 1, j0:j1 + 1]
+        out[i0:i1 + 1, j0:j1 + 1] |= (
+            np.hypot(corr.x0 + jj * corr.cell_m - x,
+                     corr.z0 + ii * corr.cell_m - z) <= r)
+    return out
+
+
+def adjacency_reroute(corr: routemod.Corridor, one) -> tuple[dict, dict]:
+    """ADJACENCY_REROUTE_DEPENDS_ON.  `one(extra_forbid)` builds the leg on
+    `corr` with that mask laid over the search (None: none) and returns
+    `(record, joint)`."""
+    rec, joint = one(None)
+    if (_ADJACENCY_REROUTE_MODE == "off"
+            or self_adjacency_rejection(rec) is None):
+        return rec, joint
+    original, last, discs = (rec, joint), rec, []
+    for k in range(ADJACENCY_ROUNDS):
+        worst = (last["self_adjacency"].get("worst_before") or {}).get("xz")
+        if not worst or len(worst) < 2:
+            return original
+        discs.append([float(worst[1][0]), float(worst[1][1]),
+                      ADJACENCY_DISC_M + k * ADJACENCY_DISC_GROW_M])
+        try:
+            cand, cj = one(adjacency_mask(corr, discs))
+        except ValueError:
+            return original
+        if self_adjacency_rejection(cand) is None:
+            cand["adjacency_reroute"] = {
+                "depends_on": list(ADJACENCY_REROUTE_DEPENDS_ON),
+                "rounds": k + 1, "discs": [list(d) for d in discs],
+                "as_routed_length_m": original[0]["length_m"],
+                "why": "the line as first routed was refused for its own "
+                       "branches; re-searched with a disc the search may not "
+                       "enter on the later foot of the worst pair"}
+            return cand, cj
+        last = cand
+    return original
+
+
 def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
                 build, refusal) -> tuple[dict, dict]:
     """Route this leg so the writer need not refuse its batter into water.
@@ -2879,19 +3203,30 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
                          else "terminal trim and ceiling only -- the NEUTER"),
         "tried": tried,
     }
+    out["writer_water"].update(judged_public(best["ww"]))
     if _water_score(best["ww"]):
         out["writer_water"]["residual_owner"] = water_owner(
             out, best["ww"], half + reach)
     return out, best["joint"]
 
 
-def water_rejection(seg: dict) -> dict | None:
+def final_verdict(fin: dict) -> str:
+    """A leg's verdict for the plan's FINAL decision: the reading that owes the
+    planned pads their own cliffs when the record carries one that differs
+    (PLANNED_PAD_CLIFF_DEPENDS_ON), else the verdict the search scored."""
+    return fin.get("judged_verdict", fin["verdict"])
+
+
+def water_rejection(seg: dict, *, final: bool = False) -> dict | None:
     """The refusal a leg the writer would still refuse on water earns, WITH
-    ITS NUMBER AND ITS OWNER, or None."""
+    ITS NUMBER AND ITS OWNER, or None.  `final` asks the leg's final reading
+    (`final_verdict`); the plan's earlier gates ask the search's."""
     w = seg.get("writer_water") or {}
     fin = w.get("after_junction") or w
-    if fin.get("verdict") != "REFUSED":
+    if (final_verdict(fin) if final else fin.get("verdict")) != "REFUSED":
         return None
+    if final:
+        fin = {**fin, "steps": fin.get("judged_steps", fin["steps"])}
     return {
         "why": f"the writer would refuse this leg's finished geometry: "
                f"{fin['steps']} rim step(s), including "
@@ -4466,12 +4801,17 @@ def selftest() -> int:
     fails += selftest_census_adopt()
     fails += selftest_terminal_crossing()
     fails += selftest_crossing_banks()
+    fails += selftest_abutment_bench()
+    fails += selftest_owner_cause()
+    fails += selftest_pad_cliff_verdict()
     fails += selftest_arrival()
     fails += selftest_arrival_reach()
     fails += selftest_foreign_nodes()
     fails += selftest_node_anchor()
     fails += selftest_orphan_join()
     fails += selftest_terminal_reach()
+    fails += selftest_span_reprice()
+    fails += selftest_adjacency_reroute()
     print(f"\n{fails} case(s) failed")
     return 1 if fails else 0
 
@@ -6225,6 +6565,195 @@ def selftest_crossing_banks() -> int:
 
 
 
+def selftest_owner_cause() -> int:
+    """OWNER_CAUSE_DEPENDS_ON, both ways, on the Ulfsland regen's own shapes:
+    S12 (a 32 m leg, both ends within batter reach of every row) and T6/W3's
+    rows the stamp refused for the line's own second branch and for a cliff."""
+    global _OWNER_CAUSE_MODE
+    fails = 0
+
+    def want(label, got, expect):
+        nonlocal fails
+        ok = got == expect
+        fails += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}: {got}"
+              + ("" if ok else f"  EXPECTED {expect}"))
+
+    # a 400 m straight leg: ends (0, 0) and (400, 0)
+    nodes = [[2.0 * k, 0.0] for k in range(201)]
+    seg = {"from": "brg-s1-e", "to": "boathouse-strait", "nodes": nodes,
+           "is_bridge": [False] * len(nodes), "crossings": []}
+    short = {"from": "brg-s1-e", "to": "boathouse-strait",
+             "nodes": [[2.0 * k, 0.0] for k in range(17)],
+             "is_bridge": [False] * 17, "crossings": []}
+    seeds = [(200, 3, 40.0), (210, 4, 40.0), (212, 4, 40.0), (216, 4, 40.0)]
+    feet = {(x, z): x // 2 for x, z, _y in seeds}
+    causes = {(200, 3): ["shared_corridor"], (210, 4): ["steeper_than_batter"],
+              (212, 4): ["over_clamp", "water_fill"], (216, 4): ["water_fill"]}
+    ww = {"_seeds": seeds, "_feet": feet, "_causes": causes}
+    floor = ("the profile floor (freeboard/clamp) and the census band the "
+             "alignment may move in")
+    cliff = ("ground beside the line steeper than the batter plane or past "
+             "the apply clamp (steeper_than_batter / over_clamp): the "
+             "alignment")
+    branch = ("this leg's own second branch beside the line (shared_corridor)"
+              ": the alignment folds back on itself")
+    # a short leg: rows 12.9 m from the boathouse end and 19 m from brg-s1-e
+    near_b = {"_seeds": [(19, 0, 31.0)], "_feet": {(19, 0): 9}, "_causes": {}}
+
+    def moded(mode, fn):
+        global _OWNER_CAUSE_MODE
+        was = _OWNER_CAUSE_MODE
+        _OWNER_CAUSE_MODE = mode
+        try:
+            return fn()
+        finally:
+            _OWNER_CAUSE_MODE = was
+    print("case: rows the stamp refused for the line's own branch and a cliff "
+          "(REQUIRED: named for that, not for the floor or the census band)")
+    want("by cause", moded("cause", lambda: water_owner(seg, ww, 25.0)),
+         {branch: 1, cliff: 2, floor: 1})
+    want("NEUTER owner_cause=position: all four are the floor and the band",
+         moded("position", lambda: water_owner(seg, ww, 25.0)), {floor: 4})
+    print("case: a 32 m leg (REQUIRED: a row 12.9 m from its far end is that "
+          "end's approach)")
+    want("the nearer end", moded("cause", lambda: water_owner(short, near_b,
+                                                              25.0)),
+         {"terminus boathouse-strait: its approach (deck/jetty)": 1})
+    want("NEUTER owner_cause=position: the first end named",
+         moded("position", lambda: water_owner(short, near_b, 25.0)),
+         {"terminus brg-s1-e: its approach (deck/jetty)": 1})
+    print(f"owner-cause selftest: {fails} failed")
+    return fails
+
+
+def selftest_pad_cliff_verdict() -> int:
+    """PLANNED_PAD_CLIFF_DEPENDS_ON at the plan's FINAL decision: the search's
+    verdict and numbers are untouched (a plan that never needed the second
+    reading is unchanged to the byte); a leg REFUSED only on the planned pads'
+    own cliffs -- Ulfsland S6 (5 `refused pad` rows, 1.8808 m at [533,1326])
+    and S8 (3 rows, 0.9689 m at [533,50]) -- is judged CLEAR at the end and
+    rejected only when rows survive the owed rule."""
+    fails = 0
+
+    def want(label, got, expect):
+        nonlocal fails
+        ok = got == expect
+        fails += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}: {got}"
+              + ("" if ok else f"  EXPECTED {expect}"))
+
+    def leg(extra):
+        return {"writer_water": {
+            "verdict": "REFUSED", "steps": 5, "drained": 0, "worst_m": 1.8808,
+            "worst_at": [533, 1326], "pad_steps": 5, "keepout_steps": 0,
+            "arrival_failures": [], "remedy": "as routed", **extra}}
+    ww = {"verdict": "REFUSED", "steps": 5}
+    print("case: the record carries the final reading only where it differs")
+    want("agreeing readings add no key (Fresh42 stays byte-identical)",
+         judged_public({**ww, "_judged": {"verdict": "REFUSED", "steps": 5}}),
+         {})
+    want("a leg the cliff rule clears carries it", judged_public(
+        {**ww, "_judged": {"verdict": "CLEAR", "steps": 0}}),
+        {"judged_verdict": "CLEAR", "judged_steps": 0})
+    print("case: S6's shape (REQUIRED: refused by the search's gates, judged "
+          "CLEAR by the final one)")
+    cleared = leg({"judged_verdict": "CLEAR", "judged_steps": 0})
+    want("the search's reading still refuses", water_rejection(cleared) is None,
+         False)
+    want("the final reading admits it",
+         (final_verdict(cleared["writer_water"]),
+          water_rejection(cleared, final=True)), ("CLEAR", None))
+    print("case: rows survive the owed rule (REQUIRED TO REFUSE, with the "
+          "judged number)")
+    left = leg({"judged_verdict": "REFUSED", "judged_steps": 2})
+    want("refused, with the rows left", (
+        water_rejection(left, final=True) or {}).get("writer_water_steps"), 2)
+    print("case: a record with no second reading (REQUIRED: the old verdict)")
+    plain = leg({})
+    want("final reading is the search's", (
+        final_verdict(plain["writer_water"]),
+        (water_rejection(plain, final=True) or {}).get("writer_water_steps")),
+        ("REFUSED", 5))
+    print(f"pad-cliff-verdict selftest: {fails} failed")
+    return fails
+
+
+def _ab_ground(X, Z):
+    """A shore: sea west of x = -1; land from there rising 0.1 m/m; a low band
+    either side of the line inside the freeboard (30.4 m, over the plane) and
+    one shoulder pit UNDER the plane (29.9 m) at the first station -- the
+    Ulfsland brg-s2-w shape -- and, 30 m on, a real 10 m channel (28.5 m)."""
+    h = np.where(X < -1, 29.0, 31.4 + 0.10 * np.maximum(X, 0.0))
+    band = (np.abs(Z) > 2.0) & (np.abs(Z) <= 4.0) & (X >= -1) & (X < 8.0)
+    h = np.where(band, 30.4, h)
+    pit = (np.abs(X - 0.5) <= 1.0) & (np.abs(Z - 3.0) <= 0.6)
+    h = np.where(pit, 29.9, h)
+    return np.where((X >= 30.0) & (X < 40.0) & (np.abs(Z) <= 30.0), 28.5, h)
+
+
+def selftest_abutment_bench() -> int:
+    """ABUTMENT_BENCH_DEPENDS_ON, both ways, through `build_segment` on a
+    shore built in code.  Two declared nodes are added to `spec.NODES` for the
+    call and removed after."""
+    global _ABUTMENT_BENCH_MODE
+    fails = 0
+
+    def want(label, got, expect):
+        nonlocal fails
+        ok = got == expect
+        fails += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}: {got}"
+              + ("" if ok else f"  EXPECTED {expect}"))
+
+    half, n = 120.0, 240
+    ax = -half + 0.5 + np.arange(n, dtype=np.float64)
+    X, Z = np.meshgrid(ax, ax)
+    fld = fieldmod.Field("ab-shore", 0.0, 0.0, half, 1.0, n,
+                         _ab_ground(X, Z).astype(np.float32),
+                         np.ones((n, n), dtype=np.uint8))
+    corr = _ww_corridor(fld)
+    line = [[float(x), 0.0] for x in range(0, 82, 2)]
+    edge = {"id": "AB", "a": "ab-abutment", "b": "ab-far", "cls": "trunk",
+            "pri": 3}
+    specmod.NODES["ab-abutment"] = {
+        "island": "ab", "patch": "ab", "kind": "abutment", "level_y": 30.6,
+        "xz": (0.0, 0.0), "ground_y": 31.4}
+    specmod.NODES["ab-far"] = {"island": "ab", "patch": "ab",
+                               "kind": "extremity", "xz": (80.0, 0.0)}
+
+    def built(mode):
+        global _ABUTMENT_BENCH_MODE
+        was = _ABUTMENT_BENCH_MODE
+        _ABUTMENT_BENCH_MODE = mode
+        try:
+            rec = build_segment(fld, edge, corr, [], fixed_pts=line,
+                                census=None, joint={})
+        finally:
+            _ABUTMENT_BENCH_MODE = was
+        return rec
+    try:
+        keep, drop = built("pinned"), built("detected")
+    finally:
+        del specmod.NODES["ab-abutment"], specmod.NODES["ab-far"]
+    print("case: a declared abutment on a shore (REQUIRED: the freeboard band "
+          "inside its level run is not a crossing; the shoulder sample UNDER "
+          "the plane still is, and so is the channel 30 m on)")
+    want("the run's crossing is the one station that dips under the plane",
+         keep["crossings"][0]["stations"], [0, 0])
+    want("NEUTER abutment_bench=detected: the freeboard band is joined to it "
+         "(stations 0-3, the run)", drop["crossings"][0]["stations"], [0, 3])
+    want("both read the channel past the run as a crossing, not at the leg's "
+         "end", [(c["stations"][0] > 3, not c.get("terminal_banks"))
+                 for c in keep["crossings"][1:] + drop["crossings"][1:]],
+         [(True, True), (True, True)])
+    want("the pinned stations 2-3 are no longer deck", (
+        keep["is_bridge"][2:4], drop["is_bridge"][2:4]),
+        ([False, False], [True, True]))
+    print(f"abutment-bench selftest: {fails} failed")
+    return fails
+
+
 # ---------------------------------------------------------------------------
 # spec.MEASURED_SEED_DEPENDS_ON, NODE_ANCHOR_DEPENDS_ON and
 # ORPHAN_JOIN_DEPENDS_ON, each both ways, on the Fresh42 drive-4 shapes.
@@ -6551,6 +7080,179 @@ def selftest_orphan_join() -> int:
     return fails
 
 
+# ---------------------------------------------------------------------------
+# SPAN_REPRICE_DEPENDS_ON, both ways, on a channel in miniature.  A 60 m
+# channel runs the width of the field and narrows to 16 m at a neck 620 m
+# east of the direct line.  At the shipped price the direct crossing is the
+# cheaper (W10-brgs1-treenear: 96.37 m MEASURED against a 96 m ceiling, the
+# detour to a narrower neck dearer than the 0.37 m it saves), and the channel
+# is water end to end so no land route exists for the land-only retry to
+# find.  The ceiling is taken down to 40 m so the fixture stays small.
+# ---------------------------------------------------------------------------
+def _sr_ground(X, Z):
+    chan = np.abs(Z) <= 30.0
+    neck = (X >= 300.0) & (X <= 340.0) & (np.abs(Z) > 8.0)
+    return np.where(chan & ~neck, 28.0, 32.0)
+
+
+def selftest_span_reprice() -> int:
+    """SPAN_REPRICE_DEPENDS_ON, both ways."""
+    global MAX_BRIDGE_SPAN_M, _SPAN_REPRICE_MODE
+    fails = 0
+
+    def want(label, got, expect):
+        nonlocal fails
+        ok = got == expect
+        fails += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}: {got}"
+              + ("" if ok else f"  EXPECTED {expect}"))
+
+    corr = _ww_corridor(_ww_field(_sr_ground, half=400.0))
+    a, b = (-300.0, 100.0), (-300.0, -100.0)
+
+    def attempt():
+        path = corr.search(a, b)
+        run = best = 0
+        for x, z in path:
+            i, j = corr.cell_of(x, z)
+            run = run + 1 if corr.water[i, j] else 0
+            best = max(best, run)
+        return ({"crossings": [{"span_m": best * corr.cell_m}],
+                 "length_m": round(sum(math.hypot(p[0] - q[0], p[1] - q[1])
+                                       for p, q in zip(path, path[1:])), 1),
+                 "via_neck": any(x > 250.0 for x, _z in path)},)
+
+    def raised(fn):
+        try:
+            fn()
+        except ValueError as exc:
+            return str(exc)
+        return None
+
+    ceiling, mode, price = MAX_BRIDGE_SPAN_M, _SPAN_REPRICE_MODE, \
+        corr.bridge_per_m_cost
+    land_exc = ValueError("no route found")
+    try:
+        MAX_BRIDGE_SPAN_M = 40.0
+        first = attempt()[0]
+        print("case: the direct crossing is 60 m against a 40 m ceiling and "
+              "no land route exists (REQUIRED TO REPRICE)")
+        want("the first route takes the direct crossing and breaks the "
+             "ceiling", (first["via_neck"], first["crossings"][0]["span_m"]
+                         > MAX_BRIDGE_SPAN_M), (False, True))
+        (rec,), rep = span_reprice(corr, attempt, first_worst=60.0,
+                                   land_exc=land_exc)
+        want("the first rung that measures inside the ceiling is taken",
+             (rep["factor"], rec["via_neck"],
+              rec["crossings"][0]["span_m"] <= MAX_BRIDGE_SPAN_M),
+             (2.0, True, True))
+        want("the corridor's price is put back", corr.bridge_per_m_cost,
+             price)
+        _SPAN_REPRICE_MODE = "land_only"
+        want("NEUTER mode=land_only (the shipped retry): the land-only "
+             "'no route found' stands", raised(lambda: span_reprice(
+                 corr, attempt, first_worst=60.0, land_exc=land_exc)),
+             "no route found")
+        _SPAN_REPRICE_MODE = mode
+        print("case: the narrowest neck is 16 m against an 8 m ceiling "
+              "(REQUIRED TO REFUSE, with the measured minimum)")
+        MAX_BRIDGE_SPAN_M = 8.0
+        msg = raised(lambda: span_reprice(corr, attempt, first_worst=60.0,
+                                          land_exc=land_exc)) or ""
+        want("refused, naming the least span any price reaches",
+             ("still bridge 16.0 m at the least" in msg,
+              "SPAN_REPRICE_DEPENDS_ON" in msg), (True, True))
+        want("the corridor's price is put back", corr.bridge_per_m_cost,
+             price)
+    finally:
+        MAX_BRIDGE_SPAN_M, _SPAN_REPRICE_MODE = ceiling, mode
+    print(f"span reprice selftest: {fails} failed")
+    return fails
+
+
+# ---------------------------------------------------------------------------
+# ADJACENCY_REROUTE_DEPENDS_ON, both ways, on a stub builder.  The builder
+# stands in for `build_segment`: a leg has hairpin feet at fixed places, and
+# a search that may not enter the disc round a foot no longer takes that
+# hairpin -- S14-eastlobe-ferryeast joined on its fourth search, after discs
+# on the later feet of three refused lines (68, 63 and 76 refused pairs).
+# ---------------------------------------------------------------------------
+def selftest_adjacency_reroute() -> int:
+    """ADJACENCY_REROUTE_DEPENDS_ON, both ways."""
+    global _ADJACENCY_REROUTE_MODE
+    fails = 0
+
+    def want(label, got, expect):
+        nonlocal fails
+        ok = got == expect
+        fails += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}: {got}"
+              + ("" if ok else f"  EXPECTED {expect}"))
+
+    corr = _ww_corridor(_ww_field(_tr_flat, half=400.0))
+
+    def builder(feet, calls, *, fail_after=None):
+        def one(mask):
+            calls.append(mask)
+            if fail_after is not None and len(calls) > fail_after:
+                raise ValueError("no route found")
+            for x, z in feet:
+                i, j = corr.cell_of(x, z)
+                if mask is None or not mask[i, j]:
+                    return ({"length_m": 100.0 + len(calls),
+                             "self_adjacency": {
+                                 "verdict": "REFUSED", "pairs_before": 60,
+                                 "worst_before": {"xz": [[x - 5.0, z],
+                                                         [x, z]]}}}, {})
+            return ({"length_m": 100.0 + len(calls),
+                     "self_adjacency": {"verdict": "CLEAR"}}, {})
+        return one
+
+    feet3 = [(-200.0, 0.0), (-100.0, 0.0), (0.0, 0.0)]
+    calls: list = []
+    print("case: three hairpins, each cleared by the disc on its later foot "
+          "(REQUIRED TO RE-ROUTE)")
+    rec, _j = adjacency_reroute(corr, builder(feet3, calls))
+    ar = rec.get("adjacency_reroute") or {}
+    want("the fourth search is the clean one",
+         (len(calls), ar.get("rounds")), (4, 3))
+    want("the discs stand on the later feet, 2 m wider each round",
+         [d[:2] + [d[2]] for d in ar.get("discs", [])],
+         [[-200.0, 0.0, 8.0], [-100.0, 0.0, 10.0], [0.0, 0.0, 12.0]])
+    want("the clean line is the leg", rec["self_adjacency"]["verdict"],
+         "CLEAR")
+    calls = []
+    rec, _j = adjacency_reroute(corr, builder([], calls))
+    want("a line the first search leaves clear is searched once and "
+         "carries no record", (len(calls), "adjacency_reroute" in rec),
+         (1, False))
+    _ADJACENCY_REROUTE_MODE = "off"
+    try:
+        calls = []
+        rec, _j = adjacency_reroute(corr, builder(feet3, calls))
+        want("NEUTER mode=off (the shipped plan): the refused line stands, "
+             "searched once", (rec["self_adjacency"]["verdict"], len(calls)),
+             ("REFUSED", 1))
+    finally:
+        _ADJACENCY_REROUTE_MODE = "reroute"
+    print("case: more hairpins than rounds, and a re-search that raises "
+          "(REQUIRED TO RETURN THE LEG AS ROUTED)")
+    many = [(-350.0 + 60.0 * k, 0.0) for k in range(ADJACENCY_ROUNDS + 2)]
+    calls = []
+    rec, _j = adjacency_reroute(corr, builder(many, calls))
+    want("no round joins: the first line is returned, after every round",
+         (rec["self_adjacency"]["verdict"], "adjacency_reroute" in rec,
+          len(calls), rec["length_m"]),
+         ("REFUSED", False, ADJACENCY_ROUNDS + 1, 101.0))
+    calls = []
+    rec, _j = adjacency_reroute(corr, builder(feet3, calls, fail_after=1))
+    want("a re-search that raises: the first line is returned",
+         (rec["self_adjacency"]["verdict"], "adjacency_reroute" in rec,
+          rec["length_m"]), ("REFUSED", False, 101.0))
+    print(f"adjacency reroute selftest: {fails} failed")
+    return fails
+
+
 def main() -> int:
     if sys.argv[1:2] == ["selftest"]:
         return selftest()
@@ -6680,15 +7382,37 @@ def main() -> int:
         fld_p, corr = worldseed.resolve(flds, patch), corridors[key]
 
         def build(**kw):
-            j: dict = {}
-            rec = build_segment(fld_p, edge, corr, pois + census_pois,
-                                census=census, joint=j, **kw)
-            if max((c["span_m"] for c in rec["crossings"]),
-                   default=0.0) > MAX_BRIDGE_SPAN_M:
+            ef = kw.pop("extra_forbid", None)
+
+            def one(adj=None):
+                jo: dict = {}
+                m = ef if adj is None else (adj if ef is None else ef | adj)
+                return (build_segment(fld_p, edge, corr, pois + census_pois,
+                                      census=census, joint=jo,
+                                      extra_forbid=m, **kw), jo)
+            rec, j = adjacency_reroute(corr, one)
+            if span_worst(rec) > MAX_BRIDGE_SPAN_M:
+                first_worst = span_worst(rec)
                 j = {}
-                rec = build_segment(fld_p, edge, corr, pois + census_pois,
-                                    land_only=True, census=census, joint=j,
-                                    **kw)
+                try:
+                    rec = build_segment(fld_p, edge, corr, pois + census_pois,
+                                        land_only=True, census=census,
+                                        joint=j, extra_forbid=ef, **kw)
+                except DrownedFootprint:
+                    raise
+                except ValueError as land_exc:
+                    # SPAN_REPRICE_DEPENDS_ON: no land-only route is not
+                    # proof there is none inside the ceiling.
+                    def again():
+                        jj: dict = {}
+                        return (build_segment(fld_p, edge, corr,
+                                              pois + census_pois,
+                                              census=census, joint=jj, extra_forbid=ef, **kw),
+                                jj)
+                    (rec, j), rep = span_reprice(
+                        corr, again, first_worst=first_worst,
+                        land_exc=land_exc)
+                    rec["span_reprice"] = rep
             return rec, j
         got = band_free_probe(
             corr, free_forbids[key], build,
@@ -6972,11 +7696,14 @@ def main() -> int:
         base_trim: dict | None = None
         try:
             def first(*, trim=None, _p=patch, _k=key, _e=edge):
-                j: dict = {}
-                return build_segment(worldseed.resolve(flds, _p), _e,
-                                     corridors[_k], pois + census_pois,
-                                     census=census, joint=j, trim=trim,
-                                     line_out=searched), j
+                def one(adj=None):
+                    jo: dict = {}
+                    return (build_segment(worldseed.resolve(flds, _p), _e,
+                                          corridors[_k], pois + census_pois,
+                                          census=census, joint=jo, trim=trim,
+                                          line_out=searched,
+                                          extra_forbid=adj), jo)
+                return adjacency_reroute(corridors[_k], one)
             # A drowned footprint at a terminus is the terminal trim's to
             # serve, not a refusal ahead of it (DROWNED_TRIM_DEPENDS_ON).
             seg, joint, base_trim = build_past_drowned(first)
@@ -6993,7 +7720,7 @@ def main() -> int:
                       f"{seg['drowned_terminus']['stations_refused']} "
                       f"station(s) -> trim {base_trim}, length "
                       f"{seg['length_m']} m")
-            worst = max((c["span_m"] for c in seg["crossings"]), default=0.0)
+            worst = span_worst(seg)
             if worst > MAX_BRIDGE_SPAN_M:
                 # LAND-ONLY RETRY.  The span ceiling is already encoded
                 # geometrically (water further than half the maximum span from
@@ -7005,22 +7732,38 @@ def main() -> int:
                 # search state -- which would multiply a 640,000-cell grid by
                 # the run bound -- re-route the offending segment with water
                 # forbidden outright.  If a land route exists it is the right
-                # answer anyway; if none exists the rejection is a proof rather
-                # than a tuning artefact.
+                # answer anyway.  If none exists that is a proof about LAND and
+                # no more: the leg is then re-priced (SPAN_REPRICE_DEPENDS_ON)
+                # rather than refused with the land-only "no route found".
                 joint = {}
-                land = build_segment(worldseed.resolve(flds, patch), edge,
-                                     corridors[key], pois + census_pois,
-                                     land_only=True, census=census,
-                                     joint=joint, trim=base_trim,
-                                     line_out=searched)
-                land["land_only_retry"] = {
-                    "first_attempt_worst_span_m": worst,
-                    "why": "first route proposed a bridged run past Crossings' "
-                           "96 m absolute span ceiling; re-routed with water "
-                           "forbidden",
-                    "length_penalty_m": round(land["length_m"] - seg["length_m"], 1),
-                }
-                seg = land
+                try:
+                    land = build_segment(worldseed.resolve(flds, patch), edge,
+                                         corridors[key], pois + census_pois,
+                                         land_only=True, census=census,
+                                         joint=joint, trim=base_trim,
+                                         line_out=searched)
+                except DrownedFootprint:
+                    raise
+                except ValueError as land_exc:
+                    (seg, joint, base_trim), rep = span_reprice(
+                        corridors[key], lambda: build_past_drowned(first),
+                        first_worst=worst, land_exc=land_exc)
+                    seg["span_reprice"] = rep
+                    print(f"{edge['id']:22s} SPAN REPRICED: first route "
+                          f"bridged {worst} m, no land route; water x"
+                          f"{rep['factor']:g} -> longest bridge "
+                          f"{span_worst(seg)} m, {seg['length_m']} m; key = "
+                          f"network.SPAN_REPRICE_DEPENDS_ON")
+                else:
+                    land["land_only_retry"] = {
+                        "first_attempt_worst_span_m": worst,
+                        "why": "first route proposed a bridged run past "
+                               "Crossings' 96 m absolute span ceiling; "
+                               "re-routed with water forbidden",
+                        "length_penalty_m": round(
+                            land["length_m"] - seg["length_m"], 1),
+                    }
+                    seg = land
         except ValueError as exc:
             # An unroutable edge is a FINDING, not a crash.  A destination on a
             # different landmass, or one whose every approach is inside a
@@ -7064,14 +7807,29 @@ def main() -> int:
         def build_leg(*, extra_forbid=None, trim=None, ceiling=None,
                       _edge=edge, _fld=fld_p, _corr=corridors[key],
                       _retry=seg.get("land_only_retry"),
+                      _reprice=seg.get("span_reprice"),
+                      _adj=seg.get("adjacency_reroute"),
                       _drowned=seg.get("drowned_terminus")):
             j: dict = {}
-            rec = build_segment(_fld, _edge, _corr, pois + census_pois,
-                                land_only=_retry is not None, census=census,
-                                joint=j, extra_forbid=extra_forbid,
-                                trim=trim, ceiling=ceiling)
+            ef = extra_forbid
+            if _adj is not None:
+                # ADJACENCY_REROUTE_DEPENDS_ON: a remedy rebuild keeps the
+                # discs that took the leg off its refused hairpin.
+                am = adjacency_mask(_corr, _adj["discs"])
+                ef = am if ef is None else ef | am
+            rec = at_water_price(
+                _corr, None if _reprice is None else _reprice["factor"],
+                lambda: build_segment(_fld, _edge, _corr, pois + census_pois,
+                                      land_only=_retry is not None,
+                                      census=census, joint=j,
+                                      extra_forbid=ef,
+                                      trim=trim, ceiling=ceiling))
             if _retry is not None:
                 rec["land_only_retry"] = _retry
+            if _reprice is not None:
+                rec["span_reprice"] = _reprice
+            if _adj is not None:
+                rec["adjacency_reroute"] = _adj
             if _drowned is not None:
                 rec["drowned_terminus"] = _drowned
             return rec, j
@@ -7413,12 +8171,13 @@ def main() -> int:
             rec["after_junction"] = {k: fw[k] for k in (
                 "verdict", "steps", "drained", "worst_m", "worst_at",
                 "keepout_steps", "pad_steps", "arrival_failures")}
+            rec["after_junction"].update(judged_public(fw))
             if fw["verdict"] == "REFUSED":
                 rec["residual_owner"] = water_owner(
                     sg, fw, routemod.footprint_half_m(float(sg["width_m"]))
                     + writer_batter()[1])
         final = rec.get("after_junction") or rec
-        rec["final_verdict"] = final["verdict"]
+        rec["final_verdict"] = final_verdict(final)
     water_refused = [sg for sg in segments
                      if (sg.get("writer_water") or {}).get("final_verdict")
                      == "REFUSED"]
@@ -7440,7 +8199,7 @@ def main() -> int:
     if census is not None and water_refused:
         gone_w = {sg["id"] for sg in water_refused}
         for sg in water_refused:
-            rej = water_rejection(sg)
+            rej = water_rejection(sg, final=True)
             sg["rejected"] = rej
             rejected.append({"id": sg["id"], **rej})
         segments = [sg for sg in segments if sg["id"] not in gone_w]

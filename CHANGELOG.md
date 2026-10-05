@@ -479,6 +479,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `buildstage.py` resumes a laid collar retry as the unit's answer, and `roads/network.py` keeps
   the arrival-reach fixture on the centreline mask.
 
+- The first from-scratch Ulfsland regeneration (seed Pirate68, over an archived ledger) reached the
+  tools' limits on that seed and found five more defects, each with a known-bad case and neuter.
+  `buildstage --replace-live` builds the live default pair only over a distinct archived ledger;
+  `pipeline.FIELD_WINDOWS` scans it on `worldseed.ULFSLAND_WINDOWS` (derived windows left vestvik's
+  half of the continent in no window: 1 town candidate for 2 towns); stage 10 reads the plan file
+  stage 9 wrote (`segments.yaml`, not `segments.Pirate68.yaml`). In `roads/network.py`: a
+  span-ceiling retry no longer forbids ALL water (`SPAN_REPRICE`: a leg needing a bridge 0.37 m past
+  the 96 m ceiling was reported unroutable -- W10, T2, W1 now route), a self-adjacency refusal now
+  re-routes (`ADJACENCY_REROUTE`, S14), a declared abutment bench is not made a crossing by
+  freeboard alone (`ABUTMENT_BENCH`), and a plan-time rim row is attributed to the cause the stamp
+  refused it for (`OWNER_CAUSE`). In `roads/ribbon.py` a pad-boundary row whose ground already
+  stood past the slide limit from the pad's datum is owed to the pad, not charged to the road
+  (`PLANNED_PAD_CLIFF`; S6 and S8). An edit to the probe `build()` dropped the stand-off mask on
+  its retry paths and silently changed Fresh42 (S11 lost, seven other legs re-profiled); found by
+  comparing a Fresh42 re-plan against the pre-edit commit and fixed -- the Fresh42 plan is again
+  byte-identical (15 legs, nodes, profiles, crossings).
+
 - `tools/jumpstart/roads/boardwalk.py` — A DECK'S RAILS NO LONGER STAND IN ANOTHER ROAD. The
   furniture guard read only the bridge's own straight span at its deck datum, so T3-temple-
   meadhall-x01's rail poles and beams stood across S11's built carriageway (Fresh42 drive 6

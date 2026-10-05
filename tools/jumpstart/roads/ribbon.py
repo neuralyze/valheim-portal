@@ -2608,6 +2608,35 @@ def pad_keepouts_from_chain(sites: list[dict], records: list[dict],
 PLANNED_PAD_RIM_DEPENDS_ON = ("the_planned_pads_datum",)
 _PLANNED_PAD_RIM_MODE = "datum"   # datum | ground (the shipped reading)
 
+# PLANNED_PAD_CLIFF_DEPENDS_ON: A STEP AGAINST A PLANNED PAD THAT THIS WRITE DID
+# NOT MAKE, AND DID NOT DEEPEN, IS THE PAD'S, NOT THE ROAD'S.
+#
+# `rim_transfer` judges a DELTA ("a pair already over the limit before this
+# write is PRE-EXISTING ... never charged"), but the rim of a planned pad is
+# read at the pad's datum AFTER the write and at today's generated ground
+# BEFORE it, so a hillside the pad will cut away or a hollow it will fill
+# reads as a step the road CAUSED even where the road only moved the taken
+# sample toward the datum.  `planned_pad_owed` already owes the rows the write
+# brings within one slide limit of the datum; it charged the rest, including
+# a batter sample the write RAISED 0.45 m on a 3.06 m cliff the pad has
+# against natural ground.  MEASURED on the Ulfsland regen, S6-stenvik-hognest
+# (5 `refused pad` rows, worst 1.8808 m at [533,1326], taken [533,1325]
+# 107.953 -> 109.049 against `hognest-castle`'s planned 110.93: 2.98 m before,
+# 1.88 m after) and S8-wtsouth-treesth (3 rows against `wt-south` 82.3 and
+# `tree-sth-2` 75.61: 1.39 -> 0.97 m, 1.28 -> 0.89 m): the writer's own rim gate
+# refuses both at step 4 on a cliff no road could close and the pad owns.
+# THE RULE, two terms, both from the row:
+#   the_taken_sample_was_already_over_the_limit_from_the_datum   before > limit;
+#   the_write_did_not_deepen_it                                  after <= before.
+# A write that CUTS a sample from within the limit of the datum to outside it,
+# or deepens a step already over it, stays CAUSED (T8's 1.30 m under 56.0).
+# NEUTER `_PLANNED_PAD_CLIFF_MODE = "caused"`: only the rows within one slide
+# limit of the datum are owed (the rule before).  Proven by
+# `selftest_planned_pad_rim`.
+PLANNED_PAD_CLIFF_DEPENDS_ON = ("the_taken_sample_was_already_over_the_limit_from_the_datum",
+                                "the_write_did_not_deepen_it")
+_PLANNED_PAD_CLIFF_MODE = "owed"   # owed | caused (the rule before)
+
 # ARRIVAL_PADS_DEPENDS_ON: A ROAD'S EARTHWORK IS PINNED ONLY TO THE PADS IT
 # ARRIVES AT.  `stamp` pinned the future datum of, and graded a collar around,
 # EVERY planned pad its claim reached; MEASURED on Fresh42 drive 6's saved
@@ -2785,13 +2814,18 @@ def built_road_lines(plans_by_write: dict, road_claim_at, my_name: str) -> list:
 
 
 def planned_pad_owed(rows: list[dict], pad_keepouts: "PadKeepOut",
-                     limit_m: float) -> tuple[list[dict], list[dict]]:
+                     limit_m: float, *, cliff: bool | None = None
+                     ) -> tuple[list[dict], list[dict]]:
     """Split caused rim rows into (still caused, owed to a planned pad).
 
     A row is owed when its rim sample lies inside a pad the plan declares and
     nothing has laid (`PadKeepOut.unlaid`, `levelled: False` in `by_id`) and
-    the height this write leaves on the taken side is within `limit_m` of
-    that pad's datum."""
+    either the height this write leaves on the taken side is within `limit_m`
+    of that pad's datum, or the taken sample already stood MORE than `limit_m`
+    from that datum before this write and the write left it no further from it
+    (PLANNED_PAD_CLIFF_DEPENDS_ON): the cliff is the pad's own.  `cliff`
+    None takes that rule from `_PLANNED_PAD_CLIFF_MODE`; False asks only the
+    first term (the reading the plan's remedy search scores on)."""
     if _PLANNED_PAD_RIM_MODE != "datum":
         return list(rows), []
     planned = []
@@ -2811,7 +2845,19 @@ def planned_pad_owed(rows: list[dict], pad_keepouts: "PadKeepOut",
         step = abs(float(r["taken_height_after_m"]) - hit[5])
         row = {**r, "planned_pad": hit[0], "pad_y": hit[5],
                "step_after_pad_m": round(step, 4)}
-        (owed if step <= limit_m + 1e-9 else kept).append(row)
+        if step <= limit_m + 1e-9:
+            owed.append(row)
+            continue
+        was = r.get("taken_height_before_m")
+        if ((_PLANNED_PAD_CLIFF_MODE == "owed" if cliff is None else cliff)
+                and was is not None):
+            before = abs(float(was) - hit[5])
+            row["step_before_pad_m"] = round(before, 4)
+            if before > limit_m + 1e-9 and step <= before + 1e-9:
+                row["owed_as"] = "the pad's own cliff, not deepened"
+                owed.append(row)
+                continue
+        kept.append(row)
     return kept, owed
 
 
@@ -9812,9 +9858,50 @@ def selftest_planned_pad_rim(verbose: bool = True) -> dict:
                             "owed": []}, v
     assert v["survivor"] == {"caused": [[-400, 652]],
                              "owed": [("wt-south", 0.1676)]}, v
+    # PLANNED_PAD_CLIFF_DEPENDS_ON on the Ulfsland regen's own S6 rows
+    # (`hognest-castle`, planned 44 x 44 m at (530, 1348), datum 110.93, over
+    # ground 108.2 m at its south edge) and three controls built from the
+    # same pad: the write RAISED a sample on a cliff the pad already had
+    # (owed), the write CUT one deeper under the datum (caused), and the write
+    # moved one from within a slide limit of the datum to beyond it (caused).
+    global _PLANNED_PAD_CLIFF_MODE
+    castle = {"seq": None, "name": "hognest-castle",
+              "site_id": "hognest-castle", "x": 530.0, "z": 1348.0,
+              "hw": 22.0, "hd": 22.0, "datum_y": 110.93}
+
+    def cliff_row(taken_before, taken_after, tag):
+        return {"rim_xz": [533, 1326], "taken_xz": [533, 1325],
+                "step_after_m": round(abs(taken_after - 110.93), 4),
+                "step_before_m": 0.3, "limit_m": 0.7813,
+                "span": "one 1 m edge", "rim_height_m": 110.93,
+                "taken_height_before_m": taken_before,
+                "taken_height_after_m": taken_after,
+                "rim_authored_by": None, "tag": tag}
+    crow = [cliff_row(107.953, 109.049, "raised_on_own_cliff"),
+            cliff_row(109.8, 108.3, "cut_deeper"),
+            cliff_row(110.5, 109.9, "cut_from_within_limit"),
+            {**cliff_row(107.953, 109.049, "no_before_height"),
+             "taken_height_before_m": None}]
+    pk2 = pad_keepouts_from_chain([], [], None, planned=planned + [castle])
+    was_cliff = _PLANNED_PAD_CLIFF_MODE
+    try:
+        for arm, mode in (("survivor", "owed"), ("neuter", "caused")):
+            _PLANNED_PAD_CLIFF_MODE = mode
+            kept, owed = planned_pad_owed(crow, pk2, 0.78128562650672)
+            v["cliff_" + arm] = {"caused": [r["tag"] for r in kept],
+                                 "owed": [r["tag"] for r in owed]}
+    finally:
+        _PLANNED_PAD_CLIFF_MODE = was_cliff
+    assert v["cliff_survivor"] == {
+        "caused": ["cut_deeper", "cut_from_within_limit", "no_before_height"],
+        "owed": ["raised_on_own_cliff"]}, v
+    assert v["cliff_neuter"] == {
+        "caused": ["raised_on_own_cliff", "cut_deeper",
+                   "cut_from_within_limit", "no_before_height"],
+        "owed": []}, v
     if verbose:
         for arm, r_ in v.items():
-            print(f"  {arm:9s} {r_}")
+            print(f"  {arm:14s} {r_}")
         print("ribbon planned-pad-rim selftest OK")
     return v
 
