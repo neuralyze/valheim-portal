@@ -1673,6 +1673,297 @@ _PAD_CASES = (
 
 
 # ---------------------------------------------------------------------------
+# THE ROOM A SIBLING LEAVES (SIBLING_ROOM_DEPENDS_ON).  CONSTRUCTED fixtures in
+# the shape of the measured state: `vestvik-hut-1`'s rings (1.0 m x4, 1.414 m
+# x4, 2.236 m x2) beside a long hall (8.4 x 17.0 m footprint, 11.04 m away,
+# circle room 1.06 m) whose nearest piece is 2.01 m from the hut's anchor.
+# ---------------------------------------------------------------------------
+_HUT = {"id": "fx-hut", "x": 0.0, "z": 0.0, "pad_w": 12.4, "pad_d": 12.4}
+_HUT_ROWS = ([("p", x, 0.0, z, 0.0) for x, z in
+              ((1, 0), (-1, 0), (0, 1), (0, -1),
+               (1, 1), (1, -1), (-1, 1), (-1, -1), (2, 1), (-2, -1))])
+
+
+def _hall(nearest_m: float) -> dict:
+    return {"id": "fx-hall", "x": 11.04, "z": 0.0, "pad_w": 14.0,
+            "pad_d": 22.0, "foot_w": 8.4, "foot_d": 17.0,
+            "_nearest_m": nearest_m}
+
+
+def _radius_of(nearest_m: float) -> tuple[float | None, int]:
+    """check_radius for the hut beside the hall, plus how many sibling plans
+    it asked for."""
+    asked: list[str] = []
+
+    def pieces(o: dict) -> list[tuple[float, float]]:
+        asked.append(o["id"])
+        return [(0.0, o["_nearest_m"]), (14.0, 6.0), (9.0, -7.0)]
+
+    try:
+        r = check_radius(_HUT, [_HUT, _hall(nearest_m)], 12.0, _HUT_ROWS,
+                         piece_source=pieces)
+    except SystemExit:
+        return None, len(asked)
+    return r, len(asked)
+
+
+def _case_a_tall_sibling_whose_circle_is_tight_leaves_the_hut_a_radius(
+        ) -> list[str]:
+    """MEASURED on vestvik-hut-1: the hall's circle leaves 1.06 m, its nearest
+    piece 2.01 m, and the hut's first gap is 1.207 m."""
+    r, asked = _radius_of(2.01)
+    return [] if r == 1.21 and asked == 1 else [
+        f"vestvik-hut-1's shape was given radius {r} after asking for "
+        f"{asked} sibling plan(s); the hall's nearest piece is 2.01 m away, "
+        f"so 1.21 m is exact"]
+
+
+def _case_NEUTER_the_circle_alone_the_hut_REFUSES_again() -> list[str]:
+    prior = globals()["_SIBLING_ROOM_MODE"]
+    globals()["_SIBLING_ROOM_MODE"] = "circle"
+    try:
+        r, _ = _radius_of(2.01)
+    finally:
+        globals()["_SIBLING_ROOM_MODE"] = prior
+    return [] if r is None else [
+        f"with the circle bound alone the hut was still given {r}"]
+
+
+def _case_a_sibling_whose_pieces_truly_crowd_the_hut_still_refuses(
+        ) -> list[str]:
+    """A refusal is a real answer when the pieces confirm it: a piece 1.2 m
+    away leaves 0.7 m, under the first gap."""
+    r, _ = _radius_of(1.2)
+    return [] if r is None else [
+        f"a sibling piece 1.2 m from the hut's anchor still left radius {r}"]
+
+
+def _case_NEUTER_ignore_the_siblings_the_crowded_hut_is_ACCEPTED() -> list[str]:
+    prior = globals()["_SIBLING_ROOM_MODE"]
+    globals()["_SIBLING_ROOM_MODE"] = "blind"
+    try:
+        r, _ = _radius_of(1.2)
+    finally:
+        globals()["_SIBLING_ROOM_MODE"] = prior
+    return [] if r is not None else ["a blind re-measure still refused"]
+
+
+def _case_a_unit_the_circle_solves_is_untouched_and_asks_for_no_plan(
+        ) -> list[str]:
+    """SURVIVOR (a verdict): a unit with room to spare is answered by the
+    circle alone -- same radius as before, no sibling plan made."""
+    far = dict(_hall(2.01), x=60.0)
+    asked: list[str] = []
+    r = check_radius(_HUT, [_HUT, far], 12.0, _HUT_ROWS,
+                     piece_source=lambda o: asked.append(o["id"]) or [])
+    return [] if r == 2.49 and not asked else [
+        f"an unpressed unit was given {r} after {len(asked)} plan request(s); "
+        f"the circle alone answers 2.49"]
+
+
+_RADIUS_CASES = (
+    ("a_tall_sibling_whose_circle_is_tight_leaves_the_hut_a_radius",
+     _case_a_tall_sibling_whose_circle_is_tight_leaves_the_hut_a_radius),
+    ("NEUTER_the_circle_alone_the_hut_REFUSES_again",
+     _case_NEUTER_the_circle_alone_the_hut_REFUSES_again),
+    ("a_sibling_whose_pieces_truly_crowd_the_hut_still_refuses",
+     _case_a_sibling_whose_pieces_truly_crowd_the_hut_still_refuses),
+    ("NEUTER_ignore_the_siblings_the_crowded_hut_is_ACCEPTED",
+     _case_NEUTER_ignore_the_siblings_the_crowded_hut_is_ACCEPTED),
+    ("a_unit_the_circle_solves_is_untouched_and_asks_for_no_plan",
+     _case_a_unit_the_circle_solves_is_untouched_and_asks_for_no_plan),
+)
+
+
+# ---------------------------------------------------------------------------
+# A ZONE UPGRADE WORLD CANNOT GENERATE (ZONE_REPAIR_DEPENDS_ON).  An in-memory
+# Upgrade World with ONE staged queue and the three behaviours measured on
+# hognest-castle and sudrberg-keep: a zone SpawnZone refuses stays ungenerated
+# under any number of asks; `empty` marks a zone generated and spawns nothing;
+# `zones_restore` puts the control object into a generated zone.  A zone that
+# is merely a race generates on its second ask.
+# ---------------------------------------------------------------------------
+_HOG_ZONES = [[8, 21], [8, 22], [9, 21], [9, 22]]
+_HOG_GEN = {"op": "zones_generate",
+            "params": {"pos": [530.0, 1348.0], "max_m": 78.37,
+                       "zones": _HOG_ZONES, "role": "site_pad",
+                       "site_id": "fx-castle"},
+            "wire": ["zones_generate pos=530,1348 max=78.37"],
+            "expect": {"zone_ctrl": 4}}
+
+
+def _zone_world(srv_cls, stuck: tuple[int, int], asks_to_cure: int | None):
+    """`srv_cls` instance modelling the queue; `asks_to_cure` is how many
+    ordinary asks a stuck zone refuses before it generates (None: never)."""
+    state = {"ctrl": set(), "marked": set(), "queue": None, "asks": 0}
+
+    class Queue(srv_cls):
+        def __init__(self):
+            super().__init__(dry=False)
+
+        def probe(self) -> float:
+            return 0.0
+
+        def command(self, cmd: str) -> str:
+            self.sent.append(cmd)
+            if cmd == "consoleCommand stop":
+                state["queue"] = None
+            elif cmd == "consoleCommand start" and state["queue"]:
+                kind, zones = state["queue"]
+                state["queue"] = None
+                for z in zones:
+                    if kind == "generate":
+                        if z == stuck:
+                            state["asks"] += 1
+                            if asks_to_cure is None or state["asks"] <= \
+                                    asks_to_cure:
+                                continue
+                        state["ctrl"].add(z)
+                    elif kind == "empty":
+                        state["marked"].add(z)
+                    elif kind == "restore" and z in state["marked"]:
+                        state["ctrl"].add(z)
+            elif cmd.split()[:1] == ["players"]:
+                return "Online 0"
+            return f"Command '{cmd}' executed."
+
+        def console(self, cmd: str, settle: float = 2.0) -> list[str]:
+            self.sent.append(cmd)
+            t = cmd.split()
+            if t[:1] == ["stop"]:
+                state["queue"] = None
+                return []
+            if t[:1] == ["uw_check"]:
+                return ["No operations queued."] if state["queue"] is None \
+                    else ["1 operation queued."]
+            if not t:
+                return []
+            kv = dict(a.split("=", 1) for a in t[1:] if "=" in a)
+            px, pz = (float(v) for v in kv["pos"].split(","))
+            r = float(kv["max"])
+            near = [(zx, zz) for zx in range(-40, 60) for zz in range(-60, 60)
+                    if math.hypot(zx * 64 - px, zz * 64 - pz) <= r]
+            if t[0] == "zones_generate":
+                done = state["ctrl"] | state["marked"]
+                pick = [z for z in near if z not in done]
+                state["queue"] = ("empty" if "empty" in t[1:] else "generate",
+                                  pick)
+                return [f"Generate zones less than {r:g} meters away. "
+                        f"{len(pick)} zones: 84595 skipped by the command."]
+            if t[0] == "zones_restore":
+                pick = [z for z in near if z in state["marked"]
+                        and z not in state["ctrl"]]
+                state["queue"] = ("restore", pick)
+                return [f"{len(pick)} zones: skipped by the command."]
+            if t[0] == "objects_count":
+                n = sum(1 for z in state["ctrl"]
+                        if math.hypot(z[0] * 64 - px, z[1] * 64 - pz) <= r)
+                return [f"Total: {n}"] + ([f"_ZoneCtrl: {n}"] if n else [])
+            return []
+
+    return Queue(), state
+
+
+def _zone_run(stuck: tuple[int, int], registered: bool,
+              asks_to_cure: int | None) -> dict:
+    """`generate_zones` over the model: whether it raised, the ops it wrote,
+    and the zones that ended with a control object."""
+    import tempfile
+    with FL.memory_session("ZoneRepairSelftest") as b:
+        R = sys.modules[type(b).__module__].R
+        saved = (R.STAGED_SETTLE_S, R.STAGED_POLL_S)
+        R.STAGED_SETTLE_S, R.STAGED_POLL_S = 0.05, 0.01
+        b.srv, state = _zone_world(R.Server, stuck, asks_to_cure)
+        with tempfile.TemporaryDirectory(prefix="zone-dump-") as td:
+            dump = Path(td) / "locations.json"
+            dump.write_text(json.dumps({"locations": (
+                [{"prefab": "MountainCave02", "x": stuck[0] * 64.0,
+                  "z": stuck[1] * 64.0}] if registered else [])}))
+            raised = None
+            try:
+                generate_zones(b, _HOG_GEN, "fx-castle", "fx", {},
+                               dump_path=str(dump))
+            except RuntimeError as exc:
+                raised = type(exc).__name__
+            finally:
+                R.STAGED_SETTLE_S, R.STAGED_POLL_S = saved
+        recs = [r for r in b.led.records() if r["op"] in
+                ("zones_generate", "zones_restore")]
+    return {"raised": raised,
+            "ops": [("empty" if r["params"].get("empty") else r["op"],
+                     r["meta"].get("forfeits") is not None) for r in recs],
+            "ctrl": sorted(state["ctrl"]),
+            "all4": all(tuple(z) in state["ctrl"] for z in _HOG_ZONES)}
+
+
+def _case_a_zone_spawnzone_refuses_and_the_dump_registers_is_repaired(
+        ) -> list[str]:
+    """hognest-castle's shape: zone (9,22) holds a registered MountainCave02
+    and no ask generates it."""
+    r = _zone_run((9, 22), True, None)
+    want = [("zones_generate", False), ("zones_generate", False),
+            ("empty", True), ("zones_restore", False)]
+    return [] if (r["raised"] is None and r["all4"] and r["ops"] == want) \
+        else [f"expected the site-wide ask, one scoped re-issue, the empty "
+              f"mark (forfeit declared) and the restore, every zone "
+              f"controlled; got raised={r['raised']} ops={r['ops']} "
+              f"controlled={r['ctrl']}"]
+
+
+def _case_NEUTER_no_repair_the_castle_REFUSES_again() -> list[str]:
+    prior = globals()["_ZONE_REPAIR_MODE"]
+    globals()["_ZONE_REPAIR_MODE"] = "none"
+    try:
+        r = _zone_run((9, 22), True, None)
+    finally:
+        globals()["_ZONE_REPAIR_MODE"] = prior
+    return [] if r["raised"] == "PostconditionFailed" else [
+        f"with no repair the unit did not refuse: {r}"]
+
+
+def _case_a_zone_nothing_explains_is_still_refused() -> list[str]:
+    """No registration in the zone: an unexplained fault is not forfeited."""
+    r = _zone_run((9, 22), False, None)
+    return [] if (r["raised"] == "PostconditionFailed"
+                  and ("empty", True) not in r["ops"]) else [
+        f"an unexplained ungenerated zone was not refused: {r}"]
+
+
+def _case_NEUTER_forfeit_blind_the_unexplained_zone_is_FORFEITED() -> list[str]:
+    prior = globals()["_ZONE_REPAIR_MODE"]
+    globals()["_ZONE_REPAIR_MODE"] = "blind"
+    try:
+        r = _zone_run((9, 22), False, None)
+    finally:
+        globals()["_ZONE_REPAIR_MODE"] = prior
+    return [] if ("empty", True) in r["ops"] else [
+        f"a blind repair did not forfeit the unexplained zone: {r}"]
+
+
+def _case_a_race_is_cured_by_one_reissue_and_nothing_is_forfeited() -> list[str]:
+    """SURVIVOR (a verdict): a zone that generates on the second ask is cured
+    by the scoped re-issue; no empty mark, no restore, no forfeit."""
+    r = _zone_run((9, 22), True, 1)
+    want = [("zones_generate", False), ("zones_generate", False)]
+    return [] if (r["raised"] is None and r["all4"] and r["ops"] == want) \
+        else [f"a race was not cured by one re-issue: {r}"]
+
+
+_ZONE_CASES = (
+    ("a_zone_spawnzone_refuses_and_the_dump_registers_is_repaired",
+     _case_a_zone_spawnzone_refuses_and_the_dump_registers_is_repaired),
+    ("NEUTER_no_repair_the_castle_REFUSES_again",
+     _case_NEUTER_no_repair_the_castle_REFUSES_again),
+    ("a_zone_nothing_explains_is_still_refused",
+     _case_a_zone_nothing_explains_is_still_refused),
+    ("NEUTER_forfeit_blind_the_unexplained_zone_is_FORFEITED",
+     _case_NEUTER_forfeit_blind_the_unexplained_zone_is_FORFEITED),
+    ("a_race_is_cured_by_one_reissue_and_nothing_is_forfeited",
+     _case_a_race_is_cured_by_one_reissue_and_nothing_is_forfeited),
+)
+
+
+# ---------------------------------------------------------------------------
 # PORTALS AND WORLD SCOPE.  Each class is shown on its KNOWN-BAD state from
 # Fresh42 drive 2, and each NEUTER restores the shipped rule and must bring
 # the measured defect back.
@@ -2511,7 +2802,32 @@ def selftest() -> int:
             print(f"          {p}")
     print(f"\n  portals / world scope selftest {len(_PORTAL_CASES) - obad}/"
           f"{len(_PORTAL_CASES)}  {'PASS' if not obad else 'FAIL'}")
-    return 0 if not (bad or rbad or sbad or pbad or obad) else 1
+    kbad = 0
+    for name, fn in _RADIUS_CASES:
+        try:
+            problems = fn()
+        except BaseException as e:                         # noqa: BLE001
+            problems = [f"raised {type(e).__name__}: {e}"]
+        kbad += bool(problems)
+        print(f"  {'ok  ' if not problems else 'FAIL'}  {name}")
+        for p in problems:
+            print(f"          {p}")
+    print(f"\n  sibling room selftest {len(_RADIUS_CASES) - kbad}/"
+          f"{len(_RADIUS_CASES)}  {'PASS' if not kbad else 'FAIL'}")
+    zbad = 0
+    for name, fn in _ZONE_CASES:
+        try:
+            problems = fn()
+        except BaseException as e:                         # noqa: BLE001
+            problems = [f"raised {type(e).__name__}: {e}"]
+        zbad += bool(problems)
+        print(f"  {'ok  ' if not problems else 'FAIL'}  {name}")
+        for p in problems:
+            print(f"          {p}")
+    print(f"\n  zone repair selftest {len(_ZONE_CASES) - zbad}/"
+          f"{len(_ZONE_CASES)}  {'PASS' if not zbad else 'FAIL'}")
+    return 0 if not (bad or rbad or sbad or pbad or obad or kbad or zbad) \
+        else 1
 
 
 
@@ -3192,8 +3508,52 @@ def terrain_record(unit: dict, site: str, entries: list[dict], wire: list[str],
 
 # --- step 3: the body ------------------------------------------------------
 
+# SIBLING_ROOM_DEPENDS_ON: THE ROOM A SIBLING LEAVES IS MEASURED TO ITS PIECES
+# WHEN ITS CIRCUMSCRIBED CIRCLE LEAVES NONE.  The bound below treats every
+# neighbour as the circle through its footprint's corners, which is the
+# cheapest bound that is never optimistic and is the wrong shape for a long
+# body: MEASURED on the Ulfsland regeneration, `vestvik-hut-1` stands 11.04 m
+# from `vestvik-hall-1`, a 8.4 x 17.0 m body whose circle (half-diagonal 9.48
+# m) leaves 1.06 m of room -- below the hut's first usable gap (1.207 m, the
+# midpoint of its 1.0 m and 1.414 m rings) -- so step 5 REFUSED the hut,
+# "no radius can make this count exact", while the hall's nearest PIECE is
+# 2.01 m from the hut's anchor (a 1.51 m room, solvable at 1.21 m).  The same
+# 4.2 x 17 m footprint's circle overstates its reach toward a point abeam of
+# its long side by 5.0 m.  Offline sweep of the 49 units of the Pirate68 plan:
+# this is the only one the circle refuses.
+#
+# So when, and ONLY when, the circle bound leaves no usable radius, each
+# sibling whose circle room is under the largest candidate gap is re-measured
+# against its own PIECES (its plan, made in a throwaway directory, never read
+# from a shared scratch path that another world may have written).  A sibling
+# whose plan cannot be made keeps its circle room, and a sibling whose pieces
+# are TRULY close still refuses the unit -- a refusal is a real answer only
+# when the pieces confirm it.  A unit the circle already solved is untouched,
+# byte for byte, and no plan is made for it.
+#
+# NEUTERS: `circle` is the shipped rule (the hut refuses); `blind` lets the
+# re-measure ignore every sibling, which accepts a unit whose neighbour's
+# piece is 1.2 m away.  Proven by `_RADIUS_CASES`.
+SIBLING_ROOM_DEPENDS_ON = ("the_nearest_sibling_piece_when_the_circle_leaves_"
+                           "no_radius",)
+_SIBLING_ROOM_MODE = "pieces"       # pieces | circle | blind
+
+
+def sibling_piece_xz(o: dict) -> list[tuple[float, float]] | None:
+    """The XZ of every piece sibling `o` stands, from its own plan, or None
+    when that plan cannot be made (a unit with no body, a body that does not
+    resolve).  Made in a throwaway directory each time."""
+    import tempfile
+    try:
+        with tempfile.TemporaryDirectory(prefix="sibling-room-") as td:
+            plan_path, _info = spawn_plan_file(o, o["target_y"], Path(td))
+            return [(r[1], r[3]) for r in VP.plan_rows(plan_path)]
+    except (Exception, SystemExit):                 # noqa: BLE001
+        return None
+
+
 def check_radius(unit: dict, units: list[dict], clear_radius_m: float,
-                 rows: list[tuple]) -> float:
+                 rows: list[tuple], piece_source=None) -> float:
     """The radius a prefab count can be EXACT inside.
 
     Three things bound it, and all three are measurements rather than
@@ -3227,13 +3587,15 @@ def check_radius(unit: dict, units: list[dict], clear_radius_m: float,
     reach = max((math.hypot(r[1] - unit["x"], r[3] - unit["z"]) for r in rows),
                 default=1.0)
     safe = []
+    sibs = []
     for o in units:
         if o["id"] == unit["id"]:
             continue
         foot = math.hypot(o.get("foot_w", o["pad_w"]),
                           o.get("foot_d", o["pad_d"])) / 2
-        safe.append(math.hypot(o["x"] - unit["x"], o["z"] - unit["z"])
-                    - foot - 0.5)
+        room = math.hypot(o["x"] - unit["x"], o["z"] - unit["z"]) - foot - 0.5
+        safe.append(room)
+        sibs.append((o, room))
     cap = min([reach + 0.5, clear_radius_m - 0.1] + safe)
     rings = sorted({round(math.hypot(r[1] - unit["x"], r[3] - unit["z"]), 3)
                     for r in rows})
@@ -3242,6 +3604,25 @@ def check_radius(unit: dict, units: list[dict], clear_radius_m: float,
     gaps = [(rings[i] + rings[i + 1]) / 2 for i in range(len(rings) - 1)]
     gaps.append(rings[-1] + 0.25)
     usable = [g for g in gaps if g <= cap]
+    if not usable and _SIBLING_ROOM_MODE != "circle":
+        # SIBLING_ROOM_DEPENDS_ON: re-measure the siblings the circle made
+        # tight against their own pieces, and only those.
+        source = piece_source or sibling_piece_xz
+        rooms = []
+        for o, circle_room in sibs:
+            room = circle_room
+            if circle_room < max(gaps):
+                if _SIBLING_ROOM_MODE == "blind":
+                    room = math.inf
+                else:
+                    pts = source(o)
+                    if pts:
+                        room = min(math.hypot(px - unit["x"], pz - unit["z"])
+                                   for px, pz in pts) - 0.5
+            rooms.append(room)
+        cap = min([reach + 0.5, clear_radius_m - 0.1] + rooms)
+        usable = [g for g in gaps if g <= cap]
+        safe = rooms
     if not usable:
         raise SystemExit(
             f"REFUSED {unit['id']}: no radius can make this count exact. The "
@@ -4022,7 +4403,12 @@ def _world_src() -> Path:
     # under the install root, resolved at call time and REFUSED by
     # `require_world_save` unless the directory is that world's.  It was
     # `AI.WORLD_SRC_DEFAULT` -- Ulfsland's save -- whenever WORLD was Ulfsland.
-    return AI.world_save(WORLD)
+    src = AI.world_save(WORLD)
+    # The save is flushed by the SERVER this run drives (`_save_census`'s
+    # `save`) and then read off disk here, so the two must be the same world:
+    # the name check alone passes for a same-named world on another install.
+    AI.require_save_is_the_ledgers(src, WORLD)
+    return src
 
 
 def _save_census(b):
@@ -4390,6 +4776,130 @@ def emit_pad(b, place: dict, unit: dict, site: str,
 # ground pass over every unit, then the body pass over the units that
 # survived it, so the last pad write precedes the first piece for the whole
 # settlement rather than only for the first building.
+# ZONE_REPAIR_DEPENDS_ON: A ZONE UPGRADE WORLD CANNOT GENERATE IS RE-ASKED
+# ONCE, AND FORFEITED ONLY WHEN IT HOLDS A REGISTRATION.  `zones_generate`
+# can leave a zone without its `_ZoneCtrl` when `SpawnZone` returns false for
+# it: IL_0030 (terrain not ready, a RACE cured by asking again) or IL_003c (an
+# unplaced location whose type never loads, permanent -- see
+# `roads/north.py::zonediag`).  MEASURED on the Ulfsland regeneration:
+# hognest-castle's ground generate refused, `zone_ctrl want 4 got 3`, zone
+# (9,22) ungenerated, in BOTH concurrent builds and again 105 minutes later;
+# the server's own lines were "1 zones generated. 1 errors." and then "0 zones
+# generated. 1 errors.", and the dump registers a MountainCave02 at the zone
+# centre -- the sudrberg-keep precedent (live ledger seq 745/746), repaired by
+# hand there with `zones_generate ... empty` then `zones_restore`.  A from-
+# scratch regeneration cannot wait for that hand.
+#
+# So `generate_zones` repairs the ONE failure it can name, in the documented
+# order, every step a ledger record carrying its evidence:
+#   1. the ordinary bracket (as before);
+#   2. if exactly the `zone_ctrl` check failed: ONE scoped re-issue per
+#      ungenerated zone (`zones_generate pos=<centre> max=1`), the race cure;
+#   3. if the zone is STILL ungenerated and the location dump registers a
+#      location in it: `zones_generate ... empty` (marks it generated, spawns
+#      nothing, deletes nothing, FORFEITS the zone's ungenerated content --
+#      declared in `meta.forfeits`) and `zones_restore` (puts its one
+#      `_ZoneCtrl` there).
+# A zone that fails with NO registration to explain it, or a failure of any
+# other check, is refused exactly as before -- an unexplained fault is not
+# repaired on a hunch.  NEUTERS: `none` is the shipped behaviour (the unit
+# refuses); `blind` forfeits a zone with no registration.  Proven by
+# `_ZONE_CASES`.
+ZONE_REPAIR_DEPENDS_ON = ("a_scoped_reissue_before_a_forfeit",
+                          "only_a_zone_holding_a_registration_is_forfeited")
+_ZONE_REPAIR_MODE = "repair"        # repair | none | blind
+
+
+def zone_registrations(zone: tuple[int, int],
+                       dump_path: str | None = None) -> list[dict]:
+    """Every location the mod-free dump registers inside `zone`."""
+    dump = json.loads(Path(dump_path or locations_dump()).read_text())
+    return [L for L in dump["locations"]
+            if tcdata.zone_of(L["x"], L["z"]) == (int(zone[0]), int(zone[1]))]
+
+
+def _ungenerated_after(exc: BaseException) -> list[tuple[int, int]] | None:
+    """The zones a failed `zones_generate` left without a `_ZoneCtrl`, when
+    that is the ONLY thing that failed; None for any other failure."""
+    failed = [c for c in (getattr(exc, "checks", None) or []) if not c["ok"]]
+    if len(failed) != 1 or failed[0].get("check") != "zone_ctrl":
+        return None
+    return [(int(z[0]), int(z[1])) for z in failed[0].get("ungenerated") or []]
+
+
+def generate_zones(b, gen: dict, unit_id: str, site: str, siting: dict,
+                   dump_path: str | None = None) -> dict:
+    """`gen` is the unit's `zones_generate` op; returns `{"seq": ...}` of the
+    record that left its zones generated.  See ZONE_REPAIR_DEPENDS_ON."""
+    requires = {"mods": ["UpgradeWorld"], "prefabs": [], "blobs": []}
+    try:
+        return b.emit(gen["op"], params=gen["params"], wire=gen["wire"],
+                      requires=requires, expect=gen["expect"],
+                      meta={"settlement": site, "unit": unit_id,
+                            "location_check": siting})
+    except RuntimeError as exc:
+        zones = _ungenerated_after(exc)
+        if not zones or _ZONE_REPAIR_MODE == "none":
+            raise
+        first = exc
+    last: dict = {}
+    for zone in zones:
+        cx, cz = (float(v) for v in tcdata.zone_centre(*zone))
+        where = f"pos={cx:g},{cz:g}"
+        base = {"pos": [cx, cz], "max_m": 1.0, "zones": [list(zone)],
+                "role": "site_pad", "site_id": unit_id}
+        try:
+            last = b.emit(
+                "zones_generate", params=dict(base),
+                wire=[f"zones_generate {where} max=1"], requires=requires,
+                expect={"zone_ctrl": 1},
+                meta={"settlement": site, "unit": unit_id,
+                      "why": ("ONE scoped re-issue for a zone the site-wide "
+                              "bracket left without a _ZoneCtrl: the cure for "
+                              "SpawnZone's terrain-not-ready race, asked "
+                              "before anything is forfeited")})
+            continue
+        except RuntimeError:
+            pass
+        regs = zone_registrations(zone, dump_path)
+        if not regs and _ZONE_REPAIR_MODE != "blind":
+            raise first
+        prefabs = sorted({L["prefab"] for L in regs}) or ["(none)"]
+        was = re.match(r"seq \d+", str(first))
+        fault = (f"MEASURED: zone {tuple(zone)} was left without a _ZoneCtrl "
+                 f"by the site-wide `zones_generate` "
+                 f"({was.group(0) if was else 'record unknown'}) and by a "
+                 f"scoped re-issue at its centre, "
+                 f"two Upgrade World brackets in which SpawnZone refused it; "
+                 f"the location dump registers {prefabs} in this zone, whose "
+                 f"unplaced instance SpawnZone refuses when its type never "
+                 f"loads (roads/north.py::zonediag IL_003c). Ordinary "
+                 f"generation cannot generate it and `zones_restore` cannot "
+                 f"see an ungenerated zone, so it is marked generated "
+                 f"(nothing spawned, nothing deleted) and then given its "
+                 f"control object, as at sudrberg-keep (live ledger seq "
+                 f"745/746).")[:1500]
+        last = b.emit(
+            "zones_generate", params=dict(base, empty=True, fault=fault),
+            wire=[f"zones_generate {where} max=1 empty"], requires=requires,
+            expect={"zone_marked_generated": {"selected": 0}},
+            meta={"settlement": site, "unit": unit_id,
+                  "forfeits": (f"zone {tuple(zone)}'s vegetation and its "
+                               f"unplaceable {prefabs} registration, "
+                               f"permanently"),
+                  "why": ("the zone cannot be spawned, so it is marked "
+                          "generated instead; nothing is deleted and "
+                          "nothing is spawned")})
+        last = b.emit(
+            "zones_restore", params=dict(base, fault=fault),
+            wire=[f"zones_restore {where} max=1"], requires=requires,
+            expect={"zone_ctrl_exact": {"count": 1, "probe_radius_m": 15.0}},
+            meta={"settlement": site, "unit": unit_id,
+                  "why": ("the empty mark leaves the zone generated with no "
+                          "control object; this puts exactly one there")})
+    return last
+
+
 def apply_unit_ground(b, doc: dict, unit: dict, site: str,
                       units: list[dict], loc: clearance.Locations):
     """Generate -> clear -> live marker check -> flatten.  NO PIECE STANDS.
@@ -4460,12 +4970,7 @@ def apply_unit_ground(b, doc: dict, unit: dict, site: str,
 
     ops = clearing_ops(doc, unit["id"])
     gen, clear = ops[0], ops[1]
-    res = b.emit(gen["op"], params=gen["params"], wire=gen["wire"],
-                 requires={"mods": ["UpgradeWorld"], "prefabs": [],
-                           "blobs": []},
-                 expect=gen["expect"],
-                 meta={"settlement": site, "unit": unit["id"],
-                       "location_check": siting})
+    res = generate_zones(b, gen, unit["id"], site, siting)
     out["seqs"]["zones_generate"] = res["seq"]
 
     # THE MOD-FREE LIMIT, closed. The dump cannot see More_World_Locations'

@@ -179,17 +179,21 @@ VH_SRC_DEFAULT = "/media/big4/projects/game/valheim/Ulfsland/data/bepinex"
 # used to be a constant here, `WORLD_SRC_DEFAULT`, naming Ulfsland's save, and
 # six readers took it for EVERY world -- `roads/ribbon.py`'s regrade census
 # fingerprinted and censused Ulfsland's live save on whatever world it was
-# building.  The root is the variable `terraform/rcon.py::WORLD_ROOT` reads,
-# so a moved install moves here too.
-WORLD_ROOT = os.environ.get("VALHEIM_WORLD_ROOT",
-                            "/media/big4/projects/game/valheim")
+# building.  The root is `worldseed.world_root()`, the ONE resolver
+# (`$VALHEIM_WORLD_ROOT`, else `$VALHEIM_ROOT`, else the production install),
+# asked at CALL time.  It was a module constant reading `$VALHEIM_WORLD_ROOT`
+# alone while the ledger's manifest read `$VALHEIM_ROOT`, so a run whose
+# operator environment named its install through `$VALHEIM_ROOT` -- the
+# from-scratch Ulfsland regeneration, root `UlfStaging` -- had every one of
+# this module's readers freeze and census the PRODUCTION save of the same
+# name.  See `worldseed.world_root` for the measurement.
 
 
 def world_src_default(world: str | None = None, *,
                       root: str | None = None) -> str:
     """The save directory of `world`, default this run's world, at CALL time."""
     w = str(world or _worldseed().world())
-    return f"{root or WORLD_ROOT}/{w}/config_merged/worlds_local/{w}"
+    return f"{root or _worldseed().world_root()}/{w}/config_merged/worlds_local/{w}"
 
 
 # WORLD_SAVE_DEPENDS_ON = ("world_being_built", "save_declares_it").  Two
@@ -275,6 +279,108 @@ def require_world_save(world_src: Path, world: str) -> str:
             f"nothing downstream could tell. Pass --world-src for {world!r}, "
             f"or --world {found!r} if {found!r} is what you meant to measure.")
     return found
+
+
+# THE SAVE MUST BE THE ONE THE LEDGER IS ABOUT, NOT MERELY ONE OF THE SAME NAME.
+#
+# `require_world_save` reads the world's name off the directory, and two
+# worlds on one host can carry one name: the from-scratch Ulfsland
+# regeneration (install root `UlfStaging`, world uid 1008370488) and the live
+# Ulfsland (uid 2212643513) are both `Ulfsland` on seed Pirate68.  MEASURED
+# 2026-10-05: ribbon.py's regrade census passed the name check on the live
+# world's save and refused 19 road legs for burying pieces that exist only
+# there.  The ledger's seq-0 `world_manifest` pins which world it is about, so
+# the save is compared with THAT.
+#
+#   world_uid     the world's own identity (`ledger/writer.read_fwl`), stable
+#                 for the world's life.  Decisive both ways when pinned.
+#   fwl_sha256    pinned by every manifest, but the file's BYTES are not
+#                 stable for the world's life: Ulfsland's live `.fwl2` is
+#                 8833746a... today and its ledger pins c5fdbf8f..., the same
+#                 world.  Equal proves identity; different proves nothing, so
+#                 a manifest that pins only the hash is reported UNVERIFIABLE
+#                 when they differ and never refused on it.
+#
+# A world with no ledger yet has nothing to be compared with (status
+# `unbuilt`), exactly as `accept/__main__.py` already treats it.
+_SAVE_IDENTITY_MODE = "real"       # real | off (the shipped, name-only check)
+
+
+def _ledger_writer():
+    """`ledger/writer.py`, the one reader of a `.fwl2` header."""
+    led = str(HERE.parent / "ledger")
+    if led not in sys.path:
+        sys.path.append(led)
+    import writer                                          # noqa: PLC0415
+    return writer
+
+
+def ledger_pin(ledger: Path) -> tuple[str, dict]:
+    """(status, pins) from the ledger's seq-0 manifest.  `unbuilt` when there is
+    no ledger yet; `unpinned` when its manifest pins neither uid nor hash;
+    `pinned` otherwise, with `pins` holding `world_uid` and/or `fwl_sha256`."""
+    ledger = Path(ledger)
+    if not ledger.is_file() or ledger.stat().st_size == 0:
+        return "unbuilt", {}
+    with ledger.open("r", encoding="utf-8") as fh:
+        first = fh.readline()
+    try:
+        rec = json.loads(first)
+    except ValueError as exc:
+        raise SystemExit(f"REFUSING: {ledger}'s first line is not JSON ({exc}), "
+                         f"so it cannot show which world it is about.")
+    if rec.get("op") != "world_manifest":
+        raise SystemExit(f"REFUSING: {ledger}'s first record is "
+                         f"{rec.get('op')!r}, not the world_manifest that "
+                         f"pins which world the ledger is about.")
+    params = rec.get("params") or {}
+    pins = {k: params[k] for k in ("world_uid", "fwl_sha256")
+            if params.get(k) is not None}
+    return ("pinned" if pins else "unpinned"), pins
+
+
+def save_identity(world_src: Path) -> dict:
+    """`{world_uid, fwl_sha256}` of the newest `.fwl2` in a save directory, via
+    the reader the ledger's manifest was written with; `{}` for a directory
+    that holds none or whose header does not parse.  No identity is claimed
+    then: a ledger that pins the uid refuses such a save, and one that pins
+    only the hash reports it unverifiable."""
+    import struct                                          # noqa: PLC0415
+    fwl = _worldseed().newest_save(Path(world_src), "fwl2")
+    if fwl is None:
+        return {}
+    try:
+        got = _ledger_writer().read_fwl(Path(fwl))
+    except (struct.error, IndexError, UnicodeDecodeError):
+        return {}
+    return {"world_uid": got["uid"], "fwl_sha256": got["fwl_sha256"]}
+
+
+def require_save_is_the_ledgers(world_src: Path, world: str,
+                                ledger: Path | None = None) -> str:
+    """REFUSE a save that is not the world `ledger` is about.  Returns the
+    status: `same`, `unbuilt`, `unpinned`, `unverifiable` or `unchecked`."""
+    if _SAVE_IDENTITY_MODE == "off":
+        return "unchecked"
+    ledger = Path(ledger) if ledger else (JUMPSTART / "ledger" / "runs"
+                                          / str(world) / "ledger.jsonl")
+    status, pins = ledger_pin(ledger)
+    if status != "pinned":
+        return status
+    got = save_identity(world_src)
+    if "world_uid" in pins:
+        if got.get("world_uid") != pins["world_uid"]:
+            raise SystemExit(
+                f"REFUSING: {world_src} is world uid {got.get('world_uid')}, "
+                f"but {ledger} is about world uid {pins['world_uid']}. Both "
+                f"may be called {world!r}; the verdict would be one world's "
+                f"ledger over another world's ground. Point the run at the "
+                f"install it is building ($VALHEIM_ROOT / --world-root / "
+                f"$JUMPSTART_WORLD_SRC).")
+        return "same"
+    if got.get("fwl_sha256") == pins["fwl_sha256"]:
+        return "same"
+    return "unverifiable"
 
 
 def save_fingerprint(world_src: Path) -> str:

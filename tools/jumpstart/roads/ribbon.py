@@ -11486,6 +11486,14 @@ def main() -> int:
         import accept.sections.structures as AS            # noqa: PLC0415
         from types import SimpleNamespace                  # noqa: PLC0415
         wsrc = AI.world_save(str(WORLD))
+        # THE SAVE THE CENSUS READS MUST BE THE WORLD THIS LEDGER IS ABOUT.
+        # The name check passes for any world called `{WORLD}`; on the
+        # from-scratch Ulfsland regeneration it passed for the LIVE world's
+        # save (a different uid) and 19 legs were refused for burying pieces
+        # that exist only there.  See `accept.instruments._SAVE_IDENTITY_MODE`.
+        rg_identity = AI.require_save_is_the_ledgers(wsrc, str(WORLD))
+        print(f"regrade census save: {wsrc} ({rg_identity} against the "
+              f"ledger's world manifest)")
         rg_fp = AI.save_fingerprint(wsrc)
         rg_cache = Path(AI.CACHE_DEFAULT) / str(WORLD)
         (rg_cache / rg_fp).mkdir(parents=True, exist_ok=True)

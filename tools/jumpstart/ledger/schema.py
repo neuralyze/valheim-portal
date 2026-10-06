@@ -233,7 +233,7 @@ OPS: dict[str, Op] = {
         required=("schema_version", "world", "seed_name", "seed",
                   "world_version", "world_gen_version", "game_build_anchor",
                   "modifiers", "mods", "tool"),
-        optional=("db_bytes", "fwl_sha256", "host", "started"),
+        optional=("db_bytes", "fwl_sha256", "world_uid", "host", "started"),
         why="seq 0.  Pins the world and the environment the rest of the "
             "ledger was recorded against.  Replay refuses on mismatch."),
 

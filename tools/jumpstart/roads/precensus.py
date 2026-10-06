@@ -1957,15 +1957,15 @@ def acquire_zdo_census(world: str, *, world_src: str = "",
     """
     sys.path.insert(0, str(JUMPSTART))
     import accept.instruments as AI                        # noqa: PLC0415
-    live = Path(world_src) if world_src else (
-        Path(os.environ.get("VALHEIM_ROOT",
-                            "/media/big4/projects/game/valheim"))
-        / world / "config_merged" / "worlds_local" / world)
+    live = Path(world_src) if world_src else Path(AI.world_src_default(world))
     if not live.is_dir():
         raise SystemExit(
             f"no save directory for {world} at {live}: a census of a save "
             f"needs the save. Pass --world-src <dir> or --zdos <tsv>.")
     AI.require_world_save(live, world)
+    # A ledger that exists pins which world it is about; a save of the same
+    # name on another install is refused.  No ledger yet -> nothing to compare.
+    AI.require_save_is_the_ledgers(live, world)
     root = Path(cache or AI.CACHE_DEFAULT) / world
     root.mkdir(parents=True, exist_ok=True)
     fp = AI.save_fingerprint(live)

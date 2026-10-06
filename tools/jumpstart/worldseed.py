@@ -105,6 +105,41 @@ def world(default: str = DEFAULT_WORLD) -> str:
     return os.environ.get(ENV_WORLD) or default
 
 
+# THE INSTALL ROOT, AND IT HAS TWO ENVIRONMENT NAMES THAT USED TO DISAGREE.
+#
+# `<root>/<World>/config_merged/worlds_local/<World>` is where a world's save
+# lives, and the toolchain read the root from TWO variables: `$VALHEIM_ROOT`
+# (ledger/writer.py's world manifest, precensus.py's save census, jumpstart.py)
+# and `$VALHEIM_WORLD_ROOT` (terraform/rcon.py, accept/instruments.py).  MEASURED
+# 2026-10-05 on the from-scratch Ulfsland regeneration, whose operator
+# environment names its staging install through `$VALHEIM_ROOT` alone: the
+# ledger pinned UlfStaging's `.fwl2` (sha256 d31017ca...), while ribbon.py's
+# regrade census, reading `$VALHEIM_WORLD_ROOT` -> the production default,
+# froze and censused the LIVE Ulfsland's save (sha256 8833746a..., chunks dated
+# 2026-09-19..23).  19 of 30 road legs were refused for burying "standing build
+# pieces" that stand in the production world and in no byte of the one being
+# built; a live read of the staging server at all 65 reported bury/undermine
+# positions found none of the named prefabs.  `require_world_save` could not
+# tell, because the world is called `Ulfsland` in both installs.  Fresh42 never
+# met it: a different world NAME resolves to a different directory under any
+# root.  A same-named world on another root is the case it could not exercise.
+#
+# ONE RESOLVER: the explicit, more specific name wins, then the general one,
+# then the host's production install.
+ENV_WORLD_ROOT = "VALHEIM_WORLD_ROOT"
+ENV_VALHEIM_ROOT = "VALHEIM_ROOT"
+DEFAULT_WORLD_ROOT = "/media/big4/projects/game/valheim"
+
+
+def world_root() -> Path:
+    """The install root holding `<World>/config_merged/...`: `$VALHEIM_WORLD_ROOT`,
+    else `$VALHEIM_ROOT`, else the host's production install.  Asked at CALL
+    time; every reader of a world's save, ledger manifest or RCON config goes
+    through here so that no two of them can name different installs."""
+    return Path(os.environ.get(ENV_WORLD_ROOT)
+                or os.environ.get(ENV_VALHEIM_ROOT) or DEFAULT_WORLD_ROOT)
+
+
 @contextlib.contextmanager
 def scope(seed_: str, world_: str):
     """Run a block as seed `seed_` / world `world_`, then restore the caller's

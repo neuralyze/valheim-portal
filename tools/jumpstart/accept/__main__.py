@@ -147,6 +147,15 @@ class Ctx:
         # is analysed; a frozen copy under a different name is refused with
         # both names, because that is indistinguishable from this defect.
         I.require_world_save(live, args.world)
+        # AND IT MUST BE THE WORLD THE LEDGER IS ABOUT.  The name check above
+        # cannot tell a same-named world on another install (the from-scratch
+        # Ulfsland regeneration beside the live Ulfsland); the ledger's
+        # seq-0 manifest pins the world's uid.  A world with no ledger yet is
+        # `unbuilt` and has nothing to disagree with.
+        I.require_save_is_the_ledgers(
+            live, args.world,
+            Path(args.ledger or (I.JUMPSTART / "ledger" / "runs" / args.world
+                                 / "ledger.jsonl")))
         # THE SNAPSHOT IS TAKEN HERE, ONCE, BEFORE ANY SECTION RUNS.  The
         # dedicated server rewrites the live save every few minutes; batch 1
         # and batch 5 were otherwise two readings of two different worlds

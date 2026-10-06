@@ -230,7 +230,14 @@ def loaded_zone_check(rec: dict, players_text: str,
 
 
 class PostconditionFailed(RuntimeError):
-    """The op was recorded and sent, and the world does not show its effect."""
+    """The op was recorded and sent, and the world does not show its effect.
+
+    `checks` is the structured measurement the message summarises (one dict per
+    check, `ok` false on the ones that failed), so a caller that can act on a
+    SPECIFIC failure -- `settlements/build.py::generate_zones` repairs a
+    `zone_ctrl` failure -- reads it instead of parsing the text."""
+
+    checks: list = []
 
 
 class LiveBuilder:
@@ -444,14 +451,16 @@ class LiveBuilder:
         if op == "terrain_write":
             R._materialise_data_entries(self.led, rec)
 
-        replies = R.send_wire(self.srv, rec["wire"])
         # THE SHARED VERIFY, not a bare `check_expect`.  A staged Upgrade
         # World op runs across frames, so measuring once immediately after
         # `start` reports work the world actually did as failed -- MEASURED
         # live, twice, and it aborted a road segment after three good
         # batches.  Build and replay must measure a staged op the same way
-        # for the same reason they must SEND it the same way.
-        checks, settled = R.verify_expect(self.srv, rec)
+        # for the same reason they must SEND it the same way.  And the send
+        # and the measure are ONE critical section on the server's staged
+        # queue (replay.STAGED_LOCK_DEPENDS_ON): another process's `stop`
+        # between them empties the queue and the op never runs.
+        replies, checks, settled = R.send_and_verify(self.srv, rec)
         failed = [c for c in checks if not c["ok"]]
         out = {"seq": rec["seq"], "op": op, "role": params.get("role"),
                "replies": [str(r)[:200] for r in replies], "checks": checks,
@@ -459,11 +468,13 @@ class LiveBuilder:
         if settled is not None:
             out["settled_after_s"] = settled
         if failed:
-            raise PostconditionFailed(
+            err = PostconditionFailed(
                 f"seq {rec['seq']} ({op}, {self.actor}) was recorded and sent "
                 f"and its postcondition does NOT hold: {failed}. The record "
                 f"stays in the ledger -- fix the cause and re-emit, or record "
                 f"a `retire`. Nothing is repaired for you.")
+            err.checks = checks
+            raise err
         return out
 
     # -- record-only conveniences -----------------------------------------

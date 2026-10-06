@@ -67,9 +67,6 @@ RUNS = HERE / "runs"
 # take no token -- so the guard has to live at the FILE layer.
 LOCK_TIMEOUT_S = 30.0
 
-VALHEIM_ROOT = Path(os.environ.get(
-    "VALHEIM_ROOT", "/media/big4/projects/game/valheim"))
-
 
 # --------------------------------------------------------------------------
 # Environment fingerprint
@@ -255,7 +252,7 @@ def fingerprint(world: str = "", *, game_build_anchor: str | None = None,
     replay does not mistake "not measured" for "no mods".
     """
     world = world or worldseed.world()
-    base = VALHEIM_ROOT / world
+    base = worldseed.world_root() / world
     worlds = base / "config_merged" / "worlds_local" / world
     newest_fwl = worldseed.newest_save(worlds, "fwl2")
     wf = read_fwl(newest_fwl) if newest_fwl else {}
@@ -301,6 +298,12 @@ def fingerprint(world: str = "", *, game_build_anchor: str | None = None,
                  "dlls": mods},
         "tool": tool_fingerprint(),
         "fwl_sha256": wf.get("fwl_sha256"),
+        # THE WORLD'S OWN IDENTITY.  The file hash above is not stable for a
+        # world's life (Ulfsland's live `.fwl2` no longer hashes to what its
+        # ledger pinned) and two worlds can share a name and a seed, so a
+        # reader asking "is this save the one this ledger is about" needs the
+        # uid.  `accept/instruments.py::require_save_is_the_ledgers`.
+        "world_uid": wf.get("uid"),
         "db_bytes": _stat_size_settled(worlds, newest_db),
         "host": platform.node(),
         "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

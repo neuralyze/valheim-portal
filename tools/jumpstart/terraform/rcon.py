@@ -130,8 +130,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import worldseed                                            # noqa: E402
 
 WORLD = os.environ.get("VALHEIM_WORLD") or worldseed.world()
-WORLD_ROOT = Path(os.environ.get("VALHEIM_WORLD_ROOT",
-                                 "/media/big4/projects/game/valheim"))
+# ONE RESOLVER FOR THE INSTALL ROOT (`worldseed.world_root`): this module read
+# `$VALHEIM_WORLD_ROOT` alone while the ledger manifest read `$VALHEIM_ROOT`.
+WORLD_ROOT = worldseed.world_root()
 CONTAINER = os.environ.get("VALHEIM_CONTAINER", f"valheim-server-{WORLD}")
 CONFIG = Path(os.environ.get(
     "VALHEIM_RCON_CONFIG",

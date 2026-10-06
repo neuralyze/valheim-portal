@@ -1889,6 +1889,27 @@ def live_replace_refusal(seed: str, world: str, replace_live: bool,
 def run(rt: Runtime, through: int = 99,
         steps: tuple[BuildStep, ...] = BUILD_STEPS,
         resume: bool = False, replace_live: bool = False) -> int:
+    """`_run` under the world's WRITER LOCK (pipeline.WRITER_LOCK_DEPENDS_ON):
+    a build started while another run drives this world is refused, rc 75,
+    before step 1.  The live default pair's own refusal comes first and takes
+    no lock, so a refused run writes no file into the live ledger directory.
+    A build that `pipeline.py run` started inherits that run's lock."""
+    s = rt.scope
+    if live_replace_refusal(s.seed, s.world, replace_live):
+        return _run(rt, through, steps, resume, replace_live)
+    lock = pipeline.acquire_writer_lock(s, "buildstage.py run")
+    if isinstance(lock, str):
+        sys.stderr.write(lock + "\n")
+        return pipeline.WRITER_LOCK_EXIT
+    try:
+        return _run(rt, through, steps, resume, replace_live)
+    finally:
+        lock.release()
+
+
+def _run(rt: Runtime, through: int = 99,
+         steps: tuple[BuildStep, ...] = BUILD_STEPS,
+         resume: bool = False, replace_live: bool = False) -> int:
     """Run the build steps IN THE DECLARED ORDER, refusing PER UNIT.
 
     A refused unit stops ITS OWN chain and every later step that consumes
@@ -2042,7 +2063,8 @@ def run(rt: Runtime, through: int = 99,
                 # step wrote a record instead of inferring it from the role.
                 env["VH_BUILD_STEP"] = str(st.ordinal)
                 env["VH_BUILD_UNIT"] = unit
-                rc = subprocess.call(cmd, cwd=str(HERE), env=env)
+                rc = subprocess.call(cmd, cwd=str(HERE), env=env,
+                                     pass_fds=pipeline.writer_lock_fds())
                 wall = time.time() - t0
                 # THE OTHER ARM, ON THE REAL WRITER (COLLAR_RETRY_DEPENDS_ON).
                 # A refused write sends nothing, so the same leg can be asked
@@ -2063,14 +2085,16 @@ def run(rt: Runtime, through: int = 99,
                                 "env": {k: env.get(k) for k in
                                         ("VH_WORLD", "VH_SEED", "VALHEIM_WORLD",
                                          "VALHEIM_CONTAINER",
-                                         "VALHEIM_RCON_HOST")}})
+                                         "VALHEIM_RCON_HOST",
+                                         "VALHEIM_WORLD_ROOT")}})
                     sys.stderr.write(
                         f"\n[{st.ordinal}/{steps[-1].ordinal}] {st.name} "
                         f"{unit}: rc={rc} with the pad collar; retrying "
                         f"WITHOUT it (COLLAR_RETRY_DEPENDS_ON)\n")
                     cmd = list(cmd) + ["--no-connection-collar"]
                     t0 = time.time()
-                    rc = subprocess.call(cmd, cwd=str(HERE), env=env)
+                    rc = subprocess.call(cmd, cwd=str(HERE), env=env,
+                                         pass_fds=pipeline.writer_lock_fds())
                     wall = time.time() - t0
                 # THE ENVIRONMENT, ON THE ROW, NOT JUST THE ARGV.  MEASURED
                 # 2026-09-24: asked "did any of this build reach the wrong
@@ -2078,8 +2102,11 @@ def run(rt: Runtime, through: int = 99,
                 # full argv -- AND COULD NOT ANSWER, because the world a
                 # command drives is carried in the ENVIRONMENT and nothing
                 # here recorded it.  The answer took four forensic
-                # measurements of two saves on disk.  These five keys are the
-                # complete set that decides which world a child talks to; a
+                # measurements of two saves on disk.  These six keys are the
+                # complete set that decides which world a child talks to
+                # (`VALHEIM_WORLD_ROOT` is which INSTALL's save it reads: it
+                # was missing, and a same-named world on another install went
+                # unrecorded); a
                 # key that is UNSET is written as null, because an absence
                 # stated is evidence and an absence omitted reads as a
                 # default.
@@ -2089,7 +2116,8 @@ def run(rt: Runtime, through: int = 99,
                             "env": {k: env.get(k) for k in
                                     ("VH_WORLD", "VH_SEED", "VALHEIM_WORLD",
                                      "VALHEIM_CONTAINER",
-                                     "VALHEIM_RCON_HOST")}})
+                                     "VALHEIM_RCON_HOST",
+                                     "VALHEIM_WORLD_ROOT")}})
                 journal.write_text(json.dumps(log, indent=1))
                 if rc != 0:
                     unit_rc = rc
@@ -2210,6 +2238,13 @@ _NEUTERS: dict[str, tuple[str, str, str, object]] = {
     # LIVE_REPLACE_DEPENDS_ON: --replace-live alone is enough.
     "live replace unguarded": ("live_replace", __name__, "_LIVE_REPLACE_MODE",
                                "unguarded"),
+    # pipeline.WRITER_LOCK_DEPENDS_ON, rebound where `run` reads it: nothing
+    # is taken and a second build starts beside the first.
+    "writer lock off": ("writer_lock", "pipeline", "_WRITER_LOCK_MODE", "off"),
+    # replay.STAGED_LOCK_DEPENDS_ON: the stop/verb/start bracket is open to any
+    # other process again.
+    "staged lock off": ("staged_lock", "ledger.replay", "_STAGED_LOCK_MODE",
+                        "off"),
 }
 
 def _neuter(label: str) -> Callable[[], Callable[[], None]]:
@@ -2839,6 +2874,143 @@ def _live_replace_case() -> bool:
             and ok is None and other is None)
 
 
+def _second_build_refused_case() -> bool:
+    """A build started while another run holds the world is REFUSED rc 75 before
+    step 1 -- nothing runs, no journal is written -- and the same build runs
+    once the holder is gone.  The live default pair's own refusal (rc 5) comes
+    first and leaves NO lock file in the directory it refused to touch.  Under
+    the `writer lock off` NEUTER the second build starts and this is False."""
+    import contextlib                                       # noqa: PLC0415
+    import io                                               # noqa: PLC0415
+    import tempfile                                         # noqa: PLC0415
+    with tempfile.TemporaryDirectory(prefix="buildstage-lock-") as tmp:
+        marker = Path(tmp) / "ran"
+
+        def av(_rt: Runtime, unit: str) -> list[list[str]]:
+            return [[PY, "-S", "-c",
+                     f"open({str(marker)!r}, 'a').write({unit!r})"]]
+
+        steps = (dc_replace(_step("road_ground"), units=lambda s: ["T6"],
+                            argv=av),)
+        scope = Scope("SelftestLock", "SelftestLock", Path(tmp),
+                      Path(tmp), Path(tmp))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            holder = pipeline.acquire_writer_lock(scope, "another run")
+            if isinstance(holder, str):
+                return False
+            try:
+                while_held = run(Runtime(scope, "Selftest"), steps=steps)
+            finally:
+                holder.release()
+            ran_while_held = marker.exists()
+            journal_while_held = (Path(tmp) / "build" / "buildstage.json").exists()
+            after = run(Runtime(scope, "Selftest"), steps=steps)
+        live_work = Path(tmp) / "live"
+        live = Scope(worldseed.DEFAULT_SEED, worldseed.DEFAULT_WORLD,
+                     live_work, live_work, live_work)
+        with contextlib.redirect_stderr(err):
+            live_rc = run(Runtime(live, "Selftest"), steps=steps)
+        no_live_file = not (live_work / "writer.lock").exists()
+        return (while_held == pipeline.WRITER_LOCK_EXIT
+                and not ran_while_held and not journal_while_held
+                and after == 0 and marker.exists()
+                and live_rc == 5 and no_live_file)
+
+
+def _staged_ops_interleave_safely() -> bool:
+    """Two processes each stage an `objects_remove` on ONE Upgrade World queue
+    (`stop` empties it, the verb stages into it, `start` runs it), the second
+    arriving while the first is between its `stop` and its `start` -- the
+    13:02:41-13:02:43 sequence in the Ulfsland staging server's log.  Both
+    removals must run and both postconditions hold; a holder that never lets
+    go is refused after its wait with nothing sent.  Under the `staged lock
+    off` NEUTER the second `stop` empties the first's staged op and the first
+    postcondition reads the census count back."""
+    import importlib                                        # noqa: PLC0415
+    import tempfile                                         # noqa: PLC0415
+    import threading                                        # noqa: PLC0415
+    import types                                            # noqa: PLC0415
+    _install_modules()                       # puts terraform/ on sys.path
+    R = importlib.import_module("ledger.replay")
+    world = {"objs": {"A": 1, "B": 1}, "queue": []}
+    a_staged, b_started = threading.Event(), threading.Event()
+
+    class QueueServer(R.Server):
+        """ONE staged queue for every connection, as measured."""
+
+        def __init__(self) -> None:
+            super().__init__(dry=False)
+            self.rc = types.SimpleNamespace(host="127.0.0.1", port=24560)
+
+        def command(self, cmd: str) -> str:
+            if cmd == "consoleCommand stop":
+                world["queue"].clear()
+            elif cmd == "consoleCommand start":
+                for ident in world["queue"]:
+                    world["objs"][ident] = 0
+                world["queue"].clear()
+            return f"Command '{cmd}' executed."
+
+        def console(self, cmd: str, settle: float = 2.0) -> list[str]:
+            t = cmd.split()
+            kv = dict(a.split("=", 1) for a in t[1:] if "=" in a)
+            if t[0] == "objects_remove":
+                world["queue"].append(kv["id"])
+                if kv["id"] == "A":      # A is mid-bracket when B arrives
+                    a_staged.set()
+                    b_started.wait(5.0)
+                    time.sleep(0.3)
+                return ["Removing 1 object."]
+            if t[0] == "objects_count":
+                n = world["objs"].get(kv["id"], 0)
+                return [f"Total: {n}"] + ([f"{kv['id']}: {n}"] if n else [])
+            return []
+
+    def rec(ident: str) -> dict:
+        return {"wire": [f"objects_remove id={ident} ignore=_* pos=0,0 max=5"],
+                "params": {},
+                "expect": {"objects_count": {
+                    "ids": ident, "ignore": "_*", "max": 5, "pos": [0, 0],
+                    "tolerance": 0, "total": 0}}}
+
+    out: dict[str, bool] = {}
+
+    def drive(ident: str) -> None:
+        if ident == "B":
+            a_staged.wait(5.0)
+            b_started.set()
+        _, checks, _ = R.send_and_verify(QueueServer(), rec(ident))
+        out[ident] = all(c["ok"] for c in checks)
+
+    saved = (R.STAGED_SETTLE_S, R.STAGED_POLL_S, R._STAGED_LOCK_DIR)
+    with tempfile.TemporaryDirectory(prefix="buildstage-staged-") as tmp:
+        R.STAGED_SETTLE_S, R.STAGED_POLL_S = 0.4, 0.05
+        R._STAGED_LOCK_DIR = Path(tmp)
+        try:
+            threads = [threading.Thread(target=drive, args=(i,))
+                       for i in ("A", "B")]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(30.0)
+            both = out == {"A": True, "B": True}
+            # A holder that never lets go: refused after the wait, nothing sent.
+            srv = QueueServer()
+            sent_before = len(srv.sent)
+            refused = False
+            with R.staged_exclusive(srv, rec("A")["wire"]):
+                try:
+                    with R.staged_exclusive(srv, rec("B")["wire"], wait_s=0.2):
+                        pass
+                except R.LedgerError:
+                    refused = True
+            refused = refused or R._STAGED_LOCK_MODE == "off"
+            return both and refused and len(srv.sent) == sent_before
+        finally:
+            R.STAGED_SETTLE_S, R.STAGED_POLL_S, R._STAGED_LOCK_DIR = saved
+
+
 def _upstream_refusal_blocked_at_bodies(r: dict) -> bool:
     """iron-era-workshop is BLOCKED by name, naming step 1, and never run."""
     return (_SITE_REFUSED_UPSTREAM not in r["rc"]
@@ -3270,7 +3442,9 @@ def survivors(label: str) -> list[str]:
               ("installation_write_path",
                _installation_piece_under_a_later_write_refused),
               ("collar_retry", _collar_retry_case),
-              ("live_replace", _live_replace_case))
+              ("live_replace", _live_replace_case),
+              ("writer_lock", _second_build_refused_case),
+              ("staged_lock", _staged_ops_interleave_safely))
     return [n for n, probe in probes if n != dropped and probe()]
 
 
@@ -3350,6 +3524,37 @@ def selftest() -> int:
                            "not run at all",
                neuter=_neuter("live replace unguarded"),
                neuters="live replace unguarded"),
+        R.Case("a_build_started_beside_a_running_one_is_refused", True,
+               lambda: finding(not _second_build_refused_case(),
+                               "a build started while another run holds the "
+                               "world is refused rc 75 before step 1, runs "
+                               "once the holder is gone, and the live pair's "
+                               "own refusal leaves no lock file behind",
+                               holders=1),
+               prior_state="MEASURED 2026-10-05 on the Ulfsland regeneration: "
+                           "two `buildstage.py run` ran 12.5 h against one "
+                           "server and one ledger; the server log shows run "
+                           "A's staged objects_remove emptied by run B's "
+                           "`stop` a second later (6 road_clear units "
+                           "refused want 0 got 1), and each run met the "
+                           "other's bodies as standing pieces",
+               neuter=_neuter("writer lock off"),
+               neuters="writer lock off"),
+        R.Case("a_staged_operation_survives_another_processes_stop", False,
+               lambda: finding(_staged_ops_interleave_safely(),
+                               "two processes staging on one Upgrade World "
+                               "queue each run their own operation and each "
+                               "postcondition holds; a wedged holder is "
+                               "refused after its wait with nothing sent",
+                               processes=2),
+               prior_state="MEASURED 2026-10-05 in the Ulfsland staging "
+                           "server's log: run A `stop`, `objects_remove "
+                           "id=Beech_small1` (\"Removing 1 object\") at "
+                           "13:02:41; run B `stop` + its own removal at "
+                           "13:02:42; one `start` at 13:02:43 ran B's alone "
+                           "and A's count read back `Beech_small1: 1`",
+               neuter=_neuter("staged lock off"),
+               neuters="staged lock off"),
         R.Case("a_road_ground_refusal_is_retried_without_the_pad_collar", False,
                lambda: finding(_collar_retry_case(),
                                "a road_ground unit the collar leaves refused "

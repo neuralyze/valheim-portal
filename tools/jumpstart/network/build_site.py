@@ -64,10 +64,9 @@ import worldseed  # noqa: E402
 def status_path() -> Path:
     """THIS run's server's web status file, asked at CALL time:
     `<install root>/<world>/data/htdocs/status.json`, under the root
-    `accept/instruments.py::WORLD_ROOT` reads (`$VALHEIM_WORLD_ROOT`).  It
-    was Ulfsland's server's for every world."""
-    from accept import instruments as AI  # noqa: PLC0415
-    return (Path(AI.WORLD_ROOT) / worldseed.world() / "data" / "htdocs"
+    `worldseed.world_root()` resolves (`$VALHEIM_WORLD_ROOT`, else
+    `$VALHEIM_ROOT`).  It was Ulfsland's server's for every world."""
+    return (worldseed.world_root() / worldseed.world() / "data" / "htdocs"
             / "status.json")
 
 

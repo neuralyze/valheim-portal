@@ -712,6 +712,7 @@ def _census_for(args):
     a.zone_batch = 110
     live = Path(a.world_src)
     AI.require_world_save(live, a.world)
+    AI.require_save_is_the_ledgers(live, a.world)
     fp = AI.save_fingerprint(live)
     cache = Path(AI.CACHE_DEFAULT) / a.world
     cache.mkdir(parents=True, exist_ok=True)

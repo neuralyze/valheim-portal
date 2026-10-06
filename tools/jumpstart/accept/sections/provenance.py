@@ -899,6 +899,247 @@ def _neuter_the_gate_save_check():
     return undo
 
 
+def _fwl2(name: str, seed_name: str, seed: int, uid: int, gen: int = 2) -> bytes:
+    """A CONSTRUCTED 1.0.12 `.fwl2` header, in the layout `ledger/writer.py::
+    read_fwl` parses: outer length, int32 version, name, seedName, int32 seed,
+    int64 uid, int32 worldGenVersion, a flag byte, an empty modifier list."""
+    import struct                                          # noqa: PLC0415
+
+    def zstr(s: str) -> bytes:
+        raw, n, out = s.encode(), len(s.encode()), bytearray()
+        while True:
+            byte = n & 0x7F
+            n >>= 7
+            out.append(byte | (0x80 if n else 0))
+            if not n:
+                break
+        return bytes(out) + raw
+
+    body = (struct.pack("<i", 41) + zstr(name) + zstr(seed_name)
+            + struct.pack("<i", seed) + struct.pack("<q", uid)
+            + struct.pack("<i", gen) + b"\x00" + struct.pack("<i", 0))
+    return struct.pack("<i", len(body)) + body
+
+
+def _install(root: Path, world: str, uid: int) -> Path:
+    """`<root>/<world>/config_merged/worlds_local/<world>` holding a save of
+    world uid `uid`; the SAME name and seed whatever the uid, which is the
+    case the name check cannot tell apart."""
+    d = root / world / "config_merged" / "worlds_local" / world
+    d.mkdir(parents=True)
+    (d / "_main.7.fwl2").write_bytes(_fwl2(world, "Pirate68", 147627509, uid))
+    (d / "_main.7.db2").write_bytes(b"\x00" * 64)
+    return d
+
+
+def _manifest_ledger(path: Path, **pins) -> Path:
+    rec = {"seq": 0, "op": "world_manifest",
+           "params": dict(world="Nyworld", seed_name="Pirate68", **pins)}
+    path.write_text(json.dumps(rec) + "\n")
+    return path
+
+
+def _case_gate_refuses_a_same_named_save_of_another_world():
+    """THE CLASS THE NAME CHECK CANNOT SEE: two worlds on one host, one name,
+    one seed.  MEASURED 2026-10-05: the from-scratch Ulfsland regeneration
+    (install `UlfStaging`, uid 1008370488) and the live Ulfsland (uid
+    2212643513) are both `Ulfsland` on Pirate68, and ribbon.py's regrade
+    census passed `require_world_save` on the live world's save."""
+    from .. import instruments as I                       # noqa: PLC0415
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        mine = _install(td / "staging", "Nyworld", 1008370488)
+        other = _install(td / "production", "Nyworld", 2212643513)
+        ledger = _manifest_ledger(td / "ledger.jsonl",
+                                  world_uid=1008370488,
+                                  fwl_sha256=I.save_identity(mine)["fwl_sha256"])
+        assert I.require_world_save(other, "Nyworld") == "Nyworld"
+        try:
+            I.require_save_is_the_ledgers(other, "Nyworld", ledger)
+        except SystemExit as exc:
+            return Finding(
+                check="gate_refuses_a_same_named_save_of_another_world",
+                ok=False,
+                message=("refused world uid 2212643513's save for a ledger "
+                         f"about uid 1008370488: {str(exc)[:110]}"),
+                numbers={"save_uid": 2212643513, "ledger_uid": 1008370488})
+    return Finding(
+        check="gate_refuses_a_same_named_save_of_another_world", ok=True,
+        message=("NOT REFUSED: a census would measure the live Ulfsland's "
+                 "ground under the ledger of the world being built"),
+        numbers={"save_uid": 2212643513, "ledger_uid": 1008370488})
+
+
+def _case_gate_accepts_the_ledgers_own_save_under_every_pin():
+    """The other direction, per pin.  A uid pin is decisive; a hash-only pin
+    that DIFFERS is not refused (Ulfsland's live `.fwl2` no longer hashes to
+    what its own ledger pinned -- the same world, 8833746a vs c5fdbf8f), it is
+    reported `unverifiable`; no ledger is `unbuilt`; and a world's own manifest
+    carries the uid the gate compares."""
+    import os                                              # noqa: PLC0415
+    from .. import instruments as I                       # noqa: PLC0415
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        mine = _install(td / "staging", "Nyworld", 1008370488)
+        h = I.save_identity(mine)["fwl_sha256"]
+        got = {
+            "uid": I.require_save_is_the_ledgers(
+                mine, "Nyworld", _manifest_ledger(
+                    td / "a.jsonl", world_uid=1008370488, fwl_sha256="0" * 64)),
+            "hash_equal": I.require_save_is_the_ledgers(
+                mine, "Nyworld", _manifest_ledger(
+                    td / "b.jsonl", fwl_sha256=h)),
+            "hash_differs_no_uid": I.require_save_is_the_ledgers(
+                mine, "Nyworld", _manifest_ledger(
+                    td / "c.jsonl", fwl_sha256="f" * 64)),
+            "no_pin": I.require_save_is_the_ledgers(
+                mine, "Nyworld", _manifest_ledger(td / "d.jsonl")),
+            "no_ledger": I.require_save_is_the_ledgers(
+                mine, "Nyworld", td / "absent.jsonl"),
+        }
+        want = {"uid": "same", "hash_equal": "same",
+                "hash_differs_no_uid": "unverifiable", "no_pin": "unpinned",
+                "no_ledger": "unbuilt"}
+        prior = {k: os.environ.pop(k, None)
+                 for k in ("VALHEIM_WORLD_ROOT", "VALHEIM_ROOT")}
+        os.environ["VALHEIM_ROOT"] = str(td / "staging")
+        try:
+            m = I._ledger_writer().fingerprint(
+                "Nyworld", heavy=False, probe_modifiers=False)
+        finally:
+            for k, v in prior.items():
+                os.environ.pop(k, None)
+                if v is not None:
+                    os.environ[k] = v
+    bad = {k: (got[k], want[k]) for k in want if got[k] != want[k]}
+    if m.get("world_uid") != 1008370488:
+        bad["manifest_world_uid"] = (m.get("world_uid"), 1008370488)
+    if m.get("fwl_sha256") != h:
+        bad["manifest_fwl_sha256"] = (m.get("fwl_sha256"), h)
+    return Finding(
+        check="gate_accepts_the_ledgers_own_save_under_every_pin",
+        ok=not bad,
+        message=(f"disagreeing arms (got, want): {bad}" if bad else
+                 f"every pin arm answered as required: {got}"),
+        numbers={"arms": len(want) + 2, "disagreeing": len(bad)})
+
+
+def _neuter_the_ledger_identity_check():
+    """RESTORE THE DEFECT VERBATIM: the save was identified by its NAME alone."""
+    from .. import instruments as I                       # noqa: PLC0415
+    saved = I._SAVE_IDENTITY_MODE
+    I._SAVE_IDENTITY_MODE = "off"
+
+    def undo():
+        I._SAVE_IDENTITY_MODE = saved
+    return undo
+
+
+def _case_one_install_root_for_every_reader():
+    """THE SPLIT THAT SENT THE CENSUS TO THE WRONG INSTALL.  The ledger's
+    manifest read `$VALHEIM_ROOT`; `accept/instruments.py` and `rcon.py` read
+    `$VALHEIM_WORLD_ROOT`.  The regeneration's environment set only the first,
+    so the manifest pinned UlfStaging and the census froze production."""
+    import os                                              # noqa: PLC0415
+    from .. import instruments as I                       # noqa: PLC0415
+    W = I._worldseed()
+    keys = (W.ENV_WORLD_ROOT, W.ENV_VALHEIM_ROOT)
+    saved = {k: os.environ.pop(k, None) for k in keys}
+    got = {}
+    try:
+        got["default"] = str(W.world_root())
+        os.environ[W.ENV_VALHEIM_ROOT] = "/scratch/staging"
+        got["only_valheim_root"] = I.world_src_default("Nyworld")
+        os.environ[W.ENV_WORLD_ROOT] = "/scratch/explicit"
+        got["both_set"] = I.world_src_default("Nyworld")
+        got["argument"] = I.world_src_default("Nyworld", root="/scratch/arg")
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+    tail = "/Nyworld/config_merged/worlds_local/Nyworld"
+    want = {"default": W.DEFAULT_WORLD_ROOT,
+            "only_valheim_root": "/scratch/staging" + tail,
+            "both_set": "/scratch/explicit" + tail,
+            "argument": "/scratch/arg" + tail}
+    bad = {k: (got[k], want[k]) for k in want if got[k] != want[k]}
+    return Finding(
+        check="one_install_root_serves_every_reader", ok=not bad,
+        message=(f"disagreeing arms (got, want): {bad}" if bad else
+                 "default, $VALHEIM_ROOT alone, both variables and an "
+                 "argument each resolve to the root they name"),
+        numbers={"arms": len(want), "disagreeing": len(bad)})
+
+
+def _neuter_the_split_install_root():
+    """RESTORE THE DEFECT VERBATIM: the resolver read `$VALHEIM_WORLD_ROOT`
+    alone, as `accept/instruments.py` and `terraform/rcon.py` did."""
+    import os                                              # noqa: PLC0415
+    from .. import instruments as I                       # noqa: PLC0415
+    W = I._worldseed()
+    saved = W.world_root
+
+    def shipped():
+        return Path(os.environ.get(W.ENV_WORLD_ROOT, W.DEFAULT_WORLD_ROOT))
+
+    W.world_root = shipped
+
+    def undo():
+        W.world_root = saved
+    return undo
+
+
+def _case_a_run_hands_its_children_the_root_it_was_given():
+    """`--world-root` was parsed into `pipeline.Scope` and then dropped on the
+    floor: `Scope.env()` carried the seed and the world and no child inherited
+    the root, so a child that resolves it for itself read its own
+    environment.  An explicit flag beats the ambient environment."""
+    import os                                              # noqa: PLC0415
+    if str(JUMPSTART) not in sys.path:
+        sys.path.insert(0, str(JUMPSTART))
+    import pipeline                                        # noqa: PLC0415
+    sc = pipeline.Scope("Pirate68", "Nyworld", Path("/w"),
+                        Path("/install/staging"), Path("/vh"))
+    prior = os.environ.get("VALHEIM_WORLD_ROOT")
+    os.environ["VALHEIM_WORLD_ROOT"] = "/ambient/production"
+    try:
+        got = sc.env().get("VALHEIM_WORLD_ROOT")
+    finally:
+        if prior is None:
+            os.environ.pop("VALHEIM_WORLD_ROOT", None)
+        else:
+            os.environ["VALHEIM_WORLD_ROOT"] = prior
+    return Finding(
+        check="a_run_hands_its_children_the_root_it_was_given",
+        ok=got == "/install/staging",
+        message=(f"a child of a run built on /install/staging inherited "
+                 f"{got!r}"),
+        numbers={"inherited": str(got)})
+
+
+def _neuter_the_dropped_world_root():
+    """RESTORE THE DEFECT VERBATIM: `Scope.env()` without the root line."""
+    if str(JUMPSTART) not in sys.path:
+        sys.path.insert(0, str(JUMPSTART))
+    import pipeline                                        # noqa: PLC0415
+    saved = pipeline.Scope.env
+
+    def shipped(self):
+        e = saved(self)
+        e.pop("VALHEIM_WORLD_ROOT", None)
+        import os                                          # noqa: PLC0415
+        if os.environ.get("VALHEIM_WORLD_ROOT") is not None:
+            e["VALHEIM_WORLD_ROOT"] = os.environ["VALHEIM_WORLD_ROOT"]
+        return e
+
+    pipeline.Scope.env = shipped
+
+    def undo():
+        pipeline.Scope.env = saved
+    return undo
+
+
 def _case_producer_stamps_the_seed_it_ran_on():
     """THE HOLE A DECLARATION CHECK LEAVES: a FALSE declaration passes it.
 
@@ -2399,6 +2640,39 @@ register(Section(
              prior_state=("every authoritative verdict this project takes is "
                           "measured on a frozen copy; a check that refused "
                           "one would stop the gate rather than protect it")),
+        Case("gate_refuses_a_same_named_save_of_another_world", True,
+             _case_gate_refuses_a_same_named_save_of_another_world,
+             prior_state=("2026-10-05, the from-scratch Ulfsland regeneration: "
+                          "ribbon.py's regrade census froze the LIVE "
+                          "Ulfsland's save (uid 2212643513, .fwl2 sha256 "
+                          "8833746a...) while the ledger pinned UlfStaging's "
+                          "(uid 1008370488, d31017ca...), both named Ulfsland "
+                          "on Pirate68; 19 of 30 road legs were refused for "
+                          "burying pieces that stand only in the live world"),
+             neuter=_neuter_the_ledger_identity_check,
+             neuters="the save identified by its directory name alone"),
+        Case("gate_accepts_the_ledgers_own_save_under_every_pin", False,
+             _case_gate_accepts_the_ledgers_own_save_under_every_pin,
+             prior_state=("Ulfsland's live .fwl2 hashes to 8833746a... while "
+                          "its ledger pins c5fdbf8f...: a hash-only pin that "
+                          "differs is the same world, so it cannot refuse"),
+             neuter=_neuter_the_ledger_identity_check,
+             neuters="the save identified by its directory name alone"),
+        Case("one_install_root_serves_every_reader", False,
+             _case_one_install_root_for_every_reader,
+             prior_state=("the ledger manifest read $VALHEIM_ROOT while "
+                          "accept/instruments.py and terraform/rcon.py read "
+                          "$VALHEIM_WORLD_ROOT; the regeneration's environment "
+                          "set only $VALHEIM_ROOT"),
+             neuter=_neuter_the_split_install_root,
+             neuters="a resolver that reads $VALHEIM_WORLD_ROOT alone"),
+        Case("a_run_hands_its_children_the_root_it_was_given", False,
+             _case_a_run_hands_its_children_the_root_it_was_given,
+             prior_state=("buildstage run --world-root /media/big4/.../"
+                          "UlfStaging: Scope.env() dropped it, so ribbon.py "
+                          "resolved the production install for itself"),
+             neuter=_neuter_the_dropped_world_root,
+             neuters="Scope.env() without the install-root line"),
         Case("producer_stamps_the_seed_it_ran_on", False,
              _case_producer_stamps_the_seed_it_ran_on,
              prior_state=("settlements/plan.py:241 wrote the literal "

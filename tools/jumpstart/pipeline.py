@@ -85,7 +85,11 @@ SEEDSCAN = REPO / "tools" / "seedscan"
 
 # The one default that is a MEASUREMENT of this host rather than a choice.
 VH_SRC_DEFAULT = "/media/big4/projects/game/valheim/Ulfsland/data/bepinex"
-WORLD_ROOT_DEFAULT = "/media/big4/projects/game/valheim"
+# The install root is the ONE resolver's (`$VALHEIM_WORLD_ROOT`, else
+# `$VALHEIM_ROOT`, else the production install), so a run whose operator
+# environment already names its install and passes no `--world-root` builds
+# THAT install rather than the production default.
+WORLD_ROOT_DEFAULT = str(worldseed.world_root())
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +136,187 @@ class Scope:
         e = dict(os.environ)
         e[worldseed.ENV_SEED] = self.seed
         e[worldseed.ENV_WORLD] = self.world
+        # AND THE INSTALL ROOT.  `--world-root` was parsed into this scope and
+        # then dropped on the floor: no child inherited it, so a child that
+        # resolves the root for itself (ribbon.py's regrade census, via
+        # `accept.instruments.world_save`) read whatever its OWN environment
+        # said -- on the from-scratch Ulfsland regeneration, the production
+        # install of the same-named world.  The flag is now the child's root.
+        e[worldseed.ENV_WORLD_ROOT] = str(self.world_root)
+        # THE WRITER LOCK THIS RUN HOLDS, named for the child that inherits its
+        # fd -- see WRITER_LOCK_DEPENDS_ON.
+        tok = _HELD.token() if _HELD is not None else None
+        if tok:
+            e[WRITER_LOCK_ENV] = tok
         return e
+
+
+# ---------------------------------------------------------------------------
+# one writer per world
+# ---------------------------------------------------------------------------
+# WRITER_LOCK_DEPENDS_ON: ONE RUN PER WORLD AT A TIME.  Every build step writes
+# into one server over RCON and appends to one ledger, and two runs doing it at
+# once are not "faster", they are wrong in ways that read as defects of the
+# tools.  MEASURED on the Ulfsland regeneration, 2026-10-05: `buildstage.py run`
+# was started while a first one (launched by the tail of a pipeline chain) was
+# still in step 3, and both then ran 12.5 hours against the one staging server.
+# Upgrade World's staged verbs are `stop` / <verb> / `start` on ONE queue the
+# plugin shares between every RCON connection: the server log shows run A stage
+# `objects_remove id=Beech_small1 ... max=5.40` at 13:02:41, run B's `stop`
+# empty the queue at 13:02:42 and stage its own removal, and the single `start`
+# at 13:02:43 execute B's alone.  A's postcondition then read the census count
+# back (`want 0, got 1`) -- six road_clear units refused that way, each within
+# one second of the other run's record.  The bodies run B built before run A
+# reached step 5 made A's clearing cylinders hold "build pieces" (13 bodies
+# refused), and its fixtures arrived on an already-stocked site (`want 1, got
+# 2`).  None of it was a ground, a gate or a blueprint.
+#
+# The lock is `<work>/writer.lock` (`ledger/runs/<World>/pipeline/`), an
+# `flock` on an open file, taken by `pipeline.py run` and by `buildstage.py
+# run` -- the two entry points that drive a world for hours.  flock is dropped
+# by the kernel when the holder dies, so a CRASHED holder never blocks the next
+# run and no pid has to be guessed stale; the record in the file (pid, argv,
+# since) is only what the refusal prints.  The fd is PASSED TO EVERY CHILD
+# (`pass_fds`), so (a) `pipeline.py run`'s stage 12 -- which runs `buildstage.py
+# run` -- finds the lock its parent holds named in `$VH_WRITER_LOCK` and carries
+# on instead of refusing its own parent, and (b) a builder child that outlives
+# a killed parent KEEPS THE LOCK: the next run is refused by it and told to
+# look for it, which is exactly the state the ps of that morning showed (two
+# orphan `stock.py` still writing to the server).
+#
+# NEUTERS, one per half: `off` takes nothing and a second run starts;
+# `no_inherit` makes a child refuse the lock its own parent holds (stage 12
+# would refuse its own pipeline); `unlock` has `release` drop the lock with an
+# explicit LOCK_UN, which releases it for the children that share the open file
+# description too.  Proven by `_second_run_refused`, `_child_inherits_the_lock`
+# and `_orphan_child_keeps_the_lock`.
+WRITER_LOCK_DEPENDS_ON = ("one_run_holds_the_world",
+                          "a_child_carries_its_parents_lock",
+                          "an_orphan_child_keeps_the_lock")
+_WRITER_LOCK_MODE = "exclusive"     # exclusive | off | no_inherit | unlock
+WRITER_LOCK_ENV = "VH_WRITER_LOCK"  # "<lock path>|<inherited fd>"
+# sysexits EX_TEMPFAIL: not an exit code any step's own refusal uses (the
+# builders answer 3-9 and 78), so a caller can tell "another run holds the
+# world" from "this run refused".
+WRITER_LOCK_EXIT = 75
+
+
+class WriterLock:
+    """A held (or inherited) world lock.  `release` is idempotent."""
+
+    def __init__(self, path: Path, fd: int | None, owned: bool):
+        self.path, self.fd, self.owned = path, fd, owned
+
+    def token(self) -> str | None:
+        return None if self.fd is None else f"{self.path}|{self.fd}"
+
+    def release(self) -> None:
+        global _HELD
+        if _HELD is self:
+            _HELD = None
+        if self.owned and self.fd is not None:
+            # CLOSE, NEVER `LOCK_UN`: flock belongs to the open file
+            # description, which every child spawned with `pass_fds` shares,
+            # and an explicit unlock would release the lock out from under a
+            # child that outlives this run.  Closing drops only this
+            # process's reference.
+            if _WRITER_LOCK_MODE == "unlock":
+                import fcntl                                # noqa: PLC0415
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
+            os.close(self.fd)
+        self.fd = None
+
+
+_HELD: WriterLock | None = None
+
+
+def writer_lock_fds() -> tuple[int, ...]:
+    """The fds a child must inherit for the lock to outlive this process."""
+    return () if _HELD is None or _HELD.fd is None else (_HELD.fd,)
+
+
+def writer_lock_path(scope: Scope) -> Path:
+    return scope.work / "writer.lock"
+
+
+def _inherited_lock(path: Path) -> WriterLock | None:
+    """The lock a parent run passed down, if it is THIS world's and still an
+    open handle on that file -- a token naming another path or a closed fd is
+    not an inheritance and is not trusted."""
+    if _WRITER_LOCK_MODE == "no_inherit":
+        return None
+    tok = os.environ.get(WRITER_LOCK_ENV, "")
+    named, _, fd_s = tok.rpartition("|")
+    if not named or not fd_s.isdigit():
+        return None
+    try:
+        if Path(named).resolve() != path.resolve():
+            return None
+        held, on_disk = os.fstat(int(fd_s)), os.stat(path)
+    except OSError:
+        return None
+    if (held.st_dev, held.st_ino) != (on_disk.st_dev, on_disk.st_ino):
+        return None
+    return WriterLock(path, int(fd_s), owned=False)
+
+
+def _holder_text(raw: str) -> str:
+    try:
+        rec = json.loads(raw)
+        pid = int(rec["pid"])
+    except (ValueError, KeyError, TypeError):
+        return f"an unreadable record {raw[:120]!r}"
+    try:
+        os.kill(pid, 0)
+        alive = "alive"
+    except ProcessLookupError:
+        alive = ("GONE -- a child it started inherited the lock and is still "
+                 "running")
+    except PermissionError:
+        alive = "alive (another user's)"
+    return (f"pid {pid} ({alive}), {rec.get('role')!r}, since "
+            f"{rec.get('since')}, argv {rec.get('argv')}")
+
+
+def acquire_writer_lock(scope: Scope, role: str) -> WriterLock | str:
+    """Take this world's writer lock, or return WHY it is not available.
+
+    Never blocks: a second run that waited would start hours late on ground
+    the first had moved, so it is told and stops.
+    """
+    global _HELD
+    path = writer_lock_path(scope)
+    if _WRITER_LOCK_MODE == "off":
+        return WriterLock(path, None, owned=False)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    inherited = _inherited_lock(path)
+    if inherited is not None:
+        _HELD = inherited
+        return inherited
+    import fcntl                                            # noqa: PLC0415
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o664)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raw = os.pread(fd, 4096, 0).decode("utf-8", "replace")
+        os.close(fd)
+        return (f"REFUSING to start `{role}` for world {scope.world!r}: "
+                f"another run holds its writer lock {path} -- "
+                f"{_holder_text(raw)}. Two runs against one server cancel "
+                f"each other's staged Upgrade World operations (`stop` is "
+                f"global) and read each other's pieces as standing ones. "
+                f"Wait for it to finish, or kill it AND the children it "
+                f"started (`fuser -v {path}` lists every process still "
+                f"holding the lock).")
+    os.ftruncate(fd, 0)
+    os.pwrite(fd, json.dumps({
+        "pid": os.getpid(), "role": role, "world": scope.world,
+        "seed": scope.seed, "argv": sys.argv,
+        "since": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}).encode(),
+        0)
+    os.fsync(fd)
+    _HELD = WriterLock(path, fd, owned=True)
+    return _HELD
 
 
 # ---------------------------------------------------------------------------
@@ -1923,6 +2107,28 @@ def _reproduced_upstream(st: Stage, owners: dict[str, Stage],
 def run(scope: Scope, through: int, stages: tuple[Stage, ...] = STAGES,
         force: bool = False, replace_live: bool = False,
         from_: int | None = None, producer_root: Path | None = None) -> int:
+    """`_run` under the world's WRITER LOCK (WRITER_LOCK_DEPENDS_ON): a run
+    that finds another run driving this world is refused, rc 75, before it
+    touches anything.  The live default pair is refused by `_run` itself
+    BEFORE any lock file is written, so a refused run leaves no file in the
+    live ledger directory."""
+    if worldseed.is_default(scope.seed, scope.world) and not replace_live:
+        return _run(scope, through, stages, force, replace_live, from_,
+                    producer_root)
+    lock = acquire_writer_lock(scope, "pipeline.py run")
+    if isinstance(lock, str):
+        sys.stderr.write(lock + "\n")
+        return WRITER_LOCK_EXIT
+    try:
+        return _run(scope, through, stages, force, replace_live, from_,
+                    producer_root)
+    finally:
+        lock.release()
+
+
+def _run(scope: Scope, through: int, stages: tuple[Stage, ...] = STAGES,
+         force: bool = False, replace_live: bool = False,
+         from_: int | None = None, producer_root: Path | None = None) -> int:
     """Run stages in order up to `through`, STOPPING at the first refusal.
 
     The journal is written after every stage, in the durable work directory, so
@@ -2090,7 +2296,8 @@ def _execute(scope: Scope, st: Stage, stages: tuple[Stage, ...],
     saved = {k: os.environ.get(k) for k in tenv}
     os.environ.update(tenv)
     try:
-        rc = subprocess.call(cmd, cwd=str(HERE), env=scope.env())
+        rc = subprocess.call(cmd, cwd=str(HERE), env=scope.env(),
+                             pass_fds=writer_lock_fds())
         wall = time.time() - t0
         rows = {r["name"]: r for r in status(scope, stages)}
         produced = [{"label": a["label"], "state": a["state"]}
@@ -2278,6 +2485,11 @@ _NEUTERS: dict[str, tuple[str, str, object]] = {
     "field windows derived": ("field_windows", "_FIELD_WINDOWS_MODE", "derived"),
     # PLAN_NAME_DEPENDS_ON.
     "plan name seeded": ("plan_name", "_PLAN_NAME_MODE", "seeded"),
+    # WRITER_LOCK_DEPENDS_ON, one arm per half.
+    "writer lock off": ("writer_lock", "_WRITER_LOCK_MODE", "off"),
+    "writer lock no inherit": ("writer_lock", "_WRITER_LOCK_MODE",
+                               "no_inherit"),
+    "writer lock unlock": ("writer_lock", "_WRITER_LOCK_MODE", "unlock"),
 }
 
 
@@ -2321,7 +2533,8 @@ def survivors(label: str) -> list[str]:
               ("census_loop", _wanted_ground_read_and_rerouted),
               ("adopt_restamp", _identical_adoption_restamped),
               ("field_windows", _default_seed_scans_declared),
-              ("plan_name", _census_reads_the_plan_stage_nine_wrote))
+              ("plan_name", _census_reads_the_plan_stage_nine_wrote),
+              ("writer_lock", _second_run_refused))
     return [n for n, probe in probes if n != dropped and probe()]
 
 
@@ -2829,6 +3042,95 @@ def _replaced_world_refused() -> bool:
         return rc == 0 and seen == [STALE, STALE]
 
 
+def _lock_fx(td: str) -> Scope:
+    """A throwaway scope whose work directory is the lock's home."""
+    import dataclasses                                      # noqa: PLC0415
+    work = Path(td) / "work"
+    work.mkdir()
+    return dataclasses.replace(_ROW_PROBE, seed="LockFx", world="LockFx",
+                               work=work)
+
+
+_CHILD_ASKS = ("import sys; sys.path.insert(0, {here!r}); import pipeline;"
+               "sc = pipeline.Scope({seed!r}, {world!r}, "
+               "pipeline.Path({work!r}), pipeline.Path({work!r}), "
+               "pipeline.Path({work!r}));"
+               "pipeline._WRITER_LOCK_MODE = {mode!r};"
+               "g = pipeline.acquire_writer_lock(sc, 'child');"
+               "sys.exit(0 if not isinstance(g, str) else 1)")
+
+
+def _second_run_refused() -> bool:
+    """A run that finds another run holding the world is REFUSED, naming the
+    holder; the same world is free again once the holder is gone."""
+    import tempfile                                         # noqa: PLC0415
+    with tempfile.TemporaryDirectory() as td:
+        sc = _lock_fx(td)
+        first = acquire_writer_lock(sc, "first")
+        if isinstance(first, str):
+            return False
+        try:
+            second = acquire_writer_lock(sc, "second")
+            refused = isinstance(second, str) and str(os.getpid()) in second
+            if not isinstance(second, str):
+                second.release()
+        finally:
+            first.release()
+        third = acquire_writer_lock(sc, "third")
+        freed = not isinstance(third, str)
+        if freed:
+            third.release()
+        return refused and freed
+
+
+def _child_inherits_the_lock() -> bool:
+    """The build `pipeline.py run` starts as stage 12 is handed the lock its
+    parent holds and carries on, instead of refusing its own parent."""
+    import tempfile                                         # noqa: PLC0415
+    with tempfile.TemporaryDirectory() as td:
+        sc = _lock_fx(td)
+        held = acquire_writer_lock(sc, "parent")
+        if isinstance(held, str):
+            return False
+        try:
+            code = _CHILD_ASKS.format(here=str(HERE), seed=sc.seed,
+                                      world=sc.world, work=str(sc.work),
+                                      mode=_WRITER_LOCK_MODE)
+            rc = subprocess.call([sys.executable, "-c", code], env=sc.env(),
+                                 pass_fds=writer_lock_fds())
+        finally:
+            held.release()
+        return rc == 0
+
+
+def _orphan_child_keeps_the_lock() -> bool:
+    """A builder child that outlives its parent KEEPS the world locked, so the
+    next run is refused by it; when it is gone the world is free again."""
+    import tempfile                                         # noqa: PLC0415
+    with tempfile.TemporaryDirectory() as td:
+        sc = _lock_fx(td)
+        held = acquire_writer_lock(sc, "parent")
+        if isinstance(held, str):
+            return False
+        orphan = subprocess.Popen(
+            [sys.executable, "-S", "-c", "import time; time.sleep(120)"],
+            env=sc.env(), pass_fds=writer_lock_fds())
+        try:
+            held.release()                    # the parent is "killed"
+            next_run = acquire_writer_lock(sc, "next")
+            blocked = isinstance(next_run, str)
+            if not blocked:
+                next_run.release()
+        finally:
+            orphan.kill()
+            orphan.wait()
+        after = acquire_writer_lock(sc, "after")
+        freed = not isinstance(after, str)
+        if freed:
+            after.release()
+        return blocked and freed
+
+
 def _census_reads_the_plan_stage_nine_wrote() -> bool:
     """For the default seed AND a fresh one, stage 10's `--plan` names the file
     `network.py plan` emits (the same `road_plan_names` stage 9 is keyed on)."""
@@ -3009,6 +3311,41 @@ def selftest() -> int:
                            "9 wrote segments.yaml, FileNotFoundError in 0.5 s",
                neuter=_neuter("plan name seeded"),
                neuters="plan name seeded"),
+        # ---- WRITER_LOCK_DEPENDS_ON, one case per half ----
+        R.Case("a_second_run_against_a_driven_world_is_refused", True,
+               lambda: finding(not _second_run_refused(),
+                               "a run that finds another run holding the "
+                               "world is refused naming the holder, and the "
+                               "world is free again once it is gone",
+                               holders=1),
+               prior_state="MEASURED 2026-10-05 on the Ulfsland regeneration: "
+                           "a second `buildstage.py run` started while the "
+                           "first was in step 3; the server log shows run "
+                           "A's staged objects_remove emptied by run B's "
+                           "`stop` one second later, 6 road_clear units "
+                           "refused `want 0, got 1`, 13 bodies refused on "
+                           "the other run's pieces and 2 fixtures stocked "
+                           "twice",
+               neuter=_neuter("writer lock off"), neuters="writer lock off"),
+        R.Case("a_stage_run_by_the_pipeline_carries_the_pipelines_lock", False,
+               lambda: finding(_child_inherits_the_lock(),
+                               "stage 12's `buildstage.py run` is handed the "
+                               "lock `pipeline.py run` holds and is not "
+                               "refused by its own parent", children=1),
+               neuter=_neuter("writer lock no inherit"),
+               neuters="writer lock no inherit"),
+        R.Case("a_child_outliving_its_killed_parent_keeps_the_world_locked",
+               False,
+               lambda: finding(_orphan_child_keeps_the_lock(),
+                               "after the parent run is gone a child it "
+                               "started still holds the lock and the next "
+                               "run is refused, then admitted once the child "
+                               "exits", orphans=1),
+               prior_state="MEASURED 2026-10-05: both builds were killed and "
+                           "two `stock.py` children (pids 2310665, 2310962) "
+                           "went on writing to the staging server",
+               neuter=_neuter("writer lock unlock"),
+               neuters="writer lock unlock"),
         R.Case("the_default_seed_is_scanned_on_its_declared_windows", False,
                lambda: finding(_default_seed_scans_declared(),
                                "stage 4 scans Pirate68 on ULFSLAND_WINDOWS and "

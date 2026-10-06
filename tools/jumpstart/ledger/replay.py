@@ -57,11 +57,13 @@ IDEMPOTENCE, honestly stated per op, because resume depends on it:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Sequence
@@ -135,6 +137,37 @@ GUARD_EPS_M = 0.5
 # `clear.py apply` is 36.97 s for a 40 m pad WITH generation, 22.57 s
 # without, and a ribbon segment generates many more zones than a pad.
 STAGED_SETTLE_S = 180.0
+# How often a staged operation's postcondition is re-measured while it settles.
+STAGED_POLL_S = 5.0
+
+# STAGED_LOCK_DEPENDS_ON: ONE STAGED QUEUE PER SERVER, SO ONE STAGED ROUND TRIP
+# AT A TIME ACROSS EVERY PROCESS THAT DRIVES IT.  `_staged` is `stop` / <verb> /
+# `start`, and Upgrade World keeps ONE queue for the whole server: `stop` empties
+# it, the verb stages into it, `start` runs what is there.  MEASURED in the
+# Ulfsland staging server's own log, 2026-10-05, with two builds against it:
+#
+#   13:02:41 stop                                        (run A)
+#   13:02:41 objects_remove id=Beech_small1 ... -> "Removing 1 object."
+#   13:02:42 stop                                        (run B: A's staged op is GONE)
+#   13:02:42 objects_remove id=FirTree_oldLog,... -> "Removing 4 objects."
+#   13:02:43 start -> "Removed 4 ..." and nothing of A's
+#   13:02:43 objects_count id=Beech_small1 ... -> "Beech_small1: 1"
+#
+# Run A's postcondition then read the census count back, `want 0, got 1`, and
+# six road_clear units were refused by it -- each failing record within a second
+# of the other run's.  So the bracket and the settle that follows it are one
+# critical section, held from `stop` until the postcondition has been measured,
+# under an `flock` keyed on the server's own endpoint (two worlds on one host
+# have two ports and do not wait on each other).  A holder that dies drops it.
+# The run-level lock in `pipeline.py` (WRITER_LOCK_DEPENDS_ON) is what stops two
+# BUILDS; this is what keeps an ad-hoc tool honest beside one.
+# NEUTER `_STAGED_LOCK_MODE = "off"`: the bracket is unprotected again.
+STAGED_LOCK_DEPENDS_ON = ("one_staged_queue_per_server",)
+_STAGED_LOCK_MODE = "exclusive"     # exclusive | off
+# Longer than any staged op's own settle, so waiting is the normal answer to a
+# neighbour and a refusal means the neighbour is wedged.
+STAGED_LOCK_WAIT_S = 1800.0
+_STAGED_LOCK_DIR: Path | None = None    # tests; default is the temp dir
 
 def blob_reader(store):
     """A `read(sha) -> bytes` callable from either legitimate carrier.
@@ -1112,11 +1145,76 @@ def verify_expect(srv: Server, rec: dict) -> tuple[list[dict], float | None]:
     began = time.time()
     deadline = began + STAGED_SETTLE_S
     while time.time() < deadline:
-        time.sleep(5.0)
+        time.sleep(STAGED_POLL_S)
         checks = check_expect(srv, rec)
         if all(c["ok"] for c in checks):
             return checks, round(time.time() - began, 1)
     return checks, round(time.time() - began, 1)
+
+def staged_lock_path(srv: Server) -> Path | None:
+    """The lock file for this server's staged queue, or None when the session
+    has no socket (a dry run, an in-memory test server)."""
+    rc = getattr(srv, "rc", None)
+    if rc is None:
+        return None
+    key = re.sub(r"[^A-Za-z0-9_.-]", "_", f"{rc.host}-{rc.port}")
+    return (_STAGED_LOCK_DIR or Path(tempfile.gettempdir())) \
+        / f"vh-staged-{key}.lock"
+
+
+@contextlib.contextmanager
+def staged_exclusive(srv: Server, wire: list[str],
+                     wait_s: float | None = None):
+    """Hold the server's staged queue for one record: from the `stop` that
+    opens the bracket to the end of the postcondition's settle.  A record with
+    no staged verb takes nothing.  See STAGED_LOCK_DEPENDS_ON."""
+    path = staged_lock_path(srv)
+    staged = any((c.split() or [""])[0] in STAGED_VERBS for c in wire)
+    if _STAGED_LOCK_MODE == "off" or srv.dry or path is None or not staged:
+        yield
+        return
+    import fcntl                                            # noqa: PLC0415
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o666)
+    try:
+        deadline = time.time() + (STAGED_LOCK_WAIT_S if wait_s is None
+                                  else wait_s)
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.time() >= deadline:
+                    raise LedgerError(
+                        f"the staged-operation lock {path} is held by "
+                        f"{os.pread(fd, 4096, 0).decode('utf-8', 'replace')!r}"
+                        f" and was not released within "
+                        f"{STAGED_LOCK_WAIT_S if wait_s is None else wait_s:g}"
+                        f" s. Another process is driving this server's Upgrade "
+                        f"World queue; sending `stop` now would cancel its "
+                        f"operation. Nothing has been sent.") from None
+                time.sleep(0.05)
+        os.ftruncate(fd, 0)
+        os.pwrite(fd, json.dumps({
+            "pid": os.getpid(), "wire": wire[0][:120],
+            "build": [os.environ.get("VH_BUILD_STEP"),
+                      os.environ.get("VH_BUILD_UNIT")],
+            "since": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        }).encode(), 0)
+        yield
+    finally:
+        os.close(fd)                       # closing drops the flock
+
+
+def send_and_verify(srv: Server, rec: dict) -> tuple[list, list[dict],
+                                                    float | None]:
+    """Send a record's wire and measure its postcondition, as ONE staged
+    critical section.  `(replies, checks, settled_after_s)`.  THE ONE SEND-AND-
+    MEASURE both the live builder and the replay driver use."""
+    with staged_exclusive(srv, rec["wire"]):
+        replies = send_wire(srv, rec["wire"])
+        checks, settled = verify_expect(srv, rec)
+    return replies, checks, settled
+
 
 def apply_record(srv: Server, blobs, rec: dict) -> dict:
     """Send one op's recorded wire, then measure its postcondition."""
@@ -1168,9 +1266,8 @@ def apply_record(srv: Server, blobs, rec: dict) -> dict:
     if op == "terrain_write":
         _materialise_data_entries(blobs, rec)
 
-    out["replies"] = [str(r)[:200] for r in send_wire(srv, rec["wire"])]
-
-    out["checks"], settled = verify_expect(srv, rec)
+    replies, out["checks"], settled = send_and_verify(srv, rec)
+    out["replies"] = [str(r)[:200] for r in replies]
     if settled is not None:
         out["settled_after_s"] = settled
     out["status"] = "applied" if all(c["ok"] for c in out["checks"]) \

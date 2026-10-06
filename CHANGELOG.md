@@ -496,6 +496,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comparing a Fresh42 re-plan against the pre-edit commit and fixed -- the Fresh42 plan is again
   byte-identical (15 legs, nodes, profiles, crossings).
 
+- The first from-scratch BUILD of the regenerated Ulfsland found two defects that Fresh42 could not
+  show, because a fresh world has its own name. (1) Every save reader resolved the install root
+  from `$VALHEIM_WORLD_ROOT` only and defaulted to the production tree, so on the default pair the
+  regrade census, the step-5 settlement census and the acceptance gate read PRODUCTION's hand-built
+  Ulfsland save instead of the world being built (read-only; nothing was written to it): 19 of 30
+  roads were refused for burying pieces production had and the regenerated world did not. The
+  resolver now reads `$VALHEIM_WORLD_ROOT`, then `$VALHEIM_ROOT`, then the default, `pipeline`
+  exports the scope's root to every child, the ledger manifest pins the world uid, and every reader
+  refuses a save whose uid differs from its ledger's pin. (2) Two builds against one staging
+  server interleave -- Upgrade World keeps a single staged queue, so one run's `stop` cancels the
+  other's staged removal. `pipeline.py run` and `buildstage.py run` now take an flock on
+  `<work>/writer.lock` and refuse (rc 75) while another run holds the world, children inherit it,
+  and `ledger/replay.py` holds a lock across the whole stop/verb/start bracket. Also: a sibling's
+  true extent (not its circumscribed circle) is used when the circle leaves no clearing radius
+  (vestvik-hut-1), and a zone that cannot generate is refused with its registered location
+  (hognest-castle, zone (9,22)).
+
 - `tools/jumpstart/roads/boardwalk.py` — A DECK'S RAILS NO LONGER STAND IN ANOTHER ROAD. The
   furniture guard read only the bridge's own straight span at its deck datum, so T3-temple-
   meadhall-x01's rail poles and beams stood across S11's built carriageway (Fresh42 drive 6

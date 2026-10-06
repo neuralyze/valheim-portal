@@ -201,6 +201,7 @@ class World(SeatSpace):
         # -- cache and census under one name, ground from another.  One reader
         # for that question, in instruments.
         I.require_world_save(live, world)
+        I.require_save_is_the_ledgers(live, world)
         self.fp = I.save_fingerprint(live)
         self.args.world_src = str(I.snapshot(live, self.cache / self.fp
                                              / "world"))
