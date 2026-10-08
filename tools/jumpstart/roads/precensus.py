@@ -2407,9 +2407,21 @@ def selftest() -> int:
     # censuses on disk, which no neuter can reach.
     MERGE_DEPENDS_ON = ("cells: UNION", "measured_utc: OLDEST",
                         "band_half_m: SINGLE")
-    saved = sorted(CENSUS_DIR.glob(f"*{'-save.json'}"))
-    if len(saved) >= 2:
-        parts = [Census.load(p) for p in saved]
+    # THE PARTS ARE BUILT HERE, never globbed off a world's census directory:
+    # this read `roads/census/*-save.json`, 13 per-segment files only a world
+    # surveyed segment by segment leaves behind, and was red ("found 0") on
+    # a regenerated world whose census is one merged file.  Two parts that
+    # differ in cells, stamp and bodies are everything a merge rule is
+    # about (cells: UNION, measured_utc: OLDEST, band_half_m: SINGLE).
+    import tempfile                                          # noqa: PLC0415
+    def _part(stamp, cells, name):
+        body = Body(name, 10.0 * cells[0][0], 10.0 * cells[0][1], 40.0, 6.0,
+                    3, 1, {"wood_floor": 3}, "FIXTURE", stamp)
+        return Census("FIX", "FIX", stamp, "FIXTURE", 16.0, list(cells),
+                      [body], [(cells[0][0] // 4, cells[0][1] // 4)])
+    parts = [_part("2026-01-01T07:00:00Z", [(0, 0), (0, 1), (1, 0)], "fx-a"),
+             _part("2026-03-01T07:00:00Z", [(1, 0), (2, 2), (3, 3)], "fx-b")]
+    if len(parts) >= 2:
         merged = Census.merge(parts, instrument="selftest")
         union = {tuple(c) for p in parts for c in p.cells}
         first = {tuple(c) for c in parts[0].cells}
@@ -2455,7 +2467,11 @@ def selftest() -> int:
         # `replay` part carries NO per-zone reading time -- that is where
         # `measured_utc: OLDEST` is still the whole answer -- so the fixture
         # is two such parts over one zone, generated BETWEEN their stamps.
-        led = JUMPSTART / "ledger" / "runs" / str(merged.world)
+        led = Path(tempfile.mkdtemp(prefix="precensus_merge_"))
+        (led / "ledger.jsonl").write_text(json.dumps(
+            {"seq": 1, "op": "zones_generate", "ts": "2026-01-01T09:00:00Z",
+             "actor": "FIXTURE", "params": {"pos": [0, 0], "max_m": 32.0,
+                                            "zones": [[1, 2]]}}) + "\n")
         one_zone = next(iter(ledger_zone_generations(led).items()), None)
         if one_zone is not None:
             (zx, zz), g = one_zone
@@ -2512,9 +2528,9 @@ def selftest() -> int:
         # on; fewer is a check that cannot speak, and a check that cannot speak
         # says so rather than passing.
         ok = False
-        print(f"  BAD merge neuters need >=2 per-segment censuses under "
-              f"{CENSUS_DIR}; found {len(saved)}. A merge cannot be tested on "
-              f"one part and silence here would read as a pass")
+        print(f"  BAD merge neuters need >=2 parts; the fixture built "
+              f"{len(parts)}. A merge cannot be tested on one part and "
+              f"silence here would read as a pass")
 
     # --- 7. DATING A ZONE: THREE KEYS, EACH NEUTERED IN BOTH DIRECTIONS ----
     #

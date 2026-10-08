@@ -22,10 +22,16 @@ a stop becomes a dead end rather than a fix.  MEASURED consequence: no seed but
 Pirate68 could produce a `sites.yaml` at all, and `sites.yaml` is what supplies
 16 of the road network's nodes.
 
-So the comparison is against a DECLARATION scoped to the seed it is a statement
-about (`plan.ANCHORED_TOWNS`, or `--expect-towns id=x,z`), and a seed with no
-declaration has nothing to be relocated FROM: its towns are the district
-search's own top-ranked candidates on its own land.
+So the comparison is against a DECLARATION -- an operator's `--expect-towns
+id=x,z` for one solve -- and a seed with no declaration has nothing to be
+relocated FROM: its towns are the district search's own top-ranked candidates
+on its own land.  THERE IS NO STANDING DECLARATION FOR ANY SEED.  `plan.
+ANCHORED_TOWNS` and `ANCHORED_OUTLIERS` pinned Pirate68's 16 sites to the places
+the same search had returned on an earlier run -- frozen solver output -- and
+were deleted: the only sites a person declares are `worldseed.HUMAN_SITES`
+(Ulfsgard and Sudrvik), measured by `settlements/harbour_site.py` and published
+under `declared_sites`.  This section is where that declaration is held to the
+artefact RoadNet reads.
 
 POPULATION, for the cases: candidate sets CONSTRUCTED here, never a height
 field, never `/tmp`, never `sites.yaml`.  `plan.select_towns` is pure in its
@@ -44,6 +50,8 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
+import types
 from pathlib import Path
 
 from .. import instruments as I
@@ -194,15 +202,23 @@ def audit(doc: dict, where: str) -> list[Finding]:
     happens to be on the host -- which is the fixture rule, and this check is
     about a published artefact, so it is the one most at risk of testing the
     host instead of the code.
+
+    TWO POPULATIONS, JUDGED BY DIFFERENT RULES.  The SOLVER's sites (`sites`,
+    every town and outlier this plan builds) are held to MEMBERSHIP: every
+    published record is one this plan builds, because RoadNet adopts every
+    record as a node.  Nothing declares them and nothing may: a coordinate is
+    the search's own answer, and an advisory that nudged an operator to pin it
+    would be the frozen-solver-output defect again.  The HUMAN-DECLARED sites
+    (`declared_sites`) are held to the declaration exactly: every site
+    `worldseed.HUMAN_SITES` declares for this seed is published, none that it
+    does not, and each at the request that was declared -- because a published
+    node for a request nobody is making is a road to nowhere, and a missing one
+    is the network forgetting a city.
     """
     pm = _plan()
+    ws = I._worldseed()
     out: list[Finding] = []
     seed = doc.get("seed")
-    # EVERY PUBLISHED SITE, not just the towns.  This section's own run()
-    # checked 2 of 16 records until 2026-09-22, which is the population error
-    # it exists to catch, in the check itself: 14 outlying sites could have
-    # been published at coordinates nothing declares and this would have
-    # reported two green findings and stopped.
     declared_ids = {t["id"] for t in pm.TOWNS} | {o["id"] for o in pm.OUTLIERS}
     records = [r for r in (doc.get("sites") or [])
                if r.get("id") in declared_ids]
@@ -213,32 +229,12 @@ def audit(doc: dict, where: str) -> list[Finding]:
                      f"town centres cannot be checked against any "
                      f"declaration; the provenance section owns that refusal"),
             numbers={"towns": len(records)})]
-    town_anchors, town_source = pm.declared_town_centres(str(seed))
-    site_anchors, site_source = pm.declared_outlier_sites(str(seed))
-    anchors = {**town_anchors, **site_anchors}
-    source = town_source or site_source or "nothing"
     if not records:
         out.append(Finding(
             check="published_town_centres", ok=True, advisory=True,
             message=(f"{where} publishes no record for any of the "
                      f"{len(declared_ids)} sites this plan builds"),
             numbers={"seed": str(seed)}))
-    # TWO DIFFERENT OBJECTS, AND ONLY ONE OF THEM IS THE DECLARATION.
-    # A town's published `xz` IS its declared centre -- `layout.TownPlanner`
-    # lays the streets out around the point it was given.  An outlier's is
-    # NOT: `build` feeds the declared centre to `sites.best_pad`, which slides
-    # the pad inside its own search box to clear the POI stand-off, and
-    # publishes WHERE THE PAD LANDED.  MEASURED on the published Ulfsland set:
-    # 11 of 14 outliers differ from their declaration, tree-west by
-    # (+16, -6) m -- the slide, not a drift.
-    #
-    # So the hard assertion here is MEMBERSHIP, which is exact and needs no
-    # tolerance: every published site is one this plan builds, and when a
-    # declaration exists for the seed, every declared site is published.  The
-    # offset is REPORTED as a number and never judged, because judging it
-    # would need `best_pad`'s search box -- and a tolerance standing in for a
-    # population is the move this section exists to undo.
-    published = {r["id"] for r in records}
     extra = sorted(r.get("id") for r in (doc.get("sites") or [])
                    if r.get("id") not in declared_ids)
     if extra:
@@ -248,56 +244,77 @@ def audit(doc: dict, where: str) -> list[Finding]:
                      f"this plan does not build; RoadNet adopts every record "
                      f"in this file as a network node"),
             numbers={"seed": str(seed), "undeclared": extra}))
-    if anchors:
-        missing = sorted(k for k in anchors if k not in published)
-        if missing:
+    want = ws.human_sites(str(seed))
+    have = {d.get("id"): d for d in (doc.get("declared_sites") or [])}
+    missing = sorted(set(want) - set(have))
+    if missing:
+        out.append(Finding(
+            check="published_sites_are_the_declared_set", ok=False,
+            message=(f"worldseed.HUMAN_SITES declares {missing} for seed "
+                     f"{seed!r} and {where} publishes no node for them: the "
+                     f"declaration and the artefact RoadNet reads disagree, so "
+                     f"one of them moved without the other"),
+            numbers={"seed": str(seed), "declared_not_published": missing}))
+    stranger = sorted(set(have) - set(want))
+    if stranger:
+        out.append(Finding(
+            check="published_sites_are_the_declared_set", ok=False,
+            message=(f"{where} publishes declared site(s) {stranger} for seed "
+                     f"{seed!r} and worldseed.HUMAN_SITES declares no such "
+                     f"site: RoadNet would route to a node nobody asked for"),
+            numbers={"seed": str(seed), "published_not_declared": stranger}))
+    for sid, rec in want.items():
+        d = have.get(sid)
+        if d is None:
+            continue
+        asked = [float(v) for v in rec["xz"]]
+        got = [float(v) for v in d.get("requested_xz") or ()]
+        if got != asked:
             out.append(Finding(
                 check="published_sites_are_the_declared_set", ok=False,
-                message=(f"{source} declares {missing} for seed {seed!r} and "
-                         f"{where} publishes no record for them: the "
-                         f"declaration and the artefact RoadNet reads "
-                         f"disagree, so one of them moved without the other"),
-                numbers={"seed": str(seed), "declared_not_published": missing}))
-    for r in records:
-        got = (int(round(float(r["xz"][0]))), int(round(float(r["xz"][1]))))
-        a = anchors.get(r["id"])
-        if a is None:
-            out.append(Finding(
-                check="published_sites_are_the_declared_set", ok=True,
-                advisory=True,
-                message=(f"{r['id']} is published at {got} for seed {seed!r} "
-                         f"and NOTHING DECLARES it, so a re-solve may move it "
-                         f"and no check would refuse; declare it with "
-                         f"--expect-sites {r['id']}={got[0]},{got[1]}"),
-                numbers={"seed": str(seed), "xz": list(got)}))
+                message=(f"{sid} is published for the request {got} and "
+                         f"worldseed.HUMAN_SITES declares {asked}: the node "
+                         f"was measured for a request nobody is making"),
+                numbers={"seed": str(seed), "published": got,
+                         "declared": asked}))
             continue
-        want = (int(round(float(a["xz"][0]))), int(round(float(a["xz"][1]))))
+        m = d.get("measured") or {}
         out.append(Finding(
             check="published_sites_are_the_declared_set", ok=True,
-            advisory=got != want,
-            message=(f"{r['id']} is published at {got}, declared at {want} by "
-                     f"{source} for seed {seed!r}"
-                     + ("" if got == want else
-                        f" -- offset ({got[0] - want[0]}, {got[1] - want[1]}) m, "
-                        f"the pad slide best_pad applied to clear the POI "
-                        f"stand-off; NOT judged here")),
-            numbers={"seed": str(seed), "published": list(got),
-                     "declared": list(want),
-                     "offset_m": [got[0] - want[0], got[1] - want[1]]}))
+            advisory=True,
+            message=(f"{sid} is declared at {tuple(asked)} by the owner and "
+                     f"published as the node {tuple(d.get('xz') or ())}, the "
+                     f"landing {m.get('landing_gap_m')} m from the request "
+                     f"({m.get('request_water_depth_m')} m of sea over it)"),
+            numbers={"seed": str(seed), "declared": asked,
+                     "node": list(d.get("xz") or ()),
+                     "landing_gap_m": m.get("landing_gap_m")}))
     return out
 
 
-def _published(seed: str, ids, *, extra=None) -> dict:
-    """A CONSTRUCTED sites.yaml document: the declared coordinates for `ids`
-    on `seed`, plus any `extra` records nothing declares."""
-    pm = _plan()
-    anchors = {**pm.declared_town_centres(seed)[0],
-               **pm.declared_outlier_sites(seed)[0]}
-    sites = [{"id": i, "xz": [float(anchors[i]["xz"][0]),
-                              float(anchors[i]["xz"][1])]} for i in ids]
+def _published(seed: str, ids, *, extra=None, declared: bool = True) -> dict:
+    """A CONSTRUCTED sites.yaml document: a record at the origin for each of
+    `ids` (solver sites carry no declaration, so no coordinate is judged), the
+    human-declared sites `worldseed.HUMAN_SITES` declares for `seed` (unless
+    `declared` is False), plus any `extra` records nothing builds."""
+    ws = I._worldseed()
+    sites = [{"id": i, "xz": [0.0, 0.0]} for i in ids]
     for e in (extra or ()):
         sites.append({"id": e, "xz": [0.0, 0.0]})
-    return {"seed": seed, "world": None, "sites": sites}
+    pub = []
+    if declared:
+        for sid, rec in ws.human_sites(seed).items():
+            pub.append({"id": sid, "type": rec["kind"], "node": rec["node"],
+                        "requested_xz": [float(rec["xz"][0]),
+                                         float(rec["xz"][1])],
+                        "xz": [float(rec["xz"][0]) - 12.5,
+                               float(rec["xz"][1]) + 12.5],
+                        "measured": {"landing_gap_m": 17.7,
+                                     "request_water_depth_m": 3.2}})
+    doc = {"seed": seed, "world": None, "sites": sites}
+    if pub:
+        doc["declared_sites"] = pub
+    return doc
 
 
 def _case_a_published_site_nothing_builds_is_refused():
@@ -325,43 +342,101 @@ def _case_a_published_site_nothing_builds_is_refused():
 
 
 def _case_a_declared_site_missing_from_the_publication_is_refused():
-    """THE POPULATION ERROR THIS CHECK ITSELF HAD: until 2026-09-22 the audit
-    filtered to the TWO towns, so all fourteen outlying sites could have gone
-    missing from the published set and it would have reported two green
-    findings and stopped."""
+    """THE POPULATION ERROR THIS CHECK ITSELF HAD, in its new form: the audit
+    judged the solver's records and never asked whether the sites a PERSON
+    declared were published, so RoadNet could have been handed a network with
+    no Ulfsgard in it and this would have reported green."""
     pm = _plan()
-    ids = [t["id"] for t in pm.TOWNS]          # the towns only -- 14 absent
-    fs = audit(_published("Pirate68", ids), "<constructed>")
+    ids = [t["id"] for t in pm.TOWNS] + [o["id"] for o in pm.OUTLIERS]
+    fs = audit(_published("Pirate68", ids, declared=False), "<constructed>")
     hard = [f for f in fs if not f.ok and not f.advisory]
     if hard:
         msg = "; ".join(f.message for f in hard)
-        for site in ("hognest-castle", "lh-west", "tree-near"):
+        for site in ("harbour-city-ulfsgard", "harbour-village-sudrvik"):
             assert site in msg, \
                 f"the refusal must name the declared sites that are missing " \
                 f"({site} absent from it): {msg[:200]}"
         return Finding(
             check="declared_site_missing_refused", ok=False,
-            message=(f"a published set with all 14 declared outlying sites "
-                     f"missing was refused: {msg[:120]}"),
-            numbers={"published": len(ids), "declared": len(pm.OUTLIERS) + 2})
+            message=(f"a published set carrying all {len(ids)} solver sites "
+                     f"and none of the 2 human-declared sites was refused: "
+                     f"{msg[:120]}"),
+            numbers={"published": len(ids), "declared": 2})
     return Finding(
         check="declared_site_missing_refused", ok=True,
         message=(f"NOT REFUSED: {len(fs)} findings, none refusing, on a "
-                 f"published set missing all 14 outlying sites"),
+                 f"published set missing both human-declared sites"),
+        numbers={"findings": len(fs)})
+
+
+def _case_a_declared_site_at_another_request_is_refused():
+    """A NODE MEASURED FOR A REQUEST NOBODY IS MAKING.  The declaration moved
+    (Sudrvik re-declared) and the published node did not: stale, and a road
+    would be routed to where the owner no longer asked for it."""
+    pm = _plan()
+    ids = [t["id"] for t in pm.TOWNS] + [o["id"] for o in pm.OUTLIERS]
+    doc = _published("Pirate68", ids)
+    doc["declared_sites"][1]["requested_xz"] = [1192.0, 444.0]
+    fs = audit(doc, "<constructed>")
+    hard = [f for f in fs if not f.ok and not f.advisory]
+    if hard:
+        msg = "; ".join(f.message for f in hard)
+        assert "harbour-village-sudrvik" in msg and "1192" in msg, msg[:240]
+        return Finding(
+            check="declared_site_stale_request_refused", ok=False,
+            message=f"a node measured for another request was refused: {msg[:120]}",
+            numbers={"declared": [1190, 444], "published": [1192, 444]})
+    return Finding(
+        check="declared_site_stale_request_refused", ok=True,
+        message=(f"NOT REFUSED: {len(fs)} findings, none refusing, on a "
+                 f"published node whose request is not the declared one"),
         numbers={"findings": len(fs)})
 
 
 def _case_the_published_ulfsland_set_is_accepted():
-    """BOTH DIRECTIONS, and the one that matters for the gate: the site set
-    this world actually publishes must NOT refuse.  Its outliers are pad
-    centres that `best_pad` slid off their declared centres -- measured, 11 of
-    14 differ, max 16 m -- and that is the slide, not a move."""
+    """BOTH DIRECTIONS, and the one that matters for the gate: the site set a
+    seed publishes -- every solver site AND every site a person declared for
+    it -- must NOT refuse, and every declared site must be REPORTED, so a
+    publication whose declared half went missing is a different count."""
     pm = _plan()
-    ids = ([t["id"] for t in pm.TOWNS] + [o["id"] for o in pm.OUTLIERS])
+    ids = [t["id"] for t in pm.TOWNS] + [o["id"] for o in pm.OUTLIERS]
     fs = audit(_published("Pirate68", ids), "<constructed>")
     hard = [f for f in fs if not f.ok and not f.advisory]
     assert not hard, f"the complete declared set was refused: {hard[:1]}"
-    assert len(fs) == len(ids), f"{len(fs)} findings for {len(ids)} records"
+    for site in ("harbour-city-ulfsgard", "harbour-village-sudrvik"):
+        assert any(site in f.message for f in fs), \
+            f"{site} is declared, published and was not reported: " \
+            f"{[f.message[:60] for f in fs]}"
+    return []
+
+
+def _case_the_default_seed_declares_two_sites_and_pins_nothing():
+    """THE OWNER'S RULING, as an invariant: the pinned human-defined locations
+    are ULFSGARD (1050, 720) and SUDRVIK (1190, 444) and NOTHING ELSE.  No town
+    centre and no outlying site is declared for any seed, so the towns are
+    the search's own ranks 0 and 1 and every outlier is the search's own
+    candidate -- the plan applies the rules instead of replaying a recording."""
+    pm = _plan()
+    ws = I._worldseed()
+    towns, tsrc = pm.declared_town_centres()
+    sites, ssrc = pm.declared_outlier_sites()
+    assert not towns and not sites, \
+        f"a standing declaration pins {sorted(towns) + sorted(sites)}"
+    got = ws.human_sites("Pirate68")
+    assert {k: tuple(v["xz"]) for k, v in got.items()} == {
+        "harbour-city-ulfsgard": (1050, 720),
+        "harbour-village-sudrvik": (1190, 444)}, \
+        {k: v["xz"] for k, v in got.items()}
+    cands = [_candidate(-262.0, 1998.0, "westisle", relief=18.5, meadows=1.0),
+             _candidate(496.0, 904.0, "mainland", relief=17.8, meadows=0.998),
+             _candidate(-906.0, 1846.0, "westisle", relief=13.3, meadows=1.0)]
+    picks = pm.select_towns(cands, "Pirate68", towns, tsrc)
+    got_xz = [(p["site"].x, p["site"].z) for p in picks]
+    assert got_xz == [(-262.0, 1998.0), (496.0, 904.0)], \
+        (f"with nothing declared the towns are the search's ranks 0 and 1, "
+         f"got {got_xz}")
+    assert all(p["declared_xz"] is None for p in picks), \
+        "a town nobody declared was reported as declared"
     return []
 
 
@@ -397,7 +472,7 @@ def _case_an_undeclared_site_takes_an_authored_alternate():
     pm = _plan()
     picker = _enough_candidates(pm)
     placed = pm.select_outliers(picker, "Fresh42", {}, "",
-                                _verdicts({ULF_LIGHT}))
+                                _verdicts({ULF_LIGHT}), context=_CTX)
     lw = next(r for r in placed if r["id"] == "lh-west")
     assert lw["body"] == DRAKE_LIGHT, \
         (f"the undeclared lh-west kept a body the emitter refuses: "
@@ -413,16 +488,17 @@ def _case_an_undeclared_site_takes_an_authored_alternate():
 
 
 def _case_a_declared_site_keeps_a_body_the_emitter_refuses():
-    """AND WHERE THE SITE IS DECLARED, IT DOES NOT.  u-lhwest is published in
-    sites.yaml with that body's piece count and sha256 and may be STANDING, so
-    substituting it is a plan that stops describing the ground -- the refusal
-    is the deliverable and the repair is to the blueprint."""
+    """AND WHERE THE SITE IS DECLARED (an operator's `--expect-sites`), IT DOES
+    NOT.  A declared site is published with that body's piece count and sha256
+    and may be STANDING, so substituting it is a plan that stops describing the
+    ground -- the refusal is the deliverable and the repair is to the
+    blueprint."""
     pm = _plan()
-    picker = _enough_candidates(pm, fields=dict(ULFSLAND_FIELD),
-                                patch="mainland")
-    anchors, source = pm.declared_outlier_sites("Pirate68")
-    placed = pm.select_outliers(picker, "Pirate68", anchors, source,
-                                _verdicts({ULF_LIGHT}))
+    picker = _enough_candidates(pm, fields=dict(DERIVED_FIELD))
+    anchors, source = pm.declared_outlier_sites(
+        pm.parse_site_declaration(["lh-west=-311,2570,trunk-secondary"]))
+    placed = pm.select_outliers(picker, "Fresh42", anchors, source,
+                                _verdicts({ULF_LIGHT}), context=_CTX)
     lw = next(r for r in placed if r["id"] == "lh-west")
     assert lw["body"] == ULF_LIGHT, \
         (f"a DECLARED site's body was substituted to {lw['body']}: that is the "
@@ -441,7 +517,8 @@ def _case_a_site_whose_every_body_refuses_is_refused():
     pm = _plan()
     picker = _enough_candidates(pm)
     placed = pm.select_outliers(picker, "Fresh42", {}, "",
-                                _verdicts({ULF_LIGHT, DRAKE_LIGHT}))
+                                _verdicts({ULF_LIGHT, DRAKE_LIGHT}),
+                                context=_CTX)
     refused = [r for r in placed if r.get("refused")]
     if not refused:
         return Finding(
@@ -498,8 +575,8 @@ def _neuter_body_substitution_unscoped():
     pm = _plan()
     saved = pm.select_outliers
 
-    def unscoped(picker, seed, anchors, source, body_ok=None):
-        placed = saved(picker, seed, anchors, source, body_ok)
+    def unscoped(picker, seed, anchors, source, body_ok=None, **kw):
+        placed = saved(picker, seed, anchors, source, body_ok, **kw)
         for rec in placed:
             rec["body"], rec["body_report"], rec["body_why"] = pm.resolve_body(
                 rec, seed, body_ok)
@@ -514,41 +591,25 @@ def _neuter_body_substitution_unscoped():
 
 def _neuter_the_audit_to_towns_only():
     """RESTORE THE DEFECT VERBATIM: this section's own `run` as it stood until
-    2026-09-22 -- records filtered to the TWO town ids, each compared to its
-    declaration by coordinate, and NO membership test in either direction.  It
-    judged 2 of 16 published records and was silent about the other 14.
-
-    The body is restored rather than the population emptied: emptying
-    `plan.OUTLIERS` leaves `ANCHORED_OUTLIERS` declaring 14 sites, so the
-    membership test still fires and the case still refuses -- MEASURED, it
-    reported NOT LOAD-BEARING, which is the harness catching a neuter that
-    does not restore the defect.  What was missing was never the id set; it
-    was the two membership checks.
-    """
+    2026-09-22 -- records filtered to the sites this plan builds, and NO
+    membership test in either direction.  It judged the solver's records and
+    was silent about everything else: a record nothing builds, and (since the
+    declaration moved to `worldseed.HUMAN_SITES`) a declared site that was
+    never published."""
     saved = globals()["audit"]
 
     def towns_only(doc, where):
         pm = _plan()
         out: list[Finding] = []
-        seed = doc.get("seed")
-        town_ids = {t["id"] for t in pm.TOWNS}
-        records = [r for r in (doc.get("sites") or [])
-                   if r.get("id") in town_ids]
-        if not seed:
+        if not doc.get("seed"):
             return out
-        anchors, source = pm.declared_town_centres(str(seed))
-        for r in records:
-            got = (int(round(float(r["xz"][0]))), int(round(float(r["xz"][1]))))
-            a = anchors.get(r["id"])
-            if a is None:
-                continue
-            want = (int(round(float(a["xz"][0]))),
-                    int(round(float(a["xz"][1]))))
-            out.append(Finding(
-                check="published_town_centres", ok=got == want,
-                message=(f"{r['id']} published {got}, declared {want} by "
-                         f"{source}"),
-                numbers={"published": list(got), "declared": list(want)}))
+        ids = {t["id"] for t in pm.TOWNS} | {o["id"] for o in pm.OUTLIERS}
+        for r in (doc.get("sites") or []):
+            if r.get("id") in ids:
+                out.append(Finding(
+                    check="published_sites_are_the_declared_set", ok=True,
+                    advisory=True,
+                    message=f"{r['id']} is published", numbers={}))
         return out
 
     globals()["audit"] = towns_only
@@ -687,32 +748,6 @@ def _case_a_declared_centre_outranked_does_not_move():
     return []
 
 
-def _case_the_default_seeds_declaration_is_the_pair_it_publishes():
-    """THE DEFAULT PATH, WHICH MUST NOT MOVE.  `settlements/sites.yaml` in this
-    tree publishes stenvik (496.0, 904.0) and vestvik (-906.0, 1846.0) with two
-    `why` strings full of measured Pirate68 numbers, and RoadNet's node set is
-    built from them.  The candidate order here is DELIBERATELY the wrong way
-    round, so a selection that had gone back to rank order would put stenvik on
-    the west isle."""
-    pm = _plan()
-    cands = [_candidate(-906.0, 1846.0, "westisle", relief=13.3, meadows=1.0),
-             _candidate(496.0, 904.0, "mainland", relief=17.8, meadows=0.998),
-             _candidate(-262.0, 1998.0, "westisle", relief=18.5, meadows=1.0)]
-    anchors, source = pm.declared_town_centres("Pirate68")
-    assert "ANCHORED_TOWNS" in source, source
-    picks = pm.select_towns(cands, "Pirate68", anchors, source)
-    got = {p["spec"]["id"]: (p["site"].x, p["site"].z) for p in picks}
-    assert got == {"stenvik": (496.0, 904.0), "vestvik": (-906.0, 1846.0)}, got
-    why = {p["spec"]["id"]: p["why"] for p in picks}
-    assert why["stenvik"].startswith(
-        "MEASURED: a 176 m district of 99.8% Meadows at 45.57 m"), \
-        f"the published stenvik justification changed: {why['stenvik'][:120]}"
-    assert why["vestvik"].startswith(
-        "MEASURED: 100% Meadows at 33.99 m"), \
-        f"the published vestvik justification changed: {why['vestvik'][:120]}"
-    return []
-
-
 # A DERIVED field's windows are named for what they DO.  MEASURED on
 # /tmp/seedfield/fresh42_1m.bin: trunk-primary, trunk-secondary and seven
 # outlier-* ids, and not one of them is called mainland or westisle -- those
@@ -828,6 +863,10 @@ class _StubPicker:
         return list(self.per_kind.get("treehouse", ()))
 
 
+# THE CONTEXT A ROLE READS besides the candidate: the first town's centre.
+_CTX = {"town": (1000.0, -2000.0)}
+
+
 def _kind_site(kind: str, x: float, z: float, patch: str = "trunk-primary"):
     S = _plan().S
     return S.Site(
@@ -859,7 +898,7 @@ def _case_undeclared_outliers_come_from_their_own_kinds_search():
     pm = _plan()
     picker = _enough_candidates(pm)
     try:
-        placed = pm.select_outliers(picker, "Fresh42", {}, "")
+        placed = pm.select_outliers(picker, "Fresh42", {}, "", context=_CTX)
     except Exception as exc:                                # noqa: BLE001
         raise AssertionError(
             f"a seed with no declared outlying sites could not place one at "
@@ -875,7 +914,8 @@ def _case_undeclared_outliers_come_from_their_own_kinds_search():
         assert not leaked, \
             f"{rec['id']} on Fresh42 is justified with Ulfsland's numbers {leaked}"
         assert "Fresh42" in rec["why"], rec["why"][:120]
-    ranks = [r["search_rank"] for r in placed if r["kind"] == "watchtower"]
+    ranks = sorted(r["search_rank"] for r in placed
+                   if r["kind"] == "watchtower")
     assert ranks == list(range(len(ranks))), \
         f"the {len(ranks)} watchtowers must take distinct candidates, got {ranks}"
     return []
@@ -890,7 +930,7 @@ def _case_a_kind_with_too_few_candidates_is_refused():
     picker = _enough_candidates(pm)
     picker.per_kind["lighthouse"] = []
     try:
-        placed = pm.select_outliers(picker, "Fresh42", {}, "")
+        placed = pm.select_outliers(picker, "Fresh42", {}, "", context=_CTX)
     except (ValueError, SystemExit) as exc:
         msg = str(exc)
         assert "Fresh42" in msg and "lighthouse" in msg, msg[:240]
@@ -922,30 +962,27 @@ def _case_a_kind_with_too_few_candidates_is_refused():
 
 
 def _case_a_declared_site_keeps_its_declared_place():
-    """THE DEFAULT PATH, ONE LAYER DOWN.  Ulfsland's 14 outlying sites are
-    STANDING: their coordinates are what the ledger, the roads and the portal
-    tags were built against, so a declared site is taken exactly where it is
-    declared and its window name is resolved, never re-searched."""
+    """AN OPERATOR'S DECLARATION BINDS FOR THE SOLVE IT IS MADE FOR.  A site
+    declared with `--expect-sites` is taken exactly where it is declared, its
+    window resolved from the coordinate, never re-searched -- and the sites
+    nobody declared stay the search's."""
     pm = _plan()
-    # Candidates ON ULFSLAND'S OWN WINDOW, so a selection that ignored the
-    # declaration would succeed and move all 14 -- which is what the neuter
-    # does and what this case must catch.
-    picker = _enough_candidates(pm, fields=dict(ULFSLAND_FIELD),
-                                patch="mainland")
-    anchors, source = pm.declared_outlier_sites("Pirate68")
-    assert "ANCHORED_OUTLIERS" in source, source
-    placed = pm.select_outliers(picker, "Pirate68", anchors, source)
+    # Candidates on the field's own window, so a selection that ignored the
+    # declaration would succeed and move the declared sites -- which is what
+    # the neuter does and what this case must catch.
+    picker = _enough_candidates(pm, fields=dict(DERIVED_FIELD))
+    anchors = pm.parse_site_declaration(
+        ["wt-spawn=1180,-2044", "lh-west=-311,2570,trunk-secondary"])
+    anchors, source = pm.declared_outlier_sites(anchors)
+    assert "--expect-sites" in source, source
+    placed = pm.select_outliers(picker, "Fresh42", anchors, source,
+                                context=_CTX)
     got = {r["id"]: (r["x"], r["z"], r["patch"]) for r in placed}
-    assert got["wt-spawn"] == (110.0, -104.0, "mainland"), got["wt-spawn"]
-    assert got["hognest-castle"] == (530.0, 1348.0, "mainland"), \
-        got["hognest-castle"]
-    assert got["lh-west"] == (-1350.0, 2358.0, "westisle"), got["lh-west"]
-    assert got["sudrberg-keep"] == (2406.0, -3354.0, "south33"), \
-        got["sudrberg-keep"]
-    assert all(r["centre_declared"] for r in placed), \
-        "every Pirate68 site is declared and must say so"
-    assert placed[0]["why"].startswith("MEASURED: 110.95 m pad height"), \
-        f"the published hognest justification changed: {placed[0]['why'][:120]}"
+    assert got["wt-spawn"][:2] == (1180.0, -2044.0), got["wt-spawn"]
+    assert got["lh-west"] == (-311.0, 2570.0, "trunk-secondary"), got["lh-west"]
+    declared = {r["id"] for r in placed if r["centre_declared"]}
+    assert declared == {"wt-spawn", "lh-west"}, \
+        f"only the two declared sites are declared, got {sorted(declared)}"
     return []
 
 
@@ -959,7 +996,8 @@ def _case_a_declared_window_this_field_lacks_is_refused():
     anchors = {"wt-spawn": {"xz": (110.0, -104.0), "patch": "south33",
                             "why": "DECLARED"}}
     try:
-        placed = pm.select_outliers(picker, "Fresh42", anchors, "a test")
+        placed = pm.select_outliers(picker, "Fresh42", anchors, "a test",
+                                    context=_CTX)
     except (ValueError, SystemExit) as exc:
         msg = str(exc)
         assert "south33" in msg, f"the refusal must name the window: {msg[:240]}"
@@ -995,16 +1033,15 @@ def _neuter_to_the_records_own_patch_literal():
     `patch="mainland"`, taken straight, with no search and no resolution."""
     pm = _plan()
     saved = pm.select_outliers
-    frozen = pm.ANCHORED_OUTLIERS["Pirate68"]
 
-    def literal(picker, seed, anchors, source):
+    def literal(picker, seed, anchors, source, **kw):
         out = []
-        for o in pm.OUTLIERS:
-            a = frozen[o["id"]]
+        for i, o in enumerate(pm.OUTLIERS):
             rec = dict(o)
-            rec.update({"x": a["xz"][0], "z": a["xz"][1], "patch": a["patch"],
-                        "why": a["why"], "centre_declared": True,
-                        "search_rank": None})
+            rec.update({"x": 110.0 + 17.0 * i, "z": -104.0 + 31.0 * i,
+                        "patch": "mainland",
+                        "why": "MEASURED: a literal record", 
+                        "centre_declared": True, "search_rank": None})
             # `picker.fields[o["patch"]]` is what build() did next, and on any
             # field but Pirate68's this is the KeyError.
             picker.fields[rec["patch"]]
@@ -1016,8 +1053,6 @@ def _neuter_to_the_records_own_patch_literal():
     def undo():
         pm.select_outliers = saved
     return undo
-
-
 def _neuter_outliers_to_search_only():
     """RESTORE THE DEFECT THIS FIX COULD EASILY HAVE INSTEAD: re-search every
     site on every run and let the declaration be decoration.  That is the
@@ -1027,8 +1062,8 @@ def _neuter_outliers_to_search_only():
     pm = _plan()
     saved = pm.select_outliers
 
-    def search_only(picker, seed, anchors, source):
-        return saved(picker, seed, {}, "")
+    def search_only(picker, seed, anchors, source, **kw):
+        return saved(picker, seed, {}, "", **kw)
 
     pm.select_outliers = search_only
 
@@ -1069,6 +1104,21 @@ def _neuter_to_the_hardcoded_pair():
 
     def undo():
         pm.select_towns = saved
+    return undo
+
+
+def _neuter_to_the_frozen_pair():
+    """RESTORE THE DEFECT VERBATIM: `plan.ANCHORED_TOWNS['Pirate68']` -- the
+    two places the search had returned on an earlier run, kept as if a person
+    had chosen them."""
+    pm = _plan()
+    saved = pm.declared_town_centres
+    frozen = {"stenvik": {"xz": (496, 904), "why": "frozen"},
+              "vestvik": {"xz": (-906, 1846), "why": "frozen"}}
+    pm.declared_town_centres = lambda declared=None: (frozen, "frozen")
+
+    def undo():
+        pm.declared_town_centres = saved
     return undo
 
 
@@ -1303,16 +1353,20 @@ def _case_the_solver_moves_off_claimed_ground():
     lw = picker.per_kind["lighthouse"][lights.index("lh-west")]
     near = _kind_site("treehouse", lw.x + 4.0, lw.z + 4.0)
     picker.per_kind["treehouse"].insert(trees.index("tree-near"), near)
-    placed = pm.select_outliers(picker, "Fresh42", {}, "")
-    tn = next(r for r in placed if r["id"] == "tree-near")
-    stands = (tn["x"], tn["z"]) == (near.x, near.z)
-    refused = tn.get("claim_refused") or []
+    placed = pm.select_outliers(picker, "Fresh42", {}, "", context=_CTX)
+    # WHICHEVER TREEHOUSE NAME the roles bind it to: the 5.7 m candidate must
+    # stand for none of them.
+    tn = next((r for r in placed if r["kind"] == "treehouse"
+               and (r["x"], r["z"]) == (near.x, near.z)), None)
+    stands = tn is not None
+    tn = tn or next(r for r in placed if r["id"] == "tree-near")
+    refused = [c for r in placed if r["kind"] == "treehouse"
+               for c in (r.get("claim_refused") or [])]
     return Finding(
         check="site_claim_solver", ok=stands,
-        message=(f"tree-near stands at ({tn['x']}, {tn['z']}), search rank "
-                 f"{tn['search_rank']}; its first candidate ({near.x}, "
-                 f"{near.z}) is 5.7 m from lh-west at ({lw.x}, {lw.z}) and "
-                 + ("STANDS in the plan" if stands else
+        message=(f"a treehouse candidate ({near.x}, {near.z}) is 5.7 m from "
+                 f"lh-west at ({lw.x}, {lw.z}) and "
+                 + (f"STANDS in the plan as {tn['id']}" if stands else
                     f"was REFUSED: {len(refused)} candidate(s) refused on "
                     f"claimed ground")),
         where=(tn["x"], tn["z"]),
@@ -1352,11 +1406,637 @@ def _neuter_claim_stamps_nothing():
     return undo
 
 
+# ---------------------------------------------------------------------------
+# THE SITES A PERSON DECLARED (`worldseed.HUMAN_SITES`), AND THE RULE THAT
+# EVERYTHING ELSE IS THE SOLVER'S.  CONSTRUCTED: a seed that is not Pirate68
+# with its own declaration over `harbour_site._fixture`'s 400 m field -- sea in
+# the north, land in the south -- so no case is a reading of the host.
+# ---------------------------------------------------------------------------
+_HARBOUR_SEED = "Testseed"
+
+
+def _declare_harbours():
+    ws = I._worldseed()
+    saved = ws.HUMAN_SITES.get(_HARBOUR_SEED)
+    ws.HUMAN_SITES[_HARBOUR_SEED] = {"harbour-village-x": dict(
+        kind="harbour_village", xz=(200, 130), node="villX", road_to=(),
+        why='the owner: "a village at 200, 130"')}
+
+    def undo():
+        if saved is None:
+            ws.HUMAN_SITES.pop(_HARBOUR_SEED, None)
+        else:
+            ws.HUMAN_SITES[_HARBOUR_SEED] = saved
+    return undo
+
+
+class _HarbourPicker:
+    """What `plan.declared_harbours` asks of a picker: the fields, the spawn
+    and the generator-location test, the installation test."""
+
+    def __init__(self, fields):
+        self.fields = fields
+        self.loc = types.SimpleNamespace(
+            spawn=(200.0, 300.0),
+            clear=lambda x, z, half_diag, protected_only=False: True)
+
+    def installation_conflict(self, x, z, half_diag_m):
+        return None
+
+
+def _harbour_world():
+    pm = _plan()
+    fields = pm.HS._fixture()
+    f = fields["trunk-primary"]
+    picker = _HarbourPicker(fields)
+    lab, comps = pm.T.land_components(f, min_area_m2=1.0)
+    sz, sx = f.idx(*picker.loc.spawn)
+    islands = {"trunk-primary": {"labels": lab, "components": comps,
+                                 "spawn_label": int(lab[sz, sx]) or None}}
+    return pm, picker, islands
+
+
+def _district_unit(x: float, z: float) -> dict:
+    return {"id": "wt-x", "x": x, "z": z, "yaw": 0.0, "pad_w": 16.0,
+            "pad_d": 16.0, "foot_w": 16.0, "foot_d": 16.0, "target_y": 35.0}
+
+
+def _case_a_declared_site_is_measured_and_claims_its_district_first():
+    """THE OWNER'S REQUEST IS NOT THE NODE, AND THE DISTRICT IS NOT FREE
+    GROUND.  A request under the sea is sited by its own module at the real
+    landing, and the ground it reserves is claimed BEFORE any solver site, so a
+    watchtower the search likes inside the harbour district is moved off it
+    (and one far outside is not)."""
+    pm, picker, islands = _harbour_world()
+    undo = _declare_harbours()
+    try:
+        claims = pm.SiteClaims()
+        got = pm.declared_harbours(picker, _HARBOUR_SEED, claims, islands)
+    finally:
+        undo()
+    assert len(got) == 1, got
+    m = got[0]
+    assert m["requested_xz"] == [200.0, 130.0], m["requested_xz"]
+    assert m["xz"] != m["requested_xz"], \
+        "the node is the request: nothing was measured"
+    assert m["island"]["same_landmass_as_spawn"] is True, m["island"]
+    assert len(claims.claims) == 1 and \
+        claims.claims[0]["kind"] == "harbour_village", claims.claims
+    inside = claims.conflicts(pm.SiteClaims.claim(
+        "wt-x", "watchtower", [_district_unit(200.0, 200.0)], 35.0))
+    outside = claims.conflicts(pm.SiteClaims.claim(
+        "wt-x", "watchtower", [_district_unit(350.0, 370.0)], 35.0))
+    assert inside, "a solver site inside the declared district was accepted"
+    assert not outside, f"a site 200 m from the district was refused: {outside}"
+    return []
+
+
+def _neuter_the_declared_district_is_not_claimed():
+    """RESTORE THE DEFECT: the declared site is measured and published and its
+    ground is not reserved, so the solver plants a site inside the harbour."""
+    pm = _plan()
+    saved = pm.SiteClaims.add
+    pm.SiteClaims.add = lambda self, claim: None
+
+    def undo():
+        pm.SiteClaims.add = saved
+    return undo
+
+
+def _case_a_seed_without_declarations_is_unchanged():
+    """A SEED NOBODY DECLARED ANYTHING FOR IS SOLVED BY THE RULES ALONE, TO THE
+    BYTE: no declared record, no claim, no `declared_sites` key in the
+    published site set -- while a seed that declares one gets the key."""
+    pm, picker, islands = _harbour_world()
+    claims = pm.SiteClaims()
+    assert pm.declared_harbours(picker, "Fresh42", claims, islands) == []
+    assert claims.claims == [], "a seed with no declaration claimed ground"
+    with tempfile.TemporaryDirectory() as td:
+        plan = pm._write_fixture_plan(Path(td) / "field.yaml")
+    assert "declared_sites" not in pm.sites_yaml(plan), \
+        "a seed with no declaration published a declared_sites key"
+    undo = _declare_harbours()
+    try:
+        rec = pm.declared_harbours(picker, _HARBOUR_SEED, pm.SiteClaims(),
+                                   islands)
+    finally:
+        undo()
+    text = pm.sites_yaml(dict(plan, declared_sites=rec))
+    assert "declared_sites" in text and "harbour-village-x" in text, text[:300]
+    return []
+
+
+def _neuter_sites_yaml_always_publishes_declared():
+    pm = _plan()
+    saved = pm.sites_yaml
+
+    def always(plan):
+        return saved(plan) + "declared_sites: []\n"
+
+    pm.sites_yaml = always
+
+    def undo():
+        pm.sites_yaml = saved
+    return undo
+
+
+def _spec():
+    roads = JUMPSTART / "roads"
+    if str(roads) not in sys.path:
+        sys.path.insert(0, str(roads))
+    import spec as specmod                                   # noqa: PLC0415
+    return specmod
+
+
+def _solved_fixture() -> dict:
+    def rec(sid, x, z, patch="trunk-primary", prio="trunk", r=16.1,
+            roaded=True):
+        why = ("road_priority is none: portal-only, by design" if prio == "none"
+               else "the router snap stands in the largest strong component")
+        return {"type": "watchtower", "xz": (x, z), "island": "spawn",
+                "patch": patch, "pad_radius_m": r, "priority": prio,
+                "tag": f"u-{sid}", "pad_y": 70.25, "solver_id": sid,
+                "road": {"class": prio, "roaded": roaded,
+                         "reason": ("reached" if roaded
+                                    else "declared_portal_only"),
+                         "why": why, "evidence": {}}}
+    return {"stenvik": rec("stenvik", 700.0, -300.0, r=100.0),
+            "wtspawn": rec("wt-spawn", 1432.0, 1546.0),
+            "sudrberg": rec("sudrberg-keep", 1542.0, 802.0, prio="none",
+                            roaded=False)}
+
+
+def _case_undeclared_sites_are_the_solvers_to_the_coordinate():
+    """NOTHING IS LAYERED OVER THE SOLVER.  The default pair's sites reach the
+    road network at the coordinate, the radius and the datum `sites.yaml`
+    publishes -- not at a frozen answer from an earlier run -- and a fresh seed
+    gets exactly the same.  The ONE thing between `sites.yaml` and the node
+    table is the solver's own road verdict: a site no road reaches is
+    portal-only, with its numbers, on every seed alike."""
+    specmod = _spec()
+    solved = _solved_fixture()
+    sites, prov = specmod.adopt_sites(solved)
+    for sid in ("stenvik", "wtspawn"):
+        for field in ("xz", "pad_radius_m", "pad_y"):
+            assert sites[sid][field] == solved[sid][field], \
+                (f"{sid}.{field} is {sites[sid][field]!r}, the solver "
+                 f"published {solved[sid][field]!r}: something is layered "
+                 f"over the solver")
+    assert "sudrberg" not in sites and "sudrberg" in prov["portal_only"], \
+        "a site the solver published as not roaded must be portal-only"
+    assert "road_priority is none" in prov["portal_only"]["sudrberg"]["why"], \
+        "the portal-only record carries the solver's own reason"
+    return []
+
+
+def _neuter_the_solver_is_pinned_again():
+    """RESTORE THE DEFECT VERBATIM: the 15-record `spec.PINNED_SITES` layer --
+    last run's answer, frozen -- applied over the solver on the default pair."""
+    specmod = _spec()
+    saved = specmod.adopt_sites
+
+    def pinned(solved=None):
+        sites, prov = saved(solved)
+        sites["stenvik"] = dict(sites["stenvik"], xz=(496.0, 904.0))
+        sites["wtspawn"] = dict(sites["wtspawn"], xz=(110.0, -104.0),
+                                pad_radius_m=12.0)
+        return sites, prov
+
+    specmod.adopt_sites = pinned
+
+    def undo():
+        specmod.adopt_sites = saved
+    return undo
+
+
+# ---------------------------------------------------------------------------
+# A SITE IS WHERE A ROAD CAN GET TO (settlements/road_reach.py), AND A NAME IS
+# WHAT THE SITE IS (plan.ROLES) -- the two things the regenerated Pirate68
+# broke the moment its 15 frozen pins came out.  MEASURED 2026-10-07: 35
+# segments, 7 UNROUTABLE.  `wt-spawn` (1432, 1546) stood in a 186-cell pocket
+# of the router's own graph on the spawn landmass; `wt-north`, `wt-east`,
+# `lh-east`, `lh-west`, `tree-west` and `tree-near` stood on a 62,618-cell
+# island of it; and every leg typed for one seed's `wt-spawn` ran to this
+# seed's accident, because the solver bound a NAME to whatever it ranked.
+# CONSTRUCTED: a 400 m window of sea, one island with a walled block on it, and
+# one islet 44 m off its shore; no field file, no dump.
+# ---------------------------------------------------------------------------
+def _road_reach_fixture(joined=("spawn",)):
+    import numpy as np
+    roads = JUMPSTART / "roads"
+    if str(roads) not in sys.path:
+        sys.path.append(str(roads))
+    import field as fieldmod                                # noqa: PLC0415
+    import geography as G                                   # noqa: PLC0415
+    half, n = 200.0, 400
+    ax = -half + 0.5 + np.arange(n, dtype=np.float64)
+    X, Z = np.meshgrid(ax, ax)
+    # SHORES THAT SLOPE.  A cliff shore would split the graph into land and
+    # sea (a road can step off a cliff into water and cannot step back up), so
+    # the sea would be the largest component; a real coast ramps, and so does
+    # this one -- 12 % on the island, 20 % on the islet, sea at the plane.
+    h = np.full((n, n), 28.0)
+    d_main = np.hypot(X + 50.0, Z)
+    main = d_main <= 100.0
+    h[main] = 28.0 + 0.12 * (100.0 - d_main[main])
+    h[main & (X >= 10.0) & (X <= 40.0) & (np.abs(Z) <= 15.0)] = 80.0
+    d_islet = np.hypot(X - 130.0, Z)
+    islet = d_islet <= 70.0
+    h[islet] = np.minimum(40.0, 28.0 + 0.2 * (70.0 - d_islet[islet]))
+    fld = fieldmod.Field("trunk-primary", 0.0, 0.0, half, 1.0, n,
+                         h.astype(np.float32),
+                         np.ones((n, n), dtype=np.uint8))
+    m = n // 4
+    sr = _plan().RR.SiteReach(
+        {"trunk-primary": fld}, None, joined=set(joined),
+        island_of=lambda patch: "spawn",
+        graph_for=lambda f, c: G.RoadGraph(
+            f, forbid=np.zeros((m, m), dtype=bool), cls=c))
+    return sr, {"land": (-50.0, 60.0), "pocket": (25.0, 0.0),
+                "islet": (130.0, 0.0)}
+
+
+def _reach_finding(check: str, point: str, priority: str = "trunk",
+                   joined=("spawn",)):
+    sr, pts = _road_reach_fixture(joined)
+    v = sr.verdict("trunk-primary", *pts[point], priority)
+    ev = v["evidence"]
+    return v, Finding(
+        check=check, ok=v["roaded"],
+        message=(f"the {point} at {pts[point]} is judged {v['reason']}: "
+                 f"{v['why']}"),
+        where=pts[point],
+        numbers={"reason": v["reason"],
+                 "piece_cells": ev.get("piece_cells"),
+                 "network_cells": ev.get("network_cells"),
+                 "land_cells": ev.get("land_cells"),
+                 "trunk_land_cells": ev.get("trunk_land_cells")})
+
+
+def _case_a_pocket_the_router_cannot_enter_is_portal_only():
+    """`wt-spawn`'s state, constructed: a site ON the trunk landmass whose
+    router snap stands in a pocket of the graph (a 40 m cliff all round).  A
+    leg to it is `no route found`; the verdict is portal-only, with the
+    pocket's size beside the network's."""
+    v, finding = _reach_finding("road_reach_pocket", "pocket")
+    assert v["reason"] == "off_network", \
+        f"a walled block on the trunk landmass was judged {v['reason']}"
+    assert v["evidence"]["land_cells"] == v["evidence"]["trunk_land_cells"], \
+        "the pocket stands on the trunk landmass; only the graph refuses it"
+    assert v["evidence"]["piece_cells"] < v["evidence"]["network_cells"], v
+    return finding
+
+
+def _case_an_islet_across_the_water_is_portal_only():
+    """`wt-north`'s state, constructed: an islet 44 m off the island's shore.
+    The router's graph LETS a road cross 44 m of channel -- that is how the two
+    halves of the main continent are one -- so the graph alone says
+    reachable; the verdict is portal-only, because a road does not cross open
+    water to another landmass: a dock, a ferry or a portal does."""
+    v, finding = _reach_finding("road_reach_islet", "islet")
+    assert v["reason"] == "off_landmass", \
+        f"an islet across a channel was judged {v['reason']}"
+    assert v["evidence"]["piece_cells"] == v["evidence"]["network_cells"], \
+        "the graph itself reaches the islet; only the landmass rule refuses it"
+    return finding
+
+
+def _case_a_site_on_the_trunk_landmass_is_roaded():
+    """THE SURVIVOR: ground on the trunk landmass, in the network's own
+    component, is roaded -- a check that refuses everything blocks a world
+    that is fine."""
+    sr, pts = _road_reach_fixture()
+    v = sr.verdict("trunk-primary", *pts["land"], "trunk")
+    assert v["roaded"] and v["reason"] == "reached", v["why"]
+    assert v["evidence"]["piece_cells"] == v["evidence"]["network_cells"], v
+    return []
+
+
+def _case_none_and_unrooted_are_portal_only():
+    """The two declarations that need no graph: `road_priority: none` is
+    "portal-only, by design", and a window no crossing roots on this seed is
+    walkable from nowhere a walk from the portal hall starts."""
+    sr, pts = _road_reach_fixture()
+    declared = sr.verdict("trunk-primary", *pts["land"], "none")
+    unrooted, _f = _reach_finding("road_reach_unrooted", "land", joined=())
+    assert declared["reason"] == "declared_portal_only", declared
+    roaded = [v["reason"] for v in (declared, unrooted) if v["roaded"]]
+    return Finding(
+        check="road_reach_declared", ok=bool(roaded),
+        message=(f"road_priority none -> {declared['reason']}; a window with "
+                 f"no crossing -> {unrooted['reason']}"
+                 + (f"; ROADED anyway: {roaded}" if roaded else "")),
+        where=pts["land"], numbers={"roaded_anyway": len(roaded)})
+
+
+def _neuter_the_road_is_taken_on_the_declaration():
+    """RESTORE THE DEFECT: `_MODE = "declared"` -- a declared road class IS a
+    road, whatever the router's graph says."""
+    mod = _plan().RR
+    saved = mod._MODE
+    mod._MODE = "declared"
+
+    def undo():
+        mod._MODE = saved
+    return undo
+
+
+def _neuter_the_landmass_is_not_asked():
+    """RESTORE ONE HALF OF THE DEFECT: the graph reaches the islet, and
+    nothing asks which landmass it is on."""
+    roads = JUMPSTART / "roads"
+    if str(roads) not in sys.path:
+        sys.path.append(str(roads))
+    import geography as G                                   # noqa: PLC0415
+    saved = G.RoadGraph.at
+
+    def at(self, xs, zs):
+        out = saved(self, xs, zs)
+        out["on_trunk_landmass"] = out["reached"]
+        return out
+
+    G.RoadGraph.at = at
+
+    def undo():
+        G.RoadGraph.at = saved
+    return undo
+
+
+def _neuter_the_road_refuses_everything():
+    """THE EMPTIED INSTRUMENT: a verdict that says portal-only for every site
+    -- the survivor must come out the other way."""
+    mod = _plan().RR
+    saved = mod.SiteReach.verdict
+
+    def verdict(self, patch, x, z, priority):
+        return {"class": priority, "window": patch, "xz": [x, z],
+                "roaded": False, "reason": "off_network", "why": "nothing",
+                "evidence": {}}
+
+    mod.SiteReach.verdict = verdict
+
+    def undo():
+        mod.SiteReach.verdict = saved
+    return undo
+
+
+def _reach_stub(unreachable: set):
+    """A road verdict CONSTRUCTED for the solver's cases: a candidate at one
+    of these coordinates is in a pocket."""
+    def reach(rec, s):
+        bad = (round(s.x), round(s.z)) in unreachable
+        return {"class": rec["road_priority"], "window": s.patch,
+                "xz": [s.x, s.z], "roaded": not bad,
+                "reason": "off_network" if bad else "reached",
+                "why": ("a constructed 186-cell pocket" if bad
+                        else "constructed: in the network"),
+                "evidence": {"piece_cells": 186 if bad else 269270,
+                             "network_cells": 269270}}
+    return reach
+
+
+def _towers_with_one_extra(pm, extra_at=(5000.0, 5000.0)):
+    """`_enough_candidates` gives exactly as many candidates as names; one
+    more, at the end of the search, so a name has somewhere to go when the
+    best candidate is refused."""
+    picker = _enough_candidates(pm)
+    picker.per_kind["watchtower"].append(
+        _kind_site("watchtower", extra_at[0], extra_at[1]))
+    return picker
+
+
+def _case_the_solver_passes_over_what_no_road_reaches():
+    """THE SOLVER, NOT THE RULE: the search's FIRST watchtower candidate is in
+    a pocket no road enters.  No site declared roaded may stand on it; the
+    move is the search's next candidate and the refusal is on the record with
+    its numbers (`reach_refused`)."""
+    pm = _plan()
+    picker = _towers_with_one_extra(pm)
+    pocket = picker.per_kind["watchtower"][0]
+    placed = pm.select_outliers(
+        picker, "Fresh42", {}, "", context=_CTX,
+        reach=_reach_stub({(round(pocket.x), round(pocket.z))}))
+    on = [r for r in placed if (r["x"], r["z"]) == (pocket.x, pocket.z)]
+    passed = sum(r.get("reach_refused_count", 0) for r in placed
+                 if r["kind"] == "watchtower")
+    assert passed > 0 or on, \
+        "the pocket ranks first, so some tower must have passed it over"
+    return Finding(
+        check="solver_passes_over_what_no_road_reaches", ok=bool(on),
+        message=(f"the first watchtower candidate ({pocket.x}, {pocket.z}) is "
+                 f"in a 186-cell pocket and "
+                 + (f"STANDS in the plan as {on[0]['id']}" if on else
+                    f"was passed over by {passed} name(s) "
+                    f"(reach_refused carries the numbers)")),
+        where=(pocket.x, pocket.z),
+        numbers={"passed_over": passed, "pocket_cells": 186,
+                 "network_cells": 269270})
+
+
+def _case_no_reachable_candidate_leaves_the_site_portal_only():
+    """A BUILDING IS NEVER DELETED: when no watchtower candidate is reachable
+    at all, the six names still stand, on the best candidates there are, each
+    published `roaded: false` with the numbers -- not an exception, and not a
+    road promised to ground none reaches."""
+    pm = _plan()
+    picker = _enough_candidates(pm)
+    every = {(round(c.x), round(c.z)) for c in picker.per_kind["watchtower"]}
+    placed = pm.select_outliers(picker, "Fresh42", {}, "", context=_CTX,
+                                reach=_reach_stub(every))
+    towers = [r for r in placed if r["kind"] == "watchtower"]
+    assert len(towers) == 6, f"{len(towers)} watchtowers stand"
+    for r in towers:
+        road = r.get("road")
+        assert road is not None and road["roaded"] is False, \
+            f"{r['id']} carries road={road!r}"
+        assert "PORTAL-ONLY" in r["why"], r["why"][-160:]
+    return []
+
+
+def _neuter_the_solver_ignores_the_road():
+    """RESTORE THE DEFECT VERBATIM: `select_outliers` as it stood -- ranking
+    candidates by what a tower needs and never asking whether a road can get
+    there."""
+    pm = _plan()
+    saved = pm.select_outliers
+
+    def blind(picker, seed, anchors, source, *a, **kw):
+        kw.pop("reach", None)
+        return saved(picker, seed, anchors, source, *a, **kw)
+
+    pm.select_outliers = blind
+
+    def undo():
+        pm.select_outliers = saved
+    return undo
+
+
+def _watchtowers_by_rank():
+    """Six watchtower candidates whose SEARCH RANK is the reverse of every
+    role: rank 0 is the easternmost and the farthest, rank 5 the one on the
+    temple's doorstep."""
+    pm = _plan()
+    S = pm.S
+
+    def tower(x, z, rise, dist):
+        t = _kind_site("watchtower", x, z)
+        return S.Site(**{**t.__dict__, "rise_m": rise, "dist_spawn_m": dist})
+    ranked = [("east", tower(1800.0, 200.0, 24.0, 1800.0)),
+              ("north", tower(100.0, 1500.0, 22.0, 1500.0)),
+              ("peak", tower(900.0, 100.0, 90.0, 800.0)),
+              ("town", tower(500.0, 500.0, 30.0, 700.0)),
+              ("south", tower(0.0, -900.0, 25.0, 900.0)),
+              ("spawn", tower(0.0, -300.0, 20.0, 100.0))]
+    picker = _enough_candidates(pm)
+    picker.per_kind["watchtower"] = [t for _n, t in ranked]
+    return pm, picker, {n: (t.x, t.z) for n, t in ranked}
+
+
+def _case_names_are_bound_by_what_a_site_is_not_by_rank():
+    """`wt-spawn` is the tower nearest the StartTemple, `wt-peak` the most
+    prominent, `wt-north` the northernmost -- WHATEVER THE SEARCH RANKED.
+    The first town stands at (500, 480), so `wt-town` is the one beside it."""
+    pm, picker, at = _watchtowers_by_rank()
+    placed = pm.select_outliers(picker, "Fresh42", {}, "",
+                                context={"town": (500.0, 480.0)})
+    got = {r["id"]: (r["x"], r["z"]) for r in placed
+           if r["kind"] == "watchtower"}
+    want = {"wt-spawn": at["spawn"], "wt-south": at["south"],
+            "wt-town": at["town"], "wt-peak": at["peak"],
+            "wt-north": at["north"], "wt-east": at["east"]}
+    wrong = {k: (got[k], want[k]) for k in want if got[k] != want[k]}
+    return Finding(
+        check="names_are_what_a_site_is", ok=bool(wrong),
+        message=(f"{len(want) - len(wrong)} of {len(want)} watchtower names "
+                 f"stand on what they say"
+                 + (f"; BOUND BY RANK: "
+                    + ", ".join(f"{k} at {g} not {w}"
+                                for k, (g, w) in sorted(wrong.items()))
+                    if wrong else "")),
+        where=next(iter(wrong.values()))[0] if wrong else None,
+        numbers={"bound_by_rank": len(wrong), "names": len(want)})
+
+
+def _neuter_names_are_bound_by_search_rank():
+    """RESTORE THE DEFECT VERBATIM: each name takes the next candidate the
+    search ranked."""
+    pm = _plan()
+    saved = pm._ROLE_MODE
+    pm._ROLE_MODE = "rank"
+
+    def undo():
+        pm._ROLE_MODE = saved
+    return undo
+
+
+def _case_a_name_belongs_on_its_window():
+    """`lh-west` hangs from a west-isle node, so it stands on the second trunk
+    landmass even though the search ranked a primary-window lighthouse above
+    every candidate there."""
+    pm = _plan()
+    picker = _enough_candidates(pm)
+    picker.fields = {
+        "trunk-primary": _StubField("trunk-primary", -9000.0, 9000.0,
+                                    -9000.0, 9000.0),
+        "trunk-secondary": _StubField("trunk-secondary", 4000.0, 9000.0,
+                                      4000.0, 9000.0)}
+    picker.per_kind["lighthouse"].append(
+        _kind_site("lighthouse", 5000.0, 5000.0, "trunk-secondary"))
+    placed = pm.select_outliers(picker, "Fresh42", {}, "", context=_CTX)
+    lw = next(r for r in placed if r["id"] == "lh-west")
+    return Finding(
+        check="a_name_belongs_on_its_window",
+        ok=lw["patch"] != "trunk-secondary",
+        message=(f"lh-west stands at ({lw['x']}, {lw['z']}) on {lw['patch']}; "
+                 f"its window is the second trunk landmass"),
+        where=(lw["x"], lw["z"]),
+        numbers={"search_rank": lw["search_rank"],
+                 "window_requested": lw.get("window")})
+
+
+def _case_a_portal_only_site_is_no_node_and_no_edge_names_it():
+    """`roads/spec.py`: an edge whose end the road verdict ruled out is
+    DROPPED, with the verdict's own numbers in `NO_ROAD` -- never routed into
+    an UNROUTABLE -- and an end absent for NO recorded reason is still
+    refused."""
+    specmod = _spec()
+    nodes = {"stathub": {}, "wtnorth": {}}
+    portal = {"wtpeak": {"why": "(1856, 146) stands on a landmass of 25886 "
+                                "cells; the trunk landmass holds 178613"}}
+    edges = [{"id": "S7-stathub-wtpeak", "a": "stathub", "b": "wtpeak"},
+             {"id": "S8-stathub-wtnorth", "a": "stathub", "b": "wtnorth"}]
+    no_road: dict = {}
+    dropped = specmod.drop_edges_without_nodes(
+        edges, nodes,
+        lambda n: (f"{n} is portal-only: {portal[n]['why']}"
+                   if n in portal else None), {}, no_road)
+    assert [e["id"] for e in dropped] == ["S7-stathub-wtpeak"], dropped
+    assert [e["id"] for e in edges] == ["S8-stathub-wtnorth"], edges
+    assert "25886" in no_road["S7-stathub-wtpeak"], no_road
+    return []
+
+
+def _neuter_the_edge_is_kept_for_the_router_to_fail_on():
+    """RESTORE THE DEFECT: the edge stays in `EDGES` and the router discovers,
+    leg by leg, that nothing is there."""
+    specmod = _spec()
+    saved = specmod.drop_edges_without_nodes
+
+    def keep(edges, nodes, why_of, foreign, no_road):
+        return []
+
+    specmod.drop_edges_without_nodes = keep
+
+    def undo():
+        specmod.drop_edges_without_nodes = saved
+    return undo
+
+
+def _case_an_edge_to_a_node_absent_for_no_reason_is_refused():
+    """The refusal that pre-dates all of this and is KEPT: a terminus that
+    vanishes with nothing recorded is a road to nowhere."""
+    specmod = _spec()
+    try:
+        specmod.drop_edges_without_nodes(
+            [{"id": "S7-stathub-ghost", "a": "stathub", "b": "ghost"}],
+            {"stathub": {}}, lambda n: None, {}, {})
+    except SystemExit as exc:
+        return Finding(
+            check="edge_to_a_node_absent_for_no_reason", ok=False,
+            message=f"refused: {str(exc)[:120]}", numbers={"edges": 1})
+    return Finding(
+        check="edge_to_a_node_absent_for_no_reason", ok=True,
+        message="NOT REFUSED: an edge to a node nothing explains was dropped "
+                "quietly", numbers={"edges": 1})
+
+
+def _neuter_the_missing_node_vanishes_quietly():
+    specmod = _spec()
+    saved = specmod.drop_edges_without_nodes
+
+    def quiet(edges, nodes, why_of, foreign, no_road):
+        gone = [e for e in edges
+                if any(n not in nodes for n in (e["a"], e["b"]))]
+        for e in gone:
+            edges.remove(e)
+        return gone
+
+    specmod.drop_edges_without_nodes = quiet
+
+    def undo():
+        specmod.drop_edges_without_nodes = saved
+    return undo
+
+
 register(Section(
     name="townsites",
     measures=("that a site's PLACE is a reading of the seed being solved -- the "
               "search's own top-ranked candidate of that kind, or a centre "
-              "DECLARED for that seed -- while what to build stays authored; "
+              "an operator DECLARED for that solve -- while what to build "
+              "stays authored; "
+              "that the only declared sites are the ones a person chose "
+              "(worldseed.HUMAN_SITES), measured by their own module and held "
+              "to the artefact RoadNet reads; "
               "that a solve which cannot put a declared site where it was "
               "declared, or cannot find ground for an undeclared one, STOPS, "
               "naming the seed, the declaration and the candidates it did find; "
@@ -1366,7 +2046,9 @@ register(Section(
               "placed on ground another write already claims"),
     instrument=("settlements/plan.py::select_towns, ::select_outliers, "
                 "::declared_town_centres, ::declared_outlier_sites, "
-                "::resolve_patch and settlements/sites.py::trunk_patches, "
+                "::resolve_patch, ::declared_harbours and "
+                "settlements/harbour_site.py::measure and "
+                "settlements/sites.py::trunk_patches, "
                 "driven over candidate sets and field-id sets constructed in "
                 "this file, plus the town records of the published "
                 "settlements/sites.yaml; settlements/plan.py::site_bill "
@@ -1377,7 +2059,9 @@ register(Section(
     population=("the two towns in settlements/plan.py::TOWNS and the 14 "
                 "outlying sites in ::OUTLIERS, every candidate handed to the "
                 "selection for each of them, the patch windows each search is "
-                "run over, and the town records of settlements/sites.yaml; "
+                "run over, and the records of settlements/sites.yaml -- "
+                "`sites` and `declared_sites`, the latter against "
+                "worldseed.HUMAN_SITES; "
                 "for the bill, the lattice samples of three fixture pads "
                 "(sudrberg-keep, hognest-castle, stenvik-hall-1); for the "
                 "claims, every lattice sample build.unit_records' units "
@@ -1421,15 +2105,17 @@ register(Section(
                           "changed takes the roads and the buildings with it"),
              neuter=_neuter_to_rank_only,
              neuters="selection by search rank with the declaration ignored"),
-        Case("default_seeds_declaration_is_the_pair_it_publishes", False,
-             _case_the_default_seeds_declaration_is_the_pair_it_publishes,
-             prior_state=("settlements/sites.yaml in this tree publishes "
-                          "stenvik (496.0, 904.0) and vestvik "
-                          "(-906.0, 1846.0); roads/spec.py adopts them as "
-                          "network nodes"),
-             neuter=_neuter_to_rank_only,
-             neuters="selection by search rank, which on this fixture puts "
-                     "stenvik on the west isle"),
+        Case("default_seed_declares_two_sites_and_pins_nothing", False,
+             _case_the_default_seed_declares_two_sites_and_pins_nothing,
+             prior_state=("settlements/plan.py carried ANCHORED_TOWNS "
+                          "(stenvik (496, 904), vestvik (-906, 1846)) and "
+                          "ANCHORED_OUTLIERS (14 sites) and roads/spec.py "
+                          "carried PINNED_SITES (15 records): the places the "
+                          "same search had returned on an earlier run, "
+                          "frozen -- not one of them a person's decision"),
+             neuter=_neuter_to_the_frozen_pair,
+             neuters="plan.declared_town_centres answering the old "
+                     "ANCHORED_TOWNS pair"),
         Case("town_patches_are_resolved_by_role", False,
              _case_town_patches_are_resolved_by_role,
              prior_state=("MEASURED 2026-09-22 on the first REAL derived field "
@@ -1480,10 +2166,9 @@ register(Section(
                      "straight into picker.fields"),
         Case("declared_site_keeps_its_declared_place", False,
              _case_a_declared_site_keeps_its_declared_place,
-             prior_state=("Ulfsland's 14 outlying sites are STANDING: their "
-                          "coordinates are what the ledger, the roads and the "
-                          "portal tags were built against, and re-searching "
-                          "them would move a built world"),
+             prior_state=("an operator's --expect-sites declares a site for "
+                          "one solve: taking it from the search instead would "
+                          "move a site somebody pinned on purpose"),
              neuter=_neuter_outliers_to_search_only,
              neuters="re-searching every site on every run, with the "
                      "declaration ignored"),
@@ -1494,31 +2179,36 @@ register(Section(
                           "record for a site no plan builds becomes a node "
                           "with no owner and an edge with no terminus"),
              neuter=_neuter_the_audit_to_towns_only,
-             neuters="the audit's own population as it stood: records "
-                     "filtered to the two TOWNS, 2 of 16 judged"),
+             neuters="the audit's own population as it stood: the solver's "
+                     "records only, no membership test in either direction"),
         Case("declared_site_missing_refused", True,
              _case_a_declared_site_missing_from_the_publication_is_refused,
-             prior_state=("MEASURED in this file on 2026-09-22: this section's "
-                          "own run() filtered the published records to the two "
-                          "towns, so all 14 outlying sites could have vanished "
+             prior_state=("this section's own run() judged the solver's "
+                          "published records only (first the two towns, then "
+                          "all 16), so a site a PERSON declared could vanish "
                           "from the artefact RoadNet reads and it would have "
-                          "reported two green findings and stopped -- the "
-                          "population error this section exists to catch, in "
-                          "the check itself"),
+                          "reported green -- the population error this "
+                          "section exists to catch, in the check itself"),
              neuter=_neuter_the_audit_to_towns_only,
-             neuters="the audit's own population as it stood: records "
-                     "filtered to the two TOWNS, 2 of 16 judged"),
+             neuters="the audit's own population as it stood: the solver's "
+                     "records only, no membership test in either direction"),
+        Case("declared_site_stale_request_refused", True,
+             _case_a_declared_site_at_another_request_is_refused,
+             prior_state=("a node measured for one request and published "
+                          "after the declaration moved: RoadNet routes to "
+                          "where the owner no longer asked for a road"),
+             neuter=_neuter_the_audit_to_towns_only,
+             neuters="the audit's own population as it stood: the solver's "
+                     "records only"),
         Case("the_published_declared_set_is_accepted", False,
              _case_the_published_ulfsland_set_is_accepted,
              prior_state=("the direction a refuse-everything audit passes: "
-                          "11 of the 14 published outliers differ from their "
-                          "declared centre by up to 16 m because best_pad "
-                          "slid the pad to clear the POI stand-off, and "
-                          "judging that offset would be a tolerance standing "
-                          "in for a population"),
+                          "the complete publication -- 16 solver sites and "
+                          "the 2 human-declared ones -- must not refuse, and "
+                          "each declared site must be reported"),
              neuter=_neuter_the_audit_to_towns_only,
-             neuters="the audit's own population as it stood: 2 of 16 records "
-                     "judged, so the complete set returns 2 findings"),
+             neuters="the audit's own population as it stood: the solver's "
+                     "records only, so the declared sites are never reported"),
         Case("undeclared_site_takes_an_authored_alternate", False,
              _case_an_undeclared_site_takes_an_authored_alternate,
              prior_state=("MEASURED 2026-09-22 through the live emitter: "
@@ -1623,5 +2313,104 @@ register(Section(
              neuter=_neuter_claim_drop("every_kind"),
              neuters="the solver judging a candidate against its own kind "
                      "only"),
+        Case("declared_site_is_measured_and_claimed_first", False,
+             _case_a_declared_site_is_measured_and_claims_its_district_first,
+             prior_state=("Ulfsgard and Sudrvik were never sites of any "
+                          "stage: harbour_city.py stood alone, the request "
+                          "(1050, 720) lies under 3.19 m of sea, and no "
+                          "solver site knew the district was spoken for"),
+             neuter=_neuter_the_declared_district_is_not_claimed,
+             neuters="the declared site measured and published but its "
+                     "district never added to the claims"),
+        Case("seed_without_declarations_is_unchanged", False,
+             _case_a_seed_without_declarations_is_unchanged,
+             prior_state=("a seed that declares nothing must publish a "
+                          "byte-identical site set: no key, no claim"),
+             neuter=_neuter_sites_yaml_always_publishes_declared,
+             neuters="sites_yaml writing `declared_sites` for every seed"),
+        Case("undeclared_sites_are_the_solvers", False,
+             _case_undeclared_sites_are_the_solvers_to_the_coordinate,
+             prior_state=("roads/spec.py::PINNED_SITES overrode 15 of the "
+                          "solver's 16 sites on the default pair with the "
+                          "answer of an earlier run: coordinates, pad radii, "
+                          "datums"),
+             neuter=_neuter_the_solver_is_pinned_again,
+             neuters="the pin layer, applied over the solver on the default "
+                     "pair"),
+        Case("a_pocket_the_router_cannot_enter_is_portal_only", True,
+             _case_a_pocket_the_router_cannot_enter_is_portal_only,
+             prior_state=("Pirate68 with the pins out: wt-spawn (1432, 1546) "
+                          "on the spawn landmass, in a 186-cell pocket of the "
+                          "router's graph against 269,270 cells in the "
+                          "window's largest strong component -- T10, T11 and "
+                          "T12 came back UNROUTABLE"),
+             neuter=_neuter_the_road_is_taken_on_the_declaration,
+             neuters="road_priority taken as a road whatever the graph says"),
+        Case("an_islet_across_the_water_is_portal_only", True,
+             _case_an_islet_across_the_water_is_portal_only,
+             prior_state=("Pirate68 with the pins out: wt-north, wt-east, "
+                          "lh-east, lh-west, tree-west and tree-near on a "
+                          "62,618-cell island of the graph; the router will "
+                          "bridge a channel, which is how S1 and S2 join the "
+                          "main continent, and that is not a licence to "
+                          "bridge to every islet"),
+             neuter=_neuter_the_landmass_is_not_asked,
+             neuters="the graph's reach without the trunk-landmass test"),
+        Case("a_site_on_the_trunk_landmass_is_roaded", False,
+             _case_a_site_on_the_trunk_landmass_is_roaded,
+             prior_state=("the survivor: ground in the network's own component "
+                          "on the trunk landmass"),
+             neuter=_neuter_the_road_refuses_everything,
+             neuters="a verdict that says portal-only for every site"),
+        Case("declared_none_and_unrooted_windows_are_portal_only", True,
+             _case_none_and_unrooted_are_portal_only,
+             prior_state=("road_priority was published and read by nothing: "
+                          "`none` and a window no crossing roots both read as "
+                          "'a road, if one is typed'"),
+             neuter=_neuter_the_road_is_taken_on_the_declaration,
+             neuters="road_priority taken as a road whatever the graph says"),
+        Case("the_solver_passes_over_what_no_road_reaches", True,
+             _case_the_solver_passes_over_what_no_road_reaches,
+             prior_state=("select_outliers ranked candidates by rise, relief, "
+                          "coast and purity and never asked whether a road "
+                          "can get there: 7 of 16 sites unroutable"),
+             neuter=_neuter_the_solver_ignores_the_road,
+             neuters="select_outliers called without a road verdict"),
+        Case("no_reachable_candidate_leaves_the_site_portal_only", False,
+             _case_no_reachable_candidate_leaves_the_site_portal_only,
+             prior_state=("a building is never deleted and no road is "
+                          "promised to ground none reaches: the site stands on "
+                          "the best unreachable candidate and says so"),
+             neuter=_neuter_the_solver_ignores_the_road,
+             neuters="select_outliers called without a road verdict"),
+        Case("names_are_bound_by_what_a_site_is_not_by_rank", True,
+             _case_names_are_bound_by_what_a_site_is_not_by_rank,
+             prior_state=("`wt-spawn` was whatever the search ranked first: "
+                          "1.9 km from the StartTemple on Pirate68, and every "
+                          "leg typed for one seed's `wt-spawn` ran to "
+                          "another's accident"),
+             neuter=_neuter_names_are_bound_by_search_rank,
+             neuters="each name takes the next candidate the search ranked"),
+        Case("a_name_belongs_on_its_window", True,
+             _case_a_name_belongs_on_its_window,
+             prior_state=("`lh-west`, `tree-west` and `tree-near` hang from "
+                          "west-isle nodes and stood on another landmass: "
+                          "W9, W10 and W11 were CROSS-ISLAND"),
+             neuter=_neuter_names_are_bound_by_search_rank,
+             neuters="each name takes the next candidate the search ranked, "
+                     "in whichever window it stands"),
+        Case("an_edge_to_a_portal_only_site_is_dropped_with_its_numbers", False,
+             _case_a_portal_only_site_is_no_node_and_no_edge_names_it,
+             prior_state=("a typed leg to a site the road verdict ruled out "
+                          "was routed, found nothing, and was reported as an "
+                          "UNROUTABLE edge"),
+             neuter=_neuter_the_edge_is_kept_for_the_router_to_fail_on,
+             neuters="the leg left in EDGES"),
+        Case("an_edge_to_a_node_absent_for_no_reason_is_refused", True,
+             _case_an_edge_to_a_node_absent_for_no_reason_is_refused,
+             prior_state=("the pre-existing refusal, kept: a terminus that "
+                          "vanishes with nothing recorded"),
+             neuter=_neuter_the_missing_node_vanishes_quietly,
+             neuters="the leg dropped without asking why"),
     ],
 ))

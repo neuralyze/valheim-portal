@@ -613,47 +613,86 @@ def _case_a_transformed_coordinate_is_named_not_passed():
         return []
 
 
-def _case_ulfsland_stays_green():
-    """THE FIXTURE WORLD MUST NOT BE REFUSED FOR CARRYING ITS OWN COORDINATES.
+def _case_declared_endpoints_are_attributed_and_derived_ones_are_named():
+    """A WORLD'S OWN COORDINATES MUST NOT BE REFUSED, AND MUST BE ATTRIBUTED.
 
-    Ulfsland's outputs legitimately hold Ulfsland's numbers, and a check that
-    cannot tell "this world's coordinate" from "another world's coordinate" is
-    not a measurement.  This is the ONE case that reads a real artefact -- and
-    it reads the REPO's `roads/segments.yaml` only for its segment TOPOLOGY, so
-    that `node_provenance` is built by the SHIPPING emitter over the SHIPPING
-    node table rather than by a hand-written copy that could drift away from
-    them.  If the file is absent the case says so instead of passing.
+    This was `ulfsland_stays_green`, the one case that read a real artefact
+    (the repo's `roads/segments.yaml`) and demanded `>= 20` attributed
+    endpoints -- a number that encodes the COMMITTED 39-leg plan.  On a
+    regenerated world (29 legs, 16 of 34 endpoints resolved) it was red for a
+    reason about a WORLD, and no tool had been wrong.  The purpose stays: the
+    SHIPPING emitter (`network.node_provenance`) over a node table, audited by
+    the SHIPPING audit -- "a check that cannot tell this world's coordinate
+    from another world's is not a measurement".  The topology is CONSTRUCTED:
+
+      fx-hub-a, fx-hub-b   declared placements (`PLACEMENT_OF`): verbatim
+                           claims, each present in the world's placements.yaml
+                           -> must be ATTRIBUTED, not merely un-refused
+      fx-approach          a settlement site's road APPROACH, 4 m from its
+                           site: derived, so it must be NAMED UNREACHABLE and
+                           not refused (equality is the wrong question there)
+
+    The counts asserted are the fixture's own (2 and 1), never a world's.
+    `spec`'s classification tables are extended for the call and restored.
     """
     import yaml                                             # noqa: PLC0415
-    _e, worldseed, netmod = _mods()
-    if not worldseed.is_default():
-        return []                  # not the fixture world; nothing to protect
-    # THE DEFAULT SEED'S PLAN, ASKED FOR BY THAT SEED: this case is about the
-    # fixture world, and a bare file name would mean it only by accident.
-    p = worldseed.segments_path(worldseed.DEFAULT_SEED)
-    if not p.exists():
+    emitscope, _w, netmod = _mods()
+    sp = netmod.specmod
+    nodes = {
+        "fx-hub-a": {"xz": (812.5, -344.5), "kind": "installation"},
+        "fx-hub-b": {"xz": (100.5, 200.5), "kind": "installation"},
+        "fx-approach": {"xz": (808.5, -340.5), "kind": "settlement"}}
+    segs = [{"from": "fx-hub-a", "to": "fx-approach"},
+            {"from": "fx-hub-b", "to": "fx-hub-a"}]
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        root = _fresh_root(tmp, with_placements=True)
+        (root / "worlds" / _F / "outpost" / "placements.yaml").write_text(
+            yaml.safe_dump({
+                "schema_version": 1, "world": _F, "seed": _F,
+                "owner": "BlueprintHunt",
+                "placements": [
+                    {"id": "fx-hub-a",
+                     "solved": {"x": 812.5, "z": -344.5, "y": 41.0}},
+                    {"id": "fx-hub-b",
+                     "solved": {"x": 100.5, "z": 200.5, "y": 38.0}}]},
+                sort_keys=False))
+        fld = _fresh_field(tmp, _F)
+        added = [(sp.PLACEMENT_OF, "fx-hub-a", ()),
+                 (sp.PLACEMENT_OF, "fx-hub-b", ()),
+                 (sp.SETTLEMENT_SITES, "fx-approach", {})]
+        # the settlement-site table the approach cites: the world's own is
+        # another seed's file here, so a Fresh42 one is constructed
+        sites = tmp / "fixture_site_table.yaml"
+        sites.write_text(yaml.safe_dump({"seed": _F, "world": _F,
+                                         "owner": "Settlements"},
+                                        sort_keys=False))
+        real_sites_path = netmod.worldseed.sites_path
+        netmod.worldseed.sites_path = lambda *a, **k: sites
+        for table, key, val in added:
+            table[key] = val
+        try:
+            doc = {"seed": _F, "world": _F,
+                   "height_source": {"field": str(fld)},
+                   "node_provenance": netmod.node_provenance(segs, nodes)}
+        finally:
+            netmod.worldseed.sites_path = real_sites_path
+            for table, key, _val in added:
+                table.pop(key, None)
+        rep = emitscope.audit(_FIXTURE_LABEL, doc, seed=_F, world=_F,
+                              coordinates="node_provenance", root=root)
+    if rep["violations"]:
         raise AssertionError(
-            f"{p} is absent, so this case proves nothing -- a "
-            "check that needs an artefact that is not there passes vacuously")
-    segs = yaml.safe_load(p.read_text())["segments"]
-    doc = {"seed": worldseed.DEFAULT_SEED, "world": worldseed.DEFAULT_WORLD,
-           "height_source": {"field": "/tmp/roads/h1m.bin"},
-           "node_provenance": netmod.node_provenance(segs)}
-    emitscope, _w, _n = _mods()
-    rep = emitscope.audit(p.name, doc,
-                          seed=worldseed.DEFAULT_SEED,
-                          world=worldseed.DEFAULT_WORLD,
-                          coordinates="node_provenance", root=JUMPSTART)
-    # The field citation is only checkable where the 230 MB scan is on this
-    # host; where it is not, drop that one row rather than redden the world.
-    viol = [v for v in rep["violations"] if "h1m.bin" not in v]
-    if viol:
-        raise AssertionError(f"Ulfsland must stay green: {viol[:3]}")
-    if rep["counts"]["coordinates_attributed"] < 20:
+            f"a world's own declared coordinates must stay green: "
+            f"{rep['violations'][:3]}")
+    got = (rep["counts"]["coordinates_attributed"],
+           rep["counts"]["coordinates_unreachable"])
+    if got != (2, 1):
         raise AssertionError(
-            f"Ulfsland must be ATTRIBUTED, not merely un-refused: only "
-            f"{rep['counts']['coordinates_attributed']} of "
-            f"{rep['counts']['coordinates']} endpoints resolved")
+            f"the two declared endpoints must be ATTRIBUTED and the derived "
+            f"approach NAMED UNREACHABLE, not merely un-refused: (attributed, "
+            f"unreachable) = {got}, required (2, 1) of "
+            f"{rep['counts']['coordinates']} endpoints")
     return []
 
 
@@ -1675,7 +1714,9 @@ register(Section(
              neuter=_neuter_equality_over_every_record,
              neuters="the byte-identity rule applied to every record rather "
                      "than to the declared-verbatim ones"),
-        Case("ulfsland_stays_green", False, _case_ulfsland_stays_green,
+        Case("declared_endpoints_are_attributed_and_derived_ones_are_named",
+             False,
+             _case_declared_endpoints_are_attributed_and_derived_ones_are_named,
              prior_state="The fixture world legitimately carries its own "
                          "coordinates; a check that cannot tell this world's "
                          "number from another world's is not a measurement.",

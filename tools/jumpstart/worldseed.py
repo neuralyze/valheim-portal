@@ -195,12 +195,108 @@ def apply(args=None) -> tuple[str, str]:
 def is_default(s: str | None = None, w: str | None = None) -> bool:
     """True when this run is the live Ulfsland build and nothing else.
 
-    Every stage that carries a MEASURED Ulfsland pin -- `spec.PINNED_SITES` is
-    the big one -- gates that pin on this, so a fresh seed gets the solver's
-    answer instead of a number measured off a different world's ground.
+    A stage that carries a number MEASURED off the default pair's ground gates
+    it on this (the `spec.seed_scoped` node tables), so a fresh
+    seed gets the solver's answer instead of a number measured off a different
+    world's ground.
     """
     return (s if s is not None else seed()) == DEFAULT_SEED and \
            (w if w is not None else world()) == DEFAULT_WORLD
+
+
+# ---------------------------------------------------------------------------
+# THE HUMAN-DECLARED SITES.  THE ONLY SITES A PERSON CHOOSES; EVERYTHING ELSE
+# IS THE SOLVER'S.
+#
+# This product is the logic that builds a world from a seed with the human out
+# of the loop, so a coordinate a person typed is an exception and has to read
+# as one: named, with the person's own words as the reason, scoped to the seed
+# whose map it was read off.  A site is HUMAN-DECLARED only when the owner
+# chose it by looking at the map.  A number that came out of the solver on a
+# previous run -- the 15 `spec.PINNED_SITES` records and the 16 coordinates of
+# `plan.ANCHORED_TOWNS` / `plan.ANCHORED_OUTLIERS`, all deleted -- is FROZEN
+# SOLVER OUTPUT: it kept an old world's roads from moving, it decided nothing,
+# and it meant a regeneration replayed a recording instead of applying the
+# rules.  For Pirate68 the owner declared two sites and no others:
+#
+#   ULFSGARD  the walled harbour CITY wrapping the natural harbour near
+#             (1050, 720)
+#   SUDRVIK   the harbour VILLAGE below it near (1190, 444), "a road
+#             connecting through the meadows"
+#
+# `xz` IS THE REQUEST, EXACTLY AS THE OWNER GAVE IT, and it is not a position
+# the build uses: MEASURED on Pirate68's own 1 m field, 3.19 m of sea stands
+# over (1050, 720) and 3.80 m over (1190, 444).  The owner picked a harbour off
+# the map and was right about the harbour; the module that owns the kind
+# (`settlements/harbour_site.py`, called by settlements/plan.py at stage 8)
+# measures the real inlet and the real landing, and THAT is the road network's
+# node.  A declared site is therefore a request with a refusal behind it:
+# nothing is moved silently, and a request the field cannot honour stops the
+# stage with the numbers.
+#
+# `node` is the road-network node id the site becomes; `road_to` lists the
+# declared sites the owner asked to be joined by road.  A declared site no road
+# reaches is joined to the nearest trunk node of its own landmass by
+# `roads/spec.py::declared_edges` -- by rule, never by a typed leg.
+#
+# SEED-SCOPED LIKE EVERY OTHER SEED-SCOPED ARTEFACT.  The table is keyed by the
+# seed whose map the request was read off; `human_sites()` answers {} for any
+# other seed, so a seed with no declaration is solved by the rules alone and is
+# byte-for-byte unaffected.  `roads/spec.py` and `settlements/plan.py` then
+# REFUSE a published `sites.yaml` that does not carry exactly this set
+# (`require_scope` is the same refusal, one layer up).
+# ---------------------------------------------------------------------------
+HUMAN_SITE_KINDS = ("harbour_city", "harbour_village")
+
+HUMAN_SITES: dict[str, dict[str, dict]] = {
+    DEFAULT_SEED: {
+        "harbour-city-ulfsgard": dict(
+            kind="harbour_city", xz=(1050, 720), node="ulfsgard", road_to=(),
+            why='the owner, looking at the map: "there is a great natural '
+                'harbor at 1050, 720. just put a city near there in the '
+                'meadows. it should be a large city which wraps around the '
+                'natural harbor. the harbour should have a wall with a gate '
+                'to keep raiding ships out."'),
+        "harbour-village-sudrvik": dict(
+            kind="harbour_village", xz=(1190, 444), node="sudrvik",
+            road_to=("harbour-city-ulfsgard",),
+            why='the owner, looking at the map: "another harbor at 1190, 444 '
+                'which is below the first one.. another village here and a '
+                'road connecting through the meadows."'),
+    },
+}
+
+
+def human_sites(seed_: str | None = None) -> dict[str, dict]:
+    """The sites a person declared for `seed_` (default: this run's), keyed by
+    site id in declaration order; `{}` for a seed nobody declared anything for.
+
+    VALIDATED, because a declaration is read by three stages and a typo in it
+    must refuse here once rather than surface as a missing node ten minutes
+    into a route: a known kind, an xz pair, a node id, a `why`, and a
+    `road_to` naming only sites this seed declares.
+    """
+    want = seed_ if seed_ is not None else seed()
+    table = HUMAN_SITES.get(want) or {}
+    for sid, rec in table.items():
+        if rec.get("kind") not in HUMAN_SITE_KINDS:
+            raise SystemExit(
+                f"REFUSING: HUMAN_SITES[{want!r}][{sid!r}] has kind "
+                f"{rec.get('kind')!r}; the kinds with a siting module are "
+                f"{list(HUMAN_SITE_KINDS)}.")
+        xz = rec.get("xz")
+        if not (isinstance(xz, (tuple, list)) and len(xz) == 2):
+            raise SystemExit(f"REFUSING: HUMAN_SITES[{want!r}][{sid!r}] has no "
+                             f"(x, z) request: {xz!r}")
+        if not rec.get("node") or not rec.get("why"):
+            raise SystemExit(f"REFUSING: HUMAN_SITES[{want!r}][{sid!r}] needs a "
+                             f"`node` id and the owner's words as `why`")
+        unknown = [t for t in rec.get("road_to", ()) if t not in table]
+        if unknown:
+            raise SystemExit(f"REFUSING: HUMAN_SITES[{want!r}][{sid!r}] asks "
+                             f"for a road to {unknown}, which this seed does "
+                             f"not declare")
+    return {sid: dict(rec) for sid, rec in table.items()}
 
 
 
@@ -861,7 +957,14 @@ UNRESOLVED = {
         "IS A TRANSCRIPTION: it was 11/5/11 forty minutes earlier in the same "
         "session and drifted the moment the section grew. Re-derive it with "
         "`accept/__main__.py --selftest --section townsites` rather than "
-        "citing this line; the authority is the run, not the prose.",
+        "citing this line; the authority is the run, not the prose. "
+        "SUPERSEDED 2026-10-07: `plan.ANCHORED_TOWNS`, `plan.ANCHORED_OUTLIERS` "
+        "and `spec.PINNED_SITES` -- the declarations this entry describes -- "
+        "were FROZEN SOLVER OUTPUT (the places the same search returned on an "
+        "earlier run) and are deleted. The only declared sites are "
+        "`worldseed.HUMAN_SITES` (Ulfsgard and Sudrvik, the owner's, measured "
+        "by settlements/harbour_site.py); every other site, the two towns "
+        "included, is the search's own answer.",
     "no_orchestrator":
         "RE-MEASURED 2026-09-21 and UNCHANGED as a fact, with sharper numbers: "
         "94 modules under tools/jumpstart carry their own "

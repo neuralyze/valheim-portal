@@ -261,6 +261,26 @@ def window_of_island(island: str) -> str:
     raise KeyError(f"no patch window plays island role {island!r}")
 
 
+def joined_islands(absent: dict | None = None) -> set[str]:
+    """The island roles a walk from the spawn island can reach over this seed's
+    CROSSINGS: the spawn island, and the second trunk island only when at
+    least one crossing of `CROSSING_PLAN` has BOTH banks on this seed.
+
+    The same fact `network.rooted_islands` reads off `spec.DECLARED_CROSSINGS`
+    once the node table exists; asked here from the geography document
+    alone, so the solver of the sites -- which runs BEFORE that table can be
+    built -- is not a second opinion about which island a road can start on.
+    `absent` defaults to this seed's `absent_nodes()`."""
+    absent = absent_nodes() if absent is None else absent
+    spawn = ISLAND_OF_WINDOW[worldseed.TRUNK_PRIMARY]
+    west = ISLAND_OF_WINDOW[worldseed.TRUNK_SECONDARY]
+    out = {spawn}
+    if any(c["near"] not in absent and c["far"] not in absent
+           for c in CROSSING_PLAN):
+        out.add(west)
+    return out
+
+
 def snap(v: float, pitch: float = NODE_SNAP_M) -> float:
     """The lattice coordinate a node sits on.  Halves go AWAY FROM ZERO, always.
 
@@ -377,71 +397,147 @@ EXTREMITY_REACH_DEPENDS_ON = ("the_routers_own_graph",
 _EXTREMITY_REACH_MODE = "traversable"   # traversable | land (the shipped)
 
 
+# THE SAME GRAPH ANSWERS THE SAME QUESTION OF A SITE (ROAD_REACH_DEPENDS_ON
+# in `settlements/road_reach.py`): a watchtower is "where a road can get to"
+# on exactly the terms an extremity is, and the two were not asked the same
+# thing -- MEASURED on Pirate68 with the 15 frozen site pins removed, the
+# solver put `wt-spawn` (1432, 1546) in a 186-cell pocket of this graph and
+# `wt-north`, `wt-east`, `lh-east`, `lh-west`, `tree-west`, `tree-near` on
+# a 62,618-cell island of it, against 269,270 cells in the spawn window's
+# largest strong component, and seven legs came back UNROUTABLE.  `RoadGraph`
+# is that graph with its numbers kept; `traversable_reach` is the extremity
+# derivation's reading of it, unchanged.
+class RoadGraph:
+    """The router's own graph over one window, labelled, with its numbers.
+
+    `cls` is the carriageway class the graph is the router's for: its grade
+    (the achievable surface the search walks) and its keep-out half-width
+    (`poi.masks`, exactly as `network.py plan` masks that class).  `forbid`
+    overrides the generator keep-out mask (a fixture has no dump); `loc`
+    names the dump to read it from, default this seed's own.
+    """
+
+    HALF_WIDTH_M = {"trunk": 3.0, "spur": 2.0, "mountain": 2.0}
+
+    def __init__(self, fld, forbid=None, cls: str = "trunk", loc=None):
+        import numpy as np
+        from scipy import ndimage, sparse
+        from scipy.sparse import csgraph
+        import route as routemod                        # noqa: PLC0415
+
+        self.cls = cls
+        self.corr = corr = routemod.Corridor(
+            fld, cell_m=4.0, grade_max=routemod.GRADE[cls],
+            bridge_entry_cost_m=300.0, bridge_per_m_cost=15.0)
+        if forbid is None:
+            poimod = _by_path("roads_poi", _HERE / "poi.py")
+            forbid, _soft, _t = poimod.masks(
+                poimod.load(loc), corr.x0, corr.z0, corr.cell_m, corr.m,
+                self.HALF_WIDTH_M[cls])
+        m = corr.m
+        self.ok = ok = ~forbid & ~corr.water_forbidden
+        idx = np.arange(m * m).reshape(m, m)
+        rows, cols = [], []
+        for di, dj in ((0, 1), (1, 0), (1, 1), (1, -1)):
+            a = (slice(0, m - di), slice(max(0, -dj), m - max(0, dj)))
+            b = (slice(di, m), slice(max(0, dj), m - max(0, -dj)))
+            d = corr.cell_m * (math.sqrt(2.0) if di and dj else 1.0)
+            g = np.abs(corr.S[b] - corr.S[a]) / d
+            both = ok[a] & ok[b]
+            # `_step_cost` grades a step onto LAND only: a step into water is a
+            # bridge and carries no grade test.  So the graph is DIRECTED, and a
+            # node a road can both reach and leave is a STRONG component's.
+            fwd = both & ((g <= routemod.GRADE_CEILING) | corr.water[b])
+            bwd = both & ((g <= routemod.GRADE_CEILING) | corr.water[a])
+            rows += [idx[a][fwd], idx[b][bwd]]
+            cols += [idx[b][fwd], idx[a][bwd]]
+        r, c = np.concatenate(rows), np.concatenate(cols)
+        _n, lab = csgraph.connected_components(
+            sparse.coo_matrix((np.ones_like(r), (r, c)), shape=(m * m, m * m)),
+            directed=True, connection="strong")
+        self.lab = lab.reshape(m, m)
+        self.sizes = (np.bincount(self.lab[ok], minlength=int(lab.max()) + 1)
+                      if ok.any() else np.zeros(1, dtype=int))
+        self.big = int(np.argmax(self.sizes))
+        # THE WINDOW'S TRUNK LANDMASS: its largest LAND component, 8-connected
+        # at the corridor's own cell (a cell is land when any sample of it is
+        # above the water plane) -- the definition `survey_patch` and
+        # `_sector_samples` already use for the extremities.  The graph above
+        # lets a road cross open water up to the span ceiling, which is how the
+        # two halves of the main continent are one; it is not a licence to
+        # bridge to every islet within 96 m of the coast.  A site on ANOTHER
+        # landmass is reached by a dock, a ferry or a portal, and `at` says
+        # which landmass a point stands on so the caller can say so.
+        land_lab, land_n = ndimage.label(~corr.water,
+                                         structure=np.ones((3, 3)))
+        self.land_lab = land_lab
+        self.land_sizes = np.bincount(land_lab.ravel(), minlength=land_n + 1)
+        self.land_sizes[0] = 0
+        self.land_big = int(np.argmax(self.land_sizes))
+        # THE ROUTER STANDS WHERE IT SNAPS.  `Corridor.nearest_allowed` moves a
+        # node off a wet or forbidden cell to the nearest allowed one within
+        # `SNAP_SEARCH_M`, so a node inside a keep-out whose snap lands on the
+        # big component routes (MEASURED: Fresh42 northcape snaps 10 m out of
+        # TrollCave02's keep-out and T6 routes).  What it can never stand on is
+        # a snap in a pocket, or no snap at all.
+        allowed = ~(corr.wet | forbid)
+        self.dist, (self.si, self.sj) = ndimage.distance_transform_edt(
+            ~allowed, return_indices=True)
+        self.snap_m = routemod.Corridor.nearest_allowed.__defaults__[0]
+
+    @property
+    def largest_cells(self) -> int:
+        return int(self.sizes[self.big])
+
+    @property
+    def trunk_land_cells(self) -> int:
+        return int(self.land_sizes[self.land_big])
+
+    def at(self, xs, zs) -> dict:
+        """Where each point stands in the graph, as arrays over the points:
+        `reached` (on an allowed cell of the largest strong component, within
+        the router's snap), `piece_cells` (the size of the component its snap
+        stands in; 0 when it has none), `snap_m` (the distance to that snap),
+        `inside` (the point is on the corridor grid at all), `land_cells`
+        (the size of the LAND component its snap stands on) and
+        `on_trunk_landmass` (that component is the window's largest)."""
+        import numpy as np
+        corr, m = self.corr, self.corr.m
+        xs, zs = np.asarray(xs, dtype=float), np.asarray(zs, dtype=float)
+        j = np.rint((xs - corr.x0) / corr.cell_m).astype(int)
+        i = np.rint((zs - corr.z0) / corr.cell_m).astype(int)
+        inside = (i >= 0) & (i < m) & (j >= 0) & (j < m)
+        reached = np.zeros(xs.shape, dtype=bool)
+        piece = np.zeros(xs.shape, dtype=int)
+        land = np.zeros(xs.shape, dtype=int)
+        on_land = np.zeros(xs.shape, dtype=bool)
+        snap = np.full(xs.shape, np.inf)
+        ii, jj = i[inside], j[inside]
+        pi, pj = self.si[ii, jj], self.sj[ii, jj]
+        near = self.dist[ii, jj] * corr.cell_m
+        snap[inside] = near
+        stands = (near <= self.snap_m) & self.ok[pi, pj]
+        reached[inside] = stands & (self.lab[pi, pj] == self.big)
+        piece[inside] = np.where(stands, self.sizes[self.lab[pi, pj]], 0)
+        ll = self.land_lab[pi, pj]
+        land[inside] = np.where(stands, self.land_sizes[ll], 0)
+        on_land[inside] = stands & (ll == self.land_big)
+        return {"reached": reached, "piece_cells": piece, "snap_m": snap,
+                "inside": inside, "land_cells": land,
+                "on_trunk_landmass": on_land}
+
+    def reach(self, xs, zs):
+        return self.at(xs, zs)["reached"]
+
+
 def traversable_reach(fld, forbid=None):
     """`(ok(xs, zs) -> bool array, stats)`: which samples of a window stand
     on an allowed cell of the LARGEST component of the trunk corridor's own
     graph (EXTREMITY_REACH_DEPENDS_ON).  `forbid` overrides the generator
     keep-out mask (a fixture has no dump)."""
-    import numpy as np
-    from scipy import sparse
-    from scipy.sparse import csgraph
-    import route as routemod                            # noqa: PLC0415
-
-    corr = routemod.Corridor(fld, cell_m=4.0,
-                             grade_max=routemod.GRADE["trunk"],
-                             bridge_entry_cost_m=300.0, bridge_per_m_cost=15.0)
-    if forbid is None:
-        poimod = _by_path("roads_poi", _HERE / "poi.py")
-        forbid, _soft, _t = poimod.masks(poimod.load(), corr.x0, corr.z0,
-                                         corr.cell_m, corr.m, 3.0)
-    m = corr.m
-    ok = ~forbid & ~corr.water_forbidden
-    idx = np.arange(m * m).reshape(m, m)
-    rows, cols = [], []
-    for di, dj in ((0, 1), (1, 0), (1, 1), (1, -1)):
-        a = (slice(0, m - di), slice(max(0, -dj), m - max(0, dj)))
-        b = (slice(di, m), slice(max(0, dj), m - max(0, -dj)))
-        d = corr.cell_m * (math.sqrt(2.0) if di and dj else 1.0)
-        g = np.abs(corr.S[b] - corr.S[a]) / d
-        both = ok[a] & ok[b]
-        # `_step_cost` grades a step onto LAND only: a step into water is a
-        # bridge and carries no grade test.  So the graph is DIRECTED, and a
-        # node a road can both reach and leave is a STRONG component's.
-        fwd = both & ((g <= routemod.GRADE_CEILING) | corr.water[b])
-        bwd = both & ((g <= routemod.GRADE_CEILING) | corr.water[a])
-        rows += [idx[a][fwd], idx[b][bwd]]
-        cols += [idx[b][fwd], idx[a][bwd]]
-    r, c = np.concatenate(rows), np.concatenate(cols)
-    _n, lab = csgraph.connected_components(
-        sparse.coo_matrix((np.ones_like(r), (r, c)), shape=(m * m, m * m)),
-        directed=True, connection="strong")
-    lab = lab.reshape(m, m)
-    sizes = np.bincount(lab[ok], minlength=1) if ok.any() else np.zeros(1)
-    big = int(np.argmax(sizes))
-    # THE ROUTER STANDS WHERE IT SNAPS.  `Corridor.nearest_allowed` moves a
-    # node off a wet or forbidden cell to the nearest allowed one within
-    # `SNAP_SEARCH_M`, so a node inside a keep-out whose snap lands on the
-    # big component routes (MEASURED: Fresh42 northcape snaps 10 m out of
-    # TrollCave02's keep-out and T6 routes).  What it can never stand on is
-    # a snap in a pocket, or no snap at all.
-    from scipy import ndimage
-    allowed = ~(corr.wet | forbid)
-    dist, (si, sj) = ndimage.distance_transform_edt(~allowed,
-                                                    return_indices=True)
-    snap_m = routemod.Corridor.nearest_allowed.__defaults__[0]
-
-    def reach(xs, zs):
-        xs, zs = np.asarray(xs, dtype=float), np.asarray(zs, dtype=float)
-        j = np.rint((xs - corr.x0) / corr.cell_m).astype(int)
-        i = np.rint((zs - corr.z0) / corr.cell_m).astype(int)
-        inside = (i >= 0) & (i < m) & (j >= 0) & (j < m)
-        out = np.zeros(xs.shape, dtype=bool)
-        ii, jj = i[inside], j[inside]
-        pi, pj = si[ii, jj], sj[ii, jj]
-        out[inside] = ((dist[ii, jj] * corr.cell_m <= snap_m)
-                       & ok[pi, pj] & (lab[pi, pj] == big))
-        return out
-    return reach, {"largest_cells": int(sizes[big]), "cell_m": corr.cell_m}
+    graph = RoadGraph(fld, forbid, "trunk")
+    return graph.reach, {"largest_cells": graph.largest_cells,
+                         "cell_m": graph.corr.cell_m}
 
 
 def _sector_samples(fld, inland_m: float):

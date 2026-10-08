@@ -3625,7 +3625,8 @@ def cmd_ubuild(args) -> int:
             f"world is the hazard this check exists for; re-read the chain, "
             f"settle who holds the token, and re-run.")
 
-    with LiveBuilder(actor=ACTOR, dry=args.dry) as b:
+    with LiveBuilder(actor=getattr(args, "actor", None) or ACTOR,
+                     dry=args.dry) as b:
         srv = b.srv
         # PROTOCOL GUARD 2: `players` before each write phase, RECORDED. The
         # operator being logged in is then a measurement rather than an
@@ -4307,6 +4308,10 @@ def main(argv: list[str] | None = None) -> int:
     ub.add_argument("--stages", nargs="*", choices=U_STAGE_ORDER)
     ub.add_argument("--dry", action="store_true")
     ub.add_argument("--report", default="/tmp/hc/ubuild_report.json")
+    ub.add_argument("--actor", default=None,
+                    help="who this run's records are stamped as; the build "
+                         "stage passes the pipeline's actor, standalone use "
+                         "keeps the module's own")
     ub.add_argument("--from-batch", type=int, default=1,
                     help="resume the FIRST named stage at this batch, because "
                          "its earlier batches already stand. Re-sending a "

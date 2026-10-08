@@ -49,6 +49,7 @@ COORDINATE PROVENANCE, per node kind:
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -63,6 +64,7 @@ if str(_HERE) not in sys.path:
 if str(_HERE.parent) not in sys.path:
     sys.path.append(str(_HERE.parent))
 
+import declared_sites as DS  # noqa: E402  the owner's declared sites, as nodes
 import geography  # noqa: E402
 import worldseed  # noqa: E402
 
@@ -82,27 +84,27 @@ NODES: dict[str, dict] = {
     # is read out of this seed's own location dump below, like the extremities
     # and the abutments.
     "portalhub": {
-        "island": "spawn", "patch": "mainland", "xz": (-292.5, 213.5),
-        "kind": "installation", "provenance": "MEASURED, placements.yaml 8d0eab4",
+        "island": "spawn", "patch": "mainland",
+        "kind": "installation",
         "why": "sandbox-portal-hub, the portal hall: the hub every portal arrival "
                "lands at.",
     },
     "meadhall": {
-        "island": "spawn", "patch": "mainland", "xz": (303.5, 385.5),
-        "kind": "installation", "provenance": "MEASURED, placements.yaml 8d0eab4",
+        "island": "spawn", "patch": "mainland",
+        "kind": "installation",
         "why": "meadows-starter-hall",
     },
     "dockshore": {
-        "island": "spawn", "patch": "mainland", "xz": (675.4, -85.6),
-        "kind": "shoreline", "provenance": "MEASURED, placements.yaml 8d0eab4",
+        "island": "spawn", "patch": "mainland",
+        "kind": "shoreline",
         "why": "early-dock / sandbox-harbour solved to water_dist_m 0.0. The ROAD "
                "stops on the shoreline; the pier is Crossings' over-water "
                "structure and MUST NOT be flattened under -- levelling the water "
                "out from under a pier is the defect the operator condemned.",
     },
     "stathub": {
-        "island": "spawn", "patch": "mainland", "xz": (661.5, 1088.5),
-        "kind": "installation", "provenance": "MEASURED, placements.yaml 8d0eab4",
+        "island": "spawn", "patch": "mainland",
+        "kind": "installation",
         "why": "complete-station-hub",
     },
     # ---- the 11 extremity and 4 abutment nodes ARE NOT HERE ----
@@ -110,14 +112,13 @@ NODES: dict[str, dict] = {
     # below from `geography.load()`.  See the note above `NODES.update`.
     # ---- outlying islands: portal-reached, local roads only ----
     "blacbase": {"island": "blackforest", "patch": "blackforest6",
-                 "xz": (-3045.5, -4101.5), "kind": "installation",
-                 "provenance": "MEASURED, placements.yaml 8d0eab4"},
-    "plainsfm": {"island": "plains", "patch": "plains23", "xz": (750.5, -4278.5),
-                 "kind": "installation", "provenance": "MEASURED, placements.yaml 8d0eab4"},
-    "workshop": {"island": "workshop", "patch": "workshop3054", "xz": (-4673.5, -310.5),
-                 "kind": "installation", "provenance": "MEASURED, placements.yaml 8d0eab4"},
-    "mtnpost": {"island": "mountain", "patch": "mtn7114", "xz": (-7.5, 3939.5),
-                "kind": "installation", "provenance": "MEASURED, placements.yaml 8d0eab4"},
+                 "kind": "installation"},
+    "plainsfm": {"island": "plains", "patch": "plains23",
+                 "kind": "installation"},
+    "workshop": {"island": "workshop", "patch": "workshop3054",
+                 "kind": "installation"},
+    "mtnpost": {"island": "mountain", "patch": "mtn7114",
+                "kind": "installation"},
 }
 
 # ---------------------------------------------------------------------------
@@ -139,10 +140,12 @@ NODES: dict[str, dict] = {
 # numbers were transcribed out of it at commit 8d0eab4 and frozen.  Same shape
 # as `forbidden_footprints()` -- measured, wired to one consumer, not the other.
 #
-# SO THE COORDINATE IS READ FOR THE SEED BEING PLANNED, exactly as
-# `plan.ANCHORED_TOWNS` and `plan.ANCHORED_OUTLIERS` do one directory over, and
-# `ANCHORED_INSTALLATIONS` is DERIVED FROM THE RECORDS ABOVE rather than
-# retyped: a restated population is the next thing to drift from the first.
+# SO THE COORDINATE IS READ FOR THE SEED BEING PLANNED, and NOTHING IS KEPT AS
+# A FALLBACK.  There used to be an `ANCHORED_INSTALLATIONS` table -- the 8
+# coordinates the default seed's placement set had solved, copied out of it --
+# answered when a world had no placement set.  Stage 7 solves these for every
+# seed, the default pair included, so the copy only ever answered a question
+# stage 7 had not been asked yet; it was frozen solver output, and it is gone.
 #
 # `dockshore` IS `shoreline`, NOT `installation`, AND IS IN THE TABLE ANYWAY.
 # Its whole point is `water_dist_m` 0.0 -- a road terminus ON the shore with
@@ -172,13 +175,9 @@ PLACEMENT_OF: dict[str, tuple[str, ...]] = {
     "mtnpost": ("mountain-outpost",),
 }
 
-# THE AUTHORED FALLBACK, one entry per seed that has one, taken from the records
-# above so the two can never disagree.  A seed with no declaration and no
-# placement set is REFUSED -- it has not sited its portal hall yet, and that is
-# a missing prerequisite, not a crossing the planet cannot have.
-ANCHORED_INSTALLATIONS: dict[str, dict[str, tuple[float, float]]] = {
-    worldseed.DEFAULT_SEED: {_n: NODES[_n]["xz"] for _n in PLACEMENT_OF},
-}
+# A seed whose world has no placement set is REFUSED -- it has not sited its
+# portal hall yet, and that is a missing prerequisite (stage 7), not a crossing
+# the planet cannot have.
 
 
 def installation_xz(seed: str | None = None,
@@ -187,10 +186,9 @@ def installation_xz(seed: str | None = None,
 
     Read from `worlds/<world>/*/placements.yaml` FOR THE SEED BEING PLANNED,
     through `worldseed.require_scope`, so a placement set solved on another seed
-    is refused rather than transcribed.  Falls back to `ANCHORED_INSTALLATIONS`
-    only when this world has NO placement set at all, and refuses when it has
-    neither -- because a road planned to a portal hall nobody has sited is the
-    59% defect wearing a different header.
+    is refused rather than transcribed, and refuses when this world has NO
+    placement set at all -- because a road planned to a portal hall nobody has
+    sited is the 59% defect wearing a different header.
     """
     import yaml                                             # noqa: PLC0415
     want_s = seed or worldseed.seed()
@@ -234,8 +232,6 @@ def installation_xz(seed: str | None = None,
                 f"module refuses everywhere else. Solve them with "
                 f"blueprints/solve_placements.py for this world.")
         return {nid: (x, z) for nid, (x, z, _p) in found.items()}
-    if want_s in ANCHORED_INSTALLATIONS:
-        return dict(ANCHORED_INSTALLATIONS[want_s])
     raise SystemExit(
         f"REFUSING: seed {want_s!r} has no sited installations. The 8 "
         f"installation and shoreline nodes are WHERE THIS PROJECT PUT ITS "
@@ -246,17 +242,13 @@ def installation_xz(seed: str | None = None,
         f"how a Fresh42 plan came to run 830.3 m from Ulfsland's portal hall "
         f"to Fresh42's own temple in one segment. Produce them with:\n"
         f"  blueprints/solve_placements.py for world {want_w!r} on seed "
-        f"{want_s!r}\n"
-        f"or declare them for this seed in spec.ANCHORED_INSTALLATIONS.")
+        f"{want_s!r}")
 
 
 for _nid, _xz in installation_xz().items():
     NODES[_nid]["xz"] = _xz
     NODES[_nid]["provenance"] = (
-        "MEASURED, worlds/<world>/*/placements.yaml solved centre for this seed"
-        if worldseed.seed() not in ANCHORED_INSTALLATIONS
-        or (_HERE.parent / "worlds" / str(worldseed.world())).is_dir()
-        else "DECLARED, spec.ANCHORED_INSTALLATIONS for this seed")
+        "MEASURED, worlds/<world>/*/placements.yaml solved centre for this seed")
 
 # ---------------------------------------------------------------------------
 # THE 15 GEOGRAPHY NODES.  DERIVED PER SEED, NOT FROZEN HERE.
@@ -353,21 +345,25 @@ EDGES: list[dict] = [
 # the solver could already answer this question for any seed; nothing read it.
 # A fresh seed got Ulfsland's coordinates.
 #
-# Now: the SOLVER is the source, and the numbers this project has MEASURED
-# against standing ground are a PIN LAYER on top of it -- visible, per field,
-# each with its reason, and applied only to the world they were measured in.
+# Now: the SOLVER is the source, and NOTHING is layered over it.  A person
+# declares a site only through `worldseed.HUMAN_SITES` -- for Pirate68 the two
+# harbours, Ulfsgard and Sudrvik -- and that enters below as its own nodes with
+# its own legs.  Every other site is `sites.yaml`'s, to the coordinate and to
+# the datum.
 #
-# THE PIN LAYER IS NOT A CONVENIENCE.  Several of these datums were measured
-# off objects that are STANDING, and a solver figure is not better just because
-# it is newer.  The worked case is `vestvik`: `sites.yaml` publishes
-# `pad_y: 33.99`, which is the DISTRICT figure, and no ground in the village is
-# at it -- the u-vestvik portal_wood sits at 35.29 on vestvik-hall-1's levelled
-# pad (terrain_write seq 425), re-verified live 2026-09-19 against the
-# save-derived applied ground, which reads 35.2900 against a generated 36.6006.
-# 33.99 is 1.30 m LOW.  See `R3R4_NODES["r3-vestvik"]`, which already routes to
-# 35.29 and would silently disagree with this table if the solver figure were
-# taken.  A measured datum must never be replaced by a solved one without the
-# replacement being visible; that is what `pad_y_measured` below is for.
+# THERE USED TO BE A PIN LAYER, AND IT WAS A RECORDING.  15 `PINNED_SITES`
+# records (stenvik, vestvik, hognest, wtspawn, wtsouth, wttown, wtpeak,
+# wtnorth, wteast, lhsouth, lheast, lhwest, treesth, treewest, treenear) held
+# "the PROVISIONAL publication the live Ulfsland network was routed against":
+# FROZEN SOLVER OUTPUT, kept so the roads already in the ground would not
+# move.  No person decided one of those numbers.  They overrode the solver on
+# the default pair with an earlier run's answer -- coordinates, pad radii,
+# datums, one road priority -- so a regeneration replayed a recording instead
+# of applying the rules to the seed, and the tool could never be seen to
+# solve what it was being handed.  Deleted, with `plan.ANCHORED_TOWNS` and
+# `plan.ANCHORED_OUTLIERS`, which pinned the same sites one stage earlier.
+# What a measured datum off standing ground means for a world that is being
+# regenerated from nothing is nothing: there is no ground standing.
 #
 # `pad_radius_m` is Settlements' keep-out: my ribbon terminates at the pad edge
 # and does not pave inside it, because inside it is its earthwork and a road
@@ -403,16 +399,18 @@ EDGES: list[dict] = [
 # site set, the installations, the geography -- so a file NAME asked of it
 # required the file to exist; the site set's own producer refused on it
 # (worldseed.py, SLOTS_DEPENDS_ON).  Nor is a default-seed `SITES_YAML`
-# constant: it named Pirate68's file in this module's pin refusal and in the
+# constant: it named Pirate68's file in this module's refusal and in the
 # `source` every adoption reports, on every seed.
 
 
-# THE PINS ARE SCOPED TO THE WORLD THEY WERE MEASURED IN.  On any other
-# seed/world they are not applied at all and the solver's answer stands, which
-# is the whole point: a number measured off Ulfsland's ground is meaningless on
-# a fresh seed and carrying it over is how a fresh build gets Ulfsland's
-# coordinates.
-PIN_SCOPE = {"world": worldseed.DEFAULT_WORLD, "seed": worldseed.DEFAULT_SEED}
+# A SITE IS A NODE OF THIS NETWORK WHEN A ROAD REACHES IT, and the solver says
+# so in `sites.yaml` (`road`, settlements/road_reach.py): the declared road
+# class (`road_priority`) read against the router's own graph.  There used to
+# be a table here, `NOT_ADOPTED`, naming `sudrberg-keep` and the landmass of
+# the default pair's map it stood on -- a fact about one seed's accident,
+# attached to a NAME, and the name is whatever the solver ranked.  A site no
+# road reaches (or declared `none`) is PORTAL-ONLY: it is not a node, no leg
+# names it, and `PORTAL_ONLY` / `NO_ROAD` carry why, with the numbers.
 
 # `sites.yaml` ids are the SOLVER's; this module's node ids are the road
 # network's.  The rule is "drop the hyphens", with exactly one exception, and
@@ -431,20 +429,20 @@ _island_of = geography.island_of_window
 
 
 def load_solved_sites(path: Path | None = None) -> dict[str, dict]:
-    """`settlements/sites.yaml` as this module's site records, UNPINNED.
+    """`settlements/sites.yaml` as this module's site records, as solved.
 
     No fallback.  A missing solver file used to be survivable because a frozen
     copy sat here; that copy is what went stale.  Refusing loudly is the only
     honest behaviour left.
 
     AND A PRESENT FILE IS NOT AUTOMATICALLY THIS SEED'S FILE.  MEASURED
-    2026-09-21: with `PIN_SCOPE` correctly declining to apply a single pin on
+    2026-09-21: with a pin layer correctly declining to apply a single pin on
     seed `Fresh42`, this function still handed that run all 16 of Ulfsland's
     solved sites at Ulfsland's coordinates -- `stenvik` at (496.0, 904.0),
     `vestvik` at (-906.0, 1846.0) -- out of a file whose first three lines read
-    `world: Ulfsland`, `seed: Pirate68`, `seed_hash: 147627509`.  The pin layer
-    above was the guard on the roof; this is the floor it was standing on.  A
-    scoped pin over an unscoped base is not scoped.
+    `world: Ulfsland`, `seed: Pirate68`, `seed_hash: 147627509`.  A scoped
+    layer over an unscoped base is not scoped; the layer is gone and this
+    refusal is the whole guard.
     """
     path = Path(path) if path is not None else worldseed.sites_path()
     if not path.exists():
@@ -477,162 +475,48 @@ def load_solved_sites(path: Path | None = None) -> dict[str, dict]:
             "tag": s["portal_tag"],
             "pad_y": s.get("pad_y"),
             "solver_id": s["id"],
+            # THE ROAD VERDICT, or None for a publication that predates it:
+            # nothing is then known, and nothing is withheld on its account.
+            "road": s.get("road"),
         }
     return out
 
 
-# ---------------------------------------------------------------------------
-# THE PIN LAYER.  One entry per site this network holds a number against the
-# solver for, listing ONLY the fields that differ and WHY each one differs.
-# Anything not listed comes from `sites.yaml`.
-#
-# HOW THESE 15 CAME TO EXIST, stated once rather than per row: they are the
-# PROVISIONAL publication the live Ulfsland network was routed, profiled,
-# stamped and ledgered against.  `roads/segments.yaml` -- 1.1 MB, 37 segments,
-# in the ground -- is fitted to THESE coordinates.  `sites.yaml` has since been
-# re-solved with a wider pad-radius convention (a watchtower's keep-out went
-# 12.0 -> 16.1) and with re-measured districts; adopting those silently would
-# move the plan off the road.  So they are pinned, and the pin says so.
-# ---------------------------------------------------------------------------
-PINNED_SITES: dict[str, dict] = {
-    "stenvik": {},
-    "vestvik": {
-        "pad_y_measured": 35.29,
-        "pad_y_why":
-            "sites.yaml's 33.99 is the DISTRICT figure and is 1.30 m LOW: the "
-            "u-vestvik portal_wood stands at (-915.0, 35.29, 1883.4) on "
-            "vestvik-hall-1's levelled pad (terrain_write seq 425, target_y "
-            "35.29), re-verified live 2026-09-19 -- save-derived applied ground "
-            "35.2900 against a generated 36.6006, i.e. the pad's own -1.3106 m "
-            "cut is on the world. R3 already arrives on 35.29 "
-            "(R3R4_NODES['r3-vestvik']); taking 33.99 here would put this "
-            "table 1.30 m below the road that reaches it.",
-        # The number the BUILT network was routed against, kept so the plan
-        # does not move under the road. See `pad_y_measured` for the truth.
-        "pad_y": 33.99,
-        "pad_y_as_built_why":
-            "what segments.yaml was fitted to; W8/W12 are in the ground at it. "
-            "Changing it here re-plans a written road, which is a separate "
-            "decision from recording the correct datum.",
-    },
-    "hognest":  {"pad_radius_m": 32.0,
-                 "why": "routed against the 32.0 m keep-out; sites.yaml's 33.1 "
-                        "is the re-solved convention"},
-    "wtspawn":  {"xz": (110.0, -104.0), "pad_radius_m": 12.0, "pad_y": 76.03},
-    "wtsouth":  {"xz": (538.0, 40.0),   "pad_radius_m": 12.0, "pad_y": 82.99},
-    "wttown":   {"xz": (820.0, 738.0),  "pad_radius_m": 12.0, "pad_y": 39.86},
-    "wtpeak":   {"xz": (1418.0, 1530.0), "pad_radius_m": 12.0, "pad_y": 103.64},
-    "wtnorth":  {"xz": (152.0, 1194.0), "pad_radius_m": 12.0, "pad_y": 32.80},
-    "wteast":   {"pad_radius_m": 12.0,  "pad_y": 55.44},
-    "lhsouth":  {"xz": (-102.0, -916.0), "pad_radius_m": 12.0, "pad_y": 32.52},
-    "lheast":   {"xz": (2354.0, 156.0), "pad_radius_m": 12.0, "pad_y": 31.48,
-                 "priority": "none",
-                 "note": "x=2354 is OUTSIDE the mainland patch (x <= 2398 but the "
-                         "island's own bbox ends at 1920), so it is on a separate "
-                         "landmass and gets no road. Portal only.",
-                 "why": "sites.yaml says road_priority spur; MEASURED here it is "
-                        "on its own landmass, so the priority is overridden to "
-                        "none rather than left to produce an unroutable edge"},
-    "lhwest":   {"xz": (-1350.0, 2358.0), "pad_radius_m": 12.0, "pad_y": 33.01},
-    "treesth":  {"xz": (546.0, 482.0),  "pad_radius_m": 10.0, "pad_y": 75.46},
-    "treewest": {"xz": (-530.0, 850.0), "pad_radius_m": 10.0, "pad_y": 41.39,
-                 "note": "x=-530 is WEST of the spawn island's bbox (x >= -326), so "
-                         "this sits on West Isle, not the spawn island. Routed from "
-                         "the west-isle network, and Settlements told."},
-    "treenear": {"xz": (-614.0, -236.0), "pad_radius_m": 10.0, "pad_y": 35.20},
-}
-
-# Solver sites this network does NOT adopt, and why.  Listed rather than
-# filtered by a predicate, because "the predicate happened to exclude it" is
-# not an answer to "why is there no road to the keep".
-NOT_ADOPTED: dict[str, str] = {
-    "sudrberg-keep":
-        "sites.yaml adds it on window south33, a landmass with no road network "
-        "and no edge in EDGES. It was not in the publication the built network "
-        "was routed against, so adopting it now would add a node that "
-        "roads/segments.yaml has never seen. Portal only until an edge exists. "
-        "NOT pinned geometry -- a fresh seed adopts it, because a fresh seed "
-        "has no built network to disagree with.",
-}
-
-# Which fields a pin is allowed to carry as VALUES (everything else in a pin
-# entry is prose: `why`, `pad_y_why`, `pad_y_as_built_why`, `note`).
-_PIN_VALUE_FIELDS = ("xz", "pad_radius_m", "pad_y", "priority", "type",
-                     "tag", "patch", "island")
-
-
-def adopt_sites(solved: dict[str, dict] | None = None,
-                pins: dict[str, dict] | None = None,
-                *, seed: str | None = None, world: str | None = None,
+def adopt_sites(solved: dict[str, dict] | None = None
                 ) -> tuple[dict[str, dict], dict]:
-    """Solver sites + the pin layer, and a RECORD of every override applied.
+    """The solver's sites a road reaches, and a RECORD of the ones none does.
 
-    The record is the visible half.  A silent merge would be the same defect
-    as the frozen table: a consumer reading `pad_y` cannot tell whether it is
-    the solver's or a pin's, and for vestvik those are 1.30 m apart.
+    A site is the solver's, to the coordinate and to the datum, and it is a
+    NODE of this network when its published `road` verdict says `roaded`.  One
+    that is not -- declared `none`, in a window no crossing roots, or standing
+    where the router's own graph has no way in (settlements/road_reach.py) --
+    is PORTAL-ONLY: returned in `provenance["portal_only"]` with the verdict's
+    reason and numbers, and not a node, so no edge can name it and none
+    routes to nothing.  A publication that predates the verdict (`road` is
+    None) withholds nothing: every site in it is adopted, as before.
     """
     solved = load_solved_sites() if solved is None else solved
-    pins = PINNED_SITES if pins is None else pins
-    in_scope = worldseed.is_default(seed, world)
-
     sites: dict[str, dict] = {}
-    applied: dict[str, dict] = {}
-    datum_conflicts: list[dict] = []
+    portal_only: dict[str, dict] = {}
     for sid, s in solved.items():
-        if s["solver_id"] in NOT_ADOPTED and in_scope:
+        road = s.get("road")
+        if road is not None and not road["roaded"]:
+            portal_only[sid] = {
+                "solver_id": s["solver_id"], "xz": list(s["xz"]),
+                "window": s["patch"], "class": road["class"],
+                "reason": road["reason"], "why": road["why"],
+                "evidence": road.get("evidence") or {}}
             continue
-        rec = {k: v for k, v in s.items() if k != "solver_id"}
-        pin = pins.get(sid) if in_scope else None
-        if pin is not None:
-            deltas = {}
-            for f in _PIN_VALUE_FIELDS:
-                if f in pin and pin[f] != rec.get(f):
-                    deltas[f] = {"solved": rec.get(f), "pinned": pin[f]}
-                    rec[f] = pin[f]
-            if "note" in pin:
-                rec["note"] = pin["note"]
-            if "pad_y_measured" in pin:
-                # NOT applied to `pad_y`: it would move a road that is in the
-                # ground. Carried beside it so no reader can mistake the
-                # as-built datum for the measured one.
-                rec["pad_y_measured"] = pin["pad_y_measured"]
-                datum_conflicts.append({
-                    "site": sid,
-                    "solved_pad_y": solved[sid]["pad_y"],
-                    "as_built_pad_y": rec["pad_y"],
-                    "measured_pad_y": pin["pad_y_measured"],
-                    "measured_minus_solved_m":
-                        round(pin["pad_y_measured"] - solved[sid]["pad_y"], 2),
-                    "why": pin["pad_y_why"],
-                })
-            if deltas:
-                applied[sid] = deltas
-        sites[sid] = rec
-    unknown = sorted(set(pins) - set(sites))
-    if unknown and in_scope:
-        # A pin naming a site the solver no longer emits is a pin nobody will
-        # ever see fire. It has to be an error: this is the failure mode that
-        # lets a "fixed" datum quietly stop applying.
-        raise SystemExit(
-            f"PINNED_SITES names {unknown}, which {worldseed.sites_path()} "
-            f"does not contain. A pin that cannot fire is a correction that has "
-            f"silently stopped being applied.")
+        sites[sid] = {k: v for k, v in s.items() if k != "solver_id"}
     provenance = {
         "source": str(worldseed.sites_path()),
-        "pin_scope": PIN_SCOPE,
-        "pins_in_scope": in_scope,
-        "pins_applied": applied,
-        "not_adopted": NOT_ADOPTED if in_scope else {},
-        "datum_conflicts": datum_conflicts,
-        "why_not_in_scope": None if in_scope else
-            f"seed/world is not {PIN_SCOPE}; every pin is a number MEASURED "
-            f"on Ulfsland's ground and does not describe this world. The "
-            f"solver's answer stands unmodified.",
+        "portal_only": portal_only,
     }
     return sites, provenance
 
 
 SETTLEMENT_SITES, SITE_PROVENANCE = adopt_sites()
+PORTAL_ONLY: dict[str, dict] = SITE_PROVENANCE["portal_only"]
 
 for _sid, _s in SETTLEMENT_SITES.items():
     NODES[_sid] = {
@@ -671,10 +555,14 @@ SETTLEMENT_EDGES: list[dict] = [
     # steeper than the 25 % ceiling everywhere or inside a protected keep-out.
     # `northeast` (1822, 1586) is 415 m away on the same component and routes.
     {"id": "S9-northeast-wtpeak", "a": "northeast", "b": "wtpeak", "cls": "spur", "pri": 2},
-    # S10 IS DELIBERATELY ABSENT.  MEASURED: watchtower `wteast` (1858, 146)
-    # sits on land component 224, 0.3955 km2 -- a SEPARATE ISLAND from the spawn
-    # island's component 5.  Routed anyway it produced a 562 m bridge.  It is
-    # portal-only and Settlements has been told.
+    # THERE IS NO TYPED LEG FOR THE EAST WATCHTOWER (`S10`, `wteast`), THE
+    # EAST LIGHTHOUSE OR ANY SITE A LEG WAS NEVER TYPED FOR.  A name here is
+    # whatever the solver bound it to, and `wteast` was once a watchtower on
+    # a separate island "portal-only, a 562 m bridge" -- a fact about one
+    # accident, kept by name.  Whether a road reaches a site is MEASURED
+    # (settlements/road_reach.py) and a roaded site no leg connects to the
+    # network gets one DERIVED (`declared_sites.site_legs`, `J<n>`); one no
+    # road reaches is in `PORTAL_ONLY`, and `NO_ROAD` says why with numbers.
     {"id": "S11-southcape-lhsouth", "a": "southcape", "b": "lhsouth", "cls": "spur", "pri": 2},
     {"id": "W8-brgs2-vestvik",    "a": "brg-s2-w", "b": "vestvik",  "cls": "trunk", "pri": 3},
     {"id": "W9-vestvik-lhwest",   "a": "vestvik",  "b": "lhwest",   "cls": "spur", "pri": 3},
@@ -682,6 +570,35 @@ SETTLEMENT_EDGES: list[dict] = [
     {"id": "W11-wmid-treewest",   "a": "w-mid",    "b": "treewest", "cls": "spur", "pri": 3},
 ]
 EDGES.extend(SETTLEMENT_EDGES)
+
+# THE HUMAN-DECLARED SITES, AS NODES.  Their legs are derived below, after the
+# fixed terminal legs, so the leg numbering cannot collide with a typed id.
+#
+# A PUBLICATION THAT PREDATES THE DECLARATION IS NOT A CRASH AT IMPORT -- every
+# tool that wants a helper from this module would die with it -- and it is not
+# an absent node either: `DECLARED_STALE` carries the refusal, and
+# `roads/network.py plan` (the one consumer that would route without the
+# node) stops on it before it routes anything.
+try:
+    DECLARED_SITES = DS.load(None, None, _island_of)
+    DECLARED_STALE = ""
+except SystemExit as _exc:
+    DECLARED_SITES, DECLARED_STALE = {}, str(_exc)
+for _nid, _d in DECLARED_SITES.items():
+    if _nid in NODES:
+        raise SystemExit(
+            f"REFUSING: declared site {_d['site_id']!r} wants node id "
+            f"{_nid!r}, which this network already has; rename its `node` in "
+            f"worldseed.HUMAN_SITES.")
+    NODES[_nid] = {
+        "island": _d["island"], "patch": _d["patch"], "xz": _d["xz"],
+        "raw_xz": _d["requested_xz"], "kind": _d["type"],
+        "pad_radius_m": _d["pad_radius_m"], "portal_tag": None,
+        "provenance": ("DECLARED by worldseed.HUMAN_SITES (the owner's "
+                       "request, raw_xz) and MEASURED by "
+                       "settlements/harbour_site.py at stage 8 (the landing)"),
+        "why": _d["why"],
+    }
 
 # Outlying islands: portal-reached, so a LOCAL road only.  Each installation is
 # joined to the two farthest inland points of its own landmass, which gives the
@@ -747,7 +664,7 @@ CROSSING_TERMINALS: dict[str, dict] = {
 # worlds defect `installation_xz` closed for the installations, one table
 # further down.
 #
-# THE RULE IS `PINNED_SITES`'s: a measured node applies on the seed it was
+# THE RULE IS EVERY SEED-SCOPED TABLE'S: a measured node applies on the seed it was
 # measured on and on no other.  WITHHELD, NOT DROPPED: every leg naming one
 # leaves `EDGES` for `FOREIGN_EDGES` carrying the node, the seed it was
 # measured on and its OWNER, and `network.py plan` refuses it with the number
@@ -800,16 +717,8 @@ FOREIGN_NODES.update(_WITHHELD)
 # with `portals_casual` is the only way a ferry gets used at all.  Recorded here
 # because "why is there no road to the far ferry terminal" must have an answer.
 NO_ROAD: dict[str, str] = {
-    "wteast": "watchtower on land component 224 (0.3955 km2), a separate island "
-              "from the spawn island; portal only -- MEASURED, and routed anyway "
-              "it needs a 562 m bridge",
-    "dockshore_direct_to_wtsouth": "the dock's solved centre is over water, 7.0 m "
-                                   "from a 0.031 km2 islet; a direct road to the "
-                                   "south watchtower needs 168 m of open water",
     "ferry-terminal-eastisle": "on land component 273 (0.396 km2), a separate "
                                "island from the spawn island; portal only",
-    "lheast": "x=2354 is beyond the spawn island's own bbox (x <= 1920); separate "
-              "landmass, portal only",
 }
 
 # ---------------------------------------------------------------------------
@@ -960,6 +869,14 @@ TERMINAL_EDGES: list[dict] = [
 ]
 EDGES.extend(TERMINAL_EDGES)
 
+# THE DECLARED SITES' LEGS, derived (`declared_sites.legs`) and appended last.
+DECLARED_EDGES: list[dict] = DS.legs(DECLARED_SITES, NODES, EDGES)
+EDGES.extend(DECLARED_EDGES)
+_dup = sorted({e["id"] for e in EDGES if sum(1 for q in EDGES
+                                             if q["id"] == e["id"]) > 1})
+if _dup:
+    raise SystemExit(f"REFUSING: duplicate edge id(s) {_dup} in EDGES")
+
 # A LEG TO A NODE MEASURED ON ANOTHER SEED (MEASURED_SEED_DEPENDS_ON) is not
 # routed on this one: it leaves `EDGES` for `FOREIGN_EDGES`, and
 # `network.py plan` refuses it with this seed's own reading at the point.  A
@@ -1049,25 +966,52 @@ DECLARED_CROSSINGS: list[dict] = [
 # ---------------------------------------------------------------------------
 GEOGRAPHY_ABSENT = geography.absent_nodes()
 
-UNREACHABLE_EDGES: list[dict] = []
-for _e in list(EDGES):
-    _gone = [n for n in (_e["a"], _e["b"]) if n not in NODES]
-    if not _gone:
-        continue
-    _unexplained = [n for n in _gone
-                    if n not in GEOGRAPHY_ABSENT and n not in FOREIGN_NODES]
-    if _unexplained:
-        raise SystemExit(
-            f"REFUSING: edge {_e['id']!r} names node(s) "
-            f"{', '.join(_unexplained)} that this seed's geography does not "
-            f"have and does not explain. A terminus that is absent for no "
-            f"recorded reason is a road to nowhere; re-emit "
-            f"roads/geography.yaml for this seed, or the authored EDGES have "
-            f"to say why this leg does not exist.")
-    EDGES.remove(_e)
-    UNREACHABLE_EDGES.append(_e)
-    NO_ROAD[_e["id"]] = GEOGRAPHY_ABSENT[
-        next(n for n in _gone if n in GEOGRAPHY_ABSENT)]["why"]
+
+def _absent_why(nid: str) -> str | None:
+    """Why this seed's network has no node `nid`, from the measurement that
+    ruled it out: its geography, or its road verdict (`PORTAL_ONLY`)."""
+    if nid in GEOGRAPHY_ABSENT:
+        return GEOGRAPHY_ABSENT[nid]["why"]
+    if nid in PORTAL_ONLY:
+        return f"{nid} is portal-only: {PORTAL_ONLY[nid]['why']}"
+    return None
+
+
+def drop_edges_without_nodes(edges: list[dict], nodes: dict, why_of,
+                             foreign: dict, no_road: dict) -> list[dict]:
+    """Take out of `edges` every leg naming a node this seed does not have,
+    record why in `no_road`, and return the legs taken out.  A node absent
+    for NO recorded reason (`why_of` knows none, and it is not `foreign`) is
+    REFUSED -- a terminus that vanishes quietly is a road to nowhere."""
+    dropped: list[dict] = []
+    for e in list(edges):
+        gone = [n for n in (e["a"], e["b"]) if n not in nodes]
+        if not gone:
+            continue
+        unexplained = [n for n in gone
+                       if why_of(n) is None and n not in foreign]
+        if unexplained:
+            raise SystemExit(
+                f"REFUSING: edge {e['id']!r} names node(s) "
+                f"{', '.join(unexplained)} that this seed's geography does not "
+                f"have and does not explain. A terminus that is absent for no "
+                f"recorded reason is a road to nowhere; re-emit "
+                f"roads/geography.yaml for this seed, or the authored EDGES "
+                f"have to say why this leg does not exist.")
+        edges.remove(e)
+        dropped.append(e)
+        no_road[e["id"]] = why_of(next(n for n in gone if why_of(n) is not None))
+    return dropped
+
+
+UNREACHABLE_EDGES: list[dict] = drop_edges_without_nodes(
+    EDGES, NODES, _absent_why, FOREIGN_NODES, NO_ROAD)
+
+# EVERY PORTAL-ONLY SITE SAYS WHY, with the numbers it was judged on -- so
+# "why is there no road to the keep" has an answer that is a measurement and
+# not a sentence typed about one seed's accident.
+for _sid, _p in PORTAL_ONLY.items():
+    NO_ROAD[_sid] = _absent_why(_sid)
 
 # ---------------------------------------------------------------------------
 # THE SAME POPULATION, AND IT HAD TWO RULES.
@@ -1126,3 +1070,32 @@ for _c in list(DECLARED_CROSSINGS):
         "why_not_on_this_seed": GEOGRAPHY_ABSENT[_gone[0]]["why"],
         "measured": GEOGRAPHY_ABSENT[_gone[0]].get("measured", {}),
     })
+
+# ---------------------------------------------------------------------------
+# THE LEGS A ROADED SOLVED SITE STILL NEEDS.
+#
+# Everything above that names a solved site is AUTHORED TOPOLOGY: "this site
+# hangs from that node", typed once for the sites a seed was expected to have.
+# What a seed actually has is measured (`PORTAL_ONLY` above is what no road
+# reaches), so the topology is checked against what is LEFT of it, with the
+# one join rule a declared site already has (`declared_sites.site_legs`):
+# every roaded site no leg connects to the portal hall -- because its
+# authored partner is portal-only, stands on another landmass, or was never
+# typed (the east watchtower and the east lighthouse never were) -- gets ONE
+# derived leg, in its own declared class, to the nearest trunk node its
+# landmass reaches.  `J<n>` ids; nothing is typed.  A publication that
+# predates the verdict has no roaded site by this definition and gets none:
+# its authored topology is all it ever had.
+# ---------------------------------------------------------------------------
+_ROADED_SITES = {sid: s for sid, s in SETTLEMENT_SITES.items()
+                 if s.get("road") and s["road"]["roaded"]}
+SITE_JOINS, SITE_UNJOINED = DS.site_legs(_ROADED_SITES, NODES, EDGES,
+                                         DECLARED_CROSSINGS)
+EDGES.extend(SITE_JOINS)
+for _sid, _why in SITE_UNJOINED.items():
+    NO_ROAD[f"join-{_sid}"] = (f"{_sid} is roaded and no leg of the network "
+                               f"joins it to the portal hall: {_why}")
+_dup = sorted({e["id"] for e in EDGES if sum(1 for q in EDGES
+                                             if q["id"] == e["id"]) > 1})
+if _dup:
+    raise SystemExit(f"REFUSING: duplicate edge id(s) {_dup} in EDGES")

@@ -5,8 +5,11 @@ measured, and emitted in the two forms other agents consume.
 OUTPUTS
   sites.yaml        the interchange `RoadNet` and `Crossings` read. One record
                     per site: id, type, xz, pad_radius_m, road_priority, the
-                    approach bearing where the LAYOUT forces one, and the
-                    measured ground facts behind the choice.
+                    approach bearing where the LAYOUT forces one, the ROAD
+                    VERDICT (`road`: whether the router's own graph reaches
+                    the site on its trunk landmass -- road_reach.py -- with
+                    the numbers; a site no road reaches is portal-only), and
+                    the measured ground facts behind the choice.
   ledger_ops.jsonl  one JSON object per line, in build order, in
                     `tools/jumpstart/ledger/`'s v1.1 envelope, validated
                     against its own `schema.py`. This is the replay artefact.
@@ -53,7 +56,9 @@ sys.path.insert(0, str(HERE.parent))
 
 import bodies as BD  # noqa: E402
 import clearance  # noqa: E402  the one boundary: TERRAIN_SPREAD_M
+import harbour_site as HS  # noqa: E402  siting of the human-declared harbours
 import layout as LY  # noqa: E402
+import road_reach as RR  # noqa: E402  the road's verdict on every site
 import sites as S  # noqa: E402
 import terrain1m as T  # noqa: E402
 
@@ -808,30 +813,64 @@ def certify_plan(plan: dict, surface: SF.EngineSurface) -> dict:
 # seed: `KeyError: 'mainland'` at the first outlier, because Fresh42's windows
 # are trunk-primary / trunk-secondary / outlier-*, and 14 of 14 records named
 # a window that seed does not have.
+#
+# `road_priority` IS A DECLARATION THE ROAD NETWORK READS (it was published and
+# read by nothing -- `roads/spec.py` carried its own hand-typed legs): `trunk`
+# or `spur` is the carriageway class the site is to be reached by, and `none`
+# is "portal-only, by design".  Whether a road CAN reach a declared-roaded site
+# is MEASURED, not declared (`road_reach.py`): the solver takes the best
+# candidate a road can reach, and a site no candidate of which a road can
+# reach publishes `road.roaded: false` with the numbers.
+#
+# `role` IS WHAT THE NAME MEANS, and it is what binds a name to a place.  The
+# solver used to bind by SEARCH RANK -- `wt-spawn` was whatever tower the
+# search ranked first -- so on Pirate68 with the pins removed `wt-spawn` stood
+# 1.9 km from the StartTemple and `wt-north` on another island, and a leg typed
+# for one seed's `wt-spawn` ran to another seed's accident.  The operator's own
+# words for each site (git 845678d, `why`) say what it IS: `wt-spawn` "205 m
+# from the StartTemple -- the first built thing a player on foot can see",
+# `wt-town` the tower "that watches the town's own approach", `wt-peak` "the
+# highest watchtower", `wt-east` "at the east end of the island", `lh-south`
+# "the southern sea approach", `lh-west` "the west isle's north cape",
+# `tree-near` "the nearest built thing to the temple".  `ROLES` encodes those
+# as the ordering each name asks of the candidates; `select_outliers` picks,
+# for each name in turn, the candidate that best fits it among the best
+# candidates of its kind that remain (as many as there are names still to
+# place), so the SET of places is still the search's own and only the NAMES
+# move onto what they say.  `window` is the trunk landmass a name belongs on
+# (the west-isle sites hang from west-isle nodes); it is a preference, and a
+# window with no candidate falls back to the other and records that it did.
 OUTLIERS: list[dict] = [
     dict(id="hognest-castle", kind="castle", tag="u-castle", pad_m=44.0,
          body="hs_ashlands_neletit_portalhubtower.blueprint",
-         road_priority="spur"),
+         road_priority="spur", role="nearest_town"),
     dict(id="sudrberg-keep", kind="castle", tag="u-sudrberg", pad_m=44.0,
          body="hs_mistlands_sheepshank_trophytowerv2.blueprint",
-         road_priority="none"),
+         road_priority="none", role="farthest_spawn"),
     dict(id="wt-spawn", kind="watchtower", tag="u-wtspawn", pad_m=20.0,
          body="outposttower.blueprint", road_priority="trunk",
-         approach_bearing_deg=None),
+         approach_bearing_deg=None, role="nearest_spawn"),
     dict(id="wt-south", kind="watchtower", tag="u-wtsouth", pad_m=20.0,
-         body="outposttower.blueprint", road_priority="trunk"),
+         body="outposttower.blueprint", road_priority="trunk",
+         role="south"),
     dict(id="wt-town", kind="watchtower", tag="u-wttown", pad_m=20.0,
-         body="outposttower.blueprint", road_priority="trunk"),
+         body="outposttower.blueprint", road_priority="trunk",
+         role="nearest_town"),
     dict(id="wt-peak", kind="watchtower", tag="u-wtpeak", pad_m=20.0,
-         body="outposttower.blueprint", road_priority="spur"),
+         body="outposttower.blueprint", road_priority="spur",
+         role="highest"),
     dict(id="wt-north", kind="watchtower", tag="u-wtnorth", pad_m=20.0,
-         body="outposttower.blueprint", road_priority="trunk"),
+         body="outposttower.blueprint", road_priority="trunk",
+         role="north"),
     dict(id="wt-east", kind="watchtower", tag="u-wteast", pad_m=20.0,
-         body="outposttower.blueprint", road_priority="spur"),
+         body="outposttower.blueprint", road_priority="spur",
+         role="east"),
     dict(id="lh-south", kind="lighthouse", tag="u-lhsouth", pad_m=22.0,
-         body="drake-lighthouse.blueprint", road_priority="spur"),
+         body="drake-lighthouse.blueprint", road_priority="spur",
+         role="south"),
     dict(id="lh-east", kind="lighthouse", tag="u-lheast", pad_m=22.0,
-         body="drake-lighthouse.blueprint", road_priority="spur"),
+         body="drake-lighthouse.blueprint", road_priority="spur",
+         role="east"),
     dict(id="lh-west", kind="lighthouse", tag="u-lhwest", pad_m=22.0,
          body="hs_plains_ulf_the_builder_lighthouse.blueprint",
          # ALTERNATES ARE AUTHORED TOO -- a second body this project is willing
@@ -848,103 +887,52 @@ OUTLIERS: list[dict] = [
          # drake-lighthouse emits clean at 1255 commands and is already the
          # body of lh-south and lh-east.
          alternates=("drake-lighthouse.blueprint",),
-         road_priority="spur"),
+         road_priority="spur", role="west", window="secondary"),
     dict(id="tree-sth", kind="treehouse", tag="u-treesth", pad_m=16.0,
          body="hs_meadows_stilt_house.blueprint", road_priority="spur",
-         cluster=3),
+         cluster=3, role="south"),
     dict(id="tree-west", kind="treehouse", tag="u-treewest", pad_m=16.0,
          body="hs_meadows_stilt_house.blueprint", road_priority="spur",
-         cluster=3),
+         cluster=3, role="west", window="secondary"),
     dict(id="tree-near", kind="treehouse", tag="u-treenear", pad_m=16.0,
          body="hs_meadows_stilt_house.blueprint", road_priority="spur",
-         cluster=3),
+         cluster=3, role="nearest_spawn", window="secondary"),
 ]
 
-# THE DECLARED OUTLYING SITES, PER SEED. Coordinates come from `sites.py`'s
-# 1 m search; each was the highest-scoring candidate of its kind that cleared
-# the per-type POI stand-off, the recorded installations and the +/-8 m clamp.
-# The `why` string is the justification the operator asked for -- elevation and
-# prominence for the towers and castles, waterfront for the lights -- and every
-# number in it is measured ON THIS SEED.
-ANCHORED_OUTLIERS: dict[str, dict[str, dict]] = {
-    "Pirate68": {
-        "hognest-castle": dict(
-            xz=(530.0, 1348.0), patch="mainland",
-            why="MEASURED: 110.95 m pad height, 94.9 m above the lowest ground "
-                "within 300 m, 100% Mountain over the pad, on the SPAWN ISLAND so "
-                "it is reachable on foot. The clamp decides the architecture here: "
-                "a 44 m pad has 4.09 m of headroom, a 52 m pad 1.80 m, and a 60 m "
-                "pad FAILS at -6.54 m, so the body must span <= 38 m."),
-        "sudrberg-keep": dict(
-            xz=(2406.0, -3354.0), patch="south33",
-            why="MEASURED: 121.84 m pad height, 120.9 m of local rise, 100% "
-                "Mountain, clamp headroom 2.73 m. On the south isle, which is a "
-                "SEPARATE landmass -- portal-only, no road, and that is stated "
-                "rather than implied."),
-        "wt-spawn": dict(
-            xz=(110.0, -104.0), patch="mainland",
-            why="MEASURED: 52.6 m above the lowest ground within 160 m and 205 m "
-                "from the StartTemple -- the first built thing a player on foot "
-                "can see from spawn."),
-        "wt-south": dict(
-            xz=(538.0, 40.0), patch="mainland",
-            why="MEASURED: 56.2 m of local rise, 604 m from spawn, overlooking "
-                "the ground between the temple and the dock."),
-        "wt-town": dict(
-            xz=(820.0, 738.0), patch="mainland",
-            why="MEASURED: 40.0 m of local rise, 78.0 m from navigable water, "
-                "between Stenvik and the dock -- the tower that watches the town's "
-                "own approach."),
-        "wt-peak": dict(
-            xz=(1418.0, 1530.0), patch="mainland",
-            why="MEASURED: 85.6 m of local rise at 103.64 m, the highest "
-                "watchtower on the spawn island."),
-        "wt-north": dict(
-            xz=(152.0, 1194.0), patch="mainland",
-            why="MEASURED: 32.5 m of local rise, 18.4 m from navigable water on "
-                "the north shore -- it watches the channel."),
-        "wt-east": dict(
-            xz=(1858.0, 146.0), patch="mainland",
-            why="MEASURED: 55.5 m of local rise, 1928 m out at the east end of "
-                "the island, where the ferry terminals are."),
-        "lh-south": dict(
-            xz=(-102.0, -916.0), patch="mainland",
-            why="MEASURED: 11.7 m from NAVIGABLE water (the sea component that "
-                "reaches the patch edge, not a pond), 24.0 m of local rise, and "
-                "30% of a 640 m window below the water plane -- a cape, not a bay "
-                "shore. It stands over the southern sea approach to the dock at "
-                "(675,-85)."),
-        "lh-east": dict(
-            xz=(2354.0, 156.0), patch="mainland",
-            why="MEASURED: 9.8 m from navigable water, 22.7 m of local rise, at "
-                "the island's east cape beside the ferry crossing."),
-        "lh-west": dict(
-            xz=(-1350.0, 2358.0), patch="westisle",
-            why="MEASURED: 13.5 m from navigable water, 33.3 m of local rise, on "
-                "the west isle's north cape -- the far corner of the main "
-                "landmass, and the light a boat sees first coming from the north."),
-        "tree-sth": dict(
-            xz=(546.0, 482.0), patch="mainland",
-            why="MEASURED: 100% BlackForest over the pad at 75.46 m, 776 m from "
-                "spawn -- the nearest canopy hamlet to the temple on the spawn "
-                "island. `hs_ashlands_swampytreehouse.blueprint` was chosen first "
-                "and is OUT: MEASURED, `to_rcon_plan.py` refuses it on 22 "
-                "unspawnable prefabs (Eyescream, FeastAshlands, MeadBzerker, "
-                "QueensJam and 18 more consumables on item stands), and a body "
-                "needing --drop-prefab is a worse choice than one that does not. "
-                "The library has no large treehouse that spawns clean, so the "
-                "flagship is three stilt bodies rather than one big one, and that "
-                "is stated rather than quietly substituted."),
-        "tree-west": dict(
-            xz=(-530.0, 850.0), patch="westisle",
-            why="MEASURED: BlackForest, 41.39 m, 966 m from spawn. A hamlet of "
-                "three stilt bodies, each of which GROUNDS on its posts."),
-        "tree-near": dict(
-            xz=(-614.0, -236.0), patch="westisle",
-            why="MEASURED: BlackForest, 35.20 m, 599 m from spawn -- the nearest "
-                "built thing to the temple after the spawn watchtower."),
-    },
+# WHAT EACH ROLE ASKS OF A CANDIDATE: a sort key (lower fits better) and the
+# words the site's `why` quotes.  Compass roles use the world frame (+z north,
+# +x east).  `nearest_spawn` / `farthest_spawn` read the candidate's own
+# measured `dist_spawn_m`; `nearest_town` reads the first town's centre
+# (`context["town"]`), the one place the solver has already put a town.
+ROLES: dict[str, tuple[str, object]] = {
+    "nearest_spawn": ("nearest the StartTemple",
+                      lambda s, c: s.dist_spawn_m),
+    "farthest_spawn": ("farthest from the StartTemple",
+                       lambda s, c: -s.dist_spawn_m),
+    "nearest_town": ("nearest the first town",
+                     lambda s, c: math.hypot(s.x - c["town"][0],
+                                             s.z - c["town"][1])),
+    "south": ("southernmost", lambda s, c: s.z),
+    "north": ("northernmost", lambda s, c: -s.z),
+    "east": ("easternmost", lambda s, c: -s.x),
+    "west": ("westernmost", lambda s, c: s.x),
+    "highest": ("the most prominent", lambda s, c: -s.rise_m),
 }
+
+# THE NEUTER (accept townsites): "rank" restores the shipped binding -- each
+# name takes the next candidate the search ranked, whatever it is.
+_ROLE_MODE = "role"         # role | rank (the shipped)
+
+# NO OUTLYING SITE IS DECLARED.  Every site of `OUTLIERS` is the SEARCH's own
+# top-ranked candidate of its kind on the seed being solved, judged by the
+# engine and the claims (`select_outliers`).  There used to be a 14-record
+# `ANCHORED_OUTLIERS['Pirate68']` here -- coordinates, windows and "MEASURED"
+# prose -- and it was FROZEN SOLVER OUTPUT: the places this same search had
+# returned on an earlier run, kept so the built network would not move.  It
+# decided nothing, and a regeneration that reads it replays a recording
+# instead of applying the rules.  The only sites a person declares are the
+# harbours in `worldseed.HUMAN_SITES` (`declared_harbours` below); an operator
+# can still declare one outlier for one solve with `--expect-sites`.
 
 # --- THE TOWNS: WHAT IS AUTHORED, AND WHAT IS A READING OF ONE SEED -------
 # A town's DESIGN survives any seed: its id, its portal tag, its building
@@ -954,61 +942,25 @@ ANCHORED_OUTLIERS: dict[str, dict[str, dict]] = {
 # measurement of Pirate68.
 TOWNS = [
     dict(id="stenvik", tag="u-stenvik", spec=LY.STENVIK_SPEC, type="town",
-         road_priority="trunk",
+         road_priority="trunk", window="primary",
          gate="south-west end of the main street"),
     dict(id="vestvik", tag="u-vestvik", spec=LY.VESTVIK_SPEC, type="village",
-         road_priority="trunk",
+         road_priority="trunk", window="secondary",
          gate="east end of the main street, toward the quay"),
 ]
 
-# THE DECLARED TOWN CENTRES, PER SEED.
-#
-# Until 2026-09-21 `build` carried, inline:
-#
-#     want = {"stenvik": (496, 904), "vestvik": (-906, 1846)}
-#
-# and refused to plan unless the district search handed back a candidate at
-# exactly those two points. THE REFUSAL IS CORRECT AND IS KEPT: `sites.yaml`
-# is the node set RoadNet and Crossings build against, so a plan that quietly
-# moves a town moves a road network and whatever is already standing, and a
-# plan that stops is strictly better than one that does that silently.
-#
-# WHAT WAS WRONG IS WHAT IT COMPARED AGAINST. Those two points are Pirate68's
-# land and nobody else's, so on any other seed the refusal was GUARANTEED to
-# fire -- before one site was planned -- naming two coordinates from a world
-# the operator is not building. A guard that cannot pass is a blocker wearing
-# a guard's clothes, and its message has no remedy in it.
-#
-# So the comparison is against a DECLARATION, scoped to the seed it is a
-# statement about, exactly as every other seed-scoped artefact in this tree
-# now is. Pirate68's declaration is the pair that used to be the constant,
-# verbatim, with the measured prose that justifies it. A seed with no
-# declaration has nothing to be relocated FROM: its towns are the district
-# search's own top-ranked candidates on its own land, and their `why` is
-# written from what was measured THERE rather than inherited from here.
-ANCHORED_TOWNS: dict[str, dict[str, dict]] = {
-    "Pirate68": {
-        "stenvik": {
-            "xz": (496, 904),
-            "why": "MEASURED: a 176 m district of 99.8% Meadows at 45.57 m with "
-                   "17.8 m of district relief, 133 m from NAVIGABLE water, 260 m "
-                   "from the existing station hub at (661.5,1088.5), on the spawn "
-                   "island. The district is NOT levelled -- MEASURED, no 176 m "
-                   "district of <=12 m relief on this seed is both dry and coastal, "
-                   "so the town follows the ground on individual pads.",
-        },
-        "vestvik": {
-            "xz": (-906, 1846),
-            "why": "MEASURED: 100% Meadows at 33.99 m with 13.3 m of district relief "
-                   "on the west isle, the other half of the largest landmass in the "
-                   "world. Waterfront CORRECTED by Crossings and re-measured here: "
-                   "93.8 m to the nearest wet cell but 137.9 m to navigable water, "
-                   "and the nearest shoreline that takes a 22 m pier is 227.3 m away "
-                   "at (-1031.5,1656.5). The village does not move; the quay is "
-                   "Crossings' harbour-vestvik.",
-        },
-    },
-}
+# NO TOWN CENTRE IS DECLARED.  `stenvik` and `vestvik` are the district
+# search's own top-ranked candidates on the seed's land (`sites.Picker.town`:
+# Meadows purity, relief, coast, spawn distance -- all measured on the seed's
+# own height field), bound by RANK in TOWNS order.  There used to be an
+# `ANCHORED_TOWNS['Pirate68']` here pinning (496, 904) and (-906, 1846) with
+# prose; it was the search's own answer from an earlier run, frozen.  MEASURED
+# on the regenerated Pirate68 field, with nothing declared, the search returns
+# exactly those two as ranks 0 and 1 (and a third at (-262, 1998)), so
+# removing the pin moves nothing the rules had not already chosen -- and a
+# search that stops returning them now moves the towns instead of refusing
+# against a recording.  An operator can still pin a town for one solve with
+# `--expect-towns id=x,z`, and the refusal below then applies to that pin.
 
 # Pairing: every portal's far end is the world's portal hall, whose hub-side
 # tags are WayFinding's to allocate. Recorded as a declared counterparty rather
@@ -1132,9 +1084,9 @@ def scope_of(patch_path: str, loc_path: str) -> dict:
 
 def parse_town_declaration(items) -> dict:
     """`--expect-towns stenvik=496,904` into the anchor shape `select_towns`
-    reads, so a seed that is not in `ANCHORED_TOWNS` can still be pinned by
-    the operator who solved it -- without editing this file, and without the
-    pin being a constant that applies to every seed."""
+    reads, so the operator who solved a seed can pin a town for that solve --
+    without editing this file, and without the pin being a constant that
+    applies to every seed."""
     out: dict[str, dict] = {}
     for item in items or ():
         name, _, xz = str(item).partition("=")
@@ -1151,18 +1103,15 @@ def parse_town_declaration(items) -> dict:
     return out
 
 
-def declared_town_centres(seed: str, declared: dict | None = None
-                          ) -> tuple[dict, str]:
-    """The declaration in force for `seed`, and WHO DECLARED IT.
+def declared_town_centres(declared: dict | None = None) -> tuple[dict, str]:
+    """The declaration in force for this solve, and WHO DECLARED IT: only an
+    operator's `--expect-towns` (no seed carries a town declaration).
 
     The source string is carried because a refusal has to name the thing the
     operator must go and change; "the recorded centre" named nothing.
     """
     if declared:
         return declared, "--expect-towns on this run"
-    anchors = ANCHORED_TOWNS.get(seed)
-    if anchors:
-        return anchors, f"ANCHORED_TOWNS[{seed!r}] in settlements/plan.py"
     return {}, ""
 
 
@@ -1191,12 +1140,12 @@ def _measured_why(rank: int, s, seed: str, town_id: str) -> str:
         f"to the nearest wet cell, {s.dist_spawn_m:.0f} m from spawn. NO CENTRE "
         f"IS DECLARED for seed {seed}, so this one is the solver's and will "
         f"move if the search changes; pin it with "
-        f"`--expect-towns {town_id}={s.x:.0f},{s.z:.0f}` (or an ANCHORED_TOWNS "
-        f"entry for {seed}) and a move becomes a refusal.")
+        f"`--expect-towns {town_id}={s.x:.0f},{s.z:.0f}` and a move becomes a "
+        f"refusal.")
 
 
-def select_towns(candidates: list, seed: str, anchors: dict, source: str
-                 ) -> list[dict]:
+def select_towns(candidates: list, seed: str, anchors: dict, source: str,
+                 reach=None, windows: dict | None = None) -> list[dict]:
     """Which candidate each town in `TOWNS` is -- AND THE REFUSAL.
 
     A declared centre BINDS BY COORDINATE, not by rank: as long as the search
@@ -1257,16 +1206,46 @@ def select_towns(candidates: list, seed: str, anchors: dict, source: str
         bound[t["id"]] = (hit, a)
         taken.add(hit)
     spare = [i for i in range(len(ranked)) if i not in taken]
+    windows = windows or {}
     picks: list[dict] = []
     for t in TOWNS:
+        refused_by_road: list[dict] = []
+        note = None
         if t["id"] in bound:
             rank, a = bound[t["id"]]
             why, anchored = a["why"], [ranked[rank].x, ranked[rank].z]
         else:
-            rank = spare.pop(0)
+            # A TOWN'S WINDOW IS WHAT IT IS (the village is on the second
+            # trunk landmass, because its legs hang from that island's
+            # nodes), and a town no road reaches is no town: the best
+            # remaining candidate of its window that a road reaches.
+            want = windows.get(t.get("window"))
+            mine = [i for i in spare
+                    if want is None or ranked[i].patch == want]
+            if t.get("window") and want is not None and not mine:
+                note = (f"window {t['window']!r} ({want}) holds no town "
+                        f"candidate that remains; bound among every trunk "
+                        f"window")
+                mine = list(spare)
+            ok = ([i for i in mine if reach(ranked[i], t)["roaded"]]
+                  if reach is not None else mine)
+            rank = (ok or mine)[0]
+            spare.remove(rank)
+            if reach is not None:
+                refused_by_road = [
+                    {"search_rank": i, **reach(ranked[i], t)}
+                    for i in mine
+                    if i < rank and not reach(ranked[i], t)["roaded"]]
             why, anchored = _measured_why(rank, ranked[rank], seed, t["id"]), None
+            if refused_by_road:
+                why += (f" {len(refused_by_road)} candidate(s) ahead of it in "
+                        f"the search were passed over because no road "
+                        f"reaches them (road_refused).")
+            if note:
+                why += f" WINDOW FALLBACK: {note}."
         picks.append({"spec": t, "site": ranked[rank], "rank": rank,
-                      "why": why, "declared_xz": anchored})
+                      "why": why, "declared_xz": anchored,
+                      "road_refused": refused_by_road})
     return picks
 
 
@@ -1283,11 +1262,24 @@ def select_towns(candidates: list, seed: str, anchors: dict, source: str
 # failure is never a wrong answer -- it is a right answer about a set nobody
 # stated. An outlier that came up short must be readable as "searched THESE
 # windows and found none" and never as "this seed has nowhere for a light".
+#
+# EVERY CANDIDATE THE SEARCH'S THRESHOLDS ADMIT, per window.  The searches take a
+# `limit` -- how many candidates to stop at -- and a limit is the wrong place to
+# decide how many a solve needs: which of them a road reaches, which the engine
+# can level, and which another site has not claimed are all decided AFTER the
+# search, so a limit that stops it early hides the reachable candidate that
+# ranks 14th (MEASURED on Pirate68: the spawn window's watchtower search at
+# limit 14 returns 10 candidates of which 5 are reachable; unbounded, 13 of
+# which 6 are).  The solver picks how many it takes.
+POOL_LIMIT = 400
 KIND_SEARCH = {
-    "castle": lambda p, patches: p.castle(patches=patches),
-    "watchtower": lambda p, patches: p.watchtower(patches=patches),
-    "lighthouse": lambda p, patches: p.lighthouse(patches=patches),
-    "treehouse": lambda p, patches: p.treehouse(patches=patches),
+    "castle": lambda p, patches: p.castle(patches=patches, limit=POOL_LIMIT),
+    "watchtower": lambda p, patches: p.watchtower(patches=patches,
+                                                  limit=POOL_LIMIT),
+    "lighthouse": lambda p, patches: p.lighthouse(patches=patches,
+                                                  limit=POOL_LIMIT),
+    "treehouse": lambda p, patches: p.treehouse(patches=patches,
+                                                limit=POOL_LIMIT),
 }
 
 # A castle stands on the highest ground there is; the rest stand on a trunk
@@ -1300,14 +1292,12 @@ KIND_PATCHES = {
 }
 
 
-def declared_outlier_sites(seed: str, declared: dict | None = None
+def declared_outlier_sites(declared: dict | None = None
                            ) -> tuple[dict, str]:
-    """The outlying-site declaration in force for `seed`, and WHO DECLARED IT."""
+    """The outlying-site declaration in force for this solve, and WHO DECLARED
+    IT: only an operator's `--expect-sites` (no seed carries one)."""
     if declared:
         return declared, "--expect-sites on this run"
-    anchors = ANCHORED_OUTLIERS.get(seed)
-    if anchors:
-        return anchors, f"ANCHORED_OUTLIERS[{seed!r}] in settlements/plan.py"
     return {}, ""
 
 
@@ -1448,16 +1438,43 @@ def _outlier_why(rank: int, s, seed: str, site_id: str, kind: str) -> str:
         f"if the search changes.")
 
 
+def _window_pid(fields: dict, which: str | None) -> str | None:
+    """The loaded window that plays trunk role `which` (`primary` /
+    `secondary`), by `worldseed.aliases` as `sites.trunk_patches` resolves
+    it, or None when this field has no such window (or `which` is None)."""
+    if which is None:
+        return None
+    sys.path.append(str(HERE.parent))
+    import worldseed                                        # noqa: PLC0415
+    role = {"primary": worldseed.TRUNK_PRIMARY,
+            "secondary": worldseed.TRUNK_SECONDARY}[which]
+    return next((a for a in worldseed.aliases(role) if a in fields), None)
+
+
+# WHAT A ROLE NEEDS OF THE SOLVE besides the candidate: the key of
+# `context` that holds it.  A role whose context is absent is REFUSED, never
+# quietly ranked by search order -- that is the binding this replaces.
+ROLE_NEEDS = {"nearest_town": "town"}
+
+
+def _roles_text(o: dict, scope_pid: str | None, among: int, s) -> str:
+    words = ROLES[o["role"]][0]
+    return (f" BOUND TO {o['id']} BY WHAT IT IS, NOT BY SEARCH RANK: "
+            f"{words} of the {among} best {o['kind']} candidate(s) of "
+            f"{('window ' + scope_pid) if scope_pid else 'its search'} that "
+            f"remained when this name was placed.")
+
+
 def select_outliers(picker: S.Picker, seed: str, anchors: dict, source: str,
                     body_ok=None, admit=None,
-                    claims: SiteClaims | None = None) -> list[dict]:
+                    claims: SiteClaims | None = None,
+                    reach=None, context: dict | None = None) -> list[dict]:
     """Every `OUTLIERS` record with its PLACE filled in -- declared or searched.
 
-    A DECLARED site is taken at its declared coordinate in its declared
-    window, which is what this module has always done and is why Ulfsland's
-    plan does not move: those coordinates are what is standing in the world.
-    An UNDECLARED one is the search's own top-ranked candidate of its kind on
-    this seed's land.
+    A DECLARED site (an operator's `--expect-sites`) is taken at its declared
+    coordinate in its declared window.  An UNDECLARED one -- every site of
+    every seed, unless an operator says otherwise -- is the search's own
+    top-ranked candidate of its kind on this seed's land.
 
     REFUSES rather than returning a short list. An empty candidate set is the
     failure this whole item is about: a parameterised selector reading a
@@ -1481,6 +1498,19 @@ def select_outliers(picker: S.Picker, seed: str, anchors: dict, source: str,
     claimed FIRST, because they cannot move to another candidate and a
     searched one can; a declared site whose ground is claimed stops the plan.
     Absent, the claims are this call's own: the outliers against each other.
+
+    `reach(rec, site)` is the ROAD's verdict on a candidate (`road_reach.py`):
+    a site declared roaded (`road_priority` trunk / spur) takes the best
+    candidate a road can reach, and the unreachable candidates it passed over
+    are carried on the record with their numbers (`reach_refused`).  Only a
+    kind none of whose candidates in scope is reachable puts the site on the
+    best unreachable one, which publishes `roaded: false` -- the building is
+    never deleted, and no road is promised to it.  Absent, every candidate
+    is taken as reachable.
+
+    `context` carries what a role needs besides the candidate: `town`, the
+    first town's centre.  A name is bound to a candidate by its ROLE
+    (`OUTLIERS[...]["role"]`, `ROLES`), not by search rank.
     """
     claims = SiteClaims() if claims is None else claims
     ids = [o["id"] for o in OUTLIERS]
@@ -1495,6 +1525,7 @@ def select_outliers(picker: S.Picker, seed: str, anchors: dict, source: str,
             need[o["kind"]] = need.get(o["kind"], 0) + 1
     found: dict[str, list] = {}
     searched: dict[str, list] = {}
+    context = dict(context or {})
     for kind, count in need.items():
         if kind not in KIND_SEARCH:
             raise ValueError(
@@ -1502,7 +1533,13 @@ def select_outliers(picker: S.Picker, seed: str, anchors: dict, source: str,
                 f"{sorted(KIND_SEARCH)}")
         patches = KIND_PATCHES[kind](picker.fields)
         searched[kind] = list(patches)
-        cands = S.dedupe(picker, KIND_SEARCH[kind](picker, patches))
+        # SEARCHED PER WINDOW, each window for everything its thresholds
+        # admit: one pooled search spends its `limit` on the first window and
+        # gives the second a handful, so a name that belongs on the second
+        # trunk landmass would have nothing to choose from.
+        pooled = [c for pid in patches
+                  for c in KIND_SEARCH[kind](picker, (pid,))]
+        cands = S.dedupe(picker, pooled)
         if len(cands) < count:
             raise ValueError(
                 f"seed {seed!r} yields {len(cands)} {kind} candidate(s) and "
@@ -1521,7 +1558,26 @@ def select_outliers(picker: S.Picker, seed: str, anchors: dict, source: str,
                   f"planted where its own search found nothing is not a "
                   f"measured site.")
         found[kind] = cands
-    used: dict[str, int] = {}
+    # THE CANDIDATES STILL OPEN, per kind, in search order; and each one's
+    # search rank, which a name bound by role must still report.
+    pending: dict[str, list] = {k: list(v) for k, v in found.items()}
+    rank_of: dict[int, int] = {id(c): i for v in found.values()
+                               for i, c in enumerate(v)}
+    # HOW MANY NAMES STILL WAIT FOR A PLACE in each (kind, window): the width
+    # of the best-candidate set a role chooses among, so the SET of places is
+    # the search's own and only the names move.
+    todo: dict[tuple, int] = {}
+    for o in OUTLIERS:
+        if o["id"] not in anchors:
+            key = (o["kind"], o.get("window"))
+            todo[key] = todo.get(key, 0) + 1
+    verdicts: dict[tuple, dict] = {}
+
+    def reaches(o: dict, c) -> dict:
+        key = (id(c), o["road_priority"])
+        if key not in verdicts:
+            verdicts[key] = reach(o, c)
+        return verdicts[key]
     placed: dict[str, dict] = {}
     # DECLARED FIRST (a stable sort keeps OUTLIERS order within each half):
     # a declared site cannot move to another candidate, so it claims its
@@ -1579,8 +1635,7 @@ def select_outliers(picker: S.Picker, seed: str, anchors: dict, source: str,
             claims.add(mine)
             rec["claim_refused"] = []
         else:
-            cands = found[o["kind"]]
-            rank = used.get(o["kind"], 0)
+            kind = o["kind"]
             refused: list[dict] = []
             claimed: list[dict] = []
             # THE BODY FIRST, because it is part of the ground the site claims
@@ -1597,30 +1652,67 @@ def select_outliers(picker: S.Picker, seed: str, anchors: dict, source: str,
                 # consumed and no ground is claimed for it.
                 rec.update(refused=_site_refusal(rec, exc.tried, str(exc)),
                            centre_declared=False, search_rank=None,
-                           searched_windows=searched[o["kind"]])
+                           searched_windows=searched[kind])
                 placed[o["id"]] = rec
+                todo[(kind, o.get("window"))] -= 1
                 continue
+            need_key = ROLE_NEEDS.get(o["role"])
+            if need_key is not None and context.get(need_key) is None:
+                raise ValueError(
+                    f"{o['id']} is bound by role {o['role']!r}, which needs "
+                    f"context[{need_key!r}], and this solve gave none. A name "
+                    f"whose role cannot be read is not bound by search rank "
+                    f"instead -- that is the defect roles replace.")
+            role_key = ROLES[o["role"]][1]
+            roaded = reach is not None and o["road_priority"] != "none"
+            scope_pid = _window_pid(picker.fields, o.get("window"))
+            window_note = None
+            if o.get("window") and scope_pid is None:
+                window_note = (f"window {o['window']!r} is not a window of "
+                               f"this field; the name was bound among the "
+                               f"candidates of every trunk window")
             while True:
-                if rank >= len(cands):
+                live = pending[kind]
+                scope = [c for c in live
+                         if scope_pid is None or c.patch == scope_pid]
+                if o.get("window") and not scope:
+                    window_note = (
+                        f"window {o['window']!r} "
+                        + (f"({scope_pid}) holds no {kind} candidate that "
+                           f"remains" if scope_pid else
+                           "is not a window of this field")
+                        + "; the name was bound among the candidates of every "
+                          "trunk window")
+                    scope = list(live)
+                if _ROLE_MODE == "rank":
+                    scope = list(live)
+                reachable = ([c for c in scope if reaches(o, c)["roaded"]]
+                             if roaded else scope)
+                pool = reachable or scope
+                if not pool:
                     raise ValueError(
-                        f"seed {seed!r}: every remaining {o['kind']} candidate "
+                        f"seed {seed!r}: every remaining {kind} candidate "
                         f"for {o['id']} was REFUSED -- {len(refused)} by the "
                         f"engine surface, {len(claimed)} on ground another "
-                        f"site already claims -- after the ranks already "
+                        f"site already claims -- after the candidates already "
                         f"taken: "
                         + "; ".join(str(r) for r in refused + claimed)
-                        + f". Widen sites.Picker.{o['kind']}() for this seed "
+                        + f". Widen sites.Picker.{kind}() for this seed "
                           f"or build fewer; a site the engine cannot level, "
                           f"or that stands on another site's ground, is not "
                           f"a site.")
-                s = cands[rank]
-                rank += 1
+                among = pool[:max(todo[(kind, o.get("window"))], 1)]
+                s = (among[0] if _ROLE_MODE == "rank" else
+                     min(among, key=lambda c: (role_key(c, context),
+                                               rank_of[id(c)])))
+                rank = rank_of[id(s)]
+                live.remove(s)
                 rec["x"], rec["z"], rec["patch"] = s.x, s.z, s.patch
                 at, target = (s.x, s.z), None
                 if admit is not None:
                     pad = admit(rec, claims)
                     if pad.get("verdict") != "clear":
-                        refused.append(_engine_refusal(rank - 1, s, pad))
+                        refused.append(_engine_refusal(rank, s, pad))
                         continue
                     at, target = (pad["x"], pad["z"]), pad.get("target_y")
                 mine = claims.outlier(rec, *at, target_y=target)
@@ -1629,13 +1721,51 @@ def select_outliers(picker: S.Picker, seed: str, anchors: dict, source: str,
                     if admit is not None:
                         rec["pad"] = pad
                     break
-                claimed.append(_claim_refusal(rank - 1, s, at, hits))
+                claimed.append(_claim_refusal(rank, s, at, hits))
             claims.add(mine)
-            used[o["kind"]] = rank
-            rank -= 1
-            rec["why"] = _outlier_why(rank, s, seed, o["id"], o["kind"])
+            todo[(kind, o.get("window"))] -= 1
+            rec["why"] = _outlier_why(rank, s, seed, o["id"], kind)
             rec["centre_declared"] = False
             rec["search_rank"] = rank
+            # WHAT NAMED THIS SITE: its role, how many candidates it chose
+            # among, and where.
+            rec["bound_by"] = {
+                "role": o["role"], "words": ROLES[o["role"]][0],
+                "among": len(among), "window": scope_pid,
+                "window_requested": o.get("window"),
+                "window_fallback": window_note,
+                "search_rank": rank,
+                "role_value": (None if _ROLE_MODE == "rank" else round(
+                    float(role_key(s, context)), 1))}
+            if _ROLE_MODE != "rank":
+                rec["why"] += _roles_text(o, scope_pid, len(among), s)
+            if window_note:
+                rec["why"] += f" WINDOW FALLBACK: {window_note}."
+            # WHAT THE ROAD REFUSED ON THE WAY HERE, with its numbers: the
+            # candidates ahead of this one in the search that no road reaches.
+            if roaded:
+                passed = [reaches(o, c) for c in scope
+                          if rank_of[id(c)] < rank
+                          and not reaches(o, c)["roaded"]]
+                rec["road"] = reaches(o, s)
+                rec["reach_refused"] = [
+                    {"search_rank": rank_of[id(c)], **reaches(o, c)}
+                    for c in sorted(
+                        (c for c in scope if rank_of[id(c)] < rank
+                         and not reaches(o, c)["roaded"]),
+                        key=lambda c: rank_of[id(c)])][:12]
+                rec["reach_refused_count"] = len(passed)
+                if passed:
+                    rec["why"] += (
+                        f" {len(passed)} candidate(s) ahead of it in the "
+                        f"search were passed over because no road reaches "
+                        f"them (reach_refused).")
+                if not rec["road"]["roaded"]:
+                    rec["why"] += (
+                        f" NO {kind} candidate in scope is reachable by a "
+                        f"{o['road_priority']} road, so this site stands on "
+                        f"the best unreachable one and is PORTAL-ONLY: "
+                        f"{rec['road']['why']}.")
             # WHAT THE ENGINE REFUSED ON THE WAY HERE, with its numbers: a site
             # that is not its kind's top candidate must say why.
             if admit is not None:
@@ -1741,6 +1871,43 @@ def parse_site_declaration(items) -> dict:
     return out
 
 
+def declared_harbours(picker: S.Picker, seed: str, claims: "SiteClaims",
+                      islands: dict) -> list[dict]:
+    """THE SITES A PERSON DECLARED (`worldseed.HUMAN_SITES`), MEASURED.
+
+    Each request is sited by the module that owns its kind
+    (`settlements/harbour_site.py`: the real inlet and the real landing on
+    THIS seed's field, judged against the same generator locations and
+    recorded installations every solver site is) and its district is claimed
+    FIRST -- before any town building or searched outlier -- so no solver site
+    is planted inside it.  Nothing is moved silently: a request the field
+    cannot honour raises with the numbers, and so does a district that meets
+    another declared district.  A seed with no declaration returns [].
+    """
+    sys.path.insert(0, str(HERE.parent))
+    import worldseed                                        # noqa: PLC0415
+
+    def clear(x: float, z: float, half_diag_m: float) -> bool:
+        return (picker.installation_conflict(x, z, half_diag_m) is None
+                and picker.loc.clear(x, z, half_diag_m, protected_only=False))
+
+    out: list[dict] = []
+    for sid, rec in worldseed.human_sites(seed).items():
+        m = HS.measure(picker.fields, picker.loc.spawn, sid, rec, clear=clear)
+        m["island"] = site_island(islands, picker, m["patch"], *m["xz"])
+        claim = SiteClaims.claim(sid, m["kind"], [HS.claim_unit(m)], m["pad_y"])
+        hits = claims.conflicts(claim)
+        if hits:
+            raise ValueError(
+                f"declared site {sid!r}: its {m['district_m']:g} m district "
+                f"meets another declared site's -- {claim_brief(hits)}. Two "
+                f"human declarations may not claim one piece of ground; "
+                f"re-declare one of them.")
+        claims.add(claim)
+        out.append(m)
+    return out
+
+
 def build(picker: S.Picker, run_interior: bool = True,
           expect_towns: dict | None = None,
           expect_sites: dict | None = None,
@@ -1777,11 +1944,26 @@ def build(picker: S.Picker, run_interior: bool = True,
             picker.loc, town, building_units(town, patch, stub)))
     town_patches = S.trunk_patches(picker.fields)
     islands = island_membership(picker, town_patches)
+    # THE ROAD'S OWN READING OF EVERY SITE (road_reach.py): the router's graph
+    # over this seed's windows, so a site no road can reach is portal-only
+    # with numbers instead of an edge nothing routes.
+    site_reach = RR.SiteReach(picker.fields, picker.loc_path)
     ocean = {pid: S.ocean_distance(picker.fields[pid]) for pid in picker.fields}
 
-    anchors, anchor_source = declared_town_centres(seed, expect_towns)
+    # THE HUMAN-DECLARED SITES CLAIM THEIR GROUND FIRST (and only when a seed
+    # declares any: a seed without one keeps a byte-identical plan).
+    declared = declared_harbours(picker, seed, claims, islands)
+    if declared:
+        plan["declared_sites"] = declared
+
+    anchors, anchor_source = declared_town_centres(expect_towns)
     town_sites = S.dedupe(picker, picker.town(patches=town_patches))
-    picks = select_towns(town_sites, seed, anchors, anchor_source)
+    picks = select_towns(
+        town_sites, seed, anchors, anchor_source,
+        reach=lambda s, spec: site_reach.verdict(
+            s.patch, s.x, s.z, spec["road_priority"]),
+        windows={w: _window_pid(picker.fields, w)
+                 for w in ("primary", "secondary")})
     plan["town_choice"] = {
         "seed": seed,
         "declared_by": anchor_source or None,
@@ -1811,16 +1993,32 @@ def build(picker: S.Picker, run_interior: bool = True,
         town["dist_navigable_water_m"] = round(float(ocean[site.patch][iz, ix]), 1)
         town["dist_spawn_m"] = site.dist_spawn_m
         town["island"] = site_island(islands, picker, site.patch, site.x, site.z)
+        town["road"] = site_reach.verdict(
+            site.patch, town["centre"][0], town["centre"][1],
+            spec["road_priority"])
+        town["road_refused"] = pick.get("road_refused", [])
+        if not town["road"]["roaded"]:
+            raise ValueError(
+                f"town {spec['id']!r} is declared {spec['road_priority']} and "
+                f"no road reaches it on seed {seed!r}: {town['road']['why']}. "
+                f"A town is the trunk network's own node; a plan that "
+                f"publishes it as portal-only has no town. Widen "
+                f"sites.Picker.town() so a reachable district is a candidate, "
+                f"or declare the centre with --expect-towns.")
         town["overlaps"] = LY.check_overlaps(town)
         town["site_notes"] = site.notes
         plan["towns"][spec["id"]] = town
 
-    site_anchors, site_source = declared_outlier_sites(seed, expect_sites)
+    site_anchors, site_source = declared_outlier_sites(expect_sites)
+    first_town = next(iter(plan["towns"].values()))
     placed = select_outliers(
         picker, seed, site_anchors, site_source,
         admit=lambda rec, claims: engine_outlier_pad(picker, surface, rec,
                                                      apron, claims=claims),
-        claims=claims)
+        claims=claims,
+        reach=lambda rec, s: site_reach.verdict(
+            s.patch, s.x, s.z, rec["road_priority"]),
+        context={"town": (first_town["centre"][0], first_town["centre"][1])})
     # A SITE REFUSED FOR ITS BODY is carried, not solved, and not the stage's
     # end (BODY_REFUSAL_DEPENDS_ON): `plan["refused_sites"]`, with every body
     # tried and the emitter's own numbers.
@@ -1882,6 +2080,10 @@ def build(picker: S.Picker, run_interior: bool = True,
             "poi_violations": picker.loc.violations(
                 pad["x"], pad["z"], math.hypot(o["pad_m"], o["pad_m"]) / 2),
             "island": site_island(islands, picker, o["patch"], pad["x"], pad["z"]),
+            # THE ROAD'S VERDICT AT THE PLACE THE NODE WILL STAND: the pad's
+            # slid centre, not the candidate the search proposed.
+            "road": site_reach.verdict(o["patch"], pad["x"], pad["z"],
+                                       o["road_priority"]),
             "cluster": o.get("cluster", 1),
         })
         plan["outliers"].append(rec)
@@ -2028,6 +2230,8 @@ def build(picker: S.Picker, run_interior: bool = True,
         "bodies_not_grounding": sum(
             1 for e in plan["bodies"].values() if e["grounded"] not in BD.GROUNDS),
     }
+    if declared:
+        plan["totals"]["declared_sites"] = len(declared)
     return plan
 
 
@@ -3064,6 +3268,9 @@ def sites_yaml(plan: dict) -> str:
             "dist_navigable_water_m": t["dist_navigable_water_m"],
             "dist_spawn_m": t["dist_spawn_m"],
             "same_landmass_as_spawn": t["island"]["same_landmass_as_spawn"],
+            # WHETHER A ROAD REACHES IT, measured (road_reach.py): the one
+            # statement `roads/spec.py` builds the site's legs from.
+            "road": t["road"],
             "why": t["why"],
         })
     for r in plan["outliers"]:
@@ -3081,6 +3288,7 @@ def sites_yaml(plan: dict) -> str:
             "dist_navigable_water_m": r["dist_navigable_water_m"],
             "dist_spawn_m": r["dist_spawn_m"],
             "same_landmass_as_spawn": r["island"]["same_landmass_as_spawn"],
+            "road": r["road"],
             "why": r["why"],
         }
         if r["kind"] == "castle":
@@ -3089,6 +3297,20 @@ def sites_yaml(plan: dict) -> str:
                                     "may terminate below the summit with a "
                                     "portal rather than reaching the door")
         recs.append(rec)
+    # THE HUMAN-DECLARED SITES, MEASURED (`declared_harbours`).  Their own key,
+    # not `sites`: a declared site is a ROAD NODE with a district and its own
+    # builder, not a solved town or outlier, and every reader of `sites` --
+    # the gate's census, `build.unit_records` -- counts solver sites.  Written
+    # only when a seed declares any, so a seed without one is byte-identical.
+    declared = [{
+        "id": d["id"], "type": d["kind"], "node": d["node"],
+        "requested_xz": d["requested_xz"], "xz": d["xz"],
+        "pad_radius_m": d["pad_radius_m"], "district_m": d["district_m"],
+        "road_priority": d["road_priority"], "road_to": d["road_to"],
+        "patch": d["patch"], "pad_y": d["pad_y"],
+        "same_landmass_as_spawn": d["island"]["same_landmass_as_spawn"],
+        "measured": d["measured"], "why": d["why"],
+    } for d in plan.get("declared_sites", ())]
     doc = {
         # `world` was the literal "Ulfsland" and `seed`/`seed_hash` came from a
         # dict that hardcoded Pirate68, so this header was a constant wearing
@@ -3109,6 +3331,8 @@ def sites_yaml(plan: dict) -> str:
         "totals": plan["totals"],
         "sites": recs,
     }
+    if declared:
+        doc["declared_sites"] = declared
     return _yaml.safe_dump(doc, sort_keys=False, width=10 ** 9)
 
 
@@ -3190,8 +3414,7 @@ def main() -> int:
              "--expect-towns stenvik=496,904. The plan REFUSES to run if the "
              "district search does not return a candidate there: a plan that "
              "silently relocates a town is worse than one that stops. Omit it "
-             "and, unless ANCHORED_TOWNS declares one for the seed being "
-             "solved, the towns are the search's own top-ranked districts on "
+             "and the towns are the search's own top-ranked districts on "
              "this seed's land.")
     ap.add_argument(
         "--expect-sites", action="append", default=[], metavar="ID=X,Z[,PATCH]",
@@ -3244,6 +3467,17 @@ def main() -> int:
               f"{e['grounded']:16s} float={e['floating_fraction']:.2f} "
               f"indoor={ind.get('indoor_covered_m2', 'n/a')!s:>7s} "
               f"npc={ind.get('npc_ok')}")
+    if plan.get("declared_sites"):
+        print("\ndeclared sites (worldseed.HUMAN_SITES), measured:")
+        for d in plan["declared_sites"]:
+            m = d["measured"]
+            print(f"  {d['id']:26s} {d['kind']:16s} request "
+                  f"({d['requested_xz'][0]:g}, {d['requested_xz'][1]:g}) "
+                  f"{m['request_water_depth_m']:.2f} m under the sea -> node "
+                  f"{d['node']} ({d['xz'][0]:g}, {d['xz'][1]:g}), "
+                  f"{m['landing_gap_m']:g} m away, disc {d['pad_radius_m']:g} m, "
+                  f"district {d['district_m']:g} m, "
+                  f"same_landmass_as_spawn={d['island']['same_landmass_as_spawn']}")
     print("\noutliers:")
     for r in plan["outliers"]:
         print(f"  {r['id']:16s} {r['kind']:11s} ({r['x']:7.1f},{r['z']:7.1f}) "

@@ -301,6 +301,107 @@ def bank_bed_floor(t, dry: list[int], wet: list[int], h_lo: float,
     return max(h_lo, min(max(bed), h_hi)) if bed else h_lo
 
 
+# BANK_SPAN_BED_DEPENDS_ON: THE DECK IS CHOSEN AGAINST THE GROUND THE GATE
+# READS ON THE DECK'S OWN METRES, NOT AGAINST THE ROUTING FIELD AT ITS BANKS.
+#
+# `bank_bed_floor` (BANK_BED_DEPENDS_ON) keeps H at or above the dry ground at
+# the two stations BESIDE the free run, read from `t`, the routing field's
+# bilinear height -- a field sampled on HALF-integers.  The acceptance gate
+# (accept/sections/roads.py `crossing_premise`) reads something else: the
+# engine's Heightmap at the integer lattice vertex nearest each 1 m sample of
+# the straight line between the record's own `bank_a` and `bank_b` -- the
+# free run's two END stations, which `bank_bed_floor` never looks at -- and
+# refuses a deck whose bed stands more than 0.30 m above it on any of them
+# ("IS NOT A CROSSING").  Two quantities, one name: the same shape as every
+# field-vs-lattice defect here (`_writer_water_once`: "interpolating it back
+# to integers smooths precisely the one-metre shore steps").
+# MEASURED, Ulfsland regen, the writer lattice (`writer_patches`, nearest
+# vertex) against the gate's own cached ground over the 1 m samples of the
+# two refused crossings: 0.000 m difference at every sample that the road's
+# own bench did not move (46 + 22 of 70), so the lattice IS the gate's
+# quantity; and the routing field is NOT:
+#   T9-wttown-dockshore-x01  deck 32.752; bank_b 32.61 m by the field, 33.234
+#       m on the lattice (field - lattice up to 0.83 m on the bank's slope,
+#       the bank sample 0.482 m over the deck) -> 3 of 22 metres over, worst
+#       +0.506 m;
+#   S4-meadhall-southeast-x01  deck 33.574 (its legal floor); the free run's
+#       last-but-one station stands on a crest the field reads 33.722 and the
+#       lattice 33.998 -> +0.424 m.
+# In both the deck sat at its floor, `bank_bed_floor` was satisfied (the dry
+# stations beyond the banks are lower than the crest), and the plan declared a
+# deck its own bed rises above.  THE RULE:
+#   the_gates_own_samples_of_the_span    the 1 m samples of the line between
+#       the record's two banks (the free run's end stations, rounded as the
+#       record rounds them), the gate's `crossing_spans` construction;
+#   the_writers_integer_lattice          each read at the integer vertex(es)
+#       the engine answers with (both on a half-lattice line, where its
+#       reading can flip), from the writer's own patches -- the quantity the
+#       gate reads -- never from the half-grid field;
+#   a_margin_under_the_burial_limit      H is not chosen more than
+#       CROSSING_BED_BURIAL_M (half of the gate's 0.30) under the highest of
+#       them: an exact placement on a limit is the half-lattice ambiguity
+#       again, and the margin is what survives the gate's own measurement.
+# The floor is clipped at the legal interval's top (the clamp) like
+# `bank_bed_floor`; a bed that still stands above is RECORDED on the crossing
+# (`span_bed`, with the metres over) for Crossings, never forced, and a
+# crossing the rule does not move carries no new key (Fresh42 byte-identical).
+# NEUTER `_SPAN_BED_MODE = "banks"`: the shipped floor, the two beside-run
+# stations of the routing field.  Proven by `selftest_crossing_banks`.
+BANK_SPAN_BED_DEPENDS_ON = ("the_gates_own_samples_of_the_span",
+                            "the_writers_integer_lattice",
+                            "a_margin_under_the_burial_limit")
+_SPAN_BED_MODE = "lattice"    # lattice | banks (the shipped floor)
+# accept/sections/roads.py SAMPLE_M and half of its CROSSING_BURIAL_MAX_M.
+CROSSING_SAMPLE_M = 1.0
+CROSSING_BED_BURIAL_M = 0.15
+
+
+def span_samples(a, b) -> list[tuple[float, float]]:
+    """The gate's own samples of a crossing: `crossing_spans` cuts the line
+    from `bank_a` to `bank_b` into `max(1, round(span / 1 m))` equal steps."""
+    span = math.hypot(b[0] - a[0], b[1] - a[1])
+    n = max(1, int(round(span / CROSSING_SAMPLE_M)))
+    return [(a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n)
+            for k in range(n + 1)]
+
+
+def lattice_vertices(x: float, z: float) -> list[tuple[int, int]]:
+    """The integer vertices the engine's Heightmap answers a point with: the
+    nearest on each axis, and BOTH where the point sits on a half-lattice
+    line (`accept/instruments.py::ground`: the reading there can flip by the
+    local vertex difference)."""
+    def axis(v: float) -> list[int]:
+        lo = math.floor(v)
+        if abs(v - lo - 0.5) < 1e-6:
+            return [lo, lo + 1]
+        return [int(math.floor(v + 0.5))]
+    return [(i, j) for i in axis(x) for j in axis(z)]
+
+
+def span_bed_floor(a, b, ground) -> dict:
+    """The lowest H a detected crossing may take against the ground the gate
+    reads on its own span (BANK_SPAN_BED_DEPENDS_ON): the highest lattice bed
+    on the samples of the line `a -> b`, less CROSSING_BED_BURIAL_M.
+    `ground(vx, vz)` is the writer's height at an integer vertex, None when
+    unread.  `floor_y` is None when no sample was read."""
+    best, at, read, unread = None, None, 0, 0
+    pts = span_samples(a, b)
+    for x, z in pts:
+        hs = [g for g in (ground(i, j) for i, j in lattice_vertices(x, z))
+              if g is not None]
+        if not hs:
+            unread += 1
+            continue
+        read += 1
+        h = max(float(g) for g in hs)
+        if best is None or h > best:
+            best, at = h, (round(x, 3), round(z, 3))
+    return {"bed_max_y": None if best is None else round(best, 3),
+            "bed_max_at": at, "samples": len(pts), "unread": unread,
+            "floor_y": (None if best is None
+                        else round(best - CROSSING_BED_BURIAL_M, 3))}
+
+
 def bank_level_height(ref: list[float], h_lo: float, h_hi: float,
                       caps: list[float]) -> dict:
     """The one height of a detected crossing's level run.
@@ -1605,6 +1706,22 @@ def _generated_patches(fld, zones) -> dict:
     return out
 
 
+def lattice_ground(fld, a, b):
+    """`ground(vx, vz)` for the 1 m samples of the line `a -> b`: the
+    writer's generated height at an INTEGER vertex (BANK_SPAN_BED_DEPENDS_ON)
+    -- `_PLAN_PATCHES` when the plan runs on the engine's patches, else the
+    field re-sampled in the writer's patch shape (a fixture's ground).  Only
+    the zones the samples' vertices stand in are asked for."""
+    import ribbon as ribbonmod                             # noqa: PLC0415
+    zones = sorted({ribbonmod.tcdata.zone_of(i, j)
+                    for x, z in span_samples(a, b)
+                    for i, j in lattice_vertices(x, z)})
+    patches = (_PLAN_PATCHES(fld, zones) if _PLAN_PATCHES is not None else
+               _generated_patches(fld, zones))
+    return lambda vx, vz: ribbonmod.appliedmod.generated_at(
+        patches, float(vx), float(vz))
+
+
 def _foot(nodes: np.ndarray, x: float, z: float) -> tuple[int, float, float]:
     """`(k, t, lat)`: the run `k -> k+1` nearest (x, z), the parameter of the
     foot on it and the distance to it."""
@@ -2443,7 +2560,28 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
         caps = [float(ceiling[k]) for k in range(wa, wb + 1)
                 if ceiling and k in ceiling]
         ref = [t[k] for k in dry] if dry else [t[wa], t[wb]]
+        h_top = h_hi
         lvl = bank_level_height(ref, h_lo, h_hi, caps)
+        # THE DECK STANDS AT OR ABOVE THE GROUND THE GATE READS ON ITS OWN
+        # SPAN (BANK_SPAN_BED_DEPENDS_ON): the writer's lattice at the 1 m
+        # samples between the two banks this record is about to declare, not
+        # the routing field beside the free run.  It binds where the height
+        # chosen above stands under that floor -- then the floor takes the
+        # interval's lower end and H is chosen again, ceiling and all (the
+        # floor wins, as the bank floor does) -- and the clamp's top stops it
+        # like the bank floor; what it cannot reach is recorded, never forced.
+        span_bed = None
+        if _SPAN_BED_MODE == "lattice" and lvl["H"] is not None:
+            a_xz = (round(float(pts[ia][0]), 2), round(float(pts[ia][1]), 2))
+            b_xz = (round(float(pts[ib][0]), 2), round(float(pts[ib][1]), 2))
+            sb = span_bed_floor(a_xz, b_xz, lattice_ground(fld, a_xz, b_xz))
+            floor_y = sb["floor_y"]
+            if floor_y is not None and floor_y > lvl["H"] + 1e-9:
+                span_bed = {**sb, "depends_on": list(BANK_SPAN_BED_DEPENDS_ON),
+                            "height_before_y": round(float(lvl["H"]), 3),
+                            "clipped_at_interval_top": bool(floor_y > h_top)}
+                h_lo = max(h_lo, min(floor_y, h_top))
+                lvl = bank_level_height(ref, h_lo, h_top, caps)
         h_hi, single, H = lvl["h_hi"], lvl["single"], lvl["H"]
         bank_lowered += lvl["lowered"]
         bank_under_floor += lvl["under_floor"]
@@ -2466,6 +2604,8 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
         c["bank_b"].update({"road_deck_y": round(H, 3) if H is not None else None,
                             "bearing_deg": round((brg + 180.0) % 360.0, 1)})
         c["why_terrain_failed"] = c.pop("reason", c.get("why_terrain_failed"))
+        if span_bed is not None:
+            c["span_bed"] = span_bed
         bank_level.append({"crossing_id": c["crossing_id"],
                            "level_at_y": c["required_deck_y"],
                            "single_H_both_banks": bool(single),
@@ -4466,6 +4606,10 @@ def node_provenance(segments, nodes=None) -> dict:
                 # centre and not equal to it: wtspawn stands at (110,-104)
                 # against sites.yaml's (114,-108).
                 src, verbatim = sites, False
+            elif nid in specmod.DECLARED_SITES:
+                # A person's request (`raw_xz`) sited by stage 8's own module:
+                # the node is the measured landing, never the request.
+                src, verbatim = sites, False
             else:
                 src, verbatim = None, False
             rec: dict = {"xz": [float(n["xz"][0]), float(n["xz"][1])],
@@ -4802,6 +4946,7 @@ def selftest() -> int:
     fails += selftest_terminal_crossing()
     fails += selftest_crossing_banks()
     fails += selftest_abutment_bench()
+    fails += selftest_span_bed()
     fails += selftest_owner_cause()
     fails += selftest_pad_cliff_verdict()
     fails += selftest_arrival()
@@ -6754,6 +6899,120 @@ def selftest_abutment_bench() -> int:
     return fails
 
 
+def _sb_ground(X, Z):
+    """A 20 m channel (28.5 m, under the plane) between two 33.0 m banks."""
+    return np.where((X >= 30.0) & (X < 50.0), 28.5, 33.0)
+
+
+def selftest_span_bed() -> int:
+    """BANK_SPAN_BED_DEPENDS_ON, each term both ways, through `build_segment`
+    on a channel built in code.  The routing field is flat 33.0 m banks; the
+    writer's LATTICE (what the gate reads) carries a crest over the free
+    run's far end station -- the Ulfsland S4 / T9 shape, where the field read
+    33.722 / 32.61 m and the lattice 33.998 / 33.234 m under a deck chosen
+    from the field.  Two nodes are added to `spec.NODES` for the call and
+    removed after."""
+    global _PLAN_PATCHES, _SPAN_BED_MODE
+    import ribbon as ribbonmod                             # noqa: PLC0415
+    fails = 0
+
+    def want(label, got, expect):
+        nonlocal fails
+        ok = got == expect
+        fails += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}: {got}"
+              + ("" if ok else f"  EXPECTED {expect}"))
+
+    print("case: the gate's own samples and the vertices its engine answers "
+          "with (REQUIRED: the samples are the chord cut at 1 m, a "
+          "half-lattice point asks BOTH vertices)")
+    want("a 3 m chord is four samples", span_samples((0.0, 0.0), (3.0, 0.0)),
+         [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.0)])
+    want("an off-line point asks its nearest vertex",
+         lattice_vertices(10.4, 3.6), [(10, 4)])
+    want("a half-lattice point asks both",
+         lattice_vertices(10.5, 3.2), [(10, 3), (11, 3)])
+    bed = {(0, 0): 31.0, (1, 0): 33.0, (2, 0): 32.0, (3, 0): 31.5}
+    got = span_bed_floor((0.0, 0.0), (3.0, 0.0), lambda i, j: bed.get((i, j)))
+    want("the floor is the highest vertex under the burial margin",
+         (got["bed_max_y"], got["floor_y"]),
+         (33.0, round(33.0 - CROSSING_BED_BURIAL_M, 3)))
+    got = span_bed_floor((0.5, 0.0), (0.5, 0.0), lambda i, j: bed.get((i, j)))
+    want("a tie takes the HIGHER of its two vertices (the reading can flip)",
+         got["bed_max_y"], 33.0)
+    want("a span nothing was read on has no floor",
+         span_bed_floor((0.0, 0.0), (3.0, 0.0), lambda i, j: None)["floor_y"],
+         None)
+
+    fld = _ww_field(_sb_ground)
+    corr = _ww_corridor(fld)
+    line = [[float(x), 0.0] for x in range(0, 82, 2)]
+    edge = {"id": "SB", "a": "sb-a", "b": "sb-b", "cls": "trunk", "pri": 3}
+    specmod.NODES["sb-a"] = {"island": "sb", "patch": "sb",
+                             "kind": "extremity", "xz": (0.0, 0.0)}
+    specmod.NODES["sb-b"] = {"island": "sb", "patch": "sb",
+                             "kind": "extremity", "xz": (80.0, 0.0)}
+
+    def built(crest, mode):
+        """`(H, over, record)`: the deck's height, how far the lattice's
+        highest bed on the gate's own samples stands over it, and the
+        crossing's record."""
+        def lat(x, z):
+            if 30.0 <= x < 50.0:
+                return 28.5
+            if 50.0 <= x <= 51.0 and abs(z) <= 2.0:
+                return crest
+            return 33.0
+        global _PLAN_PATCHES, _SPAN_BED_MODE
+        was = _PLAN_PATCHES, _SPAN_BED_MODE
+        _PLAN_PATCHES = lambda _f, zones: {
+            f"z_{x}_{z}": ribbonmod._flat_patch(x, z, lat) for x, z in zones}
+        _SPAN_BED_MODE = mode
+        try:
+            rec = build_segment(fld, edge, corr, [], fixed_pts=line,
+                                census=None, joint={})
+        finally:
+            _PLAN_PATCHES, _SPAN_BED_MODE = was
+        c = rec["crossings"][0]
+        beds = [max(lat(i, j) for i, j in lattice_vertices(x, z))
+                for x, z in span_samples(tuple(c["bank_a"]["xz"]),
+                                         tuple(c["bank_b"]["xz"]))]
+        return c["required_deck_y"], round(max(beds) - c["required_deck_y"],
+                                           3), c
+    try:
+        keep, drop = built(34.2, "lattice"), built(34.2, "banks")
+        flat = built(33.0, "lattice")
+        top = built(45.0, "lattice")
+    finally:
+        del specmod.NODES["sb-a"], specmod.NODES["sb-b"]
+    gate_limit = 0.30      # accept/sections/roads.py CROSSING_BURIAL_MAX_M
+    print("case: a crest 1.2 m over the field's bank on the lattice, over "
+          "the free run's end station (REQUIRED: the deck clears it by the "
+          "gate's own measure)")
+    want("the deck stands at the crest less the margin",
+         (keep[0], keep[1] <= gate_limit), (34.05, True))
+    want("NEUTER span_bed=banks (the shipped floor): the deck stays at the "
+         "field's bank and the gate would refuse it ('IS NOT A CROSSING')",
+         (drop[0], drop[1] > gate_limit), (33.0, True))
+    want("the record says what moved it",
+         (keep[2]["span_bed"]["height_before_y"],
+          keep[2]["span_bed"]["clipped_at_interval_top"]), (33.0, False))
+    want("the legal interval's floor is the one it was chosen from",
+         keep[2]["legal_deck_y_interval"][0], 34.05)
+    print("case: a bed no higher than the deck (REQUIRED: nothing moves, "
+          "no key is added -- Fresh42 stays byte-identical)")
+    want("the height the field chose stands and the record is unchanged",
+         (flat[0], "span_bed" in flat[2]), (33.0, False))
+    print("case: a crest past the clamp's top (REQUIRED: stopped at the "
+          "top, never forced, and the metres still over are on the record)")
+    want("the deck stops at the interval's top",
+         (top[0], top[2]["span_bed"]["clipped_at_interval_top"]), (40.0, True))
+    want("what stands over it is measurable from the record", top[1] > gate_limit,
+         True)
+    print(f"span-bed selftest: {fails} failed")
+    return fails
+
+
 # ---------------------------------------------------------------------------
 # spec.MEASURED_SEED_DEPENDS_ON, NODE_ANCHOR_DEPENDS_ON and
 # ORPHAN_JOIN_DEPENDS_ON, each both ways, on the Fresh42 drive-4 shapes.
@@ -7303,6 +7562,13 @@ def main() -> int:
 
     global SEED, WORLD, _PLAN_KEEPOUTS, _PLAN_PATCHES, _PLAN_PAD_KEEPOUTS
     SEED, WORLD = worldseed.apply(args)
+    # A SITE A PERSON DECLARED IS A NODE THIS PLAN MUST ROUTE TO.  A published
+    # site set that does not carry it is not "a plan with one node fewer": it is
+    # a road network that has forgotten a city.  `spec` imported anyway (so the
+    # tools that only want a helper keep working); the one consumer that would
+    # route without the node stops here, with the refusal spec recorded.
+    if specmod.DECLARED_STALE:
+        raise SystemExit(specmod.DECLARED_STALE)
     # THE WRITER'S OWN POI DISCS, for every plan-time writer check
     # (WALKED_KEEPOUT_DEPENDS_ON).
     _PLAN_KEEPOUTS = writer_keepouts

@@ -1327,7 +1327,13 @@ def _case_NEUTER_drop_plan_declared_seed_the_defect_RETURNS() -> list[str]:
     """LOSS ARM.  Without the plan's own declaration the gate is the state
     that shipped: the document is taken at its word and the Pirate68 sites
     enter Fresh42 unopposed."""
-    path, doc = _real_plan()
+    # CONSTRUCTED: the recorded plan of a world that names a SEED and no
+    # world.  The case read the checkout's own `plan.json`, which a
+    # regenerated world rewrites to name its world too -- and then the
+    # surviving world term refuses it for a reason that is not the one
+    # under test.
+    path = Path("<in-memory>")
+    doc = {"seed": worldseed.DEFAULT_SEED, "towns": {}, "outliers": []}
     msg = _raises(lambda: require_plan_scope(
         path, doc, seed_="Fresh42", world_="Fresh42",
         depends_on=("run_seed", "plan_declared_world", "run_world")))
@@ -2100,9 +2106,19 @@ def _case_the_hub_is_THIS_worlds_and_NEUTER_reads_Ulfsland() -> list[str]:
             u = hub_placement("Fresh42")["solved"]
         finally:
             HUB_SOURCE = "own_world"
-    if (u["x"], u["z"]) != (-292.5, 213.5):
+    # the other world's hub is read off ITS OWN placements, whatever this
+    # tree's Ulfsland solved it to (the case once pinned the committed
+    # world's (-292.5, 213.5), red on any regenerated one)
+    import stock  # noqa: PLC0415  the placement reader resolves the world
+    with worldseed.scope(worldseed.DEFAULT_SEED, worldseed.DEFAULT_WORLD):
+        other = stock.load_placement("Ulfsland", "deepnorth-sandbox",
+                                     "sandbox-portal-hub")["solved"]
+    if (u["x"], u["z"]) != (other["x"], other["z"]):
         bad.append(f"NEUTER did not restore Ulfsland's ring ({u['x']}, "
                    f"{u['z']})")
+    if (u["x"], u["z"]) == (s["x"], s["z"]):
+        bad.append("the neutered read is the same hub as this world's, so "
+                   "the switch changes nothing and proves nothing")
     return bad
 
 

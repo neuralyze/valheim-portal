@@ -1807,9 +1807,8 @@ def _case_installations_are_sited_for_this_seed():
                      f"refused rather than handed the default seed's "
                      f"{len(specmod.PLACEMENT_OF)} building centres: "
                      f"{str(exc)[:110]}"),
-            numbers={"nodes": len(specmod.PLACEMENT_OF),
-                     "declared_seeds": len(specmod.ANCHORED_INSTALLATIONS)})
-    anchored = specmod.ANCHORED_INSTALLATIONS[specmod.worldseed.DEFAULT_SEED]
+            numbers={"nodes": len(specmod.PLACEMENT_OF)})
+    anchored = _FROZEN_ULFSLAND_INSTALLATIONS
     same = sorted(n for n, xz in got.items()
                   if n in anchored and tuple(xz) == tuple(anchored[n]))
     return Finding(
@@ -1821,13 +1820,23 @@ def _case_installations_are_sited_for_this_seed():
         numbers={"handed": len(got), "identical_to_default_seed": len(same)})
 
 
+# THE KNOWN-BAD STATE, CONSTRUCTED HERE: the 8 coordinates `roads/spec.py` once
+# carried as literals (and as a fallback table), copied out of Ulfsland's own
+# placement set.  They live in this fixture and nowhere in the tool.
+_FROZEN_ULFSLAND_INSTALLATIONS = {
+    "portalhub": (-292.5, 213.5), "meadhall": (303.5, 385.5),
+    "dockshore": (675.4, -85.6), "stathub": (661.5, 1088.5),
+    "blacbase": (-3045.5, -4101.5), "plainsfm": (750.5, -4278.5),
+    "workshop": (-4673.5, -310.5), "mtnpost": (-7.5, 3939.5)}
+
+
 def _neuter_the_installation_reader():
     """RESTORE THE DEFECT VERBATIM: the 8 coordinates as frozen literals,
     answered for every seed with no placement read and no refusal -- which is
     what `spec.py` did when they were transcribed into the NODES table."""
     specmod = _spec_mod()
     saved = specmod.installation_xz
-    frozen = dict(specmod.ANCHORED_INSTALLATIONS[specmod.worldseed.DEFAULT_SEED])
+    frozen = dict(_FROZEN_ULFSLAND_INSTALLATIONS)
 
     def constant(seed=None, world=None):
         return dict(frozen)

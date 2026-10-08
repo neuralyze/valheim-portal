@@ -10581,8 +10581,15 @@ def main() -> int:
     # that has no live pad at all.
     sites_path = worldseed.sites_path()
     if sites_path.exists():
-        site_list = [dict(s) for s in
-                     yaml.safe_load(sites_path.read_text())["sites"]]
+        _sites_doc = yaml.safe_load(sites_path.read_text())
+        site_list = [dict(s) for s in _sites_doc["sites"]]
+        # THE SITES A PERSON DECLARED ARE ROAD NODES WITH A KEEP-OUT TOO: the
+        # router stops at their landing's disc (spec.NODES), so the writer
+        # keeps the same disc rather than paving the landing it was routed to.
+        site_list += [{"id": d["node"], "xz": list(d["xz"]),
+                       "pad_radius_m": d["pad_radius_m"],
+                       "pad_y": d.get("pad_y")}
+                      for d in (_sites_doc.get("declared_sites") or ())]
         pad_source = str(sites_path)
     else:
         site_list = [{"id": sid, "xz": list(s["xz"]),

@@ -271,6 +271,50 @@ def _handoffs_by_node(handoffs: list[dict]) -> dict[str, list[dict]]:
     return out
 
 
+# DECLARED_WIDTH_DEPENDS_ON: A DECLARED DECK IS AS WIDE AS THE WIDEST ROAD THAT
+# MEETS EITHER BANK, AND DISAGREEING ROAD WIDTHS ARE NOT A REASON TO BUILD
+# NOTHING.
+#
+# `fill_from_the_contract` took `ribbon_width_m` from the `abutment_handoffs`
+# of BOTH banks' nodes and filled it only when the two banks named ONE width
+# and BOTH had a road, "because a deck has one width".  A deck has one width;
+# that does not make two widths a refusal -- it makes the widest the deck's.
+# MEASURED, Ulfsland regen, step 6.5 on both declared crossings: `S1
+# REFUSED as a span: missing ribbon_width_m` (brg-s1-e is met by the 6.0 m
+# trunk T2 and the 4.0 m spur S12, brg-s1-w by two 4.0 m spurs) and `S2
+# REFUSED ... missing ribbon_width_m` (brg-s2-e 4.0 m, brg-s2-w no road in
+# the plan), so the unit named `S2` was `no such span(s)` and S1 -- the
+# deck named as the remedy of THREE gate refusals -- never reached a builder
+# at all: both declared crossings are Crossings' own measurements and the
+# tool refused them for a number it holds in the same file.  The same width
+# refusal would meet any declared crossing whose banks are served by two
+# classes of road, on any seed.
+# THE RULE: the deck is as wide as the widest carriageway of any handoff at
+# either bank's own node; a bank with no road names no width but does not veto
+# the other's (the abutment guard judges what stands beyond that bank, with
+# its own numbers); a crossing no road reaches at all is still refused by name.
+# The pinch the width rule exists to avoid is a wide road arriving at a narrow
+# deck (roads/spec.py: "bringing a 6 m trunk ribbon to a 4 m jetty CREATES
+# the pinch"); the widest deck cannot make one.
+# NEUTER `_DECLARED_WIDTH_MODE = "agree"`: the shipped fill -- both banks
+# must have a road and name ONE width.  Proven by `census_selftest` (arm
+# `declared deck width`).
+DECLARED_WIDTH_DEPENDS_ON = ("the_widest_carriageway_that_meets_either_bank",)
+_DECLARED_WIDTH_MODE = "widest"    # widest | agree (the shipped fill)
+
+
+def declared_deck_width(by_end: dict) -> float | None:
+    """The deck width a declared crossing takes from the handoff widths at its
+    two banks (`{end: {width, ...}}`), or None when nothing names one
+    (DECLARED_WIDTH_DEPENDS_ON)."""
+    flat = {w for s in by_end.values() for w in s}
+    if not flat:
+        return None
+    if _DECLARED_WIDTH_MODE == "agree":
+        return next(iter(flat)) if len(flat) == 1 and len(by_end) == 2 else None
+    return max(flat)
+
+
 def fill_from_the_contract(c: dict, corpus: dict) -> tuple[dict, list[str]]:
     """Fields a DECLARED crossing does not carry, READ from named authorities.
 
@@ -283,9 +327,11 @@ def fill_from_the_contract(c: dict, corpus: dict) -> tuple[dict, list[str]]:
       required_deck_y        `bank_a.road_deck_y`, and only when `bank_b`'s
                              AGREES -- that agreement IS `single_H_both_banks`
                              and is therefore measured rather than asserted
-      ribbon_width_m         the `abutment_handoffs` record for THIS BANK'S
-                             OWN `node`; refused when the two ends disagree,
-                             because a deck has one width
+      ribbon_width_m         the WIDEST carriageway the `abutment_handoffs`
+                             records of this crossing's banks' own nodes
+                             name (DECLARED_WIDTH_DEPENDS_ON): one deck, one
+                             width, and a road narrower than it arrives at
+                             a wider deck, never the other way round
       legal_deck_y_interval  the degenerate interval [deck_datum_y,
                              deck_datum_y], and ONLY when this crossing's own
                              required deck IS that datum.  `network.py` states
@@ -331,13 +377,17 @@ def fill_from_the_contract(c: dict, corpus: dict) -> tuple[dict, list[str]]:
             for h in nodes.get(node, ()):
                 if h.get("ribbon_width_m") is not None:
                     widths.setdefault(end, set()).add(h["ribbon_width_m"])
-        flat = {w for s in widths.values() for w in s}
-        if len(flat) == 1 and len(widths) == 2:
-            out["ribbon_width_m"] = flat.pop()
-            why.append(f"ribbon_width_m {out['ribbon_width_m']} from the "
-                       f"abutment_handoffs record of BOTH banks' own nodes "
-                       f"({(out['bank_a'] or {}).get('node')} / "
-                       f"{(out['bank_b'] or {}).get('node')})")
+        got = declared_deck_width(widths)
+        if got is not None:
+            out["ribbon_width_m"] = got
+            why.append(
+                f"ribbon_width_m {got} = the widest carriageway of the "
+                f"abutment_handoffs at the banks' own nodes "
+                f"({(out['bank_a'] or {}).get('node')}: "
+                f"{sorted(widths.get('bank_a', ()))} / "
+                f"{(out['bank_b'] or {}).get('node')}: "
+                f"{sorted(widths.get('bank_b', ()))}) "
+                f"[DECLARED_WIDTH_DEPENDS_ON]")
     out["filled_from"] = why
     return out, why
 
@@ -882,6 +932,28 @@ def _fixture_span(cid: str) -> dict:
             "bank_b": {"xz": list(f["bank_b"])}}
 
 
+# THE KNOWN-BAD STATE OF ARM 1, CONSTRUCTED: ONE CHANNEL DECLARED TWICE.
+# `route.find_crossings` runs per segment, so a channel two segments both
+# have to get across is detected twice under two names, with banks that
+# need not coincide: here B's banks are 2.83 m from A's at each end (2 m
+# along, 2 m across), which an endpoint-equality census (0.5 m) misses and
+# the corridor-area census (0.63 of the strip, over the 0.5 threshold)
+# collapses.  This was read off the committed Ulfsland corpus's own
+# duplicates, so a regenerated world with none made `nothing collapsed` a
+# statement about the world; the rule's check is this pair.
+DUPLICATE_FIXTURE = {
+    "DUP-a-x01": dict(bank_a=(0.0, 0.0), bank_b=(40.0, 0.0), span_m=40.0),
+    "DUP-b-x01": dict(bank_a=(2.0, 2.0), bank_b=(42.0, 2.0), span_m=40.0),
+}
+
+
+def _duplicate_fixture_spans() -> list[dict]:
+    return [{"crossing_id": cid, "span_m": f["span_m"],
+             "bank_a": {"xz": list(f["bank_a"])},
+             "bank_b": {"xz": list(f["bank_b"])}}
+            for cid, f in DUPLICATE_FIXTURE.items()]
+
+
 def _endpoint_equality_collapse(spans: list[dict],
                                 tol_m: float = 0.5) -> dict[str, str]:
     """THE REJECTED ALTERNATIVE #1, implemented only so the case can show it
@@ -1067,8 +1139,27 @@ def _neuter_span_population_segments_only():
 # is a crossing whose own `segment_id` is null; S1 is the only one on this
 # world with an obligation outstanding, and its deck is the named remedy for
 # three separate gate refusals.
-SPAN_POPULATION_JOINER = "S1"
-SPAN_POPULATION_ON_A_SEGMENT = "W10-brgs1-treenear-x01"
+SPAN_POPULATION_JOINER = "FIX-joiner-x01"
+SPAN_POPULATION_ON_A_SEGMENT = "FIX-built-x01"
+
+
+def _span_population_fixture_doc() -> dict:
+    """The population these arms judge, CONSTRUCTED: a crossings file with one
+    JOINER (`segment_id` null, as S1/S2 are) and several crossings that lie
+    on a segment.  The arms read `roads/crossings.yaml` of whatever world was
+    running, so a world with no joiner (Fresh42) had nothing for the segments
+    key to lose and the neuter "did not flip" -- red for a reason about a
+    WORLD.  The rule is a check of the population KEY, on a population built
+    for the check; a world's own corpus is not read here."""
+    fx = _remedy_fixtures()["records"]
+    detected = [dict(fx[c], status="detected")
+                for c in ("FIX-built-x01", "FIX-refused-x01", "FIX-short-x01",
+                          "FIX-long-x01")]
+    joiner = dict(fx["FIX-joiner-x01"], status="declared", segment_id=None)
+    return {"declared": [joiner], "detected": detected,
+            "contract": {"bank_level_run_m": 6.0, "deck_datum_y": 30.6},
+            "abutment_handoffs": [],
+            "precedence": "declared wins over detected"}
 
 
 def _corpus_truth(path: Path | None = None) -> list[dict]:
@@ -1119,10 +1210,19 @@ def span_population_arms(path: Path | None = None) -> list[dict]:
     ENUMERATION, NOT BUILDABILITY, is the property asserted.  The defect was
     that `segments.yaml` could not SEE a joiner at all; whether a seen record
     then yields a buildable span is a separate question with its own refusals
-    -- S2 is enumerated and correctly refused for `ribbon_width_m`, its two
-    abutment nodes disagreeing 4.0 vs 6.0, and a check that demanded S2 be
-    buildable would be asserting a defect.
+    -- S2 is enumerated, and since DECLARED_WIDTH_DEPENDS_ON it is a span
+    too (its deck takes the widest road at either bank), so a check that
+    demanded S2 be buildable is the abutment guard's to answer, not this
+    population's.
     """
+    import tempfile                                          # noqa: PLC0415
+    import yaml                                              # noqa: PLC0415
+    if path is None:
+        with tempfile.TemporaryDirectory() as _td:
+            fx_path = Path(_td) / "crossings.fixture.yaml"
+            fx_path.write_text(yaml.safe_dump(_span_population_fixture_doc(),
+                                              sort_keys=False))
+            return span_population_arms(fx_path)
     records, _corpus = crossing_corpus(path)
     seen = {c.get("crossing_id") for c in records}
     # THE POPULATION AT RISK IS READ FROM THE FILE, NEVER FROM THE
@@ -1448,7 +1548,7 @@ def bank_regrade_reach(record: dict, segments: dict | None = None,
 
 
 def deck_remedy(record: dict, *, terrain_written, reconciled=None,
-                abutment_steps=None,
+                abutment_steps=None, segments=None,
                 half_width_m: float = DECK_HALF_WIDTH_M) -> dict:
     """Would this builder produce a deck for this crossing?  THREE STATES.
 
@@ -1640,7 +1740,7 @@ def deck_remedy(record: dict, *, terrain_written, reconciled=None,
     # 0.00 m of its own declared 6.0 m run, against a +1.500 m step.  11 of
     # 30 banks over 8 of 15 crossings declare a bank level their own segment
     # has no station to carry; 7 have ZERO metres outboard.
-    reach = bank_regrade_reach(record)
+    reach = bank_regrade_reach(record, segments)
     nums["bank_regrade_reach"] = reach
     over = {} if not abutment_steps else {
         k: float(v) for k, v in abutment_steps.items()
@@ -1744,8 +1844,64 @@ def deck_remedy(record: dict, *, terrain_written, reconciled=None,
 # BUILT, a 319-piece deck standing at y 32.403 over 90 of its 90 declared
 # metres, so an over-correction that refused everything could not pass by
 # agreeing with the refusing arm.
-DECK_REMEDY_REFUSED = "T4-meadhall-stathub-x02"
-DECK_REMEDY_SURVIVOR = "W10-brgs1-treenear-x01"
+DECK_REMEDY_REFUSED = "FIX-refused-x01"
+DECK_REMEDY_SURVIVOR = "FIX-built-x01"
+
+
+def _remedy_fixtures() -> dict:
+    """The crossings these arms judge, CONSTRUCTED HERE: no world, no corpus.
+
+    These arms were keyed on `T4-meadhall-stathub-x02` and
+    `W10-brgs1-treenear-x01` -- rows of ONE world's committed corpus -- and
+    on `T5`/`S6` for the reach.  A regenerated world carries none of them
+    (the Ulfsland regen's W10 was a rejected leg), so every arm answered
+    "the corpus holds no record" and the checks of this TOOL's logic were
+    red for a reason that is about a WORLD.  A check of a rule is a
+    constructed case of the rule (`_reach_fixture`, `tile_frame_arms`).
+
+    Every record is a straight 60 m crossing along +x from (0, 0), its
+    centreline recorded on that line, with the segment it lies on:
+
+      FIX-built-x01    both banks ON the centreline; the segment carries
+                       road outboard of both: a deck that STANDS (offset 0)
+      FIX-refused-x01  bank_b 4.077 m off the centreline -- MORE than the
+                       3.0 m deck half-width (T4-x02's measured offset)
+      FIX-short-x01    bank_b IS the segment's last station: 0 m outboard
+                       (and 90 m of road outboard of bank_a)
+      FIX-long-x01     the same bank with 77.54 m of non-bridged road
+                       outboard of it (S6's measured reach)
+      FIX-joiner-x01   `segment_id` null, as S1/S2: it lies on no segment
+    """
+    def segment(sid, xs, bridged_to):
+        return {"id": sid, "nodes": [[float(x), 0.0] for x in xs],
+                "is_bridge": [0.0 < x <= bridged_to for x in xs]}
+
+    def record(cid, sid, bank_b_z=0.0):
+        return {"crossing_id": cid, "segment_id": sid,
+                "bank_a": {"xz": [0.0, 0.0]},
+                "bank_b": {"xz": [60.0, bank_b_z]},
+                "centreline_straight_from_to": [[0.0, 0.0], [60.0, 0.0]],
+                "bank_level_run_m": 6.0, "status": "detected"}
+    around = [-30.0 + 10.0 * k for k in range(13)]          # -30 .. 90
+    upto = [10.0 * k for k in range(7)]                     # 0 .. 60
+    segments = {
+        "FIX-built": segment("FIX-built", around, 60.0),
+        "FIX-refused": segment("FIX-refused", around, 60.0),
+        # 90 m of road OUTBOARD OF bank_a and none of bank_b: T5's shape
+        # (677 m behind its bank_a, 0 m past its bank_b), the state in which
+        # a reach that loses the DIRECTION reports the far bank as served
+        "FIX-short": segment("FIX-short", [-90.0 + 10.0 * k for k in range(9)]
+                             + upto[1:], 60.0),
+        "FIX-long": segment("FIX-long", upto + [70.0, 80.0, 90.0, 100.0,
+                                                110.0, 120.0, 137.54], 60.0)}
+    records = {r["crossing_id"]: r for r in (
+        record("FIX-built-x01", "FIX-built"),
+        record("FIX-refused-x01", "FIX-refused", bank_b_z=4.077),
+        record("FIX-short-x01", "FIX-short"),
+        record("FIX-long-x01", "FIX-long"),
+        record("FIX-joiner-x01", None))}
+    return {"records": records, "segments": segments}
+
 # The reconciler's OWN verdict for the refusing arm, quoted from the run that
 # produced it rather than re-derived: the projection is a surface measurement
 # and these arms may not depend on a save being present.
@@ -1776,12 +1932,18 @@ def deck_remedy_arms(path: Path | None = None) -> list[dict]:
     Every arm below returns its own `ok` with the numbers beside it.
 
     `terrain_written` is deliberately NOT read: these arms are about the
-    corpus geometry, and passing None reports the build-order precondition
-    UNASKED rather than making the answer depend on which segments this
+    geometry, and passing None reports the build-order precondition
+    UNASKED rather than making the answer depend on which segments a
     world happens to have graded.
+
+    THE RECORDS ARE CONSTRUCTED (`_remedy_fixtures`), NEVER READ FROM A
+    WORLD'S CORPUS: a check of the builder's rule that names `W10-...` is a
+    check of one world, and is red on every regenerated one.  Should the
+    fixture ever lack a record the arm still returns the keys its readers
+    (accept/sections/roads.py) index, as a failing verdict.
     """
-    records, _corpus = crossing_corpus(path)
-    by_id = {r.get("crossing_id"): r for r in records}
+    by_id = _remedy_fixtures()["records"]
+    segs = _remedy_fixtures()["segments"]
     recon = {DECK_REMEDY_REFUSED: DECK_REMEDY_REFUSED_VERDICT}
     out = []
     for name, cid, want_refused, want_class in (
@@ -1791,16 +1953,15 @@ def deck_remedy_arms(path: Path | None = None) -> list[dict]:
              DECK_REMEDY_SURVIVOR, False, None)):
         rec = by_id.get(cid)
         if rec is None:
-            # ABSENT IS A VERDICT, NOT AN EXCEPTION.  A corpus that lost the
-            # record fails this arm with its own numbers instead of raising
-            # a flip the harness would read as proof.
             out.append(dict(name=name, crossing_id=cid, present=False,
                             want_refused=want_refused, got_refused=None,
                             want_class=want_class, got_class=None,
                             ok=False, offsets=None, half_width_m=None,
-                            why="the corpus holds no record under this id"))
+                            worst_offset_m=None, buildable=None,
+                            why="the fixture holds no record under this id"))
             continue
-        ans = deck_remedy(rec, terrain_written=None, reconciled=recon)
+        ans = deck_remedy(rec, terrain_written=None, reconciled=recon,
+                          segments=segs)
         hit = [r for r in ans["refused_by"]
                if r["precondition"] == "span_coverage"]
         got_class = ans["implies"]
@@ -1845,30 +2006,29 @@ def deck_remedy_vector_arms(path: Path | None = None) -> list[dict]:
     discipline, which is how a fixture avoids scoring perfectly over an
     empty world.
     """
-    records, _corpus = crossing_corpus(path)
-    by_id = {r.get("crossing_id"): r for r in records}
-    rec = by_id.get(DECK_REMEDY_REFUSED)
+    fx = _remedy_fixtures()
+    try:
+        corpus_records, _corpus = crossing_corpus(path)
+    except (FileNotFoundError, OSError):
+        corpus_records = []
+    # the fixtures decide the arms; the world's records only ADD population
+    records = list(fx["records"].values()) + list(corpus_records)
+    rec = fx["records"][DECK_REMEDY_REFUSED]
     out = []
-    if rec is None:
-        out.append(dict(name="the_whole_precondition_vector_is_named",
-                        ok=False, required=list(DECK_REMEDY_PRECONDITIONS),
-                        observed=[], missing=list(DECK_REMEDY_PRECONDITIONS),
-                        unexpected=[],
-                        why=f"the corpus holds no {DECK_REMEDY_REFUSED!r}"))
-    else:
-        ans = deck_remedy(rec, terrain_written=None,
-                          reconciled={DECK_REMEDY_REFUSED:
-                                      DECK_REMEDY_REFUSED_VERDICT})
-        observed = sorted(set(ans["asked"]) | set(ans["unasked"]))
-        required = sorted(DECK_REMEDY_PRECONDITIONS)
-        missing = [n for n in required if n not in observed]
-        unexpected = [n for n in observed if n not in required]
-        out.append(dict(name="the_whole_precondition_vector_is_named",
-                        ok=not missing and not unexpected,
-                        crossing_id=DECK_REMEDY_REFUSED,
-                        required=required, observed=observed,
-                        missing=missing, unexpected=unexpected,
-                        population=len(required), evidence=len(observed)))
+    ans = deck_remedy(rec, terrain_written=None,
+                      reconciled={DECK_REMEDY_REFUSED:
+                                  DECK_REMEDY_REFUSED_VERDICT},
+                      segments=fx["segments"])
+    observed = sorted(set(ans["asked"]) | set(ans["unasked"]))
+    required = sorted(DECK_REMEDY_PRECONDITIONS)
+    missing = [n for n in required if n not in observed]
+    unexpected = [n for n in observed if n not in required]
+    out.append(dict(name="the_whole_precondition_vector_is_named",
+                    ok=not missing and not unexpected,
+                    crossing_id=DECK_REMEDY_REFUSED,
+                    required=required, observed=observed,
+                    missing=missing, unexpected=unexpected,
+                    population=len(required), evidence=len(observed)))
     # ARM NO_YES - over the WHOLE corpus, in the conditions that reach EVERY
     # class this predicate can produce, plus the not-asked case.  The claim
     # is "this accessor cannot say yes", and an arm run only in conditions
@@ -1886,7 +2046,10 @@ def deck_remedy_vector_arms(path: Path | None = None) -> list[dict]:
                  else {r.get("crossing_id"): verdict for r in records})
         for r in records:
             said[f"{r.get('crossing_id')}|{tag}"] = deck_remedy_class(
-                deck_remedy(r, terrain_written={}, reconciled=recon))
+                deck_remedy(r, terrain_written={}, reconciled=recon,
+                            segments=(fx["segments"]
+                                      if r.get("crossing_id") in fx["records"]
+                                      else None)))
     said["<builder not asked>"] = deck_remedy_class(None)
     bad = sorted(k for k, v in said.items() if v not in DECK_REMEDY_CLASSES)
     out.append(dict(name="no_answer_can_produce_ACTIONABLE",
@@ -1914,8 +2077,8 @@ def deck_remedy_vector_arms(path: Path | None = None) -> list[dict]:
 #           A bank-COORDINATE probe refuses it (+0.987 m) and would redden
 #           `a_crossing_this_builder_has_built_is_not_refused`; this arm is
 #           that trap, registered where it can be run rather than remembered.
-BANK_REACH_SHORT = "T5-temple-dockshore-x01"
-BANK_REACH_LONG = "S6-stenvik-hognest-x01"
+BANK_REACH_SHORT = "FIX-short-x01"
+BANK_REACH_LONG = "FIX-long-x01"
 BANK_REACH_UNTOUCHED = DECK_REMEDY_SURVIVOR
 # The step both live arms are judged at.  MEASURED at T5's bank_b, and used
 # for S6 too so the ONLY difference between the two arms is the reach.
@@ -1972,8 +2135,9 @@ def deck_remedy_reach_arms(path: Path | None = None) -> list[dict]:
     stamped proven: a missing record raises, and raising is indistinguishable
     from refusing.
     """
-    records, _corpus = crossing_corpus(path)
-    by_id = {r.get("crossing_id"): r for r in records}
+    fx = _remedy_fixtures()
+    by_id = fx["records"]
+    records = list(by_id.values())
     out: list[dict] = []
     for name, cid, want_class, want_sub in (
             ("a_bank_no_emission_reaches_is_UNSERVED",
@@ -1981,17 +2145,10 @@ def deck_remedy_reach_arms(path: Path | None = None) -> list[dict]:
             ("the_same_step_with_road_outboard_is_OUT_OF_ORDER",
              BANK_REACH_LONG, "1E_OUT_OF_ORDER",
              "bench_not_graded_to_the_deck")):
-        rec = by_id.get(cid)
-        if rec is None:
-            out.append(dict(name=name, crossing_id=cid, present=False,
-                            ok=False, want_class=want_class, got_class=None,
-                            want_sub=want_sub, got_sub=None,
-                            regradeable_m=None, outboard_m=None,
-                            population=len(records), evidence=0,
-                            why="the corpus holds no record under this id"))
-            continue
+        rec = by_id[cid]
         ans = deck_remedy(rec, terrain_written=None,
-                          abutment_steps={"bank_b": BANK_REACH_STEP_M})
+                          abutment_steps={"bank_b": BANK_REACH_STEP_M},
+                          segments=fx["segments"])
         hit = [r for r in ans["refused_by"]
                if r["precondition"] == "abutment"]
         reach = (ans["numbers"].get("bank_regrade_reach") or {}).get("bank_b")
@@ -2026,17 +2183,8 @@ def deck_remedy_reach_arms(path: Path | None = None) -> list[dict]:
         why=("10 m of station outboard of bank_b, every one of them bridged: "
              "a station the ribbon SKIPS is not a bench")))
     # THE UNTOUCHED ARM, plus the two inventory arms taken on the same answer.
-    rec = by_id.get(BANK_REACH_UNTOUCHED)
-    if rec is None:
-        for nm in ("a_built_deck_is_not_refused_by_the_reach",
-                   "asked_and_unasked_are_disjoint",
-                   "every_conditional_precondition_is_still_named"):
-            out.append(dict(name=nm, crossing_id=BANK_REACH_UNTOUCHED,
-                            present=False, ok=False, population=len(records),
-                            evidence=0,
-                            why="the corpus holds no record under this id"))
-        return out
-    ans = deck_remedy(rec, terrain_written=None)
+    rec = by_id[BANK_REACH_UNTOUCHED]
+    ans = deck_remedy(rec, terrain_written=None, segments=fx["segments"])
     asked, unasked = list(ans["asked"]), list(ans["unasked"])
     both = sorted(set(asked) & set(unasked))
     missing_cond = [n for n in DECK_REMEDY_CONDITIONAL
@@ -2194,11 +2342,11 @@ def _neuter_deck_remedy_stops_asking_reconciliation():
     # `abutment_steps` to `deck_remedy` did exactly that to
     # `_neuter_deck_remedy_refuses_everything`.
     def narrowed(record, *, terrain_written, reconciled=None,
-                 abutment_steps=None,
+                 abutment_steps=None, segments=None,
                  half_width_m: float = DECK_HALF_WIDTH_M):
         ans = dict(real(record, terrain_written=terrain_written,
                         reconciled=reconciled,
-                        abutment_steps=abutment_steps,
+                        abutment_steps=abutment_steps, segments=segments,
                         half_width_m=half_width_m))
         ans["asked"] = [n for n in ans["asked"] if n != "reconciliation"]
         ans["unasked"] = [n for n in ans["unasked"] if n != "reconciliation"]
@@ -2222,7 +2370,7 @@ def _neuter_deck_remedy_never_asks_the_builder():
     real = globals()["deck_remedy"]
 
     def never_asks(record, *, terrain_written, reconciled=None,
-                   abutment_steps=None,
+                   abutment_steps=None, segments=None,
                    half_width_m: float = DECK_HALF_WIDTH_M):
         return dict(crossing_id=record.get("crossing_id"), buildable=True,
                     refused_by=[], asked=[], unasked=[], sub_classes=[],
@@ -2253,11 +2401,11 @@ def _neuter_deck_remedy_refuses_everything():
     real = globals()["deck_remedy"]
 
     def refuses_everything(record, *, terrain_written, reconciled=None,
-                           abutment_steps=None,
+                           abutment_steps=None, segments=None,
                            half_width_m: float = DECK_HALF_WIDTH_M):
         ans = dict(real(record, terrain_written=terrain_written,
                         reconciled=reconciled,
-                        abutment_steps=abutment_steps,
+                        abutment_steps=abutment_steps, segments=segments,
                         half_width_m=half_width_m))
         ans["refused_by"] = list(ans["refused_by"]) + [dict(
             precondition="span_coverage", sub_class="over_correction",
@@ -2273,6 +2421,51 @@ def _neuter_deck_remedy_refuses_everything():
 
     def undo():
         globals()["deck_remedy"] = real
+    return undo
+
+
+def declared_width_arms() -> list[dict]:
+    """DECLARED_WIDTH_DEPENDS_ON on the shapes the Ulfsland regen's S1 and S2
+    carried and the committed world's S2: `fill_from_the_contract` over a
+    declared crossing and the `abutment_handoffs` of its banks' nodes."""
+    def handoff(node, w):
+        return {"node": node, "ribbon_width_m": w, "segment_id": "x"}
+
+    def declared(a, b):
+        return {"crossing_id": "X", "status": "declared",
+                "bank_a": {"node": a, "road_deck_y": 30.6},
+                "bank_b": {"node": b, "road_deck_y": 30.6}}
+    cases = [
+        ("S1: a 6.0 trunk and a 4.0 spur at one bank, 4.0 spurs at the other",
+         [handoff("e", 6.0), handoff("e", 4.0), handoff("w", 4.0),
+          handoff("w", 4.0)], 6.0),
+        ("S2 of the committed world: 4.0 at one bank, 6.0 at the other",
+         [handoff("e", 4.0), handoff("w", 6.0)], 6.0),
+        ("S2 of the regen: a road at one bank only",
+         [handoff("e", 4.0)], 4.0),
+        ("no road at either bank (REQUIRED: not filled, refused by name)",
+         [], None),
+    ]
+    out = []
+    for name, handoffs, want in cases:
+        c, _why = fill_from_the_contract(
+            declared("e", "w"),
+            {"contract": {"bank_level_run_m": 6.0, "deck_datum_y": 30.6},
+             "abutment_handoffs": handoffs})
+        got = c.get("ribbon_width_m")
+        out.append(dict(name=name, got=got, want=want, ok=got == want))
+    return out
+
+
+def _neuter_declared_width():
+    """Restore the shipped fill (both banks name ONE width); returns undo."""
+    global _DECLARED_WIDTH_MODE
+    was = _DECLARED_WIDTH_MODE
+    _DECLARED_WIDTH_MODE = "agree"
+
+    def undo():
+        global _DECLARED_WIDTH_MODE
+        _DECLARED_WIDTH_MODE = was
     return undo
 
 
@@ -2293,10 +2486,15 @@ def census_selftest(path: Path | None = None) -> int:
     """
     spans, pop = spans_from_network(path)
     spans = project_onto_centreline(spans)
+    # the known-bad state is CONSTRUCTED (DUPLICATE_FIXTURE): the world's own
+    # declarations only add population, a world with no duplicate is not a
+    # census that does not fire
+    spans = spans + _duplicate_fixture_spans()
     kept, c = collapse_duplicate_declarations(spans)
     print(f"roads/boardwalk.py duplicate-declaration census, over "
           f"{pop['enumerated']} of {pop['declared']} network declaration(s) "
-          f"plus {len(CENSUS_FIXTURE)} measured fixture span(s)\n")
+          f"plus {len(DUPLICATE_FIXTURE)} constructed duplicate(s) and "
+          f"{len(CENSUS_FIXTURE)} measured fixture span(s)\n")
     print(f"  corridor area at half-width {DECK_HALF_WIDTH_M:.3f} m "
           f"(MEASURED off wood_floor), {CORRIDOR_SAMPLE_M:g} m sampling, "
           f"threshold {CORRIDOR_DUPLICATE_FRACTION}")
@@ -2625,6 +2823,24 @@ def census_selftest(path: Path | None = None) -> int:
         print(f"  [{'ok  ' if ok else 'FAIL'}] {label} neuter: "
               f"flipped {flipped}; survived {survived}")
         bad += not ok
+    # ARM: THE DECLARED DECK'S WIDTH (DECLARED_WIDTH_DEPENDS_ON), both ways.
+    rows = declared_width_arms()
+    for arm in rows:
+        print(f"  [{'ok  ' if arm['ok'] else 'FAIL'}] declared deck width "
+              f"{arm['name']}: got {arm['got']}, required {arm['want']}")
+        bad += not arm["ok"]
+    undo = _neuter_declared_width()
+    try:
+        neutered = declared_width_arms()
+    finally:
+        undo()
+    flipped = [r["name"] for r in neutered if not r["ok"]]
+    survived = [r["name"] for r in neutered if r["ok"]]
+    ok = bool(flipped and survived)
+    print(f"  [{'ok  ' if ok else 'FAIL'}] declared deck width neuter "
+          f"(both banks must name ONE width): flipped {flipped}; survived "
+          f"{survived}")
+    bad += not ok
     print(f"\n  {'ALL ARMS ANSWER AS REQUIRED' if not bad else f'{bad} arm(s) did not answer as required'}")
     return 1 if bad else 0
 

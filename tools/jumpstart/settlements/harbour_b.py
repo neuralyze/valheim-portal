@@ -2442,7 +2442,8 @@ def cmd_build(args) -> int:
     print(f"LEDGER {report['ledger_preflight']['path']} "
           f"sha {report['ledger_preflight']['sha256']} "
           f"({report['ledger_preflight']['records']} records)")
-    with LiveBuilder(actor=ACTOR, dry=args.dry) as b:
+    with LiveBuilder(actor=getattr(args, "actor", None) or ACTOR,
+                     dry=args.dry) as b:
         report["players"] = (str(b.srv.command("players"))[:200]
                              if not args.dry else "dry")
         print(f"players: {report['players']}")
@@ -2573,6 +2574,10 @@ def main(argv: list[str] | None = None) -> int:
     bu.add_argument("--stages", nargs="*", choices=B_STAGE_ORDER)
     bu.add_argument("--dry", action="store_true")
     bu.add_argument("--report", default="/tmp/hb/build_report.json")
+    bu.add_argument("--actor", default=None,
+                    help="who this run's records are stamped as; the build "
+                         "stage passes the pipeline's actor, standalone use "
+                         "keeps the module's own")
     bu.add_argument("--from-batch", type=int, default=1)
     bu.add_argument("--expect-sha", default=None)
     bu.set_defaults(fn=cmd_build)

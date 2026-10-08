@@ -9,6 +9,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tools/jumpstart/settlements/road_reach.py` + `roads/geography.py::RoadGraph` — A SITE IS
+  WHERE A ROAD CAN GET TO, OR IT IS PORTAL-ONLY, AND SAYS WHICH WITH NUMBERS. With the 15 frozen
+  site pins and the 14 outlier anchors removed, the solver ranked candidates by what a tower
+  needs and never asked whether a road can get there: the provisional route came back 35
+  segments, 7 UNROUTABLE (`wt-spawn` in a 186-cell pocket of the router's own graph on the
+  spawn landmass; `wt-north`, `wt-east`, `lh-east`, `lh-west`, `tree-west`, `tree-near` on a
+  62,618-cell island of it, against 269,270 cells in the spawn window's largest strong
+  component). `road_priority` — authored, published, and read by nothing — is now the
+  declaration (`trunk`/`spur` is a road class, `none` is portal-only by design) and the
+  verdict is measured in the router's own terms, the graph the extremities of `geography.py`
+  are already held to: the site's snap lies in the window's largest strong component of its
+  class's graph, on the window's trunk landmass (its largest land component — a road is not a
+  licence to bridge to every islet within 96 m), in a window a crossing roots. Every site
+  `sites.yaml` publishes carries `road: {class, roaded, reason, why, evidence}`. The solver
+  takes the best candidate a road reaches (`reach_refused` carries what it passed over, with
+  numbers); only a kind with NO reachable candidate puts the site on the best unreachable one,
+  published `roaded: false` — a building is never deleted and no road is promised to ground
+  none reaches. `roads/spec.py` reads the verdict: a portal-only site is not a node, an edge
+  that names one is dropped with the verdict's numbers in `NO_ROAD` (never an UNROUTABLE
+  edge), and `NOT_ADOPTED` — `sudrberg-keep` by name, for the default pair — is gone with the
+  `wteast` / `lheast` / `dockshore_direct_to_wtsouth` prose that described one seed's accident
+  under a name the solver rebinds. The searches are asked for every candidate their
+  thresholds admit, per window (a `limit` of 14 hid the 6th reachable spawn-window watchtower).
+
+- `tools/jumpstart/settlements/plan.py` — A NAME IS WHAT THE SITE IS, NOT WHAT THE SEARCH
+  RANKED. `wt-spawn` was whatever tower the search ranked first (1.9 km from the StartTemple on
+  Pirate68), so every leg typed for one seed's name ran to another seed's accident. Each
+  `OUTLIERS` record now carries the `role` its name says (the operator's own words, git
+  845678d: `wt-spawn` "the first built thing a player on foot can see", `wt-peak` "the highest
+  watchtower", `lh-west` "the west isle's north cape") and `TOWNS` the trunk `window` it
+  stands on; `select_outliers` picks, per name in turn, the candidate that best fits it among
+  the best remaining of its kind (as many as there are names still to place), so the SET of
+  places is the search's own and only the names move. Pirate68 re-solved with nothing pinned
+  lands within metres of the old pins that were the same search's earlier answer (`wt-spawn`
+  (114,-108) vs 110,-104; `wt-north` (148,1190) vs 152,1194; `lh-west` (-102,2584);
+  `tree-near` (-626,-234) vs -614,-236) — now by rule, on a seed that has none.
+
+- `tools/jumpstart/roads/declared_sites.py::site_legs` — ONE JOIN RULE FOR EVERY SITE. The
+  rule the owner-declared harbours already had (the nearest trunk node of the site's own
+  landmass, by straight line, the router still finding the route) now also closes the gap in
+  the authored topology for a roaded SOLVED site: one whose typed partner is portal-only, on
+  another landmass, or was never typed gets ONE derived leg, `J<n>`, in its own declared
+  class. A publication without verdicts derives nothing (its authored topology is all it
+  ever had), so a seed solved before this change plans exactly as it did.
+
 - `tools/jumpstart/buildstage.py` step 6.5 `decks` — THE BUILD NOW BUILDS A CROSSING.
   None of the 8 build steps built a bridge: pipeline row 12 handed the build the seed's
   `crossings` contract and no step consumed it, so every declared crossing on a fresh world

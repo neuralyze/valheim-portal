@@ -79,10 +79,13 @@ SEARCH_HALF_M = 60.0
 # The arclength lattice the search walks.  0.5 m: half the 1 m lattice the
 # terrain is written on, so no legal station is stepped over.
 SEARCH_STEP_M = 0.5
-# Margin above the gate's minimum.  The gate refuses `d < 30.0`; a replacement
-# landing at 30.000000 would pass on this host and fail on one that rounds the
-# other way, and a repair that depends on float luck is not a repair.
-SEPARATION_MARGIN_M = 0.05
+# The margin over the gate's limits is `L.readback_margin_m()`: ONE number for
+# the siting walk and this pass (lamps.py, `READBACK_MARGIN_M`, with the
+# measurement behind it).  The gate refuses `d < 30.0` on the coordinates the
+# census prints back, so a replacement landing at 30.000000 on the unrounded
+# side reads 29.9997 on the other, and a repair that depends on float luck is
+# not a repair.  The same margin keeps the cylinder's +/-10 m half-height.
+
 # How far the SOLVED offset may sit from the designed one before the station
 # is refused.  Half the gate's own `DESIGNED_TOL_M`, so a position this pass
 # accepts cannot be read as "standing further back" by the gate.
@@ -202,7 +205,7 @@ def in_corridor(lamp: dict, segs: dict) -> tuple[float, str, float] | None:
     for s in segs.values():
         d = L.perpendicular_m(lamp["x"], lamp["z"], s.nodes)
         if best is None or d < best[0]:
-            best = (d, s.short, s.half_width_m)
+            best = (d, s.seg_id, s.half_width_m)
     if best is None or best[0] > GATE.CORRIDOR_M:
         return None
     return best
@@ -291,6 +294,13 @@ class Sited:
                 "reason": self.reason}
 
 
+def _y_reach_m() -> float:
+    """The cylinder's half-height as a placement must keep it: the gate's plus
+    the readback margin, because a lamp 10.00003 m above its neighbour writes
+    as 10.0000 m, which the gate counts."""
+    return GATE.SPACING_Y_HALF_M + L.readback_margin_m()
+
+
 def nearest_lamp_m(x: float, z: float, y: float,
                    others: list[dict]) -> float:
     """Distance to the nearest other lamp IN THE CYLINDER, or infinity.
@@ -300,7 +310,7 @@ def nearest_lamp_m(x: float, z: float, y: float,
     """
     best = math.inf
     for o in others:
-        if abs(o["y"] - y) > GATE.SPACING_Y_HALF_M:
+        if abs(o["y"] - y) > _y_reach_m():
             continue
         best = min(best, math.hypot(o["x"] - x, o["z"] - z))
     return best
@@ -339,7 +349,7 @@ def separation_ok(x: float, z: float, y: float, others: list[dict],
                   min_m: float) -> str | None:
     """The gate's CYLINDER, asked of every other standing lamp."""
     for o in others:
-        if abs(o["y"] - y) > GATE.SPACING_Y_HALF_M:
+        if abs(o["y"] - y) > _y_reach_m():
             continue
         d = math.hypot(o["x"] - x, o["z"] - z)
         if d < min_m:
@@ -361,7 +371,7 @@ def resite_one(lamp: dict, seg: "L.Segment", ground: "L.Ground",
     about the night walk is the one that moves it least.  A global re-plan
     would move every lamp on the segment to close one defect.
     """
-    out = Sited(lamp, seg.short)
+    out = Sited(lamp, seg.seg_id)
     out.tier = tier
     s0 = project_s(seg, lamp["x"], lamp["z"])
     off = seg.half_width_m + L.SHOULDER_STANDOFF_M
@@ -397,7 +407,8 @@ def resite_one(lamp: dict, seg: "L.Segment", ground: "L.Ground",
                 out.refuse("no point at the designed offset (bend tighter "
                            "than the offset, or the polyline doubles back)")
                 continue
-            x, z = p
+            # DECIDE ON WHAT WILL BE WRITTEN, as the siting walk does.
+            x, z = L.written_xz(*p)
             bad = keep.why_not(x, z)
             if bad:
                 out.refuse(bad.split(" at ")[0].split(" of ")[0][:70])
@@ -419,7 +430,7 @@ def resite_one(lamp: dict, seg: "L.Segment", ground: "L.Ground",
                 out.refuse(f"biome {biome} has no published spacing policy")
                 continue
             min_m = max(float(pol["min_m"]), GATE.MIN_SPACING_M,
-                        extra_min_m) + SEPARATION_MARGIN_M
+                        extra_min_m) + L.readback_margin_m()
             y = sy + L.seat_offset_m()
             if tier == TIER_POLICY:
                 sep = separation_ok(x, z, y, others, min_m)
@@ -431,7 +442,7 @@ def resite_one(lamp: dict, seg: "L.Segment", ground: "L.Ground",
             else:
                 sep = separation_ok(x, z, y, corridor_others,
                                     max(GATE.MIN_SPACING_M, extra_min_m)
-                                    + SEPARATION_MARGIN_M)
+                                    + L.readback_margin_m())
                 if sep:
                     out.refuse("under the gate's 30 m minimum from a "
                                "corridor lamp")
@@ -476,12 +487,12 @@ def resite_one(lamp: dict, seg: "L.Segment", ground: "L.Ground",
             break
     if best is None:
         out.reason = (f"no legal position within +/-{SEARCH_HALF_M:.0f} m of "
-                      f"s={s0:.1f} on {seg.short}, over {out.tried} "
+                      f"s={s0:.1f} on {seg.seg_id}, over {out.tried} "
                       f"candidates (tier {tier})")
     else:
         out.new = best
         out.reason = (f"tier {tier}: moved {best['moved_m']:.3f} m "
-                      f"({best['along_m']:+.1f} m along {seg.short}, side "
+                      f"({best['along_m']:+.1f} m along {seg.seg_id}, side "
                       f"{best['side']:+d}) to the designed offset "
                       f"{best['designed_offset_m']:.2f} m, measured lateral "
                       f"{best['lateral_m']:.4f} m; nearest corridor lamp "
@@ -528,12 +539,12 @@ def plan(pop: list[dict], segs: dict, keep: "L.KeepOut",
 
     def try_both_tiers(target, seg, others, extra_min_m: float = 0.0):
         """Tier 1 first, ALWAYS.  Tier 2 only where tier 1 found nothing."""
-        got = resite_one(target, seg, grounds[seg.short], keep, others,
+        got = resite_one(target, seg, grounds[seg.seg_id], keep, others,
                          extra_min_m=extra_min_m, tier=TIER_POLICY,
                          corridor_ids=corridor_ids)
         if got.new is not None:
             return got
-        second = resite_one(target, seg, grounds[seg.short], keep, others,
+        second = resite_one(target, seg, grounds[seg.seg_id], keep, others,
                             extra_min_m=extra_min_m,
                             tier=TIER_GATE_NO_REGRESSION,
                             corridor_ids=corridor_ids)
@@ -562,9 +573,9 @@ def plan(pop: list[dict], segs: dict, keep: "L.KeepOut",
                                         "happen; refusing rather than "
                                         "guessing a segment"})
             continue
-        if not in_scope(seg.short) or budget_spent():
+        if not in_scope(seg.seg_id) or budget_spent():
             decisions.append({
-                "kind": "lateral", "segment": seg.short, "old": target,
+                "kind": "lateral", "segment": seg.seg_id, "old": target,
                 "new": None, "was": off["why"],
                 "reason": ("OUT OF SCOPE for this run - measured and "
                            "reported, not written")})
@@ -616,10 +627,10 @@ def plan(pop: list[dict], segs: dict, keep: "L.KeepOut",
             if cor is None:
                 continue
             seg = segs[cor[1]]
-            if seg.short not in grounds:
+            if seg.seg_id not in grounds:
                 skipped += 1
                 continue
-            if not in_scope(seg.short) or budget_spent():
+            if not in_scope(seg.seg_id) or budget_spent():
                 skipped += 1
                 continue
             others = [l for l in work if l is not target]
@@ -744,7 +755,7 @@ def _seg(nodes, hw=3.0, short="X") -> "L.Segment":
     cum = [0.0]
     for k in range(1, len(nodes)):
         cum.append(cum[-1] + math.dist(nodes[k - 1], nodes[k]))
-    return L.Segment(name=f"road_{short}_a_b", short=short, file_line=0,
+    return L.Segment(name=f"road_{short}_a_b", seg_id=short, file_line=0,
                      seq=0, half_width_m=hw, nodes=list(nodes), cum=cum,
                      length_m=cum[-1])
 
@@ -960,6 +971,47 @@ def _case_refuses_rather_than_deletes() -> list[str]:
                   f"12 m of a standing lamp"])
 
 
+# THE W7 SHAPE, CONSTRUCTED AT ITS OWN COORDINATES (see
+# `lamps.py::_LIMIT_START`): a straight 45 degree road, half width 2.0, and
+# ONE standing lamp at 3 dp, placed so that the left-hand spot beside station
+# 29 is 30.00007 m from it on the unrounded side of the 30 m limit and
+# 29.999712 m from it once the lamp is written and printed back by the census
+# -- the number the gate measured on road_W7_wwest_wnorthwest.
+_LIMIT_START = (-1439.9992, 2135.0055)
+_LIMIT_STANDING = (-1400.083, 2178.528)
+
+
+def _case_resite_survives_the_census_readback() -> list[str]:
+    """A lamp standing in the carriageway at station 29 is re-sited beside a
+    neighbour whose nearest legal spot on the unrounded numbers is 30.00007 m
+    away.  Whatever the pass writes must still be 30 m from that neighbour
+    when the gate reads BOTH back out of the census, which is the only number
+    the gate has."""
+    c = math.sqrt(0.5)
+    seg = _seg([_LIMIT_START, (_LIMIT_START[0] + 240.0 * c,
+                               _LIMIT_START[1] + 240.0 * c)],
+               hw=2.0, short="W7")
+    segs = {"W7": seg}
+    sx, sz = station_at(seg, 29.0)
+    lamp = {"prefab": "piece_groundtorch", "x": sx, "y": 32.0, "z": sz}
+    neighbour = {"prefab": "piece_groundtorch", "x": _LIMIT_STANDING[0],
+                 "y": 32.0 + L.seat_offset_m(), "z": _LIMIT_STANDING[1]}
+    got = resite_one(lamp, seg, _ForestGround(), _FakeKeep(segs),
+                     [neighbour])
+    if got.new is None:
+        return [f"no legal spot beside a neighbour 30 m along a straight "
+                f"road: {got.reason}"]
+    after = []
+    for l in (neighbour, got.new):
+        rx, rz = L.readback_xz(l["x"], l["z"])
+        after.append({**l, "x": rx, "z": rz, "y": L.readback_coord(l["y"])})
+    gap = math.hypot(after[0]["x"] - after[1]["x"],
+                     after[0]["z"] - after[1]["z"])
+    return [f"after the write the gate reads {gap:.6f} m between the two "
+            f"lamps, under its {GATE.MIN_SPACING_M:.0f} m minimum"
+            for _p in spacing_pairs(after, segs)]
+
+
 class _FakeKeep:
     """A keep-out with ONLY the carriageway rule, for the selftest.
 
@@ -986,6 +1038,13 @@ class _FlatGround:
 
     def biome(self, x: float, z: float) -> str:
         return "Meadows"
+
+
+class _ForestGround(_FlatGround):
+    """Flat BlackForest at y 32: published minimum spacing 30 m, the gate's."""
+
+    def biome(self, x: float, z: float) -> str:
+        return "BlackForest"
 
 
 # ---------------------------------------------------------------------------
@@ -1055,6 +1114,19 @@ def _neuter_spacing_to_arclength():
     return undo
 
 
+def _neuter_spacing_to_the_exact_digit():
+    """RESTORE THE DEFECT: keep the gate's minimum to the exact digit on the
+    unrounded numbers -- no margin, no decision on the written coordinate --
+    which is what put a lamp 29.999712 m from its neighbour once the census
+    had printed both."""
+    real = L._SPACING_MODE
+    L._SPACING_MODE = "bare"
+
+    def undo():
+        L._SPACING_MODE = real
+    return undo
+
+
 CASES = [
     ("straight offset is exact", _case_straight_offset_is_exact),
     ("bend construction is wrong, solver fixes it",
@@ -1077,6 +1149,10 @@ CASES = [
     ("re-site respects a standing neighbour",
      _case_resite_respects_a_standing_neighbour),
     ("refuses rather than deletes", _case_refuses_rather_than_deletes),
+    ("re-site survives the census read-back",
+     _case_resite_survives_the_census_readback,
+     _neuter_spacing_to_the_exact_digit,
+     "the gate's minimum kept to the exact digit on unrounded numbers"),
 ]
 
 

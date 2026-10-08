@@ -236,6 +236,34 @@ def _settlement_units(s: Scope) -> list[str]:
     return towns + outliers
 
 
+# DECLARED_UNITS_DEPENDS_ON: a site a person declared is a unit of step 5.
+# NEUTER `off`: the shipped table, which built no declared site at all.
+_DECLARED_UNITS_MODE = "on"      # on | off
+
+
+def _declared_sites(s: Scope) -> dict[str, str]:
+    """`{site id: kind}` for every site a PERSON declared for this seed
+    (`worldseed.HUMAN_SITES`), read off the SAME plan the other settlement
+    units are -- `plan["declared_sites"]`, which settlements/plan.py measured
+    at stage 8 and writes only for a seed that declares any.  A declared site
+    is a unit of step 5, beside the towns and the outliers: it is built by its
+    own module (`harbour_site.BUILDERS`) and it follows every rule of the
+    step -- after the ground of every road (`road_ground`), before the
+    fixtures, the decks and the lamps that stand on it."""
+    if _DECLARED_UNITS_MODE == "off":
+        return {}
+    plan = worldseed.plan_path(s.seed)
+    if not plan.exists():
+        return {}
+    doc = json.loads(plan.read_text())
+    return {d["id"]: d["kind"] for d in (doc.get("declared_sites") or [])
+            if d.get("id")}
+
+
+def _declared_units(s: Scope) -> list[str]:
+    return list(_declared_sites(s))
+
+
 # THE ONE BUILDER OF A DECLARED CROSSING, AND THE ONE READER OF THEIR CORPUS.
 # `crossings/` holds the GEOMETRY (`assemble.bridge`, `assemble.verify`) and
 # Ulfsland's hand-declared harbour driver (`plan.py` -> `structures.yaml` ->
@@ -473,7 +501,8 @@ def _body_ground_from(placements: Iterable[str]
 
 
 def _body_units(s: Scope) -> list[str]:
-    return _body_units_from(_placement_units(s), _settlement_units(s))
+    return _body_units_from(_placement_units(s),
+                            _settlement_units(s) + _declared_units(s))
 
 
 def _body_ground(s: Scope) -> dict[str, dict[str, tuple[str, ...]]]:
@@ -504,10 +533,34 @@ def _av_bodies(rt: Runtime, unit: str) -> list[list[str]]:
                  "--world", rt.scope.world, "--seed", rt.scope.seed]
                 + ([] if unit == ALL_PLACEMENTS else ["--only", unit])
                 + ([] if rt.dry else ["--apply", "--actor", rt.actor])]
+    declared = _declared_sites(rt.scope)
+    if unit in declared:
+        # A SITE A PERSON DECLARED is built by the module that owns its kind.
+        # The seed and world reach it through the environment, as for step 4;
+        # `--actor` is whoever runs this, not a word the module chose.
+        module, tail = _declared_builder(declared[unit])
+        return [[PY, str(HERE / "settlements" / module), *tail,
+                 "--actor", rt.actor,
+                 "--report", str(rt.work / "build" / "declared"
+                                 / f"{unit}.json")]
+                + (["--dry"] if rt.dry else [])]
     return [[PY, str(HERE / "settlements" / "build.py"),
              "plan" if rt.dry else "apply", "--site", unit,
              "--actor", rt.actor,
              "--world", rt.scope.world, "--seed", rt.scope.seed]]
+
+
+def _declared_builder(kind: str) -> tuple[str, tuple[str, ...]]:
+    settlements = str(HERE / "settlements")
+    if settlements not in sys.path:
+        sys.path.insert(0, settlements)
+    import harbour_site                                     # noqa: PLC0415
+    if kind not in harbour_site.BUILDERS:
+        raise SystemExit(
+            f"REFUSING: a declared site of kind {kind!r} has no builder; "
+            f"settlements/harbour_site.py::BUILDERS knows "
+            f"{sorted(harbour_site.BUILDERS)}")
+    return harbour_site.BUILDERS[kind]
 
 
 def _av_fixtures(rt: Runtime, unit: str) -> list[list[str]]:
@@ -677,8 +730,12 @@ BUILD_STEPS: tuple[BuildStep, ...] = (
                  "exception -- it excludes only RETIRED records. So the instant "
                  "a deck stands it owns the ground that would free its own "
                  "buried tiles. EVERY TERRAIN WRITE PRECEDES EVERY PIECE, and "
-                 "that is why this row requires both ground labels. PRODUCES "
-                 "the standing bodies.",
+                 "that is why this row requires both ground labels. A SITE A "
+                 "PERSON DECLARED (worldseed.HUMAN_SITES: Ulfsgard, Sudrvik) "
+                 "is one of this row's units, built by the module that owns "
+                 "its kind (harbour_site.BUILDERS) after the ground of every "
+                 "road and before the fixtures, decks and lamps that stand on "
+                 "it. PRODUCES the standing bodies.",
         units=_body_units, argv=_av_bodies, domain="body",
         # An installation body stands on its own placement unit, so a site
         # steps 1/2 refused is BLOCKED here by name -- see
@@ -2165,6 +2222,8 @@ _NEUTERS: dict[str, tuple[str, str, str, object]] = {
         "records_ordered", __name__, "_RANK",
         rank_table(tuple(dc_replace(s, records_ordered=False)
                          for s in BUILD_STEPS))),
+    "declared units off": ("declared_units", __name__, "_DECLARED_UNITS_MODE",
+                           "off"),
     "step rank off": ("step_rank", __name__, "_RANK_MODE", "off"),
     "step rank blind": ("step_rank", __name__, "_RANK_MODE", "blind"),
     "unit key off": ("unit_key", __name__, "_UNIT_MODE", "off"),
@@ -2838,6 +2897,54 @@ def _collar_retry_run(resume_after: bool = False) -> dict:
             "rcs": [(e["unit"], e["rc"]) for e in rows],
             "flagged": [e["unit"] for e in rows
                         if "--no-connection-collar" in e["cmd"]]}
+
+
+def _declared_site_unit_case() -> bool:
+    """A site a person declared is a unit of step 5, after the towns and the
+    outliers, built by the module that owns its kind -- run as whoever runs
+    the build, in its dry form when the build is dry -- and a seed that
+    declares none gains no unit."""
+    import os                                               # noqa: PLC0415
+    import tempfile                                         # noqa: PLC0415
+    with tempfile.TemporaryDirectory() as td:
+        plan = Path(td) / worldseed.plan_name("Testseed")
+        base = {"seed": "Testseed", "towns": {"stenvik": {}},
+                "outliers": [{"id": "wt-spawn"}]}
+        plan.write_text(json.dumps({**base, "declared_sites": [
+            {"id": "harbour-city-x", "kind": "harbour_city"},
+            {"id": "harbour-village-y", "kind": "harbour_village"}]}))
+        prior = os.environ.get(worldseed.PLAN_ENV)
+        os.environ[worldseed.PLAN_ENV] = str(plan)
+        try:
+            scope = Scope("Testseed", "Testseed", Path(td) / "work",
+                          Path(td), Path(td))
+            step = next(st for st in BUILD_STEPS if st.name == "bodies")
+            units = step.units(scope)
+            wet = Runtime(scope, "Tester")
+            dry = Runtime(scope, "Tester", dry=True)
+            city = step.argv(wet, "harbour-city-x")
+            village = step.argv(wet, "harbour-village-y")
+            city_dry = step.argv(dry, "harbour-city-x")
+            plan.write_text(json.dumps(base))
+            none = step.units(scope)
+        finally:
+            if prior is None:
+                os.environ.pop(worldseed.PLAN_ENV, None)
+            else:
+                os.environ[worldseed.PLAN_ENV] = prior
+
+    def runs(cmds, module, tail) -> bool:
+        return (len(cmds) == 1 and cmds[0][1].endswith(f"settlements/{module}")
+                and cmds[0][2] == tail
+                and cmds[0][cmds[0].index("--actor") + 1] == "Tester"
+                and "--report" in cmds[0])
+
+    return (units == ["stenvik", "wt-spawn", "harbour-city-x",
+                      "harbour-village-y"]
+            and runs(city, "harbour_city.py", "ubuild")
+            and runs(village, "harbour_b.py", "build")
+            and "--dry" not in city[0] and "--dry" in city_dry[0]
+            and none == ["stenvik", "wt-spawn"])
 
 
 def _collar_retry_case() -> bool:
@@ -3555,6 +3662,19 @@ def selftest() -> int:
                            "and A's count read back `Beech_small1: 1`",
                neuter=_neuter("staged lock off"),
                neuters="staged lock off"),
+        R.Case("a_declared_site_is_a_unit_of_the_bodies_step", False,
+               lambda: finding(_declared_site_unit_case(),
+                               "Ulfsgard and Sudrvik are units of step 5, "
+                               "built by harbour_city.py ubuild and "
+                               "harbour_b.py build as the run's actor; a "
+                               "seed that declares none gains no unit",
+                               declared=2),
+               prior_state="MEASURED 2026-10-07: no row of BUILD_STEPS named "
+                           "a declared site -- step 5's units were the "
+                           "solved installations, towns and outliers -- so a "
+                           "from-scratch regeneration built neither harbour",
+               neuter=_neuter("declared units off"),
+               neuters="declared units off"),
         R.Case("a_road_ground_refusal_is_retried_without_the_pad_collar", False,
                lambda: finding(_collar_retry_case(),
                                "a road_ground unit the collar leaves refused "

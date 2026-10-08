@@ -175,9 +175,11 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import struct
 import sys
 import weakref
 from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -494,6 +496,154 @@ DEFAULT_POLICY = None
 
 
 # --------------------------------------------------------------------------
+# THE COORDINATES AS WRITTEN, AS THE GATE READS THEM BACK, AND THE MARGIN
+# --------------------------------------------------------------------------
+#
+# THE DEFECT, MEASURED ON THE REGENERATED ULFSLAND (seed Pirate68, save
+# c4f653104b10).  Gate `lighting/lamp_spacing`: two lamps on
+# road_W7_wwest_wnorthwest, 29.999712 m apart in xz against the 30 m minimum
+# (`accept/sections/lighting.py::check_spacing` refuses `d < MIN_SPACING_M`).
+# The same two lamps through every stage between the walk and the gate:
+#
+#   as the ledger plan holds them (`lamp_unit`, 4 dp)   29.999995 m
+#       (-1420.8311, 2155.5626)   (-1399.6179, 2176.7758)
+#   as float32 in the ZDO                                30.000076 m
+#   as the census TSV prints them (the gate's input)     29.999712 m
+#       (-1420.831, 2155.563)     (-1399.618, 2176.776)
+#
+# THE WALK HAD ACCEPTED THE PAIR.  `Standing.near` refuses `d <= min_m`, and
+# the build log records one lamp on W7 sited on the gate's 30 m floor tier
+# ("1 stand on the gate's 30 m minimum instead of the biome's"), so on the
+# UNROUNDED coordinates the walk staged the distance was above 30 [INFERENCE:
+# the ledger keeps 4 dp, so the unrounded value is not recorded, and that the
+# floor-tier lamp is this one follows from `d <= 30` being false for it or the
+# lamp would have been refused].  A candidate 30 stations along a straight 45
+# degree road is 30.000000 m from the last one to within float noise, so
+# "exactly on the limit" is not rare, it is what a 1 m lattice produces.
+# Then each lamp was rounded to 4 dp, stored as float32, and printed by
+# `terraform/WaterProof.cs::WriteZdoCensus` as `float.ToString("0.####")`,
+# which goes through SEVEN SIGNIFICANT DIGITS and so prints 3 decimals at
+# |coordinate| 1000..9999 and only 2 at 10000+.  Each stage moves a pair by up
+# to its own rounding; the 4 dp write and the census print both moved this one
+# closer, the float32 store moved it the other way, and the sum is the gate's
+# 29.999712.
+#
+# THE RULE THAT WAS MISSING: a placement is judged on the number the GATE
+# WILL READ, not on the number the walk holds.  Two parts, both here:
+#
+#   1. DECIDE ON WHAT IS WRITTEN.  `written_xz` is the position `lamp_unit`
+#      puts on the wire (4 dp).  `_candidate` applies it, so the staged lamp,
+#      the ledger plan and the spawn command are one coordinate and the walk
+#      cannot hold a value nothing else ever sees.
+#   2. KEEP A MARGIN OVER EVERY LIMIT THE GATE MEASURES, larger than what is
+#      lost after the write.  `READBACK_MARGIN_M` is added to the 30 m
+#      minimum and the biome minima (`Standing.near`, `Standing.confirm`,
+#      `_biome_allows`), to the cylinder's +/-10 m half-height (the same
+#      cliff edge in y: a lamp 10.0001 m above is "not a neighbour" to the
+#      walk and 9.9999 m above to the gate), and taken OFF the sight
+#      distance (`Coverage.sees`: a station 30.0000 m from a flame is lit to
+#      the walk and, after the flame's coordinates move 0.0003 m, dark to
+#      the gate).  `roads/relight.py` uses the same constant.
+#
+# WHAT IS AFTER THE WRITE, MEASURED.  `readback_coord` models the census
+# print (float32, 7 significant digits, half up, at most 4 dp).  Over all 343
+# `piece_groundtorch` plans of this build against the saved census, 323 are
+# reproduced exactly and 20 differ by one digit in the last place; the
+# excess over a plain float32 round trip plus the print's half step is at
+# most 0.89 float32 ulp over the 686 coordinates, so the bound below allows
+# 1.5 ulp per axis (0.5 for the round trip, 1.0 for what was measured on
+# top).  The LIVE census a placement run reads its standing lamps from
+# (`findObjects`) prints `(-913.6 35.56 1887.1)`, two decimals at most, so
+# the neighbour a new lamp is judged against can itself be 0.005 m off per
+# axis.  `readback_shrink_bound_m` adds those up for the worst coordinate in
+# the world; the selftest requires the margin to exceed it.
+#
+# CHECKED AND NOT A MARGIN QUESTION.  `BIOME_POLICY` `max_m` bounds the
+# ARCLENGTH between this run's own consecutive lamps and no gate check reads
+# it (the gate reads unlit RUNS, `MAX_UNLIT_RUN_M`, which the sight margin
+# makes conservative).  The gate's lateral limit is kept 0.12 m clear by
+# `KeepOut` (`LAMP_HALF_FOOTPRINT_M`) and the designed offset is constructed
+# at 0.00 m from itself against the gate's 0.10 m tolerance: both two orders
+# over the quantisation.
+LAMP_SPACING_DEPENDS_ON = (
+    "accept.sections.lighting.MIN_SPACING_M",
+    "accept.sections.lighting.SPACING_Y_HALF_M",
+    "accept.sections.lighting.check_spacing",
+    "accept.sections.lighting.unlit_runs",
+    "terraform/WaterProof.cs::WriteZdoCensus",
+    "clear.POS_RE (the live findObjects reply)")
+
+# The 4 decimals `lamp_unit` puts on the wire.
+WIRE_DECIMALS = 4
+# `WriteZdoCensus`: float32 `ToString("0.####")` -- at most this many decimals,
+# and at most this many significant digits, whichever bites first.
+CENSUS_MAX_DECIMALS = 4
+CENSUS_SIG_DIGITS = 7
+# `findObjects`, the census a placement run reads standing lamps from:
+# `Position: (-913.6 35.56 1887.1)`, i.e. "0.##".
+LIVE_CENSUS_DECIMALS = 2
+# Valheim's world radius plus its edge band: the largest |coordinate| a lamp
+# can have, which is where the census prints the fewest decimals.
+WORLD_EXTENT_M = 10500.0
+# How far inside every limit the gate measures a placement must stand.  50 mm
+# is 2.7 x `readback_shrink_bound_m` at the world's edge (0.018 m) and 6 x it
+# at |coordinate| 2,200 m (0.008 m); it is the value `relight.py` already
+# carried as `SEPARATION_MARGIN_M`, now one number for both.
+READBACK_MARGIN_M = 0.05
+
+_SPACING_MODE = "readback"      # readback | bare (the shipped known-bad)
+
+
+def readback_margin_m() -> float:
+    """The margin every spacing and sight limit is kept inside by."""
+    return READBACK_MARGIN_M if _SPACING_MODE == "readback" else 0.0
+
+
+def written_xz(x: float, z: float) -> tuple[float, float]:
+    """The position `lamp_unit` writes for `(x, z)`: what the walk decides on."""
+    if _SPACING_MODE != "readback":
+        return x, z
+    return round(x, WIRE_DECIMALS), round(z, WIRE_DECIMALS)
+
+
+def readback_coord(v: float) -> float:
+    """One coordinate as `WriteZdoCensus` prints it and the gate reads it:
+    float32, then 7 significant digits rounded half up, at most 4 decimals."""
+    f = struct.unpack("f", struct.pack("f", v))[0]
+    if f == 0.0:
+        return 0.0
+    d = Decimal(f)
+    decimals = max(0, min(CENSUS_MAX_DECIMALS,
+                          CENSUS_SIG_DIGITS - 1 - d.adjusted()))
+    return float(d.quantize(Decimal(1).scaleb(-decimals),
+                            rounding=ROUND_HALF_UP))
+
+
+def readback_xz(x: float, z: float) -> tuple[float, float]:
+    """`(x, z)` as the gate will read it back out of the saved census."""
+    return readback_coord(x), readback_coord(z)
+
+
+def readback_shrink_bound_m(extent_m: float = WORLD_EXTENT_M) -> float:
+    """The most a pair's xz separation can fall between the walk's decision
+    and the gate's measurement, for coordinates up to `extent_m`.
+
+    Per axis: a NEW lamp loses 1.5 float32 ulp (see the block above) plus the
+    census print's half step; the OTHER lamp of the pair loses the same if it
+    is also new, or the live census's half step if it is standing.  The pair
+    is xz, hence the root of two.  The walk decides on 4 dp so the wire
+    rounding is not in it.
+    """
+    c = abs(extent_m)
+    ulp32 = 2.0 ** (math.floor(math.log2(c)) - 23)
+    decimals = max(0, min(CENSUS_MAX_DECIMALS,
+                          CENSUS_SIG_DIGITS - 1 - math.floor(math.log10(c))))
+    new_lamp = 1.5 * ulp32 + 0.5 * 10.0 ** -decimals
+    other = max(new_lamp, 0.5 * 10.0 ** -LIVE_CENSUS_DECIMALS)
+    return math.sqrt(2.0) * (new_lamp + other)
+
+
+# --------------------------------------------------------------------------
 # geometry off the instruments
 # --------------------------------------------------------------------------
 
@@ -516,8 +666,9 @@ def seat_offset_m(prefab: str = LAMP_PREFAB) -> float:
 def lamp_unit(x: float, z: float, surface_y: float, yaw_deg: float) -> dict:
     """One lamp: prefab, world position, yaw, and the seat arithmetic shown."""
     off = seat_offset_m()
-    return {"prefab": LAMP_PREFAB, "x": round(x, 4),
-            "y": round(surface_y + off, 4), "z": round(z, 4),
+    return {"prefab": LAMP_PREFAB, "x": round(x, WIRE_DECIMALS),
+            "y": round(surface_y + off, WIRE_DECIMALS),
+            "z": round(z, WIRE_DECIMALS),
             "yaw_deg": round(yaw_deg % 360.0, 3),
             "surface_y": round(surface_y, 4), "seat_offset_m": round(off, 5),
             "flame_y": round(surface_y + FLAME_ABOVE_SURFACE_M, 4)}
@@ -1367,15 +1518,27 @@ class Standing:
                 f"Answering 'nothing nearby' here would be a clean-looking "
                 f"pass that placed a duplicate.")
 
+    def cylinder(self, min_m: float) -> tuple[float, float]:
+        """`(radius, half_height)` a lamp must keep clear of its neighbours:
+        the gate's limits PLUS the readback margin on both axes.  The gate
+        refuses a pair at `d < min_m` and `dy <= y_half_m`, measured on the
+        coordinates it reads back, so a placement standing exactly on either
+        limit here can stand on the wrong side of it there -- see the block
+        at `READBACK_MARGIN_M`."""
+        margin = readback_margin_m()
+        return min_m + margin, self.y_half_m + margin
+
     def near(self, x: float, y: float, z: float, min_m: float) -> list[dict]:
-        """Lamps inside the CYLINDER of radius `min_m`, half-height
-        `y_half_m`, about this point -- live and staged together."""
-        self._assert_in_band(y, self.y_half_m)
+        """Lamps inside the CYLINDER of radius `min_m` (and the readback
+        margin), half-height `y_half_m` (likewise), about this point -- live
+        and staged together."""
+        radius, y_reach = self.cylinder(min_m)
+        self._assert_in_band(y, y_reach)
         out = []
         for rec in (self.live + self.staged):
             d = math.hypot(rec["x"] - x, rec["z"] - z)
             dy = abs(rec["y"] - y)
-            if d <= min_m and dy <= self.y_half_m:
+            if d <= radius and dy <= y_reach:
                 out.append({**rec, "dist_m": round(d, 3),
                             "dy_m": round(dy, 3)})
         out.sort(key=lambda r: r["dist_m"])
@@ -1417,18 +1580,19 @@ class Standing:
         """RE-ASK THE LIVE WORLD about ONE position, immediately before the
         write.  This is the read-before-write census gate.
 
-        The cube asked for is `max(min_m, y_half_m)`, which strictly CONTAINS
-        the cylinder of radius `min_m` and half-height `y_half_m`, so nothing
-        inside the cylinder can fall outside the question; the reply is then
-        filtered to the cylinder here.  Handing the cube's verdict back would
-        refuse a lamp 8 m away and 40 m below, which no player reads as a
-        cluster.
+        The cube asked for is `max(radius, y_reach)` of `cylinder(min_m)`,
+        which strictly CONTAINS the cylinder of radius `min_m` and half-height
+        `y_half_m` (each plus the readback margin), so nothing inside the
+        cylinder can fall outside the question; the reply is then filtered to
+        the cylinder here.  Handing the cube's verdict back would refuse a
+        lamp 8 m away and 40 m below, which no player reads as a cluster.
 
         Raises `GateRefusal` rather than answering "free" when the question
         could not be asked.
         """
-        self._assert_in_band(y, self.y_half_m)
-        half = max(min_m, self.y_half_m)
+        radius, y_reach = self.cylinder(min_m)
+        self._assert_in_band(y, y_reach)
+        half = max(radius, y_reach)
         found: list[dict] = []
         for prefab in self.prefabs:
             try:
@@ -1447,7 +1611,7 @@ class Standing:
             for rec in got.values():
                 d = math.hypot(rec["x"] - x, rec["z"] - z)
                 dy = abs(rec["y"] - y)
-                if d <= min_m and dy <= self.y_half_m:
+                if d <= radius and dy <= y_reach:
                     found.append({**rec, "dist_m": round(d, 3),
                                   "dy_m": round(dy, 3)})
         found.sort(key=lambda r: r["dist_m"])
@@ -1455,14 +1619,16 @@ class Standing:
             "occupied": bool(found),
             "position": [round(x, 3), round(y, 3), round(z, 3)],
             "min_spacing_m": min_m, "y_half_m": self.y_half_m,
+            "readback_margin_m": readback_margin_m(),
             "cube_half_asked_m": half,
             "nearest_m": found[0]["dist_m"] if found else None,
             "neighbours": found,
             "method": (f"MEASURED live: `findObjects -prefab P -near x y z "
                        f"{half:g}` per ground-torch prefab -- a CUBE that "
                        f"strictly contains the target cylinder -- then "
-                       f"filtered to horizontal distance <= {min_m:g} m AND "
-                       f"|dy| <= {self.y_half_m:g} m."),
+                       f"filtered to horizontal distance <= {radius:g} m AND "
+                       f"|dy| <= {y_reach:g} m ({min_m:g} m and "
+                       f"{self.y_half_m:g} m plus the readback margin)."),
             "tool": "tools/jumpstart/roads/lamps.py::Standing.confirm"}
 
     def describe(self) -> str:
@@ -1539,6 +1705,11 @@ def _candidate(seg: Segment, stations: list[tuple[float, float, float]],
     off = seg.half_width_m + SHOULDER_STANDOFF_M
     lx = cx + side * (-tz) * off
     lz = cz + side * (tx) * off
+    # DECIDE ON WHAT WILL BE WRITTEN: the staged lamp, the ledger plan and the
+    # spawn command are then one coordinate, and a separation the walk
+    # measures is a separation `lamp_unit` can reproduce -- see
+    # `READBACK_MARGIN_M` for the 29.999712 m pair this closes.
+    lx, lz = written_xz(lx, lz)
     # SEAT ON THE DEEPEST GROUND UNDER THE FOOTPRINT, NOT ON THE CENTRE.
     # The lamp's foot is a 0.23 x 0.24 m rectangle and the shoulder is
     # graded, not flat: MEASURED on S1, seating on the centre sample left
@@ -1602,6 +1773,15 @@ class Coverage:
     per-station loop of `unlit_runs`, because a walk has to know WHICH station
     is dark and the gate only says how many -- so `verify` asks `unlit_runs`
     itself and REFUSES on any disagreement.
+
+    THE SIGHT DISTANCE IS A LIMIT TOO.  The gate calls a station lit when a
+    flame is within `sight_m` of it, measured on the flame's coordinates as
+    the census prints them back, so a flame sited 30.0000 m from a station is
+    lit here and can be 30.0003 m from it there.  The walk therefore counts a
+    station lit only inside `sight_m - readback_margin_m()` (`seen_m`), and
+    `verify` asks the gate's own `unlit_runs` at that same distance, so the
+    two stay one loop: the walk errs toward a lamp, never toward a dark
+    station.
     """
 
     def __init__(self, stations: list[tuple[float, float, float]],
@@ -1612,6 +1792,7 @@ class Coverage:
         self.surf = surf
         self.eye = eye
         self.sight_m = sight_m
+        self.seen_m = sight_m - readback_margin_m()
         self.reach_m = max(GATE.SIGHT_DISTANCES_M)
         self.segs = {name: {"nodes": nodes, "half_width_m": hw}
                      for name, nodes, hw in carriageways}
@@ -1637,7 +1818,7 @@ class Coverage:
         eye = y + self.eye
         _s, x, z = self.stations[i]
         for (j, lx, lz, flame) in entries:
-            if math.hypot(lx - x, lz - z) > self.sight_m:
+            if math.hypot(lx - x, lz - z) > self.seen_m:
                 continue
             if GATE.A.visible(self.surf, i, j, eye, flame):
                 return True
@@ -1675,7 +1856,8 @@ class Coverage:
                 "unlit_stations": unlit, "stations": len(self.stations),
                 "stations_with_no_applied_reading": unread}
         mine = sum(1 for v in self.lit if not v)
-        theirs = out[f"sight_{self.sight_m:.0f}m"]["unlit_stations"]
+        theirs = GATE.unlit_runs(self.stations, self.surf, self.idx,
+                                 self.seen_m)[2]
         if self.eye == GATE.EYE_M and mine != theirs:
             raise RuntimeError(
                 f"REFUSING: the siting walk counts {mine} dark station(s) and "
@@ -2153,7 +2335,9 @@ def _biome_allows(last_s: float | None, base_s: float, s: float,
     sep = (gap if last_xz is None
            else math.hypot(cand.lamp_x - last_xz[0],
                            cand.lamp_z - last_xz[1]))
-    if min(gap, sep) < pol["min_m"]:
+    # THE MINIMUM IS A LIMIT THE GATE MEASURES: keep it by the readback
+    # margin, on the arclength and on the separation alike.
+    if min(gap, sep) < pol["min_m"] + readback_margin_m():
         return False
     if gap <= 60.0:
         return gap <= pol["max_m"]
@@ -2408,6 +2592,11 @@ _NEUTERS: dict[str, tuple[str, str, str, object]] = {
     # spacing constants, and nothing asked about what the gate will see.
     "coverage spacing": ("accept.sections.lighting (the lit criterion)",
                          __name__, "_COVERAGE_MODE", "spacing"),
+    # LAMP_SPACING_DEPENDS_ON, the SHIPPED reading: every limit the gate
+    # measures kept to the exact digit on the walk's own unrounded numbers,
+    # which the write and the census then rounded across the line.
+    "spacing bare": ("accept.sections.lighting.check_spacing / unlit_runs",
+                     __name__, "_SPACING_MODE", "bare"),
 }
 
 
@@ -2639,6 +2828,173 @@ def _t7_tail_behind_a_pad(R) -> list:
             if "site pad stenvik" in st["owners"]]
 
 
+# THE W7 PAIR, CONSTRUCTED AT ITS OWN COORDINATES -- never borrowed.  Gate
+# lighting/lamp_spacing on the regenerated Ulfsland (seed Pirate68), two lamps
+# on road_W7_wwest_wnorthwest: planned at 4 dp as `_LIMIT_PLAN`, printed back
+# by the census as `_LIMIT_CENSUS`, and 29.999712 m apart there.
+_LIMIT_PLAN = ((-1420.8311, 2155.5626), (-1399.6179, 2176.7758))
+_LIMIT_CENSUS = ((-1420.831, 2155.563), (-1399.618, 2176.776))
+_LIMIT_GATE_M = 29.999712
+# A straight 45 degree road in the same quadrant, half width 2.0 as W7's, from
+# a start chosen so that the walk's left-hand spot beside station 29 stands
+# 30.00007 m from the standing lamp as the walk holds the two -- on the
+# unrounded side of the 30 m limit -- and 29.999712298620256 m from it as the
+# gate reads them back: the W7 figure to its last digit.  The standing lamp is
+# at 3 dp, the way the census holds a lamp in this quadrant.
+_LIMIT_START = (-1439.9992, 2135.0055)
+_LIMIT_STANDING = (-1400.083, 2178.528)
+_LIMIT_LENGTH_M = 240.0
+_ROOT_HALF = math.sqrt(0.5)
+
+
+def _straight_segment(start: tuple[float, float], dx: float, dz: float,
+                      length_m: float, half_width_m: float,
+                      name: str = "road_W7_wwest_wnorthwest") -> Segment:
+    nodes = [start, (start[0] + length_m * dx, start[1] + length_m * dz)]
+    cum = [0.0, math.dist(*nodes)]
+    return Segment(name=name, seg_id=name[len("road_"):].replace("_", "-"),
+                   file_line=0, seq=0, half_width_m=half_width_m,
+                   nodes=nodes, cum=cum, length_m=cum[-1])
+
+
+class _ForestGround(_TailGround):
+    """Flat BlackForest, whose published minimum spacing IS the gate's 30 m."""
+
+    def biome(self, _x: float, _z: float) -> str:
+        return "BlackForest"
+
+
+def _gate_reads(seg: Segment, rows: list[tuple]) -> list:
+    """The lighting gate's own `check_spacing` over `(prefab, x, y, z)` rows,
+    every coordinate AS THE CENSUS PRINTS IT BACK: the number the gate gets."""
+    segs = {seg.name: {"nodes": seg.nodes, "half_width_m": seg.half_width_m}}
+    back = []
+    for prefab, x, y, z in rows:
+        rx, rz = readback_xz(x, z)
+        back.append((prefab, rx, readback_coord(y), rz))
+    return GATE.check_spacing(GATE.classify_lamps(back, segs))[0]
+
+
+def _limit_pair() -> list:
+    """Site the W7-shaped road beside the standing lamp through the
+    production `site`, and return what the gate reads of everything standing
+    after it."""
+    seg = _straight_segment(_LIMIT_START, _ROOT_HALF, _ROOT_HALF,
+                            _LIMIT_LENGTH_M, 2.0)
+    standing = Standing.from_records([{
+        "prefab": LAMP_PREFAB, "x": _LIMIT_STANDING[0],
+        "y": _T7_TAIL_Y + seat_offset_m(), "z": _LIMIT_STANDING[1],
+        "id": "fx/standing"}])
+    plan = site(seg, _ForestGround(), _TailKeep(seg), standing=standing)
+    assert plan.lamps and not plan.unlit, (
+        "the fixture road must be lit end to end, or it is not a siting of "
+        f"anything: {len(plan.lamps)} lamp(s), unlit {plan.unlit}")
+    return _gate_reads(seg, [(r["prefab"], r["x"], r["y"], r["z"])
+                             for r in standing.live + plan.lamps])
+
+
+def _limit_ceiling() -> list:
+    """THE SAME CLIFF EDGE IN Y.  A lamp 10.00003 m above its neighbour is
+    outside the gate's +/-10 m cylinder as the walk holds it, and writes as
+    exactly 10.0000 m, which is inside.  The walk asks the production
+    `Standing.why_not`, writes through `lamp_unit` if it is told yes, and the
+    gate reads back whatever stands."""
+    seg = _straight_segment((0.0, 0.0), 1.0, 0.0, 200.0, 3.0, "road_X_a_b")
+    off = seg.half_width_m + SHOULDER_STANDOFF_M
+    surface_y = 60.00003 - seat_offset_m()
+    standing = Standing.from_records([{
+        "prefab": LAMP_PREFAB, "x": 100.0, "y": 50.0, "z": off,
+        "id": "fx/below"}])
+    rows = [(LAMP_PREFAB, 100.0, 50.0, off)]
+    if standing.why_not(105.0, surface_y + seat_offset_m(), off,
+                        GATE.MIN_SPACING_M) is None:
+        unit = lamp_unit(105.0, off, surface_y, 0.0)
+        rows.append((unit["prefab"], unit["x"], unit["y"], unit["z"]))
+    return _gate_reads(seg, rows)
+
+
+def _limit_sight(R) -> list:
+    """THE SIGHT DISTANCE IS A LIMIT TOO.  A flame 30 m less 0.02 mm from a
+    station is lit to the walk; the census prints the flame's x 0.4 mm
+    further (-1420.2104 -> -1420.21), which is 30.0004 m, which the gate calls
+    dark.  Refuse if the walk calls lit what the gate reads back as dark."""
+    hw = 3.0
+    off = hw + SHOULDER_STANDOFF_M
+    along = math.sqrt(SIGHT_M ** 2 - off ** 2)
+    lamp_x, lamp_z = -1420.2104, 2150.0 + off
+    station_x = lamp_x - (along - 0.00002)
+    seg = _straight_segment((station_x - 40.0, 2150.0), 1.0, 0.0, 120.0, hw,
+                            "road_X_a_b")
+    stations = resample(seg)
+    surf = [_T7_TAIL_Y] * len(stations)
+    y = _T7_TAIL_Y + seat_offset_m()
+    rx, rz = readback_xz(lamp_x, lamp_z)
+    near, far = (math.hypot(lamp_x - station_x, off),
+                 math.hypot(rx - station_x, off))
+    assert near <= SIGHT_M < far, (
+        f"the fixture must put station 40 inside the sight limit as the walk "
+        f"holds the flame ({near:.6f}) and outside it as the census reads it "
+        f"({far:.6f}); it does not")
+    cov = Coverage(stations, surf, [(seg.name, seg.nodes, seg.half_width_m)],
+                   [{"prefab": LAMP_PREFAB, "x": lamp_x, "y": y,
+                     "z": lamp_z}])
+    mine = sum(1 for v in cov.lit if not v)
+    segs = {seg.name: {"nodes": seg.nodes, "half_width_m": seg.half_width_m}}
+    idx = GATE.lamp_index(
+        stations, GATE.classify_lamps(
+            [(LAMP_PREFAB, rx, readback_coord(y), rz)], segs),
+        max(GATE.SIGHT_DISTANCES_M))
+    theirs = GATE.unlit_runs(stations, surf, idx, SIGHT_M)[2]
+    if mine >= theirs:
+        return []
+    return [R.Finding(
+        check="lit_station", ok=False, measured=mine, limit=theirs,
+        numbers={"walk_dark": mine, "gate_dark": theirs,
+                 "walk_xz_m": round(near, 6), "gate_xz_m": round(far, 6)},
+        message=(f"the walk counts {mine} dark station(s) where the gate, "
+                 f"reading the flame back from the census, counts {theirs}: "
+                 f"a station {near:.6f} m from the flame as the walk holds it "
+                 f"and {far:.6f} m as the gate reads it"))]
+
+
+def _margin_outruns_the_loss(R) -> list:
+    """The margin must exceed what the write and the census can take away.
+    First the model of the census is held to the one measurement that
+    matters: it must reproduce the W7 pair's read-back to the last digit."""
+    got = tuple(readback_xz(x, z) for x, z in _LIMIT_PLAN)
+    assert got == _LIMIT_CENSUS, (
+        f"the census model prints {got}, the saved census holds "
+        f"{_LIMIT_CENSUS}")
+    gap = math.hypot(got[0][0] - got[1][0], got[0][1] - got[1][1])
+    assert abs(gap - _LIMIT_GATE_M) < 5e-7, (
+        f"the read-back pair is {gap:.6f} m apart, the gate measured "
+        f"{_LIMIT_GATE_M}")
+    bound, margin = readback_shrink_bound_m(), readback_margin_m()
+    if margin > bound:
+        return []
+    return [R.Finding(
+        check="margin", ok=False, measured=margin, limit=bound,
+        numbers={"margin_m": margin, "worst_loss_m": round(bound, 5),
+                 "extent_m": WORLD_EXTENT_M},
+        message=(f"a {margin:g} m margin does not cover the {bound:.5f} m "
+                 f"the write and the census can take off a pair's "
+                 f"separation at |coordinate| {WORLD_EXTENT_M:g} m"))]
+
+
+def _limit_pair_as_the_census_holds_it() -> list:
+    """MUST REFUSE: the two W7 lamps as the census holds them, through the
+    gate's own spacing check -- the instrument the other cases lean on, shown
+    to refuse the state they are about.  The road is the straight 45 degree
+    one both lamps stand 2.55 m left of."""
+    (ax, az), (bx, bz) = _LIMIT_PLAN
+    c = _ROOT_HALF
+    start = (ax + (SHOULDER_STANDOFF_M + 2.0) * c - 20.0 * c,
+             az - (SHOULDER_STANDOFF_M + 2.0) * c - 20.0 * c)
+    seg = _straight_segment(start, c, c, 70.0, 2.0)
+    return _gate_reads(seg, [(LAMP_PREFAB, ax, 44.0941, az),
+                             (LAMP_PREFAB, bx, 40.4668, bz)])
+
+
 def selftest() -> int:
     """Every case that needs no world, no seed and no server."""
     from accept import registry as R  # noqa: PLC0415
@@ -2684,6 +3040,45 @@ def selftest() -> int:
                            "'803 m dark at 0 m' about a different stretch",
                neuter=_neuter("coverage spacing"),
                neuters="coverage spacing"),
+        R.Case("a_lamp_on_the_spacing_limit_survives_the_census_readback",
+               False, _limit_pair,
+               prior_state="MEASURED regenerated Ulfsland, gate lighting/"
+                           "lamp_spacing on road_W7_wwest_wnorthwest: lamps "
+                           "at (-1420.8, 2155.6) and (-1399.6, 2176.8) "
+                           "29.999712 m apart, 3.627 m in y, against the "
+                           "30 m minimum; the ledger plan holds them "
+                           "29.999995 m apart and the walk, which refuses "
+                           "d <= 30, had accepted them [INFERENCE: on "
+                           "unrounded numbers over 30]",
+               neuter=_neuter("spacing bare"),
+               neuters="spacing bare"),
+        R.Case("a_lamp_a_hair_above_the_cylinder_ceiling_is_still_a_neighbour",
+               False, _limit_ceiling,
+               prior_state="the same cliff edge in y: the gate's cylinder is "
+                           "+/-10 m and a lamp 10.00003 m above its "
+                           "neighbour writes as 10.0000 m",
+               neuter=_neuter("spacing bare"),
+               neuters="spacing bare"),
+        R.Case("a_station_on_the_sight_limit_is_not_called_lit_by_the_walk",
+               False, lambda: _limit_sight(R),
+               prior_state="the sight distance is a limit the gate measures "
+                           "on the flame's read-back coordinates: 30 m less "
+                           "0.02 mm to the walk is 30.0004 m to the gate",
+               neuter=_neuter("spacing bare"),
+               neuters="spacing bare"),
+        R.Case("the_margin_outruns_what_the_write_and_the_census_take_off",
+               False, lambda: _margin_outruns_the_loss(R),
+               prior_state="MEASURED 343 planned lamps against the saved "
+                           "census: the census model reproduces 323 exactly "
+                           "and 20 to one digit; the live findObjects census "
+                           "prints 2 decimals",
+               neuter=_neuter("spacing bare"),
+               neuters="spacing bare"),
+        R.Case("the_w7_pair_as_the_census_holds_it_is_refused",
+               True, _limit_pair_as_the_census_holds_it,
+               prior_state="gate lighting/lamp_spacing 29.999712 m against "
+                           "30.0; the instrument the cases above lean on, "
+                           "shown to refuse the state they are about"),
     ]
     section = R.Section(
         name="lamps",
@@ -2697,7 +3092,9 @@ def selftest() -> int:
                    "/ check_lateral",
         population="one constructed piece_groundtorch in the drive-3 T6 "
                    "zone (-1,11) shape; the drive-4 T7 tail with the "
-                   "thirteen torches the frozen save has beside it",
+                   "thirteen torches the frozen save has beside it; the W7 "
+                   "wwest-wnorthwest lamp pair at its own coordinates and "
+                   "the straight 45 degree road that reproduces it",
         run=lambda ctx: [], cases=cases)
     results = R.run_cases(section)
     bad = 0
@@ -2728,10 +3125,27 @@ def selftest() -> int:
                      f"{s30['worst_unlit_run_m']:.0f} m, {s30['unlit_stations']}"
                      f" of {s30['stations']} stations dark")
     print(f"  drive-4 T7 tail at {SIGHT_M:.0f} m sight -- " + "; ".join(shown))
+    shown = []
+    for label in ("real", "spacing bare"):
+        undo = _neuter(label)() if label != "real" else (lambda: None)
+        try:
+            fs = _limit_pair()
+            ceil = _limit_ceiling()
+        finally:
+            undo()
+        shown.append(f"{label}: gate reads {len(fs)} pair(s) under "
+                     f"{GATE.MIN_SPACING_M:.0f} m after the walk"
+                     + (f" ({fs[0].measured:.6f} m)" if fs else "")
+                     + f"; ceiling pair {len(ceil)}")
+    print("  W7-shaped road beside a standing lamp -- " + "; ".join(shown))
+    print(f"  readback margin {READBACK_MARGIN_M:g} m against a worst loss of "
+          f"{readback_shrink_bound_m():.5f} m at |coordinate| "
+          f"{WORLD_EXTENT_M:g} m, {readback_shrink_bound_m(2200.0):.5f} m at "
+          f"2,200 m")
     print(f"\nlamps selftest: {len(results) - bad}/{len(results)} "
           f"({'PASS' if not bad else 'FAIL'}), declared dependencies "
           f"{LAMP_SEGMENT_KEY_DEPENDS_ON + LAMP_SEAT_SURFACE_DEPENDS_ON}"
-          f" + {LAMP_COVERAGE_DEPENDS_ON}")
+          f" + {LAMP_COVERAGE_DEPENDS_ON} + {LAMP_SPACING_DEPENDS_ON}")
     return 0 if not bad else 1
 
 

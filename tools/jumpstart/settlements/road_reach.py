@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""A SITE IS WHERE A ROAD CAN GET TO, OR IT IS PORTAL-ONLY -- AND SAYS WHICH,
+WITH NUMBERS.
+
+THE DEFECT, MEASURED 2026-10-07 on Pirate68 with the 15 frozen site pins and
+the 14 outlier anchors removed.  The solver ranks candidates by what a tower,
+a light or a hamlet NEEDS (rise, relief, coast, purity) and never asked whether
+a road can get there.  `sites.yaml` then carried 16 solver sites and the road
+network, whose legs name them, routed 35 segments and came back with 7
+UNROUTABLE:
+
+    T10 T11 T12   `wt-spawn` (1432, 1546) stands in a 186-cell POCKET of the
+                  router's own graph -- it is on the spawn landmass, and no
+                  road gets in.
+    S7            `wt-north` (1856, 146) is on a 62,618-cell island of that
+                  graph; the spawn window's largest strong component is
+                  269,270 cells.
+    W9 W10 W11    `lh-west`, `tree-near`, `tree-west` -- the same island, each
+                  hung from a west-isle node by a hand-typed leg.
+
+The frozen pins had hidden it by being hand-picked routable places.  A site
+that no road can reach is not a defect; an EDGE to it is.
+
+WHO DECIDES WHETHER A SITE IS ROADED.  Two things, and they were never
+joined:
+
+  the DECLARATION   `OUTLIERS[...]["road_priority"]` (and `TOWNS[...]`):
+                    `trunk` / `spur` is the carriageway class the site is to be
+                    reached by, `none` is "portal-only, by design".  It was
+                    authored, published in `sites.yaml`, and READ BY NOTHING:
+                    `roads/spec.py` carried its own hand-typed legs.
+  the MEASUREMENT   whether the router's own graph connects the site to the
+                    trunk network.  Nobody asked.  This module asks, in the
+                    router's own terms -- the SAME graph the extremities of
+                    `roads/geography.py` are held to (`RoadGraph`), because "an
+                    extremity is where a road can get to" and "a watchtower is
+                    where a road can get to" are one rule.
+
+THE VERDICT is `{class, roaded, reason, why, evidence}` and is carried on every
+site `sites.yaml` publishes (`road`).  `roaded` is true only when the site's
+declared class is a road class AND its window is rooted (a crossing joins it to
+the spawn island on this seed) AND the router's snap for it lies in the
+window's LARGEST STRONG COMPONENT of that class's graph AND on the window's
+TRUNK LANDMASS (its largest land component: the router lets a road cross a
+channel up to the span ceiling, which is how the two halves of the main
+continent are one, and that is not a licence to bridge to every islet within
+96 m of the coast).  A site that is not roaded is portal-only: no leg is planned to it (`roads/spec.py` records why, in
+`NO_ROAD`, and never as an unroutable edge); where it stands on another
+landmass it is a candidate for a dock or a ferry, later, and the numbers here
+are what that decision starts from.
+
+THE SOLVER USES IT TOO (`plan.select_outliers`): a site declared roaded takes
+the best candidate of its kind that is reachable, and the candidates it passed
+over are carried on the record with their numbers (`reach_refused`).  Only when
+NO candidate of its scope is reachable does the site stand on the best
+unreachable one -- never deleted -- and publish `roaded: false`.
+
+ROAD_REACH_DEPENDS_ON
+  the_routers_own_graph       `route.Corridor`'s achievable surface, span
+                              ceiling, GRADE_CEILING and snap radius, as
+                              `geography.RoadGraph`.
+  the_trunk_landmass          the window's largest land component, as the
+                              extremities of `geography.py` define it.
+  the_generator_keep_outs     `poi.masks` over this seed's own dump, at the
+                              class's half-width, as `network.py plan` masks it.
+  the_class_the_site_declares a trunk site is judged on the trunk graph, a
+                              spur site on the spur graph.
+  a_rooted_window             the site's window holds an island a crossing
+                              joins to the spawn island on this seed
+                              (`geography.joined_islands`).
+NEUTER `_MODE = "declared"`: the shipped reading -- a declared road class IS a
+road, whatever the graph says.  Proven by `accept --section townsites`
+(`a_pocket_the_router_cannot_enter_is_portal_only`,
+`an_islet_across_the_water_is_portal_only`, `the_solver_passes_over_what_no_road_reaches`).
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+for _p in (HERE.parent / "roads", HERE.parent):
+    if str(_p) not in sys.path:
+        sys.path.append(str(_p))
+
+ROAD_REACH_DEPENDS_ON = ("the_routers_own_graph", "the_trunk_landmass",
+                         "the_generator_keep_outs",
+                         "the_class_the_site_declares", "a_rooted_window")
+_MODE = "graph"          # graph | declared (the shipped: a class IS a road)
+
+# The carriageway classes `roads/route.py::GRADE` knows.  `none` is the
+# declaration that no road is planned to the site.
+ROAD_CLASSES = ("trunk", "spur", "mountain")
+
+
+class SiteReach:
+    """The road-reach verdict for sites of ONE solve.
+
+    `fields` are the loaded windows (`sites.Picker.fields`); `loc_path` is the
+    generator location dump the solve reads, so the keep-outs the graph is
+    built against are the ones the solve was judged on.  `joined` (default:
+    `geography.joined_islands()`) and `graph_for` (default:
+    `geography.RoadGraph`) are the two seams a fixture breaks, so a case need
+    not read a 230 MB field to construct a pocket.
+    """
+
+    def __init__(self, fields: dict, loc_path=None, *, joined=None,
+                 island_of=None, graph_for=None):
+        import geography as G                               # noqa: PLC0415
+        self.fields = fields
+        self.loc_path = loc_path
+        self._G = G
+        self.joined = joined
+        self.island_of = island_of or G.island_of_window
+        self._graph_for = graph_for
+        self._graphs: dict[tuple[str, str], object] = {}
+
+    def _joined(self) -> set:
+        if self.joined is None:
+            self.joined = self._G.joined_islands()
+        return self.joined
+
+    def graph(self, patch: str, cls: str):
+        key = (patch, cls)
+        if key not in self._graphs:
+            build = self._graph_for or (lambda f, c: self._G.RoadGraph(
+                f, cls=c, loc=self.loc_path))
+            self._graphs[key] = build(self.fields[patch], cls)
+        return self._graphs[key]
+
+    def verdict(self, patch: str, x: float, z: float, priority: str) -> dict:
+        """The verdict for a site at (x, z) in window `patch` whose declared
+        road class is `priority` (`trunk` | `spur` | `mountain` | `none`)."""
+        rec = {"class": priority, "window": patch,
+               "xz": [round(float(x), 1), round(float(z), 1)]}
+        if priority != "none" and priority not in ROAD_CLASSES:
+            raise ValueError(
+                f"road class {priority!r} is not one of "
+                f"{('none',) + ROAD_CLASSES}; a class nothing reads is a "
+                f"declaration that reads as 'no road' by accident")
+        if priority == "none":
+            return {**rec, "roaded": False, "reason": "declared_portal_only",
+                    "why": ("road_priority is none: this site is reached by "
+                            "portal, by design, and no road is planned to it"),
+                    "evidence": {}}
+        if _MODE == "declared":
+            return {**rec, "roaded": True, "reason": "declared",
+                    "why": f"road_priority {priority}: taken as a road",
+                    "evidence": {}}
+        island = self.island_of(patch)
+        if island not in self._joined():
+            return {**rec, "roaded": False, "reason": "unrooted_window",
+                    "why": (f"window {patch!r} holds island {island!r}, and no "
+                            f"crossing joins it to the spawn island on this "
+                            f"seed (joined: {sorted(self._joined())}): a road "
+                            f"there is walkable from nowhere a walk from the "
+                            f"portal hall starts"),
+                    "evidence": {"island": island,
+                                 "joined_islands": sorted(self._joined())}}
+        g = self.graph(patch, priority)
+        at = g.at([x], [z])
+        piece, snap = int(at["piece_cells"][0]), float(at["snap_m"][0])
+        land = int(at["land_cells"][0])
+        ev = {"cell_m": g.corr.cell_m, "network_cells": g.largest_cells,
+              "piece_cells": piece, "land_cells": land,
+              "trunk_land_cells": g.trunk_land_cells,
+              "snap_m": None if snap == float("inf") else round(snap, 1),
+              "snap_limit_m": g.snap_m}
+        if bool(at["reached"][0]) and bool(at["on_trunk_landmass"][0]):
+            return {**rec, "roaded": True, "reason": "reached",
+                    "why": (f"the {priority} router snap stands "
+                            f"{ev['snap_m']:g} m away in window {patch!r}'s "
+                            f"largest strong component "
+                            f"({ev['network_cells']} cells of "
+                            f"{ev['cell_m']:g} m), on its trunk landmass "
+                            f"({ev['trunk_land_cells']} cells)"),
+                    "evidence": ev}
+        if not bool(at["inside"][0]):
+            reason, why = "outside_grid", (
+                f"({x:.0f}, {z:.0f}) is outside window {patch!r}'s corridor "
+                f"grid, so the router cannot start a search there")
+        elif piece == 0:
+            reason, why = "no_allowed_cell", (
+                f"no allowed cell of the {priority} router graph lies within "
+                f"{g.snap_m:g} m of ({x:.0f}, {z:.0f}) (nearest "
+                f"{ev['snap_m']} m): every cell there is wet or inside a "
+                f"keep-out")
+        elif not bool(at["on_trunk_landmass"][0]):
+            reason, why = "off_landmass", (
+                f"({x:.0f}, {z:.0f}) stands on a landmass of {land} cells of "
+                f"{ev['cell_m']:g} m, and window {patch!r}'s trunk landmass "
+                f"holds {ev['trunk_land_cells']}: a road does not cross open "
+                f"water to another landmass -- a dock, a ferry or a portal "
+                f"does")
+        else:
+            reason, why = "off_network", (
+                f"the {priority} router snap for ({x:.0f}, {z:.0f}) stands in "
+                f"a component of {piece} cells of {ev['cell_m']:g} m, and "
+                f"window {patch!r}'s largest strong component holds "
+                f"{ev['network_cells']}: no road reaches it")
+        return {**rec, "roaded": False, "reason": reason, "why": why,
+                "evidence": ev}
+
+
+def brief(v: dict) -> str:
+    """One refusal line for a candidate the solver passed over."""
+    return (f"({v['xz'][0]:.0f}, {v['xz'][1]:.0f}) on {v['window']}: "
+            f"{v['reason']} -- {v['why']}")

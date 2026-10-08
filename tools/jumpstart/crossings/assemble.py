@@ -301,6 +301,20 @@ class PieceFacts:
 _FACTS: dict[str, PieceFacts] | None = None
 
 
+_GEOMETRY: dict | None = None
+
+
+def geometry() -> dict:
+    """`piece_geometry.json`'s `prefabs` - prefab -> measured solid parts -
+    parsed ONCE.  `facts()` reduces it to boxes; `colocated_pieces` hands the
+    same parts to the acceptance gate's own duplicate census, so the emitter
+    and the gate read one corpus and cannot disagree about a piece's solid."""
+    global _GEOMETRY
+    if _GEOMETRY is None:
+        _GEOMETRY = json.loads(GEOMETRY.read_text())["prefabs"]
+    return _GEOMETRY
+
+
 def facts() -> dict[str, PieceFacts]:
     """Local-space solid AABB + structural fields for every prefab, MEASURED.
 
@@ -311,7 +325,7 @@ def facts() -> dict[str, PieceFacts]:
     global _FACTS
     if _FACTS is not None:
         return _FACTS
-    geom = json.loads(GEOMETRY.read_text())["prefabs"]
+    geom = geometry()
     mat: dict[str, dict] = {}
     with MATERIAL.open() as fh:
         for row in csv.DictReader(fh, delimiter="\t"):
@@ -502,11 +516,108 @@ def _pile_stack(x: float, z: float, deck_y: float, bed, role: str,
     return out
 
 
+# ---------------------------------------------------------------------------
+# WHAT THE TILE-ROW STATIONS ARE A FUNCTION OF - DECLARED, AND NEUTERED
+# ---------------------------------------------------------------------------
+# A BRIDGE LAID A ROW 0.041 m BEHIND ITS LAST ROW, AND THE GATE READ THE TWO
+# AS ONE PLACE.  MEASURED on Ulfsland, S7-stathub-wtnorth-x01 (ledger seq
+# 4885-4889, frozen save c4f653104b10), bank_a (450.413, 1025.902) to bank_b
+# (426.077, 1062.608), length 44.041 m:
+#
+#   bays = ceil(44.041 / 2) = 23     rows at 0, 2, ... 44.000 (s < bays)
+#   and then `length` = 44.041 for the LAST bay, 0.041 m behind the row
+#   before it.
+#
+# Two rows 0.041 m apart are 3 `wood_floor`, 2 `wood_pole` rail posts and a
+# 2 m `wood_beam` laid on one place: the gate's duplicate cube is 0.05 m on
+# all three axes (`structures.DUP_TOL_M`), so 3 floors + 1 pole (the other
+# pole pair was opened for the S6 road) were REFUSED at (400, 1050) and
+# (450, 1050) as buried copies - 0 same-solid, 4 buried, each 0.04 m off its
+# sibling - while the 9 other bridges of that world, final bays 0.514 -
+# 2.000 m, were clean.  `zones_generate` was a bystander: the ledger's
+# 8 / 12 covering discs are 406 of 489 zones, and a repeat generate answers
+# "0 zones generated".  The second row is not a second emission; it is this
+# lattice putting two rows in the cube.
+#
+# THE FINAL BAY IS (0, 2], and the tile is exactly 2 m: a row is only ever
+# redundant, never wrong, until it is so close to its neighbour that the gate
+# cannot tell them apart.  That is not a quirk of one span: every span whose
+# length lies within MIN_BAY_M above an even number does it, 1 in 20 at
+# MIN_BAY_M = 0.1 m.  It can be repaired in exactly one way that keeps both
+# bank coordinates tiled and every seam closed: the span is divided into the
+# SAME number of bays EVENLY.  The alternatives each lose a stated invariant:
+#   drop the row at `length`   the deck stops 0.04 m short of its bank
+#                              coordinate and `bank_endpoint_arms` fails;
+#   drop the row before it     the pitch to `length` becomes 2.041 m, a 4 cm
+#                              crack between 2.000 m tiles, and a tile that
+#                              touches nothing carries no support
+#                              (WearNTear::UpdateSupport needs contact);
+#   put a row between them     still a 98 % buried row, one metre off.
+# An even division is a 1.915 m pitch for S7: 24 rows, as many as before, none
+# redundant, every seam overlapping by 0.085 m.
+#
+# EVERY SPAN WHOSE FINAL BAY IS NOT A SLIVER IS UNTOUCHED - the lattice below
+# is byte for byte the one this emitter shipped, so no measured bridge moves
+# by a centimetre unless it was in the cube.
+BRIDGE_STATIONS_DEPENDS_ON = (
+    "the ACTUAL bank-to-bank length and nothing rounded: a row AT each bank "
+    "coordinate and a pitch of at most 2 m, the tile's own width, so no seam",
+    "MIN_BAY_M = 2 x structures.DUP_TOL_M, READ FROM THE GATE: the shortest "
+    "final bay that leaves the two rows' pivots outside the gate's cube on "
+    "at least one axis at EVERY bearing (a diagonal bridge puts 0.707 of the "
+    "bay on each axis, so 0.0707 m is the corner) with the wire's 4 dp "
+    "rounding to spare.  A shorter final bay is absorbed by dividing the "
+    "span evenly, never by dropping a bank row",
+)
+
+# THE FOUR SHIPPED STATES, off, and reachable so the arms below can put each
+# back.  `_BRIDGE_STATIONS_KEEP_SLIVER_BAY` restores the lattice that laid a
+# row 0.041 m behind its neighbour; `_COLOCATED_REFUSAL_OFF` restores the
+# emitter that returned whatever it laid, which is what let the gate be the
+# first to read it.  The other two are the same class, found by running
+# `colocated_pieces` over `slip()`: `_JETTY_STANDS_A_ONE_TILE_COLUMN_TWICE`
+# (both "sides" of a one-tile pier are its centreline) and
+# `_SLIP_HEAD_TILE_ON_A_FINGER_ROOT` (a head tile on the finger's own tile).
+_BRIDGE_STATIONS_KEEP_SLIVER_BAY = False
+_COLOCATED_REFUSAL_OFF = False
+_JETTY_STANDS_A_ONE_TILE_COLUMN_TWICE = False
+_SLIP_HEAD_TILE_ON_A_FINGER_ROOT = False
+
+
+def _gate():
+    """The acceptance gate's duplicate section, imported where it is used.
+
+    Read rather than retyped: `PIECE_TOP_BURIED_TOL_M` above says it is read
+    from the gate and is a literal, and a tolerance retyped here is a tolerance
+    that drifts the first time the gate moves.  Imported lazily, because
+    `accept.sections.structures` imports THIS module from its own selftest."""
+    if str(JUMPSTART) not in sys.path:
+        sys.path.insert(0, str(JUMPSTART))
+    from accept.sections import structures        # noqa: PLC0415
+    return structures
+
+
+def min_bay_m() -> float:
+    """Shortest final bay the lattice will lay; see BRIDGE_STATIONS_DEPENDS_ON."""
+    return 2.0 * _gate().DUP_TOL_M
+
+
 def _bridge_station_distances(length: float, overhang_stations: int) -> list[float]:
-    """Tile both actual banks, with at most 2m pitch and true outboard rows."""
+    """Tile both actual banks, with at most 2m pitch and true outboard rows,
+    and never two rows inside the gate's duplicate cube.
+
+    The lattice is a row every 2 m from bank A with the last bay short.  When
+    that last bay is a sliver (under `min_bay_m()`) the SAME number of bays is
+    divided evenly instead; every other span keeps the lattice unchanged.  A
+    span shorter than one `min_bay_m()` has no bay to divide and is left for
+    `refuse_on_colocated` to refuse with its numbers rather than guessed at."""
     bays = max(1, math.ceil((length - 1e-9) / 2.0))
-    return ([s * 2.0 for s in range(-overhang_stations, 0)]
-            + [s * 2.0 if s < bays else length for s in range(bays + 1)]
+    if (bays > 1 and length - 2.0 * (bays - 1) < min_bay_m()
+            and not _BRIDGE_STATIONS_KEEP_SLIVER_BAY):
+        along = [s * (length / bays) for s in range(bays)] + [length]
+    else:
+        along = [s * 2.0 if s < bays else length for s in range(bays + 1)]
+    return ([s * 2.0 for s in range(-overhang_stations, 0)] + along
             + [length + s * 2.0 for s in range(1, overhang_stations + 1)])
 
 
@@ -672,6 +783,13 @@ def bridge(bank_a: tuple[float, float], bank_b: tuple[float, float],
     bays = max(1, math.ceil(length / bent_spacing_m))
     bent_ts = {round(length * k / bays / 2.0) * 2.0 for k in range(1, bays)}
     bent_ts = {t for t in bent_ts if 0.0 < t < length}
+    # A bent stands under a ROW.  On the 2 m lattice every even t IS a row, so
+    # this moves nothing; on a span `_bridge_station_distances` divided evenly
+    # the rows are off that grid and the bent goes to the nearest row instead
+    # of standing between two.
+    rows = sorted(t for t in station_ts if 0.0 < t < length)
+    bent_ts = ({min(rows, key=lambda r: (abs(r - t), r)) for t in bent_ts}
+               if rows else set())
     # Every raised land tile gets a bent at its own datum unless applied
     # terrain already supports it. Never lift a floor off its old supports.
     bent_ts.update(t for t, h in deck_stations if h > deck_y + 1e-6)
@@ -728,6 +846,7 @@ def bridge(bank_a: tuple[float, float], bank_b: tuple[float, float],
         report["bents_planned"] = len(bent_ts)
         report["shoulder_omitted_swallowed_by_the_bank"] = omitted_shoulder
     refuse_on_seating(out, bed, name)
+    refuse_on_colocated(out, name)
     return out
 
 
@@ -1026,6 +1145,99 @@ def refuse_on_seating(pieces: list[Placed], bed, name: str) -> dict:
     return m
 
 
+def colocated_pieces(pieces: list[Placed]) -> dict:
+    """The acceptance gate's OWN duplicate census, asked of an emitter's list.
+
+    `structures.check_duplicates` is called, not imitated: the same cube
+    (`DUP_TOL_M`, Chebyshev, all three axes), the same occupied-space grading
+    (SAME SOLID at 1 cm, BURIED COPY at `DUP_BURIED_FRACTION` of the piece's
+    own interior), over the same measured parts (`geometry()`), with each
+    piece's yaw as the quaternion the engine will build from `rot=yaw,0,0`.
+    A pair that SHARES A PIVOT and fills space nothing else fills is the
+    gate's advisory, not a duplicate, and is counted apart.
+
+    `groups` names what the counts cannot: which roles, how far apart, where,
+    so a refusal can be acted on without opening the gate's finding."""
+    ST = _gate()
+    tol = ST.DUP_TOL_M
+    geom = geometry()
+    solids = [ST.I.mk_solid(p.prefab, (p.x, p.y, p.z), ST.I.yaw(p.yaw),
+                            geom.get(p.prefab)) for p in pieces]
+    _findings, counts = ST.check_duplicates(solids, geom, tol=tol)
+    cells: dict[tuple, list[int]] = {}
+    for i, p in enumerate(pieces):
+        cells.setdefault((p.prefab, int(math.floor(p.x / tol)),
+                          int(math.floor(p.y / tol)),
+                          int(math.floor(p.z / tol))), []).append(i)
+    parent = list(range(len(pieces)))
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for (nm, cx, cy, cz), members in cells.items():
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for j in cells.get((nm, cx + dx, cy + dy, cz + dz), ()):
+                        for i in members:
+                            a, b = pieces[i], pieces[j]
+                            if i != j and (abs(a.x - b.x) <= tol
+                                           and abs(a.y - b.y) <= tol
+                                           and abs(a.z - b.z) <= tol):
+                                parent[find(i)] = find(j)
+    grouped: dict[int, list[int]] = {}
+    for i in range(len(pieces)):
+        grouped.setdefault(find(i), []).append(i)
+    groups = []
+    for g in grouped.values():
+        if len(g) < 2:
+            continue
+        a = pieces[g[0]]
+        groups.append(dict(
+            prefab=a.prefab, n=len(g),
+            roles=sorted({pieces[i].role for i in g}),
+            at=[round(a.x, 3), round(a.y, 3), round(a.z, 3)],
+            apart_m=round(max(math.dist((a.x, a.y, a.z),
+                                        (pieces[i].x, pieces[i].y,
+                                         pieces[i].z)) for i in g[1:]), 4)))
+    groups.sort(key=lambda r: (r["at"][0], r["at"][2], r["prefab"]))
+    return dict(counts=counts, groups=groups, cube_tol_m=tol)
+
+
+def refuse_on_colocated(pieces: list[Placed], name: str) -> dict:
+    """`colocated_pieces`, raising on anything the gate would refuse.
+
+    Called by every generator in this module BEFORE it returns, next to
+    `refuse_on_seating`.  Nothing is dropped and nothing is moved: a
+    duplicate that is not literally the same solid is a lattice that put two
+    rows in one place, and quietly deleting one would hide the arithmetic
+    that did it - and the next span with the same arithmetic.  The refusal
+    carries the metres.  What it counts is the gate's own `same_solid`,
+    `buried_copy` and `unmeasured`; `shared_pivot_not_a_duplicate` is
+    architecture (two half-arches on one pivot) and is never counted here.
+    """
+    if _COLOCATED_REFUSAL_OFF:
+        return {}
+    m = colocated_pieces(pieces)
+    n = m["counts"]
+    bad = n["same_solid"] + n["buried_copy"] + n["unmeasured"]
+    if not bad:
+        return m
+    raise SystemExit(
+        f"{name}: REFUSED by the co-location re-test: {bad} piece(s) stand "
+        f"within {m['cube_tol_m']:.2f} m on all three axes of a sibling of "
+        f"the same prefab - {n['same_solid']} filling identical space, "
+        f"{n['buried_copy']} buried inside the sibling, {n['unmeasured']} with "
+        f"no measured solid - which is what the acceptance gate refuses as "
+        f"`duplicates`.  Nothing was dropped.\n  "
+        + "\n  ".join(
+            f"{g['n']} x {g['prefab']} {g['roles']} at {g['at']}, "
+            f"{g['apart_m']:.4f} m apart" for g in m["groups"][:8]))
+
+
 def jetty(root: tuple[float, float], bearing_deg: float, length_m: float,
           deck_y: float, bed_profile, width_tiles: int = 2,
           bent_spacing_m: float = 4.0, name: str = "jetty") -> list[Placed]:
@@ -1063,10 +1275,19 @@ def jetty(root: tuple[float, float], bearing_deg: float, length_m: float,
                               bearing_deg, f"{name}/deck", lateral=off,
                               overhang=(s == 0)))
         if s > 0 and (s * 2.0) % bent_spacing_m == 0:
-            for side in (-1, 1):
-                px, pz = cx + lx * side * (half_w - 1.0), cz + lz * side * (half_w - 1.0)
+            # ONE COLUMN PER DISTINCT LATERAL.  A one-tile pier has
+            # `half_w - 1.0 == 0`: both "sides" are its own centreline, and
+            # the loop over (-1, 1) stood the SAME column twice - 24
+            # same-solid `wood_pole_log_4` in a 24 m slip's two fingers,
+            # MEASURED by `colocated_pieces` on `slip()` at 9 - 12 m inner
+            # width.  Order and positions for every wider pier are unchanged.
+            col = half_w - 1.0
+            for lat in ((0.0,) if col < 1e-9
+                        and not _JETTY_STANDS_A_ONE_TILE_COLUMN_TWICE
+                        else (-col, col)):
+                px, pz = cx + lx * lat, cz + lz * lat
                 out.extend(_pile_stack(px, pz, deck_y, bed, f"{name}/pile{s}",
-                                       lateral=side * (half_w - 1.0)))
+                                       lateral=lat))
         # a single-sided rail, on the side away from the berth, so a boat can be
         # boarded from the deck. Handrail on the outboard side only.
         rx = cx + lx * (half_w - 0.2)
@@ -1074,6 +1295,7 @@ def jetty(root: tuple[float, float], bearing_deg: float, length_m: float,
         out.append(Placed("wood_pole", rx, deck_y + 0.5, rz, bearing_deg,
                           f"{name}/rail_post"))
     refuse_on_seating(out, bed, name)
+    refuse_on_colocated(out, name)
     return out
 
 
@@ -1117,12 +1339,23 @@ def slip(root: tuple[float, float], bearing_deg: float, length_m: float,
     f_floor = facts()["wood_floor"]
     floor_y = deck_y - f_floor.hi[1]
     n = int(round(inner_width_m / 2.0)) + 1
+    # A head tile that lands on a finger's own root tile is that tile twice:
+    # at 11 m inner width the 7th of 7 sits at +6.5 m, exactly where finger R
+    # starts, and the finger's tile already covers it.  Skipped where it is
+    # closer than the shortest bay the bridge lattice will lay
+    # (`min_bay_m`), so the head still reaches both fingers and no row
+    # stands within the gate's cube of another.
+    roots = (-(half + 1.0), half + 1.0)
     for k in range(n):
         off = -half + k * 2.0
+        if not _SLIP_HEAD_TILE_ON_A_FINGER_ROOT and any(
+                abs(off - r) < min_bay_m() for r in roots):
+            continue
         out.append(Placed("wood_floor", root[0] + lx * off, floor_y,
                           root[1] + lz * off, bearing_deg, f"{name}/head",
                           lateral=0.0))
     refuse_on_seating(out, bed, name)
+    refuse_on_colocated(out, name)
     return out
 
 
@@ -1973,6 +2206,377 @@ def _case_actual_banks_not_rounded_stations() -> tuple[bool, str]:
             f"{flipped}; exact-length survivors {survived}")
 
 
+# ---------------------------------------------------------------------------
+# TWO PIECES IN ONE PLACE - the arms, and what each neuter does to them
+# ---------------------------------------------------------------------------
+# THE KNOWN-BAD STATE IS MEASURED, NOT INVENTED.  S7-stathub-wtnorth-x01 laid
+# a row 0.041 m behind its last (see `BRIDGE_STATIONS_DEPENDS_ON`).  The
+# spans below are that one, three that put the final bay at the cube's edge
+# (0.020 m on an axis, 0.049 m on an axis, 0.0707 m at the 45 degree corner
+# where each axis carries 0.0500 m) and three the lattice never touched, two
+# of them measured on the same world (S6 final bay 1.586 m, S2-x02 0.514 m).
+#
+# EVERY ARM ANSWERS A BOOLEAN VERDICT, never an assertion, and the driver
+# compares them arm by arm - `accept/registry.py`'s `run_cases` reads an
+# AssertionError as a flip, so an assert would let a check that stopped
+# looking be stamped PROVEN.  The spans that must SURVIVE each neuter are
+# what separate "the check lost this dependency" from "the check refuses
+# everything".
+_ROW_ARMS = (
+    # (name, length_m, bearing_deg, laid_a_row_in_the_cube_before, why)
+    ("S7_stathub_wtnorth_as_built", 44.041, 326.46, True,
+     "MEASURED: 23 bays, final bay 0.041 m"),
+    ("final_bay_0.020_on_an_axis", 30.020, 0.0, True,
+     "0.020 m on z, 0.000 on x"),
+    ("final_bay_0.049_on_an_axis", 30.049, 90.0, True,
+     "0.049 m on x: inside the edge of the cube (0.050 itself is a float "
+     "coin-flip: 30.05 - 30 reads 0.0500000000000007)"),
+    ("final_bay_0.0707_at_the_cube_corner", 30.0707, 45.0, True,
+     "0.0500 m on EACH axis: the longest bay the cube still reads as one "
+     "place, which is why MIN_BAY_M is 2 x the cube, not the cube"),
+    ("S6_stenvik_hognest_as_built", 43.586, 305.54, False,
+     "MEASURED: final bay 1.586 m - the lattice must not move"),
+    ("S2_stathub_eastlobe_x02_as_built", 46.514, 90.0, False,
+     "MEASURED: final bay 0.514 m, the smallest on the world after S7"),
+    ("exact_even_span", 20.0, 54.0, False, "final bay 2.000 m"),
+)
+
+
+def _row_arm(name: str, length: float, yaw: float, width_tiles: int = 3) -> dict:
+    """One span, emitted through `bridge()`: did it come back clean?"""
+    a = math.radians(yaw)
+    ux, uz = math.sin(a), math.cos(a)
+    ax, az = 0.2, 0.3
+
+    def along(x, z):
+        return (x - ax) * ux + (z - az) * uz
+
+    bed = Bed.applied(
+        lambda x, z: 32.5 if (along(x, z) < 1.0 or
+                              along(x, z) > length - 1.0) else 29.0,
+        "bank shelves at the actual fractional endpoints")
+    try:
+        pieces = bridge((ax, az), (ax + length * ux, az + length * uz), yaw,
+                        32.5, bed, width_tiles=width_tiles,
+                        bent_spacing_m=4.0)
+    except SystemExit as e:
+        return dict(name=name, got=False, refused=str(e), co_located=None)
+    n = colocated_pieces(pieces)["counts"]
+    co = n["same_solid"] + n["buried_copy"] + n["unmeasured"]
+    centre = sorted(along(p.x, p.z) for p in pieces
+                    if p.role.endswith("/deck") and abs(p.lateral) < 1e-6
+                    and not p.overhang)
+    keyed = all(any(abs(t - bank) < 1e-6 for t in centre)
+                for bank in (0.0, length))
+    continuous = all(b - a_ <= 2.0 + 1e-6
+                     for a_, b in zip(centre, centre[1:]))
+    return dict(name=name, got=co == 0 and keyed and continuous, refused=None,
+                co_located=co, banks_keyed=keyed,
+                covered_without_gaps=continuous, pieces=len(pieces))
+
+
+def row_arms() -> list[dict]:
+    return [_row_arm(n, length, yaw) for n, length, yaw, _bad, _why in _ROW_ARMS]
+
+
+def _legacy_station_distances(length: float, overhang_stations: int) -> list[float]:
+    """The lattice this emitter shipped before the final bay was guarded."""
+    bays = max(1, math.ceil((length - 1e-9) / 2.0))
+    return ([s * 2.0 for s in range(-overhang_stations, 0)]
+            + [s * 2.0 if s < bays else length for s in range(bays + 1)]
+            + [length + s * 2.0 for s in range(1, overhang_stations + 1)])
+
+
+def lattice_report() -> dict:
+    """The lattice itself, over a dense sweep: no span that was not a sliver
+    moves, and no span at all lays two rows closer than `min_bay_m()`, leaves
+    a seam over 2 m, or misses a bank coordinate."""
+    floor = min_bay_m()
+    moved, closer, seam, unkeyed, slivers, swept = [], [], [], [], 0, 0
+    length = 4.0
+    while length < 64.0:
+        swept += 1
+        bays = max(1, math.ceil((length - 1e-9) / 2.0))
+        sliver = bays > 1 and length - 2.0 * (bays - 1) < floor
+        slivers += sliver
+        st = _bridge_station_distances(length, 1)
+        if not sliver and st != _legacy_station_distances(length, 1):
+            moved.append(round(length, 4))
+        gaps = [b - a for a, b in zip(st, st[1:])]
+        if min(gaps) < floor - 1e-9:
+            closer.append(round(length, 4))
+        if max(gaps) > 2.0 + 1e-9:
+            seam.append(round(length, 4))
+        on_span = [t for t in st if -1e-9 <= t <= length + 1e-9]
+        if abs(on_span[0]) > 1e-9 or abs(on_span[-1] - length) > 1e-9:
+            unkeyed.append(round(length, 4))
+        length += 0.0137
+    return dict(swept=swept, slivers=slivers, moved_without_a_sliver=moved[:5],
+                rows_inside_the_floor=closer[:5], seams_over_2m=seam[:5],
+                banks_missed=unkeyed[:5], min_bay_m=floor,
+                ok=not (moved or closer or seam or unkeyed) and slivers > 0)
+
+
+def _neuter_station_lattice_to_the_sliver_bay():
+    """RESTORE THE DEFECT: the lattice that laid a row 0.041 m behind its
+    neighbour.  Changes the stations and nothing else - the refusal stays."""
+    return _flag("_BRIDGE_STATIONS_KEEP_SLIVER_BAY")
+
+
+def _neuter_colocated_refusal_off():
+    """RESTORE THE DEFECT: an emitter that returns whatever it laid."""
+    return _flag("_COLOCATED_REFUSAL_OFF")
+
+
+def _neuter_both(*neuters):
+    undos = [n() for n in neuters]
+
+    def undo():
+        for u in reversed(undos):
+            u()
+    return undo
+
+
+def colocation_arms() -> list[dict]:
+    """Plans handed straight to `refuse_on_colocated`, no lattice in the way.
+
+    want_refuse  the answer the gate itself would give.  A SHARED PIVOT that
+    fills space nothing else fills, a stack, and a different prefab on one
+    pivot are architecture and MUST pass - a refusal that fires on all of
+    them is as useless as one that fires on none."""
+    P = Placed
+    a = math.radians(45.0)
+    sx, sz = math.sin(a), math.cos(a)
+    states = (
+        ("a_second_copy_of_the_same_solid_is_refused", True,
+         [P("wood_floor", 1.0, 2.0, 3.0, 45.0),
+          P("wood_floor", 1.0, 2.0, 3.0, 45.0)]),
+        ("a_row_0.041_m_behind_its_neighbour_is_refused", True,
+         [P("wood_floor", 1.0, 2.0, 3.0, 45.0),
+          P("wood_floor", 1.0 + 0.041 * sx, 2.0, 3.0 + 0.041 * sz, 45.0)]),
+        ("a_row_0.5_m_behind_its_neighbour_is_accepted", False,
+         [P("wood_floor", 1.0, 2.0, 3.0, 45.0),
+          P("wood_floor", 1.5, 2.0, 3.0, 45.0)]),
+        ("two_crossed_beams_on_one_pivot_are_architecture", False,
+         [P("wood_beam", 1.0, 2.0, 3.0, 0.0),
+          P("wood_beam", 1.0, 2.0, 3.0, 90.0)]),
+        ("a_pole_stacked_over_a_pole_is_accepted", False,
+         [P("wood_pole", 1.0, 2.0, 3.0, 0.0),
+          P("wood_pole", 1.0, 6.0, 3.0, 0.0)]),
+    )
+    out = []
+    for name, want, pieces in states:
+        try:
+            refuse_on_colocated(pieces, name)
+            refused, said = False, ""
+        except SystemExit as e:
+            refused, said = True, str(e)
+        out.append(dict(name=name, want=want, got=refused, ok=refused == want,
+                        said=said.splitlines()[-1].strip() if said else ""))
+    return out
+
+
+def colocation_report() -> dict:
+    """Every arm, plus what each neuter does to it - THE VERDICT ITSELF.
+
+    `ok` is false unless ALL of:
+      every span answers clean, and the lattice sweep is clean;
+      every co-location arm answers the direction it declares;
+      the STATION neuter flips EXACTLY the spans declared known-bad, and each
+        of them is REFUSED BY NAME with metres - the refusal catches what the
+        lattice used to put in the cube - while the declared-clean spans
+        SURVIVE it;
+      the REFUSAL neuter flips every refusing co-location arm and leaves the
+        accepting ones accepted;
+      with BOTH neuters - the emitter as it shipped - each known-bad span
+        comes back WITH co-located pieces, counted, and the clean ones with
+        none: the gate's finding, reproduced offline.
+    """
+    out = dict(ok=True, why=[])
+    real = row_arms()
+    bad_spans = [n for n, _l, _y, bad, _w in _ROW_ARMS if bad]
+    good_spans = [n for n, _l, _y, bad, _w in _ROW_ARMS if not bad]
+    out["arms"] = real
+    out["lattice"] = lattice_report()
+    if not out["lattice"]["ok"]:
+        out["ok"] = False
+        out["why"].append(f"the lattice sweep failed: {out['lattice']}")
+    wrong = [a["name"] for a in real if not a["got"]]
+    if wrong:
+        out["ok"] = False
+        out["why"].append(f"{len(wrong)} span(s) did not come back clean: "
+                          f"{wrong}")
+
+    undo = _neuter_station_lattice_to_the_sliver_bay()
+    try:
+        old = row_arms()
+    finally:
+        undo()
+    flipped = [a["name"] for a in old if not a["got"]]
+    survived = [a["name"] for a in old if a["got"]]
+    named = {a["name"]: a["refused"] for a in old if a["refused"]}
+    out["station_neuter"] = dict(flipped=flipped, survived=survived,
+                                 refusal_with_metres={
+                                     k: v.splitlines()[-1].strip()
+                                     for k, v in named.items()})
+    if sorted(flipped) != sorted(bad_spans):
+        out["ok"] = False
+        out["why"].append(
+            f"THE STATION NEUTER FLIPPED {flipped}, declared known-bad "
+            f"{bad_spans}: the lattice is not what separates them")
+    if sorted(survived) != sorted(good_spans):
+        out["ok"] = False
+        out["why"].append(f"the station neuter EMPTIED THE CHECK or lost the "
+                          f"wrong spans: survivors {survived}, declared "
+                          f"clean {good_spans}")
+    unnamed = [k for k in flipped
+               if k not in named or " m apart" not in named[k]]
+    if unnamed:
+        out["ok"] = False
+        out["why"].append(f"{unnamed} fell without a refusal that carries "
+                          f"the metres")
+
+    undo = _neuter_both(_neuter_station_lattice_to_the_sliver_bay,
+                        _neuter_colocated_refusal_off)
+    try:
+        shipped = row_arms()
+    finally:
+        undo()
+    out["as_shipped"] = {a["name"]: a["co_located"] for a in shipped}
+    for a in shipped:
+        if (a["name"] in bad_spans) != bool(a["co_located"]):
+            out["ok"] = False
+            out["why"].append(
+                f"the shipped emitter laid {a['co_located']} co-located "
+                f"piece(s) on {a['name']}; declared "
+                f"{'known-bad' if a['name'] in bad_spans else 'clean'}")
+
+    cart = colocation_arms()
+    out["co_location_arms"] = cart
+    out["why"].extend(f"arm {a['name']} answered the wrong way"
+                      for a in cart if not a["ok"])
+    undo = _neuter_colocated_refusal_off()
+    try:
+        off = colocation_arms()
+    finally:
+        undo()
+    flipped_c = [a["name"] for a, b in zip(cart, off) if a["got"] != b["got"]]
+    survived_c = [b["name"] for b in off if not b["got"] and not b["want"]]
+    out["refusal_neuter"] = dict(flipped=flipped_c, survived=survived_c)
+    if sorted(flipped_c) != sorted(a["name"] for a in cart if a["want"]):
+        out["ok"] = False
+        out["why"].append(f"THE REFUSAL NEUTER FLIPPED {flipped_c}: the "
+                          f"refusal is not load-bearing on every refusing arm")
+    if not survived_c:
+        out["ok"] = False
+        out["why"].append("no accepting arm survived the refusal neuter")
+    if any(not a["ok"] for a in cart):
+        out["ok"] = False
+    return out
+
+
+def _case_sliver_final_bay_lays_no_co_located_row() -> tuple[bool, str]:
+    """THE CHECK THAT WOULD HAVE REFUSED S7-stathub-wtnorth-x01 BEFORE ITS
+    FIRST `spawn_object`.  `bridge` emitted 195 pieces that the gate then
+    read as 4 buried copies at (400, 1050) and (450, 1050); here the same
+    span is asked through the emitter, with the lattice and with the refusal
+    put back one at a time and together."""
+    r = colocation_report()
+    if not r["ok"]:
+        return False, "; ".join(r["why"])
+    sn, rn = r["station_neuter"], r["refusal_neuter"]
+    return True, (
+        f"{len(r['arms'])} span(s) come back clean over a "
+        f"{r['lattice']['swept']}-length sweep ({r['lattice']['slivers']} "
+        f"sliver final bays absorbed, none other moved); the legacy lattice "
+        f"loses {sn['flipped']} to a named refusal while {sn['survived']} "
+        f"survive; with the refusal ALSO off the shipped emitter lays "
+        f"{ {k: v for k, v in r['as_shipped'].items() if v} } co-located "
+        f"piece(s); the refusal neuter flips {rn['flipped']} and leaves "
+        f"{rn['survived']} accepted")
+
+
+def _case_co_located_plan_is_refused_with_its_numbers() -> tuple[bool, str]:
+    """The span the gate refused, put through the emitter on the lattice that
+    laid it.  It must come back as a refusal that names the metres - not a
+    smaller assembly, not a returned list."""
+    undo = _neuter_station_lattice_to_the_sliver_bay()
+    try:
+        arm = _row_arm("S7", 44.041, 326.46)
+    finally:
+        undo()
+    said = arm["refused"] or ""
+    ok = (not arm["got"] and "co-location re-test" in said
+          and "buried inside the sibling" in said
+          and " m apart" in said)
+    return ok, ("refused: " + " | ".join(
+        s.strip() for s in said.splitlines()[:5])) if said else (
+        f"NOT REFUSED: returned {arm.get('pieces')} pieces with "
+        f"{arm.get('co_located')} co-located")
+
+
+def slip_arms() -> list[dict]:
+    """`slip()` at four inner widths plus one plain two-tile jetty."""
+    flat = Bed.applied(_flat(26.0), "a flat applied surface under the water")
+    out = []
+    for w in (9.0, 10.0, 11.0, 12.0):
+        name = f"slip_{w:g}_m_inner_width"
+        try:
+            ps = slip((0.0, 0.0), 0.0, 24.0, w, DECK_Y, flat, name=name)
+            n = colocated_pieces(ps)["counts"]
+            out.append(dict(name=name, got=not (n["same_solid"]
+                                                + n["buried_copy"]),
+                            refused=None, pieces=len(ps),
+                            co_located=n["same_solid"] + n["buried_copy"]))
+        except SystemExit as e:
+            out.append(dict(name=name, got=False, refused=str(e),
+                            pieces=None, co_located=None))
+    ps = jetty((0.0, 0.0), 90.0, 24.0, DECK_Y, flat, name="jetty_2_tiles")
+    n = colocated_pieces(ps)["counts"]
+    out.append(dict(name="jetty_2_tiles", got=not (n["same_solid"]
+                                                   + n["buried_copy"]),
+                    refused=None, pieces=len(ps),
+                    co_located=n["same_solid"] + n["buried_copy"]))
+    return out
+
+
+def _case_slip_stands_each_column_and_tile_once() -> tuple[bool, str]:
+    """`slip()` laid the same pile twice per bent - 24 same-solid
+    `wood_pole_log_4` in a 24 m slip, 25 at 11 m inner width where its 7th
+    head tile also lands on finger R's root tile - MEASURED by running the
+    gate's census over it.  Nobody had built one on this world, so the gate
+    never saw it; the next world's waterfront would have."""
+    real = slip_arms()
+    undo = _neuter_both(
+        lambda: _flag("_JETTY_STANDS_A_ONE_TILE_COLUMN_TWICE"),
+        lambda: _flag("_SLIP_HEAD_TILE_ON_A_FINGER_ROOT"))
+    try:
+        refused = slip_arms()
+    finally:
+        undo()
+    undo = _neuter_both(
+        lambda: _flag("_JETTY_STANDS_A_ONE_TILE_COLUMN_TWICE"),
+        lambda: _flag("_SLIP_HEAD_TILE_ON_A_FINGER_ROOT"),
+        _neuter_colocated_refusal_off)
+    try:
+        shipped = slip_arms()
+    finally:
+        undo()
+    flipped = [a["name"] for a in refused if not a["got"]]
+    survived = [a["name"] for a in refused if a["got"]]
+    counts = {a["name"]: a["co_located"] for a in shipped if a["co_located"]}
+    ok = (all(a["got"] for a in real)
+          and flipped == [a["name"] for a in real if a["name"] != "jetty_2_tiles"]
+          and survived == ["jetty_2_tiles"]
+          and all(a["refused"] and " m apart" in a["refused"]
+                  for a in refused if not a["got"])
+          and sorted(counts) == sorted(flipped))
+    return ok, (f"{len(real)} arm(s) clean; the shipped one-tile column and "
+                f"head tile are REFUSED by name on {flipped} while "
+                f"{survived} survives; with the refusal off they lay "
+                f"{counts} same-solid pieces")
+
+
 # (name, must_refuse, fn) -- `must_refuse` is what the case is REQUIRED to
 # answer, so a case that stops firing is a failure, not a pass.
 SEATING_CASES = (
@@ -2000,6 +2604,12 @@ SEATING_CASES = (
      _case_the_seating_population_is_every_piece),
     ("fractional_span_tiles_both_actual_bank_coordinates", False,
      _case_actual_banks_not_rounded_stations),
+    ("sliver_final_bay_lays_no_co_located_row", False,
+     _case_sliver_final_bay_lays_no_co_located_row),
+    ("co_located_plan_is_refused_with_its_numbers", True,
+     _case_co_located_plan_is_refused_with_its_numbers),
+    ("slip_stands_each_column_and_head_tile_once", False,
+     _case_slip_stands_each_column_and_tile_once),
 )
 
 
