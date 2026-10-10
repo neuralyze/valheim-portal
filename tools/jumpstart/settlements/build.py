@@ -619,12 +619,44 @@ def clearing_ops(doc: dict, unit_id: str) -> list[dict]:
 # ordinary building prefabs (MEASURED at (444.2, 911.5): woodwall x10,
 # wood_floor x3, wood_beam_45 x8, a Beehive and a Music_MeadowsVillageFarm;
 # at (533.8, 910.6): woodwall x22, wood_roof x7 and a TreasureChest_meadows).
-NATURAL_RE = re.compile(
+_MEADOWS_NATURAL_RE = re.compile(
     r"^(?:beech|birch|fir|pine|oak|swamptree|yggashoot|bush|"
     r"raspberrybush|blueberrybush|cloudberrybush|"
     r"rock|minerock|stubbe|shrub|vines|glowingmushroom|"
     r"pickable_|bh_pickable_|.*_log|.*_oldlog|greydwarf_root|"
     r"marker|spawner_)", re.IGNORECASE)
+
+# THE MEASURED SET WAS MEADOWS' AND A PAD IS NOT ALWAYS IN THE MEADOWS.  Every
+# family above was reported by `objects_count id=*` inside the 33 settlement
+# cylinders of ONE biome's pads, so the first pad on a swamp shore was refused
+# for the swamp's own scenery.  MEASURED on the Ulfsland regeneration, lh-south
+# (pad 365 Swamp / 187 Meadows samples): the cylinder held {'Flies': 3,
+# 'mudpile_beacon': 1, 'StatueEvil': 1, 'vfx_swamp_mist': 3} and the build
+# refused it -- and exited 0 (see `exit_code`).  Three of those four are added,
+# each with its evidence, and ONE IS NOT:
+#   vfx_swamp_mist  an ambient emitter.  `accept/instruments.py` MEASURED it to
+#                   have no solid at all (piece_geometry.json solid_only) and
+#                   `crossings/data/piece_material.tsv` carries it as no Piece,
+#                   no WearNTear.  Not a building, not content a player finds.
+#   Flies           the same class (no Piece, no solid): a particle emitter.
+#   mudpile_beacon  swamp ground scenery.  `roads/mod_keepout.json`
+#                   (`natural_offlist_why`) already classed it "vegetation,
+#                   terrain and carcasses ... candidates for the clearance
+#                   allowlist, not for a re-route", and the corridor censuses
+#                   of this world find it 794 m from the nearest LocationProxy.
+#   StatueEvil      NOT ADDED.  A decorated prop of unestablished provenance
+#                   (no census of this world has ever found one); a generator's
+#                   statue is closer to "somebody's property" than to a shrub,
+#                   and this gate's default is to refuse what it cannot name.
+#                   The unit that holds one is refused with the number.
+# The location-piece hazard is held by `clear_radius_room` BEFORE this check
+# (no cylinder may reach any location's measured piece reach), which is why a
+# scenery entry here cannot be a location's.  NEUTER: `meadows` is the set that
+# shipped; `_case_the_swamp_cylinder...` proves it refuses lh-south again.
+NATURAL_RE = re.compile(
+    _MEADOWS_NATURAL_RE.pattern[:-1]
+    + r"|mudpile_beacon$|flies$|vfx_swamp_mist$)", re.IGNORECASE)
+_SCENERY_MODE = "all_biomes"          # all_biomes | meadows
 
 
 def cylinder_contents(srv, ar) -> dict:
@@ -647,8 +679,10 @@ def cylinder_contents(srv, ar) -> dict:
     a distance.
     """
     got, per = srv.count("*", ar.centre_x, ar.centre_z, ar.radius_m)
-    natural = {p: n for p, n in per.items() if NATURAL_RE.match(p)}
-    other = {p: n for p, n in per.items() if not NATURAL_RE.match(p)}
+    scenery = (_MEADOWS_NATURAL_RE if _SCENERY_MODE == "meadows"
+               else NATURAL_RE)
+    natural = {p: n for p, n in per.items() if scenery.match(p)}
+    other = {p: n for p, n in per.items() if not scenery.match(p)}
     return {
         "total": got, "per_prefab": per,
         "clearable": natural, "not_clearable": other,
@@ -2842,9 +2876,185 @@ def selftest() -> int:
             print(f"          {p}")
     print(f"\n  zone repair selftest {len(_ZONE_CASES) - zbad}/"
           f"{len(_ZONE_CASES)}  {'PASS' if not zbad else 'FAIL'}")
-    return 0 if not (bad or rbad or sbad or pbad or obad or kbad or zbad) \
-        else 1
+    gbad = 0
+    for name, fn in _GROUND_CASES:
+        try:
+            problems = fn()
+        except BaseException as e:                         # noqa: BLE001
+            problems = [f"raised {type(e).__name__}: {e}"]
+        gbad += bool(problems)
+        print(f"  {'ok  ' if not problems else 'FAIL'}  {name}")
+        for p in problems:
+            print(f"          {p}")
+    print(f"\n  ground ready selftest {len(_GROUND_CASES) - gbad}/"
+          f"{len(_GROUND_CASES)}  {'PASS' if not gbad else 'FAIL'}")
+    nbad = 0
+    for name, fn in _SCENERY_CASES:
+        try:
+            problems = fn()
+        except BaseException as e:                         # noqa: BLE001
+            problems = [f"raised {type(e).__name__}: {e}"]
+        nbad += bool(problems)
+        print(f"  {'ok  ' if not problems else 'FAIL'}  {name}")
+        for p in problems:
+            print(f"          {p}")
+    print(f"\n  swamp scenery selftest {len(_SCENERY_CASES) - nbad}/"
+          f"{len(_SCENERY_CASES)}  {'PASS' if not nbad else 'FAIL'}")
+    ebad = 0
+    for name, fn in _EXIT_CASES:
+        try:
+            problems = fn()
+        except BaseException as e:                         # noqa: BLE001
+            problems = [f"raised {type(e).__name__}: {e}"]
+        ebad += bool(problems)
+        print(f"  {'ok  ' if not problems else 'FAIL'}  {name}")
+        for p in problems:
+            print(f"          {p}")
+    print(f"\n  exit code selftest {len(_EXIT_CASES) - ebad}/"
+          f"{len(_EXIT_CASES)}  {'PASS' if not ebad else 'FAIL'}")
+    return 0 if not (bad or rbad or sbad or pbad or obad or kbad or zbad
+                     or gbad or ebad or nbad) else 1
 
+
+
+class _CountSrv:
+    """`srv.count("*", ...)` over a fixed per-prefab answer."""
+
+    def __init__(self, per: dict[str, int]):
+        self.per = dict(per)
+
+    def count(self, ident, x, z, r, ignore="_*"):
+        return sum(self.per.values()), dict(self.per)
+
+
+_LH_SOUTH_CYLINDER = {"Flies": 3, "mudpile_beacon": 1, "StatueEvil": 1,
+                      "vfx_swamp_mist": 3, "shrub_2": 4, "Rock_4": 2}
+_AR = SimpleNamespace(centre_x=1254.0, centre_z=1812.0, radius_m=18.0)
+
+
+def _case_a_swamp_cylinders_ambient_scenery_is_clearable() -> list[str]:
+    """lh-south's cylinder, as measured, minus the one object this gate still
+    refuses to name: everything else it held is scenery and is cleared."""
+    per = {k: v for k, v in _LH_SOUTH_CYLINDER.items() if k != "StatueEvil"}
+    got = cylinder_contents(_CountSrv(per), _AR)
+    bad = []
+    if got["verdict"] != "clear":
+        bad.append(f"a cylinder of ambient swamp scenery was refused: "
+                   f"{got['not_clearable']}")
+    if sorted(got["clearable"]) != sorted(per):
+        bad.append(f"clearable {sorted(got['clearable'])} != {sorted(per)}")
+    return bad
+
+
+def _case_the_object_this_gate_cannot_name_still_refuses_lh_south() -> list[str]:
+    got = cylinder_contents(_CountSrv(_LH_SOUTH_CYLINDER), _AR)
+    return [] if (got["verdict"] == "VIOLATION"
+                  and got["not_clearable"] == {"StatueEvil": 1}) else [
+        f"the statue no census has named was not the one refusal: "
+        f"{got['verdict']} {got['not_clearable']}"]
+
+
+def _case_a_location_marker_a_piece_and_a_beehive_still_block() -> list[str]:
+    got = cylinder_contents(_CountSrv(
+        {"LocationProxy": 1, "woodwall": 3, "wood_floor": 2, "Beehive": 1,
+         "TreasureChest_meadows": 1, "shrub_2": 2}), _AR)
+    want = {"LocationProxy", "woodwall", "wood_floor", "Beehive",
+            "TreasureChest_meadows"}
+    return [] if set(got["not_clearable"]) == want else [
+        f"the extension widened the gate past scenery: blocked "
+        f"{sorted(got['not_clearable'])}, want {sorted(want)}"]
+
+
+def _case_NEUTER_meadows_only_the_swamp_cylinder_is_REFUSED() -> list[str]:
+    global _SCENERY_MODE
+    per = {k: v for k, v in _LH_SOUTH_CYLINDER.items() if k != "StatueEvil"}
+    prior, _SCENERY_MODE = _SCENERY_MODE, "meadows"
+    try:
+        got = cylinder_contents(_CountSrv(per), _AR)
+    finally:
+        _SCENERY_MODE = prior
+    return [] if set(got["not_clearable"]) == {"Flies", "mudpile_beacon",
+                                              "vfx_swamp_mist"} else [
+        f"the neuter did not restore the Meadows-only refusal: "
+        f"{got['not_clearable']}"]
+
+
+_SCENERY_CASES = (
+    ("a_swamp_cylinders_ambient_scenery_is_clearable",
+     _case_a_swamp_cylinders_ambient_scenery_is_clearable),
+    ("the_object_this_gate_cannot_name_still_refuses_lh_south",
+     _case_the_object_this_gate_cannot_name_still_refuses_lh_south),
+    ("a_location_marker_a_piece_and_a_beehive_still_block",
+     _case_a_location_marker_a_piece_and_a_beehive_still_block),
+    ("NEUTER_meadows_only_the_swamp_cylinder_is_REFUSED",
+     _case_NEUTER_meadows_only_the_swamp_cylinder_is_REFUSED),
+)
+
+
+# EXIT_CODE_DEPENDS_ON: A UNIT THAT REFUSED IS A UNIT THAT IS NOT BUILT, AND THE
+# STEP IS TOLD SO.  `main` recorded a refused unit ("REFUSED lh-south --
+# recorded, continuing") so the TOWN could continue past one it cannot clear,
+# and then returned `0 if the chain closed complete`: a chain with a refusal in
+# it closes complete -- the refusal is an `observe` and a `note`, not a
+# problem -- so the unit exited rc 0.  MEASURED on the Ulfsland regeneration:
+# lh-south, a one-unit lighthouse whose clearing cylinder held {'Flies': 3,
+# 'mudpile_beacon': 1, 'StatueEvil': 1, 'vfx_swamp_mist': 3}, built NOTHING and
+# exited 0 beside two declared-site units that exited 1 -- so `buildstage`
+# journaled it built, nothing downstream was BLOCKED on it, and the portal pair
+# it owed was left to a second tool to notice.  The `pad` verb of this same
+# file already returned `... and not refused_pads`; this is the same rule for
+# the other two.  The town still continues past a refusal (that is the
+# `refused` list's whole point); the REPORT of the unit is what is no longer
+# a success.
+EXIT_CODE_DEPENDS_ON = ("the_chain_closed_complete", "no_unit_refused")
+_EXIT_MODE = "refusals_fail"          # refusals_fail | ignore_refused
+
+
+def exit_code(report: dict, refused: list) -> int:
+    if _EXIT_MODE == "ignore_refused":
+        return 0 if report["status"] == "complete" else 1
+    return 0 if (report["status"] == "complete" and not refused) else 1
+
+
+def _case_a_refused_unit_on_a_complete_chain_exits_nonzero() -> list[str]:
+    refused = [{"unit": "lh-south", "stage": "ground",
+                "reason": "REFUSED lh-south: the clearing cylinder holds "
+                          "{'Flies': 3, 'mudpile_beacon': 1}"}]
+    rc = exit_code({"status": "complete"}, refused)
+    return [] if rc == 1 else [
+        f"lh-south's state (chain complete, one unit refused) exited {rc}, so "
+        f"the step journals an unbuilt site as built"]
+
+
+def _case_a_clean_build_exits_zero() -> list[str]:
+    return [] if exit_code({"status": "complete"}, []) == 0 else [
+        "a clean build did not exit 0"]
+
+
+def _case_an_incomplete_chain_exits_nonzero() -> list[str]:
+    return [] if exit_code({"status": "incomplete"}, []) == 1 else [
+        "an incomplete chain exited 0"]
+
+
+def _case_NEUTER_ignore_refused_the_unbuilt_unit_exits_ZERO() -> list[str]:
+    global _EXIT_MODE
+    prior, _EXIT_MODE = _EXIT_MODE, "ignore_refused"
+    try:
+        rc = exit_code({"status": "complete"}, [{"unit": "lh-south"}])
+    finally:
+        _EXIT_MODE = prior
+    return [] if rc == 0 else [f"the neuter did not restore rc 0: {rc}"]
+
+
+_EXIT_CASES = (
+    ("a_refused_unit_on_a_complete_chain_exits_nonzero",
+     _case_a_refused_unit_on_a_complete_chain_exits_nonzero),
+    ("a_clean_build_exits_zero", _case_a_clean_build_exits_zero),
+    ("an_incomplete_chain_exits_nonzero",
+     _case_an_incomplete_chain_exits_nonzero),
+    ("NEUTER_ignore_refused_the_unbuilt_unit_exits_ZERO",
+     _case_NEUTER_ignore_refused_the_unbuilt_unit_exits_ZERO),
+)
 
 
 def zone_compiler(srv, zx: int, zz: int) -> int:
@@ -4916,6 +5126,231 @@ def generate_zones(b, gen: dict, unit_id: str, site: str, siting: dict,
     return last
 
 
+# GROUND_READY_DEPENDS_ON: WHAT A TERRAIN WRITE OWES THE WORLD AND THE CHAIN
+# BEFORE IT IS EMITTED, FOR EVERY CALLER, NOT ONLY THE TOWN PADS.
+#
+# `apply_unit_ground` generates its zones and `union_prior`s them because it is
+# a settlement pad.  A DIFFERENT BUILDER THAT WRITES TERRAIN -- the dredged
+# harbour of `harbour_city.py`, the terraces of `harbour_b.py` -- had neither:
+# it recorded `zone_generated_before` off a probe it never acted on and wrote a
+# whole-zone compiler over whatever a road had already put there.  MEASURED on
+# the Ulfsland regeneration, build step 5 unit harbour-city-ulfsgard: the
+# ledger refused the dredge's `terrain_write` twice over --
+#   * entries[1] `zone_generated_before is False` (zones 16,12 / 17,11 / 17,12
+#     were never generated: nothing before this unit had a reason to), and
+#   * zone [16, 11] "would DESTROY the compiler written at seq [5225]" -- the
+#     road J2's ribbon, which shares the zone with the harbour's west bank.
+# so the declared city was not built.  Both are PRECONDITIONS, and a
+# precondition is not something each emitter is trusted to remember; this is
+# the one function that settles them, and a caller that skips it is refused by
+# the ledger on the same two grounds.
+#
+# NEUTERS (selftest): `no_generate` is the dredge as shipped (probe, never act);
+# `no_union` writes the zone over a road.  Each restores its refusal.
+GROUND_READY_DEPENDS_ON = ("every_zone_generated_before_its_write",
+                           "every_prior_claim_in_the_zone_merged")
+_GROUND_READY_MODE = "ready"          # ready | no_generate | no_union
+
+
+def chain_generated_zones(led) -> set[tuple[int, int]]:
+    """Every zone the CHAIN records as generated (`zones_generate`, ordinary or
+    `empty`).  What a dry run knows: it has no world to probe, only the ledger,
+    and the ledger's answer is a LOWER bound on what the world holds."""
+    out: set[tuple[int, int]] = set()
+    for r in led.records():
+        if r["op"] == "zones_generate":
+            out |= {(int(z[0]), int(z[1])) for z in r["params"].get("zones")
+                    or ()}
+    return out
+
+
+def ensure_generated(b, zones, *, unit_id: str, site: str,
+                     siting: dict | None = None,
+                     role: str = "site_pad") -> tuple[dict, list]:
+    """Generate every zone in `zones` that is not generated yet; returns
+    `(probes, seqs)` -- the probe of each zone AFTER generation (what
+    `terrain_entries` records as `zone_generated_before`) and the seqs of the
+    `zones_generate` records written.  One zone per record
+    (`pos=<centre> max=1`), so the `_ZoneCtrl` count in `expect` is exact and
+    a zone Upgrade World cannot generate goes through `generate_zones`' repair.
+
+    Idempotent: a zone that already holds its `_ZoneCtrl` is probed and left
+    alone, so a resumed unit writes nothing here.  It does NOT union priors:
+    that must happen at the moment of the write (`union_prior`), not at the
+    start of a unit that writes other ground first.
+    """
+    zones = sorted({tuple(int(v) for v in z) for z in zones})
+    chain = chain_generated_zones(b.led) if b.dry else set()
+    probes: dict[tuple[int, int], dict] = {}
+    seqs: list = []
+    for zone in zones:
+        cx, cz = (float(v) for v in tcdata.zone_centre(*zone))
+        if b.dry:
+            probe = {"cmd": f"objects_count id=_ZoneCtrl pos={cx:g},{cz:g} "
+                            f"max=1 (DRY: the chain's own record)",
+                     "count": 1 if zone in chain else 0, "centre": [cx, cz]}
+        else:
+            probe = zone_probe(b.srv, *zone)
+        if probe["count"] < 1 and _GROUND_READY_MODE != "no_generate":
+            gen = {"op": "zones_generate",
+                   "params": {"pos": [cx, cz], "max_m": 1.0,
+                              "zones": [list(zone)], "role": role,
+                              "site_id": unit_id},
+                   "wire": [f"zones_generate pos={cx:g},{cz:g} max=1"],
+                   "expect": {"zone_ctrl": 1}}
+            res = generate_zones(b, gen, unit_id, site, siting or {})
+            seqs.append(res.get("seq"))
+            probe = (dict(probe, count=1, generated_by=res.get("seq"))
+                     if b.dry else zone_probe(b.srv, *zone))
+        probes[zone] = probe
+    return probes, seqs
+
+
+def ground_ready(b, comps: dict, op_y: dict, *, unit_id: str, site: str,
+                 siting: dict | None = None, role: str = "site_pad",
+                 also=()) -> dict:
+    """`ensure_generated` over every zone this write (and `also`, the zones the
+    same unit's pieces stand in) touches, then union every prior claim in
+    `comps`' zones.  Returns `{"probes", "merged", "generated_by"}`: the probes
+    AFTER generation, the union (`terrain_entries`' `merged`), and the seqs of
+    the `zones_generate` records this call wrote.
+
+    Call it where the write is made: the union reads the chain as it stands.
+    """
+    probes, seqs = ensure_generated(
+        b, set(comps) | {tuple(z) for z in also}, unit_id=unit_id, site=site,
+        siting=siting, role=role)
+    merged = ({} if _GROUND_READY_MODE == "no_union"
+              else union_prior(b, comps, op_y))
+    return {"probes": probes, "merged": merged, "generated_by": seqs}
+
+
+# THE SELFTEST FOR `ground_ready`: the state step 5 found Ulfsgard in, built in
+# memory.  A road already stands in zone (0,0); a dredge-shaped write spans
+# zones (0,0) and (1,0) and zone (1,0) was never generated.  The write goes
+# through the REAL `LiveBuilder.emit` into a REAL `writer.Ledger`, so the two
+# refusals that stopped the live build are the ledger's own, not a model's.
+def _ground_world(mode: str) -> dict:
+    import contextlib  # noqa: PLC0415
+    import io          # noqa: PLC0415
+    g = globals()
+    saved_mode = g["_GROUND_READY_MODE"]
+    g["_GROUND_READY_MODE"] = mode
+    try:
+        with FL.memory_session("GroundReadySelftest") as b, \
+                contextlib.redirect_stdout(io.StringIO()):
+            R = sys.modules[type(b).__module__].R
+            saved = (R.STAGED_SETTLE_S, R.STAGED_POLL_S)
+            R.STAGED_SETTLE_S, R.STAGED_POLL_S = 0.05, 0.01
+            try:
+                b.srv.generated.add((0, 0))
+                road = FL._fx_place("fx-road", 0.0, 0.0, 6.0, 6.0, 31.0)
+                FL._fx_later_settlement_pad(b, road)
+                road_comps = FL._fx_stamp(road)[0]
+                place = FL._fx_place("fx-dredge", 32.0, 0.0, 20.0, 10.0, 30.5)
+                comps, op_y, patches, _p, lc, stats = FL._fx_stamp(place)
+                ready = ground_ready(b, comps, op_y, unit_id="fx-dredge",
+                                     site="fx-harbour")
+                unit = {"id": "fx-dredge", "x": 32.0, "z": 0.0,
+                        "target_y": stats["target_y"], "pad_w": 20.0,
+                        "pad_d": 10.0}
+                entries, wire, blobs = terrain_entries(
+                    b, unit, comps, op_y, patches, ready["probes"],
+                    ready["merged"])
+                rec = terrain_record(unit, "fx-harbour", entries, wire, blobs,
+                                     stats, lc)
+                refused = None
+                try:
+                    b.emit("terrain_write", params=rec["params"],
+                           wire=rec["wire"], requires=rec["requires"],
+                           expect=rec["expect"], meta=rec["meta"])
+                except Exception as exc:                    # noqa: BLE001
+                    refused = str(exc)
+                held = wrote = 0
+                world = b.srv.compilers.get((0, 0))
+                if world is not None:
+                    got = tcdata.parse(world)["heights"]
+                    ours = {i: road_comps[(0, 0)].level_delta[i]
+                            for i in range(tcdata.SAMPLES)
+                            if road_comps[(0, 0)].modified_height[i]}
+                    wrote = len(ours)
+                    held = sum(1 for i, v in ours.items()
+                               if i in got and abs(got[i][0] - v) < 1e-3)
+                return {"refused": refused, "road_held": held,
+                        "road_wrote": wrote,
+                        "generated": sorted(b.srv.generated),
+                        "zones_generate": [r["params"]["zones"] for r in
+                                           b.led.records()
+                                           if r["op"] == "zones_generate"]}
+            finally:
+                R.STAGED_SETTLE_S, R.STAGED_POLL_S = saved
+    finally:
+        g["_GROUND_READY_MODE"] = saved_mode
+
+
+def _case_a_write_over_a_road_in_an_ungenerated_zone_LANDS() -> list[str]:
+    """THE FIX: the ungenerated zone is generated first and the road's samples
+    ride along, so the ledger takes the write and the world holds both."""
+    r = _ground_world("ready")
+    bad = []
+    if r["refused"]:
+        bad.append(f"the ledger refused a ready write: {r['refused'][:300]}")
+    if [[1, 0]] not in r["zones_generate"] or [[0, 0]] in r["zones_generate"]:
+        bad.append(f"expected exactly zone (1,0) to be generated, the "
+                   f"already-generated (0,0) left alone; got "
+                   f"{r['zones_generate']}")
+    if not r["road_wrote"] or r["road_held"] != r["road_wrote"]:
+        bad.append(f"the road holds {r['road_held']} of {r['road_wrote']} "
+                   f"samples on the compiler after the write")
+    return bad
+
+
+def _case_NEUTER_no_generate_the_dredge_is_REFUSED_never_generated(
+        ) -> list[str]:
+    r = _ground_world("no_generate")
+    return [] if (r["refused"] and "never generated" in r["refused"]) else [
+        f"with generation dropped the ledger did not refuse the write for a "
+        f"never-generated zone: {r['refused']!r}"]
+
+
+def _case_NEUTER_no_union_the_dredge_DESTROYS_the_road() -> list[str]:
+    r = _ground_world("no_union")
+    return [] if (r["refused"] and "would DESTROY the compiler"
+                  in r["refused"]) else [
+        f"with the union dropped the ledger did not refuse the write over "
+        f"the road's compiler: {r['refused']!r}"]
+
+
+def _case_a_generated_unclaimed_zone_writes_nothing_extra() -> list[str]:
+    """SURVIVOR: nothing to generate and nothing to merge adds no record."""
+    import contextlib  # noqa: PLC0415
+    import io          # noqa: PLC0415
+    with FL.memory_session("GroundReadySelftest") as b, \
+            contextlib.redirect_stdout(io.StringIO()):
+        b.srv.generated.add((3, 3))
+        place = FL._fx_place("fx-clean", 192.0, 192.0, 6.0, 6.0, 30.5)
+        comps, op_y, _patches, _p, _lc, _stats = FL._fx_stamp(place)
+        before = len(b.led.records())
+        ready = ground_ready(b, comps, op_y, unit_id="fx-clean", site="fx")
+        extra = len(b.led.records()) - before
+    return [] if (extra == 0 and not ready["merged"]
+                  and not ready["generated_by"]) else [
+        f"a generated zone with no prior claim wrote {extra} record(s), "
+        f"merged {sorted(ready['merged'])}, generated {ready['generated_by']}"]
+
+
+_GROUND_CASES = (
+    ("a_write_over_a_road_in_an_ungenerated_zone_LANDS",
+     _case_a_write_over_a_road_in_an_ungenerated_zone_LANDS),
+    ("NEUTER_no_generate_the_dredge_is_REFUSED_never_generated",
+     _case_NEUTER_no_generate_the_dredge_is_REFUSED_never_generated),
+    ("NEUTER_no_union_the_dredge_DESTROYS_the_road",
+     _case_NEUTER_no_union_the_dredge_DESTROYS_the_road),
+    ("a_generated_unclaimed_zone_writes_nothing_extra",
+     _case_a_generated_unclaimed_zone_writes_nothing_extra),
+)
+
+
 def apply_unit_ground(b, doc: dict, unit: dict, site: str,
                       units: list[dict], loc: clearance.Locations):
     """Generate -> clear -> live marker check -> flatten.  NO PIECE STANDS.
@@ -5951,7 +6386,7 @@ def main() -> int:
         report = b.close()
     print(json.dumps({"site": a.site, "units": built, "close": report},
                      indent=1, default=str))
-    return 0 if report["status"] == "complete" else 1
+    return exit_code(report, refused)
 
 
 if __name__ == "__main__":

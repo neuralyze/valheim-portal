@@ -1,0 +1,7 @@
+#Name:Basic starter house porch fascia logs
+#Creator:Jumpstart
+#Description:Authored additive repair; one wood_wall_log fascia under each gable end of the porch roof cap, running out from the front wall, so the cap's eave no longer stands a metre below the main roof's eave with nothing between. Requires hs_blackforest_kin_01_woodhouse source SHA-256 19d4b35a177f0e69c096a35da974968588e3c1563e9955909821a1329de626e9.
+#Category:Repairs
+#Pieces
+wood_wall_log;BuildingWorkbench;0.05;3.4;-1;0;0.7071068;0;-0.7071068;"";1;1;1
+wood_wall_log;BuildingWorkbench;-2.05;3.4;-1;0;0.7071068;0;-0.7071068;"";1;1;1

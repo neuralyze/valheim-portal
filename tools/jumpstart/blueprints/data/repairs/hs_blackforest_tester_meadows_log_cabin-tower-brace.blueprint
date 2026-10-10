@@ -1,0 +1,6 @@
+#Name:Meadows log cabin tower brace
+#Creator:Jumpstart
+#Description:Authored additive repair; one wood_beam_45 cross-brace across the open pole storey of the south-east tower, between the corner poles and the head beam, so the tower cap no longer stands over 4.4 m of open air against the roof beside it. Requires hs_blackforest_tester_meadows_log_cabin source SHA-256 362fa6df7ca5b324d211663f30a89667b07c931380167e035e34c450a70272b9.
+#Category:Repairs
+#Pieces
+wood_beam_45;BuildingWorkbench;7;7.200001;4.15;0;0;0;1;"";1;1;1

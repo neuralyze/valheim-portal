@@ -93,6 +93,7 @@ import waterfront as WF  # noqa: E402
 import water as W  # noqa: E402
 import tcdata as TC  # noqa: E402  terraform/, the TCData blob encoder
 import worldseed  # noqa: E402
+import terrace as TR  # noqa: E402  the landing every road arrives on
 
 ACTOR = "HarbourCity"
 
@@ -1410,6 +1411,15 @@ def dredge_plan(s) -> dict:
     cut = [r for r in rows.values() if r["delta"] < 0.0]
     deltas = [r["delta"] for r in rows.values()]
     depths = sorted(r["depth_after"] for r in rows.values())
+    # A SAMPLE ANOTHER CLAIM AUTHORED AND THIS CUT WOULD MOVE.  `delta` equals
+    # `prior_delta` where the sample is already deep enough (carried forward);
+    # anywhere else on a prior-claimed sample the cut destroys that claim's
+    # ground.  0.01 m is the writer's own FLATTEN_TOLERANCE: below it the
+    # difference is float noise from a bilinear blend, not a movement.
+    over = sorted((r for r in rows.values()
+                   if abs(r["prior_delta"]) > 0.01
+                   and abs(r["delta"] - r["prior_delta"]) > 0.01),
+                  key=lambda r: -abs(r["delta"] - r["prior_delta"]))
     stats = dict(
         samples=len(rows), cut=len(cut),
         already_deep_enough=len(rows) - len(cut),
@@ -1422,6 +1432,10 @@ def dredge_plan(s) -> dict:
                                     default=0.0), 4),
         depth_after_min=depths[0], depth_after_max=depths[-1],
         depth_after_median=depths[len(depths) // 2],
+        overwrites_prior=len(over),
+        worst_overwrite_m=(round(abs(over[0]["delta"] - over[0]["prior_delta"]), 4)
+                           if over else 0.0),
+        overwrites_prior_at=[(r["x"], r["z"]) for r in over[:3]],
         zones=sorted(comps),
         zone_samples={f"{zx},{zz}": comps[(zx, zz)].counts()["height_modified"]
                       for zx, zz in sorted(comps)},
@@ -3157,7 +3171,7 @@ def place_missing(b, srv, site: str, stage: str, rows: list[tuple], role: str,
 # building the U: terrain first, portals last, a verified save at each stage
 # ---------------------------------------------------------------------------
 
-U_STAGE_ORDER = ("dredge", "arms", "links", "seawall", "gate",
+U_STAGE_ORDER = ("landing", "dredge", "arms", "links", "seawall", "gate",
                  "boathouse", "lighting", "signs")
 
 # Which `why` prefixes belong to which stage.  Derived from the `why` each
@@ -3174,7 +3188,7 @@ U_STAGE_MATCH = {
     "lighting": ("U/dock lighting",),
 }
 U_STAGE_ROLE = {
-    "arms": "dock_place", "links": "dock_place", "seawall": "castle",
+    "landing": "site_pad", "arms": "dock_place", "links": "dock_place", "seawall": "castle",
     "gate": "castle", "boathouse": "boathouse_place",
     "lighting": "site_prop", "signs": "waypoint_sign",
 }
@@ -3197,7 +3211,7 @@ def u_partition(d: dict) -> dict:
     seen = 0
     per = {}
     for st in U_STAGE_ORDER:
-        if st in ("dredge", "signs"):
+        if st in ("landing", "dredge", "signs"):
             continue
         rows = u_stage_rows(d, st)
         per[st] = len(rows)
@@ -3214,7 +3228,39 @@ def u_partition(d: dict) -> dict:
                 total_ok=seen == len(pl))
 
 
-def dredge_terrain_op(b, d: dict, probes: dict) -> dict:
+def site_zones(d: dict) -> set:
+    """Every zone this site writes terrain into or stands a piece in: the
+    dredge's zones and the zone of every row of the plan."""
+    return ({tuple(z) for z in d["_dredge"]["stats"]["zones"]}
+            | {TC.zone_of(r[1], r[3]) for r in d["_plan"].rows})
+
+
+def generate_site_zones(b, d: dict) -> tuple[dict, list]:
+    """STEP 0 OF THE ORDERING, owned by this unit: every zone the site touches
+    is generated before the first record (`build.ensure_generated`).  Run at the
+    start for a resumed unit too -- a zone that holds its control object is
+    probed and left alone."""
+    import build as B  # noqa: PLC0415
+    return B.ensure_generated(b, site_zones(d), unit_id=SITE_A, site=SITE_A,
+                              siting=d["dredge_location_check"],
+                              role="harbour_place")
+
+
+def dredge_ground(b, d: dict) -> dict:
+    """`build.ground_ready` for this site's ONE terrain write, asked AT the
+    write: every prior claim in the cut's zones is unioned into the cut's
+    compilers (the dredge writes only the samples it cuts; the rest of each
+    zone is a road's, a pad's or the landing's and must survive the write), and
+    that includes the landing this unit wrote a stage earlier."""
+    import build as B  # noqa: PLC0415
+    plan = d["_dredge"]
+    op_y = {z: plan["design_bed"] for z in plan["comps"]}
+    return B.ground_ready(b, plan["comps"], op_y, unit_id=SITE_A, site=SITE_A,
+                          siting=d["dredge_location_check"],
+                          role="harbour_place")
+
+
+def dredge_terrain_op(b, d: dict, ready: dict) -> dict:
     """The ONE `terrain_write` for the whole cut: one entry per zone.
 
     The data entries go through `flatten.write_entries`, which is the same
@@ -3222,11 +3268,30 @@ def dredge_terrain_op(b, d: dict, probes: dict) -> dict:
     ledger stores and the bytes the world gets are the same bytes -- and
     `replay._materialise_data_entries` regenerates the file from the logged
     blob rather than from whatever is left in the watched directory.
+
+    `ready` is `dredge_ground`'s answer: the probes taken AFTER generation
+    (`zone_generated_before` is recorded off them) and the union of the prior
+    claims (`merged_from` / `merge_policy`, the ledger's own condition for
+    writing a zone somebody already wrote).
     """
     import flatten as FL  # noqa: PLC0415  terraform/
     plan = d["_dredge"]
     comps = plan["comps"]
     st = plan["stats"]
+    probes, merged = ready["probes"], ready["merged"]
+    # THE DREDGE CUTS WATER, AND IT MUST NOT CUT WHAT ANOTHER CLAIM BUILT.  A
+    # sample a road or a pad authored (`prior_delta` != 0) that this cut would
+    # move is ground destroyed under a unit that stands on it; `dredge_plan`
+    # carries such a sample forward unchanged when it is already deep enough
+    # and COUNTS it here when it is not.  Refused with the numbers, never
+    # forced -- nothing is deleted to make room.
+    if st["overwrites_prior"]:
+        raise SystemExit(
+            f"REFUSING the dredge: {st['overwrites_prior']} sample(s) another "
+            f"claim already authored would be moved by this cut, worst "
+            f"{st['worst_overwrite_m']:.3f} m (e.g. {st['overwrites_prior_at']}). "
+            f"A cut under a road or a pad is not a dredge; re-solve the basin "
+            f"off that ground.")
     # `op_y` is the height stamped into each zone's `m_lastOpPoint`, which
     # selects the grass a CLIENT throws away.  For a dredge the relevant
     # height is the new BED, not a pad datum -- and the whole cut is under
@@ -3249,8 +3314,8 @@ def dredge_terrain_op(b, d: dict, probes: dict) -> dict:
             "data_entry": e["entry"],
             "blob_sha256": digest,
             "generated_heights_sha256": _generated_sha(d["_ds"], zx, zz),
-            "zone_generated_before": probes.get((zx, zz), {}).get("count", 0) >= 1,
-            "zone_generated_probe": probes.get((zx, zz), {}).get("cmd", ""),
+            "zone_generated_before": probes[(zx, zz)]["count"] >= 1,
+            "zone_generated_probe": probes[(zx, zz)]["cmd"],
             "op_record": {
                 "operations": int(sc["operations"]),
                 "last_op_point": [round(float(v), 3) for v in sc["last_op_point"]],
@@ -3258,6 +3323,9 @@ def dredge_terrain_op(b, d: dict, probes: dict) -> dict:
             },
             "samples": e["counts"]["height_modified"],
         })
+        if (zx, zz) in merged:
+            out[-1]["merged_from"] = merged[(zx, zz)]["merged_from"]
+            out[-1]["merge_policy"] = merged[(zx, zz)]["merge_policy"]
     wire = [f"deleteObjects -zone {e['zone'][0]} {e['zone'][1]} "
             f"-prefab _TerrainCompiler -force" for e in entries]
     wire += [f"spawn_object _TerrainCompiler "
@@ -3464,7 +3532,7 @@ def u_summary(d: dict) -> str:
     L.append(f"    worst step among ADMITTED LARGE hulls: "
              f"{wa['worst_large_admitted_m']:.3f} m")
     L.append("")
-    L.append(f"  PIECES {d['pieces']} in {len(U_STAGE_ORDER) - 1} stages "
+    L.append(f"  PIECES {d['pieces']} in {len(U_STAGE_MATCH)} stages "
              f"+ {len(d['_plan_data'])} data-carrying pieces")
     L.append(f"    {json.dumps(d['plan_pieces'])}")
     if d.get("stage_partition"):
@@ -3512,6 +3580,10 @@ def stage_save(b, d: dict, stage: str) -> dict:
     proves is that the server was alive and still holding this stage's work
     on the far side of the save.
     """
+    if stage == "landing":
+        return TR.save_after(b, [d["landing"]], SITE_A,
+                             U_STAGE_ROLE["landing"],
+                             f"U stage landing complete")
     if stage == "dredge":
         # One compiler per dredged zone, at the zone centre inside 31 m --
         # smaller than the 32 m half-zone, so no neighbouring zone's
@@ -3596,9 +3668,29 @@ def cmd_ubuild(args) -> int:
     import replay as R                   # noqa: PLC0415
     import build as B                    # noqa: PLC0415
 
+    if args.site not in (None, SITE_A):
+        raise SystemExit(
+            f"REFUSING: asked to build {args.site!r}, and the design in "
+            f"harbour_city.py is authored for {SITE_A!r} alone (its inlet, its "
+            f"wall line, its berths). A declared site of the same kind is not "
+            f"that inlet; building this design at its node would stand "
+            f"{SITE_A}'s harbour on another seed's water.")
     s = surface()
     d = design_u(s)
     u_partition(d)
+    # THE LANDING IS PUBLISHED BY THE SITING (`harbour_site.measure`), not
+    # sized here: it is the rectangle the roads were routed to.  A piece of
+    # this site standing on it would be buried or left floating by the
+    # levelling, so that is refused with the numbers before anything is sent.
+    d["landing"] = TR.landing_unit(TR.declared_record(SITE_A))
+    clash = TR.pieces_on_landing(d["_plan"].rows, d["landing"])
+    if clash:
+        raise SystemExit(
+            f"REFUSING {SITE_A}: {len(clash)} planned piece(s) stand on its "
+            f"landing {d['landing']['id']} ({d['landing']['pad_w']:g} m square "
+            f"at ({d['landing']['x']:g}, {d['landing']['z']:g})), e.g. "
+            f"{clash[:3]}. The landing is levelled before any piece stands; "
+            f"re-solve the design off it.")
     want = [q for q in U_STAGE_ORDER if q in (args.stages or U_STAGE_ORDER)]
     report = {"stages": [], "want": want}
 
@@ -3636,23 +3728,34 @@ def cmd_ubuild(args) -> int:
         players = srv.command("players") if not args.dry else "dry"
         report["players"] = str(players)[:200]
         report["players_per_stage"] = {}
+        # STEP 0 OF THE ORDERING IS THIS UNIT'S, NOT SOMEONE ELSE'S.  Every
+        # zone the cut or any piece of this site stands in is generated before
+        # the first record, and every prior claim in the cut's zones is merged
+        # before the dredge is written -- see `build.GROUND_READY_DEPENDS_ON`.
+        # It runs for a RESUMED unit too (`--stages arms`): a zone that holds
+        # its control object is probed and left alone, so it writes nothing.
+        _probes, gen_seqs = generate_site_zones(b, d)
+        report["zones_generated_by"] = gen_seqs
         for stage in want:
             if not args.dry:
                 report["players_per_stage"][stage] = str(
                     srv.command("players"))[:200]
-            if stage == "dredge":
-                probes = {}
-                for (zx, zz) in d["_dredge"]["stats"]["zones"]:
-                    if args.dry:
-                        cx, cz = TC.zone_centre(zx, zz)
-                        probes[(zx, zz)] = {
-                            "count": 1,
-                            "cmd": f"objects_count id=_ZoneCtrl "
-                                   f"pos={cx:g},{cz:g} max=1 (DRY: not sent)",
-                            "centre": [cx, cz]}
-                    else:
-                        probes[(zx, zz)] = B.zone_probe(srv, zx, zz)
-                r = dredge_terrain_op(b, d, probes)
+            if stage == "landing":
+                recs = TR.terrace_units(
+                    b, [d["landing"]], SITE_A, "cityA", report,
+                    stage="landing",
+                    why_terraced=("the ground the declared site's roads "
+                                  "arrive on: levelled to the datum the "
+                                  "siting published, before any structure "
+                                  "of the harbour stands"))
+                report["stages"].append({"stage": stage, "records": recs})
+            elif stage == "dredge":
+                ready = dredge_ground(b, d)
+                report["ground_ready"] = {
+                    "generated_by": ready["generated_by"],
+                    "merged_zones": {f"{z[0]},{z[1]}": m["merged_from"]
+                                     for z, m in ready["merged"].items()}}
+                r = dredge_terrain_op(b, d, ready)
                 report["stages"].append({"stage": stage, "records": [r]})
             elif stage == "signs":
                 recs = []
@@ -4307,6 +4410,11 @@ def main(argv: list[str] | None = None) -> int:
     ub = sub.add_parser("ubuild", help="build the dredged U on the LIVE world")
     ub.add_argument("--stages", nargs="*", choices=U_STAGE_ORDER)
     ub.add_argument("--dry", action="store_true")
+    ub.add_argument("--site", default=None,
+                    help="the declared site this run is asked to build; the "
+                         "build stage passes the unit it is running. This "
+                         "module's authored design is for ONE site and "
+                         "refuses to build another under its name")
     ub.add_argument("--report", default="/tmp/hc/ubuild_report.json")
     ub.add_argument("--actor", default=None,
                     help="who this run's records are stamped as; the build "

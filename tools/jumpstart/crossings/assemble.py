@@ -582,6 +582,9 @@ _BRIDGE_STATIONS_KEEP_SLIVER_BAY = False
 _COLOCATED_REFUSAL_OFF = False
 _JETTY_STANDS_A_ONE_TILE_COLUMN_TWICE = False
 _SLIP_HEAD_TILE_ON_A_FINGER_ROOT = False
+# `bridge` laid a bent under a RAISED land row only; a LOWERED terminal
+# landing row then stood on nothing (see `bridge`'s `end_bents`).
+_BENT_ONLY_UNDER_RAISED_ROWS = False
 
 
 def _gate():
@@ -629,7 +632,8 @@ def bridge(bank_a: tuple[float, float], bank_b: tuple[float, float],
            bents_on_ground_at_deck_level: bool = False,
            carriageway_half_m: float | None = None,
            shoulder_on_swallowed_ground: bool = False,
-           deck_stations: list[tuple[float, float]] | None = None) -> list[Placed]:
+           deck_stations: list[tuple[float, float]] | None = None,
+           end_bents: tuple[str, ...] = ()) -> list[Placed]:
     """A piled timber road bridge from bank A to bank B.
 
     Deck tiles at 2 m pitch (MEASURED: `wood_floor` is a 2.000 x 0.130 x 2.000
@@ -661,6 +665,15 @@ def bridge(bank_a: tuple[float, float], bank_b: tuple[float, float],
     furniture follow it, and each raised row receives support at its own
     height unless measured terrain already carries it. The same seating
     refusal still judges every emitted piece; a ramp is not an exemption.
+
+    `end_bents` names the ends ("a", "b") whose OUTERMOST row carries a bent
+    of its own: a bank with no bench beyond it (a segment's own terminus,
+    network.CROSSING_BANKS_DEPENDS_ON) has no road ground to hold its end
+    tiles, and "the abutment end is supported by the bank itself" is only
+    true where the bank touches the tile.  The grounded-cap test below still
+    drops a bent the terrain already carries, so an end that stands on ground
+    gains nothing.  Every row OFF the datum (raised or lowered) carries a
+    bent at its own height for the same reason.
     """
     bed = require_applied_bed(bed_profile, f"bridge({name})")
     ax, az = bank_a
@@ -790,9 +803,19 @@ def bridge(bank_a: tuple[float, float], bank_b: tuple[float, float],
     rows = sorted(t for t in station_ts if 0.0 < t < length)
     bent_ts = ({min(rows, key=lambda r: (abs(r - t), r)) for t in bent_ts}
                if rows else set())
-    # Every raised land tile gets a bent at its own datum unless applied
-    # terrain already supports it. Never lift a floor off its old supports.
-    bent_ts.update(t for t, h in deck_stations if h > deck_y + 1e-6)
+    # Every row OFF the datum -- a raised land tile or a lowered terminal
+    # landing -- gets a bent at its own datum unless applied terrain already
+    # supports it. Never lift a floor off its old supports.
+    bent_ts.update(t for t, h in deck_stations
+                   if (h > deck_y + 1e-6 if _BENT_ONLY_UNDER_RAISED_ROWS
+                       else abs(h - deck_y) > 1e-6))
+    # A bank with no bench beyond it holds its end row on its own bent
+    # (`end_bents`); the grounded-cap test below drops it where the terrain
+    # already carries the tile.
+    if "a" in end_bents:
+        bent_ts.add(min(station_ts))
+    if "b" in end_bents:
+        bent_ts.add(max(station_ts))
     omitted_legs, omitted_bents = [], []
     grounded_caps = []
     cap = facts()["wood_wall_log_4x0.5"]
@@ -2577,6 +2600,66 @@ def _case_slip_stands_each_column_and_tile_once() -> tuple[bool, str]:
                 f"{counts} same-solid pieces")
 
 
+def _case_terminal_end_and_landing_rows_carry_their_own_bents() -> tuple[bool, str]:
+    """A bank with no bench beyond it holds its OWN end -- both halves, both ways.
+
+    The Ulfsland regen's T9-x03 and T13-x01 each ended on a terminal bank (the
+    segment's own last station) and were refused for support 17.90 and 19.76
+    against the 20.00 the safety factor needs: "the abutment end is carried by
+    the bank" is only true where the bank touches the tile, and a shelf 0.30 m
+    under the deck touches nothing.  Constructed here, no world:
+
+      END ROW     a 20 m span whose far shelf lies 0.30 m under the deck.
+                  Without `end_bents` the deck FAILS `verify`; with
+                  `end_bents=("b",)` it holds.
+      LOWERED     two landing rows 0.30 and 0.60 m under the datum over a
+                  shore 3.5 m under it each stand on a bent of their own
+                  (columns at both rows); the rule restored to raised rows
+                  only (`_BENT_ONLY_UNDER_RAISED_ROWS`) leaves them on
+                  nothing and the deck FAILS `verify`.
+    """
+    deck, length = 32.5, 20.0
+
+    def shore(drop):
+        return Bed.applied(
+            lambda x, _z: deck if x < 2.0 else (26.0 if x < 16.0
+                                                 else deck - drop),
+            f"terminal fixture, far shore {drop:g} m under the deck")
+
+    def span(bed, **kw):
+        return bridge((0.0, 0.0), (length, 0.0), 90.0, deck, bed,
+                      width_tiles=3, name="terminal", bent_spacing_m=4.0, **kw)
+
+    shelf = shore(0.30)
+    bare = verify(span(shelf), shelf)
+    held = verify(span(shelf, end_bents=("b",)), shelf)
+    landing = [(float(t), deck) for t in range(-2, 21, 2)] + [
+        (21.0, deck - 0.30), (22.0, deck - 0.60)]
+    low = shore(3.5)
+
+    def columns(ps):
+        return sorted({round(p.x, 2) for p in ps if p.role.endswith("/pile")})
+
+    laid = span(low, deck_stations=landing)
+    got = verify(laid, low)
+    undo = _flag("_BENT_ONLY_UNDER_RAISED_ROWS")
+    try:
+        old = span(low, deck_stations=landing)
+        old_v = verify(old, low)
+    finally:
+        undo()
+    ok = (not bare["ok"] and held["ok"] and got["ok"] and not old_v["ok"]
+          and {21.0, 22.0} <= set(columns(laid))
+          and not {21.0, 22.0} & set(columns(old)))
+    worst = min((f["support"] for f in bare["failures"]), default=None)
+    return ok, (f"end row: {len(bare['failures'])} failure(s) without its "
+                f"bent (worst support {worst} < 20.00), none with it; "
+                f"landing rows 21 and 22 m stand on columns "
+                f"{columns(laid)[-2:]}, and {len(old_v['failures'])} "
+                f"piece(s) fail verify with the bent-under-raised-rows-only "
+                f"rule")
+
+
 # (name, must_refuse, fn) -- `must_refuse` is what the case is REQUIRED to
 # answer, so a case that stops firing is a failure, not a pass.
 SEATING_CASES = (
@@ -2610,6 +2693,8 @@ SEATING_CASES = (
      _case_co_located_plan_is_refused_with_its_numbers),
     ("slip_stands_each_column_and_head_tile_once", False,
      _case_slip_stands_each_column_and_tile_once),
+    ("terminal_end_and_landing_rows_carry_their_own_bents", False,
+     _case_terminal_end_and_landing_rows_carry_their_own_bents),
 )
 
 

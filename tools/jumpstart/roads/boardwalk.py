@@ -1781,6 +1781,18 @@ def deck_remedy(record: dict, *, terrain_written, reconciled=None,
             r = reach.get(end) or {}
             got = r.get("regradeable_m")
             run = reach.get("run_required_m") or 0.0
+            if (_TERMINAL_LANDING_MODE == "lands"
+                    and end in (record.get("terminal_banks") or ())
+                    and 0.0 < step <= terminal_landing_reach_m(record)):
+                # THE BANK IS ITS SEGMENT'S OWN END, SO THE DECK LANDS ITSELF
+                # (TERMINAL_LANDING_DEPENDS_ON): the ground sits below the deck
+                # by no more than a landing can bring it down, and no road
+                # bench was ever going to be there.  Not a refusal of this
+                # row -- the build's own guards judge the landing it lays.
+                nums.setdefault("terminal_landing", {})[end] = dict(
+                    step_m=step,
+                    reach_m=round(terminal_landing_reach_m(record), 3))
+                continue
             if got is not None and got + 1e-6 >= run and got > 0.0:
                 refused.append(dict(
                     precondition="abutment",
@@ -1821,7 +1833,19 @@ def deck_remedy(record: dict, *, terrain_written, reconciled=None,
                          f"{'FILL' if step > 0 else 'CUT'} on ground no "
                          f"segment in this tree owns. THIS ROW SETS ITS OWN "
                          f"`implies`; it does not go through "
-                         f"settlements.termination_class.")))
+                         f"settlements.termination_class."
+                         + (f" THIS BANK IS THE SEGMENT'S OWN END, so the "
+                            f"deck lands itself "
+                            f"(TERMINAL_LANDING_DEPENDS_ON) -- but a landing "
+                            f"brings a deck down "
+                            f"{terminal_landing_reach_m(record):.2f} m at most "
+                            f"(a deck over water stands "
+                            f"{routemod.DECK_CLEARANCE_M:g} m above it) and "
+                            f"this ground is {step:+.3f} m from it: no "
+                            f"landing meets it -- a slope or open water, "
+                            f"not a shore."
+                            if end in (record.get("terminal_banks") or ())
+                            else ""))))
     unasked.append("structural")
 
     return dict(crossing_id=cid, buildable=(False if refused else None),
@@ -2759,7 +2783,28 @@ def census_selftest(path: Path | None = None) -> int:
                 ("the SEAM TOLERANCE", _neuter_tile_covers_to_the_exact_half,
                  "a 4-row deck's centreline on the seam of two abutting "
                  "tiles reads as an uncovered metre -- T13-x01 'covers 7 of "
-                 "8' on the drive-3 re-emit"),))):
+                 "8' on the drive-3 re-emit"),)),
+            (terminal_landing_arms, "terminal landing", (
+                ("the DECK'S OWN LANDING", _neuter_terminal_landing,
+                 "a terminal bank is refused with the terminus as owner and "
+                 "nothing lands it -- T9-x03 and T13-x01 of the Ulfsland "
+                 "regen, 136.6 m of deck with T2, never built"),
+                ("the END BENT", _neuter_terminal_end_bent,
+                 "the end row of a terminal bank carries no bent of its "
+                 "own: support 17.90 and 19.76 against 20.00"))),
+            (terminal_descent_arms, "terminal descent", (
+                ("the DESCENT INSIDE THE SPAN", _neuter_terminal_descent,
+                 "a landing alone from the datum: T5-x01's deck at 34.094 m "
+                 "over a shore at 29.7 m is 4.4 m, past 3.05 m, and is "
+                 "refused"),)),
+            (deck_overlap_arms, "deck overlap", (
+                ("the OVERLAP GUARD", _neuter_deck_overlap_off,
+                 "a deck is emitted through one that stands -- T5-x01's "
+                 "landing and T9-x03's, one dock"),)),
+            (terminal_remedy_arms, "terminal remedy", (
+                ("the DECK'S OWN LANDING", _neuter_terminal_landing,
+                 "the builder files a bank its deck would land as "
+                 "1C_UNSERVED, ground nothing in the tree owns"),))):
         real = arms()
         for arm in real:
             print(f"  [{'ok  ' if arm['ok'] else 'FAIL'}] {what} "
@@ -2897,6 +2942,88 @@ LAND_TILE_STEP_M = 0.30
 LAND_RAMP_MAX_TILES = 6
 LAND_RAMP_PITCH_M = 1.0
 
+# TERMINAL_LANDING_DEPENDS_ON: A BANK THAT IS ITS SEGMENT'S OWN END IS LANDED BY
+# THE DECK, BECAUSE NOTHING ELSE CAN.
+#
+# A crossing whose free run reaches the last station of its road records that
+# bank as `terminal_banks` (network.CROSSING_BANKS_DEPENDS_ON): the ribbon
+# writes the non-bridged stations only, so no emission of the segment ever
+# benches the ground beyond it.  `abutment_guard` refused such a bank and
+# named "the terminus" as the owner, and the terminus never took it: the
+# terminal trim is a candidate the writer's water score may decline
+# (network.TERMINAL_CROSSING_TRIM_DEPENDS_ON), and the Ulfsland regen's
+# three BUILT legs T9-wttown-dockshore, T13-temple-harboursouth and
+# T2-temple-brgs1 were all declined it -- three decks, 136.6 m, never
+# built, the gate's `crossings` finding.  An owner that does not act is not
+# an owner.
+#
+# So the deck lands itself: from the bank row it keeps descending, one row
+# every LAND_RAMP_PITCH_M and at most LAND_TILE_STEP_M a row (the raised
+# landfall's own limits, mirrored), until the walking surface is within the
+# bank-step limit of the APPLIED ground at its end -- never lower than the
+# ground it hugs, and every row carries a bent at its own height
+# (assemble.bridge).  The budget is not a number of this module's choosing:
+# a deck over water stands route.DECK_CLEARANCE_M above the plane, and a
+# terminal bank is where the road ends ON A SHORE, so what a landing has to
+# absorb is that clearance.  A bank that needs more descent than that is not a
+# shore, it is a SLOPE the road's own profile never reached, and it is
+# REFUSED with the numbers: no deck follows a hillside at <= 0.30 m a row
+# down a cliff, and `flatten: FORBIDDEN` forbids cutting one for it.
+# NON-terminal banks are untouched: their bench is the road's, and a deck
+# that landed itself there would hide the road's refusal.
+# Swapped out by the selftest neuter: "lands" (shipped) | "refuses" (the state
+# that built nothing: a terminal bank is refused with the terminus as owner).
+LAND_DESCENT_MAX_TILES = int(math.ceil(
+    routemod.DECK_CLEARANCE_M / LAND_TILE_STEP_M - 1e-9))
+TERMINAL_LANDING_DEPENDS_ON = (
+    "the crossing's own `terminal_banks` (network.CROSSING_BANKS_DEPENDS_ON)",
+    "the APPLIED ground beyond that bank, at the deck's own rows",
+    "LAND_TILE_STEP_M, the raised landfall's per-row limit, mirrored",
+    "route.DECK_CLEARANCE_M, the height a deck over water stands above it")
+_TERMINAL_LANDING_MODE = "lands"
+# The same bank's other half: with no bench beyond it the END ROW stands on its
+# own bent (assemble.bridge `end_bents`), because "the abutment end is carried
+# by the bank" is only true where the bank touches the tile.  MEASURED on
+# T9-wttown-dockshore-x03 and T13-temple-harboursouth-x01: the end tiles read
+# support 17.90 and 19.76 against the 20.00 the safety factor needs, the only
+# structural refusals either deck had besides the step.  Swapped out by the
+# selftest neuter: "own" (shipped) | "none" (the state that refused them).
+_TERMINAL_END_BENT_MODE = "own"
+# The ground a landing can meet below a deck: LAND_DESCENT_MAX_TILES rows at
+# LAND_TILE_STEP_M each, then the bank step a walker takes off the last row.
+TERMINAL_LANDING_REACH_M = (LAND_DESCENT_MAX_TILES * LAND_TILE_STEP_M
+                            + ABUTMENT_STEP_MAX_M)
+# THE DECK COMES DOWN INSIDE THE SPAN TOO.  A road can arrive above the
+# clearance a deck over water keeps (T5-temple-dockshore-x01: 34.094 m against
+# 32.5 m, over a shore at 29.7 m -- 4.4 m, past a landing's 3.05 m), and the
+# span is free to give that height back: from the bank row it keeps descending
+# at the landing's own step, but never under the ground it stands over and
+# never, over water, under the clearance.  The search takes the SHORTEST
+# descent inside the span that a landing can finish (none at all where the
+# landing alone does, which is every deck laid before this was written).
+# Swapped out by the selftest neuter: "span" (shipped) | "landing" (the state
+# that refused T5: a landing alone, from the datum).
+_TERMINAL_DESCENT_MODE = "span"
+
+
+def terminal_landing_reach_m(record: dict) -> float:
+    """The ground a terminal bank's deck can land on below it, in metres: a
+    landing's reach, plus what the span itself can give back above the
+    clearance floor (`required_deck_y` - clearance, at most a tile step per
+    metre of the half of the span a descent may use)."""
+    reach = TERMINAL_LANDING_REACH_M
+    if _TERMINAL_DESCENT_MODE != "span":
+        return reach
+    try:
+        H = float(record["required_deck_y"])
+        L = float(record["span_m"])
+    except (KeyError, TypeError, ValueError):
+        return reach
+    clear = float(record.get("water_surface_y") or 30.0) + \
+        routemod.DECK_CLEARANCE_M
+    return reach + min(max(H - clear, 0.0),
+                       int(L / 2.0) * LAND_TILE_STEP_M)
+
 
 def land_seated_deck_stations(span: dict, surface, deck_y: float,
                               report: dict | None = None) -> list[tuple[float, float]]:
@@ -3017,6 +3144,95 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
         ramps.append(dict(bank=end, outboard_tiles=k, raised_tiles=raised_count,
                           initial_step_m=round(-rise, 6),
                           final_step_m=round(heights[t] - g_exit, 6)))
+    # THE TERMINAL LANDING (TERMINAL_LANDING_DEPENDS_ON): a bank that is its
+    # segment's own end has no bench beyond it, so a deck standing above the
+    # ground there lands ITSELF -- the raised landfall above, mirrored.
+    for end, anchor, sign in (("bank_a", 0.0, -1.0), ("bank_b", length, 1.0)):
+        if (_TERMINAL_LANDING_MODE != "lands"
+                or end not in (span.get("terminal_banks") or ())):
+            continue
+
+        def at(t):
+            return surface(ax + ux * t, az + uz * t)
+
+        top = heights[anchor]
+        # the end the bridge lays by default: the overhang row, 2 m out, whose
+        # tile ends 1 m further.  A bank the deck already lands on keeps it.
+        if top - at(anchor + sign * 3.0) <= ABUTMENT_STEP_MAX_M:
+            continue
+        clear = water_y + routemod.DECK_CLEARANCE_M
+
+        def floor_at(t, j):
+            """The lowest walking surface row `j` (metres inboard of the bank
+            row, negative beyond it) may take: never under the ground it
+            stands over, and -- inside the span, over water -- never under
+            the clearance a deck over water keeps."""
+            low, way = ground(t)
+            return max(way, clear) if (j >= 0 and low < water_y) else way
+
+        solved, tried_best = None, None
+        m_max = int(length / 2.0) if _TERMINAL_DESCENT_MODE == "span" else 0
+        for m in range(0, m_max + 1):
+            # rows of the span inside the descent's reach are laid again at the
+            # landing's own 1 m pitch, so no row drops more than a tile step;
+            # a row of the old lattice within the gate's duplicate cube of the
+            # first new one IS that row (T5-x01: 14.0 against 14.0255)
+            trial = {t: h for t, h in wanted.items()
+                     if (anchor - t) * sign > m + 1e-9}
+            for j in range(m, 0, -1):
+                t = anchor - sign * j * LAND_RAMP_PITCH_M
+                if j == m and any(abs(t - kt) < asm.min_bay_m()
+                                  for kt in trial):
+                    continue    # the old row IS the descent's first row
+                trial[t] = max(top - (m - j) * LAND_TILE_STEP_M,
+                               floor_at(t, j))
+            trial[anchor] = max(top - m * LAND_TILE_STEP_M,
+                                floor_at(anchor, 0))
+            for k in range(1, LAND_DESCENT_MAX_TILES + 1):
+                t = anchor + sign * k * LAND_RAMP_PITCH_M
+                trial[t] = max(top - (m + k) * LAND_TILE_STEP_M,
+                               floor_at(t, -k))
+                candidate = solve(trial)
+                g_exit = at(t + sign)
+                gap = candidate[t] - g_exit
+                if tried_best is None or abs(gap) < abs(tried_best[0]):
+                    tried_best = (gap, m, k, candidate[t], g_exit)
+                if abs(gap) <= ABUTMENT_STEP_MAX_M + 1e-9:
+                    solved = candidate
+                    break
+            if solved is not None:
+                break
+        if solved is None:
+            gap, bm, bk, h_end, g_end = tried_best
+            raise SystemExit(
+                f"{span['crossing_id']} {end}: terminal landing: this bank is "
+                f"its segment's own end (`terminal_banks`), so no road bench "
+                f"lies beyond it and the deck must land itself -- but the "
+                f"deck stands {top:.3f} m and no descent meets the ground: "
+                f"at <={LAND_TILE_STEP_M:.2f} m a row the deck comes down "
+                f"{m_max} rows inside the span (never under the "
+                f"{clear:.3f} m a deck over water keeps, "
+                f"route.DECK_CLEARANCE_M {routemod.DECK_CLEARANCE_M:g} m) and "
+                f"{LAND_DESCENT_MAX_TILES} rows beyond the bank, and the "
+                f"nearest it gets is {h_end:.3f} m over applied ground "
+                f"{g_end:.3f} m ({gap:+.3f} m, limit "
+                f"{ABUTMENT_STEP_MAX_M} m; {bm} rows in the span + {bk} "
+                f"beyond). That is a slope or open water, not a shore: its "
+                f"road's own profile never reached the bank. REFUSED, no "
+                f"datum or bank-step limit was relaxed.")
+        wanted = trial
+        heights = solved
+        ramps.append(dict(bank=end, direction="down", outboard_tiles=k,
+                          span_tiles=m,
+                          lowered_tiles=sum(1 for tt, hh in heights.items()
+                                            if (tt - anchor) * sign > 1e-9
+                                            and hh < top - 1e-6),
+                          lowered_in_span_tiles=sum(
+                              1 for tt, hh in heights.items()
+                              if -1e-9 <= (anchor - tt) * sign
+                              and hh < top - 1e-6),
+                          initial_step_m=round(top - at(anchor + sign * 3.0), 6),
+                          final_step_m=round(heights[t] - g_exit, 6)))
     if report is not None:
         report["landfall_ramps"] = ramps
         report["land_stations_seated"] = [
@@ -3026,7 +3242,7 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
                  footprint_min_y=round(ground(t)[0], 6),
                  land=ground(t)[0] >= water_y,
                  beyond_bank=t < 0.0 or t > length)
-            for t, h in sorted(heights.items()) if h > deck_y + 1e-6]
+            for t, h in sorted(heights.items()) if abs(h - deck_y) > 1e-6]
         pairs = list(zip(sorted(heights), sorted(heights)[1:]))
         report["land_seating_limits"] = dict(
             tile_step_max_m=LAND_TILE_STEP_M, ramp_tile_budget=LAND_RAMP_MAX_TILES,
@@ -3062,7 +3278,9 @@ def build_pieces(span: dict, surface, deck_y: float | None = None,
         bearing_of(span), h, surface, width_tiles=deck_tiles(span),
         carriageway_half_m=float(span["deck_width_m"]) / 2.0,
         bent_spacing_m=bent_spacing_m, name=span["crossing_id"], report=report,
-        deck_stations=stations)
+        deck_stations=stations,
+        end_bents=tuple(end[-1] for end in (span.get("terminal_banks") or ())
+                        if _TERMINAL_END_BENT_MODE == "own"))
     pieces, shared = omit_shared_deck_pieces(pieces, existing)
     if report is not None:
         report["deck_tiles_carried_by_existing_bridge"] = [
@@ -3090,7 +3308,7 @@ def build_pieces(span: dict, surface, deck_y: float | None = None,
                  land=asm.bed_under(p, surface) >= float(span.get("water_surface_y", 30.0)),
                  beyond_bank=p.overhang)
             for p in pieces if p.prefab == "wood_floor"
-            and p.y + floor_top > h + 1e-6]
+            and abs(p.y + floor_top - h) > 1e-6]
     return [p for i, p in enumerate(pieces) if i not in openings]
 
 
@@ -3123,7 +3341,11 @@ def existing_bridges(spans: list[dict]) -> dict[str, tuple]:
     for span in spans:
         ax, az = span["bank_a"]["xz"]
         bx, bz = span["bank_b"]["xz"]
-        margin = deck_tiles(span) + 4.0
+        # a terminal bank's deck runs a landing out past its bank, so the
+        # decks it can meet are that much further off (DECK_OVERLAP_DEPENDS_ON)
+        margin = deck_tiles(span) + 4.0 + (
+            LAND_DESCENT_MAX_TILES * LAND_RAMP_PITCH_M
+            if span.get("terminal_banks") else 0.0)
         out[span["crossing_id"]] = tuple(
             piece for cid, body in bodies.items()
             if cid != span["crossing_id"] and any(
@@ -3469,11 +3691,11 @@ def abutment_guard(span: dict, pieces: list, surface, deck_y: float) -> list[str
         if abs(step) > ABUTMENT_STEP_MAX_M:
             owner = (
                 f" This bank IS its segment's own terminus "
-                f"(`terminal_banks`, network.CROSSING_BANKS_DEPENDS_ON): the "
-                f"road ends inside the bridged run, so no emission of "
-                f"{span.get('segment')} benches the ground beyond it. No "
-                f"deck can land here. The owner is that segment's terminus "
-                f"(its terminal trim or its pad arrival), not this builder."
+                f"(`terminal_banks`, network.CROSSING_BANKS_DEPENDS_ON): no "
+                f"emission of {span.get('segment')} benches the ground "
+                f"beyond it, so THIS DECK lands itself "
+                f"(TERMINAL_LANDING_DEPENDS_ON, `land_seated_deck_stations`) "
+                f"and the landing it laid does not meet the ground."
                 if end in (span.get("terminal_banks") or ()) else
                 " The bench this abutment needs is the road's, and it is "
                 "measured where the walker meets it rather than assumed.")
@@ -4440,6 +4662,289 @@ def _neuter_land_seating():
     return undo
 
 
+def _terminal_fixture(name: str, drop: float, terminal: tuple,
+                      mirror: bool = False,
+                      h: float = 32.5, length: float = 20.0):
+    """A 20 m crossing along +z at deck `h`, built here with no world: the near
+    bank (z<2) is a dry bench at the deck's level, the middle is water, and
+    the far shore (z>=16) lies `drop` m BELOW the deck for as far as anyone
+    can walk -- the ground beyond a road that ended inside the bridged run.
+    `terminal` is what the network records as `terminal_banks`; `mirror`
+    swaps which bank is the shore, so the same ground is `bank_a`'s."""
+    def ground(_x, z):
+        if z < 2.0:
+            return h
+        return 29.0 if z < 16.0 else h - drop
+    bed = _fixture_bed(ground, f"terminal landing, shore {drop:g} m below")
+    near, far = ([0.0, 0.0], [0.0, length])
+    span = dict(crossing_id=f"FIX-{name}", deck_y_REQUIRED=h,
+                deck_width_m=4.0, legal_deck_y_interval=[h, h],
+                single_H_both_banks=True, water_surface_y=30.0,
+                bank_a=dict(xz=far if mirror else near),
+                bank_b=dict(xz=near if mirror else far),
+                terminal_banks=list(terminal))
+    return span, bed, h
+
+
+def terminal_landing_arms() -> list[dict]:
+    """TERMINAL_LANDING_DEPENDS_ON, each named dependency both ways.
+
+    BANK A     the mirrored shore (`terminal_banks: bank_a`) is landed the same
+               way, so the sign of the walk outboard is not one end's habit.
+
+    LANDS      a shore 1.2 m below a terminal bank is met by a ramp that
+               descends at <=0.30 m a row and ends within the bank-step limit.
+    ROAD'S     the SAME shore below a bank the road is meant to bench is NOT
+               landed: the abutment guard refuses it, so the deck never hides
+               the road's own refusal.
+    SLOPE      ground 8 m below a terminal bank is refused WITH ITS NUMBERS
+               (the nearest the deck gets, the limit), never forced.
+    ON GROUND  a terminal bank already within the step limit lays no ramp.
+    END BENT   a terminal end 0.30 m over its shelf touches no ground and is
+               carried by its own bent: the structural verdict is the only
+               thing that tells it from the same deck without one.
+    """
+    out = []
+    for name, drop, terminal, want_refused, want_text, mirror in (
+            ("a_shore_below_a_terminal_bank_is_landed_by_a_ramp",
+             1.2, ("bank_b",), False, None, False),
+            ("a_shore_below_a_terminal_bank_a_is_landed_the_same_way",
+             1.2, ("bank_a",), False, None, True),
+            ("the_same_shore_below_a_road_bank_is_the_roads_to_bench",
+             1.2, (), True, None, False),
+            ("a_slope_below_a_terminal_bank_is_refused_with_its_numbers",
+             8.0, ("bank_b",), True, "(+5.300 m, limit", False),
+            ("a_terminal_bank_on_the_ground_lays_no_ramp",
+             0.0, ("bank_b",), False, None, False),
+            ("a_terminal_end_over_a_shelf_stands_on_its_own_bent",
+             0.3, ("bank_b",), False, None, False)):
+        span, bed, h = _terminal_fixture(name, drop, terminal, mirror)
+        report: dict = {}
+        try:
+            pieces = build_pieces(span, bed, bent_spacing_m=8.0, report=report)
+            pieces, _ = trim_buried_overhang(span, pieces, bed, h)
+            verdict = asm.verify(pieces, bed)
+            guards = run_guards(span, pieces, verdict, bed, h)
+            refused = any(guards.values())
+        except SystemExit as exc:
+            out.append(dict(name=name, got_refused=True,
+                            want_refused=want_refused,
+                            ok=(want_refused and (want_text is None
+                                                  or want_text in str(exc))),
+                            refusal=str(exc)[:160],
+                            why=f"refused as required but without "
+                                f"{want_text!r} in its words"))
+            continue
+        ramps = report.get("landfall_ramps", [])
+        floor_top = asm.facts()["wood_floor"].hi[1]
+        centre = sorted((p.z, p.y + floor_top) for p in pieces
+                        if p.prefab == "wood_floor" and abs(p.x) < 1e-6)
+        bounded = all(
+            abs(bh - ah) <= LAND_TILE_STEP_M + 1e-6
+            and abs(bh - ah) <= (bz - az) * road_instruments.STEP_LIMIT_PER_M + 1e-6
+            for (az, ah), (bz, bh) in zip(centre, centre[1:]))
+        want_ramp = (not want_refused and bool(terminal)
+                     and drop > ABUTMENT_STEP_MAX_M)
+        ok = (refused == want_refused
+              and (want_refused or (bounded and bool(ramps) == want_ramp)))
+        out.append(dict(name=name, got_refused=refused,
+                        want_refused=want_refused, ok=ok,
+                        ramps=[(r["direction"], r["outboard_tiles"],
+                                r["final_step_m"]) for r in ramps],
+                        bounded_steps_and_grade=bounded,
+                        why=f"guards {sorted(k for k, v in guards.items() if v)}"
+                            f", ramped={bool(ramps)} (wanted {want_ramp}), "
+                            f"bounded={bounded}"))
+    return out
+
+
+def terminal_descent_arms() -> list[dict]:
+    """The deck gives its height back INSIDE the span too (TERMINAL_LANDING_
+    DEPENDS_ON), on a 34.0 m deck whose far shelf lies `drop` m under it --
+    T5-temple-dockshore-x01's shape, a road that arrives above the clearance.
+
+    DRY SHELF  3.8 m under the deck, past a landing alone (3.05 m): comes
+               down in the span, over the dry shelf rows, and lands.
+    WET SHELF  4.2 m under it, the shelf under the plane: the rows over water
+               stop at the clearance floor (32.5 m), the rest is the landing.
+    LANDING    1.2 m under it: a landing alone meets it, nothing is lowered
+               in the span.
+    CLIFF      12 m under it: refused with the nearest the deck gets.
+    """
+    out = []
+    clear = 30.0 + routemod.DECK_CLEARANCE_M
+    for name, drop, want_refused, want_text in (
+            ("a_road_above_the_clearance_comes_down_inside_the_span",
+             3.8, False, None),
+            ("over_water_the_descent_stops_at_the_clearance_floor",
+             4.2, False, None),
+            ("a_shore_a_landing_alone_meets_lowers_nothing_in_the_span",
+             1.2, False, None),
+            ("a_cliff_past_the_spans_descent_too_is_refused_with_numbers",
+             12.0, True, "the nearest it gets is")):
+        span, bed, h = _terminal_fixture(name, drop, ("bank_b",), False, 34.0)
+        report: dict = {}
+        try:
+            pieces = build_pieces(span, bed, bent_spacing_m=4.0, report=report)
+            pieces, _ = trim_buried_overhang(span, pieces, bed, h)
+            verdict = asm.verify(pieces, bed)
+            guards = run_guards(span, pieces, verdict, bed, h)
+            refused = any(guards.values())
+        except SystemExit as exc:
+            out.append(dict(name=name, got_refused=True,
+                            want_refused=want_refused,
+                            ok=(want_refused and (want_text is None
+                                                  or want_text in str(exc))),
+                            refusal=str(exc)[:160],
+                            why=f"refused as required but without "
+                                f"{want_text!r} in its words"))
+            continue
+        ramps = report.get("landfall_ramps", [])
+        in_span = ramps[0]["span_tiles"] if ramps else None
+        floor_top = asm.facts()["wood_floor"].hi[1]
+        over_water = [p.y + floor_top for p in pieces
+                      if p.prefab == "wood_floor" and abs(p.x) < 1e-6
+                      and p.z <= 20.0 and bed(p.x, p.z) < 30.0]
+        kept_floor = all(top >= clear - 1e-6 for top in over_water)
+        ok = (refused == want_refused and kept_floor
+              and (want_refused or (
+                  (in_span or 0) > 0
+                  if (name.startswith(("a_road_above", "over_water")))
+                  else in_span == 0)))
+        out.append(dict(name=name, got_refused=refused,
+                        want_refused=want_refused, ok=ok,
+                        span_rows=in_span,
+                        landing_rows=ramps[0]["outboard_tiles"] if ramps else None,
+                        lowest_row_over_water=(round(min(over_water), 3)
+                                               if over_water else None),
+                        why=f"guards {sorted(k for k, v in guards.items() if v)}"
+                            f", span rows {in_span}, floor kept "
+                            f"{kept_floor}"))
+    return out
+
+
+def deck_overlap_arms() -> list[dict]:
+    """DECK_OVERLAP_DEPENDS_ON, constructed: a 20 m deck at 32.5 m along +z,
+    and a second one across it along +x.
+
+    THROUGH    the second at 36.0 m stands its piles through the first's
+               floors (3.5 m apart -- not one deck): REFUSED, with the pair.
+    BESIDE     the second 6 m clear of the first: nothing in common, not
+               refused.
+    """
+    out = []
+    for name, deck2, z2, want_refused in (
+            ("a_deck_through_a_standing_deck_at_another_height_is_refused",
+             36.0, 11.0, True),
+            ("a_deck_clear_of_a_standing_deck_is_not_refused",
+             32.5, 28.0, False)):
+        def ground(x, z, deck2=deck2):
+            g = 29.0
+            if z < 2.0 or z > 18.0:
+                g = 32.5
+            return max(g, deck2) if abs(x) >= 8.0 else g
+        bed = _fixture_bed(ground, "two decks")
+        first = dict(crossing_id="FIX-first", deck_y_REQUIRED=32.5,
+                     deck_width_m=4.0, legal_deck_y_interval=[32.5, 32.5],
+                     single_H_both_banks=True, water_surface_y=30.0,
+                     bank_a=dict(xz=[0.0, 0.0]), bank_b=dict(xz=[0.0, 20.0]))
+        second = dict(first, crossing_id="FIX-second", deck_y_REQUIRED=deck2,
+                      legal_deck_y_interval=[deck2, deck2],
+                      bank_a=dict(xz=[-10.0, z2]), bank_b=dict(xz=[10.0, z2]))
+        standing = tuple(build_pieces(first, bed, bent_spacing_m=4.0))
+        pieces = build_pieces(second, bed, bent_spacing_m=4.0,
+                              existing=standing)
+        got = deck_overlap_guard(second, pieces, existing=standing)
+        out.append(dict(name=name, got_refused=bool(got),
+                        want_refused=want_refused,
+                        ok=bool(got) == want_refused,
+                        refusal=(got[0][:140] if got else None),
+                        why=f"overlap guard said {bool(got)}"))
+    return out
+
+
+def terminal_remedy_arms() -> list[dict]:
+    """The builder's OWN classification of a terminal bank
+    (TERMINAL_LANDING_DEPENDS_ON), constructed on the reach fixture whose bank_b
+    IS its segment's last station -- 0 m of road outboard, the shape the gate
+    filed as 1C_UNSERVED for T9, T13 and T2 while the deck could have landed
+    two of them.
+
+    WITHIN    a terminal bank whose ground is within a landing's reach is NOT
+              refused: the deck lands itself.
+    BEYOND    one past that reach stays 1C_UNSERVED, and says why in numbers.
+    ROAD'S    the SAME step at a bank that is not flagged terminal stays
+              UNSERVED: the bench is the road's.
+    """
+    fx = _remedy_fixtures()
+    road = fx["records"][BANK_REACH_SHORT]
+    terminal = dict(road, crossing_id="FIX-terminal-x01",
+                    terminal_banks=["bank_b"])
+    out = []
+    for name, rec, step, want_refused, want_text in (
+            ("a_terminal_bank_within_a_landings_reach_is_not_refused",
+             terminal, 1.5, False, None),
+            ("a_terminal_bank_beyond_a_landings_reach_is_UNSERVED_with_numbers",
+             terminal, TERMINAL_LANDING_REACH_M + 1.0, True,
+             "the deck lands itself"),
+            ("the_same_step_at_a_road_bank_is_UNSERVED",
+             road, 1.5, True, None)):
+        ans = deck_remedy(rec, terrain_written=None,
+                          abutment_steps={"bank_b": step},
+                          segments=fx["segments"])
+        hit = [r for r in ans["refused_by"] if r["precondition"] == "abutment"]
+        refused = bool(hit)
+        out.append(dict(
+            name=name, got_refused=refused, want_refused=want_refused,
+            step_m=round(step, 3), class_=ans["implies"],
+            ok=(refused == want_refused
+                and (not refused or (ans["implies"] == "1C_UNSERVED"
+                                     and (want_text is None
+                                          or want_text in hit[0]["why"])))),
+            why=f"refused={refused}, class {ans['implies']}, wanted "
+                f"{want_refused} with {want_text!r}"))
+    return out
+
+
+def _neuter_terminal_landing():
+    """RESTORE THE STATE THAT BUILT NOTHING: a terminal bank is refused with
+    the terminus as owner, and the deck never lands itself -- T9, T13 and T2
+    of the Ulfsland regen, 136.6 m of deck, never built."""
+    global _TERMINAL_LANDING_MODE
+    was, _TERMINAL_LANDING_MODE = _TERMINAL_LANDING_MODE, "refuses"
+
+    def undo():
+        global _TERMINAL_LANDING_MODE
+        _TERMINAL_LANDING_MODE = was
+    return undo
+
+
+def _neuter_terminal_descent():
+    """RESTORE THE STATE THAT REFUSED T5-x01: a landing alone, from the
+    datum, and nothing given back inside the span."""
+    global _TERMINAL_DESCENT_MODE
+    was, _TERMINAL_DESCENT_MODE = _TERMINAL_DESCENT_MODE, "landing"
+
+    def undo():
+        global _TERMINAL_DESCENT_MODE
+        _TERMINAL_DESCENT_MODE = was
+    return undo
+
+
+def _neuter_terminal_end_bent():
+    """RESTORE THE STATE THAT REFUSED THE END TILES: no bent of its own under
+    a terminal bank's outermost row -- support 17.90 and 19.76 against the
+    20.00 the safety factor needs, on T9-x03 and T13-x01."""
+    global _TERMINAL_END_BENT_MODE
+    was, _TERMINAL_END_BENT_MODE = _TERMINAL_END_BENT_MODE, "none"
+
+    def undo():
+        global _TERMINAL_END_BENT_MODE
+        _TERMINAL_END_BENT_MODE = was
+    return undo
+
+
+
 def route_carriageway_arms() -> list[dict]:
     """Junction openings, skewed solid footprints, and grade separation."""
     out = []
@@ -4870,8 +5375,125 @@ def _neuter_tile_covers_to_the_exact_half():
     return undo
 
 
+# DECK_OVERLAP_DEPENDS_ON: TWO DECKS IN ONE PLACE ARE ONE DECK AT ONE HEIGHT, OR
+# A REFUSAL.
+#
+# A terminal landing runs a deck out past its bank, onto ground several roads
+# can converge on: T5-temple-dockshore-x01's landing and T9-wttown-dockshore-x03's
+# both head for the early-dock shore.  `omit_shared_deck_pieces` joins a standing
+# floor at a compatible height (within one bank step), and nothing judged the
+# rest: a floor at another height in the same plan, or a pole standing through
+# someone's deck, was emitted and left for the gate's duplicate/obstruction
+# census.  This builder never moves or removes a standing piece, so the
+# honest answer is the refusal with the numbers.
+#   every emitted piece's own rotated footprint and height extent
+#   (assemble.facts), against every piece of a deck that already stands near
+#   it (`existing_bridges`, widened by a landing's reach for a terminal bank);
+#   two floors within ABUTMENT_STEP_MAX_M of each other are ONE deck, the
+#   join `omit_shared_deck_pieces` already makes, and are not judged here.
+DECK_OVERLAP_DEPENDS_ON = (
+    "every emitted piece's own rotated footprint and height extent",
+    "every piece of a deck already standing within a landing's reach "
+    "(existing_bridges)",
+    "the bank step, below which two floors are one deck "
+    "(ABUTMENT_STEP_MAX_M)")
+DECK_OVERLAP_MIN_Y_M = 0.10      # vertical interpenetration that is a collision
+DECK_OVERLAP_MIN_AREA_M2 = 0.01  # plan overlap that is a collision (10 cm x 10 cm)
+# Swapped out by the selftest neuter: "refuses" (shipped) | "off" (the state
+# that emitted a deck through another).
+_DECK_OVERLAP_MODE = "refuses"
+
+
+def _plan_polygon(p) -> list:
+    """The piece's own footprint in the plan, rotated as `Placed` places it."""
+    f = asm.facts()[p.prefab]
+    a = math.radians(p.yaw)
+    ca, sa = math.cos(a), math.sin(a)
+    return [(p.x + x * ca + z * sa, p.z - x * sa + z * ca)
+            for x, z in ((f.lo[0], f.lo[2]), (f.hi[0], f.lo[2]),
+                         (f.hi[0], f.hi[2]), (f.lo[0], f.hi[2]))]
+
+
+def _polygon_area(poly: list) -> float:
+    return abs(sum(a[0] * b[1] - b[0] * a[1]
+                   for a, b in zip(poly, poly[1:] + poly[:1]))) / 2.0
+
+
+def _plan_overlap_m2(a: list, b: list) -> float:
+    """Area common to two convex plan footprints (Sutherland-Hodgman, one
+    half-plane of `b` at a time)."""
+    sign = 1.0 if sum(p[0] * q[1] - q[0] * p[1]
+                      for p, q in zip(b, b[1:] + b[:1])) > 0.0 else -1.0
+    inside = a
+    for p, q in zip(b, b[1:] + b[:1]):
+        ex, ez = q[0] - p[0], q[1] - p[1]
+        inside = _clip_polygon(
+            inside, lambda pt, p=p, ex=ex, ez=ez:
+            -sign * (ex * (pt[1] - p[1]) - ez * (pt[0] - p[0])), True)
+        if len(inside) < 3:
+            return 0.0
+    return _polygon_area(inside)
+
+
+def deck_overlap_guard(span: dict, pieces: list, *,
+                       existing: tuple = ()) -> list[str]:
+    """No emitted piece stands inside the solid of a deck that already stands
+    (DECK_OVERLAP_DEPENDS_ON); two floors one bank step apart are one deck."""
+    if _DECK_OVERLAP_MODE != "refuses" or not existing or not pieces:
+        return []
+    f = asm.facts()
+    floor_top = f["wood_floor"].hi[1]
+    old = [(q, _plan_polygon(q), q.y + f[q.prefab].lo[1],
+            q.y + f[q.prefab].hi[1]) for q in existing if q.prefab in f]
+    hits = []
+    for p in pieces:
+        if p.prefab not in f:
+            continue
+        lo_y, hi_y = p.y + f[p.prefab].lo[1], p.y + f[p.prefab].hi[1]
+        poly = _plan_polygon(p)
+        for q, qpoly, qlo, qhi in old:
+            if math.hypot(p.x - q.x, p.z - q.z) > 4.0:
+                continue
+            vert = min(hi_y, qhi) - max(lo_y, qlo)
+            if vert <= DECK_OVERLAP_MIN_Y_M:
+                continue
+            if (p.prefab == "wood_floor" and q.prefab == "wood_floor"
+                    and abs(p.y - q.y) <= ABUTMENT_STEP_MAX_M):
+                continue                # one deck, joined at a compatible height
+            area = _plan_overlap_m2(poly, qpoly)
+            if area > DECK_OVERLAP_MIN_AREA_M2:
+                hits.append((area * vert, p, q, vert, area))
+    if not hits:
+        return []
+    hits.sort(key=lambda r: -r[0])
+    _v, p, q, vert, area = hits[0]
+    return [f"{span['crossing_id']}: {len(hits)} emitted piece-pair(s) stand "
+            f"in the same cubic metres as a deck that already stands, worst "
+            f"{p.prefab} ({p.role}) at ({p.x:.2f},{p.y:.3f},{p.z:.2f}) "
+            f"through {q.prefab} ({q.role}) at ({q.x:.2f},{q.y:.3f},"
+            f"{q.z:.2f}): {vert:.3f} m of height over {area:.2f} m2 of plan "
+            f"(floors within {ABUTMENT_STEP_MAX_M} m of each other would be "
+            f"one deck; these are "
+            f"{abs(p.y - q.y):.3f} m apart). This builder never moves or "
+            f"removes a piece that stands, so two decks converging on one "
+            f"landing are REFUSED here with the numbers; the second must be "
+            f"re-planned onto the first's height or its own ground."]
+
+
+def _neuter_deck_overlap_off():
+    """RESTORE THE STATE THAT EMITTED A DECK THROUGH ANOTHER: nothing asks the
+    pieces already standing -- T5-x01's landing and T9-x03's, one dock."""
+    global _DECK_OVERLAP_MODE
+    was, _DECK_OVERLAP_MODE = _DECK_OVERLAP_MODE, "off"
+
+    def undo():
+        global _DECK_OVERLAP_MODE
+        _DECK_OVERLAP_MODE = was
+    return undo
+
+
 GUARDS = ("deck_datum", "abutment", "seating", "structural", "span_coverage",
-          "burial", "carriageway")
+          "burial", "carriageway", "deck_overlap")
 
 
 def run_guards(span: dict, pieces: list, verdict: dict, surface,
@@ -4884,6 +5506,7 @@ def run_guards(span: dict, pieces: list, verdict: dict, surface,
         "span_coverage": span_coverage_guard(span, pieces, existing=existing),
         "burial": burial_guard(span, pieces, surface),
         "carriageway": carriageway_guard(span, pieces, deck_y),
+        "deck_overlap": deck_overlap_guard(span, pieces, existing=existing),
     }
 
 
@@ -5532,8 +6155,9 @@ def main() -> int:
                   f"{pr['deck_y']:.3f}  NO PIECES -- the generator refused")
             for x in bad:
                 print(f"      {x}")
-            print(f"  guard {'seating':12s} REFUSES (raised by "
-                  f"crossings/assemble.py before returning)")
+            print(f"  guard {'seating':12s} REFUSES (raised by the deck "
+                  f"generator -- land seating or crossings/assemble.py -- "
+                  f"before returning)")
             refused.append(pr["span"]["crossing_id"])
             report["spans"].append({"measurement": None, "guards": g,
                                     "refusals": bad,

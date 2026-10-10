@@ -108,9 +108,13 @@ SHA-256 of the exact bytes the repair was authored against, and a
 project-owned blueprint under `blueprints/data/repairs/` holding **only newly
 authored pieces** (with its own SHA-256). `to_rcon_plan.read_objects` composes
 the two for every consumer, and refuses when either hash does not match, so
-a changed corpus body is never silently patched. The first is
-`fox-0123456.blueprint` (`blackforest-walled-base`): 10 timber pieces closing
-its roof-course seam and chimney gable ends.
+a changed corpus body is never silently patched. The registry's entries are
+`fox-0123456.blueprint` (`blackforest-walled-base`: 10 timber pieces closing
+its roof-course seam and chimney gable ends), `halvar-master-refinery.blueprint`
+(one roof panel and one pose), `hs_blackforest_tester_meadows_log_cabin.blueprint`
+(one cross-brace on the tower) and `hs_blackforest_kin_01_woodhouse.blueprint`
+(two fascia logs on the porch roof): each states in the registry what it
+measured before and how it was verified.
 
 ### 2. AGPL-3.0 — 21 rows, licensed but incompatible
 

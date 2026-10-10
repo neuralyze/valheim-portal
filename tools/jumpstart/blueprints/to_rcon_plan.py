@@ -584,6 +584,22 @@ def main(argv: list[str] | None = None) -> int:
              "wt-east, wt-spawn).",
     )
     ap.add_argument(
+        "--allow-roof-skin-gaps",
+        action="store_true",
+        help="emit even when the roof skin of this body, AT THE --rotate IT "
+             "IS EMITTED AT, jumps by more than the gate's own allowance "
+             "between adjacent 0.5 m columns with nothing in the gap "
+             "(structures/roof_skin). The gate's lattice has the WORLD's "
+             "axes, so the verdict belongs to the file at a yaw, not to the "
+             "file: MEASURED, hs_blackforest_kin_01_woodhouse has such a "
+             "hole at 11 of 360 whole-degree yaws and "
+             "hs_blackforest_tester_meadows_log_cabin at 63, and both are "
+             "clean at yaw 0. No repair is applied by the emitter: the "
+             "answer is a checksum-bound addition in "
+             "blueprints/data/authored_repairs.json, which read_objects "
+             "composes, and this override writes the hole into the world.",
+    )
+    ap.add_argument(
         "--allow-subgrade-rows",
         action="store_true",
         help="emit even when rows COMPLETELY under the pad plane - own top "
@@ -974,7 +990,8 @@ def main(argv: list[str] | None = None) -> int:
 
     def measure(rows_now):
         return preflight.preflight(rows_now, base_for_pf,
-                                   spawnable=spawnable_name)
+                                   spawnable=spawnable_name,
+                                   yaw_deg=args.rotate)
 
     pf_refusals, pf_report = measure(kept)
 
@@ -1262,6 +1279,7 @@ def main(argv: list[str] | None = None) -> int:
         "--allow-inverted-panels": args.allow_inverted_panels,
         "--allow-co-located-rows": args.allow_co_located_rows,
         "--allow-unsheltered-deck": args.allow_unsheltered_deck,
+        "--allow-roof-skin-gaps": args.allow_roof_skin_gaps,
         "--allow-subgrade-rows": args.allow_subgrade_rows,
         "--allow-blocked-seats": args.allow_blocked_seats,
     }

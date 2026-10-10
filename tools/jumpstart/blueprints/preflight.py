@@ -1279,6 +1279,100 @@ def check_shelter(solids, geom: dict[str, list]) -> list[Refusal]:
     return out
 
 
+# SKIN_AT_PLACEMENT_YAW_DEPENDS_ON: the yaw the body will be emitted at.
+# Neuter `False`: the shipped emitter, which asked the roof skin nothing
+# before emission and so let the gate find it in the built world.  Set to
+# `authored`, the check is asked at the file's own frame (yaw 0) - the
+# question a blueprint-level chooser could ask without a placement - and is
+# MEASURED to answer "clean" for the two town bodies the gate refused.
+SKIN_AT_PLACEMENT_YAW_DEPENDS_ON = "placement"
+
+
+def yawed_solids(solids, geom: dict[str, list], yaw_deg: float):
+    """The same solids after `--rotate yaw_deg` about the blueprint's origin
+    - the emitter's own transform (`qrot(yq, pos)`, `qmul(yq, rot)`) - and
+    nothing else.  A translation is deliberately NOT applied: the gate's
+    lattice is anchored on the roof's own minimum, so it moves with the
+    body, and the verdict was MEASURED identical over random `--at`."""
+    if not yaw_deg:
+        return list(solids)
+    q = I.yaw(yaw_deg)
+    return [I.mk_solid(s.name, I.rotate(q, s.pos), I.qmul(q, s.quat),
+                       geom[s.name]) for s in solids]
+
+
+def check_skin(solids, geom: dict[str, list], yaw_deg: float = 0.0
+               ) -> list[Refusal]:
+    """Is the roof SKIN of this blueprint, AS IT WILL STAND, continuous?
+
+    The gate's `structures/roof_skin` question, asked with the gate's own
+    function over the body the emitter is about to write.  It was asked of
+    nobody before emission: the emitter judged `check_shelter` (a covered
+    deck) and never the skin, so a step between adjacent roof columns with
+    nothing in the gap reached the world and was refused there.
+
+    A PROPERTY OF THE FILE *AT A YAW*, NOT OF THE FILE.  The gate samples the
+    skin on a 0.5 m lattice whose axes are the WORLD's, so a body turned by
+    the placer is sampled at different columns, and a step narrower than one
+    column is seen at some yaws and not at others.  MEASURED over whole
+    degrees, from the files the Ulfsland towns are built of:
+    `hs_blackforest_kin_01_woodhouse` carries a hole at 11 of 360 yaws,
+    `hs_blackforest_tester_meadows_log_cabin` at 63 of 360,
+    `hs_ashlands_neletit_portalhubtower` at 15 of 72 five-degree yaws - and at
+    yaw 0, the only yaw a blueprint-level question can be asked at, the first
+    two are CLEAN.  So this takes `yaw_deg`, the emitter's `--rotate`, and a
+    caller that cannot name the placement's yaw is answering a different
+    question (`SKIN_AT_PLACEMENT_YAW_DEPENDS_ON`).
+
+    A hole here is closed by building the missing material, which this tree
+    does not solve (`structures.REMEDY_IS_IN_NO_TOOL_HERE["roof_skin"]`): the answer is a checksum-bound
+    authored addition (`blueprints/data/authored_repairs.json`), and a body
+    with none is refused, with the numbers, rather than emitted."""
+    if not solids:
+        return []
+    if SKIN_AT_PLACEMENT_YAW_DEPENDS_ON != "placement":
+        yaw_deg = 0.0
+    placed = yawed_solids(solids, geom, yaw_deg)
+    bodies = [b for b in I.bodies(placed, slack=0.35)
+              if len(b) >= MIN_BODY_PIECES]
+    if not bodies:
+        return []
+    named = [(b, [], f"body-{i + 1}") for i, b in enumerate(bodies)]
+    cols = ST.Columns(geom)
+    out: list[Refusal] = []
+    back = I.yaw(-yaw_deg)
+    for f in ST.check_skin(named, cols, geom):
+        if f.ok or f.advisory:
+            continue
+        n = f.numbers
+        wx, wt, wz = f.where
+        lx, _ly, lz = I.rotate(back, (wx, 0.0, wz))
+        out.append(Refusal(
+            "roof_skin_gap",
+            f"{n.get('holes')} place(s) where this blueprint's roof skin "
+            f"jumps {n.get('allowance_m')} m or more between adjacent 0.5 m "
+            f"columns with NOTHING IN THE GAP, worst {n.get('worst_step_m')} "
+            f"m, when emitted at yaw {yaw_deg:g} (about "
+            f"({lx:.1f}, {lz:.1f}) in the blueprint's own frame; "
+            f"{n.get('spanned_steps')} further steps are spanned by the "
+            f"body, {n.get('second_layer_steps')} stand on a skin that "
+            f"carries on underneath). That is daylight through the roof, "
+            f"and it is decided by the FILE at this yaw: the placer turns "
+            f"the body and does not author a roof. Close it with a "
+            f"checksum-bound addition in blueprints/data/authored_repairs.json "
+            f"and re-run its yaw sweep, or use another body.",
+            "--allow-roof-skin-gaps",
+            holes=n.get("holes"), worst_step_m=n.get("worst_step_m"),
+            allowance_m=n.get("allowance_m"), yaw_deg=yaw_deg,
+            spanned_steps=n.get("spanned_steps"),
+            second_layer_steps=n.get("second_layer_steps"),
+            steepest_pitch=n.get("steepest_pitch"),
+            thickest_panel_m=n.get("thickest_panel_m"),
+            roof_columns=n.get("roof_columns"),
+            at_local=[round(lx, 1), round(lz, 1)]))
+    return out
+
+
 def check_duplicates(solids, geom: dict[str, list]) -> list[Refusal]:
     """Two rows of the same prefab in the same place.
 
@@ -1642,8 +1736,8 @@ def judge_seats(objs, solids, rows, base_y: float, geom: dict[str, list]
 
 
 def preflight(objs, base_y: float | None, geom: dict[str, list] | None = None,
-              build: set[str] | None = None, spawnable=None
-              ) -> tuple[list[Refusal], dict]:
+              build: set[str] | None = None, spawnable=None,
+              yaw_deg: float = 0.0) -> tuple[list[Refusal], dict]:
     """Every question the gate will ask that this file already answers.
 
     The corpus defaults to `accept.instruments.load_geometry`, which is the
@@ -1658,6 +1752,10 @@ def preflight(objs, base_y: float | None, geom: dict[str, list] | None = None,
     could not be established, and the support question is then unanswerable
     rather than passed: it is reported as skipped and the caller's existing
     `--allow-unplaceable` path owns the decision.
+
+    `yaw_deg` is the emitter's `--rotate`: the roof-skin question is a
+    property of the body AT ITS YAW (`check_skin`), so it is the one question
+    here that cannot be answered from the file alone.
 
     `spawnable(name) -> bool` is asked before `reorient_plan` may turn a row
     into its mirror twin - a prefab the blueprint may not carry, so the
@@ -1685,6 +1783,7 @@ def preflight(objs, base_y: float | None, geom: dict[str, list] | None = None,
     refusals += check_orientation(solids, geom)
     refusals += check_duplicates(solids, geom)
     refusals += check_shelter(solids, geom)
+    refusals += check_skin(solids, geom, yaw_deg)
     skipped = []
     seat: list[dict] = []
     sub: list[dict] = []
@@ -2728,6 +2827,223 @@ def _case_authored_repair_identity() -> list[str]:
     return bad
 
 
+# ---------------------------------------------------------------------------
+# THE ROOF-SKIN CASES.  `check_skin` is the gate's question asked of the body
+# AT ITS YAW, and the two files that taught it to take one are reconstructed
+# here as the SLICE the verdict depends on - every roof row, so the 0.5 m
+# lattice (anchored on the roof's own minimum) sits where it sits on the real
+# body, and only the non-roof rows that bear on the gap - at the positions and
+# yaws the corpus files author them, in the file's own frame, with no piece
+# of either file's geometry beyond what the question reads.  MEASURED: the
+# slice carries a hole at exactly the whole-5-degree yaws the whole file does
+# (log cabin 10 of 72, woodhouse 2 of 72), and is clean at yaw 0.
+#
+#   hs_blackforest_tester_meadows_log_cabin   the south-east tower: its cap
+#       stands over an open pole storey, 4.441 m above the roof beside it,
+#       and the ONLY thing in the gap is a 0.4 m head beam.
+#   hs_blackforest_kin_01_woodhouse           the porch cap's eave stands
+#       1.2 m below the main roof's overhang at both gable ends.
+# ---------------------------------------------------------------------------
+_R2 = 2.0 * 2.0 ** 0.5
+_SKIN_SLICES = {
+    "log_cabin": (
+    ('wood_wall_roof', (1.0, 4.2, 0.0), 0),
+    ('wood_roof', (1.0, 4.2, 1.0), 270),
+    ('wood_roof', (1.0, 4.2, 3.0), 270),
+    ('wood_roof', (1.0, 4.2, 5.0), 270),
+    ('wood_roof', (1.0, 4.2, 7.0), 270),
+    ('wood_roof', (1.0, 4.2, 9.0), 270),
+    ('wood_roof', (1.0, 4.2, 11.0), 270),
+    ('wood_roof', (1.0, 4.2, 13.0), 270),
+    ('wood_roof', (1.0, 4.2, 15.0), 270),
+    ('wood_wall_roof', (1.0, 4.2, 16.0), 0),
+    ('wood_roof', (7.0, 4.2, 5.0), 90),
+    ('wood_roof', (7.0, 4.2, 7.0), 90),
+    ('wood_roof', (7.0, 4.2, 9.0), 90),
+    ('wood_roof', (7.0, 4.2, 11.0), 90),
+    ('wood_roof', (7.0, 4.2, 13.0), 90),
+    ('wood_roof', (7.0, 4.2, 15.0), 90),
+    ('wood_wall_roof', (7.0, 4.2, 16.0), 180),
+    ('wood_wall_roof', (3.0, 5.2, 0.0), 0),
+    ('wood_roof', (3.0, 5.2, 1.0), 270),
+    ('wood_roof', (3.0, 5.2, 3.0), 270),
+    ('wood_roof', (3.0, 5.2, 5.0), 270),
+    ('wood_roof', (3.0, 5.2, 7.0), 270),
+    ('wood_roof', (3.0, 5.2, 9.0), 270),
+    ('wood_roof', (3.0, 5.2, 11.0), 270),
+    ('wood_roof', (3.0, 5.2, 13.0), 270),
+    ('wood_roof', (3.0, 5.2, 15.0), 270),
+    ('wood_wall_roof', (3.0, 5.2, 16.0), 0),
+    ('wood_wall_roof', (5.0, 5.2, 0.0), 180),
+    ('wood_roof', (5.0, 5.2, 1.0), 90),
+    ('wood_roof', (5.0, 5.2, 3.0), 90),
+    ('wood_roof', (5.0, 5.2, 5.0), 90),
+    ('wood_roof', (5.0, 5.2, 7.0), 90),
+    ('wood_roof', (5.0, 5.2, 9.0), 90),
+    ('wood_roof', (5.0, 5.2, 11.0), 90),
+    ('wood_roof', (5.0, 5.2, 13.0), 90),
+    ('wood_roof', (5.0, 5.2, 15.0), 90),
+    ('wood_wall_roof', (5.0, 5.2, 16.0), 180),
+    ('wood_pole2', (6.0, 5.2, 0.0), 270),
+    ('woodwall', (6.0, 5.2, 1.0), 270),
+    ('woodwall', (6.0, 5.2, 3.0), 270),
+    ('woodwall', (7.0, 5.2, 0.0), 180),
+    ('woodwall', (7.0, 5.2, 4.0), 0),
+    ('wood_pole2', (8.0, 5.2, 0.0), 270),
+    ('woodwall', (8.0, 5.2, 1.0), 90),
+    ('woodwall', (8.0, 5.2, 3.0), 90),
+    ('wood_pole2', (8.0, 5.2, 4.0), 270),
+    ('wood_pole2', (6.0, 7.2, 0.0), 270),
+    ('wood_pole2', (6.0, 7.2, 4.0), 270),
+    ('wood_pole2', (8.0, 7.2, 0.0), 270),
+    ('wood_pole2', (8.0, 7.2, 4.0), 270),
+    ('wood_beam', (6.0, 8.2, 1.0), 90),
+    ('wood_beam', (6.0, 8.2, 3.0), 90),
+    ('wood_beam', (7.0, 8.2, 0.0), 180),
+    ('wood_roof_top_45', (7.0, 8.2, 1.0), 270),
+    ('wood_roof_top_45', (7.0, 8.2, 3.0), 270),
+    ('wood_beam', (7.0, 8.2, 4.0), 180),
+    ('wood_beam', (8.0, 8.2, 1.0), 90),
+    ('wood_beam', (8.0, 8.2, 3.0), 90),
+    ),
+    "woodhouse": (
+    ('wood_roof_top_45', (-1.0, 2.828427, -1.0), 90),
+    ('wood_roof', (5.3244, 3.828427, 2.2168), 157.5),
+    ('wood_roof', (5.631, 3.828427, 2.9396), 90),
+    ('wood_roof_ocorner_45', (-4.0, 3.828427, 0.0), 180),
+    ('wood_roof_ocorner_45', (-4.0, 3.828427, 6.0), 270),
+    ('wood_roof_ocorner_45', (4.0, 3.828427, 0.0), 90),
+    ('wood_roof_ocorner_45', (4.0, 3.828427, 6.0), 0),
+    ('wood_roof', (5.3244, 3.828427, 3.7832), 22.5),
+    ('wood_roof_45', (-4.0, 4.828427, 2.0), 270),
+    ('wood_roof_45', (-4.0, 4.828427, 4.0), 270),
+    ('wood_roof_45', (-2.0, 4.828427, 0.0), 180),
+    ('wood_roof_45', (-2.0, 4.828427, 6.0), 0),
+    ('wood_roof_45', (0.0, 4.828427, 0.0), 180),
+    ('wood_roof_45', (0.0, 4.828427, 6.0), 0),
+    ('wood_roof_45', (2.0, 4.828427, 0.0), 180),
+    ('wood_roof_45', (2.0, 4.828427, 6.0), 0),
+    ('wood_roof_45', (4.0, 4.828427, 2.0), 90),
+    ('wood_roof_45', (4.0, 4.828427, 4.0), 90),
+    ('wood_roof', (-2.0, 5.828427, 2.0), 180),
+    ('wood_roof', (-2.0, 5.828427, 4.0), 0),
+    ('wood_roof', (0.0, 5.828427, 2.0), 180),
+    ('wood_roof', (0.0, 5.828427, 4.0), 0),
+    ('wood_roof', (2.0, 5.828427, 2.0), 180),
+    ('wood_roof', (2.0, 5.828427, 4.0), 0),
+    ('wood_beam', (-3.0, 5.828427, 2.0), (-0.2706, 0.6533, -0.2706, -0.6533)),
+    ('wood_beam', (-3.0, 5.828427, 4.0), (-0.2706, 0.6533, -0.2706, -0.6533)),
+    ('wood_beam', (3.0, 5.828427, 2.0), (-0.2706, 0.6533, -0.2706, -0.6533)),
+    ('wood_beam', (3.0, 5.828427, 4.0), (-0.2706, 0.6533, -0.2706, -0.6533)),
+    ),
+}
+# The yaw each town building of the Ulfsland regeneration was turned to, and
+# the addition that closes the file.
+_SKIN_PLACED = {"log_cabin": 70.0, "woodhouse": 80.0}
+_SKIN_ADDITION = {
+    "log_cabin": "hs_blackforest_tester_meadows_log_cabin-tower-brace.blueprint",
+    "woodhouse": "hs_blackforest_kin_01_woodhouse-porch-fascia.blueprint"}
+
+
+def _skin_slice(which: str, closed: bool) -> list:
+    import to_rcon_plan as TP
+
+    # A row's rotation is a yaw in degrees, or a quaternion for the rows the
+    # file tilts (the woodhouse's four rafters).
+    rows = [TP.Obj(p, pos, I.yaw(d) if isinstance(d, (int, float)) else d,
+                   (1.0, 1.0, 1.0), "", "")
+            for p, pos, d in _SKIN_SLICES[which]]
+    if closed:
+        rows += TP._read_objects(HERE / "data" / "repairs"
+                                 / _SKIN_ADDITION[which])
+    return rows
+
+
+def _skin_refused_yaws(which: str, closed: bool, step: float = 5.0
+                       ) -> list[float]:
+    """Every yaw (whole `step` degrees) at which the emitter would refuse the
+    slice - asked once per (slice, repaired, step) and held, because each is
+    72 measurements of the gate's own instrument."""
+    key = (which, closed, step)
+    if key not in _SKIN_SWEEPS:
+        geom, build = _gate_corpus()
+        solids, _rows, _missing = solids_of(_skin_slice(which, closed), geom,
+                                            build)
+        _SKIN_SWEEPS[key] = [i * step for i in range(int(360 / step))
+                             if check_skin(solids, geom, i * step)]
+    return _SKIN_SWEEPS[key]
+
+
+_SKIN_SWEEPS: dict = {}
+
+
+def _case_skin_is_a_property_of_the_yaw() -> dict:
+    """The known-bad state: clean at yaw 0, refused at the placed yaw."""
+    out = {}
+    for which in _SKIN_SLICES:
+        bad = _skin_refused_yaws(which, closed=False)
+        out[which] = {"refused_at_placed_yaw": _SKIN_PLACED[which] in bad,
+                      "clean_at_yaw_0": 0.0 not in bad,
+                      "refused_somewhere": bool(bad)}
+    return out
+
+
+def _case_skin_through_preflight(which: str, yaw: float) -> dict:
+    """The same verdict through `preflight()`, the emitter's own entry: the
+    refusal, its override flag, and the numbers it carries."""
+    geom, build = _gate_corpus()
+    refusals, _report = preflight(_skin_slice(which, closed=False), None,
+                                  geom, build, yaw_deg=yaw)
+    r = [r for r in refusals if r.code == "roof_skin_gap"]
+    return {"codes": sorted(x.code for x in refusals),
+            "override": r[0].override if r else None,
+            "holes": r[0].numbers["holes"] if r else 0,
+            "worst_over_allowance": bool(r) and (
+                r[0].numbers["worst_step_m"] > r[0].numbers["allowance_m"]),
+            "yaw_recorded": r[0].numbers["yaw_deg"] if r else None}
+
+
+def _case_skin_closed_at_every_yaw() -> dict:
+    """The repair: with the owned addition composed, NO yaw refuses."""
+    return {which: _skin_refused_yaws(which, closed=True)
+            for which in _SKIN_SLICES}
+
+
+def _neuter_skin_at_the_authored_yaw():
+    """The question a blueprint-level chooser can ask without a placement."""
+    global SKIN_AT_PLACEMENT_YAW_DEPENDS_ON
+    real = SKIN_AT_PLACEMENT_YAW_DEPENDS_ON
+    SKIN_AT_PLACEMENT_YAW_DEPENDS_ON = "authored"
+
+    def undo():
+        global SKIN_AT_PLACEMENT_YAW_DEPENDS_ON
+        SKIN_AT_PLACEMENT_YAW_DEPENDS_ON = real
+    return undo
+
+
+def _case_registry_additions_are_intact() -> list[str]:
+    """Every registered addition exists, matches its recorded SHA-256, and
+    carries only prefabs the gate's corpus has measured - so an edited
+    addition, or one whose pieces the gate cannot read, fails here and not at
+    the first emission that composes it."""
+    import json
+    import materialise as M
+    import to_rcon_plan as TP
+
+    geom, _build = _gate_corpus()
+    bad = []
+    for name, entry in json.loads(M.AUTHORED_REPAIRS.read_text("utf-8")).items():
+        add = M.AUTHORED_REPAIRS.parent / entry["addition"]
+        if not add.exists():
+            bad.append(f"{name}: addition {entry['addition']} is missing")
+            continue
+        if M.sha256(add) != entry["addition_sha256"]:
+            bad.append(f"{name}: addition bytes do not match their SHA-256")
+        bad += [f"{name}: {o.prefab} has no measured geometry"
+                for o in TP._read_objects(add) if o.prefab not in geom]
+    return bad
+
+
 def selftest() -> int:
     """The repair names EXACTLY the rows the check calls inverted.
 
@@ -3190,6 +3506,43 @@ def selftest() -> int:
          _case_workshop_gable_pose(), False)
     want("NEUTER authored gable pose: gate detects the original inversion",
          _case_workshop_gable_pose(apply_pose=False), True)
+
+    print("case: the roof skin is a property of the file AT A YAW")
+    want("slices: refused at the placed yaw, clean at yaw 0",
+         _case_skin_is_a_property_of_the_yaw(),
+         {w: {"refused_at_placed_yaw": True, "clean_at_yaw_0": True,
+              "refused_somewhere": True} for w in _SKIN_SLICES})
+    want("preflight() at the log cabin's placed yaw 70 REFUSES it, naming "
+         "the override and the numbers",
+         _case_skin_through_preflight("log_cabin", 70.0),
+         {"codes": ["roof_skin_gap"], "override": "--allow-roof-skin-gaps",
+          "holes": 1, "worst_over_allowance": True, "yaw_recorded": 70.0})
+    want("preflight() at the woodhouse's placed yaw 80 REFUSES it",
+         _case_skin_through_preflight("woodhouse", 80.0),
+         {"codes": ["roof_skin_gap"], "override": "--allow-roof-skin-gaps",
+          "holes": 1, "worst_over_allowance": True, "yaw_recorded": 80.0})
+    want("preflight() at yaw 0 passes both: only the placement knows",
+         [_case_skin_through_preflight(w, 0.0)["codes"] for w in _SKIN_SLICES],
+         [[], []])
+    undo = _neuter_skin_at_the_authored_yaw()
+    try:
+        want("NEUTER the check asked at the file's own yaw (must go red): "
+             "the known-bad log cabin and woodhouse PASS",
+             [_case_skin_through_preflight("log_cabin", 70.0)["codes"],
+              _case_skin_through_preflight("woodhouse", 80.0)["codes"]],
+             [[], []])
+    finally:
+        undo()
+    print("   ^ the shipped emitter asked nothing of the roof skin, and a "
+          "chooser that asks at yaw 0 gets the same answer: both files are "
+          "clean there and carry a hole at the yaw their street turns them to")
+    want("authored closures: no whole-5-degree yaw refuses either file",
+         _case_skin_closed_at_every_yaw(), {w: [] for w in _SKIN_SLICES})
+    want("NEUTER the addition (must go red): the same slices refuse again",
+         {w: bool(_skin_refused_yaws(w, closed=False))
+          for w in _SKIN_SLICES}, {w: True for w in _SKIN_SLICES})
+    want("registry: every addition is intact and readable by the gate",
+         _case_registry_additions_are_intact(), [])
 
     print(f"\n{fails} case(s) failed")
     return 1 if fails else 0

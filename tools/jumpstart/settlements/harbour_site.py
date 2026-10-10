@@ -62,6 +62,17 @@ FREEBOARD_M = 0.8
 # The network's grade ceiling (roads/spec.py grade policy, 25 %).  A landing
 # whose mean slope is steeper cannot be reached by any road of the network.
 LANDING_SLOPE_MAX = 0.25
+# THE MARGIN EVERY SOLVED PAD CARRIES BETWEEN ITS CIRCUMSCRIBED CIRCLE AND THE
+# RADIUS PUBLISHED AS `pad_radius_m` (`plan.site_keepout_m`: far corner + 2.0).
+# The landing is a square whose circumscribed disc is `landing_r_m` less this,
+# so the radius the roads are told to stay outside (`pad_radius_m`) is the one
+# the pad actually reaches -- the same arithmetic a solved site's is, not a
+# second one.
+LANDING_MARGIN_M = 2.0
+# The most a landing may be cut or filled to its datum.  The terrain clamp is
+# 8 m and is not a buildability limit; this is the terrace ceiling the village
+# bodies already live under (`harbour_b.BODY_CUT_MAX_M`, measured there).
+LANDING_CUT_MAX_M = 2.0
 
 # AUTHORED DESIGN PER KIND (what to build); nothing here is a place.
 KINDS: dict[str, dict] = {
@@ -86,6 +97,7 @@ BUILDERS: dict[str, tuple[str, tuple[str, ...]]] = {
 _LANDMASS_MODE = "spawn"      # spawn | any    (any: the landing may be an islet)
 _SLOPE_MODE = "walkable"      # walkable | any (any: a cliff face is a landing)
 _DISC_MODE = "disc"           # disc | cell    (cell: one dry sample is enough)
+_DATUM_MODE = "median"        # median | node (node: the one sample at the node)
 
 
 def _sea(f: T.Field) -> tuple[np.ndarray, int]:
@@ -106,6 +118,43 @@ def _sea(f: T.Field) -> tuple[np.ndarray, int]:
 def _disc(r_cells: int) -> np.ndarray:
     yy, xx = np.mgrid[-r_cells:r_cells + 1, -r_cells:r_cells + 1]
     return (yy ** 2 + xx ** 2) <= r_cells * r_cells
+
+
+def landing_pad(f: T.Field, px: float, pz: float, r_m: float, node: str,
+                site_id: str) -> dict:
+    """THE LANDING A ROAD ARRIVES ON, as a pad the writer can level: a square
+    whose circumscribed disc is `r_m - LANDING_MARGIN_M`, centred on the node,
+    levelled to the MEDIAN of the ground it covers (the height that minimises
+    the worst cut on a monotone slope), with the cut and fill that costs.
+
+    `_DATUM_MODE == "node"` is the neuter: the one sample under the node, which
+    on a 0.19 mean slope is up to a metre off the footprint's median and so
+    doubles the earthwork.
+    """
+    side = round((r_m - LANDING_MARGIN_M) * math.sqrt(2.0), 1)
+    half = side / 2.0
+    zz, xx = np.mgrid[0:f.n, 0:f.n]
+    X = f.x0 + xx * f.step
+    Z = f.z0 + zz * f.step
+    inside = (np.abs(X - px) <= half) & (np.abs(Z - pz) <= half)
+    h = f.h[inside]
+    iz, ix = f.idx(px, pz)
+    node_y = float(f.h[iz, ix])
+    target = node_y if _DATUM_MODE == "node" else float(np.median(h))
+    return {
+        "id": f"{node}-landing", "site": site_id,
+        "x": round(px, 1), "z": round(pz, 1), "yaw": 0.0,
+        "pad_w": side, "pad_d": side, "target_y": round(target, 2),
+        "cut_m": round(max(float(h.max()) - target, 0.0), 3),
+        "fill_m": round(max(target - float(h.min()), 0.0), 3),
+        "min_h": round(float(h.min()), 3), "max_h": round(float(h.max()), 3),
+        "samples": int(h.size),
+        "mean_move_m": round(float(np.abs(h - target).mean()), 3),
+        "why": (f"a {side:g} m square at the node whose circumscribed disc "
+                f"({r_m - LANDING_MARGIN_M:g} m) plus the {LANDING_MARGIN_M:g} m "
+                f"margin is the published pad_radius_m {r_m:g} m, levelled to "
+                f"the median of its {int(h.size)} samples"),
+    }
 
 
 def measure(fields: dict[str, T.Field], spawn_xz, site_id: str, rec: dict,
@@ -171,6 +220,7 @@ def measure(fields: dict[str, T.Field], spawn_xz, site_id: str, rec: dict,
     order = np.argsort(np.where(ok, dist, np.inf), axis=None)
     n_ok = int(ok.sum())
     refused = 0
+    too_rough = 0
     chosen = None
     for flat in order[:min(n_ok, 20000)]:
         cz, cx = divmod(int(flat), f.n)
@@ -178,7 +228,11 @@ def measure(fields: dict[str, T.Field], spawn_xz, site_id: str, rec: dict,
         if clear is not None and not clear(px, pz, P["landing_r_m"]):
             refused += 1
             continue
-        chosen = (cz, cx, px, pz)
+        lp = landing_pad(f, px, pz, P["landing_r_m"], rec["node"], site_id)
+        if max(lp["cut_m"], lp["fill_m"]) > LANDING_CUT_MAX_M:
+            too_rough += 1
+            continue
+        chosen = (cz, cx, px, pz, lp)
         break
     if chosen is None:
         raise ValueError(
@@ -188,10 +242,12 @@ def measure(fields: dict[str, T.Field], spawn_xz, site_id: str, rec: dict,
             f"water on the spawn's land within {P['shore_max_m']:g} m of the "
             f"sea at a mean slope of at most {LANDING_SLOPE_MAX:g}, and "
             f"{refused} of those were refused by a generator location or an "
-            f"installation. Re-declare the request, or widen "
+            f"installation and {too_rough} needed more than "
+            f"{LANDING_CUT_MAX_M:g} m of cut or fill to level a "
+            f"landing pad. Re-declare the request, or widen "
             f"settlements/harbour_site.py::KINDS[{kind!r}] -- its terms are "
             f"arguments, not constants of the world.")
-    cz, cx, px, pz = chosen
+    cz, cx, px, pz, lp = chosen
     gap = float(dist[cz, cx])
     window = f.h[max(cz - r, 0):cz + r + 1, max(cx - r, 0):cx + r + 1]
     relief = float(window.max() - window.min())
@@ -209,6 +265,7 @@ def measure(fields: dict[str, T.Field], spawn_xz, site_id: str, rec: dict,
         "landing_mean_slope": round(float(mean_slope[cz, cx]), 3),
         "landing_candidates": n_ok,
         "landing_candidates_refused_by_keepout": refused,
+        "landing_candidates_refused_by_earthwork": too_rough,
         "roads_land_label": spawn_label,
     }
     return {
@@ -219,7 +276,10 @@ def measure(fields: dict[str, T.Field], spawn_xz, site_id: str, rec: dict,
         "pad_radius_m": P["landing_r_m"],
         "district_m": P["district_m"],
         "road_priority": P["road_priority"],
-        "pad_y": round(float(f.h[cz, cx]), 2),
+        # THE DATUM THE LANDING IS LEVELLED TO, which is the datum every road
+        # routed to it is graded to: one number, published once.
+        "pad_y": lp["target_y"],
+        "landing_pad": lp,
         "road_to": list(rec.get("road_to", ())),
         "measured": measured,
         "why": (f"{rec['why']} MEASURED on this seed's field ({f.id}): the "
@@ -254,13 +314,16 @@ def claim_unit(rec: dict) -> dict:
 # restores the defect, so a term that stops doing anything is caught.
 # ---------------------------------------------------------------------------
 def _fixture(*, islet: bool = False, cliff: bool = False, lake: bool = False,
+             step_m: float = 0.0, step_z: int = 162,
              n: int = 400) -> dict[str, T.Field]:
     """A 400 m square, 1 m step, window id `trunk-primary`, centre (200, 200).
     The sea is the northern band z < 150 (it reaches the window edge); land is
     z >= 150 at 35 m.  An inlet notches the shore at x 180..220, z 100..150.
     `islet` puts a dry disc IN the sea nearer the request than the mainland
     shore; `cliff` raises the shore into a 60 % face; `lake` removes the sea
-    (an enclosed pond only)."""
+    (an enclosed pond only).  `step_m` raises every row from `step_z` north-to-
+    south by that much: a terrace EDGE, which a mean-slope filter passes (one
+    row of a 21-row disc) and a pad straddling it cannot be levelled across."""
     h = np.full((n, n), 35.0, np.float32)
     h[:150, :] = 20.0
     if lake:
@@ -272,6 +335,8 @@ def _fixture(*, islet: bool = False, cliff: bool = False, lake: bool = False,
     if cliff:
         for z in range(150, 200):
             h[z, :] = 30.0 + (z - 150) * 0.6
+    if step_m:
+        h[step_z:, :] += step_m
     if islet:
         yy, xx = np.mgrid[0:n, 0:n]
         h[(yy - 120) ** 2 + (xx - 200) ** 2 <= 20 ** 2] = 36.0
@@ -404,14 +469,19 @@ def _case_a_single_dry_sample_is_not_a_landing() -> list[str]:
 
 
 def _case_NEUTER_one_cell_the_spit_is_the_landing() -> list[str]:
-    global _DISC_MODE
+    """Restores the DISC term's defect alone: the earthwork ceiling is its own
+    term (pinned below) and would refuse a pad over water on its own, so it is
+    lifted here to leave this neuter measuring the one term it names."""
+    global _DISC_MODE, LANDING_CUT_MAX_M
     _DISC_MODE = "cell"
+    prior_cut, LANDING_CUT_MAX_M = LANDING_CUT_MAX_M, 99.0
     try:
         fx = _fixture()
         fx["trunk-primary"].h[140:150, 200] = 36.0
         got = measure(fx, _SPAWN, "harbour-village-x", _site())
     finally:
         _DISC_MODE = "disc"
+        LANDING_CUT_MAX_M = prior_cut
     return [] if got["xz"][1] < 150 else [
         f"the neuter did not restore the spit landing: {got['xz']}"]
 
@@ -422,6 +492,95 @@ def _case_an_unknown_kind_is_refused() -> list[str]:
     except ValueError as exc:
         return [] if "no siting rule" in str(exc) else [str(exc)]
     return ["an unknown kind was sited"]
+
+
+def _case_the_landing_is_a_levelled_square_inside_the_published_radius() -> list[str]:
+    """What the roads are routed to is what gets built: a square whose
+    circumscribed disc plus the margin is the published `pad_radius_m`, at the
+    one datum `pad_y` publishes."""
+    bad = []
+    for kind in ("harbour_village", "harbour_city"):
+        got = measure(_fixture(), _SPAWN, f"{kind}-x", _site(kind))
+        lp = got["landing_pad"]
+        r = KINDS[kind]["landing_r_m"]
+        want = round((r - LANDING_MARGIN_M) * math.sqrt(2.0), 1)
+        if (lp["pad_w"], lp["pad_d"]) != (want, want):
+            bad.append(f"{kind}: pad {lp['pad_w']} x {lp['pad_d']}, want a "
+                       f"{want} m square")
+        reach = lp["pad_w"] / 2.0 * math.sqrt(2.0) + LANDING_MARGIN_M
+        if reach > got["pad_radius_m"] + 0.1:
+            bad.append(f"{kind}: the pad reaches {reach:.2f} m but the roads "
+                       f"are told {got['pad_radius_m']} m")
+        if got["pad_y"] != lp["target_y"]:
+            bad.append(f"{kind}: pad_y {got['pad_y']} is not the datum the "
+                       f"landing is levelled to ({lp['target_y']})")
+        if lp["id"] != "x-landing" or [lp["x"], lp["z"]] != got["xz"]:
+            bad.append(f"{kind}: the landing is not at the node: {lp['id']} "
+                       f"{lp['x']},{lp['z']} vs {got['xz']}")
+    return bad
+
+
+def _spike_field() -> tuple[T.Field, float, float]:
+    """35 m flat with ONE sample 2 m up at the node: the shape of a knoll the
+    node happens to stand on."""
+    n = 60
+    h = np.full((n, n), 35.0, np.float32)
+    h[30, 30] = 37.0
+    f = T.Field("trunk-primary", 30.0, 30.0, 30.0, 1.0, n, h,
+                np.ones((n, n), np.uint8))
+    return f, *(float(v) for v in (f.x0 + 30 * f.step, f.z0 + 30 * f.step))
+
+
+def _case_the_landing_datum_is_the_median_not_the_node() -> list[str]:
+    f, px, pz = _spike_field()
+    lp = landing_pad(f, px, pz, 12.0, "x", "site")
+    bad = []
+    if lp["target_y"] != 35.0:
+        bad.append(f"datum {lp['target_y']}, not the footprint's median 35.0 "
+                   f"(a one-sample knoll must not set the whole pad's height)")
+    if lp["mean_move_m"] > 0.05:
+        bad.append(f"the median datum moves {lp['mean_move_m']} m on average")
+    return bad
+
+
+def _case_NEUTER_node_datum_the_knoll_sets_the_pad() -> list[str]:
+    global _DATUM_MODE
+    f, px, pz = _spike_field()
+    prior, _DATUM_MODE = _DATUM_MODE, "node"
+    try:
+        lp = landing_pad(f, px, pz, 12.0, "x", "site")
+    finally:
+        _DATUM_MODE = prior
+    return [] if (lp["target_y"] == 37.0 and lp["mean_move_m"] > 1.5) else [
+        f"the neuter did not restore the node datum: {lp}"]
+
+
+def _case_a_landing_that_straddles_a_terrace_edge_is_moved_off_it() -> list[str]:
+    got = measure(_fixture(step_m=4.5), _SPAWN, "harbour-village-x", _site())
+    lp = got["landing_pad"]
+    bad = []
+    if max(lp["cut_m"], lp["fill_m"]) > LANDING_CUT_MAX_M:
+        bad.append(f"the landing needs {lp['cut_m']} m cut / {lp['fill_m']} m "
+                   f"fill, over the {LANDING_CUT_MAX_M} m ceiling")
+    if not got["measured"]["landing_candidates_refused_by_earthwork"]:
+        bad.append("no candidate was refused for earthwork on a field with a "
+                   "4.5 m terrace edge: the fixture no longer exercises the "
+                   "term")
+    return bad
+
+
+def _case_NEUTER_no_ceiling_the_straddling_landing_is_CHOSEN() -> list[str]:
+    global LANDING_CUT_MAX_M
+    prior, LANDING_CUT_MAX_M = LANDING_CUT_MAX_M, 99.0
+    try:
+        got = measure(_fixture(step_m=4.5), _SPAWN, "harbour-village-x",
+                      _site())
+    finally:
+        LANDING_CUT_MAX_M = prior
+    lp = got["landing_pad"]
+    return [] if max(lp["cut_m"], lp["fill_m"]) > prior else [
+        f"the neuter did not restore the unlevelable landing: {lp['cut_m']} / "
+        f"{lp['fill_m']}"]
 
 
 CASES = (
@@ -445,6 +604,16 @@ CASES = (
     ("NEUTER_one_cell_the_spit_is_the_landing",
      _case_NEUTER_one_cell_the_spit_is_the_landing),
     ("an_unknown_kind_is_refused", _case_an_unknown_kind_is_refused),
+    ("the_landing_is_a_levelled_square_inside_the_published_radius",
+     _case_the_landing_is_a_levelled_square_inside_the_published_radius),
+    ("the_landing_datum_is_the_median_not_the_node",
+     _case_the_landing_datum_is_the_median_not_the_node),
+    ("NEUTER_node_datum_the_knoll_sets_the_pad",
+     _case_NEUTER_node_datum_the_knoll_sets_the_pad),
+    ("a_landing_that_straddles_a_terrace_edge_is_moved_off_it",
+     _case_a_landing_that_straddles_a_terrace_edge_is_moved_off_it),
+    ("NEUTER_no_ceiling_the_straddling_landing_is_CHOSEN",
+     _case_NEUTER_no_ceiling_the_straddling_landing_is_CHOSEN),
 )
 
 

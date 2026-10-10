@@ -308,10 +308,113 @@ def clearing_refusals(loc: clearance.Locations, site: str, units: list[dict],
     return out
 
 
+# CENSUS_EVIDENCE_DEPENDS_ON: WHAT THE WORLD HOLDS WHERE A PAD WOULD STAND.
+#
+# THE DEFECT, MEASURED on the Ulfsland regeneration.  This solver sited lh-south
+# against the mod-free location dump, and the build then REFUSED the pad at
+# step 5 because its clearing cylinder held objects the dump cannot name
+# ({'Flies': 3, 'mudpile_beacon': 1, 'StatueEvil': 1, 'vfx_swamp_mist': 3}) --
+# a LOST site, which a human would re-site by hand.  The tool must re-site it.
+#
+# WHAT DATA EXISTS WHEN, stated so the loop sits where its evidence does:
+#   stage 8  (this solver)   the mod-free location dump and the height field
+#                            ONLY.  No object of the generated world has been
+#                            read by any tool at this stage.
+#   stage 10 (census)        `roads/precensus.py survey` GENERATES the zones
+#                            the provisional routes cross and reads them live:
+#                            `roads/census/<seed>-<segment>.json`, whose
+#                            `bodies` are the STRUCTURE bodies found (position,
+#                            declared radius, prefab histogram, `blocking`).
+#                            Corridor zones only, and bodies only -- a lone
+#                            prop is not a body.
+#   stage 12 step 5 (build)  the exact per-cylinder `objects_count id=*` after
+#                            `zones_generate` -- the only complete answer, and
+#                            the refusal of last resort.
+# So `CensusEvidence` is read from the stage-10 census and handed to a RE-SOLVE
+# (`plan.py --census`): a candidate offset whose clearing cylinder meets a
+# blocking body is not legal, the slide moves the pad off it, and the next
+# legal candidate of the solver's own ranking is taken when none is.  The first
+# solve (no census yet) is byte-identical to what shipped.  What this CANNOT see
+# is a single prop outside any body (StatueEvil): that stays the step-5
+# refusal, now with its exit code (`build.exit_code`).
+CENSUS_EVIDENCE_DEPENDS_ON = ("stage_10_census_bodies",)
+
+
+class CensusEvidence:
+    """The blocking structure bodies the stage-10 census read, for a solver to
+    keep a pad's clearing cylinder off.  Pure over the documents it is given."""
+
+    def __init__(self, bodies: list[dict]):
+        seen: dict[tuple[float, float], dict] = {}
+        for b in bodies:
+            if not b.get("blocking"):
+                continue
+            seen.setdefault((round(float(b["x"]), 1), round(float(b["z"]), 1)),
+                            dict(b))
+        self.bodies = list(seen.values())
+
+    @classmethod
+    def from_docs(cls, docs: list[dict]) -> "CensusEvidence":
+        return cls([b for d in docs for b in d.get("bodies") or ()])
+
+    @classmethod
+    def load(cls, seed: str, census_dir: Path | None = None
+             ) -> "CensusEvidence":
+        """Every `<seed>-*.json` under `roads/census/`; REFUSES when there is
+        none, because an empty evidence file read as 'nothing blocks' is the
+        defect this class exists to close."""
+        d = census_dir or (HERE.parent / "roads" / "census")
+        docs = []
+        for f in sorted(d.glob(f"{seed}-*.json")):
+            doc = json.loads(f.read_text())
+            if doc.get("seed") == seed:
+                docs.append(doc)
+        if not docs:
+            raise SystemExit(
+                f"REFUSING --census: no stage-10 census of seed {seed!r} under "
+                f"{d}. The census is written by `roads/precensus.py survey` "
+                f"(pipeline stage 10); until it exists the solver has no "
+                f"object evidence and a re-solve would be the first solve.")
+        return cls.from_docs(docs)
+
+    def blockers(self, x: float, z: float, radius_m: float) -> list[dict]:
+        """The blocking bodies whose own disc meets the cylinder."""
+        out = []
+        for b in self.bodies:
+            d = math.hypot(float(b["x"]) - x, float(b["z"]) - z)
+            reach = radius_m + float(b.get("declared_m") or 0.0)
+            if d <= reach:
+                out.append({"body": b.get("name"), "xz": [b["x"], b["z"]],
+                            "dist_m": round(d, 2), "reach_m": round(reach, 2),
+                            "blocking": b.get("blocking"),
+                            "prefabs": dict(sorted(
+                                (b.get("prefabs") or {}).items(),
+                                key=lambda kv: -kv[1])[:6])})
+        return sorted(out, key=lambda r: r["dist_m"])
+
+
+def census_refusals(evidence: "CensusEvidence | None", units: list[dict],
+                    radius_of) -> list[dict]:
+    """Every unit whose clearing cylinder meets a blocking census body, with
+    the numbers.  `radius_of(unit)` is the cylinder's own radius (the build's
+    `clearing_gate`).  None evidence refuses nothing -- the first solve."""
+    if evidence is None:
+        return []
+    out = []
+    for u in units:
+        r = float(radius_of(u))
+        hit = evidence.blockers(float(u["x"]), float(u["z"]), r)
+        if hit:
+            out.append({"unit": u["id"], "xz": [u["x"], u["z"]],
+                        "radius_m": round(r, 2), "blockers": hit})
+    return out
+
+
 def engine_outlier_pad(picker: S.Picker, surface: SF.EngineSurface,
                        rec: dict, apron_m: float, search_m: float = 16.0,
                        stride_m: float = 2.0,
-                       claims: "SiteClaims | None" = None) -> dict:
+                       claims: "SiteClaims | None" = None,
+                       evidence: "CensusEvidence | None" = None) -> dict:
     """The outlying site's pad, SLID AND JUDGED ON THE ENGINE SURFACE: the
     same +/-16 m box `build` always searched, the same stand-off test, and
     every offset billed over the pads the emitter will write there.  A box
@@ -335,6 +438,7 @@ def engine_outlier_pad(picker: S.Picker, surface: SF.EngineSurface,
     f = picker.fields[rec["patch"]]
     tally = {"offsets": 0, "by": {}}
     ctally = {"offsets": 0, "by": {}, "first": None}
+    etally = {"offsets": 0, "by": {}, "first": None}
     gated = not rec.get("centre_declared")
 
     def bill(px: float, pz: float) -> dict:
@@ -368,6 +472,24 @@ def engine_outlier_pad(picker: S.Picker, surface: SF.EngineSurface,
                 key = str(b["location"])
                 ctally["by"][key] = ctally["by"].get(key, 0) + 1
             return False
+        if evidence is not None:
+            def _radius(u, _loc=picker.loc):
+                g = _writer().clearing_gate(
+                    _loc, _writer().unit_placement(u, _loc, rec["id"]),
+                    CLEARING_GATE_DEPENDS_ON)
+                ar = g.get("ar")
+                return (ar.radius_m if ar is not None else
+                        math.hypot(float(u["pad_w"]), float(u["pad_d"])) / 2
+                        + 2.0)
+            cbad = census_refusals(evidence, units_at(px, pz), _radius)
+            if cbad:
+                etally["offsets"] += 1
+                etally["first"] = etally["first"] or cbad[0]
+                for c in cbad:
+                    for b in c["blockers"]:
+                        key = str(b["body"])
+                        etally["by"][key] = etally["by"].get(key, 0) + 1
+                return False
         if claims is None:
             return True
         hits = claims.conflicts(claims.outlier(rec, px, pz))
@@ -394,6 +516,12 @@ def engine_outlier_pad(picker: S.Picker, surface: SF.EngineSurface,
         pad["clearing_refused_offsets"] = ctally["offsets"]
         pad["clearing_bound_by"] = dict(sorted(ctally["by"].items()))
         pad["clearing_first_refusal"] = ctally["first"]
+    # Recorded only where the census refused an offset: the plan carries the
+    # numbers of every candidate the evidence moved the pad off.
+    if etally["offsets"]:
+        pad["census_refused_offsets"] = etally["offsets"]
+        pad["census_bound_by"] = dict(sorted(etally["by"].items()))
+        pad["census_first_refusal"] = etally["first"]
     if not gated and pad.get("x") is not None:
         kept = clearing_refusals(picker.loc, rec["id"],
                                  units_at(pad["x"], pad["z"]))
@@ -1911,7 +2039,8 @@ def declared_harbours(picker: S.Picker, seed: str, claims: "SiteClaims",
 def build(picker: S.Picker, run_interior: bool = True,
           expect_towns: dict | None = None,
           expect_sites: dict | None = None,
-          surface: SF.EngineSurface | None = None) -> dict:
+          surface: SF.EngineSurface | None = None,
+          evidence: "CensusEvidence | None" = None) -> dict:
     plan: dict = {**scope_of(picker.patch_path, picker.loc_path),
                   "patch_file": picker.patch_path,
                   "locations_dump": picker.loc_path,
@@ -2014,7 +2143,8 @@ def build(picker: S.Picker, run_interior: bool = True,
     placed = select_outliers(
         picker, seed, site_anchors, site_source,
         admit=lambda rec, claims: engine_outlier_pad(picker, surface, rec,
-                                                     apron, claims=claims),
+                                                     apron, claims=claims,
+                                                     evidence=evidence),
         claims=claims,
         reach=lambda rec, s: site_reach.verdict(
             s.patch, s.x, s.z, rec["road_priority"]),
@@ -2341,6 +2471,89 @@ def body_gate(plan: dict, check=None) -> None:
     # included, which keep their declared body and are refused with it --
     # and every town building, recorded with the emitter's own refusals.
     refuse_bodies(plan, refused_bodies)
+    placement_gate(plan, check)
+
+
+# PLACEMENT_GATE_DEPENDS_ON: the yaw a town building is judged at.
+#   per_placement  the emitter is asked once per distinct (body, yaw) the
+#                  plan places, at that yaw, and a building whose placement
+#                  it refuses is unplaced with the refusal's numbers.
+# Neuter `body_only`: the shipped gate, which asked every body once, at
+# yaw 0.  MEASURED on Ulfsland: `hs_blackforest_kin_01_woodhouse` and
+# `hs_blackforest_tester_meadows_log_cabin` both emit CLEAN at yaw 0 and
+# carry a roof hole at the yaw their street turns them to (80 and 70), which
+# the acceptance gate found in the built world.
+PLACEMENT_GATE_MODE = "per_placement"
+
+
+def placement_gate(plan: dict, check=None) -> None:
+    """THE SAME EMITTER, ASKED AT EACH TOWN BUILDING'S OWN YAW.
+
+    `body_gate` asks `spawnable.check(name)` once per body, and that emits at
+    yaw 0.  One of the emitter's questions - `roof_skin_gap`, the gate's
+    `structures/roof_skin` - is a property of the file AT A YAW (the gate's
+    lattice has the world's axes: `blueprints/preflight.py::check_skin`), so
+    a body that passes at yaw 0 can carry a hole at the yaw the town's street
+    turns it to, and nothing before the built world would say so.  A town
+    building's yaw is decided in this plan, so it is asked here: once per
+    distinct (body, yaw), memoised, because each is a real emission.
+
+    A refused placement unplaces ITS BUILDINGS only - the body's users at
+    other yaws stand - with the emitter's own refusal on the record
+    (`unplaced[].body_refused`, `plan["placements_refused"]`), exactly as
+    `refuse_bodies` does for a whole body.  Nothing is forced and no
+    `--allow-*` flag is passed.  An outlying site is placed at yaw 0, which
+    `body_gate` has already asked."""
+    if PLACEMENT_GATE_MODE != "per_placement":
+        return
+    import types                                            # noqa: PLC0415
+    if check is None:
+        import spawnable                                    # noqa: PLC0415
+        check = spawnable.check
+    verdicts: dict[tuple[str, float], dict] = {}
+    for t in plan["towns"].values():
+        for b in t["buildings"]:
+            yaw = float(b.get("yaw_deg") or 0.0)
+            if yaw and (b["body"], yaw) not in verdicts:
+                rep = check(b["body"], yaw=yaw)
+                verdicts[(b["body"], yaw)] = rep
+                plan["bodies"][b["body"]].setdefault(
+                    "spawnable_at_yaw", {})[f"{yaw:g}"] = {
+                        "ok": rep["ok"], "commands": rep["commands"],
+                        "refusals": rep["refusals"], "reason": rep["reason"]}
+    refused = {k: r for k, r in verdicts.items() if not r["ok"]}
+    if not refused:
+        return
+    plan.setdefault("placements_refused", [])
+    for (name, yaw), rep in sorted(refused.items()):
+        why = (f"the emitter refuses its body {name} at yaw {yaw:g}: "
+               f"{rep['reason']}")
+        users = []
+        for t in plan["towns"].values():
+            hit = [b for b in t["buildings"]
+                   if b["body"] == name
+                   and float(b.get("yaw_deg") or 0.0) == yaw]
+            if not hit:
+                continue
+            t["buildings"] = [b for b in t["buildings"] if b not in hit]
+            for b in hit:
+                t.setdefault("unplaced", []).append(
+                    {"id": b["id"], "role": b["role"], "body": name,
+                     "yaw_deg": yaw, "slots_tried": 0,
+                     "claim_refused_slots": 0, "claimed_by": {},
+                     "body_refused": rep["refusals"], "why": why})
+                users.append(b["id"])
+            t["totals"] = LY.TownPlanner.totals(
+                [types.SimpleNamespace(**b) for b in t["buildings"]],
+                t["square"], t["unplaced"])
+        entry = plan["bodies"][name]
+        entry["count"] -= len(users)
+        plan["placements_refused"].append(
+            {"body": name, "yaw_deg": yaw, "reason": rep["reason"],
+             "refusals": rep["refusals"], "used_by": users})
+        if entry["count"] <= 0:
+            plan["bodies"].pop(name)
+        print(f"  ! REFUSED {users}: {why}", file=sys.stderr)
 
 
 # --- SELFTEST: THE SITE BILL, BOTH WAYS, ON GROUND BUILT IN MEMORY ----------
@@ -3077,6 +3290,120 @@ def _case_body_a_plan_whose_bodies_emit_is_untouched() -> list[str]:
         f"a clean plan was cut: {plan['refused_sites']}"]
 
 
+# ---- PLACEMENT_GATE_DEPENDS_ON, neutered -----------------------------------
+# CONSTRUCTED: one body that emits CLEAN at yaw 0 and at yaw 30 and is
+# refused at yaw 80 for a roof hole - the shape MEASURED on Ulfsland for
+# hs_blackforest_kin_01_woodhouse (clean at 0, hole 1.205 m at 80) - placed
+# by one town at yaws 30, 80 and 80, beside a body that emits everywhere.
+_YAW_BODY = "yaw_sensitive.blueprint"
+_YAW_REFUSED = 80.0
+_YAW_VERDICT = [
+    {"override": "--allow-roof-skin-gaps", "code": "roof_skin_gap",
+     "detail": "1 place(s) where this blueprint's roof skin jumps 1.179 m or "
+               "more between adjacent 0.5 m columns with NOTHING IN THE GAP, "
+               "worst 1.205 m, when emitted at yaw 80"}]
+
+
+def _yaw_check(calls: list):
+    def check(name: str, yaw: float = 0.0) -> dict:
+        calls.append((name, yaw))
+        bad = name == _YAW_BODY and yaw == _YAW_REFUSED
+        return {"name": name, "ok": not bad, "commands": 0 if bad else 200,
+                "missing": [], "refusals": _YAW_VERDICT if bad else [],
+                "repaired": [], "repairs": [], "resolved": True,
+                "reason": ("1 geometry preflight refusal(s): roof_skin_gap"
+                           if bad else "emits 200 command(s)")}
+    return check
+
+
+def _yaw_plan() -> dict:
+    pad = {"moved_m3": 10.0, "clamp_headroom_m": 5.0, "width_m": 10.0,
+           "depth_m": 10.0, "clamp_ok": True}
+
+    def b(i, body, yaw):
+        return {"id": f"vik-house-{i}", "role": "house", "body": body,
+                "yaw_deg": yaw, "pad": pad, "pieces": 216, "beds": 1,
+                "stations": 0}
+    houses = [b(1, _YAW_BODY, 30.0), b(2, _YAW_BODY, 80.0),
+              b(3, _YAW_BODY, 80.0), b(4, _GOOD_BODY, 80.0)]
+    square = {"moved_m3": 1.0, "width_m": 24.0, "depth_m": 24.0}
+    town = {"buildings": houses, "square": square, "unplaced": []}
+    town["totals"] = LY.TownPlanner.totals(
+        [__import__("types").SimpleNamespace(**h) for h in houses], square, [])
+    entry = {"pieces": 216, "missing_prefabs": [], "grounded": "x"}
+    return {"towns": {"vik": town}, "outliers": [],
+            "bodies": {_YAW_BODY: dict(entry, count=3),
+                       _GOOD_BODY: dict(entry, count=1)},
+            "refused_sites": []}
+
+
+def _case_placement_a_body_clean_at_yaw_0_is_unplaced_at_the_yaw_it_is_refused(
+        ) -> list[str]:
+    """KNOWN-BAD, ULFSLAND STAGE 8: the body passes `body_gate`'s yaw-0
+    question and the two buildings turned to 80 are unplaced with the
+    emitter's refusal and its numbers; the yaw-30 sibling and the other body
+    stand; the town's totals and the body's user count are re-taken; each
+    distinct (body, yaw) is emitted ONCE."""
+    plan = _yaw_plan()
+    calls: list = []
+    body_gate(plan, _yaw_check(calls))
+    bad = []
+    t = plan["towns"]["vik"]
+    if [b["id"] for b in t["buildings"]] != ["vik-house-1", "vik-house-4"]:
+        bad.append(f"survivors: {[b['id'] for b in t['buildings']]}")
+    got = {u["id"]: u for u in t["unplaced"]}
+    if sorted(got) != ["vik-house-2", "vik-house-3"]:
+        bad.append(f"unplaced: {sorted(got)}")
+    elif [r["code"] for r in got["vik-house-2"]["body_refused"]] != [
+            "roof_skin_gap"] or "worst 1.205 m" not in (
+            got["vik-house-2"]["body_refused"][0]["detail"]):
+        bad.append(f"the refusal lost its numbers: {got['vik-house-2']}")
+    if t["totals"]["buildings"] != 2 or t["totals"]["buildings_unplaced"] != 2:
+        bad.append(f"town totals not re-taken: {t['totals']}")
+    if plan["bodies"][_YAW_BODY]["count"] != 1:
+        bad.append(f"user count not re-taken: {plan['bodies'][_YAW_BODY]}")
+    pr = plan.get("placements_refused")
+    if not pr or pr[0]["yaw_deg"] != _YAW_REFUSED or pr[0]["used_by"] != [
+            "vik-house-2", "vik-house-3"]:
+        bad.append(f"placements_refused: {pr}")
+    if sorted(calls) != sorted([(_YAW_BODY, 0.0), (_GOOD_BODY, 0.0),
+                                (_YAW_BODY, 30.0), (_YAW_BODY, 80.0),
+                                (_GOOD_BODY, 80.0)]):
+        bad.append(f"emissions asked: {sorted(calls)}")
+    return bad
+
+
+def _case_placement_NEUTER_body_only_the_yaw_80_buildings_are_PLACED(
+        ) -> list[str]:
+    """LOSS ARM: the shipped gate asked each body once, at yaw 0, and
+    placed all four buildings - two of them under a roof hole."""
+    global PLACEMENT_GATE_MODE
+    was = PLACEMENT_GATE_MODE
+    PLACEMENT_GATE_MODE = "body_only"
+    try:
+        plan = _yaw_plan()
+        body_gate(plan, _yaw_check([]))
+    finally:
+        PLACEMENT_GATE_MODE = was
+    t = plan["towns"]["vik"]
+    return [] if (len(t["buildings"]) == 4 and not t["unplaced"]
+                  and "placements_refused" not in plan) else [
+        f"the body-only gate unplaced something: {t['unplaced']}"]
+
+
+def _case_placement_a_plan_whose_placements_emit_is_untouched() -> list[str]:
+    """SURVIVOR: no placement refused, nothing unplaced, no record added."""
+    plan = _yaw_plan()
+    for b in plan["towns"]["vik"]["buildings"]:
+        b["yaw_deg"] = 30.0
+    body_gate(plan, _yaw_check([]))
+    t = plan["towns"]["vik"]
+    return [] if (len(t["buildings"]) == 4 and not t["unplaced"]
+                  and "placements_refused" not in plan
+                  and plan["bodies"][_YAW_BODY]["count"] == 3) else [
+        f"a clean placement was cut: {t['unplaced']}"]
+
+
 BODY_GATE_CASES = (
     ("body_a_declared_site_whose_body_refuses_is_refused_and_named",
      _case_body_a_declared_site_whose_body_refuses_is_refused_and_named),
@@ -3084,6 +3411,12 @@ BODY_GATE_CASES = (
      _case_body_NEUTER_whole_stage_one_body_kills_the_stage),
     ("body_a_plan_whose_bodies_emit_is_untouched",
      _case_body_a_plan_whose_bodies_emit_is_untouched),
+    ("placement_a_body_clean_at_yaw_0_is_unplaced_at_the_yaw_it_is_refused",
+     _case_placement_a_body_clean_at_yaw_0_is_unplaced_at_the_yaw_it_is_refused),
+    ("placement_NEUTER_body_only_the_yaw_80_buildings_are_PLACED",
+     _case_placement_NEUTER_body_only_the_yaw_80_buildings_are_PLACED),
+    ("placement_a_plan_whose_placements_emit_is_untouched",
+     _case_placement_a_plan_whose_placements_emit_is_untouched),
 )
 
 
@@ -3187,9 +3520,66 @@ SOLVE_WRITE_CASES = (
 )
 
 
+_CENSUS_DOC = {"bodies": [
+    {"name": "census-S11-001", "x": 100.0, "z": 200.0, "declared_m": 8.0,
+     "blocking": 12, "prefabs": {"woodwall": 9, "wood_floor": 3}},
+    {"name": "census-S11-002", "x": 100.04, "z": 200.01, "declared_m": 8.0,
+     "blocking": 12, "prefabs": {"woodwall": 9}},
+    {"name": "census-S4-nature", "x": 400.0, "z": 400.0, "declared_m": 5.0,
+     "blocking": 0, "prefabs": {"shrub_2": 4}}]}
+_CENSUS_UNITS = [{"id": "fx-lh", "x": 120.0, "z": 200.0, "pad_w": 20.0,
+                  "pad_d": 20.0}]
+
+
+def _case_census_a_pad_whose_cylinder_meets_a_blocking_body_is_not_legal(
+        ) -> list[str]:
+    ev = CensusEvidence.from_docs([_CENSUS_DOC])
+    bad = []
+    if len(ev.bodies) != 1:
+        bad.append(f"the same body read twice (two overlapping segments) "
+                   f"and a body with nothing blocking must leave ONE body, "
+                   f"got {[b['name'] for b in ev.bodies]}")
+    got = census_refusals(ev, _CENSUS_UNITS, lambda u: 14.0)
+    if len(got) != 1 or got[0]["blockers"][0]["dist_m"] != 20.0 \
+            or got[0]["blockers"][0]["reach_m"] != 22.0:
+        bad.append(f"the unit 20 m from a body of radius 8 with a 14 m "
+                   f"cylinder must be refused at 20.0 against 22.0: {got}")
+    far = [dict(_CENSUS_UNITS[0], x=160.0)]
+    if census_refusals(ev, far, lambda u: 14.0):
+        bad.append("a pad 60 m off the body was refused")
+    return bad
+
+
+def _case_census_NEUTER_no_evidence_the_first_solve_refuses_nothing(
+        ) -> list[str]:
+    return [] if not census_refusals(None, _CENSUS_UNITS, lambda u: 14.0) \
+        else ["no evidence still refused a pad"]
+
+
+def _case_census_an_empty_census_is_REFUSED_not_read_as_clear() -> list[str]:
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        try:
+            CensusEvidence.load("NoSuchSeed", Path(td))
+        except SystemExit as e:
+            return [] if "no stage-10 census" in str(e) else [str(e)]
+    return ["a missing census was read as 'nothing blocks'"]
+
+
+CENSUS_CASES = (
+    ("census_a_pad_whose_cylinder_meets_a_blocking_body_is_not_legal",
+     _case_census_a_pad_whose_cylinder_meets_a_blocking_body_is_not_legal),
+    ("census_NEUTER_no_evidence_the_first_solve_refuses_nothing",
+     _case_census_NEUTER_no_evidence_the_first_solve_refuses_nothing),
+    ("census_an_empty_census_is_REFUSED_not_read_as_clear",
+     _case_census_an_empty_census_is_REFUSED_not_read_as_clear),
+)
+
+
 def selftest() -> int:
     bad_total = 0
-    for title, cases in (("site bill surface", SITE_BILL_CASES),
+    for title, cases in (("census evidence", CENSUS_CASES),
+                         ("site bill surface", SITE_BILL_CASES),
                          ("site claim", SITE_CLAIM_CASES),
                          ("clearing gate", CLEARING_GATE_CASES),
                          ("body gate", BODY_GATE_CASES),
@@ -3308,6 +3698,10 @@ def sites_yaml(plan: dict) -> str:
         "pad_radius_m": d["pad_radius_m"], "district_m": d["district_m"],
         "road_priority": d["road_priority"], "road_to": d["road_to"],
         "patch": d["patch"], "pad_y": d["pad_y"],
+        # THE LANDING THE ROADS ARE ROUTED TO AND THE BUILDER LEVELS: one
+        # rectangle, one datum (`pad_y` IS its target), published once so a
+        # road arrives at what is built and not at a disc with nothing in it.
+        "landing_pad": d["landing_pad"],
         "same_landmass_as_spawn": d["island"]["same_landmass_as_spawn"],
         "measured": d["measured"], "why": d["why"],
     } for d in plan.get("declared_sites", ())]
@@ -3408,6 +3802,12 @@ def main() -> int:
                          "(clearance.location_dump, resolved at call time)")
     ap.add_argument("--out", default=str(HERE))
     ap.add_argument("--no-interior", action="store_true")
+    ap.add_argument("--census", action="store_true",
+                    help="RE-SOLVE with the stage-10 census as evidence "
+                         "(roads/census/<seed>-*.json): a pad whose clearing "
+                         "cylinder meets a blocking structure body is not "
+                         "legal and the next legal candidate is taken. Refuses "
+                         "when no census exists; the first solve omits it")
     ap.add_argument(
         "--expect-towns", action="append", default=[], metavar="ID=X,Z",
         help="DECLARE a town centre for this solve, e.g. "
@@ -3452,7 +3852,9 @@ def main() -> int:
     plan = build(picker, run_interior=not a.no_interior,
                  expect_towns=parse_town_declaration(a.expect_towns),
                  expect_sites=parse_site_declaration(a.expect_sites),
-                 surface=surface)
+                 surface=surface,
+                 evidence=(CensusEvidence.load(scope["seed"])
+                           if a.census else None))
     write_solve(plan, Path(a.out))
     print(json.dumps(plan["totals"], indent=1))
     # THE STAGE'S REPORT NAMES EVERY REFUSED SITE, with its body and numbers;

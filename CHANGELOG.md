@@ -558,6 +558,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (vestvik-hut-1), and a zone that cannot generate is refused with its registered location
   (hognest-castle, zone (9,22)).
 
+- Regen #3 of Ulfsland (Ulfsgard and Sudrvik the only declared sites; 20 roads built clean, lighting and
+  the Fresh42 classes passing) left three gate sections red; each fix is general, with a neuter.
+  `ribbon`: the rim closure widens a neighbour's band to the surface it left (`RIM_FOREIGN_BAND`),
+  growth families no longer freeze ground (`GROWTH_FREEZE`), and a caused rim row or arrival berm becomes
+  a claim on the carriageway profile, regraded and re-judged by the same gate (`PROFILE_FEEDBACK`).
+  `network`: a trimmed terminal end releases a pin the clamp cannot hold (`ABUTMENT_TRIMMED_END`) and a
+  crossing no landing can reach is rejected at plan time. `boardwalk`/`assemble`: a deck at a terminal
+  bank descends at <=0.30 m per row to the ground, with its own end bents, and a deck may not occupy a
+  standing deck's cubes. `blueprints`: three more checksum-bound roof closures and the gate's roof-skin
+  rule asked at the placement yaw, so a town building with a roof hole is unplaced at plan time.
+  `settlements`: both declared harbour bodies build through the ledger checks; `plan.py --census`
+  re-solves a pad whose clearing cylinder meets a blocking body (not yet wired after stage 10).
+  Known open: S13 and S11 still leave rows in the writer's closure, and lh-south refuses a StatueEvil.
+
 - `tools/jumpstart/roads/boardwalk.py` — A DECK'S RAILS NO LONGER STAND IN ANOTHER ROAD. The
   furniture guard read only the bridge's own straight span at its deck datum, so T3-temple-
   meadhall-x01's rail poles and beams stood across S11's built carriageway (Fresh42 drive 6

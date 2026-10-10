@@ -263,6 +263,34 @@ ABUTMENT_BENCH_DEPENDS_ON = ("the_declared_abutment_level_run",
 _ABUTMENT_BENCH_MODE = "pinned"    # pinned | detected
 
 
+# ABUTMENT_TRIMMED_END_DEPENDS_ON: A PIN THE CLAMP CANNOT HOLD, AT AN END THE
+# TERMINAL TRIM HAS MOVED OFF ITS NODE, IS NOT AN ABUTMENT.
+#
+# `build_segment` pins the last `BANK_LEVEL_M` of a line at a declared node's
+# `level_y`, and it did so at the END OF THE LINE IT WAS HANDED -- trimmed or
+# not.  MEASURED, Ulfsland regen, T2-temple-brgs1 (probe: the trim candidate's
+# own record): the terminal trim cut 88 stations (176 m, the whole 78.63 m
+# crossing and the cliff above it) and the candidate's `abutments` still read
+# `brg-s1-e level_y 30.6, ribbon_end_xz [-240.0, -92.79]` -- the hilltop,
+# `worst_cut_fill_m` 22.57, `within_clamp` False, profile tail 38.6 -> 37.5 m
+# over ground at 52 m, `writer_water` REFUSED 251 steps, worst 15.32 m at
+# [-235, -89].  The trim was declined for the water score of a road dug 15 m
+# into a hill to meet a deck 176 m away, and the crossing stayed: 78.63 m of
+# deck at y 52.757 over ground at 27.7 m that no deck can land.
+# THE RULE: where the trim moved an end off its node and the pin cannot be
+# held there (the bench is more than `route.CUT_FILL_MAX` from the datum), the
+# end is an ordinary road end and the pin is released -- recorded as
+# `abutments_released`, never silently dropped.  A pin the clamp CAN hold at a
+# trimmed end (W5, W10, S12 of the same plan: 2.98 / 2.98 / 3.79 m) is
+# untouched, and so is every untrimmed end, infeasible or not: that conflict
+# stays reported, because there the deck IS the abutment.
+# NEUTER `_ABUTMENT_TRIMMED_END_MODE = "pinned"`: the shipped pin at whatever
+# end the line has.  Proven by `selftest_abutment_released`.
+ABUTMENT_TRIMMED_END_DEPENDS_ON = ("the_terminal_trim_per_end",
+                                   "the_bench_against_the_clamp_at_that_end")
+_ABUTMENT_TRIMMED_END_MODE = "released"    # released | pinned
+
+
 def abutment_bench_dry(t_foot, abut_windows):
     """`t_foot` with, inside each declared abutment's level run, every sample
     that stands on or above the plane lifted out of the freeboard band
@@ -1575,6 +1603,78 @@ def trim_terminal_crossing(seg: dict, kw: dict, ww: dict, *, build, refusal,
     return got[0], got[1], cur_ww, cur_kw, note
 
 
+# TERMINAL_LANDING_PLAN_DEPENDS_ON: A CROSSING WHOSE TERMINAL BANK NO DECK CAN
+# LAND IS REFUSED AT PLAN TIME, WITH ITS NUMBERS.
+#
+# `trim_terminal_crossing` is a candidate; where it is declined the crossing
+# stands, and step 6.5 is then the first to learn that the bank cannot be met:
+# MEASURED, Ulfsland regen, T2-temple-brgs1-x01 -- a flat deck at y 52.757 over
+# ground at 27.7 m, 25 m up, planned, built to the road's own bench and
+# refused at the deck.  `boardwalk.terminal_landing_reach_m` is the ONE
+# statement of how far below its datum a deck can land (a landing's rows, the
+# bank step, and what the span itself gives back above the clearance floor);
+# asked here of the GENERATED field at the landing's own rows, taking the
+# HIGHEST ground they meet -- the most the builder could be offered -- so a
+# refusal here is one the builder could not have answered.
+# NEUTER `_TERMINAL_LANDING_PLAN_MODE = "kept"`: the leg is planned with the
+# crossing and the refusal waits for step 6.5.  Proven by
+# `selftest_terminal_landing_plan`.
+TERMINAL_LANDING_PLAN_DEPENDS_ON = ("the_decks_own_landing_reach",
+                                    "the_generated_ground_at_its_rows")
+_TERMINAL_LANDING_PLAN_MODE = "refused"    # refused | kept
+
+
+def terminal_landing_rejection(seg: dict, fld) -> dict | None:
+    """The plan's refusal of `seg`, or None: a crossing recorded at a terminal
+    bank (`terminal_banks`) whose deck stands further above the highest
+    generated ground its landing can meet than a deck can land
+    (TERMINAL_LANDING_PLAN_DEPENDS_ON)."""
+    if _TERMINAL_LANDING_PLAN_MODE != "refused":
+        return None
+    rows = []
+    for c in seg.get("crossings") or ():
+        H = c.get("required_deck_y")
+        if H is None:
+            continue
+        ax, az = (float(v) for v in c["bank_a"]["xz"])
+        bx, bz = (float(v) for v in c["bank_b"]["xz"])
+        length = math.hypot(bx - ax, bz - az)
+        if length <= 0.0:
+            continue
+        ux, uz = (bx - ax) / length, (bz - az) / length
+        for end in c.get("terminal_banks") or ():
+            sign = 1.0 if end == "bank_b" else -1.0
+            x0, z0 = (float(v) for v in c[end]["xz"])
+            ground = [float(fld.bilinear(x0 + sign * ux * k,
+                                         z0 + sign * uz * k))
+                      for k in range(0, boardwalk.LAND_DESCENT_MAX_TILES + 2)]
+            reach = boardwalk.terminal_landing_reach_m(c)
+            gap = float(H) - max(ground)
+            if gap > reach + 1e-6:
+                rows.append(dict(crossing_id=c["crossing_id"], bank=end,
+                                 deck_y=float(H), highest_ground_y=round(
+                                     max(ground), 3),
+                                 gap_m=round(gap, 3), reach_m=round(reach, 3),
+                                 span_m=c.get("span_m")))
+    if not rows:
+        return None
+    w = max(rows, key=lambda r: r["gap_m"])
+    return {
+        "why": f"{w['crossing_id']} {w['bank']} is its segment's own end and "
+               f"its deck stands at y {w['deck_y']:.3f} m, {w['gap_m']:.3f} m "
+               f"above the highest generated ground {w['highest_ground_y']:.3f}"
+               f" m its landing can meet; a deck lands {w['reach_m']:.3f} m "
+               f"at most (boardwalk.terminal_landing_reach_m: "
+               f"{boardwalk.LAND_DESCENT_MAX_TILES} rows at "
+               f"{boardwalk.LAND_TILE_STEP_M} m, the bank step, and what the "
+               f"span gives back above the clearance floor). That is a slope "
+               f"or open water, not a shore: re-route so the road reaches "
+               f"it, or end the road on its near bank.",
+        "terminal_landing": rows,
+        "depends_on": list(TERMINAL_LANDING_PLAN_DEPENDS_ON),
+    }
+
+
 def build_past_drowned(build) -> tuple[dict, dict, dict | None]:
     """`build()`, or -- when it is refused for a drowned footprint within a
     terminal trim of one end -- the shortest trimmed build that stands:
@@ -2361,7 +2461,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # Fresh42 T1-portalhub-temple with its fords already bridged: 179 of the
     # 274 samples `ribbon.water_sign` still refuses are CARRIAGEWAY-BAND, on
     # stations `t` called dry.  See `route.WET_DEPENDS_ON`.
-    tw0_lo, _tw0_hi, tw0_off = transverse_window(fld, pts, width_m)
+    tw0_lo, tw0_hi, tw0_off = transverse_window(fld, pts, width_m)
     if tw0_off:
         i0, lat0, x0, z0 = tw0_off[0]
         raise ValueError(
@@ -2380,6 +2480,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # level run are pinned at its datum below, so the detector is asked
     # about them with the freeboard-only wetness taken off.
     abut_windows = []
+    abut_released = []
     for which, node_id in (("a", edge["a"]), ("b", edge["b"])):
         node = specmod.NODES[node_id]
         if node.get("level_y") is None:
@@ -2388,6 +2489,23 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
             sel = np.nonzero(s <= s[0] + BANK_LEVEL_M)[0]
         else:
             sel = np.nonzero(s >= s[-1] - BANK_LEVEL_M)[0]
+        # ABUTMENT_TRIMMED_END_DEPENDS_ON: an end the terminal trim moved off
+        # its node, whose bench the clamp cannot hold at the datum, is an
+        # ordinary road end.
+        cut = int((trim or {}).get(which, 0))
+        if cut > 0 and _ABUTMENT_TRIMMED_END_MODE == "released":
+            held = float(np.max(np.maximum(
+                np.abs(float(node["level_y"]) - tw0_lo[sel]),
+                np.abs(float(node["level_y"]) - tw0_hi[sel]))))
+            if held > routemod.CUT_FILL_MAX:
+                abut_released.append({
+                    "node": node_id, "end": which,
+                    "level_y": float(node["level_y"]),
+                    "stations_trimmed": cut,
+                    "worst_cut_fill_m": round(held, 3),
+                    "clamp_m": routemod.CUT_FILL_MAX,
+                    "depends_on": list(ABUTMENT_TRIMMED_END_DEPENDS_ON)})
+                continue
         abut_windows.append((which, node_id, float(node["level_y"]),
                              int(sel.min()), int(sel.max())))
     fit1 = routemod.fit_profile(t, s, g_max)
@@ -2849,6 +2967,8 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
         rec["water_ceiling"] = ceiling_rec
     if trim_rec is not None:
         rec["water_trim"] = trim_rec
+    if abut_released:
+        rec["abutments_released"] = abut_released
     if terminal is not None:
         # TERMINAL_REACH_DEPENDS_ON: the end the search re-snapped out of a
         # pocket only keep-outs close, and how far from its node it stands.
@@ -4946,6 +5066,8 @@ def selftest() -> int:
     fails += selftest_terminal_crossing()
     fails += selftest_crossing_banks()
     fails += selftest_abutment_bench()
+    fails += selftest_abutment_released()
+    fails += selftest_terminal_landing_plan()
     fails += selftest_span_bed()
     fails += selftest_owner_cause()
     fails += selftest_pad_cliff_verdict()
@@ -6899,6 +7021,155 @@ def selftest_abutment_bench() -> int:
     return fails
 
 
+def _ar_field(top: float) -> "fieldmod.Field":
+    """A hilltop at `top` m to x = 60, a 1 m/m fall to a 28 m channel at
+    x = 72 -- the T2-temple-brgs1 shape (a cliff above the shore a declared
+    abutment node stands on)."""
+    half, n = 120.0, 240
+    ax = -half + 0.5 + np.arange(n, dtype=np.float64)
+    X, Z = np.meshgrid(ax, ax)
+    h = np.where(X < 60.0, top,
+                 np.where(X < 72.0, top - (X - 60.0) * (top - 28.0) / 12.0,
+                          28.0))
+    return fieldmod.Field("ar-hill", 0.0, 0.0, half, 1.0, n,
+                          h.astype(np.float32),
+                          np.ones((n, n), dtype=np.uint8))
+
+
+def selftest_abutment_released() -> int:
+    """ABUTMENT_TRIMMED_END_DEPENDS_ON, both named dependencies both ways,
+    through `build_segment` on a hill built in code.  Two declared nodes are
+    added to `spec.NODES` for the call and removed after."""
+    fails = 0
+
+    def want(label, got, expect):
+        nonlocal fails
+        ok = got == expect
+        fails += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}: {got}"
+              + ("" if ok else f"  EXPECTED {expect}"))
+
+    edge = {"id": "AR", "a": "ar-far", "b": "ar-abutment", "cls": "trunk",
+            "pri": 3}
+    specmod.NODES["ar-abutment"] = {
+        "island": "ab", "patch": "ab", "kind": "abutment", "level_y": 30.6,
+        "xz": (80.0, 0.0), "ground_y": 28.0}
+    specmod.NODES["ar-far"] = {"island": "ab", "patch": "ab",
+                               "kind": "extremity", "xz": (0.0, 0.0)}
+    line = [[float(x), 0.0] for x in range(0, 82, 2)]
+
+    def built(top, trim, mode):
+        global _ABUTMENT_TRIMMED_END_MODE
+        was = _ABUTMENT_TRIMMED_END_MODE
+        _ABUTMENT_TRIMMED_END_MODE = mode
+        try:
+            fld = _ar_field(top)
+            return build_segment(fld, edge, _ww_corridor(fld), [],
+                                 fixed_pts=line, census=None, joint={},
+                                 trim=trim)
+        finally:
+            _ABUTMENT_TRIMMED_END_MODE = was
+
+    def read(rec):
+        return dict(
+            pinned=[(a["end"], a["within_clamp"]) for a in rec["abutments"]],
+            released=[(a["end"], a["worst_cut_fill_m"])
+                      for a in rec.get("abutments_released", [])],
+            end_y=rec["profile_y"][-1])
+    try:
+        kept = built(40.0, None, "released")
+        rel = built(40.0, {"b": 16}, "released")
+        pin = built(40.0, {"b": 16}, "pinned")
+        low_rel = built(33.0, {"b": 16}, "released")
+        low_pin = built(33.0, {"b": 16}, "pinned")
+    finally:
+        del specmod.NODES["ar-abutment"], specmod.NODES["ar-far"]
+    print("case: the terminal trim moved the end onto a 40 m hilltop, 9.4 m "
+          "from the node's 30.6 m datum (REQUIRED: the pin the clamp cannot "
+          "hold is released, recorded, and the road ends at the ground)")
+    want("released and recorded, the end follows the hill",
+         read(rel), dict(pinned=[], released=[("b", 9.4)], end_y=40.0))
+    want("NEUTER trimmed_end=pinned (the shipped pin): 9.4 m outside the "
+         "clamp, the hilltop dug to the datum",
+         (read(pin)["pinned"], read(pin)["released"],
+          read(pin)["end_y"] < 33.0),
+         ([("b", False)], [], True))
+    print("case: the trimmed end is only 2.4 m from the datum (REQUIRED: a "
+          "pin the clamp CAN hold is never released)")
+    want("held in both modes", (read(low_rel), read(low_pin)),
+         (dict(pinned=[("b", True)], released=[], end_y=30.6),
+          dict(pinned=[("b", True)], released=[], end_y=30.6)))
+    print("case: no trim -- the line still ends AT its node (REQUIRED: the "
+          "pin stays, however hard)")
+    want("pinned, within the clamp over the water", read(kept)["pinned"],
+         [("b", True)])
+    print(f"abutment-released selftest: {fails} failed")
+    return fails
+
+
+def selftest_terminal_landing_plan() -> int:
+    """TERMINAL_LANDING_PLAN_DEPENDS_ON, both named dependencies both ways,
+    on a crossing recorded in code: 30 m from (20, 0) to (50, 0) at deck y
+    36.0 over a field whose ground beyond the far bank is set per case."""
+    fails = 0
+
+    def want(label, got, expect):
+        nonlocal fails
+        ok = got == expect
+        fails += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}: {got}"
+              + ("" if ok else f"  EXPECTED {expect}"))
+
+    half, n = 120.0, 240
+    ax = -half + 0.5 + np.arange(n, dtype=np.float64)
+    X, Z = np.meshgrid(ax, ax)
+
+    def verdict(beyond: float, terminal=("bank_b",), mode="refused",
+                descent="span") -> str:
+        global _TERMINAL_LANDING_PLAN_MODE
+        fld = fieldmod.Field("tl", 0.0, 0.0, half, 1.0, n,
+                             np.where(X < 49.0, 36.0, beyond).astype(
+                                 np.float32),
+                             np.ones((n, n), dtype=np.uint8))
+        seg = {"crossings": [{
+            "crossing_id": "FIX-tl-x01", "span_m": 30.0,
+            "required_deck_y": 36.0, "terminal_banks": list(terminal),
+            "bank_a": {"xz": [20.0, 0.0]}, "bank_b": {"xz": [50.0, 0.0]}}]}
+        was, was_d = (_TERMINAL_LANDING_PLAN_MODE,
+                      boardwalk._TERMINAL_DESCENT_MODE)
+        _TERMINAL_LANDING_PLAN_MODE = mode
+        boardwalk._TERMINAL_DESCENT_MODE = descent
+        try:
+            got = terminal_landing_rejection(seg, fld)
+        finally:
+            _TERMINAL_LANDING_PLAN_MODE = was
+            boardwalk._TERMINAL_DESCENT_MODE = was_d
+        return ("kept" if got is None
+                else f"REJECTED gap {got['terminal_landing'][0]['gap_m']} "
+                     f"> reach {got['terminal_landing'][0]['reach_m']}")
+
+    print("case: a shore 1.2 m under the deck (REQUIRED: a landing meets it)")
+    want("kept", verdict(34.8), "kept")
+    print("case: ground 5.0 m under the deck -- past a landing alone (3.05 "
+          "m), inside what the span gives back above the clearance floor "
+          "(REQUIRED: kept, because the builder descends in the span too)")
+    want("kept", verdict(31.0), "kept")
+    want("NEUTER descent=landing: the plan asks a shorter reach than the "
+         "builder has", verdict(31.0, descent="landing"),
+         "REJECTED gap 5.0 > reach 3.05")
+    print("case: ground 24 m under the deck -- a hillside no deck lands "
+          "(T2-temple-brgs1: 52.757 over 27.7; REQUIRED: refused with its "
+          "numbers)")
+    want("rejected", verdict(12.0), "REJECTED gap 24.0 > reach 6.55")
+    want("NEUTER terminal_landing=kept (the shipped plan): the leg is "
+         "planned and 6.5 learns it", verdict(12.0, mode="kept"), "kept")
+    print("case: the same hillside at a bank the road is meant to bench "
+          "(REQUIRED: not this check's -- the road's own refusal)")
+    want("kept", verdict(12.0, terminal=()), "kept")
+    print(f"terminal-landing-plan selftest: {fails} failed")
+    return fails
+
+
 def _sb_ground(X, Z):
     """A 20 m channel (28.5 m, under the plane) between two 33.0 m banks."""
     return np.where((X >= 30.0) & (X < 50.0), 28.5, 33.0)
@@ -8136,6 +8407,15 @@ def main() -> int:
             rejected.append({"id": seg["id"], **seg["rejected"]})
             keep_for_census(seg["id"], patch, seg["nodes"], "span")
             print(f"{seg['id']:22s} p{seg['pri']} REJECTED: {seg['rejected']['why']}")
+            return
+        # A TERMINAL CROSSING NO LANDING CAN MEET IS A REJECTED SEGMENT, with
+        # its number -- see `terminal_landing_rejection`.
+        rej = terminal_landing_rejection(seg, fld_p)
+        if rej is not None:
+            seg["rejected"] = rej
+            rejected.append({"id": seg["id"], **rej})
+            keep_for_census(seg["id"], patch, seg["nodes"], "terminal landing")
+            print(f"{seg['id']:22s} p{seg['pri']} REJECTED: {rej['why']}")
             return
         # AN UNCENSUSED STATION IS A REJECTED SEGMENT.  This is the check that
         # would have caught the ordering defect: it compares the FINISHED line

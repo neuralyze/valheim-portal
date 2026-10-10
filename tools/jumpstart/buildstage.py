@@ -540,7 +540,7 @@ def _av_bodies(rt: Runtime, unit: str) -> list[list[str]]:
         # `--actor` is whoever runs this, not a word the module chose.
         module, tail = _declared_builder(declared[unit])
         return [[PY, str(HERE / "settlements" / module), *tail,
-                 "--actor", rt.actor,
+                 "--site", unit, "--actor", rt.actor,
                  "--report", str(rt.work / "build" / "declared"
                                  / f"{unit}.json")]
                 + (["--dry"] if rt.dry else [])]
@@ -2933,16 +2933,17 @@ def _declared_site_unit_case() -> bool:
             else:
                 os.environ[worldseed.PLAN_ENV] = prior
 
-    def runs(cmds, module, tail) -> bool:
+    def runs(cmds, module, tail, unit) -> bool:
         return (len(cmds) == 1 and cmds[0][1].endswith(f"settlements/{module}")
                 and cmds[0][2] == tail
+                and cmds[0][cmds[0].index("--site") + 1] == unit
                 and cmds[0][cmds[0].index("--actor") + 1] == "Tester"
                 and "--report" in cmds[0])
 
     return (units == ["stenvik", "wt-spawn", "harbour-city-x",
                       "harbour-village-y"]
-            and runs(city, "harbour_city.py", "ubuild")
-            and runs(village, "harbour_b.py", "build")
+            and runs(city, "harbour_city.py", "ubuild", "harbour-city-x")
+            and runs(village, "harbour_b.py", "build", "harbour-village-y")
             and "--dry" not in city[0] and "--dry" in city_dry[0]
             and none == ["stenvik", "wt-spawn"])
 

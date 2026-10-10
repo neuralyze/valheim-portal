@@ -24,5 +24,21 @@
     ],
     "reason": "Fill the missing straight hip-end wood_roof at house-frame (5,8,1), between outer corners (5,8,-1) and (5,8,3). This closes source-local enclosed deck column (3.5,0,2.5), without roofing the central smoke slot or smelter outlets. Original corpus bytes and licence unchanged; one newly authored panel only.",
     "measured_before": "Shelter: 1 inside-and-open deck column of 375; 118 open total. The other 117 are 107 terrace, 9 openings narrower than the walker, and 1 walled sample outside the roof line. Roof_skin has no discontinuities."
+  },
+  "hs_blackforest_tester_meadows_log_cabin.blueprint": {
+    "source_sha256": "362fa6df7ca5b324d211663f30a89667b07c931380167e035e34c450a70272b9",
+    "addition": "repairs/hs_blackforest_tester_meadows_log_cabin-tower-brace.blueprint",
+    "addition_sha256": "8cec78bc0b2162d941ffcb871547fc94c040f1e4c85a6938f1986e8a26d509a6",
+    "author": "Jumpstart",
+    "reason": "Close the open pole storey on the south face of the log cabin's south-east tower with one wood_beam_45 cross-brace between its corner poles and head beam, offset 0.15 m outside the pole plane so the brace bridges the whole face including both corners. The tower cap stood 4.4 m above the roof beside it with nothing between. Verified by the gate's own roof_skin instrument over every yaw from 0 to 359 degrees in 1 degree steps, not only at the placed yaw: the unrepaired body had a hole at 63 of 360. Original corpus bytes and its licence remain unchanged; this asset contains one newly authored piece only.",
+    "measured_before": "Emitted at yaw 70 (vestvik-hall-1): roof_skin 1 gap, worst 4.441 m, allowance 1.274 m. Unrepaired, 63 of 360 whole-degree yaws carry one."
+  },
+  "hs_blackforest_kin_01_woodhouse.blueprint": {
+    "source_sha256": "19d4b35a177f0e69c096a35da974968588e3c1563e9955909821a1329de626e9",
+    "addition": "repairs/hs_blackforest_kin_01_woodhouse-porch-fascia.blueprint",
+    "addition_sha256": "955aacd12ee4f3127a44ed8471cefda781f50ac601594ab1fe822771c6393c39",
+    "author": "Jumpstart",
+    "reason": "Close the porch roof cap's two gable ends. The cap's eave stands about a metre below the main roof's overhang with nothing between them at either end; one wood_wall_log fascia per end, running out from the front wall under the cap's eave, fills that gap across the full 0.5 m the gate's lattice can straddle. Verified by the gate's own roof_skin instrument over every yaw from 0 to 359.5 degrees in half-degree steps: the unrepaired body had a hole at 24 of 720. Original corpus bytes and its licence remain unchanged; this asset contains newly authored pieces only.",
+    "measured_before": "Emitted at yaw 80 (stenvik-house-1 and -2): roof_skin 1 gap, worst 1.205 m, allowance 1.179 m. Unrepaired, 24 of 720 half-degree yaws carry one."
   }
 }

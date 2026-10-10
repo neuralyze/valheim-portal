@@ -112,7 +112,8 @@ for _p in (JUMPSTART, JUMPSTART / "settlements", JUMPSTART / "crossings",
 import assemble as A        # noqa: E402  crossings/
 import harbour_city as HC   # noqa: E402
 import water as W           # noqa: E402
-import structures as _ST    # noqa: E402  roads/, for CREATURE
+import terrace as TR        # noqa: E402  the landing and the shared terrace write
+import applied as AP        # noqa: E402  roads/, whose ground is whose
 import waterfront as WF     # noqa: E402
 
 ACTOR = "HarbourBVillage"
@@ -157,50 +158,16 @@ SMALL_BAY = dict(clear=10.0, length=14.0, need_m=2.45,
 # is not "no write", it is a hall with 4.7 m of hillside through its floor.
 BODY_CUT_MAX_M = 2.0
 
-# WHERE THE ROAD ARRIVES, and the one number this village owes it.
-#
-# `RoadsConnect` built R2-ulfsgard-harbourb (ledger seq 2916 observe, 2918
-# terrain_write) with BOTH ENDS PINNED and its own words for the south end
-# are: "end 38.219, the levelled floor of HarbourBVillage's pad
-# sudrvik-fjordhead-12 at (1210,559.7)".  So the road was profiled to a
-# height THIS MODULE chose and has not yet cut.
-#
-# MEASURED on the applied surface (`waterfront.Surface`, seed field unioned
-# with every terrain blob in the ledger in file order), 2026-09-19:
-#   (1210, 559.7)  38.219   the road's own ribbon, already graded, 6.0 m wide
-#                           over x 1207..1213 and flat from z 558.0 south
-#   (1210, 556.0)  39.391   natural ground
-#   (1210, 555.0)  39.632   natural ground, the crest
-# and pad `sudrvik-fjordhead-12` is centred (1210, 550) at 15.6 x 11.4, so it
-# levels z 544.3..555.7 and STOPS 2.3 m short of the ribbon.  Building only
-# the thirteen body pads would therefore leave a 1.23 m berm standing between
-# the last road station and the street it was pinned to: the road arrives at
-# a datum, and nobody is standing on it.  That is the defect this project
-# names as "arrive at a datum nobody has", at village scale.
-#
-# So the village lays a STREET HEAD: one more terrace, no building on it,
-# levelled to the road's own pinned datum and overlapping BOTH the pad it
-# extends and the ribbon it meets.  12.0 m wide for a 6.0 m carriageway is
-# 3.0 m of verge either side; z 553.0..561.0 overlaps pad 12 by 2.7 m and
-# runs 1.3 m past the last station so the station is not sitting on the
-# lattice edge of its own pad.  MEASURED over that rectangle on the applied
-# surface at 0.5 m: worst cut 1.500 m at (1216, 557), worst fill 1.017 m,
-# both inside BODY_CUT_MAX_M.  The wider alternative - extending pad 12
-# itself to z 560 at its full 15.6 m width - was REFUSED with its number:
-# worst cut 2.193 m at the east corner, over the 2.0 m ceiling.
-ROAD_ARRIVAL = dict(
-    id="sudrvik-roadhead",
-    road="R2-ulfsgard-harbourb",
-    ledger_seq=[2916, 2918],
-    station=[1210.0, 559.7],
-    datum_y=38.219,
-    pad=[12.0, 8.0],
-    centre=[1210.0, 557.0],
-    extends="sudrvik-fjordhead-12",
-    why=("the road's last station was pinned to pad sudrvik-fjordhead-12's "
-         "floor but lands 4.0 m outside that pad; without this street head a "
-         "1.23 m berm stands between the carriageway and the village"),
-)
+# WHERE THE ROAD ARRIVES is NOT a number this module owns.  It used to be: a
+# "street head" pinned to a ledger seq, a station and a datum (38.219 m) read
+# off ANOTHER world's chain, so on any regeneration the village refused for a
+# road that was never built to that number (`REFUSING sudrvik-roadhead:
+# sudrvik-fjordhead-12 now levels to 34.103 m but R2 was profiled to 38.219 m
+# (ledger seq 2916)` -- seq 2916 of a ledger that no longer exists).  What a
+# declared site owes its roads is its LANDING: the rectangle
+# `harbour_site.measure` publishes (`declared_sites[].landing_pad`), which the
+# roads are routed to, built here by `settlements/terrace.py` as one more
+# terrace and measured against the roads that actually arrive.
 
 # The quarters, as rectangles of interest over the ground the pad census says
 # is there: 24 m pads within 20 m of water cluster at (1136, 544-556),
@@ -789,7 +756,8 @@ def fit_village(s, q: dict, mix: list[str], taken: list[dict], *,
                 cut_max: float = BODY_CUT_MAX_M, lattice: float = 2.0,
                 keepout: list[dict] | None = None,
                 cap: dict[str, int] | None = None,
-                gate=None) -> tuple[list[dict], dict]:
+                gate=None,
+                road_ground: set | None = None) -> tuple[list[dict], dict]:
     """`harbour_city.fit_quarter` with the terrace ceiling as the clamp.
 
     The only change from that function is the cut ceiling: it accepts
@@ -800,7 +768,7 @@ def fit_village(s, q: dict, mix: list[str], taken: list[dict], *,
     """
     out: list[dict] = []
     why = dict(clamp=0, wet=0, collide=0, keepout=0, piece_reach=0,
-               offpatch=0, placed=0)
+               offpatch=0, road_ground=0, placed=0)
     grid = HC.Grid(s, (q["x"][0] + q["x"][1]) / 2.0,
                    (q["z"][0] + q["z"][1]) / 2.0)
     used: dict[str, int] = {}
@@ -846,6 +814,18 @@ def fit_village(s, q: dict, mix: list[str], taken: list[dict], *,
                 # at 30.59 m with a 32.0 m reach against a 15.13 m cylinder,
                 # room -2.41 m -- after its `zones_generate` had already run.
                 # So the design uses the write-time geometry.
+                # A PAD IS NOT WRITTEN OVER A CARRIAGEWAY.  `road_ground` is
+                # every sample a road AUTHORED in this quarter's zones, read
+                # off the chain (`terrace.road_ground_samples`); a seat whose
+                # levelled rectangle (and the 1 m the engine's bilinear blend
+                # spreads over) stands on one is not a seat.  MEASURED on the
+                # first offline build of this village after the regeneration:
+                # without it two terraces re-authored 165 samples of R2.
+                if road_ground and TR.touches(road_ground, cx, cz,
+                                              pad["w"], pad["d"]):
+                    why["road_ground"] += 1
+                    cx += lattice
+                    continue
                 clear_r = math.hypot(pad["w"], pad["d"]) / 2.0 + 2.0
                 if keepout and any(
                         math.hypot(cx - k["x"], cz - k["z"]) < k["r"] + clear_r
@@ -895,106 +875,6 @@ def terrace_units(seats: list[dict]) -> list[dict]:
             cut_needed_m=pad["cut_needed_m"],
             min_h=pad["min_h"], max_h=pad["max_h"], samples=pad["samples"]))
     return out
-
-
-def road_head_unit(s, units: list[dict]) -> dict:
-    """The street head that meets R2's last station, MEASURED, or a refusal.
-
-    This unit carries no building.  It exists because the road's south end
-    was pinned to a pad height and lands outside that pad, and a terrace that
-    does not reach the station it was quoted to is a datum nobody stands on.
-
-    The pad it extends must actually be there and must actually be at the
-    datum the road was pinned to; if the fitter ever moves or re-heights
-    `sudrvik-fjordhead-12` this refuses rather than levelling a street to a
-    height the road no longer arrives at.
-    """
-    ra = ROAD_ARRIVAL
-    host = next((u for u in units if u["id"] == ra["extends"]), None)
-    if host is None:
-        raise SystemExit(
-            f"REFUSING {ra['id']}: pad {ra['extends']} is not in this "
-            f"design, so the height R2 was pinned to ({ra['datum_y']} m, "
-            f"ledger seq {ra['ledger_seq'][0]}) is not a height this village "
-            f"builds. Re-pin the road or re-solve the quarter; do not level "
-            f"a street to a number nothing else holds.")
-    if abs(host["target_y"] - ra["datum_y"]) > 1e-6:
-        raise SystemExit(
-            f"REFUSING {ra['id']}: {ra['extends']} now levels to "
-            f"{host['target_y']} m but R2 was profiled to {ra['datum_y']} m "
-            f"(ledger seq {ra['ledger_seq'][0]}). A street head built to the "
-            f"new number would leave the road "
-            f"{abs(host['target_y'] - ra['datum_y']):.3f} m out at its last "
-            f"station.")
-    cx, cz = ra["centre"]
-    w, d = ra["pad"]
-    hs, step = [], 0.5
-    x = cx - w / 2
-    while x <= cx + w / 2 + 1e-9:
-        z = cz - d / 2
-        while z <= cz + d / 2 + 1e-9:
-            hs.append(s.at(x, z)[0])
-            z += step
-        x += step
-    cut = max(hs) - ra["datum_y"]
-    fill = ra["datum_y"] - min(hs)
-    if cut > BODY_CUT_MAX_M:
-        raise SystemExit(
-            f"REFUSING {ra['id']}: the street head needs a {cut:.3f} m cut "
-            f"over {len(hs)} samples against a {BODY_CUT_MAX_M} m ceiling. "
-            f"Narrow the carriageway verge or re-route the road's last "
-            f"stations; do not raise the ceiling for one pad.")
-    return dict(
-        id=ra["id"], prefab=None, road_head=True,
-        x=cx, z=cz, yaw=0.0, body_x=cx, body_z=cz,
-        pad_w=w, pad_d=d, foot_w=w, foot_d=d,
-        target_y=ra["datum_y"], ground_y=ra["datum_y"],
-        cut_needed_m=round(cut, 3), fill_needed_m=round(fill, 3),
-        min_h=round(min(hs), 3), max_h=round(max(hs), 3), samples=len(hs),
-        station=ra["station"], extends=ra["extends"], why=ra["why"])
-
-
-def placements_doc(units: list[dict]) -> dict:
-    """The document `clearing/area.py` and `terraform/flatten.py` read.
-
-    Only the fields those two consume are synthesised, and each is this
-    module's own measurement rather than a restatement of a requirement.
-    """
-    import clearance  # noqa: PLC0415
-    import build as BB  # noqa: PLC0415
-    loc = clearance.load(BB.locations_dump())
-    places = []
-    for u in units:
-        near = loc.nearest(u["x"], u["z"])
-        places.append({
-            "id": u["id"],
-            # The street head has no blueprint because nothing is built on
-            # it; `flatten.pad_extent` and `clearing.area` read the pad from
-            # `footprint_orientation` and never look at the blueprint, so
-            # naming one that does not exist would be the fiction.
-            "blueprint": u["prefab"] or "none - levelled ground only",
-            "pieces": 0 if u.get("road_head") else 1,
-            "sha256": "", "align": "floor-center",
-            "rotation": {"yaw": u["yaw"]},
-            "requirement": {"biome": "Meadows",
-                            "footprint_m": max(u["pad_w"], u["pad_d"]),
-                            "footprint_xz_m": [u["pad_w"], u["pad_d"]]},
-            "solved": {
-                "seed": "Pirate68", "x": u["x"], "z": u["z"],
-                "y": u["ground_y"],
-                "footprint_orientation":
-                    f"{u['pad_w']:g} m along x by {u['pad_d']:g} m along z",
-                "flatten_cost": {"target_y": u["target_y"],
-                                 "resolution_m": 1.0, "estimated": False},
-                "nearest_location_m": near["dist_m"],
-                "nearest_location": near["prefab"],
-                "nearest_location_standoff_m": near["standoff_m"]},
-            "settlement": {"site": SITE,
-                           "role": ("street_head" if u.get("road_head")
-                                    else "town_body"),
-                           "patch": "villB"},
-        })
-    return {"world": "Ulfsland", "settlement": SITE, "placements": places}
 
 
 # ---------------------------------------------------------------------------
@@ -1093,9 +973,31 @@ def design(s) -> dict:
     #     inference from a distance.
     # The live marker distances are still REPORTED per seat, because a
     # screen's output is evidence even when it is not a verdict.
+    # THE LANDING IS THE FIRST THING THE VILLAGE RESERVES: the square its
+    # roads arrive on (`harbour_site.measure` published it, the roads were
+    # routed to it), so no body seat may share it, and the ground those roads
+    # authored is read off the chain so no seat is written over a carriageway.
+    landing = TR.landing_unit(TR.declared_record(SITE))
+    reserved = [dict(cx=landing["x"], cz=landing["z"], rw=landing["pad_w"],
+                     rd=landing["pad_d"])]
+    qx0 = min(q["x"][0] for q in QUARTERS)
+    qx1 = max(q["x"][1] for q in QUARTERS)
+    qz0 = min(q["z"][0] for q in QUARTERS)
+    qz1 = max(q["z"][1] for q in QUARTERS)
+    import tcdata as _TC            # noqa: PLC0415  terraform/
+    zx0, zz0 = _TC.zone_of(qx0 - 2.0, qz0 - 2.0)
+    zx1, zz1 = _TC.zone_of(qx1 + 2.0, qz1 + 2.0)
+    road_ground = TR.road_ground_samples(
+        AP.Applied(actor=ACTOR),
+        [(zx, zz) for zx in range(zx0, zx1 + 1) for zz in range(zz0, zz1 + 1)])
+    out["road_ground"] = dict(
+        samples=len(road_ground), zones=(zx1 - zx0 + 1) * (zz1 - zz0 + 1),
+        why=("every sample a road AUTHORED (`roads/applied.py::Applied.zone` "
+             "`author`) in the zones the quarters span, off the chain"))
     for q in QUARTERS:
-        seats, why = fit_village(s, q, HC.MIX_VILLAGE, taken,
-                                 cap=HC.CAP_VILLAGE, keepout=None, gate=_gate)
+        seats, why = fit_village(s, q, HC.MIX_VILLAGE, reserved + taken,
+                                 cap=HC.CAP_VILLAGE, keepout=None, gate=_gate,
+                                 road_ground=road_ground)
         for st in seats:
             near = min(((math.hypot(st["cx"] - k["x"], st["cz"] - k["z"]), k)
                         for k in keep), default=(None, None))
@@ -1113,9 +1015,8 @@ def design(s) -> dict:
             pl.add(st["prefab"], st["x"], st["y"], st["z"], st["yaw"],
                    f"sudrvik/body/{qq['id']}")
     out["bodies"] = sum(len(q["seats"]) for q in quarters)
-    units = terrace_units(taken)
-    units.append(road_head_unit(s, units))
-    out["road_head"] = units[-1]
+    units = [landing] + terrace_units(taken)
+    out["landing"] = landing
     out["_units"] = units
     out["terraces"] = [dict(id=u["id"], x=u["x"], z=u["z"],
                             pad=[u["pad_w"], u["pad_d"]],
@@ -1168,6 +1069,14 @@ def design(s) -> dict:
     pl.rows = keep_rows
     out["duplicate_rows_dropped_total"] = dropped
 
+    clash = TR.pieces_on_landing(pl.rows, landing)
+    if clash:
+        raise SystemExit(
+            f"REFUSING {SITE}: {len(clash)} planned piece(s) stand on its "
+            f"landing {landing['id']} ({landing['pad_w']:g} m square at "
+            f"({landing['x']:g}, {landing['z']:g})), e.g. {clash[:3]}. The "
+            f"landing is levelled before any piece stands; re-solve the "
+            f"design off it.")
     out["_plan"] = pl
     out["plan_pieces"] = pl.counts()
     out["plan_total"] = len(pl)
@@ -1178,14 +1087,14 @@ def design(s) -> dict:
     # to write for 294 m, and a single disc round a 46 m ragged quay is that
     # same mistake at a smaller scale.  The deck is covered by a greedy
     # 10 m-separated cover of 7 m discs over its OWN tile positions.
-    # The STREET HEAD is deliberately NOT in the keep-out. It is levelled
+    # The LANDING is deliberately NOT in the keep-out. It is levelled
     # ground with nothing standing on it, and it exists precisely so a road
     # can arrive there; a disc over it would tell the next router to avoid
     # the one square of this village that was built for it.
     ko = [dict(x=u["x"], z=u["z"],
                r=round(max(u["pad_w"], u["pad_d"]) / 2.0 + 4.0, 2),
                what=f"village body {u['id']} ({u['prefab']})")
-          for u in units if not u.get("road_head")]
+          for u in units if not u.get("landing")]
     bhx = out["boathouse"]["x"]
     bhz = out["boathouse"]["z"]
     ko.append(dict(x=round((bhx[0] + bhx[1]) / 2.0, 2),
@@ -1430,72 +1339,11 @@ def ledger_preflight(expect_sha: str | None) -> dict:
     return rep
 
 
-# CREATURES ARE NOT BLOCKERS AND THEY ARE NOT CLEARABLE EITHER.
-#
-# `build.py::cylinder_contents` splits a cylinder's contents into the MEASURED
-# natural set (`NATURAL_RE`, which is vegetation, rock, pickables and
-# deadfall) and everything else, and stops the build on "everything else".
-# That is exactly right for its hazard - `objects_remove` deleting a POI's
-# pieces is the one damage class this project calls unrepairable - and it is
-# wrong about ANIMALS, which are the third thing a cylinder can hold.
-#
-# MEASURED on this site's first live pre-flight, 13 seats: five were refused
-# by `{'Deer': 2, 'Neck': 1, 'Seagal': 1}`, `{'Boar': 1}`, `{'Seagal': 1}` and
-# two `{'Greyling': 1}`. A seagull is not a location piece. It is not deleted
-# either - `scoped_clear` names only the prefabs in the clearable set, so a
-# creature is never in the removal command - and it will have walked away
-# before the first `wood_floor` lands. Refusing a permanent village seat on a
-# bird's position at census time is a check answering a question it is not
-# measuring.
-#
-# The list is EXPLICIT and exact-match rather than a prefix rule, for one
-# measured reason: `goblin_bed` is a PIECE and a prefix rule on "goblin"
-# would have waved through the mod farmhouse at `sudrvik-austrbakki-9`,
-# which is a real blocker holding 6 `wood_floor`, 7 `wood_roof_45`, 7
-# `wood_wall_half`, a `goblin_bed`, a `Music_MeadowsVillageFarm` and a
-# `LocationProxy`. A wrong entry here does not delete anything; it builds on
-# top of something. So it is kept tight.
-# The canonical set lives in `roads/structures.py::CREATURE` and is extended
-# here rather than re-invented, because a second list of the same thing is a
-# second thing that can disagree with the first. That module's index is
-# deliberately exhaustive-or-error: `classify()` RAISES on an unknown prefab
-# rather than defaulting it, "because defaulting it would put a building in
-# NATURE or a tree in STRUCTURE". Its creature set was built from a road
-# corridor census, so it holds the Meadows/BlackForest wanderers and not the
-# ones a shoreline census turns up - `Seagal` and `Boar_piggy` came out of
-# MINE and are added with that provenance.
-MOBILE = frozenset(_ST.CREATURE) | frozenset({
-    "Seagal", "Boar_piggy", "Hare", "Greydwarf_Elite", "Greydwarf_Shaman",
-    "Skeleton_NoArcher", "Ghost", "Blob", "BlobElite", "Leech", "Troll",
-    "Wolf", "Wolf_cub", "Fenring", "Draugr", "Draugr_Elite", "Draugr_Ranged",
-    "Surtling", "Serpent", "Lox", "Lox_Calf", "Hen", "Chicken", "Goblin",
-    "GoblinBrute", "GoblinShaman", "Eikthyr",
-    "Fish1", "Fish2", "Fish3", "Fish4", "Fish5",
-})
+# `MOBILE` and `cylinder_verdict` live in `settlements/terrace.py` now: the
+# village and the city's landing read ONE classification of what a cylinder
+# may hold, not two copies that can disagree.
 
 
-def cylinder_verdict(srv, ar) -> dict:
-    """`build.py::cylinder_contents` with the THIRD category it does not have.
-
-    Three kinds of thing can be in a cylinder and they want three different
-    answers:
-      clearable  the measured natural set - named in `objects_remove`
-      mobile     creatures - neither removed nor a reason to refuse
-      blocking   anything else - a STOP, because it is a built piece
-    Reported separately, so a refusal says which.
-    """
-    import build as BB  # noqa: PLC0415
-    c = BB.cylinder_contents(srv, ar)
-    mobile = {p: n for p, n in c["not_clearable"].items() if p in MOBILE}
-    blocking = {p: n for p, n in c["not_clearable"].items()
-                if p not in MOBILE}
-    c["mobile"] = mobile
-    c["blocking"] = blocking
-    c["verdict"] = "clear" if not blocking else "VIOLATION"
-    c["method"] = (c["method"] + " Creatures are separated out: they are "
-                   "never named in the removal command and they move, so "
-                   "they are reported and not counted as blockers.")
-    return c
 def footprint_gate(srv, d: dict, label: str) -> dict:
     """WHAT ALREADY STANDS INSIDE THIS STRUCTURE'S OWN FOOTPRINT, live.
 
@@ -1532,7 +1380,7 @@ def footprint_gate(srv, d: dict, label: str) -> dict:
         key = (o["prefab"], round(o["x"], 1), round(o["z"], 1))
         if key in ours:
             continue                     # our own piece, already standing
-        if o["prefab"] in MOBILE:
+        if o["prefab"] in TR.MOBILE:
             continue
         import build as BB  # noqa: PLC0415
         if BB.NATURAL_RE.match(o["prefab"]):
@@ -1571,12 +1419,12 @@ def preflight_seats(srv, d: dict) -> dict:
     import build as BB          # noqa: PLC0415
 
     units = d["_units"]
-    doc = placements_doc(units)
+    doc = TR.placements_doc(units, SITE, "villB")
     keep, drop = [], []
     for u in units:
         place = next(p for p in doc["placements"] if p["id"] == u["id"])
         ar = clear_area.clearing_area(place, apron=BB.APRON_M)
-        contents = cylinder_verdict(srv, ar)
+        contents = TR.cylinder_verdict(srv, ar)
         row = dict(unit=u["id"], x=u["x"], z=u["z"],
                    clear_radius_m=round(ar.radius_m, 2),
                    total=contents["total"],
@@ -1608,6 +1456,19 @@ def apply_preflight(d: dict, pf: dict) -> dict:
     A SHRINK IS SILENT unless it is written down: what was dropped, how many
     pieces went with it, and why.
     """
+    landing = next((u for u in d["_units"] if u.get("landing")), None)
+    if landing is not None and any(r["unit"] == landing["id"]
+                                   for r in pf["dropped"]):
+        row = next(r for r in pf["dropped"] if r["unit"] == landing["id"])
+        raise SystemExit(
+            f"REFUSED {landing['id']}: the clearing cylinder of the landing "
+            f"its roads arrive on holds {row['blocking']}, which is neither "
+            f"in the measured natural set nor a creature. A body seat can be "
+            f"dropped; the landing cannot -- it is the ground the roads were "
+            f"routed to, and a village with no landing is a village its roads "
+            f"do not reach. Not clipped, not moved: re-site the declared "
+            f"landing (settlements/harbour_site.py) with this object as a "
+            f"keep-out.")
     if not pf["dropped"]:
         return dict(dropped=0, units_before=len(d["_units"]),
                     units_after=len(d["_units"]), rows_removed=0)
@@ -1619,9 +1480,9 @@ def apply_preflight(d: dict, pf: dict) -> dict:
                        if not (r[5].startswith("sudrvik/body/")
                                and (round(r[1], 3), round(r[3], 3)) in gone_xz)]
     d["_units"] = [u for u in d["_units"] if u["id"] in keep_ids]
-    # The street head is a terrace with no building, so it is a unit but it
+    # The landing is a terrace with no building, so it is a unit but it
     # is not a body; counting it would report 14 houses where 13 stand.
-    d["bodies"] = sum(1 for u in d["_units"] if not u.get("road_head"))
+    d["bodies"] = sum(1 for u in d["_units"] if not u.get("landing"))
     d["road_keepout"] = [k for k in d["road_keepout"]
                          if not any(k.get("what", "").startswith(
                              f"village body {u['id']} ") for u in gone)]
@@ -1635,102 +1496,23 @@ def apply_preflight(d: dict, pf: dict) -> dict:
 
 
 def terrace_stage(b, d: dict, report: dict) -> list[dict]:
-    """Per body: zones_generate -> measured cylinder -> scoped clear ->
-    terrain_write.  build.py's order, build.py's encoders, build.py's gates.
+    """Per unit -- the landing first, then the bodies -- zones_generate ->
+    measured cylinder -> scoped clear -> levelled write, through
+    `settlements/terrace.py` (build.py's order, build.py's encoders, build.py's
+    gates, plus a refusal for a write over a road's ground).
 
     A pad is levelled PER BUILDING because MEASURED no district on this seed
     fits inside TerrainComp's +/-8 m clamp, and at harbour B specifically no
     pad of any size is flat to 0.6 m.
     """
-    import area as clear_area   # noqa: PLC0415
-    import build as BB          # noqa: PLC0415
-    import clearance            # noqa: PLC0415
-    import flatten as FL        # noqa: PLC0415
-    import yaml                 # noqa: PLC0415
-
-    units = d["_units"]
-    doc = placements_doc(units)
-    BB.PLACEMENTS.mkdir(parents=True, exist_ok=True)
-    (BB.PLACEMENTS / f"{SITE}.yaml").write_text(
-        yaml.safe_dump(doc, sort_keys=False, width=10 ** 9))
-    loc = clearance.load(BB.locations_dump())
-    recs = []
-    for u in units:
-        place = next(p for p in doc["placements"] if p["id"] == u["id"])
-        ar = clear_area.clearing_area(place, apron=BB.APRON_M)
-        room = BB.clear_radius_room(loc, ar.centre_x, ar.centre_z)
-        if ar.radius_m > room["max_radius_m"]:
-            raise SystemExit(
-                f"REFUSED {u['id']}: the {ar.radius_m:.2f} m clearing "
-                f"cylinder can reach {room['binding']['why']}; the widest "
-                f"safe radius here is {room['max_radius_m']} m. Not clipped: "
-                f"re-solve the pad.")
-        ops = BB.clearing_ops(doc, u["id"])
-        gen = ops[0]
-        recs.append(b.emit(gen["op"], params=gen["params"], wire=gen["wire"],
-                           requires={"mods": ["UpgradeWorld"], "prefabs": [],
-                                     "blobs": []},
-                           expect=gen["expect"],
-                           meta={"settlement": SITE, "unit": u["id"],
-                                 "stage": "terrace"}))
-        contents = cylinder_verdict(b.srv, ar)
-        b.observe(f"contents of the clearing cylinder for {u['id']}",
-                  contents["method"], contents["tool"],
-                  {"total": contents["total"],
-                   "clearable": contents["clearable"],
-                   "mobile": contents["mobile"],
-                   "blocking": contents["blocking"],
-                   "probe": contents["probe"]},
-                  role="clearing", site_id=u["id"])
-        if contents["verdict"] != "clear":
-            raise SystemExit(
-                f"REFUSED {u['id']}: the clearing cylinder holds "
-                f"{contents['blocking']}, which is neither in the measured "
-                f"natural set nor a creature. A deleted location piece is "
-                f"the one damage class this project has recorded as "
-                f"unrepairable.")
-        if contents["clearable"]:
-            cl = BB.scoped_clear(ar, u["id"], contents)
-            recs.append(b.emit(cl["op"], params=cl["params"], wire=cl["wire"],
-                               requires={"mods": ["UpgradeWorld"],
-                                         "prefabs": [], "blobs": []},
-                               expect=cl["expect"],
-                               meta={"settlement": SITE, "unit": u["id"],
-                                     "stage": "terrace",
-                                     "piece_reach_gate": room}))
-        else:
-            b.observe(f"clearing skipped for {u['id']}",
-                      "MEASURED: the cylinder holds no clearable object, so "
-                      "`objects_remove` with an empty id list would answer "
-                      "`Error: Missing ids.` and remove nothing.",
-                      "settlements/build.py::cylinder_contents",
-                      {"total": contents["total"], "probe": contents["probe"]},
-                      role="clearing", site_id=u["id"])
-        stats, comps, op_y, patches = BB.flatten_pad(place, u["id"])
-        merged = BB.union_prior(b, comps, op_y)
-        probes = {z: BB.zone_probe(b.srv, *z) for z in comps}
-        entries, wire, blobs = BB.terrain_entries(
-            b, dict(u, pad_w=u["pad_w"], pad_d=u["pad_d"]), comps, op_y,
-            patches, probes, merged)
-        verdict = BB.sample_verdict(loc, dict(u, pad_w=u["pad_w"],
-                                              pad_d=u["pad_d"]), comps)
-        rec = BB.terrain_record(dict(u, pad_w=u["pad_w"], pad_d=u["pad_d"]),
-                                SITE, entries, wire, blobs, stats, verdict)
-        rec["meta"]["stage"] = "terrace"
-        rec["meta"]["terrace_cut_max_m"] = BODY_CUT_MAX_M
-        rec["meta"]["why_terraced"] = (
+    return TR.terrace_units(
+        b, d["_units"], SITE, "villB", report, stage="terrace",
+        cut_max_m=BODY_CUT_MAX_M,
+        why_terraced=(
             "MEASURED over 8,075 lattice centres at harbour B: not one 16, 20 "
             "or 24 m pad is flat to 0.6 m, so seating a body on the applied "
             "surface at the footprint median would stand a 20 m hall with up "
-            "to 4.7 m of hillside through its floor")
-        recs.append(b.emit(rec["op"], params=rec["params"], wire=rec["wire"],
-                           requires=rec["requires"], expect=rec["expect"],
-                           meta=rec["meta"]))
-        report.setdefault("terraces", []).append(
-            dict(unit=u["id"], max_cut=stats["max_cut"],
-                 max_fill=stats["max_fill"], over_clamp=stats["over_clamp"],
-                 zones=len(entries)))
-    return recs
+            "to 4.7 m of hillside through its floor"))
 
 
 def stage_save(b, d: dict, stage: str, site: str = SITE) -> dict:
@@ -2079,44 +1861,48 @@ def verify_bays(d: dict) -> dict:
                            "four walls per bay would be counting a defect."))
 
 
-def verify_road_head(s, d: dict) -> dict:
-    """Does the village street actually meet R2 at the height R2 was quoted?
+def verify_landing(s, d: dict) -> dict:
+    """Do the roads that ARRIVE at this village arrive on its landing?
 
-    The instrument is the APPLIED surface - the seed field unioned with every
-    terrain blob in the ledger in file order - so once the street head's own
-    `terrain_write` is in the log this reads the ground the engine will draw,
-    not the ground this module hoped for.  The reference is the road's
-    pinned datum from ledger seq 2916, NOT the target this module chose: a
-    check whose reference is the thing under test is not a check.
+    The instrument is the APPLIED surface -- the seed field unioned with every
+    terrain blob in the ledger in file order -- so once the landing's own
+    `terrain_write` is in the log this reads the ground the engine will draw.
+    The roads are READ OFF THE CHAIN (`terrace.arrivals`: each road's own last
+    station [x, z, y]), never off a constant, and the reference for each is
+    that road's own datum, not the target this module chose: a check whose
+    reference is the thing under test is not a check.
+
+    Per arriving road, down the straight line from its last station to the
+    landing's centre at 1 m: the applied height at the station, the worst 1 m
+    step, and the BERM (how far the ground between stands above the higher of
+    the road's end and the landing) -- the quantities the gate's
+    `terminus_step` and `terminus_berm` judge, reported here before it does.
     """
-    u = d.get("road_head")
+    u = d.get("landing")
     if not u:
-        return dict(built=False, why="this design has no street head")
-    ra = ROAD_ARRIVAL
-    sx, sz = ra["station"]
-    at_station = s.at(sx, sz)[0]
-    # Every half metre from the host pad's centre to one metre past the
-    # station, down the carriageway's own centreline.
-    host = next(q for q in d["terraces"] if q["id"] == ra["extends"])
-    run, z = [], host["z"]
-    while z <= sz + 1.0 + 1e-9:
-        run.append(dict(z=round(z, 2), y=round(s.at(sx, z)[0], 3),
-                        err=round(s.at(sx, z)[0] - ra["datum_y"], 3)))
-        z += 0.5
-    worst = max(run, key=lambda q: abs(q["err"]))
-    step = max(abs(run[i + 1]["y"] - run[i]["y"]) for i in range(len(run) - 1))
+        return dict(built=False, why="this design has no landing")
+    recs = AP.Applied(actor=ACTOR).led.records()
+    arr = TR.arrival_numbers(
+        TR.arrivals(recs, (u["x"], u["z"]), retired=TR._retired(recs)), u)
+    centre = s.at(u["x"], u["z"])[0]
+    rows = []
+    for a in arr:
+        n = max(int(round(a["dist_to_node_m"])), 1)
+        prof = [s.at(a["x"] + (u["x"] - a["x"]) * k / n,
+                     a["z"] + (u["z"] - a["z"]) * k / n)[0]
+                for k in range(n + 1)]
+        rows.append(dict(
+            a, applied_y_at_station=round(prof[0], 3),
+            worst_step_1m=round(max(abs(prof[k + 1] - prof[k])
+                                    for k in range(n)), 3),
+            berm_m=round(max(prof) - max(a["y"], centre), 3)))
     return dict(
-        built=True, road=ra["road"], ledger_seq=ra["ledger_seq"],
-        station=[sx, sz], road_datum_y=ra["datum_y"],
-        applied_y_at_station=round(at_station, 3),
-        arrival_error_m=round(at_station - ra["datum_y"], 3),
-        centreline_samples=len(run),
-        worst_departure=worst,
-        worst_step_between_adjacent_samples_m=round(step, 3),
-        pad=[u["pad_w"], u["pad_d"]], centre=[u["x"], u["z"]],
-        instrument=("waterfront.Surface.at over the applied field; the "
-                    "reference is R2's pinned end height from the road's own "
-                    "ledger record, not this module's target_y"))
+        built=True, landing=u["id"], datum_y=u["target_y"],
+        applied_y_at_centre=round(centre, 3),
+        centre_error_m=round(centre - u["target_y"], 3),
+        arrivals=rows,
+        instrument=("waterfront.Surface.at over the applied field; each "
+                    "road's datum is its own last station off the ledger"))
 
 
 def chain_units() -> dict:
@@ -2160,7 +1946,7 @@ def shrink_to_chain(d: dict, chain: dict) -> dict:
                        if not (r[5].startswith("sudrvik/body/")
                                and (round(r[1], 3), round(r[3], 3)) in gone_xz)]
     d["_units"] = [u for u in d["_units"] if u["id"] in keep]
-    d["bodies"] = sum(1 for u in d["_units"] if not u.get("road_head"))
+    d["bodies"] = sum(1 for u in d["_units"] if not u.get("landing"))
     return dict(dropped=len(gone), dropped_ids=[u["id"] for u in gone],
                 units_after=len(d["_units"]),
                 bodies_after=d["bodies"],
@@ -2230,7 +2016,7 @@ def cmd_verify(args) -> int:
             rep["footprint"] = footprint_gate(srv, d, rep["site"])
     rep["bays"] = verify_bays(d)
     rep["grounding"] = verify_grounding(s, d)
-    rep["road_head"] = verify_road_head(s, d)
+    rep["landing"] = verify_landing(s, d)
     if d.get("berth_solve"):
         rep["berths"] = verify_berths(s, d)
     Path(args.report).parent.mkdir(parents=True, exist_ok=True)
@@ -2246,7 +2032,7 @@ def cmd_verify(args) -> int:
         buried_deck_tiles=len(rep["grounding"]["decks"]["buried"]),
         props_without_deck=len(
             rep["grounding"]["on_deck"]["no_deck_tile_under"]),
-        road_arrival_error_m=rep["road_head"].get("arrival_error_m"),
+        landing_centre_error_m=rep["landing"].get("centre_error_m"),
         report=args.report), indent=1, default=float))
     return 0
 
@@ -2308,13 +2094,12 @@ def summarise(d: dict) -> str:
                  f"need {p['required_m']} margin {p['margin_m']} "
                  f"deck face {p['gap_to_deck_face_m']} m")
     L.append(f"  road keep-out discs {len(d['road_keepout'])}")
-    rh = d.get("road_head")
-    if rh:
-        L.append(f"  STREET HEAD {rh['id']} {rh['pad_w']:g} x {rh['pad_d']:g} m "
-                 f"at ({rh['x']},{rh['z']}) levelled to {rh['target_y']} m - "
-                 f"R2's pinned end - cut {rh['cut_needed_m']} fill "
-                 f"{rh['fill_needed_m']} over {rh['samples']} samples; "
-                 f"meets the last station at {rh['station']}")
+    lu = d.get("landing")
+    if lu:
+        L.append(f"  LANDING {lu['id']} {lu['pad_w']:g} x {lu['pad_d']:g} m at "
+                 f"({lu['x']},{lu['z']}) levelled to {lu['target_y']} m "
+                 f"(the published datum) - cut {lu['cut_needed_m']} fill "
+                 f"{lu['fill_needed_m']} over {lu['samples']} samples")
     return "\n".join(L)
 
 
@@ -2434,6 +2219,13 @@ def cmd_preflight(args) -> int:
 
 def cmd_build(args) -> int:
     from ledger.live import LiveBuilder  # noqa: PLC0415
+    if args.site not in (None, SITE):
+        raise SystemExit(
+            f"REFUSING: asked to build {args.site!r}, and the design in "
+            f"harbour_b.py is authored for {SITE!r} alone (its fjord, its "
+            f"quays, its boathouse). A declared site of the same kind is not "
+            f"that fjord; building this design at its node would stand "
+            f"{SITE}'s village on another seed's water.")
     s = surface()
     d = design(s)
     want = [q for q in B_STAGE_ORDER if q in (args.stages or B_STAGE_ORDER)]
@@ -2573,6 +2365,11 @@ def main(argv: list[str] | None = None) -> int:
     bu = sub.add_parser("build", help="build harbour B on the LIVE world")
     bu.add_argument("--stages", nargs="*", choices=B_STAGE_ORDER)
     bu.add_argument("--dry", action="store_true")
+    bu.add_argument("--site", default=None,
+                    help="the declared site this run is asked to build; the "
+                         "build stage passes the unit it is running. This "
+                         "module's authored design is for ONE site and "
+                         "refuses to build another under its name")
     bu.add_argument("--report", default="/tmp/hb/build_report.json")
     bu.add_argument("--actor", default=None,
                     help="who this run's records are stamped as; the build "
