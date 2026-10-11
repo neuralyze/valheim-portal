@@ -2382,10 +2382,19 @@ class PadKeepOut:
                     walk, [heights[v] for v in vertices],
                     fixtures.walker_capsule()[0] / 2, BATTER_GRADE):
                 if not f.ok and not f.advisory:
+                    # The SIGNED climb the finding charged: a riser carries
+                    # `rise_m`; a lattice-edge climb does not, so it is read
+                    # off the same walk (the largest signed edge, outward in).
+                    rise = (f.numbers or {}).get("rise_m")
+                    if rise is None and f.check == "terminus_step":
+                        hs = [heights[v] for v in vertices]
+                        edges = [b - a for a, b in zip(hs, hs[1:])]
+                        rise = max(edges, key=abs) if edges else None
                     findings.append({"end": walk["end"], "check": f.check,
                                      "destination": walk["nums"]["destination"],
                                      "measured": f.measured, "limit": f.limit,
-                                     "where": f.where})
+                                     "where": f.where,
+                                     "rise_m": rise})
         return findings
 
     def pad_at(self, x: float, z: float) -> dict | None:
@@ -5292,6 +5301,12 @@ def poi_standoff_discs(zones: list[tuple[int, int]], pad_m: float = 64.0
     `N0-brgs2-wmid`.  `Locations.hard_radius` is now the only place the number
     is computed and both gates read it.
     """
+    # NO ZONES, NO DISCS.  A leg whose footprint scans to no zone (a leg the
+    # trim or the span reprice reduced to nothing) used to reach `min([])` and
+    # kill the whole stage-11 route with a ValueError after 4262 s -- MEASURED
+    # on the Ulfsland regeneration #4.  The empty footprint has no keep-out.
+    if not zones:
+        return []
     sys.path.insert(0, str(JUMPSTART / "settlements"))
     import clearance
 
@@ -8874,6 +8889,18 @@ def rim_claims(seg: dict, rows: list[dict], labels: list[str],
     return out
 
 
+# ARRIVAL_STEP_DEPENDS_ON: A RISER AT A PAD'S EDGE IS A CLAIM ON THE END
+# STATION TOO, NOT ONLY A BERM.  `arrival_claims` turned `terminus_berm`
+# findings into profile claims and let `terminus_step` ones through as
+# refusals, so a road that ends 1.1-1.5 m under the pad's standing top was
+# refused at build step 4 with no approach to solve -- MEASURED on Ulfsland
+# regen #4: T1-portalhub-temple 1.463 m and S1-portalhub-brgs2 1.092 m onto
+# sandbox-portal-hub against the 0.781 m slide limit, both `no claim on this
+# segment`.  NEUTER `_ARRIVAL_STEP_MODE = "berm"`: only berms are claims.
+ARRIVAL_STEP_DEPENDS_ON = ("a_riser_is_an_end_claim",)
+_ARRIVAL_STEP_MODE = "claim"    # claim | berm
+
+
 def arrival_claims(seg: dict, arrivals: list[dict],
                    margin: float = 0.9) -> list[dict]:
     """One claim per `terminus_berm` finding of the arrival gate
@@ -8888,9 +8915,27 @@ def arrival_claims(seg: dict, arrivals: list[dict],
     arc = node_arcs(seg["nodes"], seg["is_bridge"])
     out = []
     for f in arrivals:
-        if f.get("check") != "terminus_berm":
+        step = (f.get("check") == "terminus_step" and _ARRIVAL_STEP_MODE == "claim"
+                and f.get("rise_m") is not None)
+        if f.get("check") != "terminus_berm" and not step:
             continue
         idx = 0 if f["end"] == "A" else n - 1
+        if step:
+            # A RISER at the destination's own edge (ARRIVAL_STEP_DEPENDS_ON):
+            # the road's last footfall is `rise_m` under (+) or over (-) the
+            # pad's standing top.  The end node moves by the part of it the
+            # walker's slide limit cannot take, in the direction that closes it.
+            need = abs(float(f["rise_m"])) - margin * float(f["limit"])
+            if need <= 0.0 or seg["is_bridge"][idx]:
+                continue
+            sign = 1.0 if float(f["rise_m"]) > 0 else -1.0
+            out.append({"s": arc[idx],
+                        "h": float(seg["profile_y"][idx]) + sign * need,
+                        "slack": 0.0, "unpin": idx, "lat": 0.0,
+                        "label": f"arrival riser at pad {f.get('destination')}",
+                        "rim_xz": list(f.get("where") or ()), "taken_xz": [],
+                        "step_m": f["measured"]})
+            continue
         need = float(f["measured"]) - margin * float(f["limit"])
         if need <= 0.0 or seg["is_bridge"][idx]:
             continue
@@ -10512,6 +10557,22 @@ def selftest_arrival_claims(verbose: bool = True) -> dict:
     assert fix["profile"][-1] == 33.0 and fix["profile"][-2] == 33.0, fix
     assert shipped["nodes_regraded"] == 0 \
         and shipped["profile"][0] == 33.0, shipped
+    # ARRIVAL_STEP_DEPENDS_ON: a RISER at the pad's edge is an end claim too,
+    # raised when the pad stands over the road's last footfall, lowered when
+    # under it; the shipped `berm` mode lets it through unclaimed.
+    global _ARRIVAL_STEP_MODE
+    riser = {"end": "A", "check": "terminus_step", "destination": "hub",
+             "measured": 1.463, "limit": 0.781, "where": (191.89, 124.0),
+             "rise_m": 1.463}
+    up = arrival_claims(seg, [riser])
+    assert len(up) == 1 and abs(up[0]["h"] - (33.0 + 1.463 - 0.9 * 0.781)) < 1e-9, up
+    dn = arrival_claims(seg, [dict(riser, rise_m=-1.463)])
+    assert abs(dn[0]["h"] - (33.0 - (1.463 - 0.9 * 0.781))) < 1e-9, dn
+    _ARRIVAL_STEP_MODE = "berm"
+    try:
+        assert arrival_claims(seg, [riser]) == [], "neuter must drop the riser"
+    finally:
+        _ARRIVAL_STEP_MODE = "claim"
     bridged = dict(seg, is_bridge=[True] + [False] * (n - 1))
     assert arrival_claims(bridged, [berm]) == []
     assert arrival_claims(seg, [dict(berm, end="B")])[0]["unpin"] == n - 1
@@ -10806,6 +10867,17 @@ def selftest_finished_arrivals(verbose: bool = True) -> dict:
 
 
 
+def selftest_empty_footprint(verbose: bool = True) -> dict:
+    """A leg that scans to NO zone has no keep-out discs and must not raise:
+    before the guard `poi_standoff_discs([])` died in `min([])` and took the
+    whole stage-11 route with it (Ulfsland regeneration #4)."""
+    got = poi_standoff_discs([])
+    assert got == [], got
+    if verbose:
+        print("ribbon empty-footprint selftest OK")
+    return {"discs": len(got)}
+
+
 def selftest_half_lattice(verbose: bool = True) -> dict:
     """HALF_LATTICE_DEPENDS_ON, both ways: the T7 shape (a 45-degree run whose
     stations land exactly on x = n + 0.5), a clean leg, a bridged node, and
@@ -10954,6 +11026,7 @@ def main() -> int:
         selftest_finished_arrivals()
         selftest_snap_shared()
         selftest_half_lattice()
+        selftest_empty_footprint()
         selftest_foreign_batter()
         selftest_rim_closure()
         selftest_rim_closure_band()

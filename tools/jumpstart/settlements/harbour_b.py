@@ -2157,6 +2157,11 @@ REQUIRED_VERBS = {
 # CONTAINER'S OWN STDOUT instead.
 
 
+# NEUTER (selftest): False restores the shipped probe, which let the console's
+# own `UnrecognizedVerb` escape and refused the whole body.
+_UNRECOGNISED_VERB_IS_ABSENT = True
+
+
 def verb_preflight(srv) -> dict:
     """Prove every required verb EXISTS before emitting record 1.
 
@@ -2170,7 +2175,19 @@ def verb_preflight(srv) -> dict:
     control = "terrain_reset"
     out, missing = {}, []
     for verb in list(REQUIRED_VERBS) + [control]:
-        text = "\n".join(srv.console(verb))
+        try:
+            text = "\n".join(srv.console(verb))
+        except Exception as e:                                 # noqa: BLE001
+            # `console.run_console` RAISES `UnrecognizedVerb` for a verb the
+            # game does not know (the right answer for a build step, the
+            # answer THIS probe is asking for).  MEASURED on Ulfsland regen #4:
+            # the control verb `terrain_reset`, expected absent, raised out of
+            # this probe and refused the harbour-village-sudrvik body at step 5
+            # before it began.  Any other exception is a real failure.
+            if (type(e).__name__ != "UnrecognizedVerb"
+                    or _UNRECOGNISED_VERB_IS_ABSENT is False):
+                raise
+            text = str(e)
         absent = ("Unknown command" in text and verb in text)
         out[verb] = dict(absent=absent,
                          owner=REQUIRED_VERBS.get(verb, "CONTROL - expected absent"),
@@ -2236,6 +2253,8 @@ def cmd_build(args) -> int:
           f"({report['ledger_preflight']['records']} records)")
     with LiveBuilder(actor=getattr(args, "actor", None) or ACTOR,
                      dry=args.dry) as b:
+        if not args.dry:
+            report["prefab_preflight"] = HC.prefab_preflight(b.srv)
         report["players"] = (str(b.srv.command("players"))[:200]
                              if not args.dry else "dry")
         print(f"players: {report['players']}")

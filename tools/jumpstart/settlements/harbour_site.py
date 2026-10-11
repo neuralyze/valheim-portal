@@ -583,7 +583,97 @@ def _case_NEUTER_no_ceiling_the_straddling_landing_is_CHOSEN() -> list[str]:
         f"{lp['fill_m']}"]
 
 
+class UnrecognizedVerb(RuntimeError):
+    """Stands in for `terraform.console.UnrecognizedVerb` (matched by name)."""
+
+
+class _VerbSrv:
+    """A server whose console knows exactly the verbs in `known` and, like the
+    real `run_console`, RAISES for any other."""
+
+    def __init__(self, known):
+        self.known = set(known)
+
+    def console(self, verb):
+        if verb in self.known:
+            return ["Command executed."]
+        raise UnrecognizedVerb(f"Unknown command '{verb}'.")
+
+
+def _case_the_verb_probe_survives_the_controls_unknown_verb() -> list[str]:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import harbour_b as HB                                   # noqa: PLC0415
+    ok = HB.verb_preflight(_VerbSrv(HB.REQUIRED_VERBS))
+    bad = [] if "present" in ok["verdict"] else [f"verdict {ok['verdict']!r}"]
+    try:
+        HB.verb_preflight(_VerbSrv(set(HB.REQUIRED_VERBS) - {"objects_count"}))
+        bad.append("a server missing a REQUIRED verb was not refused")
+    except SystemExit as e:
+        if "objects_count" not in str(e):
+            bad.append(f"refused for the wrong reason: {e}")
+    return bad
+
+
+def _case_NEUTER_the_escaping_unknown_verb_refuses_the_body() -> list[str]:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import harbour_b as HB                                   # noqa: PLC0415
+    prior, HB._UNRECOGNISED_VERB_IS_ABSENT = HB._UNRECOGNISED_VERB_IS_ABSENT, False
+    try:
+        HB.verb_preflight(_VerbSrv(HB.REQUIRED_VERBS))
+    except UnrecognizedVerb:
+        return []
+    finally:
+        HB._UNRECOGNISED_VERB_IS_ABSENT = prior
+    return ["the neuter did not restore the escaping UnrecognizedVerb"]
+
+
+class _PrefabSrv:
+    def __init__(self, known):
+        self.known = set(known)
+
+    def console(self, cmd):
+        prefab = cmd.split()[-1]
+        if prefab in self.known:
+            return ["Total: 0"]
+        return [f"Error: Entity id {prefab} not recognized"]
+
+
+def _case_a_server_without_the_prefabs_is_refused_before_record_one() -> list[str]:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import harbour_city as HC                                # noqa: PLC0415
+    ok = HC.prefab_preflight(_PrefabSrv(HC.PROBE_SET))
+    bad = [] if ok["checked"] == len(set(HC.PROBE_SET)) else [f"checked {ok}"]
+    try:
+        HC.prefab_preflight(_PrefabSrv(set(HC.PROBE_SET) - {"fb_fortress_wall"}))
+        bad.append("a server missing fb_fortress_wall was not refused")
+    except SystemExit as e:
+        if "fb_fortress_wall" not in str(e) or "RavenwoodVikingHouses" not in str(e):
+            bad.append(f"refusal does not name prefab and owner: {e}")
+    return bad
+
+
+def _case_NEUTER_prefab_preflight_off_the_missing_server_proceeds() -> list[str]:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import harbour_city as HC                                # noqa: PLC0415
+    prior, HC._PREFAB_PREFLIGHT_MODE = HC._PREFAB_PREFLIGHT_MODE, "off"
+    try:
+        HC.prefab_preflight(_PrefabSrv(set()))
+    except SystemExit:
+        return ["the neuter still refused"]
+    finally:
+        HC._PREFAB_PREFLIGHT_MODE = prior
+    return []
+
+
 CASES = (
+    ("a_server_without_the_prefabs_is_refused_before_record_one",
+     _case_a_server_without_the_prefabs_is_refused_before_record_one),
+    ("NEUTER_prefab_preflight_off_the_missing_server_proceeds",
+     _case_NEUTER_prefab_preflight_off_the_missing_server_proceeds),
+    ("the_verb_probe_survives_the_controls_unknown_verb",
+     _case_the_verb_probe_survives_the_controls_unknown_verb),
+    ("NEUTER_the_escaping_unknown_verb_refuses_the_body",
+     _case_NEUTER_the_escaping_unknown_verb_refuses_the_body),
     ("the_node_is_the_dry_landing_not_the_request",
      _case_the_node_is_the_dry_landing_not_the_request),
     ("a_request_with_no_sea_nearby_is_REFUSED",

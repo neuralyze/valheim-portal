@@ -2911,6 +2911,44 @@ PROBE_SET = [
 PROBE_AT = (1300.0, 900.0)
 
 
+# PREFAB_PREFLIGHT_DEPENDS_ON: A BODY IS NOT STARTED ON A SERVER THAT DOES NOT
+# KNOW ITS PREFABS.  The `fb_` family registers through Jotunn from the plugin
+# `RavenwoodVikingHouses`; a server without it answers `objects_count` with
+# "Error: Entity id fb_fortress_wall not recognized" and the first postcondition
+# of the first piece dies inside the ledger -- MEASURED on Ulfsland regen #4,
+# harbour-city-ulfsgard refused at step 5 after twenty hours of road work on a
+# staging server provisioned without the mod.  A READ-ONLY `objects_count` per
+# prefab, before record 1, turns that into a refusal that names the missing
+# prefabs and the plugin that owns them.  NEUTER `_PREFAB_PREFLIGHT_MODE =
+# "off"`.  Proven by `harbour_site.py --selftest`.
+PREFAB_OWNER = "RavenwoodVikingHouses (registers fb_* through Jotunn)"
+_PREFAB_PREFLIGHT_MODE = "on"    # on | off
+
+
+def prefab_preflight(srv, prefabs=None) -> dict:
+    """Refuse (SystemExit) unless the server knows every prefab in `prefabs`
+    (default PROBE_SET).  Read-only: `objects_count` writes nothing."""
+    if _PREFAB_PREFLIGHT_MODE != "on":
+        return dict(checked=0, missing=[])
+    want = sorted(set(prefabs if prefabs is not None else PROBE_SET))
+    missing = []
+    for prefab in want:
+        try:
+            text = "\n".join(srv.console(f"objects_count {prefab}"))
+        except Exception as e:                                 # noqa: BLE001
+            text = str(e)
+        if "not recognized" in text or "Unknown command" in text:
+            missing.append(prefab)
+    if missing:
+        raise SystemExit(
+            f"REFUSING to build: this server does not know {len(missing)} of "
+            f"{len(want)} prefabs this body places: {missing[:6]}"
+            f"{' ...' if len(missing) > 6 else ''}.  They are owned by "
+            f"{PREFAB_OWNER}; provision the server with the world's mod "
+            f"profile.  Nothing was written.")
+    return dict(checked=len(want), missing=[])
+
+
 def cmd_probe(args) -> int:
     """Prove, LIVE, that every prefab this build places is in ZNetScene.
 
@@ -3720,6 +3758,8 @@ def cmd_ubuild(args) -> int:
     with LiveBuilder(actor=getattr(args, "actor", None) or ACTOR,
                      dry=args.dry) as b:
         srv = b.srv
+        if not args.dry:
+            report["prefab_preflight"] = prefab_preflight(srv)
         # PROTOCOL GUARD 2: `players` before each write phase, RECORDED. The
         # operator being logged in is then a measurement rather than an
         # assumption, and an 8 B / 32-35 ms round trip also proves the Unity
