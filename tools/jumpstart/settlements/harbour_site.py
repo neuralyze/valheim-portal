@@ -583,6 +583,32 @@ def _case_NEUTER_no_ceiling_the_straddling_landing_is_CHOSEN() -> list[str]:
         f"{lp['fill_m']}"]
 
 
+def _case_a_piece_emitted_twice_is_one_row() -> list[str]:
+    import harbour_city as HC
+    pl = HC.Plan("t")
+    pl.add("wood_floor", 1077.0, 30.5, 685.0, 0.0, "U/arm")
+    pl.add("wood_floor", 1077.0, 30.5, 685.0, 0.0, "boathouse")
+    pl.add("wood_floor", 1077.0, 30.5, 685.0, 90.0, "roof")   # other yaw
+    pl.add("wood_floor", 1078.0, 30.5, 685.0, 0.0, "next")    # other seat
+    bad = []
+    if len(pl) != 3 or pl.suppressed != 1:
+        bad.append(f"expected 3 rows / 1 suppressed, got {len(pl)} / "
+                   f"{pl.suppressed}")
+    return bad
+
+
+def _case_NEUTER_dedupe_off_the_double_emission_reaches_the_plan() -> list[str]:
+    import harbour_city as HC
+    HC.Plan.DEDUPE = False
+    try:
+        pl = HC.Plan("t")
+        pl.add("wood_floor", 1077.0, 30.5, 685.0, 0.0, "U/arm")
+        pl.add("wood_floor", 1077.0, 30.5, 685.0, 0.0, "boathouse")
+    finally:
+        HC.Plan.DEDUPE = True
+    return [] if len(pl) == 2 else [f"neuter kept {len(pl)} rows"]
+
+
 class UnrecognizedVerb(RuntimeError):
     """Stands in for `terraform.console.UnrecognizedVerb` (matched by name)."""
 
@@ -678,6 +704,9 @@ CASES = (
      _case_the_node_is_the_dry_landing_not_the_request),
     ("a_request_with_no_sea_nearby_is_REFUSED",
      _case_a_request_with_no_sea_nearby_is_REFUSED),
+    ("a_piece_emitted_twice_is_one_row", _case_a_piece_emitted_twice_is_one_row),
+    ("NEUTER_dedupe_off_double_emission_reaches_plan",
+     _case_NEUTER_dedupe_off_the_double_emission_reaches_the_plan),
     ("an_inland_pond_is_not_a_harbour", _case_an_inland_pond_is_not_a_harbour),
     ("an_islet_is_not_the_roads_land", _case_an_islet_is_not_the_roads_land),
     ("NEUTER_any_landmass_the_islet_is_the_landing",

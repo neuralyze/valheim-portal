@@ -254,14 +254,35 @@ class Plan:
        this build DO.
     """
 
+    # ONE SOLID, ONE ROW.  Two sub-builders (a quay arm and the boathouse
+    # standing on it) each emitted the whole shared deck: MEASURED on
+    # Pirate68, 29 piece rows in the Ulfsgard box were issued twice with the
+    # same prefab, seat and yaw (wood_floor / wood_pole_log_4, roles
+    # dock_place and boathouse_place, and boathouse_place against itself),
+    # which the gate then refused as 32 co-located pieces.  The second copy
+    # is invisible and carries no support.  The plan refuses it at the one
+    # place every sub-builder emits through, counted in `suppressed`, so a
+    # future builder that double-emits cannot reach the world.  `DEDUPE =
+    # False` is the neuter.
+    DEDUPE = True
+
     def __init__(self, site: str):
         self.site = site
         self.rows: list[tuple[str, float, float, float, float, str]] = []
+        self._seen: set[tuple] = set()
+        self.suppressed = 0
 
     def add(self, prefab: str, x: float, y: float, z: float, yaw: float = 0.0,
             why: str = "") -> None:
-        self.rows.append((prefab, float(x), float(y), float(z),
-                          float(yaw) % 360.0, why))
+        row = (prefab, float(x), float(y), float(z), float(yaw) % 360.0, why)
+        if Plan.DEDUPE:
+            key = (prefab, round(row[1], 2), round(row[2], 2),
+                   round(row[3], 2), round(row[4], 1))
+            if key in self._seen:
+                self.suppressed += 1
+                return
+            self._seen.add(key)
+        self.rows.append(row)
 
     def sorted_rows(self):
         return sorted(self.rows, key=lambda r: (round(r[2], 3), r[0]))

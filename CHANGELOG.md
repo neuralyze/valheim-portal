@@ -1199,3 +1199,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/neuralyze/valheim-portal/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/neuralyze/valheim-portal/releases/tag/v0.1.0
+
+- Plan.add refuses a piece issued twice with the same prefab, seat and yaw (quay arm + boathouse deck emitted 29 rows twice on Pirate68; gate refused 32 co-located). Neuter: Plan.DEDUPE.
+- boardwalk land seating tests wetness on the carriageway lanes, not clipped margin tiles (S1 bank_a: lanes 29.75/30.94/29.95 vs water 30.0). Neuter: _WET_TEST_MODE. S1 itself still refuses downstream: the shore climbs 2 m/m with no graded bench (open).

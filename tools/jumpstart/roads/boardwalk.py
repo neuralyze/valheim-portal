@@ -2850,6 +2850,15 @@ def census_selftest(path: Path | None = None) -> int:
     finally:
         undo_land()
     flipped_land = [r["name"] for r in old_land if not r["ok"]]
+    global _WET_TEST_MODE
+    _prior_wet, _WET_TEST_MODE = _WET_TEST_MODE, "footprint"
+    try:
+        wet_old = {r["name"]: r["ok"] for r in landfall_seating_arms()}
+    finally:
+        _WET_TEST_MODE = _prior_wet
+    print(f"  [{'ok  ' if not wet_old['margin_tile_clipping_waterline_is_not_wet'] else 'FAIL'}] "
+          f"wet-lane neuter: the footprint test refuses the margin-clip bank")
+    bad += bool(wet_old["margin_tile_clipping_waterline_is_not_wet"])
     survived_land = [r["name"] for r in old_land if r["ok"]]
     print(f"  land seating neuter: flipped {flipped_land}; "
           f"survived {survived_land}")
@@ -2939,6 +2948,9 @@ def deck_tiles(span: dict) -> int:
 
 
 LAND_TILE_STEP_M = 0.30
+# Swapped out by the selftest neuter: "carriageway" (shipped) | "footprint"
+# (the state that refused S1: any clipped margin tile makes the station wet).
+_WET_TEST_MODE = "carriageway"
 LAND_RAMP_MAX_TILES = 6
 LAND_RAMP_PITCH_M = 1.0
 
@@ -3047,6 +3059,7 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
     water_y = float(span.get("water_surface_y", 30.0))
     ceiling = float(span.get("legal_deck_y_interval", [deck_y, deck_y])[1])
     terrain = {}
+    carriage_low = {}
 
     def ground(t):
         if t not in terrain:
@@ -3061,7 +3074,20 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
                 if abs(off) + 1.0 <= half_way + 1e-9:
                     way.append(low)
             terrain[t] = (min(lows), max(way or lows))
+            # WET MEANS THE WALKED LANES ARE WET.  A margin tile outside the
+            # carriageway that clips the waterline at a diagonal shore does
+            # not make the station water: MEASURED on Pirate68 S1 bank_a,
+            # station -1 m, lanes [-2, 0, +2] m: 29.75 / 30.94 / 29.95 m
+            # against a 30.0 m water plane -- the carriageway tile is dry by
+            # 0.94 m and the two margin tiles each clip it, and the whole
+            # span was refused for it (and so was every road to the west).
+            carriage_low[t] = min(way or lows)
         return terrain[t]
+
+    def wet(t):
+        ground(t)
+        return (carriage_low[t] if _WET_TEST_MODE == "carriageway"
+                else terrain[t][0]) < water_y
 
     def solve(wanted):
         ts = sorted(wanted)
@@ -3076,7 +3102,7 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
             hs[i] = max(hs[i], hs[i - 1] - limit)
         for t, h in zip(ts, hs):
             low, _way = ground(t)
-            if h > ceiling + 1e-6 and low < water_y:
+            if h > ceiling + 1e-6 and wet(t):
                 raise SystemExit(
                     f"{span['crossing_id']}: land seating needs {h:.3f} m at "
                     f"station {t:.3f} m, but its footprint reaches wet ground "
@@ -3110,7 +3136,7 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
         for k in range(1, LAND_RAMP_MAX_TILES + 1):
             t = anchor + sign * k * LAND_RAMP_PITCH_M
             low, way = ground(t)
-            if low < water_y:
+            if wet(t):
                 raise SystemExit(
                     f"{span['crossing_id']} {end}: proposed land ramp station "
                     f"{t:.3f} m reaches wet ground {low:.3f} m; REFUSED.")
@@ -4587,17 +4613,22 @@ def route_carriageway_guard(span: dict, pieces: list, surface,
 
 def landfall_seating_arms() -> list[dict]:
     rows = []
-    for name, rise, island, dry_bank, want_refuse, near_bank in (
-            ("bank_076m_ramps", 0.76, False, True, False, False),
-            ("near_bank_076m_ramps", 0.76, False, True, False, True),
-            ("bank_020m_needs_no_ramp", 0.20, False, True, False, False),
-            ("dry_island_floor_is_seated", 0.20, True, True, False, False),
-            ("bank_exceeding_tile_budget_refuses", 3.0, False, True, True, False),
-            ("ramp_cannot_raise_wet_span_ceiling", 0.76, False, False, True, False)):
+    for name, rise, island, dry_bank, want_refuse, near_bank, margin in (
+            ("bank_076m_ramps", 0.76, False, True, False, False, False),
+            ("near_bank_076m_ramps", 0.76, False, True, False, True, False),
+            ("bank_020m_needs_no_ramp", 0.20, False, True, False, False, False),
+            ("dry_island_floor_is_seated", 0.20, True, True, False, False, False),
+            ("bank_exceeding_tile_budget_refuses", 3.0, False, True, True, False, False),
+            ("ramp_cannot_raise_wet_span_ceiling", 0.76, False, False, True, False, False),
+            # S1 bank_a on Pirate68: the margin tiles clip the waterline at a
+            # diagonal shore, the walked lane is dry.
+            ("margin_tile_clipping_waterline_is_not_wet", 0.76, False, True, False, False, True)):
         h, length = 32.5, 20.0
 
         def ground(_x, z):
             z = length - z if near_bank else z
+            if margin and length < z <= length + 3.0 and abs(_x) >= 1.5:
+                return 29.9
             if z > length + 0.25:
                 return h + rise
             if z < 2.0 or (dry_bank and z >= 16.0) or z >= length:
