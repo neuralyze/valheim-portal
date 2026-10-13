@@ -1202,3 +1202,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Plan.add refuses a piece issued twice with the same prefab, seat and yaw (quay arm + boathouse deck emitted 29 rows twice on Pirate68; gate refused 32 co-located). Neuter: Plan.DEDUPE.
 - boardwalk land seating tests wetness on the carriageway lanes, not clipped margin tiles (S1 bank_a: lanes 29.75/30.94/29.95 vs water 30.0). Neuter: _WET_TEST_MODE. S1 itself still refuses downstream: the shore climbs 2 m/m with no graded bench (open).
+
+- geography.crossing_nodes only sites a bridge whose BOTH banks lie in the router's reachable component (CROSSING_REACH_DEPENDS_ON; neuter _CROSSING_REACH_MODE). Pirate68: S1 moved from the narrowest pair (13 m, far bank unreachable, T2 ended 118.7 m short, deck never built) to the reachable narrowest (15 m, (-310,-74)). No reachable pair => crossing absent with counts.
+- spec.DECLARED_CROSSINGS is built from the derived abutment nodes (banks, ground, span, bearing, gap_min_y) instead of Ulfsland literals; only joins/significance are authored.

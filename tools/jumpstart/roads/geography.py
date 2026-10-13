@@ -989,9 +989,43 @@ def trunk_landmasses(near_fld, far_fld, near_lab, near_sizes, np) -> dict:
     return {"bridgeable": True, "a": a_id, "b": b_id, "measured": common}
 
 
+# CROSSING_REACH_DEPENDS_ON: A BANK IS WHERE A ROAD CAN GET TO, NOT WHERE THE
+# WATER IS NARROWEST.
+#
+# `crossing_nodes` ranked candidate bridge sites by gap alone ("narrowest",
+# "cheapest_from_anchor").  The same defect EXTREMITY_REACH_DEPENDS_ON closed
+# for the extremities, one derivation over: a bank sample can stand on land
+# the router's graph cannot enter.  MEASURED on Pirate68 (Pirate68_1m.bin,
+# trunk corridor, generator keep-outs): of 38,413 candidate approach pairs
+# 30,711 have BOTH banks in the largest strong component of their window's
+# graph; the narrowest pair (13.0 m, near (-311.5, -64.5)) has a near bank
+# that is reachable and a far bank that is NOT.  S1 was sited there; the
+# regeneration then spent 4 days routing roads to an abutment no road could
+# reach (T2 fell back to a land route ending 118.7 m short of it, the deck
+# was never built, and 7 sites came back unwalkable).  The reachable
+# narrowest pair is 15.0 m at (-310.5, -73.5).
+# THE RULE: a candidate is costed only if its near bank is in the near
+# window's reachable component AND its far bank is in the far window's; when
+# no candidate is, the crossing is ABSENT with the counts as its reason.
+# NEUTER `_CROSSING_REACH_MODE = "land"`: the shipped rule, gap/anchor only.
+# Proven by `selftest_crossing_reach`.
+CROSSING_REACH_DEPENDS_ON = ("the_routers_own_graph", "the_generator_keep_outs")
+_CROSSING_REACH_MODE = "traversable"    # traversable | land (the shipped)
+
+
+def reachable_cost(cost, near_ok, far_ok):
+    """`cost` with every candidate whose near or far bank the router cannot
+    reach set to +inf (CROSSING_REACH_DEPENDS_ON).  `None` masks pass."""
+    import numpy as np
+    if _CROSSING_REACH_MODE == "land" or near_ok is None or far_ok is None:
+        return cost
+    return np.where(np.asarray(near_ok) & np.asarray(far_ok), cost, np.inf)
+
+
 def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
                    plan: tuple[dict, ...] = CROSSING_PLAN,
-                   seed_varying: set | None = None
+                   seed_varying: set | None = None,
+                   reach_near=None, reach_far=None
                    ) -> tuple[dict[str, dict], list[dict]]:
     """The abutment pairs for each authored crossing, and the crossings this
     seed does NOT have with the reason it does not have them.
@@ -1042,6 +1076,25 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
     far_x = near_fld.x0 + fj * near_fld.step
     far_z = near_fld.z0 + fi * near_fld.step
 
+    near_ok = reach_near(near_x, near_z) if reach_near else None
+    far_ok = reach_far(far_x, far_z) if reach_far else None
+    n_reach = (int((near_ok & far_ok).sum())
+               if near_ok is not None and far_ok is not None else len(gaps))
+    if n_reach == 0 and _CROSSING_REACH_MODE != "land":
+        return {}, [dict(c, node_ids=[c["near"], c["far"]],
+                         reason=(f"PORTAL ONLY: none of {len(gaps)} candidate "
+                                 f"bridge sites between the two trunk "
+                                 f"landmasses has both banks inside the "
+                                 f"router's reachable component "
+                                 f"({int(near_ok.sum())} near / "
+                                 f"{int(far_ok.sum())} far banks reachable "
+                                 f"alone), so no road can arrive at a bridge "
+                                 f"here (CROSSING_REACH_DEPENDS_ON)."),
+                         measured=dict(verdict["measured"],
+                                       candidates=len(gaps),
+                                       reachable_pairs=0))
+                    for c in plan]
+
     out: dict[str, dict] = {}
     chosen: list[tuple[str, float, float]] = []
     for c in plan:
@@ -1058,6 +1111,7 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
             cost = gaps + np.hypot(near_x - ax, near_z - az)
         else:
             raise SystemExit(f"unknown crossing rule {c['rule']!r}")
+        cost = reachable_cost(cost, near_ok, far_ok)
         k = int(np.argmin(cost))
         nxz = (float(near_x[k]), float(near_z[k]))
         fxz = (float(far_x[k]), float(far_z[k]))
@@ -1074,7 +1128,21 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
         far_bank = walk_to_bank(far_fld, (snap(fxz[0]), snap(fxz[1])), nxz)
         bx = far_bank["xz"][0] - near_bank["xz"][0]
         bz = far_bank["xz"][1] - near_bank["xz"][1]
+        # the lowest bed anywhere under the span: the piles' height.  Read off
+        # the two windows' own samples along the bank-to-bank line, 1 m apart.
+        _n = max(int(math.hypot(bx, bz)), 1)
+        _lo = []
+        for _k in range(_n + 1):
+            _px = near_bank["xz"][0] + bx * _k / _n
+            _pz = near_bank["xz"][1] + bz * _k / _n
+            for _f in (near_fld, far_fld):
+                try:
+                    _lo.append(sample_at(_f, _px, _pz)[0])
+                    break
+                except ValueError:
+                    continue
         measured = {
+            "gap_min_y": round(min(_lo), 2) if _lo else None,
             "rule": c["rule"],
             "gap_m": round(float(gaps[k]), 2),
             "cost_m": round(float(cost[k]), 2),
@@ -1139,8 +1207,14 @@ def derive(field_path: str | Path,
     far_id = _patch_id(fields, worldseed.TRUNK_SECONDARY)
     windows = {near_id: cs.load_field(field_path, near_id),
                far_id: cs.load_field(field_path, far_id)}
+    reach_near, _sn = traversable_reach(
+        worldseed.resolve(fields, worldseed.TRUNK_PRIMARY))
+    reach_far, _sf = traversable_reach(
+        worldseed.resolve(fields, worldseed.TRUNK_SECONDARY))
     crossings, no_crossing = crossing_nodes(windows[near_id], windows[far_id],
-                                            anchors, seed_varying=seed_varying)
+                                            anchors, seed_varying=seed_varying,
+                                            reach_near=reach_near,
+                                            reach_far=reach_far)
     nodes.update(crossings)
     nodes.update(location_nodes(windows, seed_varying=seed_varying))
 
@@ -1404,6 +1478,39 @@ def _xr_field():
                           h.astype(np.float32), np.ones((n, n), dtype=np.uint8))
 
 
+def selftest_crossing_reach() -> int:
+    """CROSSING_REACH_DEPENDS_ON both ways, on the Pirate68 numbers: the
+    narrowest pair (13 m) has an unreachable far bank, the next (15 m) is
+    reachable, and with no reachable pair every cost is infinite."""
+    import numpy as np
+    global _CROSSING_REACH_MODE
+    gaps = np.array([13.0, 15.0, 40.0])
+    near = np.array([True, True, True])
+    far = np.array([False, True, True])
+    bad = 0
+    got = int(np.argmin(reachable_cost(gaps, near, far)))
+    ok = got == 1
+    print(f"  {'ok  ' if ok else 'FAIL'}  an unreachable far bank is not "
+          f"the crossing: picked index {got}, wanted 1")
+    bad += not ok
+    prior, _CROSSING_REACH_MODE = _CROSSING_REACH_MODE, "land"
+    try:
+        old = int(np.argmin(reachable_cost(gaps, near, far)))
+    finally:
+        _CROSSING_REACH_MODE = prior
+    ok = old == 0
+    print(f"  {'ok  ' if ok else 'FAIL'}  NEUTER land: the narrowest pair is "
+          f"picked again (index {old})")
+    bad += not ok
+    none = reachable_cost(gaps, near, np.array([False] * 3))
+    ok = bool(np.isinf(none).all())
+    print(f"  {'ok  ' if ok else 'FAIL'}  no reachable pair: every cost is "
+          f"infinite")
+    bad += not ok
+    print(f"\n  crossing reach selftest {'PASS' if not bad else 'FAIL'}\n")
+    return bad
+
+
 def selftest_extremity_reach() -> int:
     global _EXTREMITY_REACH_MODE
     import numpy as np
@@ -1450,7 +1557,7 @@ def selftest_extremity_reach() -> int:
 
 def main(argv=None) -> int:
     if (sys.argv[1:] if argv is None else list(argv))[:1] == ["selftest"]:
-        return 1 if selftest_extremity_reach() else 0
+        return 1 if (selftest_extremity_reach() | selftest_crossing_reach()) else 0
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["emit", "show"])

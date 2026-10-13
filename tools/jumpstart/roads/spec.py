@@ -908,38 +908,50 @@ for _fe in FOREIGN_EDGES:
         f"on this one (MEASURED_SEED_DEPENDS_ON); owner "
         f"{FOREIGN_NODES[_foreign[0]]['owner']}")
 
+# WHAT A CROSSING'S RECORD IS MADE OF.  `joins` and `significance` are DESIGN
+# (why the crossing matters) and are authored once.  Everything else -- the
+# banks, their ground, the span, the bearing, the lowest bed under it -- is a
+# MEASUREMENT OF THIS SEED and is read from the abutment nodes
+# `geography.crossing_nodes` derived for it.  These two records were literals
+# copied from Ulfsland's one field (`brg-s1-e` at (-312, -64) and the rest),
+# so a seed whose derivation sited a crossing anywhere else would have been
+# published with Ulfsland's banks inside its own document.  A literal that
+# happens to equal the derivation is a coincidence; when the derivation is
+# corrected (CROSSING_REACH_DEPENDS_ON moved S1 to (-310, -74) on Pirate68)
+# it stops being one.
+_AUTHORED_CROSSINGS = (
+    ("S1", "brg-s1-e", "brg-s1-w", ["spawn", "west"],
+     "the join between the two halves of the largest landmass in the world"),
+    ("S2", "brg-s2-e", "brg-s2-w", ["spawn", "west"],
+     "second join; makes the network a loop rather than an out-and-back"),
+)
+
+
+def _declared_crossing(cid: str, a: str, b: str, joins: list, why: str,
+                       nodes: dict) -> dict:
+    rec = {"crossing_id": cid, "owner": "Crossings", "status": "declared",
+           "measured_by": "geography.crossing_nodes: 1 m distance transform, "
+                          "banks filtered to the router's reachable component",
+           "joins": joins, "significance": why,
+           "bank_a": {"node": a}, "bank_b": {"node": b},
+           "water_surface_y": 30.0, "why_terrain_failed": "water_body"}
+    if a in nodes and b in nodes:
+        na, nb = nodes[a], nodes[b]
+        m = na.get("measured") or {}
+        bearing = float(m["bearing_deg"])
+        rec["bank_a"].update(xz=list(na["xz"]), ground_y=na["ground_y"],
+                             road_deck_y=DECK_DATUM_Y, bearing_deg=bearing)
+        rec["bank_b"].update(xz=list(nb["xz"]), ground_y=nb["ground_y"],
+                             road_deck_y=DECK_DATUM_Y,
+                             bearing_deg=round((bearing + 180.0) % 360.0, 2))
+        rec["span_m"] = float(m["span_m"])
+        rec["gap_min_y"] = m["gap_min_y"]
+    return rec
+
+
 DECLARED_CROSSINGS: list[dict] = [
-    {
-        "crossing_id": "S1", "owner": "Crossings", "status": "declared",
-        "measured_by": "Crossings, 1 m distance transform over /tmp/roads/h1m.bin",
-        "joins": ["spawn", "west"],
-        "bank_a": {"node": "brg-s1-e", "xz": [-312.0, -64.0], "ground_y": 30.72,
-                   "road_deck_y": DECK_DATUM_Y, "bearing_deg": 270.0},
-        "bank_b": {"node": "brg-s1-w", "xz": [-324.0, -64.0], "ground_y": 30.64,
-                   "road_deck_y": DECK_DATUM_Y, "bearing_deg": 90.0},
-        "span_m": 12.0, "gap_min_y": 27.48, "water_surface_y": 30.0,
-        "why_terrain_failed": "water_body",
-        "significance": "the join between the two halves of the largest landmass "
-                        "in the world; 260 m from StartTemple",
-        "poi_clear": "nearest WoodHouse7 at 47.9 m (exteriorRadius 8); "
-                     "Eikthyrnir altar 146.5 m -- MEASURED by Crossings",
-    },
-    {
-        "crossing_id": "S2", "owner": "Crossings", "status": "declared",
-        "measured_by": "Crossings, 1 m distance transform over /tmp/roads/h1m.bin",
-        "joins": ["spawn", "west"],
-        "bank_a": {"node": "brg-s2-e", "xz": [-318.0, 230.0], "ground_y": 30.26,
-                   "road_deck_y": DECK_DATUM_Y, "bearing_deg": 298.07},
-        "bank_b": {"node": "brg-s2-w", "xz": [-348.0, 246.0], "ground_y": 30.02,
-                   "road_deck_y": DECK_DATUM_Y, "bearing_deg": 118.07},
-        "span_m": 34.0, "gap_min_y": 25.14, "water_surface_y": 30.0,
-        "why_terrain_failed": "water_body",
-        "significance": "second join; makes the network a loop rather than an "
-                        "out-and-back",
-        "poi_clear": "nearest WoodHouse5 at 46.1 m (exteriorRadius 8) -- MEASURED "
-                     "by Crossings",
-    },
-]
+    _declared_crossing(cid, a, b, joins, why, NODES)
+    for cid, a, b, joins, why in _AUTHORED_CROSSINGS]
 
 # ---------------------------------------------------------------------------
 # EDGES WHOSE ENDS THIS SEED DOES NOT HAVE.
