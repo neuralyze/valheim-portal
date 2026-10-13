@@ -609,6 +609,47 @@ def _case_NEUTER_dedupe_off_the_double_emission_reaches_the_plan() -> list[str]:
     return [] if len(pl) == 2 else [f"neuter kept {len(pl)} rows"]
 
 
+def _case_a_refused_cylinder_is_kept_off_by_the_next_solve() -> list[str]:
+    import tempfile
+    import refused_footprints as RF
+    bad = []
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "refused-footprints.json"
+        RF.record(path, seed="S", world="W", site="lh-south", x=1286.0,
+                  z=1787.0, radius_m=15.0, not_clearable={"StatueEvil": 1})
+        RF.record(path, seed="S", world="W", site="lh-south", x=1286.0,
+                  z=1787.0, radius_m=15.0, not_clearable={"StatueEvil": 1})
+        rows = RF.discs(path, seed="S", world="W")
+        if len(rows) != 1:
+            bad.append(f"one site recorded twice must be one disc, got {len(rows)}")
+        hit = RF.conflict(1306.0, 1787.0, 10.0, rows)      # 20 m < 15 + 10
+        if hit is None:
+            bad.append("a pad 20 m off a 15 m refused cylinder was not refused")
+        if RF.conflict(1330.0, 1787.0, 10.0, rows) is not None:
+            bad.append("a pad 44 m off the cylinder was refused")
+        try:
+            RF.discs(path, seed="S", world="OTHER")
+            bad.append("another world's record was read, not refused")
+        except SystemExit:
+            pass
+    return bad
+
+
+def _case_NEUTER_ignore_the_record_the_refused_cylinder_is_solved_on() -> list[str]:
+    import tempfile
+    import refused_footprints as RF
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "refused-footprints.json"
+        RF.record(path, seed="S", world="W", site="lh-south", x=0.0, z=0.0,
+                  radius_m=15.0, not_clearable={"StatueEvil": 1})
+        RF._MODE = "ignore"
+        try:
+            rows = RF.discs(path, seed="S", world="W")
+        finally:
+            RF._MODE = "read"
+    return [] if rows == [] else ["the neuter still read the record"]
+
+
 class UnrecognizedVerb(RuntimeError):
     """Stands in for `terraform.console.UnrecognizedVerb` (matched by name)."""
 
@@ -707,6 +748,10 @@ CASES = (
     ("a_piece_emitted_twice_is_one_row", _case_a_piece_emitted_twice_is_one_row),
     ("NEUTER_dedupe_off_double_emission_reaches_plan",
      _case_NEUTER_dedupe_off_the_double_emission_reaches_the_plan),
+    ("a_refused_cylinder_is_kept_off_by_the_next_solve",
+     _case_a_refused_cylinder_is_kept_off_by_the_next_solve),
+    ("NEUTER_ignore_the_record_the_refused_cylinder_is_solved_on",
+     _case_NEUTER_ignore_the_record_the_refused_cylinder_is_solved_on),
     ("an_inland_pond_is_not_a_harbour", _case_an_inland_pond_is_not_a_harbour),
     ("an_islet_is_not_the_roads_land", _case_an_islet_is_not_the_roads_land),
     ("NEUTER_any_landmass_the_islet_is_the_landing",

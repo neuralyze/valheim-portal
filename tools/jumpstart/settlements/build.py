@@ -5456,6 +5456,14 @@ def apply_unit_ground(b, doc: dict, unit: dict, site: str,
                "live_markers_within_standoff": len(hits)},
               role="clearing", site_id=unit["id"])
     if contents["verdict"] != "clear":
+        # THE WAY BACK (refused_footprints.py): record the cylinder so the
+        # next site solve keeps off it, instead of leaving the site lost.
+        import refused_footprints as RF
+        _ws = worldseed
+        RF.record(RF.path_for(_ws.seed(), _ws.world(), _ws._JUMPSTART),
+                  seed=_ws.seed(), world=_ws.world(), site=unit["id"],
+                  x=ar.centre_x, z=ar.centre_z, radius_m=ar.radius_m,
+                  not_clearable=contents["not_clearable"])
         raise SystemExit(
             f"REFUSED {unit['id']}: the clearing cylinder holds "
             f"{contents['not_clearable']}, which are not in the measured "

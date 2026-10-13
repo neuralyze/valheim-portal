@@ -1,0 +1,16 @@
+{
+ "footprints": [
+  {
+   "not_clearable": {
+    "StatueEvil": 1
+   },
+   "radius_m": 17.56,
+   "recorded_utc": "2026-10-13T01:21:13Z",
+   "site": "lh-south",
+   "x": 1254.0,
+   "z": 1812.0
+  }
+ ],
+ "seed": "Pirate68",
+ "world": "Ulfsland"
+}

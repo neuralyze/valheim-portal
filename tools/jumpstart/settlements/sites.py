@@ -378,6 +378,12 @@ def existing_installations(world_dir: str | Path, *, seed_: str | None = None,
             f"no {key!r} block ({', '.join(unsolved[:6])}) and "
             f"{len(out)} do. A settlement kept off a subset of this world's "
             f"buildings is not kept off its buildings.")
+    # WHAT THE LIVE BUILD REFUSED (refused_footprints.py): a cylinder the
+    # offline dump could not see into, kept off by the next solve.
+    import refused_footprints as RF
+    seed_, world_ = seed_ or worldseed.seed(), world_ or worldseed.world()
+    out.extend(RF.discs(RF.path_for(seed_, world_, worldseed._JUMPSTART),
+                        seed=seed_, world=world_))
     return out
 
 

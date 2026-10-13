@@ -1205,3 +1205,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - geography.crossing_nodes only sites a bridge whose BOTH banks lie in the router's reachable component (CROSSING_REACH_DEPENDS_ON; neuter _CROSSING_REACH_MODE). Pirate68: S1 moved from the narrowest pair (13 m, far bank unreachable, T2 ended 118.7 m short, deck never built) to the reachable narrowest (15 m, (-310,-74)). No reachable pair => crossing absent with counts.
 - spec.DECLARED_CROSSINGS is built from the derived abutment nodes (banks, ground, span, bearing, gap_min_y) instead of Ulfsland literals; only joins/significance are authored.
+
+- The build records a clearing cylinder it refuses for non-clearable objects (settlements/refused_footprints.py -> ledger/refused-footprints.<world>.json, outside the archived runs dir) and the site solver keeps new pads off it. Pirate68: lh-south's StatueEvil cylinder (1254,1812 r17.56, measured live, ledger seq 5868) moves lh-south to (1288,1808); no other site moves. Neuter: refused_footprints._MODE.
