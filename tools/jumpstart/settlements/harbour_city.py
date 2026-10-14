@@ -632,6 +632,21 @@ GEOM = dict(
 DECK_AUTHOR_Y = DECK_Y - GEOM["floor"]["top"]        # 30.503
 
 
+# PILE_CAP_DEPENDS_ON: A POLE THAT CARRIES NOTHING IS NOT EMITTED.
+#
+# `piles()` always finished a stack with a cap pole under the deck.  Two cases
+# make it dead weight, and the gate refuses it as a buried copy (>= 0.98 of its
+# volume inside a sibling or under the ground): (1) the stack's own top already
+# reaches the deck (water depth a multiple of 4 m) -- the cap lies wholly
+# inside the last stack pole; (2) the ground is already at or above the cap's
+# top, so the pole is under the applied surface.  MEASURED on Pirate68 regen
+# #6: 2 co-located at (1200, 450) and 1 at (1100, 750) (stack tops within
+# 0.08 m of the deck), and the Sudrvik pole whose own top is 0.096 m below the
+# lowest ground under it.  NEUTER `_PILE_CAP_MODE = "always"`.
+PILE_CAP_DEPENDS_ON = ("the_stack_top", "the_ground_under_the_cap")
+_PILE_CAP_MODE = "carrying"      # carrying | always (the shipped)
+
+
 def piles(pl: Plan, x: float, z: float, seabed_y: float,
           deck_author_y: float = DECK_AUTHOR_Y, why: str = "") -> int:
     """A pile stack from the seabed up to just under the deck.
@@ -648,10 +663,15 @@ def piles(pl: Plan, x: float, z: float, seabed_y: float,
         pl.add(GEOM["pile"]["prefab"], x, y + GEOM["pile"]["half"], z, 0.0, why)
         y += GEOM["pile"]["len"]
         n += 1
-    # the last, part-buried pole that actually meets the deck
-    pl.add(GEOM["pile"]["prefab"], x,
-           deck_author_y - GEOM["pile"]["half"] + 0.05, z, 0.0, why)
-    return n + 1
+    # the last, part-buried pole that actually meets the deck -- unless it
+    # would carry nothing (PILE_CAP_DEPENDS_ON).
+    cap_top = deck_author_y + 0.05
+    if _PILE_CAP_MODE == "always" or not (
+            y >= deck_author_y - 0.05 or seabed_y >= cap_top - 0.1):
+        pl.add(GEOM["pile"]["prefab"], x,
+               deck_author_y - GEOM["pile"]["half"] + 0.05, z, 0.0, why)
+        n += 1
+    return n
 
 
 def deck_strip(pl: Plan, s, x0: float, x1: float, z0: float, z1: float,

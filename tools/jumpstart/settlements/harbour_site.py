@@ -650,6 +650,39 @@ def _case_NEUTER_ignore_the_record_the_refused_cylinder_is_solved_on() -> list[s
     return [] if rows == [] else ["the neuter still read the record"]
 
 
+def _case_a_pole_that_carries_nothing_is_not_emitted() -> list[str]:
+    import harbour_city as HC
+    da = HC.DECK_AUTHOR_Y
+    bad = []
+    pl = HC.Plan("t")                       # depth exactly 8 m: two poles reach
+    HC.piles(pl, 0.0, 0.0, da - 8.0)
+    if len(pl) != 2:
+        bad.append(f"a stack that reaches the deck needs 2 poles, got {len(pl)}")
+    pl = HC.Plan("t")                       # ground above the cap's top
+    HC.piles(pl, 0.0, 0.0, da + 0.1)
+    if len(pl) != 0:
+        bad.append(f"a pole wholly under the ground was emitted ({len(pl)})")
+    pl = HC.Plan("t")                       # 2 m of water: the cap is the pile
+    HC.piles(pl, 0.0, 0.0, da - 2.0)
+    if len(pl) != 1:
+        bad.append(f"a 2 m pile needs its cap, got {len(pl)}")
+    return bad
+
+
+def _case_NEUTER_always_cap_the_buried_pole_is_emitted() -> list[str]:
+    import harbour_city as HC
+    HC._PILE_CAP_MODE = "always"
+    try:
+        pl = HC.Plan("t")
+        HC.piles(pl, 0.0, 0.0, HC.DECK_AUTHOR_Y - 8.0)
+        pl2 = HC.Plan("t")
+        HC.piles(pl2, 0.0, 0.0, HC.DECK_AUTHOR_Y + 0.1)
+    finally:
+        HC._PILE_CAP_MODE = "carrying"
+    return [] if (len(pl) == 3 and len(pl2) == 1) else [
+        f"the neuter did not restore the cap ({len(pl)}, {len(pl2)})"]
+
+
 class UnrecognizedVerb(RuntimeError):
     """Stands in for `terraform.console.UnrecognizedVerb` (matched by name)."""
 
@@ -752,6 +785,10 @@ CASES = (
      _case_a_refused_cylinder_is_kept_off_by_the_next_solve),
     ("NEUTER_ignore_the_record_the_refused_cylinder_is_solved_on",
      _case_NEUTER_ignore_the_record_the_refused_cylinder_is_solved_on),
+    ("a_pole_that_carries_nothing_is_not_emitted",
+     _case_a_pole_that_carries_nothing_is_not_emitted),
+    ("NEUTER_always_cap_the_buried_pole_is_emitted",
+     _case_NEUTER_always_cap_the_buried_pole_is_emitted),
     ("an_inland_pond_is_not_a_harbour", _case_an_inland_pond_is_not_a_harbour),
     ("an_islet_is_not_the_roads_land", _case_an_islet_is_not_the_roads_land),
     ("NEUTER_any_landmass_the_islet_is_the_landing",
