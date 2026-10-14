@@ -1022,6 +1022,63 @@ def reachable_cost(cost, near_ok, far_ok):
     return np.where(np.asarray(near_ok) & np.asarray(far_ok), cost, np.inf)
 
 
+# CROSSING_LANDING_DEPENDS_ON: A BANK IS A PLACE A DECK CAN LAND ACROSS ITS WHOLE WIDTH.
+#
+# A candidate was costed by gap and reach alone.  MEASURED on Pirate68 regen
+# #6: the reachable narrowest pair (15.0 m, (-310.5, -73.5)) has 1.3-1.9 m of
+# ground height ACROSS the deck's width at its landing, on a shore skewed to
+# the span; the deck generator then refused S1 ("land seating needs 31.873 m
+# at station 2.000 m, but its footprint reaches wet ground 28.849 m") and the
+# deck, the road to it and the sites behind it were never built.  Of the 400
+# narrowest reachable pairs 94 land level (<= LANDING_SPREAD_MAX_M across
+# +/-LANDING_HALF_M, every sample on or above the water plane), the best a
+# 15.8 m span.
+# LANDING_SPREAD_MAX_M is a TASTE PICK (the bank-step limit is 0.35 m and a
+# ramp spends 0.30 m a tile); it is labelled one.
+# NEUTER `_CROSSING_LANDING_MODE = "off"`: the shipped rule, gap and reach.
+# Proven by `selftest_crossing_reach`.
+CROSSING_LANDING_DEPENDS_ON = ("the_deck_width", "the_water_plane")
+_CROSSING_LANDING_MODE = "level"        # level | off (the shipped)
+LANDING_SPREAD_MAX_M = 1.0
+LANDING_HALF_M = 3.0
+LANDING_INSET_M = 2.0
+
+
+def landing_spread(heights):
+    """`(spread_m, lowest_m)` of lateral ground samples, or None if unread."""
+    if heights is None or not len(heights):
+        return None
+    return (max(heights) - min(heights), min(heights))
+
+
+def landing_level(near_fld, far_fld, nx, nz, fx, fz, candidates):
+    """Boolean mask over `candidates` (indices): both landings level."""
+    import numpy as np
+    out = np.zeros(len(nx), dtype=bool)
+
+    def lateral(fld, x, z, ux, uz):
+        got = []
+        for k in np.arange(-LANDING_HALF_M, LANDING_HALF_M + 0.1, 1.0):
+            try:
+                got.append(sample_at(fld, x - uz * k, z + ux * k)[0])
+            except ValueError:
+                return None
+        return got
+
+    for i in candidates:
+        dx, dz = fx[i] - nx[i], fz[i] - nz[i]
+        n = math.hypot(dx, dz) or 1.0
+        ux, uz = dx / n, dz / n
+        a = landing_spread(lateral(near_fld, nx[i] - ux * LANDING_INSET_M,
+                                   nz[i] - uz * LANDING_INSET_M, ux, uz))
+        b = landing_spread(lateral(far_fld, fx[i] + ux * LANDING_INSET_M,
+                                   fz[i] + uz * LANDING_INSET_M, ux, uz))
+        out[i] = (a is not None and b is not None
+                  and max(a[0], b[0]) <= LANDING_SPREAD_MAX_M
+                  and min(a[1], b[1]) >= ABUTMENT_MIN_Y)
+    return out
+
+
 def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
                    plan: tuple[dict, ...] = CROSSING_PLAN,
                    seed_varying: set | None = None,
@@ -1078,6 +1135,13 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
 
     near_ok = reach_near(near_x, near_z) if reach_near else None
     far_ok = reach_far(far_x, far_z) if reach_far else None
+    if (_CROSSING_LANDING_MODE == "level" and near_ok is not None
+            and far_ok is not None):
+        _cand = np.where(near_ok & far_ok)[0]
+        _cand = _cand[np.argsort(gaps[_cand])][:2000]
+        _lvl = landing_level(near_fld, far_fld, near_x, near_z, far_x, far_z,
+                             _cand)
+        near_ok = near_ok & _lvl
     n_reach = (int((near_ok & far_ok).sum())
                if near_ok is not None and far_ok is not None else len(gaps))
     if n_reach == 0 and _CROSSING_REACH_MODE != "land":
@@ -1511,6 +1575,50 @@ def selftest_crossing_reach() -> int:
     return bad
 
 
+def selftest_crossing_landing() -> int:
+    """CROSSING_LANDING_DEPENDS_ON both ways on the Pirate68 numbers."""
+    global _CROSSING_LANDING_MODE
+    bad = 0
+    skew = landing_spread([31.7, 31.2, 30.6, 30.3])      # 1.4 m across
+    flat = landing_spread([30.95, 31.1, 31.4, 31.6])     # 0.65 m
+    wet = landing_spread([30.9, 30.8, 29.9, 30.2])       # dips under 30.0
+    ok = (skew[0] > LANDING_SPREAD_MAX_M and flat[0] <= LANDING_SPREAD_MAX_M
+          and wet[1] < ABUTMENT_MIN_Y)
+    print(f"  {'ok  ' if ok else 'FAIL'}  skewed shore refused, level shore "
+          f"kept, wet sample refused")
+    bad += not ok
+    import numpy as np
+    from types import SimpleNamespace as NS
+    n = 60
+    zz, xx = np.mgrid[0:n, 0:n].astype(float)
+    # a shore skewed to the span: ground rises 0.5 m per metre ACROSS it
+    skewed = NS(id="t", x0=0.0, z0=0.0, step=1.0, n=n,
+                h=33.0 + 0.5 * (zz - 30.0))
+    flat = NS(id="t", x0=0.0, z0=0.0, step=1.0, n=n,
+              h=np.full((n, n), 31.0))
+    nx_, nz_ = np.array([30.0]), np.array([30.0])
+    fx_, fz_ = np.array([40.0]), np.array([30.0])
+    got_skew = bool(landing_level(skewed, skewed, nx_, nz_, fx_, fz_, [0])[0])
+    got_flat = bool(landing_level(flat, flat, nx_, nz_, fx_, fz_, [0])[0])
+    ok = (not got_skew) and got_flat
+    print(f"  {'ok  ' if ok else 'FAIL'}  a diagonal shore is not a landing "
+          f"(got {got_skew}), a level bench is ({got_flat})")
+    bad += not ok
+    prior, LANDING_SPREAD_MAX_M_ = LANDING_SPREAD_MAX_M, LANDING_SPREAD_MAX_M
+    globals()["LANDING_SPREAD_MAX_M"] = 99.0
+    try:
+        neutered = bool(landing_level(skewed, skewed, nx_, nz_, fx_, fz_,
+                                      [0])[0])
+    finally:
+        globals()["LANDING_SPREAD_MAX_M"] = prior
+    ok = neutered is True
+    print(f"  {'ok  ' if ok else 'FAIL'}  NEUTER no spread limit: the diagonal "
+          f"shore lands again ({neutered})")
+    bad += not ok
+    print(f"\n  crossing landing selftest {'PASS' if not bad else 'FAIL'}\n")
+    return bad
+
+
 def selftest_extremity_reach() -> int:
     global _EXTREMITY_REACH_MODE
     import numpy as np
@@ -1557,7 +1665,7 @@ def selftest_extremity_reach() -> int:
 
 def main(argv=None) -> int:
     if (sys.argv[1:] if argv is None else list(argv))[:1] == ["selftest"]:
-        return 1 if (selftest_extremity_reach() | selftest_crossing_reach()) else 0
+        return 1 if (selftest_extremity_reach() | selftest_crossing_reach() | selftest_crossing_landing()) else 0
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["emit", "show"])
