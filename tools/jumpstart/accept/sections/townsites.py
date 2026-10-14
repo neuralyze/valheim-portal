@@ -1701,6 +1701,41 @@ def _case_an_islet_across_the_water_is_portal_only():
     return finding
 
 
+def _case_a_pad_the_road_cannot_arrive_on_is_portal_only():
+    """`lh-south`'s state, constructed: a site whose snap the graph reaches,
+    on a coast whose land is 20+ m from the pad datum at the stand-off ring --
+    a 12 % spur cannot close that over the run.  The verdict is `approach_cliff`
+    with the numbers; the same site with a datum its ring can meet is roaded
+    (the survivor, in the same case)."""
+    sr, pts = _road_reach_fixture()
+    x, z = pts["land"]
+    ok = sr.verdict("trunk-primary", x, z, "spur", pad_y=33.0, pad_m=22.0)
+    cliff = sr.verdict("trunk-primary", x, z, "spur", pad_y=60.0, pad_m=22.0)
+    assert ok["roaded"], f"a pad its ring can meet was refused: {ok['why']}"
+    assert cliff["reason"] == "approach_cliff", \
+        f"a pad 20+ m over its ring was judged {cliff['reason']}"
+    ap = cliff["evidence"]["approach"]
+    return Finding(
+        check="road_reach_approach", ok=cliff["roaded"],
+        message=f"the pad at {pts['land']} is judged {cliff['reason']}: "
+                f"{cliff['why']}",
+        where=pts["land"],
+        numbers={"best_gap_m": ap["best_gap_m"], "allowed_m": ap["allowed_m"],
+                 "land_samples": ap["land_samples"]})
+
+
+def _neuter_the_approach_is_not_asked():
+    """RESTORE THE DEFECT: `_APPROACH_MODE = "snap"` -- the router's snap
+    alone decides whether a site is roaded."""
+    mod = _plan().RR
+    saved = mod._APPROACH_MODE
+    mod._APPROACH_MODE = "snap"
+
+    def undo():
+        mod._APPROACH_MODE = saved
+    return undo
+
+
 def _case_a_site_on_the_trunk_landmass_is_roaded():
     """THE SURVIVOR: ground on the trunk landmass, in the network's own
     component, is roaded -- a check that refuses everything blocks a world
@@ -2356,6 +2391,15 @@ register(Section(
                           "bridge to every islet"),
              neuter=_neuter_the_landmass_is_not_asked,
              neuters="the graph's reach without the trunk-landmass test"),
+        Case("a_pad_the_road_cannot_arrive_on_is_portal_only", True,
+             _case_a_pad_the_road_cannot_arrive_on_is_portal_only,
+             prior_state=("Pirate68 regen #6: lh-south, pad datum 33.27 m on "
+                          "a sea-level shelf, ring ground 51-56 m; reached by "
+                          "the graph, road ended 46.2 m short at 52.9 m "
+                          "(69 % against a 12 % spur), batter refused with 89 "
+                          "rim steps of 3.3 m, S11 unbuilt"),
+             neuter=_neuter_the_approach_is_not_asked,
+             neuters="the router snap alone deciding roaded"),
         Case("a_site_on_the_trunk_landmass_is_roaded", False,
              _case_a_site_on_the_trunk_landmass_is_roaded,
              prior_state=("the survivor: ground in the network's own component "

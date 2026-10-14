@@ -89,6 +89,63 @@ ROAD_REACH_DEPENDS_ON = ("the_routers_own_graph", "the_trunk_landmass",
                          "the_class_the_site_declares", "a_rooted_window")
 _MODE = "graph"          # graph | declared (the shipped: a class IS a road)
 
+# APPROACH_DEPENDS_ON: A SITE'S ROAD CAN ARRIVE ON ITS PAD, NOT ONLY ON ITS SNAP.
+#
+# The verdict above asks whether the router's graph reaches a cell 4 m from the
+# site.  It never asks whether the LAST stretch -- from the stand-off ring onto
+# the pad edge -- can be driven at the class's grade.  MEASURED on Pirate68
+# regen #6: lh-south (pad datum 33.27 m on a sea-level shelf, ring ground
+# 51-56 m on its land side, 29-30 m = under water elsewhere) was `reached` and
+# the road ended 46.2 m short at 52.9 m, a 19.6 m drop in 28.6 m of run -- 69 %
+# against a 12 % spur -- and the writer refused the batter with 89 rim steps of
+# 3.3 m.  THE RULE: some LAND sample of the ring at the stand-off radius
+# (pad half-diagonal + APPROACH_RING_M, MEASURED 30.6 m from that run's
+# endpoint_standoff 46.2 - pad half-diagonal 15.6) must lie within
+# grade * run + CUT_FILL_MAX of the pad datum.  A site with none is portal-only
+# with the numbers (`approach_cliff`), and the solver passes over it exactly as
+# it passes over a site no road reaches.
+# NEUTER `_APPROACH_MODE = "snap"`: the shipped reading, snap only.
+APPROACH_DEPENDS_ON = ("the_class_grade", "the_pad_datum", "the_ring_ground")
+_APPROACH_MODE = "grade"        # grade | snap (the shipped)
+APPROACH_RING_M = 30.6
+APPROACH_BEARINGS = 16
+LAND_MARGIN_M = 1.0             # a ring sample this far over the water plane
+
+
+def approach_check(fld, x: float, z: float, pad_y: float, pad_m: float,
+                   priority: str, water_y: float = 30.0) -> dict:
+    """`{ok, best_gap_m, allowed_m, ring_m, land_samples}`: the smallest
+    |ground - pad datum| over the ring's land samples against what the class
+    grade allows over the run plus the cut/fill the writer may spend."""
+    import math
+    import geography as G                                   # noqa: PLC0415
+    import route as routemod                                # noqa: PLC0415
+    half_diag = pad_m * math.sqrt(2.0) / 2.0
+    ring = half_diag + APPROACH_RING_M
+    run = APPROACH_RING_M
+    allowed = routemod.GRADE[priority] * run + routemod.CUT_FILL_MAX
+    best, land = None, 0
+    for k in range(APPROACH_BEARINGS):
+        a = 2.0 * math.pi * k / APPROACH_BEARINGS
+        try:
+            h = G.sample_at(fld, x + ring * math.cos(a),
+                            z + ring * math.sin(a))[0]
+        except ValueError:                                  # off the window
+            continue
+        if h < water_y + LAND_MARGIN_M:
+            continue
+        land += 1
+        gap = abs(h - pad_y)
+        best = gap if best is None else min(best, gap)
+    # NO LAND ON THE RING IS NOT A CLIFF: the road arrives by a bridge (lh-west
+    # on Pirate68: ring wholly under water, W9's 42 m deck is its approach), and
+    # whether a deck can land is the crossing rules' question, not this one's.
+    return {"ok": best is None or best <= allowed,
+            "best_gap_m": None if best is None else round(best, 2),
+            "allowed_m": round(allowed, 2), "ring_m": round(ring, 1),
+            "land_samples": land}
+
+
 # The carriageway classes `roads/route.py::GRADE` knows.  `none` is the
 # declaration that no road is planned to the site.
 ROAD_CLASSES = ("trunk", "spur", "mountain")
@@ -129,7 +186,9 @@ class SiteReach:
             self._graphs[key] = build(self.fields[patch], cls)
         return self._graphs[key]
 
-    def verdict(self, patch: str, x: float, z: float, priority: str) -> dict:
+    def verdict(self, patch: str, x: float, z: float, priority: str,
+                pad_y: float | None = None, pad_m: float | None = None
+                ) -> dict:
         """The verdict for a site at (x, z) in window `patch` whose declared
         road class is `priority` (`trunk` | `spur` | `mountain` | `none`)."""
         rec = {"class": priority, "window": patch,
@@ -167,6 +226,25 @@ class SiteReach:
               "trunk_land_cells": g.trunk_land_cells,
               "snap_m": None if snap == float("inf") else round(snap, 1),
               "snap_limit_m": g.snap_m}
+        if (bool(at["reached"][0]) and bool(at["on_trunk_landmass"][0])
+                and _APPROACH_MODE == "grade" and pad_y is not None
+                and pad_m is not None):
+            ap = approach_check(self.fields[patch], x, z, pad_y, pad_m,
+                                priority)
+            ev["approach"] = ap
+            if not ap["ok"]:
+                return {**rec, "roaded": False, "reason": "approach_cliff",
+                        "why": (f"the {priority} router reaches a cell "
+                                f"{ev['snap_m']:g} m away, but the nearest "
+                                f"land at the {ap['ring_m']:g} m stand-off "
+                                f"ring is {ap['best_gap_m']} m from the pad "
+                                f"datum {pad_y:.2f} against "
+                                f"{ap['allowed_m']} m a {priority} road can "
+                                f"close over {APPROACH_RING_M:g} m "
+                                f"({ap['land_samples']} land samples): the "
+                                f"road cannot arrive on the pad "
+                                f"(APPROACH_DEPENDS_ON)"),
+                        "evidence": ev}
         if bool(at["reached"][0]) and bool(at["on_trunk_landmass"][0]):
             return {**rec, "roaded": True, "reason": "reached",
                     "why": (f"the {priority} router snap stands "

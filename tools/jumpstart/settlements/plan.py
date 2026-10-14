@@ -2147,7 +2147,8 @@ def build(picker: S.Picker, run_interior: bool = True,
                                                      evidence=evidence),
         claims=claims,
         reach=lambda rec, s: site_reach.verdict(
-            s.patch, s.x, s.z, rec["road_priority"]),
+            s.patch, s.x, s.z, rec["road_priority"],
+            pad_y=(s.pad or {}).get("target_y"), pad_m=rec.get("pad_m")),
         context={"town": (first_town["centre"][0], first_town["centre"][1])})
     # A SITE REFUSED FOR ITS BODY is carried, not solved, and not the stage's
     # end (BODY_REFUSAL_DEPENDS_ON): `plan["refused_sites"]`, with every body
@@ -2213,7 +2214,9 @@ def build(picker: S.Picker, run_interior: bool = True,
             # THE ROAD'S VERDICT AT THE PLACE THE NODE WILL STAND: the pad's
             # slid centre, not the candidate the search proposed.
             "road": site_reach.verdict(o["patch"], pad["x"], pad["z"],
-                                       o["road_priority"]),
+                                       o["road_priority"],
+                                       pad_y=pad.get("target_y"),
+                                       pad_m=o.get("pad_m")),
             "cluster": o.get("cluster", 1),
         })
         plan["outliers"].append(rec)
