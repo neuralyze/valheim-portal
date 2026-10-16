@@ -10997,6 +10997,58 @@ def selftest_guard_sandbox(verbose: bool = True) -> dict:
     return v
 
 
+# FULLY_BRIDGED_DEPENDS_ON: A SEGMENT WITH NO GROUND HAS NOTHING FOR THE
+# GROUND WRITER TO WRITE, AND SAYS SO INSTEAD OF REFUSING.
+#
+# `junction.build_gate` refuses a segment that "contributes no ground run",
+# because a MISSPELLED id contributes none either; its own docstring says a
+# fully bridged segment is the legitimate case and then does not tell the two
+# apart.  MEASURED on Pirate68 regen #7: the level-landing crossing rule moved
+# S1's east bank, S12-brgs1-boathouse became 16.5 m with all 10 of its nodes on
+# the deck, and step 4 refused it rc=1 (a ValueError traceback) -- a unit that
+# is built by the DECK step (6.5) and has no ground to grade.  The writer now
+# answers a segment whose every node is bridged with the numbers and exit 0;
+# a segment id that does not exist still raises (`no segment ...`), so the
+# misspelling the gate guards against is still refused.
+# NEUTER `_FULLY_BRIDGED_MODE = "refuse"`: the shipped path, into the gate.
+FULLY_BRIDGED_DEPENDS_ON = ("every_node_on_the_deck",
+                            "the_segment_existing_in_the_plan")
+_FULLY_BRIDGED_MODE = "answer"      # answer | refuse (the shipped)
+
+
+def fully_bridged(seg: dict) -> bool:
+    """True when every node of `seg` stands on a deck: no ground to write."""
+    br = seg.get("is_bridge") or []
+    return bool(br) and all(bool(b) for b in br)
+
+
+def answers_without_writing(seg: dict) -> bool:
+    """The decision `main` takes: answer the segment with its numbers and
+    exit 0 instead of entering the gates (FULLY_BRIDGED_DEPENDS_ON)."""
+    return _FULLY_BRIDGED_MODE == "answer" and fully_bridged(seg)
+
+
+def selftest_fully_bridged(verbose: bool = True) -> dict:
+    global _FULLY_BRIDGED_MODE
+    bridged = {"id": "S", "is_bridge": [True] * 10}
+    mixed = {"id": "S", "is_bridge": [False, True, True, False]}
+    empty = {"id": "S", "is_bridge": []}
+    ok = (fully_bridged(bridged) and not fully_bridged(mixed)
+          and not fully_bridged(empty))
+    ok = ok and answers_without_writing(bridged)
+    prior, _FULLY_BRIDGED_MODE = _FULLY_BRIDGED_MODE, "refuse"
+    try:
+        neutered = answers_without_writing(bridged)
+    finally:
+        _FULLY_BRIDGED_MODE = prior
+    res = {"ok": ok and neutered is False}
+    if verbose:
+        print(f"  fully bridged: {'ok' if res['ok'] else 'FAIL'} -- all-deck "
+              f"segment answered, mixed and empty are not")
+    assert res["ok"], "fully_bridged misjudged a segment"
+    return res
+
+
 def main() -> int:
     # THE CASES RUN WITHOUT A WORLD, A SEED OR A SERVER, so they are reachable
     # before `--segment` is required: a self-test you have to name a segment
@@ -11036,6 +11088,7 @@ def main() -> int:
         selftest_rim_bank_end()
         selftest_ribbon_beside_itself()
         selftest_road_unit_key()
+        selftest_fully_bridged()
         # THE CROSSING PREMISE, WHICH THIS FILE NOW REFUSES ON, PROVES
         # ITSELF WHERE IT LIVES - and it is run from here so a builder who
         # runs one selftest runs both.
@@ -11162,6 +11215,13 @@ def main() -> int:
         raise SystemExit(f"no segment {args.segment} in {args.segments}; have "
                          f"{[s['id'] for s in doc['segments']]}")
     seg = segs[0]
+    if answers_without_writing(seg):
+        print(f"{seg['id']}: FULLY BRIDGED -- {len(seg['is_bridge'])} of "
+              f"{len(seg['is_bridge'])} stations stand on a deck, "
+              f"{seg.get('length_m')} m, so there is no ground to grade and "
+              f"nothing for the ground writer to write; the deck step "
+              f"(boardwalk.py) builds this unit (FULLY_BRIDGED_DEPENDS_ON)")
+        return 0
     if args.no_connection_collar:
         seg["connection_collar"] = False
     # THE RECORD, TAKEN BEFORE ANYTHING CAN MUTATE IT.  `solve_approach` and
