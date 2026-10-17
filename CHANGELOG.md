@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Road-plan connectivity no longer treats a released abutment as a connection
+  to its former node or declared bridge. Physical road junctions and held
+  abutments still connect. The orphan-join regression covers both false joins;
+  on the recorded Ulfsland plan this exposes two disconnected road groups
+  previously reported as connected. This detects the gap; it does not yet
+  provide the missing approach roads.
+
 - `tools/jumpstart/settlements/road_reach.py` + `roads/geography.py::RoadGraph` — A SITE IS
   WHERE A ROAD CAN GET TO, OR IT IS PORTAL-ONLY, AND SAYS WHICH WITH NUMBERS. With the 15 frozen
   site pins and the 14 outlier anchors removed, the solver ranked candidates by what a tower

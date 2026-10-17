@@ -3873,9 +3873,9 @@ def search_xz(node_id: str, corr: routemod.Corridor, nodes: dict | None = None,
 # the planner never asked whether what it laid was connected.
 #
 # THE RULE: after every authored leg is routed, the legs that meet are one
-# piece -- their paved footprints touch, they name the same node (the arrival
-# spur and the node anchor put them on one place), or they end on the two
-# banks of a DECLARED crossing (the bridge carries the walk).  Every piece
+# piece -- their paved footprints touch, they still serve the same node, or
+# they serve the two banks of a DECLARED crossing (the bridge carries the
+# walk). A released abutment no longer serves its named node. Every piece
 # the root's piece does not contain gets a JOIN leg from the nearest node the
 # root's piece serves to the nearest of its own nodes (same island), routed
 # through every plan-time gate an authored leg meets.  A join the census has
@@ -3941,8 +3941,10 @@ def plan_components(segments: list[dict],
                 parent[find(a)] = find(b)
     at_node: dict[str, list[str]] = {}
     for s in segments:
+        released = {a["node"] for a in s.get("abutments_released", [])}
         for n in (s["from"], s["to"]):
-            at_node.setdefault(n, []).append(s["id"])
+            if n not in released:
+                at_node.setdefault(n, []).append(s["id"])
     for na, nb in bridges:
         at_node.setdefault(na, []).extend(at_node.get(nb, []))
     for legs in at_node.values():
@@ -7606,6 +7608,31 @@ def selftest_orphan_join() -> int:
          sorted(rooted_islands(two, "portalhub", [])), ["spawn"])
     want("NEUTER join=off: both emitted with no verdict",
          moded("off", island_verdict), [])
+    print("case: a trimmed road no longer reaches its declared bridge bank")
+    banks = dict(nodes, **{
+        "east": {"xz": (300.0, 0.0), "island": "spawn"},
+        "west": {"xz": (320.0, 0.0), "island": "west"},
+        "shore": {"xz": (350.0, 0.0), "island": "west"},
+        "town": {"xz": (600.0, 0.0), "island": "west"}})
+    approach = _oj_leg("approach", "portalhub", "east", banks)
+    departure = _oj_leg("departure", "west", "town", banks,
+                        start=(420.0, 0.0))
+    departure["abutments_released"] = [{"node": "west", "end": "a"}]
+    want("a released bank cannot connect across a declared bridge",
+         plan_components([approach, departure], [("east", "west")]),
+         [["approach"], ["departure"]])
+    shared = _oj_leg("shared", "west", "shore", banks)
+    want("a released bank cannot connect through its old node name",
+         plan_components([shared, departure], []),
+         [["departure"], ["shared"]])
+    held = _oj_leg("held", "west", "town", banks)
+    want("a held bank still connects across the declared bridge",
+         plan_components([approach, held], [("east", "west")]),
+         [["approach", "held"]])
+    touching = dict(shared, nodes=[[420.0, 0.0], [450.0, 0.0]])
+    want("released metadata does not prevent a physical road junction",
+         plan_components([touching, departure], []),
+         [["departure", "shared"]])
     print(f"orphan join selftest: {fails} failed")
     return fails
 
