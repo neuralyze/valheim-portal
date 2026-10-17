@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Detected bridge windows use the detector's original station interval rather
+  than finding stations again from snapped coordinates. Short terminal banks
+  and repeated coordinates cannot collapse or select an unrelated part of the
+  road. A measured S13 terminal span previously became zero length and aborted
+  planning; its real interval now reaches the existing water/terminal solver.
+
 - North frontier planning retains the complete ordered 32 m shore-candidate
   universe in a shared predecessor tree and tries later candidates after
   landing, road-writer, dock, full-hull passage or lighthouse feasibility

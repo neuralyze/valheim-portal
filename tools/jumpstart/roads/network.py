@@ -460,9 +460,11 @@ def crossing_windows(pts, s, detected: list[dict]):
     free = np.zeros(n, dtype=bool)
     windows = []
     for c in detected:
-        ia = _station_of(pts, c["bank_a"]["xz"])
-        ib = _station_of(pts, c["bank_b"]["xz"])
-        ia, ib = min(ia, ib), max(ia, ib)
+        # Preserve the detector's actual run. Its banks are display/grid
+        # coordinates: snapping may merge them, and a route can visit the
+        # same coordinate more than once. Neither identifies a station.
+        first, last = c["stations"]
+        ia, ib = max(first-1, 0), min(last+1, n-1)
         wa = max(0, int(np.searchsorted(s, s[ia] - BANK_LEVEL_M)))
         wb = min(n - 1, int(np.searchsorted(s, s[ib] + BANK_LEVEL_M)))
         free[ia:ib + 1] = True
@@ -6916,6 +6918,30 @@ def selftest_crossing_banks() -> int:
                 for c, _w in _cb_plan(*_cb_line(31, 20.0), wet)]
 
     half = boardwalk.DECK_HALF_WIDTH_M
+    def station_provenance(pts, wet, terminal_end):
+        s = np.r_[0.0, np.cumsum([
+            math.hypot(b[0]-a[0], b[1]-a[1])
+            for a, b in zip(pts, pts[1:])])]
+        t = np.array([20.0 if k in wet else 40.0 for k in range(len(pts))])
+        detected, flagged, _ = routemod.find_crossings(
+            "station-provenance", pts, s, t, [], t_foot=t)
+        free, wins = crossing_windows(pts, s, detected)
+        c, ia, ib, wa, wb = wins[0]
+        declare_banks(c, pts, t, t, ia, ib, wa, wb)
+        return (bool(free[flagged].all()) and ia < ib
+                and c["span_m"] > 0
+                and ia == max(c["stations"][0]-1, 0)
+                and ib == min(c["stations"][1]+1, len(pts)-1)
+                and c.get("terminal_banks") == terminal_end)
+
+    want("a short terminal crossing survives coincident snapped banks",
+         station_provenance([(-2.0, 0.0), (0.1, 0.0), (0.8, 0.0)],
+                            {2}, ["bank_b"]), True)
+    want("repeated coordinates do not select an earlier bank occurrence",
+         station_provenance([(0., 0.), (2., 2.), (4., 2.), (5., 0.),
+                             (4., -2.), (0., 0.), (1., 1.), (2., 2.),
+                             (4., 3.)], {6}, None), True)
+
     print("case: a channel on a BEND (REQUIRED: both banks on the recorded "
           "centreline)")
     want("the banks are read off the straightened line", on_line(bend),
