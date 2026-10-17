@@ -7819,7 +7819,7 @@ def selftest_adjacency_reroute() -> int:
     return fails
 
 
-def main() -> int:
+def main(*, plan_state: dict | None = None) -> int:
     if sys.argv[1:2] == ["selftest"]:
         return selftest()
     ap = argparse.ArgumentParser()
@@ -8853,6 +8853,7 @@ def main() -> int:
 
     doc = {
         "schema_version": 2, "owner": "RoadNet", "world": WORLD, "seed": SEED,
+        "connection_requirements": specmod.connection_requirements(),
         # A MEASUREMENT OF ONE SEED'S LAND, AND IT WAS EMITTED FOR EVERY SEED.
         # MEASURED 2026-09-22: a Fresh42 plan carried this sentence verbatim --
         # "spawn island + west isle joined by two bridges", 5.4559 km2, bbox
@@ -9195,6 +9196,13 @@ def main() -> int:
               f"{b['unabsorbable_m']} m unabsorbable")
     for line in written:
         print(line)
+    if plan_state is not None:
+        # The north continuation shares the existing joint/profile and writer
+        # gates with this network; exposing measured state avoids a second
+        # independent profile solve where their actual footprints meet.
+        plan_state.update(joints=joints, pads=jd_pads,
+                          pads_missing=jd_pads_missing, fields=flds,
+                          water_cache=water_cache)
     return 0
 
 

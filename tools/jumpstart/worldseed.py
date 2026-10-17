@@ -404,6 +404,7 @@ _SLOTS = {
     "plan_path": ("settlements", "plan", ".json", PLAN_ENV),
     "segments_path": ("roads", "segments", ".yaml", SEGMENTS_ENV),
     "crossings_path": ("roads", "crossings", ".yaml", CROSSINGS_ENV),
+    "north_path": ("roads", "north_itinerary", ".yaml", "VH_NORTH_ITINERARY"),
 }
 
 
@@ -460,6 +461,11 @@ def crossings_path(seed_: str | None = None) -> Path:
     return _slot(seed_, *_SLOTS["crossings_path"])
 
 
+def north_path(seed_: str | None = None) -> Path:
+    """The generated north itinerary; never the historical measured north plan."""
+    return _slot(seed_, *_SLOTS["north_path"])
+
+
 def road_plan_names(seed_: str | None = None) -> dict[str, str]:
     """The two FILE NAMES `network.py emit` writes inside its `--out`, keyed
     by the stem the rest of the tree says."""
@@ -487,29 +493,22 @@ def installations_read(world_: str) -> tuple[Path, str, str]:
 # THE REST OF WHAT A READER OPENS BY NAME: the road network's plan FILES, and
 # a world's ledger.
 # ---------------------------------------------------------------------------
-# `roads/north.py` routed Pirate68's northern network into a file of its own,
-# and that file is PIRATE68'S ALONE: no other seed has a northern network and
-# no producer writes one for it.  So a seed's network lives in
-# `segments_path(seed)` plus, on the default seed only, `north_segments.yaml`.
-# Three readers spelled that pair as an IMPORT-TIME TUPLE OF FIXED NAMES --
-# `roads/structures.py:103`, `roads/precensus.py:1083`, and
-# `roads/deviate.py:944` reading the first one -- so on every seed they read
-# Ulfsland's 45 planned runs, whatever `VH_SEED` said.  `roads/boardwalk.py::
-# segment_files` had the right shape and a private copy of it.
+# Generated north road-ground is emitted in the canonical segments document.
+# The old separate Pirate68 plan is historical diagnostic evidence only: it
+# must never augment a regenerated world's required or built population.
 NORTH_SEGMENTS_NAME = "north_segments.yaml"
 
 
 def north_segments_path(seed_: str | None = None) -> Path | None:
-    """Pirate68's northern network plan; None on every other seed."""
+    """Historical Pirate68 diagnostic plan, never a generated network input."""
     if (seed_ or seed()) != DEFAULT_SEED:
         return None
     return _JUMPSTART / "roads" / NORTH_SEGMENTS_NAME
 
 
 def segment_files(seed_: str | None = None) -> tuple[Path, ...]:
-    """Every plan file a seed's road network lives in, its own plan first."""
-    north = north_segments_path(seed_)
-    return (segments_path(seed_),) + ((north,) if north is not None else ())
+    """All generated road-ground, north included, has one canonical plan."""
+    return (segments_path(seed_),)
 
 
 def ledger_path(world_: str | None = None) -> Path:
@@ -522,7 +521,7 @@ def ledger_path(world_: str | None = None) -> Path:
 # fixed-name check below treats as READ THROUGH THE SEED, and the calls it
 # refuses at import time.
 PATH_RESOLVERS = ("sites_path", "plan_path", "sites_name", "plan_name",
-                  "segments_path", "crossings_path", "road_plan_names",
+                  "segments_path", "crossings_path", "road_plan_names", "north_path",
                   "installations_read", "north_segments_path",
                   "segment_files", "ledger_path")
 
@@ -2151,8 +2150,7 @@ def selftest(verbose: bool = True) -> dict:
             assert not os.environ.get(k), f"${k} is set; (j) would lie"
         out["segment_files_default"] = [str(p.relative_to(_JUMPSTART))
                                         for p in segment_files(DEFAULT_SEED)]
-        assert out["segment_files_default"] == [
-            "roads/segments.yaml", "roads/north_segments.yaml"]
+        assert out["segment_files_default"] == ["roads/segments.yaml"]
         out["segment_files_fresh"] = [str(p.relative_to(_JUMPSTART))
                                       for p in segment_files("Fresh42")]
         assert out["segment_files_fresh"] == ["roads/segments.Fresh42.yaml"]

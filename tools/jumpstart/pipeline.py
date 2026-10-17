@@ -696,7 +696,9 @@ def _route_provisional(s: Scope) -> list[Artefact]:
     return [Artefact("segments_provisional",
                      s.work / "route-provisional"
                      / worldseed.road_plan_names(s.seed)["segments"],
-                     SCOPE_YAML)]
+                     SCOPE_YAML),
+            Artefact("north_provisional", s.work / "route-provisional"
+                     / worldseed.north_path(s.seed).name, SCOPE_YAML)]
 
 
 def _route(s: Scope) -> list[Artefact]:
@@ -713,7 +715,8 @@ def _route(s: Scope) -> list[Artefact]:
     it, so the producer and the reader cannot disagree about it.
     """
     return [Artefact("segments", worldseed.segments_path(s.seed), SCOPE_YAML),
-            Artefact("crossings", worldseed.crossings_path(s.seed), SCOPE_YAML)]
+            Artefact("crossings", worldseed.crossings_path(s.seed), SCOPE_YAML),
+            Artefact("north_itinerary", worldseed.north_path(s.seed), SCOPE_YAML)]
 
 
 def _route_plan_wanted(s: Scope) -> dict:
@@ -845,12 +848,14 @@ STAGES: tuple[Stage, ...] = (
                              "--locations", str(s.work / "loc" / f"{s.seed_hash}.json"),
                              "--out", str(s.work / f"{s.seed}_1m.bin"),
                              "--vh-src", str(s.vh_src),
+                             "--north-preset", os.environ.get("VH_NORTH_PRESET", "pre-kall"),
+                             "--north-coverage", "ordered-frontier-union-v1",
                              "--sandbox", str(s.sandbox),
                              "--budget-mb", f"{scan_budget_mb(s.work):.0f}",
                              *field_window_flags(s.seed),
                              "--seed", s.seed],
-          note="derives this seed's patch windows off site_finder.land_components "
-               "and runs PatchScan on them, under a budget measured off the HOST",
+          note="derives this seed's settlement windows and the union of EVERY "
+               "eligible ordered 32m north frontier corridor, under the HOST budget",
           volatile=("--budget-mb",)),
     Stage(5, "geography", "roads/geography.py emit", _geography,
           requires=("field",),
@@ -919,22 +924,25 @@ STAGES: tuple[Stage, ...] = (
           note="the solved site set AND the full plan. plan.py writes both into "
                "a scratch --out under the names worldseed decides; "
                "_adopt_solve copies each into the per-seed slot its reader reads"),
-    Stage(9, "route_provisional", "roads/network.py plan --provisional",
+    Stage(9, "route_provisional", "roads/north.py network --provisional",
           _route_provisional,
-          requires=("field", "geography", "sites", "settlement_plan",
+          requires=("field", "grid", "locations", "geography", "sites", "settlement_plan",
                     "placements"),
           # network.planned_pad_claims (PAD_CLAIMS_DEPENDS_ON) reads the
           # solved installations AND the settlement plan: every pad the build
           # will lay is a keep-out the router bends round.
           reads=lambda s: [worldseed.installations_read(s.world),
                            (worldseed.plan_path(s.seed), "", "")],
-          command=lambda s: [sys.executable, str(HERE / "roads" / "network.py"),
-                             "plan", "--field", str(s.work / f"{s.seed}_1m.bin"),
+          command=lambda s: [sys.executable, str(HERE / "roads" / "north.py"),
+                             "network", "--field", str(s.work / f"{s.seed}_1m.bin"),
+                             "--grid", str(s.work / f"grid-{s.seed_hash}" / "00000.biome"),
+                             "--locations", str(s.work / "loc" / f"{s.seed_hash}.json"),
                              "--provisional",
                              "--out", str(s.work / "route-provisional"),
+                             "--preset", os.environ.get("VH_NORTH_PRESET", "pre-kall"),
                              "--seed", s.seed, "--world", s.world],
-          note="an UNPAVEABLE plan whose only job is to give the census a line "
-               "to read along. ribbon.py refuses to pave a PROVISIONAL segment"),
+          note="UNPAVEABLE road/dock/hull/lighthouse feasibility search; its "
+               "census population includes all alternative frontier union tiles"),
     Stage(10, "census", "roads/precensus.py survey", _census,
           requires=("save", "segments_provisional"),
           command=lambda s: [sys.executable,
@@ -993,8 +1001,8 @@ STAGES: tuple[Stage, ...] = (
           writes_world="generates zones in the live world over RCON and "
                        "appends them to its ledger",
           volatile=("--actor",)),
-    Stage(11, "route", "roads/network.py plan --census", _route,
-          requires=("field", "geography", "sites", "settlement_plan",
+    Stage(11, "route", "roads/north.py network --census", _route,
+          requires=("field", "grid", "locations", "north_provisional", "geography", "sites", "settlement_plan",
                     "census", "placements"),
           reads=lambda s: [worldseed.installations_read(s.world),
                            (worldseed.plan_path(s.seed), "", "")],
@@ -1005,10 +1013,15 @@ STAGES: tuple[Stage, ...] = (
           # the work directory would have to be adopted afterwards -- and an
           # adoption step exists only because a producer and a reader disagree
           # about a key, which here they no longer do.
-          command=lambda s: [sys.executable, str(HERE / "roads" / "network.py"),
-                             "plan", "--field", str(s.work / f"{s.seed}_1m.bin"),
+          command=lambda s: [sys.executable, str(HERE / "roads" / "north.py"),
+                             "network", "--field", str(s.work / f"{s.seed}_1m.bin"),
+                             "--grid", str(s.work / f"grid-{s.seed_hash}" / "00000.biome"),
+                             "--locations", str(s.work / "loc" / f"{s.seed_hash}.json"),
+                             "--itinerary", str(s.work / "route-provisional"
+                                                 / worldseed.north_path(s.seed).name),
                              "--census", str(HERE / "roads" / "census" / f"{s.world}-census.json"),
                              "--out", str(HERE / "roads"),
+                             "--preset", os.environ.get("VH_NORTH_PRESET", "pre-kall"),
                              "--seed", s.seed, "--world", s.world],
           note="census-before-route is the order, not an option",
           # THE CENSUS READS WHERE THE ROUTE WILL STAND (CENSUS_LOOP_DEPENDS_ON):
@@ -1019,7 +1032,7 @@ STAGES: tuple[Stage, ...] = (
                    lambda s: ["--wanted", str(worldseed.segments_path(s.seed))],
                    _route_servable_unrouted)),
     Stage(12, "build", "buildstage.py run", _ledger,
-          requires=("save", "placements", "segments", "crossings", "census"),
+          requires=("save", "placements", "segments", "crossings", "north_itinerary", "census"),
           # THE GAP THIS ROW NAMED IS CLOSED.  It used to read `command=None`
           # with the manual "the one stage with no single entry point in this
           # tree: clear.py, flatten.py, sites.py, stock.py, ribbon.py and the

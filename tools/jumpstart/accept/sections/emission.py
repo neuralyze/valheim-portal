@@ -193,19 +193,19 @@ OUTPUTS = (
      "guard": "settlements/plan.py::main -> emitscope.require_emission_scope",
      "rungs": "A+B (written by the same line as sites.yaml; guarding one of "
               "the pair and not the other would be a guard on half a write)"},
-    {"slot": "north_segments_path", "rung_c": True,
+    {"slot": "north_path", "rung_c": True,
      "writers": ("roads/north.py",),
      "declares_scope": True,
-     "declaration_is": "DERIVED -- seed/world from worldseed; MEASURED, and it "
-                       "is not what three agents believed: the file was read as "
-                       "'declares nothing' because safe_dump(sort_keys=True) "
-                       "puts `seed` at line 104 and `world` at line 33,005. "
-                       "PARSE, DO NOT PEEK.",
-     "guard": None, "owner": "OutlierSites",
+     "declaration_is": "DERIVED -- seed/world, measured field, routed road "
+                       "ids and paired terminals belong to this run",
+     "guard": None, "owner": "NorthItineraryBuild",
      "unguarded_why":
-         "OutlierSites holds north.py's reader side (structures.py segment_map) "
-         "and the file is quiescent behind NorthExec's emit.",
-     "rungs": "A+B would pass today, unenforced"},
+         "North itinerary schema, scope and provisional status are refused "
+         "by north_transport and the physical acceptance gate. This row "
+         "does not claim the generic emitscope coordinate-citation guard "
+         "has run at the planner's write boundary.",
+     "rungs": "A+B re-read here; physical road/transport acceptance is "
+              "mandatory in roads and north_transport"},
 )
 
 GUARDED = tuple(o for o in OUTPUTS if o["guard"])
@@ -214,8 +214,7 @@ UNGUARDED = tuple(o for o in OUTPUTS if not o["guard"])
 
 def _artefact_path(o: dict, seed: str | None = None) -> Path | None:
     """The file a row IS for `seed` (default this run's), asked of worldseed
-    at call time.  None for a row with no slot, and for a seed that has no
-    such artefact -- the northern network is Pirate68's alone."""
+    at call time. None only for an inventory row with no path slot."""
     if not o.get("slot"):
         return None
     _e, ws, _n = _mods()
@@ -1645,12 +1644,11 @@ register(Section(
                "never a second definition of which zones a segment touches.",
     population="the 6 seed-scoped artefacts this build writes -- "
                "roads/segments.yaml, roads/crossings.yaml, "
-               "roads/geography.<seed>.yaml, roads/north_segments.yaml, "
+               "roads/geography.<seed>.yaml, roads/north_itinerary.<seed>.yaml, "
                "settlements/sites.yaml, settlements/plan.json -- of which 4 "
-               "are guarded at emission and 2 are unguarded-and-owned; plus, "
-               "for segments.yaml, its 40 endpoint coordinates and its write "
-               "zone set, MEASURED at 702 carriageway zones against 950 at "
-               "batter reach, 37 of 39 segments short by 248 zones",
+               "are guarded at emission and 2 are unguarded-and-owned; plus "
+               "the canonical segments file's endpoint provenance and "
+               "complete write-zone set (including north roads)",
     run=run,
     cases=[
         Case("a_correct_header_is_not_enough", True,

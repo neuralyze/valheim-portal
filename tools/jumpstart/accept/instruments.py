@@ -3446,3 +3446,150 @@ def read_scoped_corpus(ctx, label: str, relpath=None, *, resolve=None,
         numbers={**scope, "present": True, "readable": True,
                  "declared_seed": d.get("seed"),
                  "declared_world": d.get("world")})]
+
+
+def north_itinerary_errors(doc) -> list[str]:
+    """Validate the required population, independently of its build ledger.
+
+    North is mandatory: an empty/provisional itinerary is not an itinerary
+    with zero defects. Transport is a paired dock/boat edge, never a portal.
+    """
+    errors = []
+    if not isinstance(doc, dict):
+        return ["itinerary is not a mapping"]
+    if doc.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    if doc.get("provisional") is not False:
+        errors.append("provisional must explicitly be false")
+    if doc.get("refusal"):
+        errors.append(f"planner refused: {doc['refusal']}")
+    nodes, edges = doc.get("nodes"), doc.get("road_edges")
+    terminals, transport = doc.get("terminals"), doc.get("transport")
+    if not isinstance(nodes, dict) or not nodes:
+        errors.append("nodes must be a nonempty mapping")
+        nodes = {}
+    if not isinstance(edges, list) or not edges:
+        errors.append("road_edges must be a nonempty list")
+        edges = []
+    if not isinstance(terminals, dict) or not terminals:
+        errors.append("terminals must be a nonempty mapping")
+        terminals = {}
+    if not isinstance(transport, list):
+        errors.append("transport must be a list of real paired endpoints")
+        transport = []
+
+    def xz(value):
+        return (isinstance(value, (list, tuple)) and len(value) == 2
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                        and math.isfinite(v) for v in value))
+
+    for key, node in nodes.items():
+        if not isinstance(node, dict) or not xz(node.get("xz")):
+            errors.append(f"node {key}: missing finite xz")
+    by_id = {}
+    for edge in edges:
+        if not isinstance(edge, dict):
+            errors.append("road edge is not a mapping")
+            continue
+        eid = edge.get("id")
+        if not isinstance(eid, str) or not eid or eid in by_id:
+            errors.append(f"road edge id absent or repeated: {eid!r}")
+            continue
+        by_id[eid] = edge
+        if (edge.get("a") not in nodes or edge.get("b") not in nodes
+                or edge.get("a") == edge.get("b") or edge.get("cls") != "trunk"):
+            errors.append(f"road {eid}: invalid trunk endpoints")
+    for tid, terminal in terminals.items():
+        if not isinstance(terminal, dict):
+            errors.append(f"terminal {tid}: not a mapping")
+            continue
+        root, sea = terminal.get("xz"), terminal.get("sea_xz")
+        if not xz(root) or not xz(sea) or root == sea:
+            errors.append(f"terminal {tid}: invalid land root/sea bearing")
+            continue
+        edge = by_id.get(terminal.get("segment_id"))
+        ends = ([] if edge is None else
+                [nodes.get(edge.get(k), {}).get("xz") for k in ("a", "b")])
+        if not any(end is not None and tuple(root) == tuple(end) for end in ends):
+            errors.append(f"terminal {tid}: root is not its road's exact endpoint")
+        if not isinstance(terminal.get("final_departure"), bool):
+            errors.append(f"terminal {tid}: final_departure must be boolean")
+    seen, served = set(), set()
+    for pair in transport:
+        if not isinstance(pair, dict):
+            errors.append("transport edge is not a mapping")
+            continue
+        pid, a, b = pair.get("id"), pair.get("a"), pair.get("b")
+        if (not isinstance(pid, str) or not pid or pid in seen or a == b
+                or a not in terminals or b not in terminals):
+            errors.append(f"transport {pid!r}: invalid paired endpoints")
+            continue
+        seen.add(pid)
+        served.update((a, b))
+    final = doc.get("final_departure")
+    unpaired = set(terminals) - served - {final}
+    if unpaired:
+        errors.append(f"unpaired non-departure terminals: {sorted(unpaired)}")
+    finals = [tid for tid, t in terminals.items()
+              if isinstance(t, dict) and t.get("final_departure") is True]
+    if finals != [final]:
+        errors.append("exactly one final departure terminal must be named")
+    return errors
+
+
+def north_itinerary(ctx):
+    """The seed/world itinerary, required even when no north write exists."""
+    from copy import deepcopy
+    cached = getattr(ctx, "_north_itinerary_read", None)
+    if cached is not None:
+        # Findings acquire section/classification fields in the runner. Each
+        # section needs its own evidence object, not another section's row.
+        return cached[0], deepcopy(cached[1])
+    ws = _worldseed()
+    explicit = getattr(ctx.args, "north_itinerary", None)
+    doc, findings = read_scoped_corpus(
+        ctx, "north itinerary",
+        resolve=lambda seed: Path(explicit) if explicit else ws.north_path(seed),
+        produced_by="roads/north.py for this seed and world",
+        check="north_artifact")
+    # The general corpus reader can disclose absent optional legacy corpora.
+    # This one is REQUIRED; never inherit its advisory missing-file arm.
+    for finding in findings:
+        finding.advisory = False
+    if not findings:
+        errors = north_itinerary_errors(doc)
+        if errors:
+            from .registry import Finding
+            findings = [Finding(
+                check="north_artifact", ok=False,
+                message="north itinerary refused: " + "; ".join(errors),
+                numbers={"errors": len(errors), "details": errors})]
+            doc = None
+    result = (doc, findings)
+    ctx._north_itinerary_read = result
+    return doc, deepcopy(findings)
+
+
+def north_road_population(ctx, segments):
+    """Require every planned north route in the ordinary physical roads gate."""
+    from .registry import Finding
+    doc, findings = north_itinerary(ctx)
+    out = list(findings)
+    if doc is None:
+        return out
+    for edge in doc["road_edges"]:
+        a, b = (tuple(doc["nodes"][edge[k]]["xz"]) for k in ("a", "b"))
+        name = "road_" + edge["id"].replace("-", "_")
+        built = segments.get(name)
+        ends = None if not built else (tuple(built["nodes"][0]),
+                                       tuple(built["nodes"][-1]))
+        ok = ends in ((a, b), (b, a))
+        out.append(Finding(
+            check="north_routes", ok=ok,
+            message=(f"{edge['id']}: required north road "
+                     f"{'is in' if ok else 'MISSING/misrouted in'} the "
+                     "ordinary applied-ground/collider road population"),
+            where=a, measured=int(ok), limit=1,
+            numbers={"segment": edge["id"], "required_ends": [a, b],
+                     "built_ends": ends}))
+    return out

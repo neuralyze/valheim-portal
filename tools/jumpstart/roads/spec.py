@@ -637,23 +637,16 @@ CROSSING_TERMINALS: dict[str, dict] = {
                         "keep_clear": [(1745.47, 654.47, 1.0)],
                         "note": "sign and post stand 3 m inland on bearing 290; the "
                                 "ribbon centreline keeps 1 m clear of it"},
-    "harbour-vestvik": {"xz": (-1031.5, 1656.5), "island": "west", "patch": "westisle",
-                        "arrive_bearing_deg": 125.0, "width_m": 6.0, "cls": "trunk",
-                        "jetty_bearing_deg": 305.0, "owner": "Crossings",
-                        "note": "Settlements' Vestvik is 227.3 m away: Crossings "
-                                "MEASURED that Vestvik's own 94 m shoreline is too "
-                                "shallow for a 22 m pier at any of 72 bearings, so "
-                                "the quay is here and the road joins the two"},
 }
 
 # ---------------------------------------------------------------------------
 # MEASURED_SEED_DEPENDS_ON: A NODE MEASURED ON ONE SEED IS NOT A NODE OF
 # ANOTHER.
 #
-# `CROSSING_TERMINALS` above is Crossings' survey of PIRATE68's shore (a scipy
-# label over that seed's 1 m land mask) and `R3R4_NODES` below is
-# VestvikBuild's live reading of ULFSLAND's standing N0b, Vestvik and quay --
-# and both were merged into `NODES` on EVERY seed.  MEASURED 2026-09-26 on
+# `CROSSING_TERMINALS` above is Crossings' survey of PIRATE68's shore and
+# must not be adopted on another seed. Standing-world R3/R4 repairs are NOT
+# a regeneration topology: town/network/harbour requirements below use the
+# actual solved town, harbour installation and declared harbour landings.
 # Fresh42 drive 4 (stage 11, /tmp/regen2/d4_stage11f.log, gate on save
 # af96bfb62427): T13-temple-harboursouth was routed and PAVED 260.0 m to
 # harbour-south's Pirate68 point (11.5, -258.5), which on Fresh42 is open
@@ -721,118 +714,6 @@ NO_ROAD: dict[str, str] = {
                                "island from the spawn island; portal only",
 }
 
-# ---------------------------------------------------------------------------
-# R3 / R4: the roads to Vestvik and to its quay.  MEASURED 2026-09-19 by
-# VestvikRoad.  The operator's report was "vestvik doesnt seem to have any
-# roads to it", and it was true: the nearest BUILT centreline to Vestvik's
-# portal arch is N0b at 742.8 m, twenty-five times the 29.0 m shared-corridor
-# width, so this is a new ribbon and not an extension of anything.
-#
-# The GEOMETRY of both legs lives in `segments.yaml` and must be re-fitted with
-# `network.build_segment(fixed_pts=...)`, never re-searched: both lines were
-# routed and profiled against a HEIGHTMAP-surface PatchScan
-# (/tmp/vestvik/vestroad.heightmap.bin, centre (-610, 2020) half 520, step 1),
-# because 3 of their 40 batter-reach zones are biome NON-UNIFORM and
-# `network.py`'s default field is the WORLDGEN surface.  MEASURED difference in
-# those zones: up to +5.708 m zone-wide, +1.338 m under R3's own centreline.
-# Re-searching on the default field returns a different road, fitted to ground
-# the engine does not draw.
-# ---------------------------------------------------------------------------
-R3R4_NODES: dict[str, dict] = {
-    "r3-n0b-junction": {
-        "island": "west", "patch": "westisle", "xz": (-214.0, 2146.3),
-        "kind": "junction", "level_y": 45.6087,
-        "provenance": "MEASURED LIVE 2026-09-19 by VestvikBuild, and it is NOT "
-                      "the number the ledger holds. N0b's terrain_write "
-                      "TARGETED 45.639 (its own fitted profile node at this "
-                      "station, ledger seq 2641) and the world got 30 mm less "
-                      "of it: the carriageway that is STANDING reads 45.6087. "
-                      "Instrument: Heightmap.GetHeight inside a sandbox server "
-                      "that instantiates the SAVE's own _TerrainCompiler ZDOs "
-                      "(terraform/run_waterproof.sh FROM_SAVE=1; the live world "
-                      "is copied, never opened). It is a levelled PLANE and not "
-                      "a sampling artefact: x = -216, -215, -214, -213, -212 at "
-                      "z = 2146.3 all read 45.6087 to 4 dp, spanning the whole "
-                      "6 m carriageway, while the GENERATED surface under them "
-                      "runs 45.0759..45.6667 -- 0.59 m of natural relief flattened "
-                      "to one number. Across N0b's stations 415-421 the written "
-                      "surface sits -0.054..+0.023 m off its own design profile. "
-                      "This is NOT the R1 failure mode: zone (-3, 34) HOLDS its "
-                      "compiler, objects_count _TerrainCompiler at the zone "
-                      "centre with no ignore mask answers Total 1, and the "
-                      "applied delta at the station is +0.0281 m. Per §4.6 the "
-                      "ledger says what the surface SHOULD be and only a live "
-                      "read says what it IS, so R3 arrives on 45.6087",
-        "why": "the junction that MINIMISES NEW ROAD over 20 ranked candidates "
-               "on N0b and N0 (next best 1250.4 m of A* against 1154.9). The "
-               "cheapest-to-WALK junctions all cost 1.5-1.8 km more ribbon and "
-               "run parallel to N0 for ~700 m, which is one corridor, not two "
-               "roads",
-    },
-    "r3-vestvik": {
-        "island": "west", "patch": "westisle", "xz": (-912.89, 1896.47),
-        "kind": "settlement_arrival", "level_y": 35.29,
-        "provenance": "MEASURED from WHAT IS STANDING: the u-vestvik "
-                      "portal_wood sits at (-915.0, 35.29, 1883.4), seated on "
-                      "vestvik-hall-1's levelled pad (terrain_write seq 425, "
-                      "target_y 35.29). NOT from plan.json and NOT from "
-                      "SETTLEMENT_SITES' pad_y 33.99, which is 1.30 m low and "
-                      "is a district figure no ground in the village is at. "
-                      "RE-VERIFIED LIVE 2026-09-19 by VestvikBuild and it "
-                      "AGREES to 0.000 m, by two independent instruments: the "
-                      "standing portal_wood's own ZDO reads (-915.000, 35.290, "
-                      "1883.400) on a prefab-scoped findObjects paired with "
-                      "objects_count Total 1; and the SAVE-derived applied "
-                      "ground at that XZ reads 35.2900 against a generated "
-                      "36.6006, i.e. the pad's own -1.3106 m cut is on the "
-                      "world",
-        "why": "13.24 m from the portal a player steps out of, and as close as "
-               "the write gate allows: vestvik-hall-1's hard radius is 19.57 m "
-               "and this point is 20.09 m out",
-    },
-    "r4-harbour-gateway": {
-        "island": "west", "patch": "westisle", "xz": (-1015.0, 1636.0),
-        "kind": "waterfront_terminal", "level_y": 32.869,
-        "provenance": "MEASURED: fb_fortress_wall_gateway (seq 2105) stands at "
-                      "(-1010.2, 32.869, 1641.59) yaw 125, its footing taken by "
-                      "waterfront.py::port_curtain from the composed applied "
-                      "surface at its own XZ. RE-VERIFIED LIVE 2026-09-19 by "
-                      "VestvikBuild: the standing gateway reads (-1010.200, "
-                      "32.870, 1641.590), so the pin is right to 0.001 m. The "
-                      "save-derived applied GROUND at that XZ is 32.7991, 0.070 "
-                      "m below the piece's own origin, which is the piece "
-                      "sitting on its footing rather than a disagreement",
-        "why": "7.37 m short of the gateway itself, which is the closest any "
-               "ribbon class can legally get -- see NO_ROAD",
-    },
-}
-_KEPT, _WITHHELD = seed_scoped(
-    R3R4_NODES, measured_on=worldseed.DEFAULT_SEED,
-    owner="Crossings/VestvikBuild: no per-seed derivation of the Vestvik "
-          "quay road -- r3-n0b-junction, r3-vestvik and r4-harbour-gateway "
-          "were read live off Ulfsland's standing N0b, portal and quay "
-          "gateway")
-NODES.update(_KEPT)
-FOREIGN_NODES.update(_WITHHELD)
-
-NO_ROAD.update({
-    "harbour-vestvik-gateway-itself": "the quay's own gateway "
-        "fb_fortress_wall_gateway (-1010.2, 1641.59) stands 6.82 m from a "
-        "VANILLA WoodHouse1 at (-1005.2, 1646.3) whose write-gate radius is "
-        "13.0 m for a 6 m trunk and 12.0 m for a 4 m spur -- so the gateway is "
-        "inside its own keep-out by 6.18 m and NO ribbon can put a carriageway "
-        "sample on it. MEASURED by an exhaustive 1 m legality sweep over "
-        "x[-1036,-998] z[1626,1672]: 534 of 1,833 cells are legal and the "
-        "closest reachable one is (-1015, 1636) at 7.37 m. R4 terminates there, "
-        "pinned to the gateway's own footing datum, and the last 7.37 m is a "
-        "walk through the arch",
-    "vestvik_direct_from_brgs2": "W8-brgs2-vestvik (2836.1 m, planned, never "
-        "built) shares a corridor with the BUILT N0 for its first ~700 m at "
-        "4.2-46.2 m separation, i.e. inside the 29.0 m shared-corridor width for "
-        "much of it. Building it would grade two batters toward each other and "
-        "dig the ditch that already bit T12 at the temple. R3 merges into the "
-        "network instead and costs 814.8 m against 2836.1",
-})
 
 TERMINAL_EDGES: list[dict] = [
     {"id": "T13-temple-harboursouth", "a": "temple", "b": "harbour-south",
@@ -846,26 +727,6 @@ TERMINAL_EDGES: list[dict] = [
      "cls": "spur", "pri": 2, "width_m": 4.0},
     {"id": "S14-eastlobe-ferryeast", "a": "eastlobe", "b": "ferry-east",
      "cls": "spur", "pri": 2, "width_m": 4.0},
-    {"id": "W12-vestvik-harbour", "a": "vestvik", "b": "harbour-vestvik",
-     "cls": "trunk", "pri": 3, "width_m": 6.0},
-    # R3/R4: geometry is HELD in segments.yaml (see R3R4_NODES). These edges
-    # exist so `network.py plan --only ...` has an entry to name and so the
-    # network file is self-describing -- but a bare re-plan re-SEARCHES them on
-    # the worldgen field and will not reproduce the built line.
-    {"id": "R3-n0bjunction-vestvik", "a": "r3-n0b-junction", "b": "r3-vestvik",
-     "cls": "trunk", "pri": 3, "width_m": 6.0,
-     "why": "the road to Vestvik. 814.8 m, 8% design grade with NO relaxation, "
-            "0 fords, 0 bridges, 0 samples past the apply clamp, location gate "
-            "clear over 12,301 generator instances and 25 mod keep-outs, "
-            "WALKABLE at 0.0801 over the 8 m baseline"},
-    {"id": "R4-vestvik-harbour", "a": "r3-vestvik", "b": "r4-harbour-gateway",
-     "cls": "trunk", "pri": 3, "width_m": 6.0,
-     "why": "the spur from Vestvik to its quay: 388.0 m, one 7.09 m ford 0.34 m "
-            "deep kept as terrain, WALKABLE at 0.0804. It MUST be routed "
-            "land-only: the first route took an 80 m shoreline shortcut that "
-            "find_crossings merged into a 50.6 m water crossing, and the "
-            "crossing-window straighten then pulled the line to 1.13 m of a "
-            "WoodHouse1 the mask had correctly cleared"},
 ]
 EDGES.extend(TERMINAL_EDGES)
 
@@ -1111,3 +972,39 @@ _dup = sorted({e["id"] for e in EDGES if sum(1 for q in EDGES
                                              if q["id"] == e["id"]) > 1})
 if _dup:
     raise SystemExit(f"REFUSING: duplicate edge id(s) {_dup} in EDGES")
+
+
+def connection_requirements(nodes=None, portal_only=None, declared=None):
+    """Semantic replacements for the old standing-world R3/R4 repairs.
+
+    Existing generated W8/site_legs connect the solved town to the network;
+    generated declared-site legs or T5/T9 connect the REAL harbour. The gate
+    requires physical journey reachability of both, not the old repair IDs.
+    """
+    nodes = NODES if nodes is None else nodes
+    portal_only = PORTAL_ONLY if portal_only is None else portal_only
+    declared = DECLARED_SITES if declared is None else declared
+    town = nodes.get("vestvik") or portal_only.get("vestvik") or {}
+    harbours = [n for n in ["dockshore", *declared]
+                if n in nodes and (n == "dockshore"
+                    or nodes[n].get("kind") in worldseed.HUMAN_SITE_KINDS)]
+    if town.get("xz") and harbours:
+        harbour = min(harbours, key=lambda n: (
+            nodes[n].get("island") != town.get("island"),
+            math.hypot(nodes[n]["xz"][0]-town["xz"][0],
+                       nodes[n]["xz"][1]-town["xz"][1]), n))
+    else:
+        harbour = None
+    refusal = (None if "vestvik" in nodes else
+               {"reason": "solved Vestvik has no generated road node",
+                "measurement": portal_only.get("vestvik")})
+    return [
+        {"id": "vestvik_to_network", "a": "portalhub", "b": "vestvik",
+         "producer": "W8 / declared_sites.site_legs from the solved town",
+         "refusal": refusal},
+        {"id": "vestvik_to_harbour", "a": "vestvik", "b": harbour,
+         "producer": ("declared_sites.legs" if harbour in declared else
+                      "T5/T9 to solved pre-elder early-dock / sandbox-harbour"),
+         "refusal": refusal or (None if harbour else
+                                 {"reason": "0 solved harbour landings"})},
+    ]

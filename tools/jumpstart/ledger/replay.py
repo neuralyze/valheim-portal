@@ -59,6 +59,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -205,7 +206,7 @@ MIN_DETAILED_RADIUS_M = 0.25
 
 
 def bounded_detailed(srv, prefab: str, x: float, y: float, z: float,
-                     radius: float) -> tuple[str, int, list]:
+                     radius: float, *, strict: bool = False) -> tuple[str, int, list]:
     """`findObjects -detailed` over a disc, subdivided until every reply fits.
 
     Counts with the cheap `objects_count` FIRST, and quarters the disc until
@@ -238,6 +239,11 @@ def bounded_detailed(srv, prefab: str, x: float, y: float, z: float,
             reply = srv.command(
                 f"findObjects -prefab {prefab} -near {cx:.2f} {y:.2f} "
                 f"{cz:.2f} {r:.2f} -detailed")
+            if strict:
+                declared = FOUND_RE.search(reply)
+                rows = [line for line in reply.splitlines() if "-Prefab:" in line]
+                if declared is None or int(declared.group(1)) != len(rows):
+                    raise Drift("Incomplete detailed spawn census; refusing to risk duplicates")
             for line in reply.splitlines():
                 m = OBJECT_ID_RE.search(line)
                 key = m.group(1) if m else line.strip()
@@ -1081,6 +1087,103 @@ def already_present(srv: Server, rec: dict) -> tuple[bool, dict]:
     return False, {"probe": "none"}
 
 
+def north_spawn_rows(wire):
+    """Decode the original source commands, not a reconstructed plan."""
+    import shlex
+    rows = []
+    for command in wire:
+        bits = shlex.split(command)
+        if len(bits) < 2 or bits[0] != "spawn_object":
+            raise Drift("North geometry contains a non-spawn command")
+        values = dict(v.split("=", 1) for v in bits[2:] if "=" in v)
+        z, x, y = map(float, values["pos"].split(","))
+        ry, rx, rz = map(float, values["rot"].split(","))
+        rows.append(dict(prefab=bits[1], pos=[x, y, z], rot=[rx, ry, rz]))
+    return rows
+
+
+def reconcile_north_spawns(srv, rec):
+    """One-to-one live pose census; return ONLY missing source wire lines.
+
+    Subset execution records retain the immutable full source blob separately.
+    Peer geometry permits legitimate dock/lighthouse overlap, never unplanned
+    extras. Neither an applied ledger flag nor a coarse guard authorizes a skip.
+    """
+    from blueprints.to_rcon_plan import euler_to_quat, quat_angle_between
+    own = north_spawn_rows(rec["wire"])
+    geometry = rec.get("meta", {}).get("north_geometry") or own
+    pending, used = [], {}
+    # Every source row must belong to the frozen terminal geometry.
+    if any(not any(all(row[k] == peer[k] for k in ("prefab", "pos", "rot"))
+                   for peer in geometry) for row in own):
+        raise Drift("North record differs from its source terminal geometry")
+    probes = []
+    for check in rec["expect"].get("prefab_count", []):
+        prefab, (x, z), radius = check["prefab"], check["pos"], float(check["max"])
+        count, _ = srv.count(prefab, x, z, radius)
+        text, _, unread = bounded_detailed(srv, prefab, x, 30.0, z, radius,
+                                           strict=True)
+        if unread:
+            raise Drift(f"North {prefab} census cannot be read completely: {unread}")
+        actual = []
+        for line in text.splitlines():
+            if "-Prefab:" not in line:
+                continue
+            oid = OBJECT_ID_RE.search(line)
+            position = re.search(r"Position:\s*\(([-\d.eE+ ]+)\)", line)
+            rotation = ROTATION_RE.search(line)
+            if not oid or not position or not rotation:
+                raise Drift(f"North saved pose is unreadable: {line}")
+            pos = [float(v) for v in position.group(1).split()]
+            rot = [float(v) for v in rotation.group(1).split()]
+            if len(pos) != 3 or len(rot) != 3:
+                raise Drift("North census pose does not have three axes")
+            if math.hypot(pos[0]-x, pos[2]-z) <= radius+0.01:
+                actual.append((oid.group(1), pos, euler_to_quat(*rot)))
+        if len(actual) != count:
+            raise Drift(f"North {prefab}: count {count} != listed poses {len(actual)}")
+        allowed = [r for r in geometry if r["prefab"] == prefab
+                   and math.hypot(r["pos"][0]-x, r["pos"][2]-z) <= radius+0.01]
+        available = set(range(len(allowed)))
+        for oid, pos, quat in actual:
+            choices = []
+            for k in available:
+                row = allowed[k]
+                floating = row.get("floating", False)
+                distance = math.dist(pos, row["pos"])
+                matches = (math.hypot(pos[0]-row["pos"][0], pos[2]-row["pos"][2]) <= 2.0
+                           and abs(pos[1]-row["pos"][1]) <= 2.0
+                           and quat_angle_between(quat, euler_to_quat(0, row["rot"][1], 0)) <= 15.0
+                           if floating else distance <= 0.05
+                           and quat_angle_between(quat, euler_to_quat(*row["rot"])) <= 2.0)
+                if matches:
+                    choices.append((distance, k))
+            if not choices:
+                raise Drift(f"North undesired/duplicate {prefab} {oid} at {pos}; no building is deleted")
+            _, k = min(choices)
+            available.remove(k)
+            row = allowed[k]
+            identity = (row["prefab"], tuple(row["pos"]), tuple(row["rot"]))
+            used[identity] = used.get(identity, 0) + 1
+        probes.append(dict(prefab=prefab, count=count, authorized=len(allowed)))
+    for command, row in zip(rec["wire"], own):
+        floating = any(peer.get("floating") and peer["prefab"] == row["prefab"]
+                       and peer["pos"] == row["pos"] for peer in geometry)
+        probe = dict(op="spawn", params=dict(prefab=row["prefab"], pos=row["pos"],
+                                             guard_radius_m=6.0 if floating else GUARD_EPS_M))
+        present, _ = already_present(srv, probe)
+        identity = (row["prefab"], tuple(row["pos"]), tuple(row["rot"]))
+        matched = used.get(identity, 0) > 0
+        if matched:
+            used[identity] -= 1
+        # The XZ-only guard is corroborated by the full position/rotation census.
+        if matched and not present:
+            raise Drift("North live presence changed during reconciliation")
+        if not matched:
+            pending.append(command)
+    return pending, probes
+
+
 # --------------------------------------------------------------------------
 # Executors
 # --------------------------------------------------------------------------
@@ -1210,9 +1313,23 @@ def send_and_verify(srv: Server, rec: dict) -> tuple[list, list[dict],
     """Send a record's wire and measure its postcondition, as ONE staged
     critical section.  `(replies, checks, settled_after_s)`.  THE ONE SEND-AND-
     MEASURE both the live builder and the replay driver use."""
-    with staged_exclusive(srv, rec["wire"]):
-        replies = send_wire(srv, rec["wire"])
-        checks, settled = verify_expect(srv, rec)
+    wire = rec["wire"]
+    north = (rec["params"].get("role") == "north_transport"
+             and rec["op"] in ("spawn", "spawn_plan"))
+    if north:
+        wire, _ = reconcile_north_spawns(srv, rec)
+    with staged_exclusive(srv, wire):
+        replies = send_wire(srv, wire)
+        if north:
+            pending, probes = reconcile_north_spawns(srv, rec)
+            checks = [dict(check="north_geometry", ok=not pending,
+                           missing_commands=len(pending), census=probes)]
+            checks[0]["sent_commands"] = len(wire)
+            checks[0]["sent_wire_sha256"] = __import__("hashlib").sha256(
+                ("\n".join(wire) + ("\n" if wire else "")).encode()).hexdigest()
+            settled = None
+        else:
+            checks, settled = verify_expect(srv, rec)
     return replies, checks, settled
 
 
@@ -1233,7 +1350,7 @@ def apply_record(srv: Server, blobs, rec: dict) -> dict:
     for sha in rec.get("requires", {}).get("blobs", []):
         read(sha)
 
-    if spec.idempotent == "guard":
+    if spec.idempotent == "guard" and rec["params"].get("role") != "north_transport":
         # THE GUARD IS ADVISORY; THE POSTCONDITION DECIDES.
         #
         # A bare presence count is one measurement with no corroboration, and

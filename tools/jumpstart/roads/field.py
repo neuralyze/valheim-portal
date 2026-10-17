@@ -39,7 +39,7 @@ import math
 import os
 import struct
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -297,8 +297,11 @@ def request(patches: list[tuple[str, float, float, float, float]], seed: str,
     req.parent.mkdir(parents=True, exist_ok=True)
     req.write_text("".join(
         f"{pid}\t{cx:g}\t{cz:g}\t{half:g}\t{step:g}\n" for pid, cx, cz, half, step in patches))
+    # Road/pad heights are the rendered Heightmap corner-biome blend, not
+    # WorldGenerator.GetHeight at one point. Do not inherit an ambient mode.
     env = {**os.environ, "VH_SRC": str(vh_src), "SEED": seed,
-           "REQ": str(req), "OUT": str(out), "SANDBOX": sandbox}
+           "REQ": str(req), "OUT": str(out), "SANDBOX": sandbox,
+           "SURFACE": "heightmap"}
     proc = subprocess.run(["bash", str(JUMPSTART / "blueprints" / "run_patchscan.sh")],
                           env=env, capture_output=True, text=True)
     if not out.exists() or out.stat().st_size == 0:
@@ -320,6 +323,8 @@ def request_for_seed(seed: str, grid: str | Path, out: str | Path,
                      step_m: float | None = None,
                      min_area_m2: float | None = None,
                      budget_bytes: int | None = None,
+                     declared_windows: bool = False,
+                     north_preset: str | None = None,
                      ) -> tuple[dict[str, Field], tuple]:
     """PRODUCE A HEIGHT FIELD FOR A SEED FROM THAT SEED'S OWN LAND.
 
@@ -370,7 +375,7 @@ def request_for_seed(seed: str, grid: str | Path, out: str | Path,
     kw = {k: v for k, v in (("half_max_m", half_max_m), ("step_m", step_m),
                             ("min_area_m2", min_area_m2),
                             ("budget_bytes", budget_bytes)) if v is not None}
-    windows = ws.windows_for_components(
+    windows = (ws.ULFSLAND_WINDOWS if declared_windows else ws.windows_for_components(
         sf.land_components(g), spawn_xz,
         None if comp is None else comp["label"],
         # So each window records how far its landmass is from the spawn's, in
@@ -378,9 +383,31 @@ def request_for_seed(seed: str, grid: str | Path, out: str | Path,
         # whether two windows happen to overlap.
         separation_of=(None if comp is None else
                        lambda label: sf.separation_m(g, comp["label"], label)),
-        **kw)
+        **kw))
+    # The road-to-dock preview stamps the writer's INTEGER Heightmap lattice.
+    # Read those vertices in the producer itself; stage 9 must not interpolate
+    # half-grid settlement samples or issue a second unprovenanced terrain scan.
+    # Expand one metre before shifting at most half a metre, preserving every
+    # original boundary margin. PatchScan samples this NEW request geometry;
+    # no old field's coordinates or bytes are reinterpreted.
+    windows = tuple(replace(w, half=w.half+1.0,
+        cx=round(w.cx-w.half+w.step/2.0)+w.half-w.step/2.0,
+        cz=round(w.cz-w.half+w.step/2.0)+w.half-w.step/2.0)
+        for w in windows)
+    north = _by_path("jumpstart_roads_north_itinerary", HERE / "north_itinerary.py")
+    coarse = north.coarse_route(g, spawn_xz, preset=north_preset)
+    windows = tuple(windows) + north.route_windows(coarse)
+    limit = ws.DEFAULT_WINDOW_BUDGET_BYTES if budget_bytes is None else budget_bytes
+    cost = ws.windows_bytes(windows)
+    if cost > limit:
+        raise SystemExit(
+            f"REFUSING field request: settlement AND all eligible north frontier "
+            f"union tiles cost {cost / 1e6:.1f} MB against {limit / 1e6:.1f} MB. "
+            f"The {len(coarse['candidate_order'])} ordered 32m shore candidates "
+            "have NOT been capped or silently omitted; raise --budget-mb.")
     fields = request(ws.request_rows(windows), seed, out,
                      vh_src=vh_src, sandbox=sandbox)
+    north.require_search_coverage(coarse, fields)
     return fields, windows
 
 
@@ -430,6 +457,10 @@ if __name__ == "__main__":
     req.add_argument("--half-max-m", type=float)
     req.add_argument("--min-area-m2", type=float)
     req.add_argument("--budget-mb", type=float)
+    req.add_argument("--north-preset", help="shipped progression preset for north terrain coverage")
+    req.add_argument("--north-coverage", choices=("ordered-frontier-union-v1",),
+                     default="ordered-frontier-union-v1",
+                     help="provenance contract: scan the union of ALL eligible frontier corridors")
     req.add_argument("--declared-windows", action="store_true",
                      help="scan worldseed.ULFSLAND_WINDOWS, the window set "
                           "MEASURED for the default seed (and the one its "
@@ -456,16 +487,21 @@ if __name__ == "__main__":
                     f"{ws.DEFAULT_SEED!r} and are ground nobody measured on "
                     f"any other seed. Drop the flag to derive this seed's "
                     f"windows from its own land.")
-            fields = request(ws.request_rows(), seed, args.out,
-                             vh_src=Path(args.vh_src), sandbox=args.sandbox)
-            for w in ws.ULFSLAND_WINDOWS:
+            fields, windows = request_for_seed(
+                seed, args.grid, args.out, args.locations, declared_windows=True,
+                north_preset=args.north_preset,
+                vh_src=Path(args.vh_src), sandbox=args.sandbox,
+                budget_bytes=None if args.budget_mb is None
+                else int(args.budget_mb * 1024 * 1024))
+            for w in windows:
                 print(f"{w.fid:24s} ({w.cx:9.1f},{w.cz:9.1f}) half={w.half:6.0f}"
                       f"  {w.role}")
-            print(f"{args.out}: {len(fields)} DECLARED windows, "
+            print(f"{args.out}: {len(fields)} declared base + derived north windows, "
                   f"{Path(args.out).stat().st_size:,} bytes, seed {seed}")
             raise SystemExit(0)
         fields, windows = request_for_seed(
             seed, args.grid, args.out, args.locations,
+            north_preset=args.north_preset,
             vh_src=Path(args.vh_src), sandbox=args.sandbox,
             half_max_m=args.half_max_m, min_area_m2=args.min_area_m2,
             budget_bytes=None if args.budget_mb is None

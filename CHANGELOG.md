@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- North frontier planning retains the complete ordered 32 m shore-candidate
+  universe in a shared predecessor tree and tries later candidates after
+  landing, road-writer, dock, full-hull passage or lighthouse feasibility
+  refusals. The scoped field producer scans budgeted union tiles for every
+  alternative, and the provisional census covers that union before final
+  selection. Settlement scan requests now sample the integer Heightmap lattice
+  with preserved boundary coverage; existing half-grid fields require a real
+  rescan. Planned road-to-dock ground comes from the production ribbon raster,
+  not a requested deck height. Rejected higher candidates retain source/input
+  identities and rerunnable failure evidence. This changes the requested
+  geometry baseline and requires a fresh full proof; it does not claim an
+  exhaustive 1 m world maximum or reinterpret earlier accepted builds.
+
+- North terminal builds reconcile completed source poses before resuming and
+  emit only missing pieces, retaining separate immutable source geometry.
+  Frozen-save acceptance measures actual dock foundations and uses continuous
+  full-hull sweeps for solid obstacles and terrain vertices between travel
+  poses and turn angles. Planning shares that swept terrain predicate. A
+  between-pose pile and a swept-only shoal that previously passed now refuse.
+  Road/pad field requests explicitly select the rendered Heightmap surface
+  rather than inheriting an ambient WorldGenerator sampling mode.
+
 - Road-plan connectivity no longer treats a released abutment as a connection
   to its former node or declared bridge. Physical road junctions and held
   abutments still connect. Repair candidates likewise use only endpoints a

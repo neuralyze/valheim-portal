@@ -77,7 +77,7 @@ than forced; it is recorded here so nobody has to re-derive it.
 Usage:
     north.py reach      --field4 ... --field16 ...   the ladder, to JSON
     north.py crossings  --field1 ...                 X1 and the ferry chord at 1 m
-    north.py plan       --field1 ...                 route the legs -> north_segments.yaml
+    north.py network    --field ... --grid ... --locations ... --provisional --out ...
 """
 
 from __future__ import annotations
@@ -114,16 +114,25 @@ sys.path.insert(0, str(HERE))
 if str(JUMPSTART) not in sys.path:
     sys.path.append(str(JUMPSTART))
 
+import worldseed  # noqa: E402
+
+# Publish --seed/--world before importing the original road/spec stack, which
+# reads solved geography at import time. General generation never loads the
+# historical fixture diagnostics below.
+if __name__ == "__main__" and sys.argv[1:2] in (["network"], ["plan"], ["selftest"]):
+    import north_itinerary
+    raise SystemExit(north_itinerary.selftest() if sys.argv[1:2] == ["selftest"]
+                     else north_itinerary.general_main(sys.argv[2:]))
+
 import field as fieldmod  # noqa: E402
 import network as netmod  # noqa: E402
 import poi as poimod  # noqa: E402
 import precensus as censusmod  # noqa: E402
 import route as routemod  # noqa: E402
 import spec as specmod  # noqa: E402
-import worldseed  # noqa: E402
 
 # RESOLVED, not literal: `--seed`/`--world` beat `$VH_SEED`/`$VH_WORLD` beat
-# the Ulfsland defaults.  `main()` rebinds both before `plan()` runs.
+# the Ulfsland defaults. Historical diagnostic main() rebinds both.
 SEED = worldseed.seed()
 WORLD = worldseed.world()
 
@@ -469,210 +478,6 @@ def gap_between(fld, lab, ca: int, cb: int) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# the northern trunk specification
-# ---------------------------------------------------------------------------
-#
-# Coordinates MEASURED off the 1 m PatchScan field, each snapped to the nearest
-# LAND sample at least `inland_m` from any water edge.  The inland condition is
-# survey.py's and it exists because the farthest sample outright is a one-pixel
-# spit and a road that ends on a spit ends in the sea.
-#
-# `island` here is the 1 m FORD-COMPONENT the node stands on, verified identical
-# across the patch overlaps -- so two nodes sharing an island label are provably
-# joinable by TERRAIN ALONE, and a label change between consecutive nodes is
-# exactly where a structure is required.  That is stronger than a landmass name
-# and it is the thing the road cares about.
-
-NORTH_NODES: dict[str, dict] = {
-    "n-shelf": {
-        # The first node north of the ONE structural crossing on the route.
-        # island label = the 1 m FORD-COMPONENT this node stands on (nnorth1's
-        # comp 116, MEASURED identical to nnorth2's comp 2 and nnorth3's comp 2
-        # by cross-patch lookup), so every node sharing "northford" is provably
-        # joinable to every other by TERRAIN ALONE.
-        "island": "northford", "patch": "nnorth1b", "xz": (-199.5, 4170.5),
-        "kind": "waypoint",
-        "provenance": "MEASURED, north.py: land, 29.1 m inland, BlackForest, "
-                      "h 37.52, and inside the LARGE strongly-connected "
-                      "component of the 4 m routing corridor",
-        "why": "THE ROUTABILITY TEST IS PART OF THE PROVENANCE HERE, and it had "
-               "to be. The first pair of nodes chosen for this crossing were "
-               "the channel's own banks at h 34.86 and 36.47 -- correct land, "
-               "correct inland margin, and STRANDED: the 4 m corridor's "
-               "grade-gated strongly-connected component around the south bank "
-               "was THREE CELLS, because a 4 m bank beside an 11 m channel "
-               "reads as a wall to the 25 % ceiling on the clipped-smoothed "
-               "surface. A* answered 'no route found' and the honest reading is "
-               "that the NODE was unroutable, not the corridor. So a candidate "
-               "node is now tested against the component it will be searched "
-               "in, and this one sits in a component of 69,366 cells.",
-    },
-    "n-mid1": {
-        "island": "northford", "patch": "nnorth1b", "xz": (-649.5, 5400.5),
-        "kind": "waypoint",
-        "provenance": "MEASURED, north.py: 158.4 m inland, BlackForest, h 57.97",
-        "why": "leg boundary chosen for the 1 m patch it sits in, not for the "
-               "terrain: a segment must lie inside one PatchScan patch because "
-               "route.Corridor is built per patch. 158 m inland means the "
-               "boundary is nowhere near a shoreline decision.",
-    },
-    "n-mid2": {
-        "island": "northford", "patch": "nnorth2", "xz": (-639.5, 6050.5),
-        "kind": "waypoint",
-        "provenance": "MEASURED, north.py: 28.0 m inland, Mistlands, h 41.91",
-    },
-    "n-terminus": {
-        "island": "northford", "patch": "nnorth3", "xz": (-847.5, 7731.5),
-        "kind": "extremity",
-        "provenance": "MEASURED, north.py: the northernmost land on the northern "
-                      "ford-component that is >= 6 m from any water edge. "
-                      "h 33.21, Mountain, 6.0 m inland.",
-        "why": "THE NORTHERN TERMINUS OF THE WALKABLE NETWORK. The component's "
-               "northernmost land sample is z +7739.5 and its northernmost "
-               "fordable sample z +7744.5; this node is 8 m south of that so it "
-               "is not a spit. 278.0 m further north is the Deep North shore at "
-               "(-844, 8018) across a bed at the 0.00 ocean-floor clamp, which "
-               "is 2.90x the 96 m span ceiling and 1.53x the pile reach: the "
-               "ferry's south terminal belongs here.",
-    },
-    # THE ROAD'S OWN NORTHERN BOUNDARY NODE ON THE WEST ISLE, and it exists
-    # because a surveyed extremity is not the same object as a buildable leg
-    # boundary.  `spec.NODES["w-north"]` is survey.py's sector-0 extremity at
-    # (-186.0, 2582.0); WaterfrontRun then built the North Lighthouse 11.1 m
-    # away at (-182.0, 2592.0), over water, recorded flatten=FORBIDDEN, and
-    # terrain-wrote zones (-3, 40) and (-3, 41).  Nothing about the survey
-    # point changed -- what changed is that the world now has a protected
-    # structure standing on it.
-    #
-    # MEASURED on the candidate lattice (1 m westisle field, land = h > 30.5,
-    # inland distance by EDT): this point is land at h 33.49, 17.8 m inland,
-    # with 0.70 m of relief across the 8 m carriageway and 5.80 m across the
-    # 29 m bench -- the flattest bench available in x[-150, -40] z[2500, 2720]
-    # that clears both claimed zones by the full written half-corridor.
-    "w-northroad": {
-        "island": "west", "patch": "westisle", "xz": (-146.0, 2506.0),
-        "kind": "waypoint",
-        "provenance": "MEASURED, north.py candidate scan over the 1 m "
-                      "westisle field: land h 33.49, 17.8 m inland, "
-                      "carriageway relief 0.70 m, bench relief 5.80 m",
-        "why": "a leg boundary must be writable, and w-north is no longer: "
-               "it is inside the North Lighthouse's own terrain claim. This "
-               "node is 76 m south of it, outside zones (-3, 40) and "
-               "(-3, 41) by more than the 14.5 m written half-corridor, so "
-               "the two legs that meet here can both be written.",
-    },
-}
-
-NORTH_EDGES: list[dict] = [
-    # THE TWO JOINING LEGS, RE-ROUTED HERE RATHER THAN INHERITED, and the
-    # measurement that forced it.  `segments.yaml` already carries
-    # W2-brgs2-wmid (1,578.1 m) and W3-wmid-wnorth (1,565.6 m), both routed,
-    # both reporting `stations_over_clamp: 0`, and both never built. I took
-    # W2 at face value and asked the rasteriser, which is the manual's own
-    # working method, and it REFUSED:
-    #
-    #   samples past the MEASURED +/-8 m apply clamp: 67
-    #   worst carriageway delta -11.02 m at (-426, 265), generated 56.26 -> 45.24
-    #   cut -11.021 / fill 11.131 m over 34 zones
-    #   and it refused identically at all 14 rungs of the approach ladder, so
-    #   it is the ROUTE, not the terminus
-    #
-    # The plan and the rasteriser were measuring different things and both were
-    # right: the plan checks the fitted profile against the field bilinear at
-    # 2 m STATIONS, while the rasteriser checks EVERY 1 m SAMPLE in the widened
-    # 29 m footprint. A 4 m routing cell carries a MEAN height, so an 11 m
-    # knoll inside one cell is invisible to the search and to a 2 m station
-    # that happens to miss its crest. `stations_over_clamp: 0` is therefore a
-    # true statement about stations and not a claim about the road.
-    #
-    # So these two legs are re-routed through this tool's graded-corridor
-    # proof, which is computed on a 2 m lattice of the same 1 m field and
-    # cannot step over a knoll that way. Same endpoints, same class, same
-    # datum -- W2/W3 in `segments.yaml` are superseded, not deleted.
-    {"id": "N0-brgs2-wmid", "a": "brg-s2-w", "b": "w-mid",
-     "cls": "trunk", "pri": 1, "patch": "westisle", "grade_max": 0.18,
-     "why": "the west-isle spine off the S2 bridge deck. THE JOIN: the road "
-            "starts on brg-s2-w, whose level_y is DECK_DATUM_Y 30.6, so the "
-            "northern trunk arrives on the existing bridge's datum and the "
-            "network is continuously walkable from the first metre. Supersedes "
-            "W2-brgs2-wmid, which the rasteriser refused at 67 samples past "
-            "the clamp."},
-    {"id": "N0b-wmid-wnorth", "a": "w-mid", "b": "w-northroad",
-     "cls": "trunk", "pri": 1, "patch": "westisle", "grade_max": 0.18,
-     "why": "the rest of the west-isle spine to the road's own northern "
-            "boundary node. Supersedes W3-wmid-wnorth. IT NO LONGER ENDS AT "
-            "`w-north`, and the reason is MEASURED at append time: `w-north` "
-            "(-186.0, 2582.0) is 11.1 m from the North Lighthouse `lh-north` "
-            "(-182.0, 2592.0), which stands over water and is recorded "
-            "flatten=FORBIDDEN, and it sits INSIDE one of the two zones "
-            "(-3, 40) and (-3, 41) that lighthouse's own terrain_write "
-            "claimed. A road sharing a zone must carry that write's samples "
-            "forward -- one compiler per zone -- and the append guard reads "
-            "the carried samples as ours moving the ground: 38 pieces by "
-            "0.020 to 0.751 m, the whole 1,368.7 m leg refused. `w-northroad` "
-            "is the same spine 76 m short of the headland, outside both "
-            "claimed zones by the full 14.5 m written half-corridor."},
-    # GRADE OVERRIDE ON EVERY NORTHERN LEG, declared here so it is never
-    # silent, with the measurement that forced it.
-    #
-    # build_segment detects crossings from PASS ONE, which is fitted at the
-    # edge's own grade. At the trunk's 8 % that pass cannot fit a profile inside
-    # +/-7 m of rough ground over a long run even where the run's OVERALL grade
-    # is well under 8 %, so `find_crossings` flagged the whole run and the
-    # merge turned it into a deck. MEASURED at 8 %: N1 reported a 276.8 m
-    # "crossing" from (-294, 3888) h 37.21 to (-116, 4100) h 34.78 -- 2.4 m of
-    # net fall over 418 m, i.e. a BRIDGE OVER A HILL -- and N4 a 312.5 m one
-    # climbing 30 m over 384 m, which is 7.8 %. Both are the defect the manual
-    # names: a run classified by the wrong dominant cause becomes a structure
-    # nobody can build. 18 % is the network's MOUNTAIN class and it is the
-    # honest class for these legs: they cross Swamp, Mistlands and Mountain, and
-    # the manual's own note on it is "walkable, NOT cartable". The ladder still
-    # runs 18 % -> 25 % and the FITTED grade comes out wherever the terrain
-    # allows, which on N1/N2/N3 is still 8 %.
-    {"id": "N1-wnorth-shelf", "a": "w-northroad", "b": "n-shelf",
-     "cls": "trunk", "pri": 1, "patch": "nnorth1", "grade_max": 0.18,
-     "why": "the west-isle spine continued north through the swamp archipelago "
-            "and across X1, the ONE structural crossing on the whole route. "
-            "MEASURED at 1 m: every other wet run on this leg is inside the "
-            "ford depth, so the leg is terrain except for that channel -- it "
-            "SKIRTS the deep pools rather than decking them, which is why the "
-            "ford-component labelling was worth doing before routing."},
-    {"id": "N2-shelf-mid1", "a": "n-shelf", "b": "n-mid1",
-     "cls": "trunk", "pri": 1, "patch": "nnorth1b", "grade_max": 0.18,
-     "why": "up the Plains/BlackForest shelf onto the northern landmass."},
-    {"id": "N3-mid1-mid2", "a": "n-mid1", "b": "n-mid2",
-     "cls": "trunk", "pri": 1, "patch": "nnorth2", "grade_max": 0.18,
-     "why": "the second swamp chain and the climb into the Mistlands."},
-    {"id": "N4-mid2-terminus", "a": "n-mid2", "b": "n-terminus",
-     "cls": "trunk", "pri": 1, "patch": "nnorth3", "grade_max": 0.18,
-     # THE ONLY LEG THAT ASKS FOR ITS OWN PROOF GRADE, and it asks because it
-     # MEASURED the need: proved at the 25 % ceiling and fitted at 18 %, this
-     # leg's profile had to cut through knolls the corridor said were passable
-     # -- 239 carriageway samples past the +/-8 m clamp, worst -11.79 m, with
-     # `stations_over_clamp` reporting 0. Proving at the grade the road is
-     # actually fitted at is the fix; it is declared per leg because at 8 %
-     # the same smoothing window is 87.5 m and that closed N1.
-     "proof_grade_max": 0.18,
-     "why": "the Mistlands/Mountain traverse to the northern terminus and the "
-            "ferry's south terminal."},
-]
-
-# Refused, with the measurement, so it is not re-litigated.
-REFUSALS = [
-    {"what": "a boardwalk to the 195 m2 islet at z +7744.5 .. +7760.5",
-     "span_m": 79.2, "max_pile_m": 18.77, "pile_reach_m": PILE_REACH_M,
-     "northing_bought_m": 21.0,
-     "why": "79.2 m of deck on piles at 94 % of the MEASURED pile reach, to "
-            "stand 21.0 m further north on 195 m2 of rock that goes nowhere. "
-            "The ferry crosses from the main shore regardless, so the islet is "
-            "not on the way to anything."},
-    {"what": "a bridge across the final 278.0 m chord to the Deep North",
-     "span_m": 278.0, "span_ceiling_m": MAX_SPAN_M,
-     "why": "2.90x the MEASURED 96 m absolute span ceiling, over a bed at the "
-            "0.00 ocean-floor clamp needing a 30.6 m pile against ~20 m of "
-            "reach. Both ceilings exceeded in one chord: ferry."},
-]
 
 
 # ---------------------------------------------------------------------------
@@ -1306,429 +1111,6 @@ def graded_corridor(fld, a_xz, b_xz, *, cell_m: float = GRADED_CELL_M,
     return path, band | np.zeros_like(band), x2, z2, stats, near_path
 
 
-def plan(field1: str, out: Path, only: set[str] | None = None,
-         forbid_zones: set[tuple[int, int]] | None = None,
-         fix_centreline: set[str] | None = None) -> dict:
-    """Route the northern legs and write a ribbon.py-compatible segments file.
-
-    `only` RE-PLANS A SUBSET AND KEEPS EVERY OTHER LEG BYTE-FOR-BYTE, and it
-    exists because three of these legs are already WRITTEN TO THE WORLD.
-
-    N0-brgs2-wmid (ledger seq 2629), N0b-wmid-wnorth (2641) and
-    N1-wnorth-shelf (2656) are `[SAVE]` facts: their centrelines are the
-    lattice the terrain blobs were computed against, and each carries a
-    `generated_heights_sha256` beside its `blob_sha256` precisely so a later
-    reader can detect that the ground under them was re-derived.  Re-planning
-    them would move the plan off the road, and the plan file is what the
-    lamp siting, the clearing census and the walkability check all read.
-    A tightened constraint set is exactly the kind of improvement that would
-    silently do it: the transverse-footprint box added to
-    `network.build_segment` legitimately moves a profile, and moving a profile
-    that is already in the ground is not an improvement.
-
-    So the rule is stated once, here: THE PLAN MUST KEEP THE GEOMETRY THE
-    LEDGER RECORDS.  A leg is re-planned only when it is named.
-    """
-    flds = fieldmod.load(field1)
-    # THE KEEP-OUT FIX, WIRED IN.  This was `poimod.load()` -- the MOD-FREE
-    # generator dump -- from the day it was written, while `poi.load_all`'s
-    # own docstring called itself "the default entry point for ROUTING".
-    pois = routing_pois()
-    # Register the northern nodes so network.build_segment can resolve them.
-    # Done here rather than by editing spec.py because the northern trunk is
-    # this file's subject and three agents are editing that module tonight.
-    for nid, node in NORTH_NODES.items():
-        specmod.NODES.setdefault(nid, node)
-
-    kept: dict[str, dict] = {}
-    pinned: dict[str, list] = {}
-    if only or fix_centreline:
-        prev = Path(out)
-        if not prev.exists():
-            raise SystemExit(f"--only given but {prev} does not exist; there "
-                             f"is nothing to keep and a partial plan file "
-                             f"would drop the built legs entirely")
-        old = yaml.safe_load(prev.read_text())
-        for sg in old.get("segments") or []:
-            if only and sg["id"] not in only:
-                kept[sg["id"]] = sg
-            if fix_centreline and sg["id"] in fix_centreline:
-                pinned[sg["id"]] = sg["nodes"]
-        if only:
-            print(f"--only {','.join(sorted(only))}: keeping "
-                  f"{len(kept)} leg(s) verbatim from {prev.name} "
-                  f"({', '.join(sorted(kept))})")
-        for k, v in sorted(pinned.items()):
-            print(f"--fix-centreline {k}: {len(v)} stations taken from "
-                  f"{prev.name}; the LINE is held and only the PROFILE is "
-                  f"re-solved")
-        missing = sorted((fix_centreline or set()) - set(pinned))
-        if missing:
-            raise SystemExit(f"--fix-centreline names {missing} but "
-                             f"{prev} has no such segment; pinning a line "
-                             f"that is not in the file would silently route "
-                             f"instead")
-
-    segments, unroutable = [], []
-    corridors: dict[tuple[str, str], routemod.Corridor] = {}
-    for edge in NORTH_EDGES:
-        if only and edge["id"] not in only:
-            continue
-        patch = edge["patch"]
-        a_node = specmod.NODES[edge["a"]]
-        b_node = specmod.NODES[edge["b"]]
-        # A FORD-COMPONENT CHANGE IS A PREDICTION, NOT A REFUSAL, and getting
-        # that backwards cost a routing pass.  The label says "terrain alone
-        # cannot join these two ends", which is TRUE and is exactly what a
-        # structural crossing is for -- so the honest response is to record the
-        # prediction and let the 1 m profile fit MEASURE the crossing, because
-        # `find_crossings` is the instrument that decides span, bed and deck.
-        # Refusing here would have declared the one buildable crossing on the
-        # route unbuildable on the strength of a label.
-        predicted_structure = a_node["island"] != b_node["island"]
-        if predicted_structure:
-            print(f"{edge['id']:22s} ford-components differ "
-                  f"({a_node['island']} -> {b_node['island']}): a structural "
-                  f"crossing is PREDICTED on this leg; the 1 m fit will measure "
-                  f"it")
-        # PROVE a graded corridor first, then let A* refine INSIDE it.  The
-        # band is 120 m each side, which is 8x the 14.5 m half-corridor, so the
-        # refinement has room to bend around a POI without being able to wander
-        # into a chasm the proof already ruled out.
-        try:
-            gpath, gband, gx2, gz2, gstats, gnear = graded_corridor(
-                worldseed.resolve(flds, patch), a_node["xz"], b_node["xz"], pois=pois,
-                half_width_m=POI_HALF_M,
-                grade_max=edge.get("proof_grade_max"),
-                forbid_zones=forbid_zones)
-        except ValueError as exc:
-            unroutable.append({"id": edge["id"], "error": str(exc),
-                               "method": "graded_corridor proof at 2 m"})
-            print(f"{edge['id']:22s} NO GRADED CORRIDOR: {exc}")
-            continue
-        print(f"  {edge['id']}: proven graded corridor "
-              f"{gstats['proven_graded_length_m']} m at "
-              f"{gstats['grade_ceiling'] * 100:.0f}%, band "
-              f"{gstats['band_cells']} cells")
-        key = (patch, edge["cls"], edge["id"])
-        if key not in corridors:
-            fld = worldseed.resolve(flds, patch)
-            corr = routemod.Corridor(
-                # grade_max HERE IS THE SMOOTHING WINDOW, NOT THE ROAD'S GRADE,
-                # and conflating the two made N1 unroutable inside its own
-                # proof. route.Corridor sets its achievable surface from a box
-                # mean of radius CUT_FILL_MAX / grade_max, so the trunk's 8 %
-                # gives an 87.5 m window against the proof's 28 m at 25 %. Over
-                # the swamp archipelago an 87.5 m mean spans several islands and
-                # the channels between them, and clipping the result back to
-                # h +/- 7 m then manufactures >25 % steps at the necks -- so the
-                # 4 m search refused the very cells the 2 m proof had just
-                # walked through, and answered "no route found" for a corridor
-                # it had been handed. Matching the window to the proof makes the
-                # two instruments agree about the same ground. The ROAD's grade
-                # is unaffected: build_segment fits the profile at the trunk 8 %
-                # and only relaxes up its recorded ladder.
-                # ...AND A LEG MAY ASK FOR ITS OWN.  `proof_grade_max` exists
-                # because MEASURED on N4-mid2-terminus the mismatch is the
-                # defect rather than the match: the proof and the 4 m search
-                # both ran at the 25 % CEILING while `build_segment` fits that
-                # leg's profile at its declared 18 %, so the proven corridor
-                # contained grades the road could not follow and the fitted
-                # profile had to cut through the knolls instead -- 239
-                # carriageway samples past the +/-8 m clamp, worst -11.79 m,
-                # on a route whose `stations_over_clamp` was 0.  Set per leg
-                # and not globally, because at the trunk's 8 % the same window
-                # is 87.5 m wide and that is what made N1 unroutable inside
-                # its own proof.
-                fld, cell_m=4.0,
-                grade_max=(edge.get("proof_grade_max")
-                           or routemod.GRADE_CEILING),
-                # WATER PRICED AT THE TUNING THAT KILLED SHORELINE SHORTCUTS,
-                # not at network.py's 300/15. network.py's own comment records
-                # both ends of this: at 10 road-metres per water metre the
-                # router took shoreline shortcuts and produced six spans of
-                # 103-562 m, and at 400 flat it walked 3.8 km to avoid a 10 m
-                # channel. 400 + 60/m is the value between them, and it is the
-                # one this corridor needs.
-                #
-                # MEASURED at 300/15 on N1, and this is the reason: an open-water
-                # cell short-circuits `_step_cost` BEFORE the soft term, so the
-                # swamp-pool penalty never applies to water at all -- the search
-                # ran 200 m ALONG a channel 14-15 m deep for 3,300 road-metres
-                # of cost, and the 96 m geometry gate could not stop it because
-                # that gate bounds a crossing's WIDTH, not its LENGTH. The
-                # land-only retry, which is the documented remedy, correctly
-                # answered "no route found": this leg genuinely needs ONE
-                # crossing. At 400 + 60/m the same 200 m costs 12,400 and the
-                # router walks the fordable ribbon instead, while the 11.2 m
-                # channel it actually has to cross still costs only 1,072.
-                bridge_entry_cost_m=400.0, bridge_per_m_cost=60.0)
-            # BOTH INSTRUMENTS NOW RESERVE THE OBJECT THE WRITE GATE JUDGES,
-            # which is the CARRIAGEWAY footprint and not the earthwork.  The
-            # history is worth keeping because all three settings were tried on
-            # live measurements and the first two are the operator's two
-            # complaints:
-            #   * 3.0 m in both -- the rasteriser refused N0/N0b/N1/N2 for ONE
-            #     to THREE written samples inside a location's hard radius.
-            #     Root cause: the shoulder reaches 4.0 m, the batter 14.5 m,
-            #     and the router had been told about neither.
-            #   * 14.5 m in both, 110 m band -- N2-shelf-mid1 "no route found".
-            #     Root cause: reserving ground the BATTER never keeps.  `stamp`
-            #     clips a batter sample at a location boundary and records the
-            #     wall; a keep-out that forbids the corridor on its behalf is
-            #     paying for a metre nobody was going to write.
-            #   * POI_HALF_M = 4.0 m in both -- the road EDGE, which is exactly
-            #     what `ribbon.py::location_check` measures now that the batter
-            #     clips.  `hard_m` adds its own 3.0 m piece pad, so the reserve
-            #     is `reach + 7.0` against a gate that needs `reach + 5.0`.
-            forbid, soft, _touched = poimod.masks(
-                pois, corr.x0, corr.z0, corr.cell_m, corr.m,
-                POI_HALF_M)
-            # THE SWAMP-POOL PENALTY, and it is the difference between a road
-            # that skirts a swamp and a 370 m "bridge" over one.
-            #
-            # MEASURED defect it fixes, on N1 before it existed: route.Corridor
-            # calls a 4 m cell "water" only when its MAX 1 m sample is at or
-            # below 30.5, so a swamp pool 3 m deep and 6 m wide inside a cell
-            # that also holds a tussock reads as DRY GROUND to the search. The
-            # search therefore crossed the swamp archipelago in a straight line,
-            # the 1 m profile fit found a string of wet runs, `find_crossings`
-            # merged the contiguous flagged stations, and N1 came back with
-            # crossings of 370.6 m and 215.4 m -- 3.9x and 2.2x the 96 m span
-            # ceiling -- over banks at h 31.3 and 31.0. Worse, `straighten`
-            # then replaced 370 m of centreline with a straight chord, which
-            # drove the line to 30.1 m of a TrollCave02 whose hard radius is
-            # 41.8 m: a POI breach CAUSED by a spurious crossing.
-            #
-            # So the depth the ribbon would actually have to wade is priced from
-            # the MIN-pooled 1 m height the corridor already computes. Soft, not
-            # forbidden, because a crossing the route genuinely needs must stay
-            # available -- and soft is enough: at poi_weight 8.0 a 2 m pool
-            # costs 9x dry ground and a 5 m pool 33x, so the search skirts a
-            # pool it can walk around and still crosses one it cannot.
-            # UNSATURATED, because a saturating penalty is a penalty a long
-            # detour can out-price. MEASURED with a cap of 4.0: N1 still came
-            # back with a 370.6 m crossing whose deepest station was 19.85 m
-            # BELOW the water plane -- the search paid 33x for 370 m of deep
-            # channel rather than walk the fordable ribbon round it, because
-            # 33x of 370 m is cheaper than the detour. With the cap removed a
-            # 20 m hole costs 161x and the arithmetic reverses.
-            pool = np.clip(
-                (WATER_LEVEL_M - FORD_DEPTH_M - corr.Hmin) / 1.0, 0.0, 40.0)
-            # AND A HARD FLOOR, because past a certain depth there is no
-            # technique at all: fill is bounded by the usable clamp (7 m), a
-            # pile by its MEASURED ~20 m reach, and a free span by 96 m which
-            # route.Corridor already encodes geometrically. A cell whose MEAN
-            # 1 m height needs a pile longer than the reach cannot carry a
-            # deck, cannot be filled and is not a span -- so it is forbidden,
-            # not priced. MEAN and not MIN deliberately: MIN would forbid every
-            # shoreline cell that happens to contain one deep sample.
-            unbuildable = (DECK_DATUM_Y - corr.H) > PILE_REACH_M
-            # Rasterise the proven band onto the 4 m routing lattice and
-            # forbid everything outside it.
-            bj = np.clip(np.round((corr.x0 + np.arange(corr.m) * corr.cell_m
-                                   - gx2[0]) / gstats["lattice_m"]
-                                  ).astype(int), 0, gband.shape[1] - 1)
-            bi = np.clip(np.round((corr.z0 + np.arange(corr.m) * corr.cell_m
-                                   - gz2[0]) / gstats["lattice_m"]
-                                  ).astype(int), 0, gband.shape[0] - 1)
-            in_band = gband[np.ix_(bi, bj)]
-            near_proof = gnear[np.ix_(bi, bj)]
-            # THE LICENCE MAY LIFT A TASTE MARGIN AND NEVER THE GATE.
-            # `poi.masks`' hard radius is `reach + PIECE_PAD_M(3.0 taste) +
-            # half_width`; the write gate's is `reach + TERRAIN_SPREAD_M(1.0
-            # DERIVED) + half_width`.  The pinch licence exists so a corridor
-            # the proof had to squeeze through is not declared impossible, and
-            # for the 2 m of taste between those two numbers that is exactly
-            # right.  Applying it to the gate boundary is not a licence at all:
-            # it produces a leg the rasteriser refuses, which is a slower way
-            # of answering "no route" while also spending 80 seconds and a
-            # re-plan to find out.  MEASURED before this line existed, on the
-            # aligned keep-out: N0b, N1 and N2 all routed and all three were
-            # predicted refused, by 2.07, 0.41 and 0.06 m, every breach inside
-            # a lifted pinch.
-            gate_forbid, gate_slack = gate_forbid_mask(
-                clearance_locations(), corr.x0, corr.z0, corr.cell_m, corr.m,
-                POI_HALF_M)
-            lifted = int((forbid & near_proof & ~gate_forbid).sum())
-            held = int((forbid & near_proof & gate_forbid).sum())
-            claim_forbid = claim_zone_forbid(corr.x0, corr.z0, corr.cell_m,
-                                             corr.m, extra=forbid_zones)
-            corr.forbid = ((forbid & ~near_proof) | gate_forbid | claim_forbid
-                           | unbuildable | (~in_band))
-            if claim_forbid.any():
-                print(f"  {patch}: {int(claim_forbid.sum())} cells forbidden "
-                      f"as already TERRAIN-WRITTEN by a flatten=FORBIDDEN "
-                      f"site: {sorted(protected_claim_zones()['zones'].items())}")
-            print(f"  {patch}: gate boundary forbids "
-                  f"{int(gate_forbid.sum())} cells (reach + 1.0 spread + "
-                  f"{POI_HALF_M:g} carriageway + {gate_slack:.2f} chord slack)")
-            if lifted or held:
-                print(f"  {patch}: POI taste-margin LIFTED on {lifted} cells "
-                      f"at a proof pinch, HELD on {held} because they are "
-                      f"inside the write gate's own boundary "
-                      f"({gstats['path_cells_inside_a_hard_poi_keepout']} "
-                      f"proof cells were inside a keep-out); any surviving "
-                      f"breach is measured per instance in "
-                      f"poi_hard_violations")
-            corr.soft = soft + pool.astype(np.float32)
-            print(f"  {patch}: {int((~in_band).sum())} cells outside the "
-                  f"proven graded band")
-            print(f"  {patch}: {int(unbuildable.sum())} cells forbidden as "
-                  f"past the {PILE_REACH_M:g} m pile reach")
-            corridors[key] = corr
-            print(f"  {patch}: swamp-pool penalty on "
-                  f"{int((pool > 0).sum())} of {corr.m * corr.m} cells, "
-                  f"worst {float(pool.max()):.2f} "
-                  f"(deepest pool {float(WATER_LEVEL_M - corr.Hmin.min()):.2f} m "
-                  f"below the plane)")
-        # build_segment reads the node's own `patch`; the edge's patch is the
-        # authority here because a leg's two ends can sit in different patches
-        # while the LEG lies inside one.  Patched per call, never globally, so a
-        # concurrent reader of spec.NODES cannot see a half-applied override.
-        saved = {nid: specmod.NODES[nid].get("patch")
-                 for nid in (edge["a"], edge["b"])}
-        try:
-            for nid in (edge["a"], edge["b"]):
-                specmod.NODES[nid] = {**specmod.NODES[nid], "patch": patch}
-            seg = netmod.build_segment(worldseed.resolve(flds, patch), edge, corridors[key],
-                                       pois,
-                                       fixed_pts=pinned.get(edge["id"]),
-                                       census=CENSUS)
-        except ValueError as exc:
-            unroutable.append({"id": edge["id"], "error": str(exc)})
-            print(f"{edge['id']:22s} UNROUTABLE: {exc}")
-            continue
-        finally:
-            for nid, p in saved.items():
-                specmod.NODES[nid] = {**specmod.NODES[nid], "patch": p}
-        worst = max((c["span_m"] for c in seg["crossings"]), default=0.0)
-        if worst > MAX_SPAN_M:
-            land = None
-            try:
-                for nid in (edge["a"], edge["b"]):
-                    specmod.NODES[nid] = {**specmod.NODES[nid], "patch": patch}
-                land = netmod.build_segment(worldseed.resolve(flds, patch), edge, corridors[key],
-                                            pois, land_only=True, census=CENSUS)
-            except ValueError as exc:
-                print(f"{edge['id']:22s} land-only retry failed: {exc}")
-            finally:
-                for nid, p in saved.items():
-                    specmod.NODES[nid] = {**specmod.NODES[nid], "patch": p}
-            if land is not None:
-                land["land_only_retry"] = {
-                    "first_attempt_worst_span_m": worst,
-                    "length_penalty_m": round(land["length_m"] - seg["length_m"], 1),
-                    "why": "first route proposed a bridged run past the 96 m "
-                           "absolute span ceiling",
-                }
-                seg = land
-        zs = netmod.zones_of_segment(seg)
-        seg["zones_carriageway"] = sorted([list(z) for z in zs])
-        seg["zdo_cost"] = len(zs)
-        seg["patch"] = patch
-        seg["structure_predicted_by_ford_components"] = predicted_structure
-        seg["graded_corridor_proof"] = gstats
-        # THE PLAN NOW PREDICTS THE WRITE GATE'S OWN VERDICT, in the write
-        # gate's own units.  Until tonight the only way to learn that a leg
-        # would be refused for one sample inside a hard radius was to spend
-        # 80 seconds rasterising 22,000 samples and read the refusal -- four
-        # times, on four legs, across two re-plans.  This is the same
-        # comparison the gate makes, taken on the finished centreline against
-        # the CARRIAGEWAY edge: `clearance.Locations.hard_radius` per instance
-        # versus `centreline distance - edge`.  It is a PREDICTION and it is
-        # labelled one: the gate still runs on every written sample and a leg
-        # is never sent without clearing it, because a 4 m routing cell
-        # carries a mean height and a centreline is not a footprint.
-        seg["write_gate_prediction"] = write_gate_prediction(
-            clearance_locations(), seg["nodes"], POI_HALF_M)
-        segments.append(seg)
-        print(f"{seg['id']:22s} {seg['cls']:5s} {seg['length_m']:8.1f} m  "
-              f"grade {seg['grade_max_measured'] * 100:5.2f}%/"
-              f"{seg['grade_limit'] * 100:.0f}%  "
-              f"cut {seg['cut_max_m']:6.2f} fill {seg['fill_max_m']:5.2f}  "
-              f"clamp8 {seg['stations_over_clamp']:3d}  "
-              f"fords {seg['ford_count']:3d}  brg {len(seg['crossings'])}  "
-              f"zones {seg['zdo_cost']:3d}  poi-viol "
-              f"{len(seg['poi_hard_violations'])}  gate "
-              f"{seg['write_gate_prediction']['verdict']} margin "
-              f"{seg['write_gate_prediction']['worst_margin_m']} m")
-
-    if kept:
-        # Re-assembled in NORTH_EDGES order, not "kept first then new", so the
-        # file's segment order is the road's order however many passes it took
-        # to produce.  `ribbon.py` and `lamps.py` both walk this list.
-        by_id = {sg["id"]: sg for sg in segments}
-        by_id.update({k: v for k, v in kept.items() if k not in by_id})
-        segments = [by_id[e["id"]] for e in NORTH_EDGES if e["id"] in by_id]
-        for sg in segments:
-            sg["replanned_this_pass"] = sg["id"] in (only or set())
-
-    doc = {
-        "schema_version": 2, "owner": "TrunkNorth", "world": WORLD,
-        "seed": SEED,
-        "what": "the northern trunk: the buildable continuation of the network "
-                "north, from the west-isle spine to the northern terminus at "
-                "the ferry's south shore.",
-        "height_source": {"tool": "tools/jumpstart/blueprints/run_patchscan.sh",
-                          "field": field1, "resolution_m": 1.0,
-                          "rivers_included": True},
-        "clamp": {"apply_clamp_m": routemod.CLAMP_M,
-                  "design_margin_m": routemod.CUT_FILL_MAX,
-                  "source": "TerrainComp::ApplyToHeightmap, MEASURED"},
-        "nodes": NORTH_NODES,
-        "segments": segments,
-        "unroutable": unroutable,
-        "refusals": REFUSALS,
-        "forbid_zones": sorted([list(z) for z in (forbid_zones or set())]),
-        "centrelines_pinned": sorted(pinned),
-        "forbid_zones_why": ("zones the GAME will not spawn. A road may not "
-                             "cross one at any profile: SpawnZone returning "
-                             "false leaves no _ZoneCtrl, a _TerrainCompiler "
-                             "written into an ungenerated zone is ignored at "
-                             "generation time, and paint alpha is not "
-                             "honoured there either."),
-        "poi_keepout": {
-            "source": POI_SOURCE,
-            # THE RESOLVED path, not a module constant: a provenance field
-            # that names a file the run did not read is the evidence a reader
-            # would use to rule out a cross-seed fault.
-            "generator_dump": str(poimod.location_dump()),
-            "generator_dump_depends_on": poimod.LOCATION_DUMP_DEPENDS_ON,
-            "instances": len(pois),
-            # The two populations counted apart, because one number over a
-            # mixed list hides which half a route was planned against.
-            "census_bodies": (0 if CENSUS is None else len(CENSUS.bodies)),
-            "census_cells_read": (0 if CENSUS is None else len(CENSUS.cells)),
-            "census_measured_utc": (None if CENSUS is None
-                                    else CENSUS.measured_utc),
-            "census_instrument": (None if CENSUS is None
-                                  else CENSUS.instrument),
-            "order": "ZONES GENERATED, THEN CENSUSED, THEN ROUTED, THEN "
-                     "PAVED -- see roads/precensus.py for the measured "
-                     "ordering defect this inverts.",
-        },
-        "mod_free_caveat":
-            ("the generator dump is MOD-FREE and cannot see "
-             "More_World_Locations_AIO's ~190 types; the census closes that "
-             "gap ONLY inside the cells it actually read, which is why an "
-             "uncensused station is a refusal rather than a caveat."
-             if CENSUS is not None else
-             "PROVISIONAL RUN, NOT PAVEABLE: the keep-out is the MOD-FREE "
-             "location dump alone, which cannot see "
-             "More_World_Locations_AIO's ~190 types, so this line can cross a "
-             "standing mod body -- which is exactly what it is for: it tells "
-             "`precensus.py survey` where to read."),
-    }
-    # THE SERIALISATION BOUNDARY: in memory the carriageway column is
-    # `zones_carriageway`, on disk it stays `zones` so this file keeps the
-    # format its 236 committed zone entries already have.
-    netmod.carriageway_to_disk(doc)
-    Path(out).write_text(yaml.safe_dump(netmod.plain(doc), sort_keys=False, width=100))
-    print(f"wrote {out}: {len(segments)} segments, "
-          f"{sum(s['length_m'] for s in segments):.1f} m, "
-          f"{sum(s['zdo_cost'] for s in segments)} zones")
-    return doc
 
 
 
@@ -2385,22 +1767,14 @@ def zonediag(zx: int, zz: int, save: str = "", loc_dump: str = "") -> dict:
 
 
 def main() -> int:
+    # Regeneration is a seed-derived itinerary, never the historical coordinate
+    # tables retained below for read-only fixture diagnostics.
+    if sys.argv[1:2] in (["network"], ["plan"]):
+        import north_itinerary
+        return north_itinerary.general_main(sys.argv[2:])
     ap = argparse.ArgumentParser()
-    ap.add_argument("op", choices=["reach", "crossings", "plan", "placed",
+    ap.add_argument("op", choices=["reach", "crossings", "placed",
                                    "report", "ferry", "zonediag"])
-    ap.add_argument("--only", default="",
-                    help="plan: re-plan ONLY these segment ids (comma "
-                         "separated) and keep every other leg VERBATIM. The "
-                         "built legs' geometry is what the ledger records and "
-                         "must not be re-derived.")
-    ap.add_argument("--fix-centreline", default="", dest="fix_centreline",
-                    help="plan: for these segment ids, take the centreline "
-                         "from the existing plan file and re-solve only the "
-                         "profile. Holds a line the rasteriser has already "
-                         "cleared.")
-    ap.add_argument("--forbid-zones", default="", dest="forbid_zones",
-                    help="plan: zones the router may not enter, as "
-                         "'zx,zz;zx,zz'. For a zone the GAME will not spawn.")
     ap.add_argument("--zone", default="",
                     help="zonediag: 'zx,zz' of the zone to diagnose")
     ap.add_argument("--save", default="",
@@ -2415,31 +1789,14 @@ def main() -> int:
                                         "/tmp/trunknorth/n1b.bin")
     ap.add_argument("--out", default=str(HERE))
     worldseed.add_arguments(ap)
-    # CENSUS-BEFORE-ROUTE, same contract as `network.py plan`.  `--poi-source`
-    # is gone: it chose between two populations that are both blind to what is
-    # standing in this world's corridor now.
-    ap.add_argument("--census",
-                    help="the census artefact `precensus.py survey` wrote "
-                         "AFTER generating the zones this road crosses")
-    ap.add_argument("--provisional", action="store_true",
-                    help="route with NO census, only to give the survey a "
-                         "line to read along; the plan is stamped PROVISIONAL "
-                         "and cannot be paved")
     args = ap.parse_args()
     out = Path(args.out)
 
-    global SEED, WORLD, POI_SOURCE, CENSUS
+    global SEED, WORLD
     SEED, WORLD = worldseed.apply(args)
-    if args.op in ("plan",):
-        if args.provisional and args.census:
-            raise SystemExit("--provisional and --census are the two ends of "
-                             "the same pipeline; pass one")
-        CENSUS = (None if args.provisional
-                  else censusmod.require(
-                      Path(args.census) if args.census else None,
-                      world=WORLD, seed=SEED))
-        POI_SOURCE = ("generator dump ONLY (PROVISIONAL)" if CENSUS is None
-                      else f"generator dump + census {args.census}")
+    if args.op in ("reach", "crossings", "report", "ferry") and not worldseed.is_default():
+        raise SystemExit("Historical north diagnostics describe the Pirate68 fixture only; "
+                         "use north.py network for seed-derived regeneration.")
 
     def load_many(spec: str) -> dict:
         merged: dict = {}
@@ -2539,21 +1896,6 @@ def main() -> int:
               f"{rep['reach_m']:g} m -> {dest}")
         return 0
 
-    merged = load_many(args.field1)
-    orig = fieldmod.load
-    fieldmod.load = lambda p: (merged if p == args.field1 else orig(p))  # noqa: E731
-    try:
-        plan(args.field1, out / _north_name(),
-             only={v.strip() for v in args.only.split(",") if v.strip()}
-             or None,
-             forbid_zones={tuple(int(c) for c in part.split(","))
-                           for part in args.forbid_zones.split(";")
-                           if part.strip()} or None,
-             fix_centreline={v.strip()
-                             for v in args.fix_centreline.split(",")
-                             if v.strip()} or None)
-    finally:
-        fieldmod.load = orig
     return 0
 
 

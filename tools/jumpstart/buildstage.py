@@ -314,6 +314,22 @@ def _crossing_ground(s: Scope) -> dict[str, dict[str, tuple[str, ...]]]:
             for c in records}
 
 
+def _north_itinerary(s: Scope) -> dict:
+    from roads import north_transport
+    return north_transport.load_itinerary(worldseed.north_path(s.seed),
+                                          s.seed, s.world, for_write=True)
+
+
+def _north_terminal_units(s: Scope) -> list[str]:
+    # Missing, foreign and provisional are debts, never an empty population.
+    return list(_north_itinerary(s)["terminals"])
+
+
+def _north_terminal_ground(s: Scope) -> dict[str, dict[str, tuple[str, ...]]]:
+    return {tid: {"segment": (terminal["segment_id"],)}
+            for tid, terminal in _north_itinerary(s)["terminals"].items()}
+
+
 def _split(unit: str) -> tuple[str, str]:
     preset, _, pid = unit.partition("/")
     return preset, pid
@@ -337,6 +353,7 @@ def _inputs(s: Scope) -> list[Artefact]:
         # consumed it: every declared crossing was handed to a build with no
         # step that builds one.  See UNBUILT_DEPENDS_ON.
         Artefact("crossings", worldseed.crossings_path(s.seed), pipeline.SCOPE_YAML),
+        Artefact("north_itinerary", worldseed.north_path(s.seed), pipeline.SCOPE_YAML),
         Artefact("census", HERE / "roads" / "census" / f"{s.world}-census.json"),
         # THE CORRIDOR'S ZONES ARE NOT THE BUILD'S TO GENERATE.  `precensus.py
         # survey` generates a zone and reads it IN THE SAME CALL (stage 10), so
@@ -388,6 +405,10 @@ def _roadside(s: Scope) -> list[Artefact]:
 
 def _decks(s: Scope) -> list[Artefact]:
     return [Artefact("decks", s.work / "build" / "decks")]
+
+
+def _north_transport(s: Scope) -> list[Artefact]:
+    return [Artefact("north_transport", s.work / "build" / "north_transport")]
 
 
 def _verdict(s: Scope) -> list[Artefact]:
@@ -601,6 +622,19 @@ def _av_decks(rt: Runtime, unit: str) -> list[list[str]]:
              "--actor", rt.actor]]
 
 
+def _av_north_transport(rt: Runtime, unit: str) -> list[list[str]]:
+    from roads import north_transport
+    return [[PY, str(HERE / "roads" / "north_transport.py"),
+             "plan" if rt.dry else "build",
+             "--itinerary", str(worldseed.north_path(rt.scope.seed)),
+             "--field", str(north_transport.field_path(
+                 (_north_itinerary(rt.scope).get("height_source") or {}).get("field"))),
+             "--terminal", unit, "--seed", rt.scope.seed,
+             "--world", rt.scope.world, "--actor", rt.actor,
+             "--out", str(rt.work / "build" / "north_transport" / f"{unit}.json")]
+            + ([] if rt.dry else ["--apply"])]
+
+
 def _av_recheck(rt: Runtime, unit: str) -> list[list[str]]:
     return [[PY, str(HERE / "roads" / "clear.py"), "census", "--recheck",
              "--segment", unit,
@@ -809,8 +843,21 @@ BUILD_STEPS: tuple[BuildStep, ...] = (
                  ("bridge", "spawn_plan"), ("bridge", "spawn")),
     ),
     BuildStep(
+        6.75, "north_transport", "roads/north_transport.py build --apply",
+        _north_transport,
+        requires=("north_itinerary", "road_ground", "bodies", "decks"),
+        evidence="One unit per scoped itinerary terminal. Every paired endpoint "
+                 "is measured before any unit writes. Docks stand on their "
+                 "serving segment's already-graded road endpoint; no transport "
+                 "terrain ownership bypass. Final departure includes a full "
+                 "checksum-bound tall lighthouse blueprint and a large ship.",
+        units=_north_terminal_units, argv=_av_north_transport,
+        domain="north_terminal", stands_on=_north_terminal_ground,
+        records=(("north_transport", "spawn_plan"), ("north_transport", "spawn")),
+    ),
+    BuildStep(
         7, "roadside", "roads/lamps.py --place", _roadside,
-        requires=("road_ground", "bodies", "decks"),
+        requires=("road_ground", "bodies", "decks", "north_transport"),
         evidence="CONSUMES road_ground: a lamp's datum is recorded as 'each "
                  "lamp's own applied surface + 0.65360 m, the prefab's measured "
                  "pivot offset', and its own record carries flatten: FORBIDDEN "
@@ -831,7 +878,7 @@ BUILD_STEPS: tuple[BuildStep, ...] = (
     ),
     BuildStep(
         8, "recheck", "roads/clear.py census (re-read)", _verdict,
-        requires=("fixtures", "roadside", "decks", "corridor_cleared"),
+        requires=("fixtures", "roadside", "decks", "north_transport", "corridor_cleared"),
         evidence="CONSUMES the FINISHED world: every body, fixture and lamp. "
                  "PRODUCES the only reading of a corridor taken after the "
                  "things that block it were placed. THE STEP THAT DID NOT "
@@ -1264,6 +1311,8 @@ def kind_of(role: str) -> str:
     """
     if _KIND_MODE == "site":
         return "site"
+    if role == "north_transport":
+        return "north_transport"
     if role in ROADSIDE_ROLES:
         return "roadside"
     if role in BRIDGE_ROLES:

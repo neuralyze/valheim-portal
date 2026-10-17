@@ -1007,6 +1007,82 @@ def footprint(hull: Hull, x: float, z: float, yaw_deg: float,
     return out
 
 
+def _origin_polygon_distance_sq(poly):
+    if poly_contains(poly, 0.0, 0.0):
+        return 0.0
+    nearest = math.inf
+    for a, b in zip(poly, poly[1:] + poly[:1]):
+        dx, dz = b[0]-a[0], b[1]-a[1]
+        length_sq = dx*dx + dz*dz
+        t = 0.0 if length_sq == 0.0 else max(
+            0.0, min(1.0, -(a[0]*dx+a[1]*dz)/length_sq))
+        nearest = min(nearest, (a[0]+t*dx)**2+(a[1]+t*dz)**2)
+    return nearest
+
+
+def swept_hull_near_polygon(hull, start, end, poly):
+    """Continuous translation/rotation, with a conservative Hausdorff bound.
+
+    At each midpoint the ellipse maps to a unit disk. Translation plus the
+    maximum rotation of its rim bounds ALL intermediate hull poses. Only a
+    proven separation clears an interval; ambiguous intervals are subdivided.
+    Floating-point exhaustion refuses rather than clearing a tangency.
+    """
+    if not poly:
+        return True
+    half_beam, half_length = hull.beam_m/2.0, hull.length_m/2.0
+    radius, scale = max(half_beam, half_length), min(half_beam, half_length)
+    if not math.isfinite(scale) or scale <= 0.0:
+        return True
+    pending = [(start, end)]
+    while pending:
+        a, b = pending.pop()
+        turn = (b[2]-a[2]+180.0) % 360.0-180.0
+        mid = ((a[0]+b[0])/2.0, (a[1]+b[1])/2.0, a[2]+turn/2.0)
+        ux, uz = math.sin(math.radians(mid[2])), math.cos(math.radians(mid[2]))
+        normalized = [(((x-mid[0])*uz-(z-mid[1])*ux)/half_beam,
+                       ((x-mid[0])*ux+(z-mid[1])*uz)/half_length)
+                      for x, z in poly]
+        distance_sq = _origin_polygon_distance_sq(normalized)
+        if distance_sq <= 1.0:
+            return True
+        motion = (math.hypot(b[0]-a[0], b[1]-a[1])/2.0
+                  + 2.0*radius*math.sin(math.radians(abs(turn))/4.0))
+        if distance_sq > (1.0+motion/scale)**2:
+            continue
+        if mid == a or mid == b:
+            return True
+        pending.append((a, mid))
+        pending.append((mid, b))
+    return False
+
+
+def swept_footprint(hull, poses):
+    """Every integer terrain vertex traversed, including between sampled poses."""
+    radius = max(hull.beam_m, hull.length_m)/2.0
+    vertices = set()
+    spans = [(poses[0], poses[0])] if poses else []
+    spans.extend((a, b) for a, b in zip(poses, poses[1:]) if a != b)
+    for a, b in spans:
+        for x in range(math.floor(min(a[0], b[0])-radius),
+                       math.ceil(max(a[0], b[0])+radius)+1):
+            for z in range(math.floor(min(a[1], b[1])-radius),
+                           math.ceil(max(a[1], b[1])+radius)+1):
+                point = (x, z)
+                if point not in vertices and swept_hull_near_polygon(
+                        hull, a, b, [point]):
+                    vertices.add(point)
+    return vertices
+
+
+def swept_hull_intersects_barrier(hull, start, end, barrier):
+    if not barrier.spans_band(hull.keel_y(), WATER_LEVEL+(hull.air_m or 0.0)):
+        return False
+    return swept_hull_near_polygon(hull, start, end, barrier.poly)
+
+
+
+
 def yaw_of(quat) -> float:
     """Yaw in degrees from a ZDO's own quaternion (y-up, Unity)."""
     x, y, z, w = quat

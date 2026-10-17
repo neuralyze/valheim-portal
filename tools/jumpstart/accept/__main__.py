@@ -439,6 +439,14 @@ def main(argv=None) -> int:
     ap.add_argument("--sandbox", default=I.SANDBOX_DEFAULT)
     ap.add_argument("--cache", default=I.CACHE_DEFAULT)
     ap.add_argument("--ledger", default=None)
+    ap.add_argument("--north-itinerary", default=None,
+                    help="north itinerary (default: worldseed.north_path; "
+                         "honours VH_NORTH_ITINERARY); required by roads "
+                         "and north_transport acceptance")
+    ap.add_argument("--north-field", default=None,
+                    help="measured 1 m north transport terrain field "
+                         "(or VH_NORTH_FIELD / itinerary height_source.field); "
+                         "no borrowed/default field")
     ap.add_argument("--section", default="",
                     help="comma list of SECTIONS to run; default is all of "
                          "them, and the exit code is non-zero if ANY "

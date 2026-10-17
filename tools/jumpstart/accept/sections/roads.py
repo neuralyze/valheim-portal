@@ -43,6 +43,7 @@ from types import SimpleNamespace
 from .. import instruments as I
 from .. import termination as T
 from ..registry import Case, Finding, Section, SectionResult, register
+from . import north_transport as NT
 
 STEP_LIMIT_PER_M = I.STEP_LIMIT_PER_M
 SAMPLE_M = I.SAMPLE_M
@@ -1532,6 +1533,20 @@ _IN_SECTION = (
     "arrives with no class means that pass did not class it, and closing "
     "that is a change to this section's source")
 TERMINATION_FAMILIES = {
+    **NT.TERMINATION_FAMILIES,
+    "north_transport": (
+        "UPSTREAM_STAGE_NOT_RUN",
+        "physically accept every north dock, paired boat, sea passage and "
+        "the final departure lighthouse/large ship before journey acceptance"),
+    "north_artifact": (
+        "PRODUCER_NOT_RUN",
+        "produce a complete non-provisional north itinerary for this seed "
+        "and world; missing, unreadable or foreign north data cannot be "
+        "replaced by the population the ledger happens to contain"),
+    "north_routes": (
+        "UPSTREAM_STAGE_NOT_RUN",
+        "build every declared north trunk through the ordinary road network "
+        "writer before accepting the applied ground and crossing decks"),
     "population": (
         "UPSTREAM_STAGE_NOT_RUN",
         "no road segment was ever written to this world; the prerequisite "
@@ -1758,6 +1773,10 @@ def road_termination(findings, owners, writes=None, spans=None,
     for f in sorted(hard, key=lambda g: g.check != "crossings"):
         n = f.numbers = dict(f.numbers or {})
         x, z = (f.where or (None, None))[:2]
+        if f.check in ("north_artifact", "north_routes", "north_transport"):
+            n["termination_class"] = T.out_of_order(
+                n, TERMINATION_FAMILIES[f.check][1])
+            continue
         if f.check == "traversability":
             # A STEP INSIDE A DECLARED CROSSING'S SPAN IS THAT CROSSING'S.
             # The ribbon stops at the bank by construction and writes no
@@ -3022,10 +3041,10 @@ def run(ctx) -> SectionResult:
     scope = ctx.scope
     segs = built_segments(ctx.ledger)
     report: dict = {}
-    findings: list[Finding] = []
+    findings: list[Finding] = I.north_road_population(ctx, segs)
     if not segs:
         return SectionResult(
-            findings=[Finding(
+            findings=findings + [Finding(
                 check="population", ok=False,
                 message="no road segment was ever written to this world - "
                         "nothing to accept",
@@ -4131,6 +4150,20 @@ def run(ctx) -> SectionResult:
         adj[kb].append(ka)
     if bridge_edges:
         comp, comps = components()
+    # Preserve the physical walking graph and its component census. A ferry
+    # is NOT a bridge or a walkable step: only independently accepted saved
+    # docks/boats/access/full-hull sea passages enter this journey graph.
+    transport_links, transport_findings, transport_report = (
+        NT.road_transport_links(ctx, npos, seg_of))
+    findings += transport_findings
+    report["north_transport"] = transport_report
+    travel_adj = {key: list(neighbours) for key, neighbours in adj.items()}
+    voyages = {}
+    for link in transport_links:
+        ka, kb = link["ka"], link["kb"]
+        travel_adj.setdefault(ka, []).append(kb)
+        travel_adj.setdefault(kb, []).append(ka)
+        voyages[(ka, kb)] = voyages[(kb, ka)] = link
     origin_name = "portalhub" if "portalhub" in node_keys else \
         sorted(node_keys)[0]
     src = node_keys[origin_name]
@@ -4167,18 +4200,24 @@ def run(ctx) -> SectionResult:
     # Here an edge exists only where a step exists, so the number and the
     # verdict cannot disagree.
     dist: dict[str, float] = {src: 0.0}
+    sailed: dict[str, float] = {src: 0.0}
     pq = [(0.0, src)]
     while pq:
         dcur, cur = heapq.heappop(pq)
         if dcur > dist.get(cur, math.inf) + 1e-9:
             continue
         cx, cz = npos[cur]
-        for nxt in adj[cur]:
+        for nxt in travel_adj.get(cur, ()):
             nx, nz = npos[nxt]
-            nd = dcur + math.hypot(nx - cx, nz - cz)
+            voyage = voyages.get((cur, nxt))
+            nd = dcur + (voyage["sailing_m"] + voyage["walking_m"]
+                         if voyage else math.hypot(nx - cx, nz - cz))
             if nd < dist.get(nxt, math.inf) - 1e-9:
                 dist[nxt] = nd
+                sailed[nxt] = sailed[cur] + (voyage["sailing_m"] if voyage else 0.0)
                 heapq.heappush(pq, (nd, nxt))
+    north_doc, _north_contract_findings = I.north_itinerary(ctx)
+    findings += required_connection_findings(north_doc, node_keys, dist)
     over_by_seg: dict[str, list[dict]] = defaultdict(list)
     for r in over_all:
         over_by_seg[r["segment"]].append(r)
@@ -4191,7 +4230,9 @@ def run(ctx) -> SectionResult:
         row = dict(destination=nm, segment=seg["seg"],
                    reachable=key in dist)
         if key in dist:
-            row["walked_m"] = round(dist[key], 1)
+            row["walked_m"] = round(dist[key] - sailed[key], 1)
+            row["sailed_m"] = round(sailed[key], 1)
+            row["journey_m"] = round(dist[key], 1)
         else:
             # HOW FAR DOES THE WALK GET, AND WHAT STOPS IT.  A bare
             # "unreachable" is the same non-answer as a graph distance: the
@@ -4250,14 +4291,12 @@ def run(ctx) -> SectionResult:
     unreachable = [d for d in dests if not d["reachable"]]
     big = max(comps) if comps else 0
     report["connectivity"] = dict(
-        instrument="Dijkstra over a graph whose EDGES ARE THE STEPS and "
-                   "whose NODES ARE LATTICE VERTICES: an edge exists only "
-                   "where the step between two adjacent vertices is inside "
-                   "the slide limit for THEIR OWN separation, on a surface "
-                   "read from the save, and only where the carriageway is "
-                   "not blocked. A planned adjacency cannot become an edge "
-                   "in it, and two stations that share a vertex are one "
-                   "place rather than a free edge.",
+        instrument="Dijkstra over separate walking and journey graphs. Walking "
+                   "edges are measured unblocked mesh steps; voyage edges "
+                   "require BOTH saved docks, boats, walk-in access and a "
+                   "full-hull saved sea passage. Voyages never enter the "
+                   "walking graph or its physical component census.",
+        transport_edges=transport_links,
         population=f"{len(node_keys)} named endpoints of {len(segs)} built "
                    f"segments, walked from '{origin_name}'",
         origin=origin_name,
@@ -12136,3 +12175,28 @@ register(Section(
     run=run,
     cases=CASES,
 ))
+
+
+def required_connection_findings(doc, node_keys, reached):
+    """Standing repair IDs cannot erase the solved town/real harbour duties."""
+    expected = {"vestvik_to_network", "vestvik_to_harbour"}
+    rows = doc.get("required_connections") if isinstance(doc, dict) else None
+    if (not isinstance(rows, list)
+            or {r.get("id") for r in rows if isinstance(r, dict)} != expected):
+        return [Finding(check="north_routes", ok=False,
+                        message="Generated Vestvik/network/harbour connection requirements are missing",
+                        numbers={"required_connections": len(expected)})]
+    findings = []
+    for row in rows:
+        a, b = row.get("a"), row.get("b")
+        present = a in node_keys and b in node_keys
+        ok = not row.get("refusal") and present and all(
+            node_keys[n] in reached for n in (a, b))
+        findings.append(Finding(
+            check="north_routes", ok=bool(ok),
+            message=f"{row['id']}: actual generated endpoints {a!r} and {b!r} "
+                    f"must both be root-reachable; refusal={row.get('refusal')}",
+            numbers={"a_present": int(a in node_keys), "b_present": int(b in node_keys),
+                     "root_reachable": int(bool(ok)),
+                     "producer": row.get("producer")}))
+    return findings

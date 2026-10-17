@@ -26,6 +26,126 @@ directory's own `load_preset`, so the two cannot drift. See `worlds/README.md`.
 
 Claims below are marked **MEASURED** (observed on this box) or **INFERRED**.
 
+### General north transport
+
+The pipeline drives `roads/north.py network` for both route passes. Stage 4
+derives budgeted union tiles covering every eligible ordered coarse frontier
+corridor. Settlement and north requests sample the real integer Heightmap
+lattice with preserved boundaries; the scanner explicitly uses the rendered
+Heightmap blend. Existing half-grid bytes require a real rescan, not relabelling.
+Stage 9 attaches a provisional itinerary to an actual station of the generated rooted
+network; no standing N0b junction, old north node table, ledger replay, or fixed
+ferry coordinates generate it. Census covers the roads, terminal search boxes,
+and sea lanes before the final pass. Stage 11 uses the existing route/profile,
+writer-water, location and census gates and merges north road-ground into the
+canonical seed-scoped segments/crossings files. Historical `north_segments.yaml`
+is diagnostic evidence, not a second generated network.
+
+`VH_NORTH_PRESET` selects a shipped preset (default `pre-kall`), explicitly passed
+as `field.py request --north-preset` and `north.py network --preset`. Permitted
+biomes come from the preset tier chain, not distance tables. Pre-Kall requires
+the preset's `defeated_fader` key and stops road construction before Deep North.
+The north frontier report distinguishes its coarse search resolution from the
+fine measured road endpoint; it is not a claim of an exhaustive 1 m whole-world
+maximum. Unread or incompatible fine coverage is a refusal requiring stage 4,
+not permission to invent heights or truncate the route.
+Candidates are tried in descending northing through fine road, dock, full-hull
+voyage and lighthouse feasibility, without an arbitrary top-N limit. A failed
+coarse winner does not end the search. The accepted itinerary retains the
+complete rejected-higher-candidate prefix and its source, raw-field and census
+identities. Acceptance independently reconstructs that order and reruns those
+rejections, as well as measuring the selected construction in the frozen save.
+A short route or serialized refusal flag cannot redefine the required frontier.
+
+The itinerary (`worldseed.north_path`, override `VH_NORTH_ITINERARY`) declares
+`schema_version: 1`, seed/world, explicit `provisional`, progression `phase`,
+generated `nodes`, required `road_edges`, `terminals`, paired `transport` with
+`sea_route`, the unique `final_departure`, attachment evidence, and the measured
+field citation. Each terminal's `segment_id` serves its exact `node_id`/`xz`.
+Every non-departure terminal belongs to a real crossing pair. The final departure
+can stand alone when the next journey is into Deep North. Missing required roads,
+boats or lighthouse never become an empty successful job.
+
+The standing-world R3/R4 node/edge tables and their old `harbour-vestvik` landing
+are no longer regeneration inputs. Their two semantic requirements remain in
+`required_connections`: solved Vestvik must reach the actual base/north network
+(generated W8 or `declared_sites.site_legs`), and must reach a real solved harbour
+(the nearest eligible declared harbour landing via `declared_sites.legs`, or the
+solved early-dock/sandbox-harbour via T5/T9). These are journey requirements, not
+a demand to reproduce the old repair geometry. Both endpoint names must exist
+on actual built roads and be root-reachable in the independently measured graph;
+an unbuilt-parent false junction or missing harbour is a refusal, not omission.
+When the site solver withholds Vestvik, its measured reason accompanies the
+still-required connection. No 45.6087 datum or standing N0b coordinate survives
+this cutover. Base and north profiles also share the original router's joint/
+writer-water solve through its optional in-memory `plan_state` output.
+
+Offline regression commands (not proof of a constructed world):
+
+```sh
+python3 roads/north_itinerary.py selftest
+python3 roads/north_transport.py selftest
+python3 pipeline.py selftest
+python3 buildstage.py selftest
+env -u VH_SEED -u VH_WORLD python3 -m accept --selftest --section roads,north_transport,emission,provenance
+```
+
+Acceptance fixtures construct several different seed scopes; do not force a
+single `VH_SEED`/`VH_WORLD` into that selftest process. Actual builds and saved
+world acceptance still require their explicit seed/world scope.
+
+The integration owner must regenerate the expanded field, run the ordinary
+provisional/census/final fixed point, build through Buildstage, then run full
+saved-world acceptance in the isolated world. Repeat the same gate for another
+seed. These implementation notes do not assert that either runtime proof ran.
+
+`roads/north_transport.py plan|build|measure|selftest` consumes the seed's
+`worldseed.north_path(seed)` itinerary (`--itinerary` overrides it). Supply
+`--field PATH` or `VH_NORTH_FIELD`: a seed-matching, integer-lattice 1 m
+PatchScan covering the terminal, hull and lighthouse footprints. Combined
+fields may retain unrelated unaligned survey patches: transport ignores and
+reports them, never rounds or resamples them, and refuses any requested point
+without aligned coverage. No historical harbour coordinates or fixture fields
+are borrowed. For example:
+
+```sh
+python3 roads/north_transport.py plan --seed SEED --world WORLD --field FIELD
+python3 roads/north_transport.py build --seed SEED --world WORLD --field FIELD --terminal north-dock-000 --actor ACTOR --apply --out REPORT.json
+python3 roads/north_transport.py measure --seed SEED --world WORLD --field FIELD --actor ACTOR --out PHYSICAL.json
+python3 roads/north_transport.py selftest
+```
+
+These are operator commands, not a claim that this checkout has built anything.
+Buildstage step 6.75 creates one road-dependent unit per terminal, after all
+ground and crossing work and before roadside/recheck. Missing, foreign,
+provisional or incomplete itineraries refuse. The serving road must already
+have normal ledger ground writes and its endpoint must exactly equal the dock
+root; transport never creates terrain or claims protected ground. Both ends
+are measured before either writes. A dock whose applied root is more than
+0.35 m from its deck, an unfloatable full hull, or an unresolved lighthouse
+seat refuses rather than omitting the boat or bypassing its ground owner.
+Every declared pair must carry `sea_route`. Planning checks connected water
+and the terrain vertices under the continuously swept full hull, including
+rotation between heading samples. A shallow vertex, disconnected basin or
+field gap refuses with its measured location; two floatable berths do not
+establish a crossing. Saved-world acceptance independently checks the swept
+terrain and continuous hull–solid intersections, not just integer points or
+isolated poses. Dock foundations are measured against saved ground too.
+
+The final terminal requires the verified `drake-lighthouse.blueprint` library
+body through the ordinary blueprint converter, at least 15 m tall, plus a
+large `VikingShip`. It is not a lamp or beacon prop. Spawn plans and ships use
+the normal BuildLedger/LiveBuilder path and save postconditions. Live readback
+is bounded per physical location; final saved-world acceptance independently
+checks the actual pieces, road-to-dock walk, hulls and lighthouse. Run that
+acceptance after building; intended plan records alone are not completion.
+
+Resuming a partially built terminal reconciles source poses one-to-one against
+live position/rotation evidence before sending anything. Only missing pieces
+are emitted; duplicates, extra pieces or truncated census responses refuse
+without demolition. Execution records describe the sent subset and separately
+retain the immutable full source geometry and blob identity.
+
 ---
 
 ## The presets

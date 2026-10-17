@@ -867,18 +867,9 @@ PROBE_ROLE = "site_prop"
 # passes
 # ---------------------------------------------------------------------------
 
-def hull_depths(surf: Surface, bearing: float, bx: float, bz: float,
-                vessel: str):
-    """`(min, max, connected, samples)` water depth under a hull centred here.
-
-    The footprint is an ELLIPSE of the vessel's solid-collider half-extents
-    rotated onto the pier bearing, not a disc and not a point: a point check
-    passes on a 3 m pothole inside a 2 m shoal and a 21 m hull does not fit in a
-    pothole.  The binding number is the SHALLOWEST sample, because that is what
-    the keel touches.
-    """
+def hull_footprint(surf, bearing, bx, bz, vessel):
+    """The existing measured hull mask, shared with saved-world route probes."""
     v = VESSELS[vessel]
-    need = v["draught_m"] + KEEL_CLEARANCE_M
     ux, uz = A._unit(bearing)
     lx, lz = uz, -ux
     fld = surf.patch_for(bx, bz, margin=v["hull_l"])
@@ -890,10 +881,27 @@ def hull_depths(surf: Surface, bearing: float, bx: float, bz: float,
     dx = fld.world_x(jj) - bx
     dz = fld.world_z(ii) - bz
     hull = ((dx * ux + dz * uz) / hl) ** 2 + ((dx * lx + dz * lz) / hw) ** 2 <= 1.0
+    return fld, ii, jj, hull
+
+
+def hull_depths(surf: Surface, bearing: float, bx: float, bz: float,
+                vessel: str, *, open_sea=None):
+    """`(min, max, connected, samples)` water depth under a hull centred here.
+
+    The footprint is an ELLIPSE of the vessel's solid-collider half-extents
+    rotated onto the pier bearing, not a disc and not a point: a point check
+    passes on a 3 m pothole inside a 2 m shoal and a 21 m hull does not fit in a
+    pothole.  The binding number is the SHALLOWEST sample, because that is what
+    the keel touches.
+    """
+    v = VESSELS[vessel]
+    need = v["draught_m"] + KEEL_CLEARANCE_M
+    fld, ii, jj, hull = hull_footprint(surf, bearing, bx, bz, vessel)
     if not hull.any():
         return None
     depth = W.WATER_LEVEL - fld.heights[ii, jj]
-    _deep, open_sea = sea_mask(fld, need)
+    if open_sea is None:
+        _deep, open_sea = sea_mask(fld, need)
     # `open_sea[ii, jj][hull]`, NOT `(hull & open_sea).all()`: the second form
     # is False wherever the hull mask is False, i.e. everywhere outside the
     # ellipse, so it answers "is the whole neighbourhood navigable" and reported

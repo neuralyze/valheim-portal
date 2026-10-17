@@ -310,15 +310,9 @@ ARTEFACTS = (
     # head and `world` past six segments of centreline, so anyone reading the
     # first screen sees `segments:` and stops.  UNREAD IS NOT UNDECLARED.
     {"label": "built road network",
-     # EVERY PLAN FILE OF THIS RUN'S SEED, as a LIST -- `run()` scope-checks
-     # every element, the way the nine placements.yaml are done.  On
-     # Pirate68 that is segments.yaml AND north_segments.yaml, a SECOND
-     # artefact of the identical class read by the SAME structures.py loop;
-     # naming only one would report the class guarded having looked at one
-     # of its two files.  AND THE LIST IS THE SEED'S, NOT PIRATE68'S: this
-     # row named both Ulfsland files literally, so on Fresh42 it
-     # scope-checked Ulfsland's plan and never segments.Fresh42.yaml
-     # (SeedScope, 2026-09-25).  `worldseed.segment_files` is the resolver.
+     # The canonical segment plan now contains core AND north roads. Resolve
+     # it for the requested seed; never read the historical fixture-only
+     # north_segments.yaml alongside the canonical network.
      "path": lambda ctx: list(_mods()[0].segment_files(_want_seed(ctx))),
      "reader": "roads/{boardwalk,census_equiv,clear,deviate,junction,"
                "precensus,ribbon,structures,network,north,spec,poi}.py -- "
@@ -357,6 +351,16 @@ ARTEFACTS = (
             "and both bridge crossings between the two halves of the "
             "continent; derived from the height field and the location dump "
             "rows above"},
+    {"label": "north itinerary",
+     "path": lambda ctx: Path(getattr(ctx.args, "north_itinerary", None)
+                             or _mods()[0].north_path(_want_seed(ctx))),
+     "reader": "roads/north_transport.py and accept/instruments.py::north_itinerary",
+     "guard": "roads/north_transport.py::validate_itinerary and "
+              "accept/instruments.py::read_scoped_corpus",
+     "scope": _sites_scope,
+     "why": "every required north road, paired dock/boat endpoint and the "
+            "unique large-ship/tall-lighthouse final departure; a foreign "
+            "or provisional document cannot authorize transport acceptance"},
 )
 
 

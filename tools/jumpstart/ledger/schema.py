@@ -539,6 +539,7 @@ KNOWN_ROLES = {
     # Crossings
     "bridge_assembly", "bridge_body_place", "dock_place", "harbour_place",
     "boathouse_place", "ferry_terminal_place", "boat_spawn_moor",
+    "north_transport",  # seed-scoped paired docks, hulls and departure lighthouse
     # Settlements
     "town_body", "town_plot", "watchtower", "castle", "lighthouse", "treehouse",
     # WayFinding
