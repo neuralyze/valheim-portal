@@ -40,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   previously reported as connected. This detects the gap; it does not yet
   provide the missing approach roads.
 
+- Road repairs now confirm that the original disconnected roads actually
+  reach the root before reporting `JOINED`, and continue to alternative
+  candidates when an emitted repair was itself trimmed short. Repairs no
+  longer stop after three candidates or eight disconnected groups.
+  Declared bridge banks are checked against their real endpoint footprints;
+  missing approaches remain explicit requirements and generate new connector
+  candidates through the normal routing and census gates. An unlandable
+  terminal bridge cannot be reported as a census-only repair. The measured
+  Ulfsland smoke finds a 443.4 m alternative approach and requests its unread
+  census cells; live surveying, building and world acceptance remain required.
+
 - `tools/jumpstart/settlements/road_reach.py` + `roads/geography.py::RoadGraph` — A SITE IS
   WHERE A ROAD CAN GET TO, OR IT IS PORTAL-ONLY, AND SAYS WHICH WITH NUMBERS. With the 15 frozen
   site pins and the 14 outlier anchors removed, the solver ranked candidates by what a tower

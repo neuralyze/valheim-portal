@@ -3108,7 +3108,7 @@ def self_adjacency_rejection(seg: dict) -> dict | None:
     }
 
 
-def plan_refusal(seg: dict, gen_pois: list, seed: str, *,
+def plan_refusal(seg: dict, gen_pois: list, seed: str, *, fld,
                  coverage: bool = True) -> str | None:
     """Which of `main`'s per-leg plan-time refusals this leg would earn, by
     name, or None -- so a remedy is never adopted that `main` would then
@@ -3117,6 +3117,8 @@ def plan_refusal(seg: dict, gen_pois: list, seed: str, *,
     if max((c["span_m"] for c in seg["crossings"]), default=0.0) \
             > MAX_BRIDGE_SPAN_M:
         return "span"
+    if terminal_landing_rejection(seg, fld) is not None:
+        return "terminal_landing"
     if coverage and (seg.get("census") or {}).get("verdict") == "UNCENSUSED":
         return "uncensused"
     if write_gate_rejection({**seg, "write_gate": write_gate(
@@ -3875,15 +3877,15 @@ def search_xz(node_id: str, corr: routemod.Corridor, nodes: dict | None = None,
 # THE RULE: after every authored leg is routed, the legs that meet are one
 # piece -- their paved footprints touch, they still serve the same node, or
 # they serve the two banks of a DECLARED crossing (the bridge carries the
-# walk). A released abutment no longer serves its named node. Every piece
-# the root's piece does not contain gets a JOIN leg from the nearest node the
-# root's piece serves to the nearest of its own nodes (same island), routed
-# through every plan-time gate an authored leg meets.  A join the census has
-# only to read is waited for (its cells are in `census_wanted`); a piece
-# whose joins are all refused is REPORTED with the refused legs that named
-# it; and a piece on an island that holds NO node the root's piece serves --
-# a portal-only island, which no leg can join -- is REJECTED with that
-# number, because no walk from the root reaches anything it paves.
+# walk). A released abutment, or a road ending outside its bank's level
+# footprint, no longer serves that bank. Every piece the root's piece does
+# not contain gets a JOIN leg from the nearest served node (including the
+# far bank of a declared bridge actually reached from this piece) to one
+# of its own served nodes, on the same island. An emitted candidate is not
+# a repair until the original orphan belongs to the recomputed root piece.
+# Failed candidates leave the requirement open and farther alternatives
+# pass through the same landing, writer and census gates. Unread buildable
+# approaches feed `census_wanted`; none are paved over unread ground.
 #   the_root_the_gate_walks_from   `portalhub`, accept/sections/roads.py's
 #       connectivity origin.
 #   legs_that_touch_share_a_node_or_a_declared_bridge   what makes two legs
@@ -3898,14 +3900,81 @@ ORPHAN_JOIN_DEPENDS_ON = ("the_root_the_gate_walks_from",
                           "the_refused_legs_that_named_the_orphan")
 _ORPHAN_JOIN_MODE = "join"       # join | off (the shipped plan)
 ORPHAN_ROOT = "portalhub"
-ORPHAN_JOIN_TRIES = 3            # candidate joins per piece, nearest first
-ORPHAN_JOIN_ROUNDS = 8
+BRIDGE_APPROACH_DEPENDS_ON = ("the_declared_bridge_bank_identity",
+                              "the_written_endpoint_and_level_footprint",
+                              "the_bank_not_released_by_terminal_trimming")
 
 
-def _served_nodes(seg: dict) -> set[str]:
-    """Named endpoints the road still reaches after terminal trimming."""
+def bridge_approach_gaps(seg: dict, *, nodes: dict | None = None,
+                         crossings: list[dict] | None = None) -> list[dict]:
+    """Unserved DECLARED banks, measured on this road's written endpoints.
+
+    Other level nodes may stand on a pad edge; they are not bridge banks.
+    A bank may be off the centreline, but must lie in its existing level
+    footprint. A released pin is not a landing even if its xz still fits.
+    """
+    nodes = specmod.NODES if nodes is None else nodes
+    crossings = specmod.DECLARED_CROSSINGS if crossings is None else crossings
+    banks = {c[side]["node"] for c in crossings
+             for side in ("bank_a", "bank_b")}
+    released = {a["node"]: a for a in seg.get("abutments_released", [])}
+    out = []
+    for end, node, p in (("a", seg["from"], seg["nodes"][0]),
+                         ("b", seg["to"], seg["nodes"][-1])):
+        if node not in banks:
+            continue
+        x, z = nodes[node]["xz"]
+        gap = math.hypot(float(p[0]) - x, float(p[1]) - z)
+        reach = _level_half(seg)
+        if node in released or gap > reach:
+            out.append({"node": node, "end": end,
+                        "endpoint_xz": list(p[:2]), "bank_xz": [x, z],
+                        "gap_m": round(gap, 3), "level_half_m": reach,
+                        "released": released.get(node),
+                        "depends_on": list(BRIDGE_APPROACH_DEPENDS_ON)})
+    return out
+
+
+def _served_nodes(seg: dict, *, nodes: dict | None = None,
+                  crossings: list[dict] | None = None) -> set[str]:
+    """Named endpoints the written road still serves, not nominal topology."""
     released = {a["node"] for a in seg.get("abutments_released", [])}
-    return {seg["from"], seg["to"]} - released
+    missing = {a["node"] for a in bridge_approach_gaps(
+        seg, nodes=nodes, crossings=crossings)}
+    return {seg["from"], seg["to"]} - released - missing
+
+
+def bridge_approach_requirements(segments: list[dict], nodes: dict, *,
+                                 crossings: list[dict] | None = None
+                                 ) -> list[dict]:
+    """Every declared bank remains a requirement, even with no road at all."""
+    crossings = specmod.DECLARED_CROSSINGS if crossings is None else crossings
+    served = {s["id"]: _served_nodes(s, nodes=nodes, crossings=crossings)
+              for s in segments}
+    gaps = [(s["id"], g) for s in segments
+            for g in bridge_approach_gaps(s, nodes=nodes, crossings=crossings)]
+    return [{"crossing_id": c["crossing_id"], "bank": side,
+             "node": c[side]["node"], "bank_xz": list(nodes[c[side]["node"]]["xz"]),
+             "verdict": ("SERVED" if any(c[side]["node"] in ns
+                                        for ns in served.values()) else "MISSING"),
+             "served_by": sorted(i for i, ns in served.items()
+                                 if c[side]["node"] in ns),
+             "disconnected": [{"segment_id": i, **g} for i, g in gaps
+                              if g["node"] == c[side]["node"]]}
+            for c in crossings for side in ("bank_a", "bank_b")]
+
+
+def _bridge_frontier(served: set[str], crossings: list[dict]) -> set[str]:
+    """Bank nodes reachable through declared bridges from a served bank."""
+    out = set(served)
+    while True:
+        before = len(out)
+        for c in crossings:
+            banks = {c["bank_a"]["node"], c["bank_b"]["node"]}
+            if banks & out:
+                out |= banks
+        if len(out) == before:
+            return out
 
 
 def _level_half(seg: dict) -> float:
@@ -3962,29 +4031,49 @@ def plan_components(segments: list[dict],
 
 def orphan_components(segments: list[dict], root: str = ORPHAN_ROOT
                       ) -> tuple[list[str] | None, list[list[str]]]:
-    """(the root's piece, every other piece); `(None, [])` with no root."""
+    """(the root's piece, every other piece); all pieces fail with no root."""
     by_id = {s["id"]: s for s in segments}
     comps = plan_components(segments)
     rooted = next((c for c in comps
                    if any(root in _served_nodes(by_id[i])
                           for i in c)), None)
     if rooted is None:
-        return None, []
+        return None, comps
     return rooted, [c for c in comps if c is not rooted]
+
+
+def repair_connects(edge: dict, segments: list[dict], candidate: dict,
+                    root: str = ORPHAN_ROOT) -> bool:
+    """Would this written candidate satisfy the repair's actual obligation?"""
+    trial = [s for s in segments if s["id"] != candidate["id"]] + [candidate]
+    rooted, _left = orphan_components(trial, root)
+    if edge.get("join"):
+        return set(edge["join"]["orphan"]) <= set(rooted or [])
+    if edge.get("bridge_approach"):
+        return (candidate["id"] in (rooted or [])
+                and edge["b"] in _served_nodes(candidate))
+    return False
 
 
 def join_candidates(orphan: list[str], rooted: list[str],
                     segments: list[dict], nodes: dict) -> list[dict]:
-    """Join legs from a node the root's piece serves to a node of the
-    orphan piece, same island, nearest pair first."""
+    """Nearest same-island pairs from served topology, not authored names.
+
+    A served bank also exposes the far bank of that declared bridge. It
+    does not expose unrelated nodes on the nominally reachable island.
+    """
     by_id = {s["id"]: s for s in segments}
-    o_nodes = sorted({n for i in orphan for n in _served_nodes(by_id[i])})
-    r_nodes = sorted({n for i in rooted for n in _served_nodes(by_id[i])})
+    o_nodes = sorted({n for i in orphan
+                      for n in _served_nodes(by_id[i], nodes=nodes)})
+    r_nodes = sorted(_bridge_frontier(
+        {n for i in rooted for n in _served_nodes(by_id[i], nodes=nodes)},
+        specmod.DECLARED_CROSSINGS))
     pairs = sorted(
         (math.hypot(nodes[o]["xz"][0] - nodes[r]["xz"][0],
                     nodes[o]["xz"][1] - nodes[r]["xz"][1]), r, o)
         for o in o_nodes for r in r_nodes
-        if o != r and nodes[o]["island"] == nodes[r]["island"])
+        if o != r and o in nodes and r in nodes
+        and nodes[o]["island"] == nodes[r]["island"])
     pri = min(int(by_id[i]["pri"]) for i in orphan)
     return [{"id": f"J-{r.replace('-', '')}-{o.replace('-', '')}",
              "a": r, "b": o, "cls": "spur", "pri": pri,
@@ -4027,26 +4116,33 @@ def join_orphans(segments: list[dict], refused: list[dict], nodes: dict,
            "pieces_cut_off_before": [list(c) for c in orphans],
            "joins": []}
     tried: set[str] = set()
-    settled: set[frozenset] = set()
+    settled: set[tuple[frozenset, frozenset]] = set()
     if _ORPHAN_JOIN_MODE == "join" and rooted is not None:
-        for _round in range(ORPHAN_JOIN_ROUNDS):
+        # Candidate ids are finite and never retried. Continue while the
+        # rooted component grows, rather than abandoning the ninth group.
+        while True:
             rooted, orphans = orphan_components(segments, root)
             moved = False
             for orphan in orphans:
-                if frozenset(orphan) in settled:
+                state = (frozenset(orphan), frozenset(rooted))
+                if state in settled:
                     continue
-                settled.add(frozenset(orphan))
+                settled.add(state)
                 by_id = {s["id"]: s for s in segments}
                 o_nodes = {n for i in orphan
-                           for n in (by_id[i]["from"], by_id[i]["to"])}
+                           for n in _served_nodes(by_id[i], nodes=nodes)}
                 named = sorted({r["id"] for r in refused
                                 if set(edge_ends.get(r["id"], ())) & o_nodes})
                 row = {"piece": list(orphan), "refused_legs_naming_it": named,
                        "verdict": "ORPHANED", "via": None, "tried": []}
-                r_islands = {nodes[n]["island"] for i in rooted
-                             for n in (by_id[i]["from"], by_id[i]["to"])}
+                r_nodes = _bridge_frontier(
+                    {n for i in rooted
+                     for n in _served_nodes(by_id[i], nodes=nodes)},
+                    specmod.DECLARED_CROSSINGS)
+                r_islands = {nodes[n]["island"] for n in r_nodes if n in nodes}
                 o_islands = {nodes[n]["island"] for n in o_nodes}
-                if not o_islands & (r_islands | (reachable_islands or set())):
+                if o_islands and not o_islands & (
+                        r_islands | (reachable_islands or set())):
                     row["verdict"] = "UNROOTED_ISLAND"
                     row["why"] = (
                         f"{', '.join(orphan)} lie(s) on island "
@@ -4060,7 +4156,7 @@ def join_orphans(segments: list[dict], refused: list[dict], nodes: dict,
                     continue
                 cands = [c for c in join_candidates(orphan, rooted, segments,
                                                     nodes)
-                         if c["id"] not in tried][:ORPHAN_JOIN_TRIES]
+                         if c["id"] not in tried]
                 for cand in cands:
                     tried.add(cand["id"])
                     cand["why"] = (
@@ -4074,10 +4170,18 @@ def join_orphans(segments: list[dict], refused: list[dict], nodes: dict,
                     edge_ends[cand["id"]] = (cand["a"], cand["b"])
                     route(cand)
                     if any(s["id"] == cand["id"] for s in segments):
-                        row["tried"].append([cand["id"], "ROUTED"])
-                        row["verdict"], row["via"] = "JOINED", cand["id"]
-                        moved = True
-                        break
+                        after_rooted, _left = orphan_components(segments, root)
+                        moved |= bool(set(after_rooted or ()) - set(rooted))
+                        rooted = after_rooted or rooted
+                        if set(orphan) <= set(rooted):
+                            row["tried"].append([cand["id"], "ROUTED"])
+                            row["verdict"], row["via"] = "JOINED", cand["id"]
+                            break
+                        row["tried"].append([cand["id"], "ROUTED_DISCONNECTED"])
+                        # A trim can emit a perfectly buildable partial road
+                        # without reaching either component. Try the next
+                        # approach; emission alone proves no connectivity.
+                        continue
                     if servable(cand["id"]):
                         row["tried"].append([cand["id"], "WAITS_FOR_CENSUS"])
                         row["verdict"] = "WAITS_FOR_CENSUS"
@@ -4091,6 +4195,67 @@ def join_orphans(segments: list[dict], refused: list[dict], nodes: dict,
                 break
     _rooted, left = orphan_components(segments, root)
     out["pieces_cut_off_after"] = [list(c) for c in left]
+    return out
+
+
+def join_bridge_approaches(segments: list[dict], nodes: dict, route, servable,
+                           *, root: str = ORPHAN_ROOT) -> list[dict]:
+    """Try buildable alternatives to each missing declared bank approach.
+
+    Targets come from crossing obligations, not an authored road's lost
+    endpoint. Sources are nodes actually served by the rooted road graph,
+    plus far banks of declared bridges reached from that graph. Routing
+    uses the same callback as orphan repair, including its census probe.
+    """
+    out = []
+    tried = {s["id"] for s in segments}
+    for pending in bridge_approach_requirements(segments, nodes):
+        req = next(r for r in bridge_approach_requirements(segments, nodes)
+                   if r["crossing_id"] == pending["crossing_id"]
+                   and r["bank"] == pending["bank"])
+        if req["verdict"] == "SERVED":
+            continue
+        target = req["node"]
+        rooted, _orphans = orphan_components(segments, root)
+        by_id = {s["id"]: s for s in segments}
+        sources = _bridge_frontier(
+            {n for i in rooted or [] for n in _served_nodes(by_id[i], nodes=nodes)},
+            specmod.DECLARED_CROSSINGS)
+        pairs = sorted(
+            (math.dist(nodes[n]["xz"], nodes[target]["xz"]), n)
+            for n in sources if n != target and n in nodes
+            and nodes[n]["island"] == nodes[target]["island"])
+        row = {**req, "verdict": "MISSING", "via": None, "tried": []}
+        for gap, source in pairs:
+            eid = f"A-{source.replace('-', '')}-{target.replace('-', '')}"
+            if eid in tried:
+                continue
+            tried.add(eid)
+            edge = {"id": eid, "a": source, "b": target, "cls": "spur",
+                    "pri": min((int(s["pri"]) for s in segments
+                                if target in (s["from"], s["to"])), default=1),
+                    "bridge_approach": {"crossing_id": req["crossing_id"],
+                                        "bank": req["bank"],
+                                        "node_gap_m": round(gap, 1)},
+                    "why": f"Restore missing approach to declared "
+                           f"{req['crossing_id']} {req['bank']} ({target}); "
+                           f"the previous endpoint is not a served bank"}
+            route(edge)
+            rooted_now, _left = orphan_components(segments, root)
+            attached = next((r for r in bridge_approach_requirements(segments, nodes)
+                             if r["node"] == target), req)
+            if set(attached["served_by"]) & set(rooted_now or []):
+                row.update(verdict="JOINED", via=eid)
+                row["tried"].append([eid, "ROUTED"])
+                break
+            if servable(eid):
+                row.update(verdict="WAITS_FOR_CENSUS", via=eid)
+                row["tried"].append([eid, "WAITS_FOR_CENSUS"])
+                break
+            row["tried"].append([eid, "ROUTED_DISCONNECTED"
+                                 if any(s["id"] == eid for s in segments)
+                                 else "REFUSED"])
+        out.append(row)
     return out
 
 # ---------------------------------------------------------------------------
@@ -5080,6 +5245,7 @@ def selftest() -> int:
     fails += selftest_foreign_nodes()
     fails += selftest_node_anchor()
     fails += selftest_orphan_join()
+    fails += selftest_bridge_approaches()
     fails += selftest_terminal_reach()
     fails += selftest_span_reprice()
     fails += selftest_adjacency_reroute()
@@ -7170,6 +7336,23 @@ def selftest_terminal_landing_plan() -> int:
     print("case: the same hillside at a bank the road is meant to bench "
           "(REQUIRED: not this check's -- the road's own refusal)")
     want("kept", verdict(12.0, terminal=()), "kept")
+    print("case: an unlandable band-free repair is REFUSED, not SERVABLE")
+    fld = _ww_field(lambda X, Z: np.full_like(X, 30.366))
+    corr = _ww_corridor(fld)
+    rec = {"length_m": 30.0, "nodes": [[20.0, 0.0], [50.0, 0.0]],
+           "census": {"stations_uncensused": 2},
+           "crossings": [{
+               "crossing_id": "FIX-unlandable", "span_m": 30.0,
+               "required_deck_y": 57.344, "terminal_banks": ["bank_b"],
+               "bank_a": {"xz": [20.0, 0.0]},
+               "bank_b": {"xz": [50.0, 0.0]}}]}
+    probed = band_free_probe(
+        corr, corr.forbid, lambda **_kw: (rec, {}),
+        water=lambda seg, joint, _build: (seg, joint),
+        refusal=lambda seg: plan_refusal(seg, [], "FIXTURE", fld=fld,
+                                         coverage=False))
+    want("terminal landing rejection survives the band-free census probe",
+         (probed["verdict"], probed.get("by")), ("REFUSED", "terminal_landing"))
     print(f"terminal-landing-plan selftest: {fails} failed")
     return fails
 
@@ -7633,7 +7816,7 @@ def selftest_orphan_join() -> int:
          [(c["a"], c["b"]) for c in candidates],
          [("shore", "town"), ("west", "town")])
     want("a released root does not establish a served network",
-         orphan_components([departure], root="west"), (None, []))
+         orphan_components([departure], root="west"), (None, [["departure"]]))
     held = _oj_leg("held", "west", "town", banks)
     want("a held bank still connects across the declared bridge",
          plan_components([approach, held], [("east", "west")]),
@@ -7642,7 +7825,161 @@ def selftest_orphan_join() -> int:
     want("released metadata does not prevent a physical road junction",
          plan_components([touching, departure], []),
          [["departure", "shared"]])
+
+    def feedback(*, alternate: bool, first_emitted: bool):
+        segs = plan()
+        attempts = []
+
+        def route(edge):
+            attempts.append(edge["id"])
+            if len(attempts) == 1 and first_emitted:
+                partial = _oj_leg(edge["id"], edge["a"], edge["b"], nodes)
+                partial["nodes"] = [[1000.0, 1000.0], [1010.0, 1000.0]]
+                partial["abutments_released"] = [
+                    {"node": edge["a"], "end": "a"},
+                    {"node": edge["b"], "end": "b"}]
+                segs.append(partial)
+            elif alternate and len(attempts) == (2 if first_emitted else 4):
+                segs.append(_oj_leg(edge["id"], edge["a"], edge["b"], nodes))
+        rep = join_orphans(segs, refused, nodes, {}, route, lambda _eid: False)
+        rooted, _left = orphan_components(segs)
+        return rep, rooted, attempts
+
+    print("case: emitting a repair does not prove the old orphan was joined")
+    rep, rooted, attempts = feedback(alternate=True, first_emitted=True)
+    want("a disconnected emitted candidate is followed by a connecting repair",
+         [verdict for _eid, verdict in rep["joins"][0]["tried"][:2]],
+         ["ROUTED_DISCONNECTED", "ROUTED"])
+    want("a farther actual approach roots the original orphan",
+         "S8-wtsouth-treesth" in (rooted or []), True)
+    rep, rooted, attempts = feedback(alternate=False, first_emitted=True)
+    want("with no working alternative the original requirement stays failed",
+         ("S8-wtsouth-treesth" in (rooted or []),
+          any(j["verdict"] == "JOINED" for j in rep["joins"])), (False, False))
+    rep, rooted, attempts = feedback(alternate=True, first_emitted=False)
+    want("a fourth buildable candidate is not hidden by a nearest-three cap",
+         ("S8-wtsouth-treesth" in (rooted or []), len(attempts)),
+         (True, 4))
+    many_nodes = {
+        "portalhub": {"xz": (0.0, 0.0), "island": "spawn"},
+        "root-end": {"xz": (10.0, 0.0), "island": "spawn"}}
+    many_segments = [_oj_leg("root", "portalhub", "root-end", many_nodes)]
+    for k in range(9):
+        angle = 2.0 * math.pi * k / 9
+        for prefix, radius in (("p", 1000.0), ("q", 1005.0)):
+            many_nodes[f"{prefix}{k}"] = {
+                "xz": (radius * math.cos(angle), radius * math.sin(angle)),
+                "island": "spawn"}
+        many_segments.append(_oj_leg(f"piece{k}", f"p{k}", f"q{k}",
+                                     many_nodes))
+
+    def connect_many(edge):
+        many_segments.append(_oj_leg(edge["id"], edge["a"], edge["b"],
+                                     many_nodes))
+
+    many = join_orphans(many_segments, [], many_nodes, {}, connect_many,
+                        lambda _id: False)
+    want("all nine repairable groups are connected, not only the first eight",
+         many["pieces_cut_off_after"], [])
     print(f"orphan join selftest: {fails} failed")
+    return fails
+
+
+def selftest_bridge_approaches() -> int:
+    """Released/offset banks, real repair transitions and the census handoff."""
+    fails = 0
+
+    def want(label, got, expect):
+        nonlocal fails
+        ok = got == expect
+        fails += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}: {got}"
+              + ("" if ok else f"  EXPECTED {expect}"))
+
+    nodes = {n: {"xz": xz, "island": island} for n, xz, island in (
+        ("portalhub", (0.0, 0.0), "spawn"),
+        ("east", (40.0, 0.0), "spawn"), ("east2", (40.0, 100.0), "spawn"),
+        ("west", (60.0, 0.0), "west"), ("west2", (60.0, 100.0), "west"),
+        ("town", (260.0, 0.0), "west"),
+        ("level-pad", (0.0, -100.0), "spawn"))}
+    nodes["level-pad"]["level_y"] = 35.0
+    crossings = [{"crossing_id": cid, "bank_a": {"node": a},
+                  "bank_b": {"node": b}} for cid, a, b in (
+                      ("FIX1", "east", "west"), ("FIX2", "east2", "west2"))]
+    saved = specmod.NODES, specmod.DECLARED_CROSSINGS
+    specmod.NODES, specmod.DECLARED_CROSSINGS = nodes, crossings
+    try:
+        root = _oj_leg("root", "portalhub", "east", nodes)
+        root2 = _oj_leg("root2", "east", "east2", nodes)
+        partial = _oj_leg("partial", "west", "town", nodes, start=(160.0, 0.0))
+        partial["abutments_released"] = [{
+            "node": "west", "end": "a", "stations_trimmed": 77,
+            "worst_cut_fill_m": 25.386, "clamp_m": 7.0}]
+        segs = [root, root2, partial]
+        want("the 100 m bank gap remains measured, not a phantom bridge edge",
+             (bridge_approach_gaps(partial)[0]["gap_m"],
+              plan_components([root, partial])), (100.0, [["partial"], ["root"]]))
+        unmarked = {k: v for k, v in partial.items() if k != "abutments_released"}
+        want("forgetting release metadata cannot restore a distant bank name",
+             "west" in _served_nodes(unmarked), False)
+        nearby = _oj_leg("nearby", "west", "town", nodes, start=(62.0, 0.0))
+        want("an existing 2 m footprint offset remains a served approach",
+             bridge_approach_gaps(nearby), [])
+        pad = _oj_leg("pad", "level-pad", "portalhub", nodes, start=(7.28, -100.0))
+        want("a level pad is not mistaken for a declared bridge bank",
+             (bridge_approach_gaps(pad), "level-pad" in _served_nodes(pad)),
+             ([], True))
+        reqs = bridge_approach_requirements(segs, nodes)
+        want("declared obligations survive roads that released their banks",
+             [(r["node"], r["verdict"]) for r in reqs],
+             [("east", "SERVED"), ("west", "MISSING"),
+              ("east2", "SERVED"), ("west2", "MISSING")])
+        candidates = join_candidates(["partial"], ["root", "root2"], segs, nodes)
+        want("only reached declared bridge banks extend the repair frontier",
+             [(e["a"], e["b"]) for e in candidates],
+             [("west", "town"), ("west2", "town")])
+        edge = candidates[0]
+        bad_probe = {**partial, "id": edge["id"]}
+        want("a SERVABLE partial probe does not discharge an orphan",
+             repair_connects(edge, segs, bad_probe), False)
+        good_probe = _oj_leg(edge["id"], edge["a"], edge["b"], nodes)
+        census = _cb_census([])
+        p = {"verdict": "SERVABLE", "nodes": good_probe["nodes"],
+             "length_m": 200.0, "stations": len(good_probe["nodes"]),
+             "stations_unread": len(good_probe["nodes"])}
+        wanted = census_wanted([], [{"id": edge["id"], "census_probe": p}], census)
+        want("the attached unread alternative requests real census cells",
+             (len(wanted["cells"]) > 0, wanted["zones"] > 0,
+              probe_adoptable(p, census)), (True, True, False))
+        want("the actual attached probe does discharge the orphan",
+             repair_connects(edge, segs, good_probe), True)
+
+        def census_route(_edge):
+            pass  # A refused confined route emits nothing.
+        waits = join_bridge_approaches(segs, nodes, census_route, lambda _id: True)
+        want("a missing bank approach waits for the existing census loop",
+             [(r["node"], r["verdict"]) for r in waits],
+             [("west", "WAITS_FOR_CENSUS"), ("west2", "WAITS_FOR_CENSUS")])
+        want("waiting does not pave a provisional connector", len(segs), 3)
+
+        def route(edge):
+            # A searched alternative may bend through the destination road;
+            # its endpoints still reach the two declared banks.
+            via = _oj_leg(edge["id"], edge["a"], "town", nodes)
+            tail = _oj_leg(edge["id"], "town", edge["b"], nodes)
+            via.update(to=edge["b"], nodes=via["nodes"] + tail["nodes"][1:])
+            segs.append(via)
+        repairs = join_bridge_approaches(segs, nodes, route, lambda _id: False)
+        want("a general bank-to-bank approach can discharge both obligations",
+             [(r["node"], r["verdict"]) for r in repairs], [("west", "JOINED")])
+        want("the road graph, not candidate emission, confirms connectivity",
+             orphan_components(segs)[1], [])
+        want("no stale missing-bank requirement survives the real repair",
+             [r["node"] for r in bridge_approach_requirements(segs, nodes)
+              if r["verdict"] != "SERVED"], [])
+    finally:
+        specmod.NODES, specmod.DECLARED_CROSSINGS = saved
+    print(f"bridge-approach selftest: {fails} failed")
     return fails
 
 
@@ -7991,9 +8328,10 @@ def main(*, plan_state: dict | None = None) -> int:
             corr, free_forbids[key], build,
             water=lambda rec, j, b: water_route(
                 fld_p, corr, rec, j, build=b,
-                refusal=lambda c: plan_refusal(c, pois, SEED,
+                refusal=lambda c: plan_refusal(c, pois, SEED, fld=fld_p,
                                                coverage=False)),
-            refusal=lambda c: plan_refusal(c, pois, SEED, coverage=False))
+            refusal=lambda c: plan_refusal(c, pois, SEED, fld=fld_p,
+                                            coverage=False))
         return {**got, "patch": patch}
 
     def probe_note(p: dict | None) -> str:
@@ -8409,13 +8747,14 @@ def main(*, plan_state: dict | None = None) -> int:
         leg_build = tracked_build(keep_trim(build_leg, base_trim), None)
         seg, joint = water_route(
             fld_p, corridors[key], seg, joint, build=leg_build,
-            refusal=lambda cand: plan_refusal(cand, pois, SEED))
+            refusal=lambda cand: plan_refusal(cand, pois, SEED, fld=fld_p))
         # WATER_REREMEDY_DEPENDS_ON: the leg's own remedies, kept with the
         # remedy its solo line took, for the pass after the joint solve.
         remedies[seg["id"]] = (fld_p, corridors[key],
                                keep_trim(build_leg, base_trim),
                                leg_build.used.get(id(seg)),
-                               lambda cand: plan_refusal(cand, pois, SEED))
+                               lambda cand: plan_refusal(cand, pois, SEED,
+                                                         fld=fld_p))
         wwr = seg["writer_water"]
         if wwr["as_routed"]["verdict"] != "CLEAR":
             print(f"{seg['id']:22s} WRITER WATER as routed: "
@@ -8541,8 +8880,16 @@ def main(*, plan_state: dict | None = None) -> int:
     def join_servable(eid: str) -> bool:
         rec = next((r for r in unroutable + rejected if r["id"] == eid), None)
         p = (rec or {}).get("census_probe") or {}
-        return (census is not None and p.get("verdict") == "SERVABLE"
-                and bool(band_deficit(p.get("nodes") or [], census)))
+        if census is None or p.get("verdict") != "SERVABLE":
+            return False
+        edge = next(e for e in join_edges if e["id"] == eid)
+        candidate = p.get("_rec")
+        if candidate is None or not repair_connects(edge, segments, candidate):
+            p.update(verdict="REFUSED", by="repair_connectivity")
+            if candidate is not None:
+                p["bridge_approach_gaps"] = bridge_approach_gaps(candidate)
+            return False
+        return bool(band_deficit(p.get("nodes") or [], census))
 
     orphan_join = None
     if not args.only and not args.pri:
@@ -8581,6 +8928,10 @@ def main(*, plan_state: dict | None = None) -> int:
         _gone = {lid for j in orphan_join["joins"]
                  if j["verdict"] == "UNROOTED_ISLAND" for lid in j["piece"]}
         segments[:] = [s for s in segments if s["id"] not in _gone]
+        orphan_join["bridge_approach_repairs"] = (
+            join_bridge_approaches(segments, specmod.NODES, route_join,
+                                   join_servable)
+            if _ORPHAN_JOIN_MODE == "join" else [])
 
     # THE DOCUMENT IS IN THE SPEC'S ORDER, NOT THE ORDER THE EDGES WERE
     # ROUTED IN.  Identical to what this emitted before for the default
@@ -9073,6 +9424,43 @@ def main(*, plan_state: dict | None = None) -> int:
         print(f"orphan join, as EMITTED: {len(_left)} piece(s) cut off from "
               f"{ORPHAN_ROOT}"
               + (f": {_left}" if _left else ""))
+        # Re-read after the joint solve: a pre-solve JOINED is not a claim
+        # about a repair the joint/water gates subsequently removed.
+        for row in orphan_join["joins"]:
+            if row["verdict"] == "JOINED" and not (
+                    set(row["piece"]) <= set(_rooted or [])):
+                row["verdict"] = "ORPHANED_AFTER_JOINT"
+        approaches = bridge_approach_requirements(segments, specmod.NODES)
+        missing = [a for a in approaches if a["verdict"] != "SERVED"]
+        doc["bridge_approaches"] = {
+            "depends_on": list(BRIDGE_APPROACH_DEPENDS_ON),
+            "requirements": approaches,
+            "verdict": "REFUSED" if missing else "SERVED",
+            "missing": len(missing)}
+        for sg in segments:
+            gaps = bridge_approach_gaps(sg)
+            if gaps:
+                sg["bridge_approach_gaps"] = gaps
+        for req in missing:
+            print(f"MISSING BRIDGE APPROACH: {req['crossing_id']} "
+                  f"{req['bank']} {req['node']} at {req['bank_xz']}; "
+                  f"disconnected endpoints {req['disconnected']}")
+        for req in missing:
+            rejected.append({
+                "id": f"approach-{req['crossing_id']}-{req['bank']}",
+                "owner": "RoadNet", "requirement": "bridge_approach",
+                "why": f"No written road reaches declared {req['crossing_id']} "
+                       f"{req['bank']} ({req['node']}); "
+                       f"disconnected endpoints: {req['disconnected']}",
+                "bridge_approach": req,
+                "depends_on": list(BRIDGE_APPROACH_DEPENDS_ON)})
+        doc["totals"]["rejected_segments"] = len(rejected)
+        for row in orphan_join["bridge_approach_repairs"]:
+            if row["verdict"] == "JOINED" and not any(
+                    a["node"] == row["node"]
+                    and set(a["served_by"]) & set(_rooted or [])
+                    for a in approaches):
+                row["verdict"] = "MISSING_AFTER_JOINT"
     # WHERE THE CENSUS READS (precensus.band_lines) and WHAT IT HAS NOT READ
     # YET (CENSUS_BAND_DEPENDS_ON) -- one per end of the pipeline.
     if census is None:
@@ -9145,7 +9533,9 @@ def main(*, plan_state: dict | None = None) -> int:
                    "declaration sharing its corridor.",
         },
         "abutment_handoffs": [a | {"segment_id": sg["id"], "cls": sg["cls"]}
-                              for sg in segments for a in sg["abutments"]],
+                              for sg in segments for a in sg["abutments"]
+                              if a["node"] in _served_nodes(sg)],
+        "bridge_approaches": doc.get("bridge_approaches"),
     }
     x_text = yaml.safe_dump(plain(xdoc), default_flow_style=False,
                             sort_keys=False, width=200)
