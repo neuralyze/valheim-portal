@@ -11,7 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Road-plan connectivity no longer treats a released abutment as a connection
   to its former node or declared bridge. Physical road junctions and held
-  abutments still connect. The orphan-join regression covers both false joins;
+  abutments still connect. Repair candidates likewise use only endpoints a
+  road still serves, and a released endpoint cannot establish the root.
+  The orphan-join regressions cover these false connections and repair targets;
   on the recorded Ulfsland plan this exposes two disconnected road groups
   previously reported as connected. This detects the gap; it does not yet
   provide the missing approach roads.

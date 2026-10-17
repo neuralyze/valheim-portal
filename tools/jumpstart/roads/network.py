@@ -3902,6 +3902,12 @@ ORPHAN_JOIN_TRIES = 3            # candidate joins per piece, nearest first
 ORPHAN_JOIN_ROUNDS = 8
 
 
+def _served_nodes(seg: dict) -> set[str]:
+    """Named endpoints the road still reaches after terminal trimming."""
+    released = {a["node"] for a in seg.get("abutments_released", [])}
+    return {seg["from"], seg["to"]} - released
+
+
 def _level_half(seg: dict) -> float:
     return routemod.footprint_half_m(float(seg.get("width_m")
                                            or WIDTH_M[seg.get("cls", "spur")]))
@@ -3941,10 +3947,8 @@ def plan_components(segments: list[dict],
                 parent[find(a)] = find(b)
     at_node: dict[str, list[str]] = {}
     for s in segments:
-        released = {a["node"] for a in s.get("abutments_released", [])}
-        for n in (s["from"], s["to"]):
-            if n not in released:
-                at_node.setdefault(n, []).append(s["id"])
+        for n in _served_nodes(s):
+            at_node.setdefault(n, []).append(s["id"])
     for na, nb in bridges:
         at_node.setdefault(na, []).extend(at_node.get(nb, []))
     for legs in at_node.values():
@@ -3962,7 +3966,7 @@ def orphan_components(segments: list[dict], root: str = ORPHAN_ROOT
     by_id = {s["id"]: s for s in segments}
     comps = plan_components(segments)
     rooted = next((c for c in comps
-                   if any(root in (by_id[i]["from"], by_id[i]["to"])
+                   if any(root in _served_nodes(by_id[i])
                           for i in c)), None)
     if rooted is None:
         return None, []
@@ -3974,10 +3978,8 @@ def join_candidates(orphan: list[str], rooted: list[str],
     """Join legs from a node the root's piece serves to a node of the
     orphan piece, same island, nearest pair first."""
     by_id = {s["id"]: s for s in segments}
-    o_nodes = sorted({n for i in orphan
-                      for n in (by_id[i]["from"], by_id[i]["to"])})
-    r_nodes = sorted({n for i in rooted
-                      for n in (by_id[i]["from"], by_id[i]["to"])})
+    o_nodes = sorted({n for i in orphan for n in _served_nodes(by_id[i])})
+    r_nodes = sorted({n for i in rooted for n in _served_nodes(by_id[i])})
     pairs = sorted(
         (math.hypot(nodes[o]["xz"][0] - nodes[r]["xz"][0],
                     nodes[o]["xz"][1] - nodes[r]["xz"][1]), r, o)
@@ -7625,6 +7627,13 @@ def selftest_orphan_join() -> int:
     want("a released bank cannot connect through its old node name",
          plan_components([shared, departure], []),
          [["departure"], ["shared"]])
+    candidates = join_candidates(["departure"], ["shared"],
+                                 [shared, departure], banks)
+    want("repair targets a node the orphan still serves",
+         [(c["a"], c["b"]) for c in candidates],
+         [("shore", "town"), ("west", "town")])
+    want("a released root does not establish a served network",
+         orphan_components([departure], root="west"), (None, []))
     held = _oj_leg("held", "west", "town", banks)
     want("a held bank still connects across the declared bridge",
          plan_components([approach, held], [("east", "west")]),
