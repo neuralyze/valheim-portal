@@ -132,6 +132,15 @@ establish a crossing. Saved-world acceptance independently checks the swept
 terrain and continuous hull–solid intersections, not just integer points or
 isolated poses. Dock foundations are measured against saved ground too.
 
+The hull envelope is the conservative convex projection of all measured solid
+colliders in the prefab-root frame, preserving off-centre bows and corners.
+An ellipse fitted inside the hull dimensions is not a full-hull clearance
+proof. Static berth samples and continuous sweeps share the measured envelope;
+missing geometry refuses rather than reducing it to the ship's pivot.
+Saved-solid heights bound overhead collision checks, and the observed keel can
+increase required depth. A water-relative air-draft estimate cannot hide a mast
+or certify a ship whose actual bottom penetrates the bed.
+
 The final terminal requires the verified `drake-lighthouse.blueprint` library
 body through the ordinary blueprint converter, at least 15 m tall, plus a
 berth-verified large OdinShip vessel, with no vanilla longship substitute.

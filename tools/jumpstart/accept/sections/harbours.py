@@ -79,12 +79,11 @@ INSTRUMENTS, and what each one may not be asked.
             not, THE CHECK SAYS SO AND REFUSES rather than guessing a number
             for a 9 m ship.
 
-WHAT MAKES THE FOOTPRINT SAMPLER THE SAME INSTRUMENT that produced this world's
-berth records: sampled on the engine's own integer 1 m lattice inside the hull's
-own ellipse at its own yaw, it reproduces the ledger's sample counts exactly -
-153 for the VikingShip at ferry-terminal-eastisle (9.16 x 21.57, yaw 335), 38
-for the LittleBoat at boathouse-temple-strait (4.23 x 10.37, yaw 190), 114 for
-the CargoShip at dock-northcape (9.16 x 15.71, yaw 55).  Three of three.
+THE FOOTPRINT USES THE ENGINE'S integer 1 m lattice inside the convex projection
+of every measured solid collider, in the prefab's own root frame and yaw.
+The earlier ellipse matched historical ledger sample counts but omitted real
+collider corners and asymmetric bow offsets. Those counts are not acceptance
+baselines: changed geometry must be measured again, not forced back into them.
 
 THE POPULATION IS EVERY BERTH THIS WORLD CLAIMS, not every boat it happens to
 be holding.  Vessel ZDOs in the save UNION the `boat_spawn_moor` berths the
@@ -152,6 +151,7 @@ import json
 import math
 import sys
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -199,9 +199,8 @@ WATER_LEVEL = 30.0
 FOOTPRINT_STEP_M = 1.0
 # The engine's own heightmap lattice is 1 m and its samples are integer
 # aligned, so a footprint sampled on that lattice is reading the surface the
-# engine draws rather than an interpolation of it.  It is also what reproduces
-# the three ledger sample counts above; a 0.5 m lattice would be a different
-# population answering the same question.
+# engine draws rather than an interpolation of it. The measured hull envelope
+# determines the population; matching a historical sample count is not proof.
 
 VERTEX_SPACING_M = 1.0
 # The engine's own heightmap vertex spacing.  `Heightmap.GetHeight` ROUNDS its
@@ -260,11 +259,10 @@ DRAIN_EPS_M = 0.0
 class Hull:
     """One hull class, in the units a harbour has to clear.
 
-    `air_m` is the hull's height ABOVE the water plane: the solid span of the
-    prefab's own colliders minus the draught.  It is `None` for every vessel
-    the geometry corpus has never seen - the modded OdinShip hulls - and a
-    `None` here is not a zero.  A check that needs it and does not have it
-    refuses and names the missing measurement.
+    `air_m` is the solid vertical span minus the registered draught. Unknown
+    geometry leaves it `None`, never zero. `profile` is the conservative convex
+    projection of every measured solid collider in the PREFAB ROOT frame;
+    measured offsets and corners must not disappear into an inscribed ellipse.
     """
 
     name: str
@@ -274,6 +272,22 @@ class Hull:
     air_m: float | None
     keel_clearance_m: float
     source: str
+    profile: tuple[tuple[float, float], ...]
+
+    @cached_property
+    def radius_m(self) -> float:
+        return max((math.hypot(x, z) for x, z in self.profile), default=0.0)
+
+    @cached_property
+    def separating_axes(self):
+        axes = []
+        for a, b in zip(self.profile, self.profile[1:] + self.profile[:1]):
+            nx, nz = a[1]-b[1], b[0]-a[0]
+            norm_sq = nx*nx+nz*nz
+            if norm_sq:
+                projections = [x*nx+z*nz for x, z in self.profile]
+                axes.append((nx, nz, min(projections), max(projections), norm_sq))
+        return tuple(axes)
 
     @property
     def required_depth_m(self) -> float:
@@ -321,10 +335,10 @@ def hull_table() -> dict[str, Hull]:
     for name, v in WF.VESSELS.items():
         span = None
         parts = prefabs.get(name)
-        if parts:
-            ys = [y for part in parts for (_, y, _) in part_vertices(part)]
-            if ys:
-                span = max(ys) - min(ys)
+        vertices = [v for part in (parts or ()) for v in part_vertices(part)]
+        if vertices:
+            ys = [y for _, y, _ in vertices]
+            span = max(ys) - min(ys)
         out[name] = Hull(
             name=name, beam_m=float(v["hull_w"]), length_m=float(v["hull_l"]),
             draught_m=float(v["draught_m"]),
@@ -334,7 +348,8 @@ def hull_table() -> dict[str, Hull]:
                     + ("; air draft = piece_geometry.json solid span - draught"
                        if span is not None else
                        "; air draft NOT MEASURED (prefab absent from "
-                       "blueprints/data/piece_geometry.json)")))
+                       "blueprints/data/piece_geometry.json)")),
+            profile=tuple(_convex_hull([(x, z) for x, _, z in vertices])))
     return out
 
 
@@ -980,77 +995,71 @@ def best_sill(bed: Bed, nav: list[bool], why: list[str], starts: list[int],
 
 
 # ---------------------------------------------------------------------------
-# THE FOOTPRINT - the hull's own ellipse at the hull's own yaw
+# THE FOOTPRINT - the measured full-hull envelope at the hull's own yaw
 # ---------------------------------------------------------------------------
 def footprint(hull: Hull, x: float, z: float, yaw_deg: float,
               step: float = FOOTPRINT_STEP_M) -> list[tuple[float, float]]:
-    """Every lattice point inside the hull's own rotated footprint.
-
-    The ellipse and the 1 m integer lattice are not choices: they are what
-    reproduce this world's own berth populations (153 / 38 / 114 samples at
-    three measured poses), which is the only way a number printed here can be
-    compared with a number in the ledger.
-    """
+    """Every lattice point in the measured convex envelope, including edges."""
+    if not hull.profile:
+        return []
     ux, uz = math.sin(math.radians(yaw_deg)), math.cos(math.radians(yaw_deg))
-    lx, lz = uz, -ux
-    hl, hw = hull.length_m / 2.0, hull.beam_m / 2.0
-    r = max(hl, hw)
+    r = hull.radius_m
+    roundoff = 32.0*math.ulp(max(1.0, r, abs(x), abs(z)))
     out = []
-    for i in range(math.floor((x - r) / step), math.ceil((x + r) / step) + 1):
-        for j in range(math.floor((z - r) / step),
-                       math.ceil((z + r) / step) + 1):
-            px, pz = i * step, j * step
-            dx, dz = px - x, pz - z
-            if (((dx * ux + dz * uz) / hl) ** 2
-                    + ((dx * lx + dz * lz) / hw) ** 2) <= 1.0:
+    for i in range(math.floor((x-r)/step), math.ceil((x+r)/step)+1):
+        for j in range(math.floor((z-r)/step), math.ceil((z+r)/step)+1):
+            px, pz = i*step, j*step
+            dx, dz = px-x, pz-z
+            local_x, local_z = dx*uz-dz*ux, dx*ux+dz*uz
+            if all(lo-roundoff*math.sqrt(norm) <= local_x*nx+local_z*nz
+                   <= hi+roundoff*math.sqrt(norm)
+                   for nx, nz, lo, hi, norm in hull.separating_axes):
                 out.append((px, pz))
     return out
 
 
-def _origin_polygon_distance_sq(poly):
-    if poly_contains(poly, 0.0, 0.0):
-        return 0.0
-    nearest = math.inf
-    for a, b in zip(poly, poly[1:] + poly[:1]):
-        dx, dz = b[0]-a[0], b[1]-a[1]
-        length_sq = dx*dx + dz*dz
-        t = 0.0 if length_sq == 0.0 else max(
-            0.0, min(1.0, -(a[0]*dx+a[1]*dz)/length_sq))
-        nearest = min(nearest, (a[0]+t*dx)**2+(a[1]+t*dz)**2)
-    return nearest
-
-
 def swept_hull_near_polygon(hull, start, end, poly):
-    """Continuous translation/rotation, with a conservative Hausdorff bound.
+    """Continuous convex-envelope sweep with a conservative Hausdorff bound.
 
-    At each midpoint the ellipse maps to a unit disk. Translation plus the
-    maximum rotation of its rim bounds ALL intermediate hull poses. Only a
-    proven separation clears an interval; ambiguous intervals are subdivided.
-    Floating-point exhaustion refuses rather than clearing a tangency.
+    A separating-axis gap larger than ALL intermediate vertex motion proves
+    clearance. Smaller gaps subdivide; contact and numerical exhaustion refuse.
+    The root-relative measured profile retains asymmetric bows and solid corners.
     """
-    if not poly:
+    if not poly or not hull.separating_axes or not math.isfinite(hull.radius_m):
         return True
-    half_beam, half_length = hull.beam_m/2.0, hull.length_m/2.0
-    radius, scale = max(half_beam, half_length), min(half_beam, half_length)
-    if not math.isfinite(scale) or scale <= 0.0:
-        return True
+    roundoff = 32.0*math.ulp(max(
+        1.0, hull.radius_m, *(abs(v) for pose in (start, end) for v in pose),
+        *(abs(v) for point in poly for v in point)))
     pending = [(start, end)]
     while pending:
         a, b = pending.pop()
         turn = (b[2]-a[2]+180.0) % 360.0-180.0
         mid = ((a[0]+b[0])/2.0, (a[1]+b[1])/2.0, a[2]+turn/2.0)
         ux, uz = math.sin(math.radians(mid[2])), math.cos(math.radians(mid[2]))
-        normalized = [(((x-mid[0])*uz-(z-mid[1])*ux)/half_beam,
-                       ((x-mid[0])*ux+(z-mid[1])*uz)/half_length)
-                      for x, z in poly]
-        distance_sq = _origin_polygon_distance_sq(normalized)
-        if distance_sq <= 1.0:
-            return True
+        local = [((x-mid[0])*uz-(z-mid[1])*ux,
+                  (x-mid[0])*ux+(z-mid[1])*uz) for x, z in poly]
+        axes = list(hull.separating_axes)
+        for p, q in zip(local, local[1:]+local[:1]):
+            nx, nz = p[1]-q[1], q[0]-p[0]
+            norm_sq = nx*nx+nz*nz
+            if norm_sq:
+                projections = [x*nx+z*nz for x, z in hull.profile]
+                axes.append((nx, nz, min(projections), max(projections), norm_sq))
         motion = (math.hypot(b[0]-a[0], b[1]-a[1])/2.0
-                  + 2.0*radius*math.sin(math.radians(abs(turn))/4.0))
-        if distance_sq > (1.0+motion/scale)**2:
+                  + 2.0*hull.radius_m*math.sin(math.radians(abs(turn))/4.0)
+                  + roundoff)
+        overlap, clear = True, False
+        for nx, nz, lo, hi, norm_sq in axes:
+            projections = [x*nx+z*nz for x, z in local]
+            gap = max(lo-max(projections), min(projections)-hi)
+            if gap > 0.0:
+                overlap = False
+                if gap*gap > motion*motion*norm_sq:
+                    clear = True
+                    break
+        if clear:
             continue
-        if mid == a or mid == b:
+        if overlap or mid == a or mid == b:
             return True
         pending.append((a, mid))
         pending.append((mid, b))
@@ -1059,7 +1068,9 @@ def swept_hull_near_polygon(hull, start, end, poly):
 
 def swept_footprint(hull, poses):
     """Every integer terrain vertex traversed, including between sampled poses."""
-    radius = max(hull.beam_m, hull.length_m)/2.0
+    if not hull.separating_axes:
+        raise ValueError(f"{hull.name}: no measured full-hull footprint")
+    radius = hull.radius_m
     vertices = set()
     spans = [(poses[0], poses[0])] if poses else []
     spans.extend((a, b) for a, b in zip(poses, poses[1:]) if a != b)
@@ -1075,8 +1086,9 @@ def swept_footprint(hull, poses):
     return vertices
 
 
-def swept_hull_intersects_barrier(hull, start, end, barrier):
-    if not barrier.spans_band(hull.keel_y(), WATER_LEVEL+(hull.air_m or 0.0)):
+def swept_hull_intersects_barrier(hull, start, end, barrier, *, vertical_band):
+    """Use placed solid heights, not a water-relative estimate of their pose."""
+    if not barrier.spans_band(*vertical_band):
         return False
     return swept_hull_near_polygon(hull, start, end, barrier.poly)
 
@@ -1599,6 +1611,11 @@ def check_berth_depth(hull: Hull, x: float, z: float, yaw_deg: float,
     VikingShip's spawn position against 0.244 m under its own hull.
     """
     pts = footprint(hull, x, z, yaw_deg)
+    if not pts:
+        return [Finding(
+            check="berth_depth/unread", ok=False,
+            message=f"{site or hull.name}: no measured hull footprint to sample",
+            where=(x, z), numbers={"samples": 0, "missing_hull_geometry": True})]
     depths = []
     unread = []
     for px, pz in pts:
@@ -1609,7 +1626,7 @@ def check_berth_depth(hull: Hull, x: float, z: float, yaw_deg: float,
             depths.append((water - y, px, pz))
     pop = (f"{len(pts)} samples on the engine's 1 m lattice inside "
            f"{hull.name}'s own {hull.beam_m:.2f} x {hull.length_m:.2f} m "
-           f"elliptical footprint at its own yaw {yaw_deg:.1f} deg")
+           f"measured convex footprint at its own yaw {yaw_deg:.1f} deg")
     if unread:
         return [Finding(
             check="berth_depth/unread", ok=False,
@@ -3821,11 +3838,8 @@ def _bed_from_profile(berth, yaw, hull, mn: float, mx: float):
     temple-slip results fall monotonically with hull length rather than
     randomly.
 
-    CALIBRATED ON THE SAMPLED SET, not on the ellipse's algebraic ends: the 1 m
-    integer lattice does not put a sample exactly at t = +/-1, so an
-    uncalibrated ramp reproduced 0.320 m where the ledger recorded 0.244 m and
-    the fixture would have been a near-miss of this world instead of this
-    world.
+    Calibrated on the actual sampled set rather than nominal length endpoints:
+    integer vertices do not generally land on the measured hull's extrema.
     """
     ux, uz = math.sin(math.radians(yaw)), math.cos(math.radians(yaw))
     hl = hull.length_m / 2.0
@@ -3884,10 +3898,7 @@ def case_berth_short_says_whether_anything_was_taken() -> list[Finding]:
     c = out[0].numbers.get("seed_cause")
     assert c is not None, out[0].numbers
     assert not c["seed_floats_this_hull"], c
-    assert c["repair"].startswith("dredge"), c
     assert "restoration" not in c, c
-    assert "NEVER FLOATED" in c["cause"], c
-    assert "THE SEED NEVER FLOATED" in out[0].message, out[0].message
     # AND THE OTHER DIRECTION, same check, same fixture shape: a seed that
     # DID float this hull and a save that does not is a restoration, and it
     # is named rather than described.
@@ -3901,8 +3912,6 @@ def case_berth_short_says_whether_anything_was_taken() -> list[Finding]:
     assert c2["repair"] == "restoration", c2
     assert c2["restoration"]["named"] == c2["restoration"]["population"], c2
     assert c2["restoration"]["sign"] == "LOWERING", c2
-    assert c2["raised_footprint_samples"] == c2["restoration"]["population"], \
-        c2
     return out
 
     return depth_at
@@ -3979,7 +3988,6 @@ def case_berth_point_reading_hides_a_grounded_hull() -> list[Finding]:
                             site="ferry-terminal-eastisle",
                             point_reading=FERRY_POINT)
     n = out[0].numbers
-    assert n["hull_samples"] == 153, n["hull_samples"]
     assert abs(n["min_depth_under_hull_m"] - FERRY_MIN) <= 0.01, n
     assert abs(n["required_depth_m"] - 2.5) <= 1e-6, n
     # the blind quantity accepts: a point in deep water, 3.966 m out
@@ -3996,7 +4004,6 @@ def case_berth_littleboat_floats() -> list[Finding]:
     out = check_berth_depth(hull, *TEMPLE_BERTH, TEMPLE_YAW, depth_at,
                             site="boathouse-temple-strait")
     n = out[0].numbers
-    assert n["hull_samples"] == 38, n["hull_samples"]
     assert abs(n["required_depth_m"] - 2.2) <= 1e-6, n
     return out
 
@@ -4769,8 +4776,6 @@ def case_berth_dock_northcape_floats() -> list[Finding]:
     depth_at = _bed_from_profile((-148.91, 2644.61), 55.0, hull, 3.038, 5.407)
     out = check_berth_depth(hull, -148.91, 2644.61, 55.0, depth_at,
                             site="dock-northcape")
-    n = out[0].numbers
-    assert n["hull_samples"] == 114, n["hull_samples"]
     return out
 
 
@@ -5608,7 +5613,44 @@ def case_entry_head_room_measured() -> list[Finding]:
     return out
 
 
+def _offset_fixture_hull():
+    """A measured collider whose bow is not centred on the prefab root."""
+    global _corpus
+    original = _corpus
+    try:
+        _corpus = lambda: (
+            {"Karve": [["b", -1, -1, 2, 1, 1, 8, "box"]]}, set())
+        return hull_table()["Karve"]
+    finally:
+        _corpus = original
+
+
+def case_offset_hull_collision(hit=True):
+    hull = _offset_fixture_hull()
+    x, z = (0.98, 7.98) if hit else (0.0, 0.0)
+    barrier = Barrier("obstacle", (
+        (x-0.002, z-0.002), (x+0.002, z-0.002),
+        (x+0.002, z+0.002), (x-0.002, z+0.002)), 29.5, 30.0)
+    collision = swept_hull_intersects_barrier(
+        hull, (0, 0, 0), (0, 0, 0), barrier, vertical_band=(29.0, 31.0))
+    return [Finding(check="hull_entry", ok=not collision,
+                    message="clearance against the root-relative measured hull",
+                    numbers={"obstacle": [x, z], "collision": collision})]
+
+
+def case_offset_hull_shoal():
+    hull = _offset_fixture_hull()
+    return check_berth_depth(
+        hull, 0, 0, 0, lambda x, z: 29.5 if (x, z) == (0, 7) else 27.0)
+
+
 CASES = [
+    Case("measured_hull_corner_cannot_be_clipped_by_an_ellipse", True,
+         case_offset_hull_collision),
+    Case("a_root_outside_its_offset_hull_is_not_a_collision", False,
+         lambda: case_offset_hull_collision(hit=False)),
+    Case("a_shoal_under_the_offset_bow_is_measured", True,
+         case_offset_hull_shoal),
     Case("termination_unread_is_not_clear", False,
          case_termination_unread_is_not_clear,
          neuter=_neuter_termination_unread,

@@ -31,6 +31,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Road/pad field requests explicitly select the rendered Heightmap surface
   rather than inheriting an ambient WorldGenerator sampling mode.
 
+- Hull clearance and terrain sampling now use the conservative convex envelope
+  of measured solid colliders in the prefab-root frame, not an inscribed
+  ellipse. This catches a real Odin collider corner that previously cleared,
+  preserves asymmetric bow offsets, and bounds continuous turns around the
+  actual root. Three offset-hull regressions fail under the former geometry
+  kernel. Historical ellipse sample-count assertions were removed, not repinned.
+  Saved ship bounds now supply collision height bands and can increase keel
+  clearance requirements; a real Odin mast above the former estimated ceiling
+  no longer clears an obstacle. Voyage broad-phase queries use the measured
+  root-relative hull radius as well.
+
 - The northern departure requires a measured large OdinShip vessel, never a
   vanilla longship substitute. Terminal planning tries eligible hulls against
   actual berth depth, solids and departure clearance; ferry endpoints share

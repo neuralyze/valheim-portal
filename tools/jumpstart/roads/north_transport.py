@@ -479,9 +479,9 @@ def measure_passage(pair, terminals, fields, *, surface=None):
             raise SystemExit(f"{pair['id']}: blocked full-hull passage at {xz}, heading {yaw:.2f}; min depth {measured}, connected={connected}, needs {WF.VESSELS[vessel]['draught_m'] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M:.3f}m")
         minimum = min(minimum, depths[0])
     spec = WF.VESSELS[vessel]
-    hull = H.Hull(vessel, spec["hull_w"], spec["hull_l"],
-                  spec["draught_m"], None, WF.KEEL_CLEARANCE_M,
-                  "settlements.waterfront.VESSELS")
+    hull = H.hull_table()[vessel]
+    if not hull.profile:
+        raise SystemExit(f"{pair['id']}: measured full-hull geometry is absent for {vessel}")
     vertices = H.swept_footprint(hull, poses)
     required = spec["draught_m"] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M
     for x, z in vertices:

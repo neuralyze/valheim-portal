@@ -337,6 +337,8 @@ def ship_clearance(ship, hull, ground, solids, geom, dock_head):
     readings = [ground.get(I.gpoint(x, z)[0]) for x, z in footprint]
     complete = bool(readings) and all(y is not None and math.isfinite(y) for y in readings)
     depth = I.WATER_LEVEL - max(readings) if complete else None
+    required_depth = max(
+        hull.required_depth_m, I.WATER_LEVEL-ship.ymin+hull.keel_clearance_m)
     blockers, unread = [], []
     if hull.air_m is None:
         unread.append(f"{hull.name}: air draft unmeasured")
@@ -350,12 +352,13 @@ def ship_clearance(ship, hull, ground, solids, geom, dock_head):
         for part in geom.get(other.name, ()):
             barrier = H.barrier_from_part(other.name, other.pos, other.quat,
                                           part, I.rotate)
-            if H.swept_hull_intersects_barrier(hull, pose, pose, barrier):
+            if H.swept_hull_intersects_barrier(
+                    hull, pose, pose, barrier, vertical_band=(ship.ymin, ship.ymax)):
                 (blockers if barrier.tight else unread).append(other.name)
     gap = max(0.0, A.hull_distance(ship, *dock_head))
-    ok = (complete and depth >= hull.required_depth_m and not blockers and not unread
+    ok = (complete and depth >= required_depth and not blockers and not unread
           and gap <= BOARDING_GAP_M)
-    return ok, {"depth_m": depth, "required_depth_m": hull.required_depth_m,
+    return ok, {"depth_m": depth, "required_depth_m": required_depth,
                 "air_draft_m": hull.air_m,
                 "hull_vertices": len(footprint), "read_vertices": sum(y is not None for y in readings),
                 "blocking_parts": blockers, "unmeasured_parts": unread,
@@ -434,9 +437,14 @@ def measure_saved_passages(ctx, doc, observed, terminals, hulls):
             continue
         route = [(first.pos[0], first.pos[2]), *[tuple(p) for p in route],
                  (last.pos[0], last.pos[2])]
-        # Measure both sizes even when the boats have different classes.
         vessels = {ship.name: hulls[ship.name] for ship in boats}
-        radius = max(max(h.beam_m, h.length_m)/2 for h in vessels.values())
+        radius = max(h.radius_m for h in vessels.values())
+        vertical_band = min(s.ymin for s in boats), max(s.ymax for s in boats)
+        required_depths = {
+            name: max(h.required_depth_m,
+                      I.WATER_LEVEL-min(s.ymin for s in boats if s.name == name)
+                      + h.keel_clearance_m)
+            for name, h in vessels.items()}
         poses = _passage_poses(route, H.yaw_of(first.quat), H.yaw_of(last.quat), radius)
         footprints = {hull.name: H.swept_footprint(hull, poses)
                       for hull in vessels.values()}
@@ -462,7 +470,7 @@ def measure_saved_passages(ctx, doc, observed, terminals, hulls):
                 else:
                     depth = I.WATER_LEVEL-y
                     min_depth = min(min_depth, depth)
-                    if depth < hull.required_depth_m:
+                    if depth < required_depths[hull.name]:
                         at = at or (px, pz)
             for start, end in zip(poses, poses[1:]):
                 x, z = (start[0]+end[0])/2.0, (start[1]+end[1])/2.0
@@ -481,11 +489,12 @@ def measure_saved_passages(ctx, doc, observed, terminals, hulls):
                                                 part, I.rotate)
                             for part in ctx.geom.get(solid.name, ())]
                     for barrier in barriers[key]:
-                        if H.swept_hull_intersects_barrier(hull, start, end, barrier):
+                        if H.swept_hull_intersects_barrier(
+                                hull, start, end, barrier, vertical_band=vertical_band):
                             (blockers if barrier.tight else unread).add(
                                 f"{solid.name}@{solid.pos}")
                             at = at or (x, z)
-        required = max(h.required_depth_m for h in vessels.values())
+        required = max(required_depths.values())
         ok = bool(poses) and not missing and not blockers and not unread and at is None
         evidence = dict(transport=pair["id"], a=a, b=b,
                         hull_stations=len(poses), vertices=len(queries),
@@ -762,9 +771,10 @@ def _ship_case(missing=False, inverted=False, reuse=False):
     return _finding(actual is not None, "saved upright unique hull", (0, 0), saved=int(actual is not None), check="boat")
 
 
-def _clearance_case(shallow=False, unread=False, blocked=False, thin=False, outside=False):
+def _clearance_case(shallow=False, unread=False, blocked=False, thin=False):
     from . import harbours as H
-    hull = H.Hull("fixture-hull", 2, 4, 1, 2, 0.2, "synthetic fixture")
+    hull = H.Hull("fixture-hull", 2, 4, 1, 2, 0.2, "synthetic fixture",
+                  ((-1, -2), (1, -2), (1, 2), (-1, 2)))
     geom = {hull.name: [["b", -1, -1, -2, 1, 1, 2, "box"]],
             "pile": [["b", -0.2, -1, -0.2, 0.2, 1, 0.2, "box"]]}
     ship = I.mk_solid(hull.name, (0, 30, 0), I.yaw(0), geom[hull.name])
@@ -773,13 +783,28 @@ def _clearance_case(shallow=False, unread=False, blocked=False, thin=False, outs
         solids.append(I.mk_solid("pile", (0, 29.5, 0), I.yaw(0), geom["pile"]))
     if thin:
         solids.append(I.mk_solid("pile", (0.5, 29.5, 0.5), I.yaw(37), geom["pile"]))
-    if outside:
-        solids.append(I.mk_solid("pile", (0.9, 29.5, 1.9), I.yaw(0), geom["pile"]))
     ground = {} if unread else {
         I.gpoint(x, z)[0]: 29.5 if shallow else 27
         for x, z in H.footprint(hull, 0, 0, 0)}
     ok, evidence = ship_clearance(ship, hull, ground, solids, geom, (2, 0))
     return _finding(ok, "actual hull footprint and boarding", (0, 0), **evidence, check="boat_clearance")
+
+
+def _placed_height_case(sunk=False, above=False):
+    from . import harbours as H
+    hull = H.Hull("placed-hull", 2, 4, 1, 2.5, 0.2, "numeric collider fixture",
+                  ((-1, -2), (1, -2), (1, 2), (-1, 2)))
+    geom = {
+        hull.name: [["b", -1, -0.5, -2, 1, 3, 2, "box"]],
+        "needle": [["b", -0.01, -0.01, -0.01, 0.01, 0.01, 0.01, "box"]]}
+    ship = I.mk_solid(hull.name, (0, 27 if sunk else 30, 0), I.yaw(0),
+                      geom[hull.name])
+    obstacle = I.mk_solid("needle", (0, 34 if above or sunk else 32.75, 0),
+                          I.yaw(0), geom["needle"])
+    ground = {I.gpoint(x, z)[0]: 27.0 for x, z in H.footprint(hull, 0, 0, 0)}
+    ok, evidence = ship_clearance(ship, hull, ground, [ship, obstacle], geom, (0, 0))
+    return _finding(ok, "placed hull vertical clearance", (0, 0),
+                    check="boat_clearance", **evidence)
 
 
 def _departure_case(small=False, missing=False, vanilla=False):
@@ -833,8 +858,13 @@ def _passage_case(shallow=False, unread=False, blocked=False, missing_route=Fals
                                   geom["needle"]))
     if turning_between_poses:
         angle = math.radians(2.5)
+        # The farthest MEASURED corner sweeps an arc outside the endpoint
+        # polygons. An ellipse's algebraic tip may not belong to this hull.
+        x, z = max(hull.profile, key=lambda p: math.hypot(*p))
+        x, z = x*(1.0-1e-7), z*(1.0-1e-7)
         actual.append(I.mk_solid(
-            "needle", ((hl-0.001)*math.sin(angle), 30, 4+(hl-0.001)*math.cos(angle)),
+            "needle", (x*math.cos(angle)+z*math.sin(angle), 30,
+                       4-x*math.sin(angle)+z*math.cos(angle)),
             I.yaw(0), geom["needle"]))
     if swept_shoal:
         swept_z = 5-hw+0.001
@@ -921,6 +951,12 @@ def _dock_support_case(lowered=False, unread=False):
 
 
 CASES = [
+    Case("saved mast above the water-relative estimate still collides", True,
+         _placed_height_case),
+    Case("obstacle above the actual saved mast remains clear", False,
+         lambda: _placed_height_case(above=True)),
+    Case("saved keel below the measured bed is not floating", True,
+         lambda: _placed_height_case(sunk=True)),
     Case("actual saved dock has grounded pile foundations", False, _dock_support_case),
     Case("lowered frozen foundation refuses unchanged dock poses", True,
          lambda: _dock_support_case(lowered=True)),
@@ -928,8 +964,6 @@ CASES = [
          lambda: _dock_support_case(unread=True)),
     Case("thin rotated pile between integer vertices blocks berth", True,
          lambda: _clearance_case(thin=True)),
-    Case("pile inside hull AABB but outside actual ellipse remains clear", False,
-         lambda: _clearance_case(outside=True)),
     Case("thin rotated pile between integer vertices blocks voyage", True,
          lambda: _passage_case(thin=True)),
     Case("thin pile struck between clear sampled poses blocks voyage", True,
