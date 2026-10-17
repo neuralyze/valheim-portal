@@ -495,10 +495,11 @@ No ferry is inserted into the walking component graph as a pretend bridge.
                     sg["span_reprice"] = ladder
             sg, joint = net.water_route(
                 f, corr, sg, joint, build=build_north,
-                refusal=lambda rec: net.plan_refusal(rec, pois, worldseed.seed(), coverage=False))
+                refusal=lambda rec: net.plan_refusal(
+                    rec, pois, worldseed.seed(), fld=f, coverage=False))
             sg["patch"] = f.id
             sg["write_gate"] = net.write_gate(sg, pois, worldseed.seed())
-            why = net.plan_refusal(sg, pois, worldseed.seed(), coverage=False)
+            why = net.plan_refusal(sg, pois, worldseed.seed(), fld=f, coverage=False)
             water = net.writer_water(sg, f)
             public_water = {**net.water_public(water), **net.judged_public(water)}
             sg["writer_water"] = {**sg.get("writer_water", {}), **public_water,
