@@ -689,27 +689,30 @@ class Picker:
 def dedupe(p: "Picker", sites: list[Site], within_m: float = 40.0) -> list[Site]:
     """Collapse the same place found twice.
 
-    The published patches OVERLAP -- `mainland` covers x[-802, 2398] and
-    `westisle` covers x[-2360, 840], so (496, 904) is inside both and the
-    search reports it once per patch with slightly different block statistics.
-    Keeping both would put two towns on one hill. The survivor is the one whose
-    patch centre is nearest, which is `terrain1m.field_for`'s rule, so a site's
-    patch is decided the same way wherever it is asked.
+    Only actual candidates compete. Extra survey windows may cover a district
+    without ever being searched for this kind; their nearer centres cannot
+    invalidate a measured candidate. Among nearby candidates, prefer the one
+    measured nearest its own patch centre. Preserve the search's ordering of
+    the surviving places.
 
     THIS IS NOT THE OVERLAP CHECK.  It compares candidates of ONE kind, found
     by one search, and nothing else -- it never saw a treehouse 5.7 m from a
     lighthouse.  Whose ground a site may stand on is decided over every site
     of every kind by `plan.py::SiteClaims` (SITE_CLAIM_DEPENDS_ON).
     """
-    out: list[Site] = []
-    for s in sites:
-        f = T.field_for(p.fields, s.x, s.z)
-        if f is not None and f.id != s.patch:
+    def source_distance(item: tuple[int, Site]) -> tuple[float, str]:
+        _, site = item
+        field = p.fields[site.patch]
+        return ((field.cx - site.x) ** 2 + (field.cz - site.z) ** 2, site.patch)
+
+    chosen: list[tuple[int, Site]] = []
+    for index, site in sorted(enumerate(sites), key=source_distance):
+        if any(math.hypot(site.x - other.x, site.z - other.z) < within_m
+               for _, other in chosen):
             continue
-        if any(math.hypot(s.x - t.x, s.z - t.z) < within_m for t in out):
-            continue
-        out.append(s)
-    return out
+        chosen.append((index, site))
+    chosen.sort(key=lambda item: item[0])
+    return [site for _, site in chosen]
 
 
 def run_picker(patch_path: str, loc_path: str) -> Picker:

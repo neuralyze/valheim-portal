@@ -776,6 +776,73 @@ def _case_town_patches_are_resolved_by_role():
     return []
 
 
+def _dedupe_fixture():
+    import numpy as np
+    S = _plan().S
+    fields = {}
+    for name, cx, cz, half in (
+            ("trunk-primary", 0.0, 0.0, 512.0),
+            ("trunk-secondary", 200.0, 0.0, 512.0),
+            ("north-search-extra", 100.0, 100.0, 256.0)):
+        fields[name] = S.T.Field(
+            name, cx, cz, half, half, 2,
+            np.full((2, 2), 41.0, dtype=np.float32),
+            np.full((2, 2), S.T.BIOME_CODE["Meadows"], dtype=np.uint8))
+    return types.SimpleNamespace(fields=fields)
+
+
+def _case_unsearched_coverage_does_not_erase_a_candidate():
+    S = _plan().S
+    candidate = _candidate(100.0, 100.0, "trunk-primary")
+    got = S.dedupe(_dedupe_fixture(), [candidate])
+    positions = [(s.patch, s.x, s.z) for s in got]
+    return Finding(
+        check="unsearched_coverage_preserves_candidate",
+        ok=positions == [("trunk-primary", 100.0, 100.0)],
+        message="extra coverage cannot invalidate a district already measured by its search",
+        numbers={"retained": positions})
+
+
+def _case_only_actual_duplicate_candidates_compete():
+    S = _plan().S
+    candidates = [_candidate(100.0, 100.0, "trunk-primary"),
+                  _candidate(102.0, 100.0, "trunk-secondary"),
+                  _candidate(300.0, 100.0, "trunk-primary")]
+    got = S.dedupe(_dedupe_fixture(), candidates)
+    positions = sorted((s.patch, s.x, s.z) for s in got)
+    expected = sorted([("trunk-secondary", 102.0, 100.0),
+                       ("trunk-primary", 300.0, 100.0)])
+    return Finding(
+        check="actual_duplicate_candidates_compete",
+        ok=positions == expected,
+        message="nearby duplicates choose the nearer measured patch; a distinct district survives",
+        numbers={"retained": positions, "expected": expected})
+
+
+def _neuter_dedupe_to_global_field_ownership():
+    import math
+    S = _plan().S
+    saved = S.dedupe
+
+    def dedupe(picker, candidates, within_m=40.0):
+        out = []
+        for site in candidates:
+            owner = S.T.field_for(picker.fields, site.x, site.z)
+            if owner is not None and owner.id != site.patch:
+                continue
+            if any(math.hypot(site.x - other.x, site.z - other.z)
+                   < within_m for other in out):
+                continue
+            out.append(site)
+        return out
+
+    S.dedupe = dedupe
+
+    def undo():
+        S.dedupe = saved
+    return undo
+
+
 def _case_a_field_with_no_trunk_window_is_refused():
     """A TOWN IS DEFINED AS STANDING ON A TRUNK LANDMASS.  Searching whatever
     windows happen to be in the file instead would plant a town on an outlier
@@ -2083,7 +2150,7 @@ register(Section(
                 "::declared_town_centres, ::declared_outlier_sites, "
                 "::resolve_patch, ::declared_harbours and "
                 "settlements/harbour_site.py::measure and "
-                "settlements/sites.py::trunk_patches, "
+                "settlements/sites.py::trunk_patches and ::dedupe, "
                 "driven over candidate sets and field-id sets constructed in "
                 "this file, plus the town records of the published "
                 "settlements/sites.yaml; settlements/plan.py::site_bill "
@@ -2163,6 +2230,16 @@ register(Section(
                           "without looking at any land"),
              neuter=_neuter_to_ulfslands_landmass_names,
              neuters="Picker.town's default patches=('mainland', 'westisle')"),
+        Case("unsearched_coverage_preserves_a_measured_candidate", False,
+             _case_unsearched_coverage_does_not_erase_a_candidate,
+             prior_state="adding north coverage erased all five real town candidates",
+             neuter=_neuter_dedupe_to_global_field_ownership,
+             neuters="dedupe assigns candidate ownership to every field, including unsearched tiles"),
+        Case("only_actual_duplicate_candidates_compete", False,
+             _case_only_actual_duplicate_candidates_compete,
+             prior_state="a nearer field could erase a district without offering a competing candidate",
+             neuter=_neuter_dedupe_to_global_field_ownership,
+             neuters="dedupe uses global field ownership instead of actual duplicate candidates"),
         Case("no_trunk_window_is_refused", True,
              _case_a_field_with_no_trunk_window_is_refused,
              prior_state=("a field of outlier windows only returned zero town "

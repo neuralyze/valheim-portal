@@ -9,11 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Settlement candidate deduplication compares actual measured candidates, not
+  every overlapping survey window. Adding northern scan coverage can no longer
+  erase otherwise valid town districts. Nearby duplicates still select the
+  measurement nearest its own patch centre; placement thresholds are unchanged.
+
+- Modded geometry and material exports require readable effective configuration
+  through `VH_CONFIG` (defaulting to the install's config directory), refusing
+  unusable container-only links before staging. Configuration links are copied
+  as private files, and operational RCON credentials are excluded explicitly.
+
 - Detected bridge windows use the detector's original station interval rather
   than finding stations again from snapped coordinates. Short terminal banks
   and repeated coordinates cannot collapse or select an unrelated part of the
   road. A measured S13 terminal span previously became zero length and aborted
   planning; its real interval now reaches the existing water/terminal solver.
+  The compatibility replay retains all Fresh42 roads and crossings, but changes
+  W9's corrected bank and road profile; it is not byte-identical to the earlier
+  accepted geometry. The other fourteen road geometries are unchanged.
 
 - North frontier planning retains the complete ordered 32 m shore-candidate
   universe in a shared predecessor tree and tries later candidates after

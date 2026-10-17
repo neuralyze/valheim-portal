@@ -156,6 +156,26 @@ are emitted; duplicates, extra pieces or truncated census responses refuse
 without demolition. Execution records describe the sent subset and separately
 retain the immutable full source geometry and blob identity.
 
+Modded geometry and physics measurements must use the effective content
+configuration as well as the plugin set. Set `VH_CONFIG` to its host directory
+when `$VH_SRC/BepInEx/config` points inside a container:
+
+```sh
+MODS=ALL OUT=/tmp/piece_geometry.tsv SANDBOX=/tmp/piecegeom/vh \
+  bash blueprints/run_piecegeometry.sh
+MODS=ALL OUT=/tmp/piece_material.tsv SANDBOX=/tmp/piecemat/vh \
+  bash crossings/run_piecematerial.sh
+```
+
+Both commands require `VH_SRC`; export `VH_CONFIG` too when the default is not
+readable. They refuse missing modded configuration before staging, materialize
+configuration links into private files, and record the source in `.mods`.
+Operational `org.tristan.rcon.cfg` is deliberately excluded so the diagnostic
+does not reuse the production listener's credentials. This exception does not
+change the measured content configuration. Dump success is not saved-world
+acceptance; rebuild the corpus with the actual game-version label before use.
+
+
 ---
 
 ## The presets

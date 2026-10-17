@@ -22,6 +22,7 @@
 #
 # Usage:
 #   VH_SRC=/path/to/server/install OUT=/tmp/piece_geometry.tsv \
+#   [VH_CONFIG=/path/to/host/config] \
 #   [MODS=Jotunn,JsonDotNET,OdinShip] [SANDBOX=/tmp/piecegeom/vh] [PORT=3459] \
 #   tools/jumpstart/blueprints/run_piecegeometry.sh
 #
@@ -30,10 +31,16 @@
 # plugins directory; a named entry that does not exist is a hard failure, never
 # a silent omission, because a dump missing a mod looks exactly like a mod with
 # nothing in it.
+# VH_CONFIG defaults to $VH_SRC/BepInEx/config. Use the readable host directory
+# when that path is a container-only symlink. A modded measurement requires it.
+# Configuration symlinks are materialized into private sandbox files.
+# Operational org.tristan.rcon.cfg is excluded: its empty default password
+# disables RCON rather than reusing production listener credentials.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VH_SRC="${VH_SRC:?set VH_SRC to the server install dir}"
+VH_CONFIG="${VH_CONFIG:-$VH_SRC/BepInEx/config}"
 OUT="${OUT:?set OUT to the output TSV path}"
 SANDBOX="${SANDBOX:-/tmp/piecegeom/vh}"
 PORT="${PORT:-3459}"
@@ -41,6 +48,10 @@ MODS="${MODS:-}"
 
 [ -x "$VH_SRC/valheim_server.x86_64" ] || { echo "no valheim_server.x86_64 in $VH_SRC" >&2; exit 1; }
 [ -f "$VH_SRC/BepInEx/core/BepInEx.Preloader.dll" ] || { echo "no BepInEx core in $VH_SRC" >&2; exit 1; }
+if [ -n "$MODS" ] && { [ ! -d "$VH_CONFIG" ] || [ ! -r "$VH_CONFIG" ] || [ ! -x "$VH_CONFIG" ]; }; then
+  echo "MODS is nonempty but VH_CONFIG is not a readable, searchable directory: $VH_CONFIG; set VH_CONFIG to the host config directory (container-only symlinks are not usable); refusing before sandbox staging" >&2
+  exit 1
+fi
 
 if [ ! -x "$SANDBOX/valheim_server.x86_64" ]; then
   echo "staging sandbox copy in $SANDBOX (mirror of $VH_SRC, live BepInEx excluded)" >&2
@@ -50,20 +61,17 @@ fi
 
 rm -rf "$SANDBOX/BepInEx"
 mkdir -p "$SANDBOX/BepInEx/plugins" "$SANDBOX/BepInEx/config" "$SANDBOX/BepInEx/patchers"
+chmod 700 "$SANDBOX/BepInEx"
 cp -a "$VH_SRC/BepInEx/core" "$SANDBOX/BepInEx/core"
 
 # --- CONTENT MODS, staged by name, verified one by one ----------------------
-# MODS=ALL stages THE WORLD'S OWN MOD SET - the whole live plugins directory
-# plus the whole live config - and it is the only setting that measures the
-# prefab registry the save was actually written against. A hand-picked subset
-# answers a different question: `OdinShip` alone would have given the hulls and
-# still left the 76 `BH_Pickable_*` objects standing in road corridors
-# unmeasured, because those come from a different mod.
+# MODS=ALL stages the whole live plugins directory and effective configuration,
+# except operational RCON. A hand-picked subset answers a different question:
+# OdinShip alone would leave other mods' standing corridor objects unmeasured.
 staged=""
 if [ "$MODS" = "ALL" ]; then
   [ -d "$VH_SRC/BepInEx/plugins" ] || { echo "MODS=ALL but no $VH_SRC/BepInEx/plugins" >&2; exit 1; }
   cp -a "$VH_SRC/BepInEx/plugins/." "$SANDBOX/BepInEx/plugins/"
-  [ -d "$VH_SRC/BepInEx/config" ] && cp -a "$VH_SRC/BepInEx/config/." "$SANDBOX/BepInEx/config/"
   [ -d "$VH_SRC/BepInEx/patchers" ] && cp -a "$VH_SRC/BepInEx/patchers/." "$SANDBOX/BepInEx/patchers/"
   staged=" ALL ($(ls "$VH_SRC/BepInEx/plugins" | wc -l) entries)"
   echo "staged content mods:$staged" >&2
@@ -84,16 +92,10 @@ elif [ -n "$MODS" ]; then
     staged="$staged $m"
   done
   echo "staged content mods:$staged" >&2
-  # A mod's own config can gate whether it registers its prefabs at all, so the
-  # live config for each staged mod is carried across when one exists.
-  if [ -d "$VH_SRC/BepInEx/config" ]; then
-    for m in "${_mods[@]}"; do
-      m="$(echo "$m" | xargs)"
-      for cfg in "$VH_SRC"/BepInEx/config/*"$m"*; do
-        [ -e "$cfg" ] && cp -a "$cfg" "$SANDBOX/BepInEx/config/" || true
-      done
-    done
-  fi
+fi
+if [ -n "$MODS" ]; then
+  # Plugin IDs need not match package names. Never write through config links.
+  rsync -aL --exclude 'org.tristan.rcon.cfg' "$VH_CONFIG/" "$SANDBOX/BepInEx/config/"
 fi
 
 MANAGED="$SANDBOX/valheim_server_Data/Managed"
@@ -143,6 +145,13 @@ set -e
 {
   echo "# staged plugins for $OUT"
   echo "MODS=$MODS"
+  printf 'VH_CONFIG=%s\n' "$VH_CONFIG"
+  if [ -n "$MODS" ]; then
+    printf 'config_policy\twhole directory, symlinks dereferenced\n'
+    printf 'config_excluded\torg.tristan.rcon.cfg\toperational RCON isolated; default empty password disables listener\n'
+  else
+    printf 'config_policy\tnot staged (MODS empty)\n'
+  fi
   ls -1 "$SANDBOX/BepInEx/plugins" | sed 's/^/plugin\t/'
 } >"$OUT.mods"
 echo "piecegeom ok: $OUT ($(wc -l <"$OUT") rows, raw_exit=$rc); mod manifest $OUT.mods" >&2
