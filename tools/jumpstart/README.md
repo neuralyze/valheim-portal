@@ -134,7 +134,8 @@ isolated poses. Dock foundations are measured against saved ground too.
 
 The final terminal requires the verified `drake-lighthouse.blueprint` library
 body through the ordinary blueprint converter, at least 15 m tall, plus a
-large `VikingShip`. It is not a lamp or beacon prop. Spawn plans and ships use
+berth-verified large OdinShip vessel, with no vanilla longship substitute.
+It is not a lamp or beacon prop. Spawn plans and ships use
 the normal BuildLedger/LiveBuilder path and save postconditions. Live readback
 is bounded per physical location; final saved-world acceptance independently
 checks the actual pieces, road-to-dock walk, hulls and lighthouse. Run that

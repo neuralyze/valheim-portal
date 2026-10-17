@@ -142,6 +142,14 @@ VESSELS: dict[str, dict] = {
                   cls="small", mass=1000),
 }
 
+# Prefabs measured from Marlthon-OdinShip in the same sandbox export above.
+# Keep vanilla compatibility entries in VESSELS distinct from this provider:
+# a vanilla longship must not satisfy an owner-required Odin departure.
+ODIN_SHIPS = frozenset({
+    "DoubleRowingCanoe", "RowingCanoe", "LittleBoat",
+    "MercantShip", "BigCargoShip", "WarShip", "CargoShip",
+})
+
 # Freeboard under the keel.  The project's own `MOOR_DEPTH_M` is 2.5 m for a
 # 1.5 m draught, so the margin that number encodes is 1.0 m; it is spelled out
 # here rather than re-derived per vessel.

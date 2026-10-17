@@ -746,6 +746,66 @@ class CandidateRefusal(ValueError):
         self.stage = stage
 
 
+def select_voyage_vessel(doc, pair, fields, *, surface):
+    """Choose one measured hull for BOTH berths and the continuous sea lane.
+
+    Roads and their finished raster are already fixed. A failed hull retries
+    only this voyage, never reroutes every road or rejects a higher frontier
+    before the other measured hulls have been tried.
+    """
+    import north_transport as NT
+    failures = []
+    for vessel in NT.vessel_candidates(False):
+        trial = {**doc, "terminals": dict(doc["terminals"])}
+        for tid in (pair["a"], pair["b"]):
+            trial["terminals"][tid] = {**doc["terminals"][tid], "vessel": vessel}
+        try:
+            plans = [NT.plan_terminal(trial, tid, fields, surface=surface)
+                     for tid in (pair["a"], pair["b"])]
+            report = NT.measure_passage(pair, plans, fields, surface=surface)
+        except (ValueError, SystemExit) as exc:
+            failures.append({"vessel": vessel, "reason": str(exc)})
+            continue
+        for tid in (pair["a"], pair["b"]):
+            doc["terminals"][tid]["vessel"] = vessel
+        return plans, report
+    raise ValueError(f"{pair['id']}: no measured vessel supports both berths and "
+                     f"the swept sea passage: {json.dumps(failures, sort_keys=True)}")
+
+
+def select_departure_vessel(doc, fields, *, surface):
+    """A LARGE Odin ship, with the actual road root, dock and lighthouse."""
+    import north_transport as NT
+    tid = doc["final_departure"]
+    failures = []
+    for vessel in NT.vessel_candidates(True):
+        trial = {**doc, "terminals": {**doc["terminals"],
+                 tid: {**doc["terminals"][tid], "vessel": vessel}}}
+        try:
+            plan = NT.plan_terminal(trial, tid, fields, surface=surface)
+        except (ValueError, SystemExit) as exc:
+            failures.append({"vessel": vessel, "reason": str(exc)})
+            continue
+        doc["terminals"][tid]["vessel"] = vessel
+        return plan
+    raise ValueError(f"{tid}: no measured LARGE Odin ship supports the berth, "
+                     f"dock and lighthouse: {json.dumps(failures, sort_keys=True)}")
+
+
+def select_transport_vessels(doc, fields, *, surface):
+    """Independent voyage choices, followed by the whole-itinerary predicate."""
+    import north_transport as NT
+    plans = {}
+    for pair in doc["transport"]:
+        selected, _ = select_voyage_vessel(doc, pair, fields, surface=surface)
+        plans.update((p["terminal_id"], p) for p in selected)
+    final = select_departure_vessel(doc, fields, surface=surface)
+    plans[final["terminal_id"]] = final
+    ordered = [plans[tid] for tid in doc["terminals"]]
+    passages = NT.measure_passages(doc, ordered, fields, surface=surface)
+    return ordered, passages
+
+
 def _evaluate_candidate(coarse, candidate_id, fields, base, crossings, net, census, state):
     """Candidate transaction: rejected roads never enter the selected plan."""
     try:
@@ -763,9 +823,7 @@ def _evaluate_candidate(coarse, candidate_id, fields, base, crossings, net, cens
     import north_transport as NT
     try:
         surface, scoped = planned_surface(fields, base["segments"], net)
-        plans = [NT.plan_terminal(doc, tid, scoped, surface=surface)
-                 for tid in doc["terminals"]]
-        passages = NT.measure_passages(doc, plans, scoped, surface=surface)
+        plans, passages = select_transport_vessels(doc, scoped, surface=surface)
     except (ValueError, SystemExit) as exc:
         raise CandidateRefusal("transport", exc) from exc
     doc["construction_feasibility"] = {
@@ -830,14 +888,16 @@ def validate_frontier_evidence(doc, coarse):
         if file_identity(row["path"]) != row:
             raise ValueError(f"north search input changed: {row['path']}")
     required = {"field", "grid", "locations", "planner", "transport", "writer",
-                "network", "hull_geometry"}
+                "network", "hull_geometry", "waterfront", "dock_geometry"}
     if not doc.get("provisional"):
         required |= {"census", "lighthouse_body", "lighthouse_manifest"}
     if not required <= set(search.get("inputs", {})):
         raise ValueError("north rejection evidence lacks scoped source/input identities")
+    import north_transport as NT
     expected_sources = {"planner": __file__, "transport": HERE / "north_transport.py",
                         "writer": HERE / "ribbon.py", "network": HERE / "network.py",
-                        "hull_geometry": JUMPSTART / "accept" / "sections" / "harbours.py"}
+                        "hull_geometry": JUMPSTART / "accept" / "sections" / "harbours.py",
+                        "waterfront": NT.WF.__file__, "dock_geometry": NT.A.__file__}
     for key, path in expected_sources.items():
         if search["inputs"][key] != file_identity(path):
             raise ValueError(f"north rejection source identity is not the active {key}")
@@ -1044,6 +1104,114 @@ def general_main(argv=None):
     return 0
 
 
+def _measured_vessel_regression(kind):
+    """Real berths, dock supports and continuous voyages over a numeric bed."""
+    import field as F
+    import north_transport as NT
+    from unittest.mock import patch
+    n = 385
+    heights = np.full((n, n), 26.0, np.float32)
+    xx, zz = np.meshgrid(np.arange(n)-n//2, np.arange(n)-n//2)
+    if kind in ("depth", "retry"):
+        # Both endpoint centres float for a canoe; a deeper/wider hull does
+        # not get to replace its own measured draught with that canoe's.
+        heights[xx > 8] = 27.85
+    elif kind == "beam":
+        # The east-west lane is deep, but a wide beam clips the north bank.
+        heights[(abs(xx) <= 8) & (zz == -13)] = NT.W.WATER_LEVEL
+    elif kind in ("journey", "blocked"):
+        # Endpoint berths remain deep. Only the actual sea journey sees this
+        # shoal, which cannot be evaded by checking the two spawn poses.
+        heights[abs(xx) <= 1] = 27.85 if kind == "journey" else 28.5
+    nodes, edges, terminals = {}, [], {}
+    for index, x in enumerate((-48.0, 48.0, 0.0)):
+        z = -48.0 if index < 2 else 100.0
+        a, b = f"approach-{index}", f"root-{index}"
+        sid, tid = f"road-{index}", f"north-dock-{index:04d}"
+        nodes[a], nodes[b] = {"xz": [x, z-16]}, {"xz": [x, z]}
+        edges.append({"id": sid, "a": a, "b": b})
+        terminals[tid] = {"xz": [x, z], "sea_xz": [x, z+24],
+                          "node_id": b, "segment_id": sid,
+                          "final_departure": index == 2}
+        # A real six-metre approach bench, not a single artificially raised
+        # vertex under the root. The dock's root rails must stand on land.
+        bench = (abs(xx-x) <= 3) & (zz >= z-16) & (zz <= z)
+        heights[bench] = NT.A.DECK_Y
+    pair = {"id": "measured-ferry", "a": "north-dock-0000",
+            "b": "north-dock-0001",
+            "sea_route": [[-48.0, -16.0], [48.0, -16.0]]}
+    doc = {"schema_version": 1, "seed": "Contract", "world": "Contract",
+           "provisional": False, "nodes": nodes, "road_edges": edges,
+           "terminals": terminals, "transport": [pair],
+           "final_departure": "north-dock-0002"}
+    raw = F.Field("measured-vessels", 0.0, 0.0, n/2, 1.0, n,
+                  heights, np.ones((n, n), np.uint8))
+    with worldseed.scope("Contract", "Contract"):
+        surface, fields = planned_surface({raw.id: raw}, [], None)
+        roots = {tid: list(t["xz"]) for tid, t in terminals.items()}
+        def fixed(vessel, tid):
+            trial = copy.deepcopy(doc)
+            trial["terminals"][tid]["vessel"] = vessel
+            return NT.plan_terminal(trial, tid, fields, surface=surface)
+        if kind == "depth":
+            # One deep endpoint is not permission to put the same deeper
+            # vessel at its shallow peer. The first endpoint really fits.
+            fixed("Karve", pair["a"])
+            try:
+                fixed("Karve", pair["b"])
+            except (ValueError, SystemExit):
+                pass
+            else:
+                return False
+        elif kind in ("beam", "journey"):
+            broad = [fixed("Karve", pair[end]) for end in ("a", "b")]
+            try:
+                NT.measure_passage(pair, broad, fields, surface=surface)
+            except (ValueError, SystemExit):
+                pass
+            else:
+                return False
+        elif kind == "mismatched":
+            unlike = [fixed("DoubleRowingCanoe", pair["a"]),
+                      fixed("Karve", pair["b"])]
+            try:
+                NT.measure_passage(pair, unlike, fields, surface=surface)
+            except (ValueError, SystemExit):
+                return True
+            return False
+        if kind == "retry":
+            # Change only enumeration order, not any physics/result provider:
+            # every registered hull is attempted using its actual dimensions.
+            # This catches a first-boat failure incorrectly rejecting a shore.
+            order = list(reversed(NT.vessel_candidates(False)))
+            visited = []
+            def evaluate(candidate_id):
+                visited.append(candidate_id)
+                return select_voyage_vessel(doc, pair, fields, surface=surface)
+            with patch.object(NT, "vessel_candidates", return_value=order):
+                (plans, report), rejected = select_frontier(
+                    {"candidate_order": [11, 12], "search_step_m": SEARCH_STEP_M},
+                    evaluate)
+            if visited != [11] or rejected:
+                return False
+        else:
+            try:
+                plans, report = select_voyage_vessel(doc, pair, fields, surface=surface)
+            except ValueError as exc:
+                return kind == "blocked" and "swept sea passage" in str(exc) and all(
+                    "vessel" not in t for t in terminals.values())
+            if kind == "blocked":
+                return False
+        vessel = plans[0]["boats"][0]["prefab"]
+        return (vessel in NT.WF.VESSELS
+                and all(p["boats"][0]["prefab"] == vessel for p in plans)
+                and all(doc["terminals"][pair[end]]["vessel"] == vessel
+                        for end in ("a", "b"))
+                and report["vessel"] == vessel and report["swept_vertices"] > 0
+                and report["min_depth_m"] >= report["required_depth_m"]
+                and all(t["xz"] == roots[tid] for tid, t in terminals.items()))
+
+
 def selftest():
     """Deterministic known-bad cases; no scans, server, ledger or world writes."""
     import copy
@@ -1136,6 +1304,14 @@ def selftest():
     for kind in ("landing", "road", "dock", "hull", "lighthouse"):
         case(f"real {kind} predicate rejects the highest shore and permits the later shore",
              lambda kind=kind: measured_fallback(kind))
+    for kind, label in (
+            ("depth", "a measured shallower Odin hull must fit BOTH ferry endpoints"),
+            ("beam", "a measured narrower hull survives a real sea-lane beam obstruction"),
+            ("journey", "deep endpoint berths cannot excuse a shallower sea journey"),
+            ("blocked", "all measured hulls refuse a shoal on the actual voyage"),
+            ("mismatched", "different feasible boats at each endpoint are not one usable ferry"),
+            ("retry", "failed earlier hulls cannot skip a physically feasible higher shore")):
+        case(label, lambda kind=kind: _measured_vessel_regression(kind))
     def exhausted():
         search = {"candidate_order": list(range(65)), "search_step_m": SEARCH_STEP_M}
         visited = []

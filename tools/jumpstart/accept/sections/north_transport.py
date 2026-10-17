@@ -32,6 +32,7 @@ TERMINATION_FAMILIES = {
     "north_artifact": ("PRODUCER_NOT_RUN", "produce the complete, non-provisional north itinerary for this seed and world"),
     "north_routes": ("UPSTREAM_STAGE_NOT_RUN", "build every itinerary road through the ordinary road network writer and run roads acceptance"),
     "instrument": ("CENSUS_NOT_TAKEN", "provide the seed-checked 1 m north field, frozen-save ZDO census, measured prefab geometry and applied ground readings"),
+    "corpus_is_about_this_world": ("PRODUCER_NOT_RUN", "re-run the cited corpus producer for this seed and world; a foreign corpus cannot authorize north construction"),
     "dock_pieces": ("UPSTREAM_STAGE_NOT_RUN", "build the terminal's real dock pieces through roads/north_transport.py build after its serving road"),
     "dock_support": ("SOURCE_CHANGE", "re-plan dock foundations against frozen-save terrain through the ownership-gated transport builder; unchanged piece poses cannot certify missing ground"),
     "dock_access": ("SOURCE_CHANGE", "repair the north dock placement or its serving road through their existing ownership-gated builders; missing walking surfaces cannot be certified by a ledger"),
@@ -39,7 +40,7 @@ TERMINATION_FAMILIES = {
     "boat_clearance": ("SOURCE_CHANGE", "re-plan this terminal against measured water and actual hull obstructions; never bypass terrain ownership or replace the crossing with a portal"),
     "paired_endpoints": ("UPSTREAM_STAGE_NOT_RUN", "build and physically accept BOTH docks and BOTH boats of every declared transport edge"),
     "lighthouse": ("UPSTREAM_STAGE_NOT_RUN", "build the final terminal's full lighthouse body, connected, upright and grounded, with roads/north_transport.py build"),
-    "departure_ship": ("UPSTREAM_STAGE_NOT_RUN", "build and physically accept a measured large vessel at the final departure terminal"),
+    "departure_ship": ("UPSTREAM_STAGE_NOT_RUN", "build and physically accept a measured large OdinShip vessel at the final departure terminal; no vanilla substitute"),
     "voyage": ("SOURCE_CHANGE", "re-plan the paired sea passage against the frozen save's full-hull terrain and solid obstacles; a boat at each shore is not a navigable crossing"),
     "north_extent": ("SOURCE_CHANGE", "regenerate the north itinerary from this seed's actual coarse terrain and selected preset; a short route with complete dock props is not the required northern frontier"),
     # The termination enumerator follows the shared grounding predicate even
@@ -308,8 +309,11 @@ def _saved_key(solid):
     return (solid.name, *solid.pos, *solid.quat)
 
 
-def is_large_departure(ship, clear, large_vessels):
-    return ship is not None and clear and ship.name in large_vessels
+def is_large_departure(ship, clear):
+    I._worldseed()
+    from settlements import waterfront as WF
+    spec = WF.VESSELS.get(ship.name) if ship is not None else None
+    return bool(clear and spec and ship.name in WF.ODIN_SHIPS and spec["cls"] == "large")
 
 
 def _ship(spec, solids, used):
@@ -417,6 +421,17 @@ def measure_saved_passages(ctx, doc, observed, terminals, hulls):
                 route_points=len(route) if isinstance(route, list) else 0))
             continue
         first, last = observed[a][0], observed[b][0]
+        I._worldseed()
+        from settlements import waterfront as WF
+        declared = [doc["terminals"][t].get("vessel") for t in (a, b)]
+        same_type = (first.name == last.name and first.name in WF.VESSELS
+                     and all(v is None or v == first.name for v in declared))
+        if not same_type:
+            findings.append(_finding(
+                False, f"{pair['id']}: physical endpoint boats must match the declared measured vessel",
+                tuple(doc["terminals"][a]["xz"]), check="voyage",
+                vessels=[first.name, last.name], declared_vessels=declared))
+            continue
         route = [(first.pos[0], first.pos[2]), *[tuple(p) for p in route],
                  (last.pos[0], last.pos[2])]
         # Measure both sizes even when the boats have different classes.
@@ -616,14 +631,14 @@ def _measure(ctx):
             findings.append(_finding(clear, f"{tid}: actual hull depth, obstruction and boarding clearance {'accepted' if clear else 'REFUSED'}", ship.pos, **ship_evidence, check="boat_clearance"))
             if clear:
                 observed.setdefault(tid, []).append(ship)
-            large |= is_large_departure(ship, clear, N.LARGE_VESSELS)
+            large |= is_large_departure(ship, clear)
         if doc["terminals"][tid]["final_departure"]:
             standing, tower_evidence = (standing_lighthouse(lighthouse, tower, {
                 S.gkey(x, z): ground[I.gpoint(x, z)[0]] for x, z in queries
                 if I.gpoint(x, z)[0] in ground}, ctx.geom) if lighthouse else
                 (False, {"saved_pieces": 0, "height_m": 0}))
             findings.append(_finding(standing, f"{tid}: tall connected lighthouse physically {'standing' if standing else 'MISSING/unsupported/incomplete'}", tuple(root), **tower_evidence, check="lighthouse"))
-            findings.append(_finding(large, f"{tid}: physically usable large departure ship {'present' if large else 'MISSING'}", tuple(root), accepted_large_ships=int(large), required=1, check="departure_ship"))
+            findings.append(_finding(large, f"{tid}: physically usable measured large Odin departure ship {'present' if large else 'MISSING/wrong provider or class'}", tuple(root), accepted_large_ships=int(large), required=1, check="departure_ship"))
         verdicts[tid] = all(f.ok or f.advisory for f in findings[start:])
         report[tid] = {"accepted": verdicts[tid], "saved_dock_pieces": len(dock),
                        "saved_lighthouse_pieces": len(tower), "saved_boats": sum(s is not None for _, s in boats),
@@ -649,9 +664,10 @@ def _itinerary():
                       "c": {"xz": [20, 0]}, "d": {"xz": [20, 2]}},
             "road_edges": [{"id": "N0-a-b", "a": "a", "b": "b", "cls": "trunk"},
                            {"id": "N1-c-d", "a": "c", "b": "d", "cls": "trunk"}],
-            "terminals": {"north-dock-000": {"xz": [0, 2], "sea_xz": [0, 8], "segment_id": "N0-a-b", "final_departure": False},
-                          "north-dock-001": {"xz": [20, 2], "sea_xz": [20, 8], "segment_id": "N1-c-d", "final_departure": True}},
-            "transport": [{"id": "sail-0", "a": "north-dock-000", "b": "north-dock-001"}],
+            "terminals": {"north-dock-000": {"xz": [0, 2], "sea_xz": [0, 8], "segment_id": "N0-a-b", "final_departure": False, "vessel": "MercantShip"},
+                          "north-dock-001": {"xz": [20, 2], "sea_xz": [20, 8], "segment_id": "N1-c-d", "final_departure": True, "vessel": "MercantShip"}},
+            "transport": [{"id": "sail-0", "a": "north-dock-000", "b": "north-dock-001",
+                           "sea_route": [[0, 4], [20, 4]]}],
             "final_departure": "north-dock-001"}
 
 
@@ -766,10 +782,27 @@ def _clearance_case(shallow=False, unread=False, blocked=False, thin=False, outs
     return _finding(ok, "actual hull footprint and boarding", (0, 0), **evidence, check="boat_clearance")
 
 
-def _departure_case(small=False, missing=False):
-    ship = None if missing else SimpleNamespace(name="small" if small else "large")
-    ok = is_large_departure(ship, True, {"large"})
-    return _finding(ok, "actual large ship required", (0, 0), accepted_large_ships=int(ok), check="departure_ship")
+def _departure_case(small=False, missing=False, vanilla=False):
+    from . import harbours as H
+    I._worldseed()
+    from settlements import waterfront as WF
+    name = "LittleBoat" if small else "VikingShip" if vanilla else "MercantShip"
+    spec = WF.VESSELS[name]
+    hull = H.hull_table()[name]
+    geom = {name: [["b", -spec["hull_w"]/2, -0.5, -spec["hull_l"]/2,
+                    spec["hull_w"]/2, 0.5, spec["hull_l"]/2, "box"]]}
+    ship = I.mk_solid(name, (0, 30, 0), I.yaw(0), geom[name])
+    ground = {I.gpoint(x, z)[0]: 20 for x, z in H.footprint(hull, 0, 0, 0)}
+    depth = min(I.WATER_LEVEL-y for y in ground.values())
+    upright = _ship({"prefab": name, "pos": ship.pos}, [ship], set())
+    floats = upright is not None and depth >= hull.required_depth_m
+    # Provider/class guard in isolation: do not invent an Odin air-draft
+    # measurement merely to make the separate full clearance predicate pass.
+    assert floats
+    ok = is_large_departure(None if missing else upright, floats)
+    return _finding(ok, "upright floating ship's Odin provider and large-class guard", (0, 0),
+                    accepted_large_ships=int(ok), vessel=name, depth_m=depth,
+                    required_depth_m=hull.required_depth_m, check="departure_ship")
 
 
 def _contiguous_case():
@@ -781,10 +814,11 @@ def _contiguous_case():
 
 def _passage_case(shallow=False, unread=False, blocked=False, missing_route=False,
                   thin=False, between_poses=False, swept_shoal=False,
-                  turning_between_poses=False):
+                  turning_between_poses=False, wrong_declared_type=False):
     from . import harbours as H
-    hull = H.Hull("fixture-hull", 2, 4, 1, 2, 0.2, "synthetic fixture")
-    geom = {hull.name: [["b", -1, -1, -2, 1, 1, 2, "box"]],
+    hull = H.hull_table()["Karve"]
+    hw, hl = hull.beam_m/2, hull.length_m/2
+    geom = {hull.name: [["b", -hw, -1, -hl, hw, 1, hl, "box"]],
             "pile": [["b", -0.2, -1, -0.2, 0.2, 1, 0.2, "box"]]}
     geom["needle"] = [["b", -0.001, -1, -0.001, 0.001, 1, 0.001, "box"]]
     a = I.mk_solid(hull.name, (0, 30, 4), I.yaw(0), geom[hull.name])
@@ -795,16 +829,17 @@ def _passage_case(shallow=False, unread=False, blocked=False, missing_route=Fals
     if thin:
         actual.append(I.mk_solid("pile", (10.5, 29.5, 4.5), I.yaw(37), geom["pile"]))
     if between_poses:
-        actual.append(I.mk_solid("needle", (10.5, 30, 4.999), I.yaw(0),
+        actual.append(I.mk_solid("needle", (10.5, 30, 4+hw-0.001), I.yaw(0),
                                   geom["needle"]))
     if turning_between_poses:
         angle = math.radians(2.5)
         actual.append(I.mk_solid(
-            "needle", (1.999*math.sin(angle), 30, 4+1.999*math.cos(angle)),
+            "needle", ((hl-0.001)*math.sin(angle), 30, 4+(hl-0.001)*math.cos(angle)),
             I.yaw(0), geom["needle"]))
     if swept_shoal:
-        a = I.mk_solid(hull.name, (-0.5, 30, 4.001), I.yaw(0), geom[hull.name])
-        b = I.mk_solid(hull.name, (19.5, 30, 4.001), I.yaw(0), geom[hull.name])
+        swept_z = 5-hw+0.001
+        a = I.mk_solid(hull.name, (-0.5, 30, swept_z), I.yaw(0), geom[hull.name])
+        b = I.mk_solid(hull.name, (19.5, 30, swept_z), I.yaw(0), geom[hull.name])
         actual = [a, b]
     rows = [(s.name, *s.pos, *s.quat) for s in actual]
     ctx = SimpleNamespace(
@@ -813,9 +848,15 @@ def _passage_case(shallow=False, unread=False, blocked=False, missing_route=Fals
             label: 29.5 if shallow or (swept_shoal and _x == 10 and _z == 5)
             else 27 for label, _x, _z in points})
     doc = _itinerary()
+    for terminal in doc["terminals"].values():
+        terminal["vessel"] = hull.name
+    if wrong_declared_type:
+        doc["terminals"]["north-dock-001"]["vessel"] = "LittleBoat"
+    if missing_route:
+        doc["transport"][0].pop("sea_route")
     if not missing_route:
         doc["transport"][0]["sea_route"] = (
-            [[0.5, 4.001], [18.5, 4.001]] if swept_shoal
+            [[0.5, swept_z], [18.5, swept_z]] if swept_shoal
             else [[1, 4], [19, 4]])
     findings, _verified = measure_saved_passages(
         ctx, doc, {"north-dock-000": [a], "north-dock-001": [b]},
@@ -897,6 +938,8 @@ CASES = [
          lambda: _passage_case(swept_shoal=True)),
     Case("thin pile struck between clear sampled turn angles blocks voyage", True,
          lambda: _passage_case(turning_between_poses=True)),
+    Case("physical ferry boats must match their declared measured type", True,
+         lambda: _passage_case(wrong_declared_type=True)),
     Case("generated town and real harbour retain physical network duties", False, _connection_case),
     Case("named junction on an unbuilt parent is not a generated connection", True,
          lambda: _connection_case(unbuilt_parent=True),
@@ -934,8 +977,11 @@ CASES = [
     Case("actual saved hull grounded on shallow bed fails", True, lambda: _clearance_case(shallow=True)),
     Case("unread applied hull footprint fails", True, lambda: _clearance_case(unread=True)),
     Case("actual pile through saved hull fails", True, lambda: _clearance_case(blocked=True)),
-    Case("final actual large vessel accepted", False, _departure_case),
-    Case("small boat cannot satisfy final departure", True, lambda: _departure_case(small=True)),
+    Case("final actual measured large Odin vessel accepted", False, _departure_case),
+    Case("floating upright vanilla large vessel cannot satisfy Odin departure", True,
+         lambda: _departure_case(vanilla=True)),
+    Case("floating upright small Odin boat cannot satisfy final departure", True,
+         lambda: _departure_case(small=True)),
     Case("final departure ledger without physical ship fails", True, lambda: _departure_case(missing=True)),
     Case("provisional north plan is not accepted", True, lambda: _schema_case(lambda d: d.update(provisional=True))),
     Case("absent provisional declaration fails closed", True, lambda: _schema_case(lambda d: d.pop("provisional"))),
@@ -961,7 +1007,7 @@ CASES = [
 
 register(Section(
     name="north_transport",
-    measures="physical walking access, both saved docks and boats, full-hull sea passages and multimodal north reachability, with a grounded tall lighthouse and large departure ship",
+    measures="physical walking access, both saved docks and boats, full-hull sea passages and multimodal north reachability, with a grounded tall lighthouse and measured large Odin departure ship",
     instrument="the frozen-save ZDO census, measured collider geometry, applied ground and shared capsule/harbour/structure predicates",
     population="every road and terminal in the mandatory seed/world north itinerary, including both endpoints and the unique final departure",
     run=run, cases=CASES))

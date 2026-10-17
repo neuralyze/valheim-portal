@@ -35,7 +35,8 @@ import assemble as A
 from settlements import waterfront as WF
 
 ROLE = "north_transport"
-LARGE_VESSELS = frozenset(k for k, v in WF.VESSELS.items() if v["cls"] == "large")
+LARGE_VESSELS = frozenset(k for k, v in WF.VESSELS.items()
+                         if k in WF.ODIN_SHIPS and v["cls"] == "large")
 LIGHTHOUSE_BODY = "drake-lighthouse.blueprint"
 MIN_LIGHTHOUSE_HEIGHT_M = 15.0
 
@@ -83,6 +84,26 @@ def _xz(value, label):
     return tuple(float(v) for v in value)
 
 
+def vessel_candidates(final):
+    eligible = LARGE_VESSELS if final else WF.VESSELS
+    return sorted(eligible, key=lambda v: (
+        WF.VESSELS[v]["draught_m"],
+        WF.VESSELS[v]["hull_w"] * WF.VESSELS[v]["hull_l"], v))
+
+
+def _terminal_vessels(terminal):
+    """Declared measured type, or the eligible registry choices for this berth."""
+    declared = terminal.get("vessel")
+    eligible = vessel_candidates(terminal["final_departure"])
+    if declared is not None:
+        if not isinstance(declared, str) or declared not in WF.VESSELS:
+            raise SystemExit(f"unmeasured north vessel {declared!r}")
+        if declared not in eligible:
+            raise SystemExit(f"final departure requires a measured large Odin ship, not {declared}")
+        return [declared]
+    return eligible
+
+
 def validate_itinerary(doc, *, seed, world, for_write=False, path="<itinerary>"):
     if not isinstance(doc, dict) or doc.get("schema_version") != 1:
         raise SystemExit(f"{path}: north itinerary schema_version must be 1")
@@ -122,6 +143,7 @@ def validate_itinerary(doc, *, seed, world, for_write=False, path="<itinerary>")
             raise SystemExit(f"{tid}: final_departure must be boolean")
         if terminal["final_departure"]:
             marked.append(tid)
+        _terminal_vessels(terminal)
     if marked != [final]:
         raise SystemExit(f"{path}: final departure markers disagree")
     seen, paired = set(), set()
@@ -340,21 +362,29 @@ def plan_terminal(itinerary, terminal_id, field, *, actor="NorthTransport", surf
     ground = lambda x, z: surf.at(x, z)[0]
     _root_access(ground(*root), deck_y, terminal_id)
     bed = A.Bed.applied(ground, "explicit north field plus this world's ledger in file order")
-    vessel = "VikingShip" if terminal["final_departure"] else "Karve"
-    vf = WF.VESSELS[vessel]
     chosen = None
-    # A measured hull alongside the unrailed side, never a remote deep point.
-    for length in range(max(12, int(math.ceil(math.dist(root, sea) / 2)) * 2), 98, 2):
-        bx = root[0] + ux * (length - vf["hull_l"] / 2) - lx * (2 + vf["hull_w"] / 2 + 0.75)
-        bz = root[1] + uz * (length - vf["hull_l"] / 2) - lz * (2 + vf["hull_w"] / 2 + 0.75)
-        if abs(bx - root[0]) + vf["hull_l"] / 2 + vf["hull_w"] / 2 > 96 or abs(bz - root[1]) + vf["hull_l"] / 2 + vf["hull_w"] / 2 > 96:
-            continue
-        depths = surf.hull_depths(bearing, bx, bz, vessel)
-        if _hull_usable(depths, vessel):
-            chosen = (length, bx, bz, depths)
+    attempts = []
+    # Each registry hull needs its own measured along-dock seat and draught.
+    for vessel in _terminal_vessels(terminal):
+        vf = WF.VESSELS[vessel]
+        for length in range(max(12, int(math.ceil(math.dist(root, sea) / 2)) * 2), 98, 2):
+            bx = root[0] + ux * (length - vf["hull_l"] / 2) - lx * (2 + vf["hull_w"] / 2 + 0.75)
+            bz = root[1] + uz * (length - vf["hull_l"] / 2) - lz * (2 + vf["hull_w"] / 2 + 0.75)
+            if abs(bx - root[0]) + vf["hull_l"] / 2 + vf["hull_w"] / 2 > 96 or abs(bz - root[1]) + vf["hull_l"] / 2 + vf["hull_w"] / 2 > 96:
+                continue
+            depths = surf.hull_depths(bearing, bx, bz, vessel)
+            attempts.append(dict(vessel=vessel, length_m=length,
+                                 min_depth_m=None if depths is None else depths[0],
+                                 connected=False if depths is None else depths[2],
+                                 required_depth_m=vf["draught_m"] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M))
+            if _hull_usable(depths, vessel):
+                chosen = (length, bx, bz, depths)
+                break
+        if chosen is not None:
             break
     if chosen is None:
-        raise SystemExit(f"{terminal_id}: no connected full-hull berth alongside the dock for {vessel}; no boat may be silently omitted")
+        requirement = "large Odin ship" if terminal["final_departure"] else "measured vessel"
+        raise SystemExit(f"{terminal_id}: no connected full-hull berth alongside the dock for an eligible {requirement}; measured candidates={attempts}; no boat may be silently omitted")
     length, bx, bz, depths = chosen
     pieces = A.jetty(root, bearing, length, deck_y, bed, width_tiles=2, name=terminal_id)
     verdict = A.verify(pieces, bed, note=terminal_id)
@@ -377,23 +407,12 @@ def plan_terminal(itinerary, terminal_id, field, *, actor="NorthTransport", surf
     all_rows = _piece_rows(commands) + (lighthouse["pieces"] if lighthouse else [])
     if any(max(abs(p["pos"][0] - root[0]), abs(p["pos"][2] - root[1])) > 94.0 for p in all_rows):
         raise SystemExit(f"{terminal_id}: structure extends beyond the terminal's measured ±96m census footprint")
-    return dict(terminal_id=terminal_id, root_xz=list(root), segment_id=segment,
+    return dict(terminal_id=terminal_id, seed=itinerary["seed"], world=itinerary["world"],
+                root_xz=list(root), segment_id=segment,
                 walk_xz=walk, deck_y=deck_y, bearing_deg=bearing,
                 ops=ops, pieces=_piece_rows(commands),
                 boats=[dict(prefab=vessel, pos=boat["params"]["pos"], yaw_deg=bearing, hull=hull)],
                 lighthouse=lighthouse, final_departure=terminal["final_departure"])
-
-
-def _passage_routes(itinerary, plans):
-    by_id = {p["terminal_id"]: p for p in plans}
-    for pair in itinerary["transport"]:
-        a, b = by_id[pair["a"]]["boats"][0], by_id[pair["b"]]["boats"][0]
-        vessel = max((a["prefab"], b["prefab"]),
-                     key=lambda v: (WF.VESSELS[v]["draught_m"],
-                                    WF.VESSELS[v]["hull_l"] * WF.VESSELS[v]["hull_w"]))
-        points = [[a["pos"][0], a["pos"][2]], *pair["sea_route"],
-                  [b["pos"][0], b["pos"][2]]]
-        yield pair, vessel, points, a["yaw_deg"], b["yaw_deg"]
 
 
 def _route_stations(points, start_yaw, end_yaw):
@@ -418,42 +437,77 @@ def _route_stations(points, start_yaw, end_yaw):
         yield points[-1], previous + turn * k / turns
 
 
+def measure_passage(pair, terminals, fields, *, surface=None):
+    """Measure ONE declared pair with the same full-hull predicate as writing."""
+    from accept.sections import harbours as H
+    by_id = (terminals if isinstance(terminals, dict) else
+             {p["terminal_id"]: p for p in terminals})
+    if pair.get("a") not in by_id or pair.get("b") not in by_id or pair["a"] == pair["b"]:
+        raise SystemExit(f"{pair.get('id')}: passage needs two distinct measured endpoint plans")
+    route = pair.get("sea_route")
+    if not isinstance(route, list) or len(route) < 2:
+        raise SystemExit(f"{pair.get('id')}: measured sea_route required")
+    for point in route:
+        _xz(point, pair["id"] + " sea route")
+    endpoint_plans = [by_id[pair[t]] for t in ("a", "b")]
+    boats = [p.get("boats", []) for p in endpoint_plans]
+    if any(len(rows) != 1 for rows in boats):
+        raise SystemExit(f"{pair['id']}: each measured endpoint must declare one boat")
+    a, b = [rows[0] for rows in boats]
+    vessel = a["prefab"]
+    if vessel not in WF.VESSELS or b["prefab"] != vessel:
+        raise SystemExit(f"{pair['id']}: both endpoint boats must match one declared measured vessel; got {vessel!r} and {b['prefab']!r}")
+    for plan, boat in zip(endpoint_plans, (a, b)):
+        if plan.get("final_departure") and boat["prefab"] not in LARGE_VESSELS:
+            raise SystemExit(f"{pair['id']}: final departure requires a measured large Odin ship")
+    if surface is None:
+        seed, world = endpoint_plans[0]["seed"], endpoint_plans[0]["world"]
+        if any((p["seed"], p["world"]) != (seed, world) for p in endpoint_plans):
+            raise SystemExit(f"{pair['id']}: endpoint seed/world scopes disagree")
+        fields = load_field(fields, seed)
+        surface = Surface(fields, world=world, actor="NorthTransport")
+    points = [[a["pos"][0], a["pos"][2]], *route, [b["pos"][0], b["pos"][2]]]
+    minimum, count = math.inf, 0
+    poses = []
+    for xz, yaw in _route_stations(points, a["yaw_deg"], b["yaw_deg"]):
+        depths = surface.hull_depths(yaw, *xz, vessel)
+        poses.append((*xz, yaw))
+        count += 1
+        if not _hull_usable(depths, vessel):
+            measured = None if depths is None else depths[0]
+            connected = False if depths is None else depths[2]
+            raise SystemExit(f"{pair['id']}: blocked full-hull passage at {xz}, heading {yaw:.2f}; min depth {measured}, connected={connected}, needs {WF.VESSELS[vessel]['draught_m'] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M:.3f}m")
+        minimum = min(minimum, depths[0])
+    spec = WF.VESSELS[vessel]
+    hull = H.Hull(vessel, spec["hull_w"], spec["hull_l"],
+                  spec["draught_m"], None, WF.KEEL_CLEARANCE_M,
+                  "settlements.waterfront.VESSELS")
+    vertices = H.swept_footprint(hull, poses)
+    required = spec["draught_m"] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M
+    for x, z in vertices:
+        y = surface.at(x, z)[0]
+        if not math.isfinite(y) or H.WATER_LEVEL-y < required:
+            raise SystemExit(
+                f"{pair['id']}: blocked swept hull at {(x, z)}; "
+                f"depth {H.WATER_LEVEL-y}, needs {required:.3f}m")
+        minimum = min(minimum, H.WATER_LEVEL-y)
+    return dict(id=pair["id"], a=pair["a"], b=pair["b"], vessel=vessel,
+                min_depth_m=minimum, required_depth_m=required,
+                hull_stations=count, swept_vertices=len(vertices), waypoints=points)
+
+
 def measure_passages(itinerary, plans, fields, *, surface=None, actor="NorthTransport"):
+    validate_itinerary(itinerary, seed=itinerary.get("seed"), world=itinerary.get("world"))
     fields = load_field(fields, itinerary["seed"])
     surf = surface or Surface(fields, world=itinerary["world"], actor=actor)
-    from accept.sections import harbours as H
-    reports = []
-    for pair, vessel, points, first, last in _passage_routes(itinerary, plans):
-        minimum, count = math.inf, 0
-        poses = []
-        for xz, yaw in _route_stations(points, first, last):
-            depths = surf.hull_depths(yaw, *xz, vessel)
-            poses.append((*xz, yaw))
-            count += 1
-            if not _hull_usable(depths, vessel):
-                measured = None if depths is None else depths[0]
-                connected = False if depths is None else depths[2]
-                raise SystemExit(f"{pair['id']}: blocked full-hull passage at {xz}, heading {yaw:.2f}; min depth {measured}, connected={connected}, needs {WF.VESSELS[vessel]['draught_m'] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M:.3f}m")
-            minimum = min(minimum, depths[0])
-        spec = WF.VESSELS[vessel]
-        hull = H.Hull(vessel, spec["hull_w"], spec["hull_l"],
-                      spec["draught_m"], None, WF.KEEL_CLEARANCE_M,
-                      "settlements.waterfront.VESSELS")
-        vertices = H.swept_footprint(hull, poses)
-        required = (spec["draught_m"] + WF.KEEL_CLEARANCE_M
-                    + WF.BERTH_MARGIN_FLOOR_M)
-        for x, z in vertices:
-            y = surf.at(x, z)[0]
-            if not math.isfinite(y) or H.WATER_LEVEL-y < required:
-                raise SystemExit(
-                    f"{pair['id']}: blocked swept hull at {(x, z)}; "
-                    f"depth {H.WATER_LEVEL-y}, needs {required:.3f}m")
-            minimum = min(minimum, H.WATER_LEVEL-y)
-        reports.append(dict(id=pair["id"], a=pair["a"], b=pair["b"],
-                            vessel=vessel, min_depth_m=minimum,
-                            required_depth_m=WF.VESSELS[vessel]["draught_m"] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M,
-                            hull_stations=count, swept_vertices=len(vertices), waypoints=points))
-    return reports
+    by_id = plans if isinstance(plans, dict) else {p["terminal_id"]: p for p in plans}
+    for tid, terminal in itinerary["terminals"].items():
+        plan = by_id.get(tid)
+        boats = plan.get("boats", []) if plan else []
+        if not boats or any(b["prefab"] not in _terminal_vessels(terminal) for b in boats):
+            raise SystemExit(f"{tid}: missing boat or vessel differs from the declared measured type")
+    return [measure_passage(pair, by_id, fields, surface=surf)
+            for pair in itinerary["transport"]]
 
 
 def _require_road_ground(itinerary, led):
@@ -623,6 +677,40 @@ def _resume_regressions():
     return cases
 
 
+def _departure_preflight_regression(doc):
+    """Real raster: a small Odin hull floats but every large Odin hull grounds."""
+    import numpy as np
+    from types import SimpleNamespace
+    heights = np.full((513, 513), W.WATER_LEVEL-2.4, np.float32)
+    field = W.Field("departure-preflight", 0.0, 0.0, 256.0, 1.0, 513,
+                    heights, np.ones_like(heights, dtype=np.uint8))
+    root = doc["terminals"][doc["final_departure"]]["xz"]
+    heights[field.index(*root)] = A.DECK_Y
+    fields = ScopedFields({field.id: field}, doc["seed"], source="constructed 1m raster")
+    class RasterSurface(WF.Surface):
+        def __init__(self):
+            self.fields, self.field_names = fields, [fields.source]
+            self.applied = SimpleNamespace(delta_at=lambda x, z: 0.0)
+            self.masks = {}
+        def hull_depths(self, yaw, x, z, vessel):
+            if vessel not in self.masks:
+                self.masks[vessel] = WF.sea_mask(
+                    field, WF.VESSELS[vessel]["draught_m"] + WF.KEEL_CLEARANCE_M)[1]
+            return WF.hull_depths(self, yaw, x, z, vessel,
+                                  open_sea=self.masks[vessel])
+    surface = RasterSurface()
+    small = surface.hull_depths(0, root[0]+15, root[1]+20, "DoubleRowingCanoe")
+    try:
+        plan_terminal(doc, doc["final_departure"], fields, surface=surface)
+        refused, error = False, ""
+    except SystemExit as exc:
+        refused, error = True, str(exc)
+    return dict(name="writer preflight refuses no eligible large Odin berth despite floating small Odin",
+                ok=refused and _hull_usable(small, "DoubleRowingCanoe")
+                   and "large Odin ship" in error and "measured candidates=" in error,
+                small_hull_min_depth_m=small[0], refusal=error)
+
+
 def selftest():
     """Pure known-bad contract regressions; never opens a ledger/server."""
     import copy
@@ -651,6 +739,14 @@ def selftest():
     expect("missing peer terminal", lambda d: d["transport"][0].update(b="absent"), True)
     expect("missing measured sailing path", lambda d: d["transport"][0].pop("sea_route"), True)
     expect("valid paired contract", lambda d: None, False)
+    expect("vanilla large ship cannot authorize final writer",
+           lambda d: d["terminals"][d["final_departure"]].update(vessel="VikingShip"), True)
+    expect("small Odin ship cannot authorize final writer",
+           lambda d: d["terminals"][d["final_departure"]].update(vessel="LittleBoat"), True)
+    expect("measured large Odin ship authorizes final contract",
+           lambda d: d["terminals"][d["final_departure"]].update(vessel="CargoShip"), False)
+    expect("invented boat cannot authorize writer",
+           lambda d: d["terminals"][d["final_departure"]].update(vessel="ImaginaryOdinShip"), True)
     def standalone_final(state):
         state["terminals"].pop("north-dock-000")
         state["transport"] = []
@@ -661,7 +757,7 @@ def selftest():
             ("no measured hull samples", (8.0, 8.0, True, 0), False),
             ("margin inside measurement noise", (2.51, 8.0, True, 50), False),
             ("connected full hull with clearance", (3.0, 8.0, True, 50), True)):
-        got = _hull_usable(depths, "VikingShip")
+        got = _hull_usable(depths, "MercantShip")
         cases.append(dict(name=name, ok=got == want, usable=got, want=want))
     for name, height, want in (("ungraded road root", 32.0, True),
                                ("unmeasured road root", float("nan"), True),
@@ -672,14 +768,8 @@ def selftest():
         except SystemExit:
             got = True
         cases.append(dict(name=name, refused=got, want_refused=want, ok=got == want))
-    route = list(_route_stations([[0, 0], [0, 4], [4, 4]], 0.0, 90.0))
-    gaps = [math.dist(a[0], b[0]) for a, b in zip(route, route[1:])]
-    headings = [abs((b[1] - a[1] + 180) % 360 - 180)
-                for a, b in zip(route, route[1:])]
-    cases.append(dict(name="sea passage samples cannot jump a shallow station or unswept turn",
-                      ok=max(gaps) <= 1.0 and max(headings) <= 10.0,
-                      maximum_gap_m=max(gaps), maximum_heading_step_deg=max(headings)))
     cases.extend(_resume_regressions())
+    cases.append(_departure_preflight_regression(doc))
     print(json.dumps(cases, indent=2))
     return 0 if all(c["ok"] for c in cases) else 1
 

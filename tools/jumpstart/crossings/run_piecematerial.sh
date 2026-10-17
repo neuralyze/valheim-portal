@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Build and run PieceMaterial in a SANDBOX COPY of the Valheim dedicated server.
 #
-# Same shape as tools/jumpstart/blueprints/run_piecegeometry.sh: rsync the
-# server tree (minus the live BepInEx directory) into scratch, drop in a BepInEx
-# core plus exactly one plugin, run it on a throwaway world and port, kill it.
-# No live mod, config, world or profile is written, and the live server is never
-# touched.
+# Same shape as tools/jumpstart/blueprints/run_piecegeometry.sh: mirror the
+# server tree without live BepInEx, then stage its core and this plugin plus,
+# with MODS=ALL, the complete content-mod profile.
+# Run on a throwaway world and port, then kill it. No live mod, config, world
+# or profile is written, and the live server is never touched.
 #
 # Needs a LOADED WORLD, because ZNetScene only publishes `m_prefabs` once the
 # game scene is up. Expect ~30-60 s.
 #
 # Usage:
 #   VH_SRC=/path/to/server/install OUT=/tmp/piece_material.tsv \
-#   [SANDBOX=/tmp/piecemat/vh] [PORT=3461] \
+#   [SANDBOX=/tmp/piecemat/vh] [PORT=3461] [MODS=ALL] \
 #   tools/jumpstart/crossings/run_piecematerial.sh
 set -euo pipefail
 
@@ -21,6 +21,11 @@ VH_SRC="${VH_SRC:?set VH_SRC to the server install dir}"
 OUT="${OUT:?set OUT to the output TSV path}"
 SANDBOX="${SANDBOX:-/tmp/piecemat/vh}"
 PORT="${PORT:-3461}"
+MODS="${MODS:-}"
+case "$MODS" in
+  ""|ALL) ;;
+  *) echo "MODS must be ALL or empty; partial profiles cannot measure this world's ships" >&2; exit 1 ;;
+esac
 
 [ -x "$VH_SRC/valheim_server.x86_64" ] || { echo "no valheim_server.x86_64 in $VH_SRC" >&2; exit 1; }
 [ -f "$VH_SRC/BepInEx/core/BepInEx.Preloader.dll" ] || { echo "no BepInEx core in $VH_SRC" >&2; exit 1; }
@@ -34,6 +39,16 @@ fi
 rm -rf "$SANDBOX/BepInEx"
 mkdir -p "$SANDBOX/BepInEx/plugins" "$SANDBOX/BepInEx/config" "$SANDBOX/BepInEx/patchers"
 cp -a "$VH_SRC/BepInEx/core" "$SANDBOX/BepInEx/core"
+
+# Match the geometry export's actual prefab registry. A vanilla-only dump
+# cannot establish the draught or persistence of OdinShip prefabs.
+if [ "$MODS" = "ALL" ]; then
+  [ -d "$VH_SRC/BepInEx/plugins" ] || { echo "MODS=ALL but plugins directory is missing" >&2; exit 1; }
+  cp -a "$VH_SRC/BepInEx/plugins/." "$SANDBOX/BepInEx/plugins/"
+  [ ! -d "$VH_SRC/BepInEx/config" ] || cp -a "$VH_SRC/BepInEx/config/." "$SANDBOX/BepInEx/config/"
+  [ ! -d "$VH_SRC/BepInEx/patchers" ] || cp -a "$VH_SRC/BepInEx/patchers/." "$SANDBOX/BepInEx/patchers/"
+  echo "staged complete content-mod profile" >&2
+fi
 
 MANAGED="$SANDBOX/valheim_server_Data/Managed"
 for dll in "$MANAGED/assembly_valheim.dll" "$MANAGED/UnityEngine.CoreModule.dll" \
@@ -77,4 +92,10 @@ set -e
 # The plugin SIGKILLs the process once the output is flushed, so exit status is
 # always 137 on success. Validate by output, like run_piecegeometry.sh does.
 [ -s "$OUT" ] || { echo "FAILED: no material output at $OUT (raw_exit=$rc)" >&2; exit 1; }
-echo "piecemat ok: $OUT ($(wc -l <"$OUT") rows, raw_exit=$rc)" >&2
+{
+  printf '# staged plugins for %s\nMODS=%s\n' "$OUT" "$MODS"
+  for entry in "$SANDBOX"/BepInEx/plugins/*; do
+    [ ! -e "$entry" ] || printf 'plugin\t%s\n' "${entry##*/}"
+  done
+} >"$OUT.mods"
+echo "piecemat ok: $OUT ($(wc -l <"$OUT") rows, raw_exit=$rc); mod manifest $OUT.mods" >&2

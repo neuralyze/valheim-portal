@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Road/pad field requests explicitly select the rendered Heightmap surface
   rather than inheriting an ambient WorldGenerator sampling mode.
 
+- The northern departure requires a measured large OdinShip vessel, never a
+  vanilla longship substitute. Terminal planning tries eligible hulls against
+  actual berth depth, solids and departure clearance; ferry endpoints share
+  one vessel type that also passes the complete swept voyage. The material
+  exporter now supports the same isolated `MODS=ALL` profile as the collider
+  exporter and records its staged plugin manifest. Fresh complete-profile
+  exports agree with all seven existing Odin collider arrays and their
+  registered draught, mass and persistence measurements; no geometry corpus
+  was replaced.
+
 - Road-plan connectivity no longer treats a released abutment as a connection
   to its former node or declared bridge. Physical road junctions and held
   abutments still connect. Repair candidates likewise use only endpoints a
