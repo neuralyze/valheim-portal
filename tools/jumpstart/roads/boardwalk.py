@@ -56,8 +56,10 @@ A record carrying `flatten: "FORBIDDEN"` arms `writer._flatten_forbidden_check`
 against every LATER `terrain_write` whose blob moves the ground by more than
 0.01 m inside its pieces' footprint.  A deck placed before its leg's terrain
 write therefore refuses that write at the abutment -- the ramp the deck needs
-is the ramp the deck's own protection forbids.  `--require-terrain` refuses to
-build a span whose segment has no `terrain_write` in the chain.
+is the ramp the deck's own protection forbids. `--require-terrain` requires
+bed-moving evidence, or a completed ground unit whose entire segment is
+bridged and therefore has no ground to write. That completion is NOT a terrain
+write; all deck datum, abutment, support and clearance guards still apply.
 
 THE POSTCONDITION IS MEASURED WITH THE INSTRUMENT, NOT DERIVED FROM THE PLAN
 ----------------------------------------------------------------------------
@@ -91,27 +93,25 @@ sys.path.insert(0, str(JUMPSTART / "terraform"))
 
 import applied as appliedmod            # noqa: E402
 import assemble as asm                  # noqa: E402
-import ribbon as ribbonmod              # noqa: E402
-import spec as specmod                  # noqa: E402
 import route as routemod                # noqa: E402
 import worldseed                        # noqa: E402
 from accept import instruments as road_instruments  # noqa: E402
 from accept.sections import roads as road_gate      # noqa: E402
 
 SPANS = HERE / "north_spans.json"
-SEED = ribbonmod.SEED
+SEED = worldseed.seed()
 # BOARDWALK_WORLD_DEPENDS_ON: the world being written.  `segment_terrain_written`
 # defaulted its `world` to the literal "Ulfsland" and `main`'s build path opened
 # the pre-write chain on the same literal WHILE THE WRITE ITSELF went through
 # `LiveBuilder`, which resolves `worldseed.world()` -- so on any world but
 # Ulfsland the before/after sha was taken on a DIFFERENT CHAIN than the one
 # being appended to, and the quarantined ledger was the one read.
-WORLD = ribbonmod.WORLD
+WORLD = worldseed.world()
 WATER_LEVEL_M = 30.0
 
-# `spec.DECK_DATUM_Y`, read rather than retyped so this refusal cannot drift
-# away from the constant it refuses.
-SEA_DECK_DATUM_Y = specmod.DECK_DATUM_Y
+# Geography owns this design datum; importing spec here loads seed-derived
+# nodes while geography is still deriving them.
+from geography import DECK_DATUM_Y as SEA_DECK_DATUM_Y  # noqa: E402
 
 # A deck tile's walking surface must meet the road bench it abuts.  0.35 m is
 # the step a player walks up without a jump and without the 0.5 m auto-step
@@ -1548,7 +1548,7 @@ def bank_regrade_reach(record: dict, segments: dict | None = None,
 
 
 def deck_remedy(record: dict, *, terrain_written, reconciled=None,
-                abutment_steps=None, segments=None,
+                abutment_steps=None, segments=None, ground_completed=None,
                 half_width_m: float = DECK_HALF_WIDTH_M) -> dict:
     """Would this builder produce a deck for this crossing?  THREE STATES.
 
@@ -1571,7 +1571,9 @@ def deck_remedy(record: dict, *, terrain_written, reconciled=None,
       1C_UNSERVED      no tool in this tree performs the remedy at all.
 
     `terrain_written` is the mapping `segment_terrain_written` returns, or
-    None when the chain was not read.  `reconciled` maps a crossing_id to
+    None when the chain was not read. `ground_completed` is the separate
+    mapping `segment_ground_completed` returns: completed fully bridged ground
+    units, NOT bed-moving records. `reconciled` maps a crossing_id to
     `reconcile_declared_lines`' own verdict for it, or None when that tool
     was not run.  `abutment_steps` maps a bank name to the SIGNED step in
     metres `abutment_guard` measured there against the APPLIED surface, or
@@ -1585,9 +1587,9 @@ def deck_remedy(record: dict, *, terrain_written, reconciled=None,
     unasked: list[str] = []
     nums: dict = {}
 
-    # (1) BUILD ORDER.  `--require-terrain` defaults ON, and it is not a
-    # preference: a deck's abutment is a step from the ROAD BENCH, and on a
-    # segment nobody has graded there is no bench to step from.
+    # (1) BUILD ORDER. Bed-moving evidence is required unless the ground
+    # writer completed a fully bridged unit with no ground to write. Neither
+    # route through this prerequisite certifies an abutment or a deck datum.
     #
     # THE ATTRIBUTION KEY IS `params.name`, AND THE ANSWER STATES SO.
     # `segment_terrain_written` asks `instruments.record_moves_bed` - the
@@ -1598,32 +1600,34 @@ def deck_remedy(record: dict, *, terrain_written, reconciled=None,
     # unattributable and the honest sentence is "NO RECORD ATTRIBUTES A BED
     # MOVEMENT TO THIS SEGMENT", never "no ground moved here".
     seg = record.get("segment_id")
+    segs = record.get("terrain_segments") or ([seg] if seg else [])
     if terrain_written is None:
         unasked.append("segment_terrain_write")
-    elif not seg:
-        # A crossing that JOINS two segments has no segment of its own, so
-        # this precondition has no subject.  Stated, not silently passed.
+    elif not segs:
         unasked.append("segment_terrain_write")
         nums["segment_terrain_write_has_no_subject"] = True
     else:
         asked.append("segment_terrain_write")
-        got = terrain_written.get(segment_key(seg))
-        nums["segment_terrain_write"] = got
-        if got is None:
-            refused.append(dict(
-                precondition="segment_terrain_write",
-                sub_class="build_order", implies="1E_OUT_OF_ORDER",
-                prerequisite=(f"segment {seg}: no bed-moving record in this "
-                              f"chain is attributed to "
-                              f"{segment_key(seg)!r}"),
-                performed_by="roads/network.py + roads/ribbon.py",
-                why=(f"{cid}: NO bed-moving record in this chain names "
-                     f"{segment_key(seg)!r}, so this builder refuses before "
-                     f"any piece is generated: a deck's abutment is a step "
-                     f"from the road BENCH and there is no bench. The "
-                     f"remedy is not a deck, it is GRADE THE ROAD AND THEN "
-                     f"DECK IT -- two tools in this tree, in an order that "
-                     f"has not run.")))
+        nums["segment_terrain_write"] = terrain_written.get(segment_key(seg)) \
+            if seg else None
+        nums["segment_ground_prerequisites"] = {}
+        for sid in segs:
+            evidence = segment_ground_prerequisite(
+                sid, terrain_written, ground_completed)
+            nums["segment_ground_prerequisites"][sid] = evidence
+            if evidence is None:
+                refused.append(dict(
+                    precondition="segment_terrain_write",
+                    sub_class="build_order", implies="1E_OUT_OF_ORDER",
+                    prerequisite=(f"segment {sid}: no bed-moving record "
+                                  f"attributed to {segment_key(sid)!r} and no "
+                                  f"completed fully bridged ground unit"),
+                    performed_by="roads/network.py + roads/ribbon.py",
+                    why=(f"{cid}: segment {sid} has neither attributed "
+                         f"bed-moving evidence nor a completed fully bridged "
+                         f"ground unit in this build. Build its ground unit "
+                         f"before decking it; a declaration alone does not "
+                         f"prove that its ground prerequisite ran.")))
 
     # (2) SPAN COVERAGE, AND THEN ITS OWN REMEDY'S VERDICT.  A declared bank
     # further off its segment's recorded centreline than the deck is
@@ -2895,6 +2899,23 @@ def census_selftest(path: Path | None = None) -> int:
           f"(both banks must name ONE width): flipped {flipped}; survived "
           f"{survived}")
     bad += not ok
+    rows = ground_prerequisite_arms()
+    for arm in rows:
+        print(f"  [{'ok  ' if arm['ok'] else 'FAIL'}] ground prerequisite "
+              f"{arm['name']}: ready={arm['ready']}, required "
+              f"{arm['want_ready']}")
+        bad += not arm["ok"]
+    undo = _neuter_ground_requires_bed()
+    try:
+        neutered = ground_prerequisite_arms()
+    finally:
+        undo()
+    flipped = [r["name"] for r in neutered if not r["ok"]]
+    survived = [r["name"] for r in neutered if r["ok"]]
+    ok = bool(flipped and survived)
+    print(f"  [{'ok  ' if ok else 'FAIL'}] bed-record-only prerequisite "
+          f"neuter: flipped {flipped}; survived {survived}")
+    bad += not ok
     print(f"\n  {'ALL ARMS ANSWER AS REQUIRED' if not bad else f'{bad} arm(s) did not answer as required'}")
     return 1 if bad else 0
 
@@ -3038,7 +3059,9 @@ def terminal_landing_reach_m(record: dict) -> float:
 
 
 def land_seated_deck_stations(span: dict, surface, deck_y: float,
-                              report: dict | None = None) -> list[tuple[float, float]]:
+                              report: dict | None = None, *,
+                              bent_spacing_m: float = 8.0,
+                              existing: tuple = ()) -> list[tuple[float, float]]:
     """Seat dry tiles and bounded bank ramps; never raise a wet tile's ceiling.
 
     The datum is still the water span's datum. A naturally dry island or bank
@@ -3108,6 +3131,28 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
                     f"station {t:.3f} m, but its footprint reaches wet ground "
                     f"{low:.3f} m; wet ceiling {ceiling:.3f} m cannot be raised.")
         return dict(zip(ts, hs))
+
+    def landing(candidate, end):
+        # Judge the SAME floors that build_pieces will emit and the SAME trim
+        # prepare() applies. A requested last row can disappear with a buried
+        # shoulder, even when its centreline exit met the scalar step limit.
+        pieces = _assemble_deck_stations(
+            span, surface, deck_y, sorted(candidate.items()), bent_spacing_m)
+        pieces, shared = omit_shared_deck_pieces(pieces, existing)
+        pieces, dropped = trim_buried_overhang(span, pieces, surface, deck_y)
+        walking = walking_floor_view(span, pieces, existing, shared)
+        lf = deck_landfall(span, pieces, walking=walking)[end]
+        prefix = f"{span['crossing_id']} {end}:"
+        bad = [msg for msg in abutment_guard(
+            span, pieces, surface, deck_y, walking=walking)
+               if msg.startswith(prefix)]
+        reach = dict(span, bank_projection={},
+                     bank_a=dict(xz=span[end]["xz"]),
+                     bank_b=dict(xz=lf["xz"]))
+        bad.extend(span_coverage_guard(reach, pieces, walking=walking))
+        bad.extend(walking_profile_guard(
+            span, walking, surface, sorted(candidate)))
+        return lf, bad, dropped
 
     wanted = {}
     for t in asm._bridge_station_distances(length, 1):
@@ -3182,9 +3227,10 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
             return surface(ax + ux * t, az + uz * t)
 
         top = heights[anchor]
-        # the end the bridge lays by default: the overhang row, 2 m out, whose
-        # tile ends 1 m further.  A bank the deck already lands on keeps it.
-        if top - at(anchor + sign * 3.0) <= ABUTMENT_STEP_MAX_M:
+        initial_lf, initial_bad, _ = landing(heights, end)
+        initial_step = initial_lf.get("deck_y", deck_y) - surface(
+            *initial_lf["xz"])
+        if not initial_bad:
             continue
         clear = water_y + routemod.DECK_CLEARANCE_M
 
@@ -3219,17 +3265,20 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
                 trial[t] = max(top - (m + k) * LAND_TILE_STEP_M,
                                floor_at(t, -k))
                 candidate = solve(trial)
-                g_exit = at(t + sign)
-                gap = candidate[t] - g_exit
+                lf, bad, dropped = landing(candidate, end)
+                h_end = lf.get("deck_y", deck_y)
+                g_exit = surface(*lf["xz"])
+                gap = h_end - g_exit
                 if tried_best is None or abs(gap) < abs(tried_best[0]):
-                    tried_best = (gap, m, k, candidate[t], g_exit)
-                if abs(gap) <= ABUTMENT_STEP_MAX_M + 1e-9:
+                    tried_best = (gap, m, k, h_end, g_exit,
+                                  lf["outboard_of_bank_m"], bad, dropped)
+                if lf["has_deck"] and not bad:
                     solved = candidate
                     break
             if solved is not None:
                 break
         if solved is None:
-            gap, bm, bk, h_end, g_end = tried_best
+            gap, bm, bk, h_end, g_end, outboard, bad, dropped = tried_best
             raise SystemExit(
                 f"{span['crossing_id']} {end}: terminal landing: this bank is "
                 f"its segment's own end (`terminal_banks`), so no road bench "
@@ -3243,9 +3292,10 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
                 f"nearest it gets is {h_end:.3f} m over applied ground "
                 f"{g_end:.3f} m ({gap:+.3f} m, limit "
                 f"{ABUTMENT_STEP_MAX_M} m; {bm} rows in the span + {bk} "
-                f"beyond). That is a slope or open water, not a shore: its "
-                f"road's own profile never reached the bank. REFUSED, no "
-                f"datum or bank-step limit was relaxed.")
+                f"beyond; surviving floor ends {outboard:.3f} m outboard "
+                f"after trimming {len(dropped)} station(s)). "
+                f"Surviving geometry refuses: {'; '.join(bad)} "
+                f"REFUSED, no datum or bank-step limit was relaxed.")
         wanted = trial
         heights = solved
         ramps.append(dict(bank=end, direction="down", outboard_tiles=k,
@@ -3257,10 +3307,29 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
                               1 for tt, hh in heights.items()
                               if -1e-9 <= (anchor - tt) * sign
                               and hh < top - 1e-6),
-                          initial_step_m=round(top - at(anchor + sign * 3.0), 6),
-                          final_step_m=round(heights[t] - g_exit, 6)))
+                          initial_step_m=round(initial_step, 6),
+                          final_step_m=round(gap, 6),
+                          surviving_outboard_m=lf["outboard_of_bank_m"],
+                          trimmed_stations=len(dropped)))
+    # Solving the other end can propagate heights back through the first.
+    # Do not return a profile whose final assembled landing no longer passes.
+    if _TERMINAL_LANDING_MODE == "lands":
+        for end in span.get("terminal_banks") or ():
+            lf, bad, dropped = landing(heights, end)
+            if bad:
+                raise SystemExit(
+                    f"{span['crossing_id']} {end}: terminal landing's final "
+                    f"surviving geometry REFUSED: {'; '.join(bad)}")
+            for ramp in ramps:
+                if ramp["bank"] == end and ramp.get("direction") == "down":
+                    ramp.update(
+                        final_step_m=round(
+                            lf.get("deck_y", deck_y) - surface(*lf["xz"]), 6),
+                        surviving_outboard_m=lf["outboard_of_bank_m"],
+                        trimmed_stations=len(dropped))
     if report is not None:
         report["landfall_ramps"] = ramps
+        report["deck_station_distances"] = sorted(heights)
         report["land_stations_seated"] = [
             dict(station_m=round(t, 6),
                  xz=[round(ax + ux * t, 6), round(az + uz * t, 6)],
@@ -3278,6 +3347,21 @@ def land_seated_deck_stations(span: dict, surface, deck_y: float,
             measured_grade_max=max(
                 (abs(heights[b] - heights[a]) / (b - a) for a, b in pairs), default=0.0))
     return sorted(heights.items())
+
+
+def _assemble_deck_stations(span: dict, surface, deck_y: float,
+                            stations: list[tuple[float, float]],
+                            bent_spacing_m: float,
+                            report: dict | None = None) -> list:
+    """One assembler configuration for landing trials and emitted geometry."""
+    return asm.bridge(
+        tuple(span["bank_a"]["xz"]), tuple(span["bank_b"]["xz"]),
+        bearing_of(span), deck_y, surface, width_tiles=deck_tiles(span),
+        carriageway_half_m=float(span["deck_width_m"]) / 2.0,
+        bent_spacing_m=bent_spacing_m, name=span["crossing_id"], report=report,
+        deck_stations=stations,
+        end_bents=tuple(end[-1] for end in (span.get("terminal_banks") or ())
+                        if _TERMINAL_END_BENT_MODE == "own"))
 
 
 def build_pieces(span: dict, surface, deck_y: float | None = None,
@@ -3298,15 +3382,11 @@ def build_pieces(span: dict, surface, deck_y: float | None = None,
     than its bay count implies.
     """
     h = shared_deck_datum(span, existing) if deck_y is None else deck_y
-    stations = land_seated_deck_stations(span, surface, h, report)
-    pieces = asm.bridge(
-        tuple(span["bank_a"]["xz"]), tuple(span["bank_b"]["xz"]),
-        bearing_of(span), h, surface, width_tiles=deck_tiles(span),
-        carriageway_half_m=float(span["deck_width_m"]) / 2.0,
-        bent_spacing_m=bent_spacing_m, name=span["crossing_id"], report=report,
-        deck_stations=stations,
-        end_bents=tuple(end[-1] for end in (span.get("terminal_banks") or ())
-                        if _TERMINAL_END_BENT_MODE == "own"))
+    stations = land_seated_deck_stations(
+        span, surface, h, report, bent_spacing_m=bent_spacing_m,
+        existing=existing)
+    pieces = _assemble_deck_stations(
+        span, surface, h, stations, bent_spacing_m, report)
     pieces, shared = omit_shared_deck_pieces(pieces, existing)
     if report is not None:
         report["deck_tiles_carried_by_existing_bridge"] = [
@@ -3431,18 +3511,9 @@ def omit_shared_deck_pieces(pieces: list, existing: tuple) -> tuple[list, list]:
                     or math.hypot(p.x - old.x, p.z - old.z) > 3.0):
                 continue
             remaining = []
+            carrier = _plan_polygon(old, margin=0.0001)
             for polygon in uncovered:
-                inside = polygon
-                for axis, sign in ((0, 1), (0, -1), (1, 1), (1, -1)):
-                    def distance(pt):
-                        return sign * tile_frame(old, *pt)[axis] - 1.0001
-
-                    outside = _clip_polygon(inside, distance, False)
-                    if len(outside) >= 3:
-                        remaining.append(outside)
-                    inside = _clip_polygon(inside, distance, True)
-                    if not inside:
-                        break
+                remaining.extend(_subtract_plan_polygon(polygon, carrier))
             uncovered = remaining
             carriers.append(old.role)
             if not uncovered:
@@ -3451,6 +3522,7 @@ def omit_shared_deck_pieces(pieces: list, existing: tuple) -> tuple[list, list]:
             kept.append(p)
         else:
             shared.append(dict(prefab=p.prefab, xz=[p.x, p.z], y=p.y,
+                               yaw=p.yaw, lateral=p.lateral,
                                carried_by=sorted(set(carriers))))
     return kept, shared
 
@@ -3489,6 +3561,10 @@ def trim_buried_overhang(span: dict, pieces: list, surface,
     the water plane, and one station of overhang is what put the end of the
     deck on real ground "whether or not the road ribbon has been levelled
     yet".
+    A seated landing can instead supply 1 m rows. Their ownership is the
+    assembler's actual row planes: floors, rail posts and bent piles/caps
+    share a row, while each rail joins two successive rows. Neither rows
+    nor their supports may be grouped by a nominal 2 m pitch.
 
     Here the ribbon HAS been levelled -- that is what the three terrain legs
     were for -- so at an abutment whose bench is already at H the overhang
@@ -3520,15 +3596,31 @@ def trim_buried_overhang(span: dict, pieces: list, surface,
     def along(p) -> float:
         return (p.x - ax) * ux + (p.z - az) * uz
 
-    # Station key beyond either bank, rounded to the 2 m pitch.
-    buried_stations: dict[int, dict] = {}
+    # bridge() separates distinct rows by at least min_bay_m(), twice the
+    # gate's duplicate tolerance. Cluster only co-located row pivots within
+    # that authoritative tolerance, retaining an actual emitted coordinate.
+    row_tol = asm.min_bay_m() / 2.0
+    row_roles = ("/deck", "/rail_post", "/cap", "/pile")
+    stations = []
+    for t in sorted(along(p) for p in pieces if p.role.endswith(row_roles)):
+        if not stations or t - stations[-1] > row_tol:
+            stations.append(t)
+
+    def station_key(p) -> float:
+        return min(stations, key=lambda t: abs(t - along(p)))
+
+    # A rail is at the midpoint of two successive actual rows. Its ownership
+    # is that connection, not whichever station happens to be nearest.
+    rail_ends = {(a + b) / 2.0: (a, b)
+                 for a, b in zip(stations, stations[1:])}
+    buried_stations: dict[float, dict] = {}
     for p in pieces:
         if not p.role.endswith("/deck"):
             continue
         t = along(p)
         if -0.5 <= t <= length + 0.5:
             continue                      # inside the crossing: never trimmed
-        key = int(round(t / 2.0))
+        key = station_key(p)
         g = surface(p.x, p.z)
         top = p.y + f_floor.hi[1]
         depth = g - top
@@ -3542,8 +3634,8 @@ def trim_buried_overhang(span: dict, pieces: list, surface,
             prev = buried_stations.get(key)
             if prev is None or worst > prev["worst_burial_m"]:
                 buried_stations[key] = {
-                    "station_t_m": round(t, 2), "xz": [round(p.x, 2),
-                                                       round(p.z, 2)],
+                    "station_t_m": key, "xz": [round(p.x, 2),
+                                               round(p.z, 2)],
                     "applied_ground_y": round(g, 3),
                     "lowest_ground_under_y": (None if lowest is None
                                               else round(lowest, 3)),
@@ -3551,19 +3643,31 @@ def trim_buried_overhang(span: dict, pieces: list, surface,
                     "end": "bank_a" if t < 0 else "bank_b"}
     if not buried_stations:
         return pieces, []
-    keys = set(buried_stations)
-    kept = [p for p in pieces
-            if not (int(round(along(p) / 2.0)) in keys
-                    and not (-0.5 <= along(p) <= length + 0.5))]
+    counts = dict.fromkeys(buried_stations, 0)
+    kept = []
+    for p in pieces:
+        if p.role.endswith("/rail") and rail_ends:
+            midpoint = min(rail_ends, key=lambda t: abs(t - along(p)))
+            owners = (rail_ends[midpoint]
+                      if abs(midpoint - along(p)) <= row_tol else ())
+        else:
+            owners = (station_key(p),) if p.role.endswith(row_roles) else ()
+        removed = next((owner for owner in owners
+                        if owner in buried_stations), None)
+        if removed is None:
+            kept.append(p)
+        else:
+            # A rail connecting two removed rows is counted once.
+            counts[removed] += 1
     dropped = sorted(buried_stations.values(), key=lambda d: d["station_t_m"])
     for d in dropped:
-        d["pieces_dropped"] = len(pieces) - len(kept)
-        d["why"] = ("overhang station beyond the bank coordinate, buried past "
-                    f"{BURIAL_MAX_M} m at its pivot or past the burial "
-                    f"guard's {BURIED_MAX_M} m at the lowest vertex under it, "
-                    "by ground that keeps rising; the deck still reaches the "
-                    "bank coordinate itself, where the road's own bench "
-                    "stands at the deck's H")
+        d["pieces_dropped"] = counts[d["station_t_m"]]
+        d["why"] = ("actual overhang row beyond the bank coordinate, buried "
+                    f"past {BURIAL_MAX_M} m at its pivot or past the burial "
+                    f"guard's {BURIED_MAX_M} m at the lowest vertex under it; "
+                    "remove that row's floors, rail posts and bent, plus "
+                    "rails incident on it, never a neighbouring row's floors "
+                    "or supports; the crossing itself is not shortened")
     return kept, dropped
 
 
@@ -3636,7 +3740,211 @@ def deck_datum_guard(span: dict, deck_y: float, *,
     return bad
 
 
-def deck_landfall(span: dict, pieces: list) -> dict[str, dict]:
+def _tile_frame_bounds(tile) -> tuple:
+    """Measured bounds in tile_frame's (along=z, lateral=x) axis order."""
+    f = asm.facts()[tile.prefab]
+    return ((f.lo[2], f.hi[2]), (f.lo[0], f.hi[0]))
+
+
+def _walking_covers(floor, scope, x: float, z: float) -> bool:
+    return all(
+        lo - TILE_SEAM_M <= value <= hi + TILE_SEAM_M
+        for tile in (floor, scope)
+        for value, (lo, hi) in zip(
+            tile_frame(tile, x, z), _tile_frame_bounds(tile)))
+
+
+def walking_floor_view(span: dict, pieces: list, existing: tuple = (),
+                       shared: list = ()) -> list:
+    """Measurement-only (actual floor, claimed footprint) pairs.
+
+    Reused floors are admitted ONLY through the canonical omission ledger.
+    Their real height/yaw is retained, and their usable footprint is clipped
+    to the planned tile they carried. Nothing existing is moved or emitted.
+    """
+    view = [(p, p) for p in pieces if p.role.endswith("/deck")]
+    floor_top = asm.facts()["wood_floor"].hi[1]
+    for rec in shared:
+        if rec["prefab"] != "wood_floor":
+            continue
+        x, z = rec["xz"]
+        scope = asm.Placed("wood_floor", x, rec["y"], z,
+                           rec["yaw"], "walking-scope/deck",
+                           lateral=rec["lateral"])
+        for old in existing:
+            if (old.prefab != "wood_floor"
+                    # Omission stops at its first sufficient carrier. Other
+                    # compatible floors are still real surfaces inside this
+                    # proven scope, but may never create another scope.
+                    or abs(scope.y + floor_top - old.y - floor_top)
+                    > ABUTMENT_STEP_MAX_M
+                    or math.hypot(scope.x - old.x, scope.z - old.z) > 3.0):
+                continue
+            if _plan_overlap_m2(_plan_polygon(old), _plan_polygon(scope)) > 0.0:
+                view.append((old, scope))
+    return view
+
+
+def _walking_intervals(span: dict, walking: list, lateral_m: float = 0.0) -> list:
+    """Intervals on one walked lane, inside actual AND scoped measured boxes."""
+    ax, az = span["bank_a"]["xz"]
+    bx, bz = span["bank_b"]["xz"]
+    length = math.hypot(bx - ax, bz - az)
+    ux, uz = (bx - ax) / length, (bz - az) / length
+    ax, az = ax + uz * lateral_m, az - ux * lateral_m
+    floor_top = asm.facts()["wood_floor"].hi[1]
+    intervals = []
+    for floor, scope in walking:
+        lo, hi = -math.inf, math.inf
+        for tile in (floor, scope):
+            at = tile_frame(tile, ax, az)
+            yaw = math.radians(tile.yaw)
+            sy, cy = math.sin(yaw), math.cos(yaw)
+            slopes = (ux * sy + uz * cy, ux * cy - uz * sy)
+            for origin, slope, (lower, upper) in zip(
+                    at, slopes, _tile_frame_bounds(tile)):
+                if slope == 0.0:
+                    if not lower - TILE_SEAM_M <= origin <= upper + TILE_SEAM_M:
+                        lo, hi = math.inf, -math.inf
+                        break
+                else:
+                    ends = ((lower - TILE_SEAM_M - origin) / slope,
+                            (upper + TILE_SEAM_M - origin) / slope)
+                    lo, hi = max(lo, min(ends)), min(hi, max(ends))
+        if hi > lo:
+            intervals.append((lo, hi, floor.y + floor_top))
+    return intervals
+
+
+def walking_profile_guard(span: dict, walking: list, surface,
+                          stations: list) -> list[str]:
+    """Actual walked lanes; wet height is judged on exposed 2D footprints."""
+    ax, az = span["bank_a"]["xz"]
+    bx, bz = span["bank_b"]["xz"]
+    length = math.hypot(bx - ax, bz - az)
+    ux, uz = (bx - ax) / length, (bz - az) / length
+    half_way = float(span["deck_width_m"]) / 2.0
+    floor_top = asm.facts()["wood_floor"].hi[1]
+
+    def lateral(pt):
+        return (pt[0] - ax) * uz - (pt[1] - az) * ux
+
+    def along(pt):
+        return (pt[0] - ax) * ux + (pt[1] - az) * uz
+
+    patches = []
+    lanes = {0.0}
+    for floor, scope in walking:
+        poly = _plan_intersection(_plan_polygon(floor), _plan_polygon(scope))
+        poly = _clip_polygon(poly, lambda pt: lateral(pt) - half_way, True)
+        poly = _clip_polygon(poly, lambda pt: -lateral(pt) - half_way, True)
+        if _polygon_area(poly) <= 0.0:
+            continue
+        patches.append((floor, poly, floor.y + floor_top))
+        # A representative line for every actually claimed lane, including
+        # lanes which do not intersect the crossing's centreline at all.
+        lanes.add(sum(lateral(pt) for pt in poly) / len(poly))
+
+    bad = []
+    for lane in sorted(lanes):
+        intervals = _walking_intervals(span, walking, lane)
+        def top_at(t):
+            tops = [h for lo, hi, h in intervals
+                    if lo - TILE_SEAM_M <= t <= hi + TILE_SEAM_M]
+            return max(tops) if tops else None
+        rows = [(t, top_at(t)) for t in stations]
+        for (a, ah), (b, bh) in zip(rows, rows[1:]):
+            if ah is None or bh is None:
+                continue
+            limit = min(LAND_TILE_STEP_M,
+                        (b - a) * road_instruments.STEP_LIMIT_PER_M)
+            if abs(bh - ah) > limit + TILE_SEAM_M:
+                bad.append(
+                    f"{span['crossing_id']}: actual walking surfaces at "
+                    f"{a:.3f}/{b:.3f} m, lateral {lane:.3f}, step "
+                    f"{abs(bh - ah):.3f} m above unchanged {limit:.3f} m limit.")
+        ends = sorted({t for lo, hi, _h in intervals for t in (lo, hi)})
+        segments = [(a, b, top_at((a + b) / 2.0))
+                    for a, b in zip(ends, ends[1:])
+                    if b - a > TILE_SEAM_M]
+        for a, b, h in segments:
+            if h is None and abs(lane) <= TILE_SEAM_M:
+                bad.append(
+                    f"{span['crossing_id']}: actual walking geometry at "
+                    f"lateral {lane:.3f} has uncovered interval "
+                    f"{a:.3f}..{b:.3f} m.")
+        for (_a, b, ah), (c, _d, bh) in zip(segments, segments[1:]):
+            if ah is not None and bh is not None and c - b <= TILE_SEAM_M:
+                if abs(bh - ah) > LAND_TILE_STEP_M + TILE_SEAM_M:
+                    bad.append(
+                        f"{span['crossing_id']}: actual walking transition at "
+                        f"{b:.3f} m, lateral {lane:.3f}, steps "
+                        f"{abs(bh - ah):.3f} m above unchanged "
+                        f"{LAND_TILE_STEP_M:.3f} m limit.")
+
+    def inside(poly, pt):
+        # Match the footprint sampler's native-column boundary tolerance.
+        sign = 1.0 if sum(p[0] * q[1] - q[0] * p[1]
+                          for p, q in zip(poly, poly[1:] + poly[:1])) > 0 else -1.0
+        return all(
+            sign * ((q[0] - p[0]) * (pt[1] - p[1])
+                    - (q[1] - p[1]) * (pt[0] - p[0]))
+            >= -1e-9 * math.hypot(q[0] - p[0], q[1] - p[1])
+            for p, q in zip(poly, poly[1:] + poly[:1]))
+
+    columns = {}
+    def ground_under_patch(floor, poly):
+        key = id(floor)
+        if key not in columns:
+            columns[key] = asm.footprint_vertices(floor)
+        vertices = [pt for pt in columns[key] if inside(poly, pt)]
+        if not vertices:
+            # Same native nearest-column fallback as footprint_vertices for
+            # a sub-column piece, using this convex exposed patch's interior.
+            vertices = [(float(round(sum(pt[0] for pt in poly) / len(poly))),
+                         float(round(sum(pt[1] for pt in poly) / len(poly))))]
+        return min(surface(x, z) for x, z in vertices)
+
+    ceiling = float(span.get("legal_deck_y_interval",
+                             [span["deck_y_REQUIRED"]] * 2)[1])
+    water_y = float(span.get("water_surface_y", 30.0))
+    clear = water_y + routemod.DECK_CLEARANCE_M
+    for floor, poly, h in patches:
+        if clear - TILE_SEAM_M <= h <= ceiling + TILE_SEAM_M:
+            continue
+        exposed = [poly]
+        for _upper, upper_poly, upper_h in patches:
+            if upper_h <= h + TILE_SEAM_M:
+                continue
+            # Higher floors mask ONLY the XZ region they physically occupy,
+            # never another lane merely because both touch the centreline.
+            exposed = [part for fragment in exposed
+                       for part in _subtract_plan_polygon(fragment, upper_poly)]
+            if not exposed:
+                break
+        for fragment in exposed:
+            if (h > ceiling + TILE_SEAM_M
+                    and ground_under_patch(floor, fragment) < water_y):
+                msg = (f"{span['crossing_id']}: exposed actual walking surface "
+                       f"{h:.3f} m exceeds wet ceiling {ceiling:.3f} m.")
+                if msg not in bad:
+                    bad.append(msg)
+            if h < clear - TILE_SEAM_M:
+                in_span = _clip_polygon(fragment, lambda pt: -along(pt), True)
+                in_span = _clip_polygon(
+                    in_span, lambda pt: along(pt) - length, True)
+                if (_polygon_area(in_span) > 0.0
+                        and ground_under_patch(floor, in_span) < water_y):
+                    msg = (f"{span['crossing_id']}: exposed actual walking "
+                           f"surface {h:.3f} m is below wet clearance "
+                           f"{clear:.3f} m inside the crossing.")
+                    if msg not in bad:
+                        bad.append(msg)
+    return bad
+
+
+def deck_landfall(span: dict, pieces: list, *, walking: list | None = None
+                  ) -> dict[str, dict]:
     """Where each end of the deck ACTUALLY MEETS THE GROUND, per bank.
 
     `assemble.bridge` lays overhang stations BEYOND each bank coordinate and
@@ -3649,29 +3957,29 @@ def deck_landfall(span: dict, pieces: list) -> dict[str, dict]:
     bx, bz = span["bank_b"]["xz"]
     L = math.hypot(bx - ax, bz - az)
     ux, uz = ((bx - ax) / L, (bz - az) / L) if L > 0 else (0.0, 0.0)
-    tiles = [p for p in pieces if p.role.endswith("/deck")]
+    intervals = _walking_intervals(
+        span, walking_floor_view(span, pieces) if walking is None else walking)
     out: dict[str, dict] = {}
     for end, anchor, sign in (("bank_a", 0.0, -1.0), ("bank_b", L, +1.0)):
-        if not tiles:
+        if not intervals:
             out[end] = {"has_deck": False, "along_m": anchor,
                         "xz": [ax + ux * anchor, az + uz * anchor],
                         "outboard_of_bank_m": 0.0}
             continue
-        alongs = [(p.x - ax) * ux + (p.z - az) * uz for p in tiles]
-        edge = (min(alongs) - TILE_HALF_M if sign < 0
-                else max(alongs) + TILE_HALF_M)
-        centre_t = min(alongs) if sign < 0 else max(alongs)
-        end_tile = min((p for p, t in zip(tiles, alongs)
-                        if abs(t - centre_t) < 1e-5),
-                       key=lambda p: abs(lateral_of(span, p)))
+        edge = (min(lo for lo, _hi, _h in intervals) if sign < 0
+                else max(hi for _lo, hi, _h in intervals))
+        landing_y = max(h for lo, hi, h in intervals
+                        if (abs(lo - edge) if sign < 0 else abs(hi - edge))
+                        <= TILE_SEAM_M)
         out[end] = {"has_deck": True, "along_m": round(edge, 3),
                     "xz": [ax + ux * edge, az + uz * edge],
                     "outboard_of_bank_m": round(abs(edge - anchor), 3),
-                    "deck_y": end_tile.y + asm.facts()["wood_floor"].hi[1]}
+                    "deck_y": landing_y}
     return out
 
 
-def abutment_guard(span: dict, pieces: list, surface, deck_y: float) -> list[str]:
+def abutment_guard(span: dict, pieces: list, surface, deck_y: float, *,
+                    walking: list | None = None) -> list[str]:
     """The step from the road bench onto the deck, at BOTH banks, against the
     APPLIED surface and against the deck's OWN H.
 
@@ -3706,7 +4014,7 @@ def abutment_guard(span: dict, pieces: list, surface, deck_y: float) -> list[str
     reading and hiding it would make this correction unauditable.
     """
     bad = []
-    land = deck_landfall(span, pieces)
+    land = deck_landfall(span, pieces, walking=walking)
     for end in ("bank_a", "bank_b"):
         bx_, bz_ = span[end]["xz"]
         at_bank = deck_y - surface(bx_, bz_)
@@ -3901,7 +4209,8 @@ def tile_covers(p, px: float, pz: float,
 
 def span_coverage_guard(span: dict, pieces: list,
                         sample_m: float = COVERAGE_SAMPLE_M, *,
-                        existing: tuple = ()) -> list[str]:
+                        existing: tuple = (),
+                        walking: list | None = None) -> list[str]:
     """DOES THIS DECK ACTUALLY COVER THE CROSSING IT WAS ASKED TO CROSS?
 
     THE CHECK THAT WOULD HAVE CAUGHT A DECK BEING CREDITED WITH A CHANNEL IT
@@ -3954,7 +4263,11 @@ def span_coverage_guard(span: dict, pieces: list,
     for i in range(n):
         t = length * i / (n - 1) if n > 1 else 0.0
         px, pz = ax + ux * t, az + uz * t
-        if any(tile_covers(p, px, pz) for p in tiles):
+        covered = (any(tile_covers(p, px, pz) for p in tiles)
+                   if walking is None else
+                   any(_walking_covers(floor, scope, px, pz)
+                       for floor, scope in walking))
+        if covered:
             continue
         lat = (px - cx) * buz - (pz - cz) * bux
         uncovered.append((round(t, 1), round(px, 2), round(pz, 2),
@@ -4301,7 +4614,7 @@ def carriageway_guard(span: dict, pieces: list, deck_y: float) -> list[str]:
     """No piece a walker would have to climb stands inside the carriageway
     this deck carries (CARRIAGEWAY_GUARD_DEPENDS_ON)."""
     hw = float(span["deck_width_m"]) / 2.0
-    step = ribbonmod.SLIDE_GRADIENT
+    step = road_instruments.STEP_LIMIT_PER_M
     f = asm.facts()
     bad = []
     for p in pieces:
@@ -4680,7 +4993,8 @@ def landfall_seating_arms() -> list[dict]:
 def _neuter_land_seating():
     real = globals()["land_seated_deck_stations"]
 
-    def fixed_datum(span, surface, deck_y, report=None):
+    def fixed_datum(span, surface, deck_y, report=None, *, bent_spacing_m=8.0,
+                    existing=()):
         ax, az = span["bank_a"]["xz"]
         bx, bz = span["bank_b"]["xz"]
         return [(t, deck_y) for t in asm._bridge_station_distances(
@@ -4695,17 +5009,26 @@ def _neuter_land_seating():
 
 def _terminal_fixture(name: str, drop: float, terminal: tuple,
                       mirror: bool = False,
-                      h: float = 32.5, length: float = 20.0):
+                      h: float = 32.5, length: float = 20.0, *,
+                      trim_ridge: str | None = None):
     """A 20 m crossing along +z at deck `h`, built here with no world: the near
     bank (z<2) is a dry bench at the deck's level, the middle is water, and
     the far shore (z>=16) lies `drop` m BELOW the deck for as far as anyone
     can walk -- the ground beyond a road that ended inside the bridged run.
     `terminal` is what the network records as `terminal_banks`; `mirror`
-    swaps which bank is the shore, so the same ground is `bank_a`'s."""
-    def ground(_x, z):
+    swaps which bank is the shore, so the same ground is `bank_a`'s.
+    A narrow shoulder ridge can swallow a requested landing row without
+    lifting its carriageway's footprint minimum. With `all`, every lowered
+    outboard row meets that ridge and the bank itself stays over water."""
+    def ground(x, z):
+        if (trim_ridge and abs(x - 2.0) < 0.25
+                and (z > 20.5 if trim_ridge == "all"
+                     else abs(z - 23.0) < 0.25)):
+            return h - 0.2
         if z < 2.0:
             return h
-        return 29.0 if z < 16.0 else h - drop
+        shore = 21.0 if trim_ridge == "all" else 16.0
+        return 29.0 if z < shore else h - drop
     bed = _fixture_bed(ground, f"terminal landing, shore {drop:g} m below")
     near, far = ([0.0, 0.0], [0.0, length])
     span = dict(crossing_id=f"FIX-{name}", deck_y_REQUIRED=h,
@@ -4734,28 +5057,43 @@ def terminal_landing_arms() -> list[dict]:
     END BENT   a terminal end 0.30 m over its shelf touches no ground and is
                carried by its own bent: the structural verdict is the only
                thing that tells it from the same deck without one.
+    TRIMMED    a shoulder ridge removes the row the scalar exit search chose.
+               The assembled, trimmed landing must still pass, in BOTH
+               directions, without hopping over the missing rows.
+    NO EXIT    when all lower exit rows are trimmed and the wet bank cannot
+               descend, refuse upstream with surviving-floor measurements.
     """
     out = []
-    for name, drop, terminal, want_refused, want_text, mirror in (
+    for name, drop, terminal, want_refused, want_text, mirror, ridge in (
             ("a_shore_below_a_terminal_bank_is_landed_by_a_ramp",
-             1.2, ("bank_b",), False, None, False),
+             1.2, ("bank_b",), False, None, False, None),
             ("a_shore_below_a_terminal_bank_a_is_landed_the_same_way",
-             1.2, ("bank_a",), False, None, True),
+             1.2, ("bank_a",), False, None, True, None),
             ("the_same_shore_below_a_road_bank_is_the_roads_to_bench",
-             1.2, (), True, None, False),
+             1.2, (), True, None, False, None),
             ("a_slope_below_a_terminal_bank_is_refused_with_its_numbers",
-             8.0, ("bank_b",), True, "(+5.300 m, limit", False),
+             8.0, ("bank_b",), True, "(+5.300 m, limit", False, None),
             ("a_terminal_bank_on_the_ground_lays_no_ramp",
-             0.0, ("bank_b",), False, None, False),
+             0.0, ("bank_b",), False, None, False, None),
             ("a_terminal_end_over_a_shelf_stands_on_its_own_bent",
-             0.3, ("bank_b",), False, None, False)):
-        span, bed, h = _terminal_fixture(name, drop, terminal, mirror)
+             0.3, ("bank_b",), False, None, False, None),
+            ("a_trimmed_landing_row_is_not_a_surviving_bank_b_exit",
+             1.2, ("bank_b",), False, None, False, "row"),
+            ("a_trimmed_landing_row_is_not_a_surviving_bank_a_exit",
+             1.2, ("bank_a",), False, None, True, "row"),
+            ("a_wet_bank_with_no_surviving_lower_exit_refuses_upstream",
+             1.2, ("bank_b",), True, "surviving floor ends", False, "all")):
+        span, bed, h = _terminal_fixture(
+            name, drop, terminal, mirror, trim_ridge=ridge)
         report: dict = {}
         try:
             pieces = build_pieces(span, bed, bent_spacing_m=8.0, report=report)
             pieces, _ = trim_buried_overhang(span, pieces, bed, h)
+            walking = walking_floor_view(span, pieces)
             verdict = asm.verify(pieces, bed)
-            guards = run_guards(span, pieces, verdict, bed, h)
+            guards = run_guards(
+                span, pieces, verdict, bed, h, walking=walking,
+                stations=report.get("deck_station_distances", []))
             refused = any(guards.values())
         except SystemExit as exc:
             out.append(dict(name=name, got_refused=True,
@@ -4776,16 +5114,191 @@ def terminal_landing_arms() -> list[dict]:
             for (az, ah), (bz, bh) in zip(centre, centre[1:]))
         want_ramp = (not want_refused and bool(terminal)
                      and drop > ABUTMENT_STEP_MAX_M)
+        covered = True
+        if ridge:
+            end = terminal[0]
+            lf = deck_landfall(span, pieces, walking=walking)[end]
+            reach = dict(span, bank_projection={},
+                         bank_a=dict(xz=span[end]["xz"]),
+                         bank_b=dict(xz=lf["xz"]))
+            covered = not span_coverage_guard(reach, pieces, walking=walking)
         ok = (refused == want_refused
-              and (want_refused or (bounded and bool(ramps) == want_ramp)))
+              and not (ridge and want_refused)  # This case must refuse upstream.
+              and (want_refused or (bounded and covered
+                                   and bool(ramps) == want_ramp)))
         out.append(dict(name=name, got_refused=refused,
                         want_refused=want_refused, ok=ok,
                         ramps=[(r["direction"], r["outboard_tiles"],
                                 r["final_step_m"]) for r in ramps],
                         bounded_steps_and_grade=bounded,
+                        landing_coverage=covered,
                         why=f"guards {sorted(k for k, v in guards.items() if v)}"
                             f", ramped={bool(ramps)} (wanted {want_ramp}), "
-                            f"bounded={bounded}"))
+                            f"bounded={bounded}, landing covered={covered}"))
+    return out + shared_terminal_landing_arms()
+
+
+def shared_terminal_landing_arms() -> list[dict]:
+    """Real platform floors carried through canonical omission and guards."""
+    h, length = 32.5, 12.0
+    span = dict(crossing_id="FIX-shared-terminal", segment="fixture",
+                span_m=length, deck_y_REQUIRED=h, deck_width_m=4.0,
+                legal_deck_y_interval=[h, h], single_H_both_banks=True,
+                water_surface_y=30.0, bank_a=dict(xz=[0.0, 0.0]),
+                bank_b=dict(xz=[0.0, length]), terminal_banks=["bank_b"])
+    stations = [(t, h) for t in asm._bridge_station_distances(length, 1)]
+    floor = asm.facts()["wood_floor"]
+    underside = (h - floor.hi[1]) + floor.lo[1]
+    bed = _fixture_bed(lambda x, z: underside,
+                       "terrain at the measured floor collider underside")
+    platform = _assemble_deck_stations(span, bed, h, stations, 4.0)
+    # A rail-free platform is a real, terrain-supported floor population,
+    # not a replacement generator or a fabricated structural verdict.
+    floors = tuple(p for p in platform if p.prefab == "wood_floor")
+    out = []
+    for name, existing in (
+            ("a_fully_reused_terminal_platform_is_walking_geometry", floors),
+            ("a_partly_reused_terminal_platform_joins_new_floors",
+             tuple(p for p in floors if p.z >= length / 2.0))):
+        before = [(p.x, p.y, p.z, p.yaw, p.role) for p in existing]
+        report = {}
+        try:
+            pieces = build_pieces(
+                span, bed, bent_spacing_m=4.0, report=report, existing=existing)
+            pieces, _ = trim_buried_overhang(span, pieces, bed, h)
+            walking = walking_floor_view(
+                span, pieces, existing,
+                report["deck_tiles_carried_by_existing_bridge"])
+            verdict = asm.verify([*pieces, *existing], bed)
+            guards = run_guards(
+                span, pieces, verdict, bed, h, existing=existing,
+                walking=walking, stations=report["deck_station_distances"])
+            measured = measure(span, pieces, verdict, bed, h, walking=walking)
+            emitted_floors = sum(p.prefab == "wood_floor" for p in pieces)
+            full = existing is floors
+            untouched = before == [
+                (p.x, p.y, p.z, p.yaw, p.role) for p in existing]
+            borrowed = bool(report["deck_tiles_carried_by_existing_bridge"])
+            ok = (not any(guards.values()) and untouched and borrowed
+                  and (emitted_floors == 0 if full else emitted_floors > 0)
+                  and all(id(p) not in {id(q) for q in existing} for p in pieces)
+                  and measured["abutment_steps"]["bank_b"]["outboard_of_bank_m"]
+                  > 0.0)
+            out.append(dict(name=name, want_refused=False,
+                            got_refused=any(guards.values()), ok=ok,
+                            existing_unchanged=untouched,
+                            emitted_floors=emitted_floors,
+                            guards=[k for k, v in guards.items() if v],
+                            why=str(guards)))
+        except SystemExit as exc:
+            out.append(dict(name=name, want_refused=False, got_refused=True,
+                            ok=False, why=str(exc)))
+
+    # Physical existing-only states: required new floors have NOT been
+    # emitted. Omission may credit only the real compatible patches; it must
+    # not turn an incomplete/unrelated/overheight platform into a crossing.
+    wanted = [p for p in platform if p.prefab == "wood_floor"]
+    for name, shift, offset, gap, stair, wet in (
+            ("an_unrelated_platform_does_not_supply_a_terminal_landing",
+             0.0, 8.0, False, False, False),
+            ("a_gap_in_reused_floors_is_not_filled_by_the_walking_view",
+             0.0, 0.0, True, False, False),
+            ("wrong_height_floors_are_not_borrowed",
+             0.8, 0.0, False, False, False),
+            ("a_reused_intermediate_stair_keeps_its_actual_height",
+             0.0, 0.0, False, True, False),
+            ("a_compatible_but_overheight_wet_platform_is_refused",
+             0.2, 0.0, False, False, True),
+            ("a_compatible_but_underheight_wet_platform_is_refused",
+             -0.2, 0.0, False, False, True)):
+        old_span = dict(span, crossing_id=f"FIX-existing-{name}",
+                        bank_a=dict(xz=[offset, 0.0]),
+                        bank_b=dict(xz=[offset, length]))
+        old_stations = [
+            (t, h + shift + (-0.3 if t < length / 2.0 else 0.3)
+             if stair else h + shift)
+            for t, _height in stations
+            if not gap or not length / 3.0 <= t <= 2.0 * length / 3.0]
+        ground = 29.0 if wet else h - 0.6
+        old_bed = _fixture_bed(lambda x, z, g=ground: g,
+                               "constructed existing platform state")
+        old_body = _assemble_deck_stations(
+            old_span, old_bed, h + shift, old_stations, 4.0)
+        existing = tuple(p for p in old_body if p.prefab == "wood_floor")
+        _required, shared = omit_shared_deck_pieces(wanted, existing)
+        walking = walking_floor_view(span, [], existing, shared)
+        verdict = asm.verify(list(existing), old_bed)
+        guards = run_guards(
+            span, [], verdict, old_bed, h, existing=existing, walking=walking,
+            stations=[t for t, _height in stations])
+        profile = walking_profile_guard(
+            span, walking, old_bed, [t for t, _height in stations])
+        wet_word = "wet clearance" if shift < 0.0 else "wet ceiling"
+        specific = (any("transition" in msg or "step " in msg for msg in profile)
+                    if stair else any(wet_word in msg for msg in profile)
+                    if wet else bool(guards["span_coverage"]))
+        out.append(dict(name=name, want_refused=True,
+                        got_refused=any(guards.values()),
+                        ok=any(guards.values()) and specific,
+                        reused_patches=len(walking),
+                        specific_geometry_refusal=specific,
+                        why=str(guards)))
+    return out + wet_lane_surface_arms()
+
+
+def wet_lane_surface_arms() -> list[dict]:
+    """Real native bridge geometry: adjacent lanes are not vertical masks."""
+    h, length = 32.5, 12.0
+    f = asm.facts()["wood_floor"]
+    shore = (h - f.hi[1]) + f.lo[1]
+    def ground(x, z):
+        return shore if z < 2.0 or z > length - 2.0 else 29.0
+    bed = _fixture_bed(ground, "wet interior with physically grounded banks")
+    stations = [(t, h) for t in asm._bridge_station_distances(length, 1)]
+    out = []
+    for name, low_x, upper_x, width, want_refused in (
+            ("an_exposed_low_lane_is_not_hidden_by_an_adjacent_high_lane",
+             -1.0, 1.0, 2.0, True),
+            ("an_offcentre_wet_lane_is_checked_outside_the_centreline",
+             1.5, 0.0, 4.0, True),
+            ("an_actually_overlapping_upper_carrier_hides_the_lower_surface",
+             0.0, 0.0, 2.0, False)):
+        span = dict(crossing_id=f"FIX-{name}", deck_y_REQUIRED=h,
+                    deck_width_m=width, legal_deck_y_interval=[h, h],
+                    bank_a=dict(xz=[0.0, 0.0]),
+                    bank_b=dict(xz=[0.0, length]), water_surface_y=30.0)
+        # Both populations are emitted by the canonical assembler, not
+        # synthetic heights or masks. The lower platform occupies wet middle
+        # rows only; the upper platform has real bank and bent foundations.
+        upper = asm.bridge(
+            (upper_x, 0.0), (upper_x, length), 0.0, h, bed,
+            width_tiles=1, bent_spacing_m=4.0, name=f"{name}/upper",
+            end_bents=("a", "b"))
+        lower = asm.bridge(
+            (low_x, 4.0), (low_x, 8.0), 0.0, h - 0.2, bed,
+            width_tiles=1, bent_spacing_m=4.0, name=f"{name}/lower",
+            end_bents=("a", "b"))
+        wanted_low = asm.bridge(
+            (low_x, 4.0), (low_x, 8.0), 0.0, h, bed,
+            width_tiles=1, bent_spacing_m=4.0, name=f"{name}/claim",
+            end_bents=("a", "b"))
+        wanted = [p for p in [*upper, *wanted_low]
+                  if p.prefab == "wood_floor"]
+        # Lower first deliberately exercises omission's first-carrier stop:
+        # the upper compatible geometry must still be visible inside an
+        # already-proven shared scope, without extending that scope.
+        existing = tuple([*lower, *upper])
+        _required, shared = omit_shared_deck_pieces(wanted, existing)
+        walking = walking_floor_view(span, [], existing, shared)
+        structural = asm.verify(list(existing), bed)["ok"]
+        got = walking_profile_guard(
+            span, walking, bed, [t for t, _h in stations])
+        wet_refused = any("wet clearance" in msg for msg in got)
+        ok = structural and (wet_refused if want_refused else not got)
+        out.append(dict(name=name, want_refused=want_refused,
+                        got_refused=bool(got), ok=ok,
+                        structural_survivor=structural,
+                        wet_height_refusal=wet_refused, why=str(got)))
     return out
 
 
@@ -5302,9 +5815,10 @@ def _neuter_carriageway_guard_absent():
 
 
 def overhang_trim_arms() -> list[dict]:
-    """Three constructed arms over one 10 m deck, pieces generated on a clean
-    bench and then judged, trim first and burial guard second, against a
-    surface that rises 0.065 m over one station's tiles -- S13-x01's number.
+    """Constructed burial-reading and actual-row-ownership arms. Pieces are
+    generated on a clean bed, then judged after a real terrain rise. The
+    ownership cases retain adjacent 1 m/2 m rows, bents and furniture at
+    both axial and oblique bearings, while removing the buried row.
 
     OVERHANG  the rise is under the station BEYOND bank_a: the trim must drop
               it and the guard then passes.  Only the trim's READING can flip
@@ -5345,6 +5859,72 @@ def overhang_trim_arms() -> list[dict]:
                         stations_dropped=len(dropped),
                         pieces_dropped=len(pieces) - len(kept),
                         why=(got[0] if got else "nothing refused")))
+    for pitch, yaw in ((1.0, 0.0), (1.0, 31.0),
+                       (2.0, 0.0), (2.0, 31.0)):
+        name = f"only_the_buried_row_is_trimmed_pitch_{pitch:g}_yaw_{yaw:g}"
+        ax, az = 3.25, -4.5
+        ux, uz = math.sin(math.radians(yaw)), math.cos(math.radians(yaw))
+        near_t, far_t = 10.0 + pitch, 10.0 + 2.0 * pitch
+        fx = dict(crossing_id=f"FIX-{name}", deck_y_REQUIRED=deck_y,
+                  deck_width_m=4.0, bank_a=dict(xz=[ax, az]),
+                  bank_b=dict(xz=[ax + ux * 10.0, az + uz * 10.0]),
+                  terminal_banks=["bank_a", "bank_b"])
+        clean = _fixture_bed(lambda x, z: 29.0, "clean row-ownership bed")
+        stations = [(t, deck_y) for t in
+                    asm._bridge_station_distances(10.0, 0)]
+        # Keep the neighbour's cap physically ABOVE the risen patch. At an
+        # oblique bearing its thin footprint can contain only the same lattice
+        # vertex as the buried tile, so low ground elsewhere cannot save it.
+        # This raised-to-lowered pair still changes by only one legal step.
+        stations.extend(((near_t, deck_y + 0.15),
+                         (far_t, deck_y - 0.15)))
+        pieces = _assemble_deck_stations(fx, clean, deck_y, stations, 4.0)
+        before_ok = asm.verify(pieces, clean)["ok"]
+
+        def along(p):
+            return (p.x - ax) * ux + (p.z - az) * uz
+
+        def risen(x, z):
+            t = (x - ax) * ux + (z - az) * uz
+            lat = (x - ax) * uz - (z - az) * ux
+            # Swallow the last row's centre tile, not its neighbouring
+            # row's whole footprint or either row's pile foundations.
+            if far_t - 1.05 <= t <= far_t + 1.05 and abs(lat) <= 1.05:
+                return deck_y - 0.15 + 0.065
+            return 29.0
+
+        bed = _fixture_bed(risen, "only the last actual row is buried")
+        kept, dropped = trim_buried_overhang(fx, pieces, bed, deck_y)
+        tol = asm.min_bay_m() / 2.0
+        row_roles = ("/deck", "/rail_post", "/cap", "/pile")
+        neighbour = [p for p in pieces if p.role.endswith(row_roles)
+                     and abs(along(p) - near_t) <= tol]
+        neighbour_support = [p for p in neighbour
+                             if p.role.endswith(("/cap", "/pile"))]
+        removed_ids = {
+            id(p) for p in pieces
+            if (p.role.endswith(row_roles) and abs(along(p) - far_t) <= tol)
+            or (p.role.endswith("/rail")
+                and abs(along(p) - (near_t + far_t) / 2.0) <= tol)}
+        kept_ids = {id(p) for p in kept}
+        exact_ownership = kept_ids == {id(p) for p in pieces} - removed_ids
+        supports_kept = (bool(neighbour_support)
+                         and all(id(p) in kept_ids for p in neighbour_support))
+        got = burial_guard(fx, kept, bed)
+        after_ok = asm.verify(kept, bed)["ok"]
+        one_row = (len(dropped) == 1
+                   and abs(dropped[0]["station_t_m"] - far_t) <= tol
+                   and dropped[0]["pieces_dropped"] == len(removed_ids))
+        ok = (before_ok and after_ok and not got and one_row
+              and exact_ownership and supports_kept)
+        out.append(dict(name=name, want_refused=False,
+                        got_refused=bool(got) or not after_ok, ok=ok,
+                        adjacent_row_and_bent_kept=supports_kept,
+                        exact_piece_ownership=exact_ownership,
+                        stations_dropped=len(dropped),
+                        structural_before=before_ok, structural_after=after_ok,
+                        why=f"ownership={exact_ownership}, one row={one_row}, "
+                            f"support={supports_kept}, burial={got}"))
     return out
 
 
@@ -5435,14 +6015,16 @@ DECK_OVERLAP_MIN_AREA_M2 = 0.01  # plan overlap that is a collision (10 cm x 10 
 _DECK_OVERLAP_MODE = "refuses"
 
 
-def _plan_polygon(p) -> list:
+def _plan_polygon(p, *, margin: float = 0.0) -> list:
     """The piece's own footprint in the plan, rotated as `Placed` places it."""
     f = asm.facts()[p.prefab]
     a = math.radians(p.yaw)
     ca, sa = math.cos(a), math.sin(a)
     return [(p.x + x * ca + z * sa, p.z - x * sa + z * ca)
-            for x, z in ((f.lo[0], f.lo[2]), (f.hi[0], f.lo[2]),
-                         (f.hi[0], f.hi[2]), (f.lo[0], f.hi[2]))]
+            for x, z in ((f.lo[0] - margin, f.lo[2] - margin),
+                         (f.hi[0] + margin, f.lo[2] - margin),
+                         (f.hi[0] + margin, f.hi[2] + margin),
+                         (f.lo[0] - margin, f.hi[2] + margin))]
 
 
 def _polygon_area(poly: list) -> float:
@@ -5450,9 +6032,8 @@ def _polygon_area(poly: list) -> float:
                    for a, b in zip(poly, poly[1:] + poly[:1]))) / 2.0
 
 
-def _plan_overlap_m2(a: list, b: list) -> float:
-    """Area common to two convex plan footprints (Sutherland-Hodgman, one
-    half-plane of `b` at a time)."""
+def _plan_intersection(a: list, b: list) -> list:
+    """The same convex half-plane clipping used by the overlap guard."""
     sign = 1.0 if sum(p[0] * q[1] - q[0] * p[1]
                       for p, q in zip(b, b[1:] + b[:1])) > 0.0 else -1.0
     inside = a
@@ -5462,8 +6043,30 @@ def _plan_overlap_m2(a: list, b: list) -> float:
             inside, lambda pt, p=p, ex=ex, ez=ez:
             -sign * (ex * (pt[1] - p[1]) - ez * (pt[0] - p[0])), True)
         if len(inside) < 3:
-            return 0.0
-    return _polygon_area(inside)
+            return []
+    return inside
+
+
+def _plan_overlap_m2(a: list, b: list) -> float:
+    return _polygon_area(_plan_intersection(a, b))
+
+
+def _subtract_plan_polygon(a: list, b: list) -> list:
+    """Disjoint convex pieces of a outside b; no bounding-box substitution."""
+    sign = 1.0 if sum(p[0] * q[1] - q[0] * p[1]
+                      for p, q in zip(b, b[1:] + b[:1])) > 0.0 else -1.0
+    inside, outside = a, []
+    for p, q in zip(b, b[1:] + b[:1]):
+        ex, ez = q[0] - p[0], q[1] - p[1]
+        def distance(pt):
+            return -sign * (ex * (pt[1] - p[1]) - ez * (pt[0] - p[0]))
+        fragment = _clip_polygon(inside, distance, False)
+        if _polygon_area(fragment) > 0.0:
+            outside.append(fragment)
+        inside = _clip_polygon(inside, distance, True)
+        if len(inside) < 3:
+            break
+    return outside
 
 
 def deck_overlap_guard(span: dict, pieces: list, *,
@@ -5528,13 +6131,19 @@ GUARDS = ("deck_datum", "abutment", "seating", "structural", "span_coverage",
 
 
 def run_guards(span: dict, pieces: list, verdict: dict, surface,
-               deck_y: float, *, existing: tuple = ()) -> dict[str, list[str]]:
+               deck_y: float, *, existing: tuple = (),
+               walking: list | None = None, stations: list = ()
+               ) -> dict[str, list[str]]:
     return {
         "deck_datum": deck_datum_guard(span, deck_y, existing=existing),
-        "abutment": abutment_guard(span, pieces, surface, deck_y),
+        "abutment": abutment_guard(
+            span, pieces, surface, deck_y, walking=walking)
+            + (walking_profile_guard(span, walking, surface, stations)
+               if walking is not None else []),
         "seating": seating_guard(span, pieces, surface),
         "structural": structural_guard(verdict),
-        "span_coverage": span_coverage_guard(span, pieces, existing=existing),
+        "span_coverage": span_coverage_guard(
+            span, pieces, existing=existing, walking=walking),
         "burial": burial_guard(span, pieces, surface),
         "carriageway": carriageway_guard(span, pieces, deck_y),
         "deck_overlap": deck_overlap_guard(span, pieces, existing=existing),
@@ -5546,7 +6155,7 @@ def run_guards(span: dict, pieces: list, verdict: dict, surface,
 # --------------------------------------------------------------------------
 
 def measure(span: dict, pieces: list, verdict: dict, surface,
-            deck_y: float) -> dict:
+            deck_y: float, *, walking: list | None = None) -> dict:
     """Every number the report quotes, with the population it was taken over."""
     prefabs: dict[str, int] = {}
     for p in pieces:
@@ -5597,7 +6206,7 @@ def measure(span: dict, pieces: list, verdict: dict, surface,
     # `step_at_bank_coordinate_m` is the old water-edge reading, kept so the
     # correction stays auditable rather than becoming a number that moved.
     steps = {}
-    land = deck_landfall(span, pieces)
+    land = deck_landfall(span, pieces, walking=walking)
     for end in ("bank_a", "bank_b"):
         x, z = span[end]["xz"]
         g_bank = surface(x, z)
@@ -5612,10 +6221,14 @@ def measure(span: dict, pieces: list, verdict: dict, surface,
                       "applied_ground_at_bank_coordinate_y": round(g_bank, 3),
                       "step_at_bank_coordinate_m": round(deck_y - g_bank, 3)}
 
-    xs = [p.x for p in pieces]
-    zs = [p.z for p in pieces]
+    extent = [(p.x, p.z) for p in pieces]
+    if not extent and walking is not None:
+        extent = [(scope.x, scope.z) for _floor, scope in walking]
+    if not extent:
+        extent = [span["bank_a"]["xz"], span["bank_b"]["xz"]]
+    xs, zs = zip(*extent)
     cx, cz = (min(xs) + max(xs)) / 2.0, (min(zs) + max(zs)) / 2.0
-    reach = max(math.hypot(p.x - cx, p.z - cz) for p in pieces)
+    reach = max(math.hypot(x - cx, z - cz) for x, z in extent)
 
     return {
         "crossing_id": span["crossing_id"],
@@ -5797,9 +6410,77 @@ def surface_fn(patches: dict, live) -> "asm.Bed":
         f, "ribbon.zone_patches(seed bed) + applied.Applied(ledger deltas)")
 
 
+def prepare_geometry(span: dict, surface, *, deck_override=None,
+                     routes: tuple = (), existing: tuple = ()) -> dict:
+    """The production construction/guard path, without scans or seed-data reads.
+
+    Callers supply the actual applied/planned Heightmap surface. Geography and
+    the live builder use this same function; candidate eligibility cannot grow
+    a second approximation of landing, support, burial or emitted deck width.
+    """
+    deck_y = (shared_deck_datum(span, existing) if deck_override is None
+              else deck_override)
+    chosen = None
+    refusal = None
+    for spacing in BENT_SPACINGS_M:
+        bent_report = {}
+        try:
+            pieces = build_pieces(span, surface, deck_y,
+                                  bent_spacing_m=spacing, report=bent_report,
+                                  routes=routes, existing=existing)
+        except SystemExit as error:
+            refusal = str(error)
+            break
+        pieces, trimmed = trim_buried_overhang(span, pieces, surface, deck_y)
+        verdict = asm.verify(
+            [*pieces, *existing], surface,
+            note=f"{span['crossing_id']} at deck_y={deck_y:.3f}, "
+                 f"bent spacing {spacing:g} m")
+        chosen = spacing, pieces, trimmed, verdict, bent_report
+        if verdict["ok"]:
+            break
+    if chosen is None:
+        guards = {name: [] for name in GUARDS}
+        guards["seating"] = [
+            f"{span['crossing_id']}: REFUSED BY THE GENERATOR, before any "
+            f"piece was returned -- {refusal}"]
+        return dict(span=span, pieces=[], verdict=None, measurement=None,
+                    guards=guards, deck_y=deck_y, trimmed=[], existing=existing,
+                    bent_spacing_m=None, generator_refusal=refusal)
+    spacing, pieces, trimmed, verdict, bent_report = chosen
+    walking = walking_floor_view(
+        span, pieces, existing,
+        bent_report.get("deck_tiles_carried_by_existing_bridge", []))
+    meas = measure(span, pieces, verdict, surface, deck_y, walking=walking)
+    meas["overhang_stations_trimmed"] = trimmed
+    meas["bent_spacing_m"] = spacing
+    meas["bent_spacing_solved_from"] = list(BENT_SPACINGS_M)
+    meas["bank_projection"] = span.get("bank_projection")
+    meas["bents"] = bent_report
+    meas["existing_bridge_pieces"] = len(existing)
+    meas["datum_resolution"] = dict(
+        planned_y=span["deck_y_REQUIRED"], emitted_y=deck_y,
+        bank_step_limit_m=ABUTMENT_STEP_MAX_M,
+        existing_floor_datums=sorted({
+            round(p.y + asm.facts()["wood_floor"].hi[1], 4)
+            for p in existing if p.prefab == "wood_floor"}),
+        reason="join a compatible existing deck without moving its pieces"
+               if deck_y != span["deck_y_REQUIRED"] else "planned datum")
+    guards = run_guards(
+        span, pieces, verdict, surface, deck_y, existing=existing,
+        walking=walking,
+        stations=bent_report.get("deck_station_distances", []))
+    guards["carriageway"].extend(route_carriageway_guard(
+        span, pieces, surface, routes, existing=existing))
+    return dict(span=span, pieces=pieces, verdict=verdict, measurement=meas,
+                guards=guards, deck_y=deck_y, trimmed=trimmed,
+                existing=existing, bent_spacing_m=spacing)
+
+
 def prepare(spans: list[dict], actor: str, out: Path,
             zone_margin_m: float = 24.0, deck_override: float | None = None
             ) -> tuple[list[dict], list, callable]:
+    import ribbon as ribbonmod
     existing_by_span = existing_bridges(spans)
     zones = sorted({z for s in spans for z in span_zones(s, zone_margin_m)})
     zones = sorted(set(zones) | {
@@ -5815,82 +6496,9 @@ def prepare(spans: list[dict], actor: str, out: Path,
     prepared = []
     for span in spans:
         existing = existing_by_span[span["crossing_id"]]
-        deck_y = (shared_deck_datum(span, existing) if deck_override is None
-                  else deck_override)
-        # SOLVE THE BENT SPACING against the game's own support algorithm
-        # rather than declaring it: widest first, tightening only when the
-        # structural verdict says this span's geometry needs it.  The overhang
-        # is solved against the applied surface in the same loop, and the
-        # verify runs on WHAT IS LEFT after the trim -- verifying before it
-        # would certify pieces that are never sent, which is the
-        # pre-flight/postcondition mismatch in miniature.
-        # THE GENERATOR REFUSES BEFORE THIS FUNCTION EVER SEES A PIECE.
-        # `assemble.bridge` now runs the same seating re-test as the guard
-        # below and raises rather than returning an assembly whose travelled
-        # way is under the ground.  That is a STRONGER answer than a guard
-        # firing downstream, so it is recorded AS the seating refusal rather
-        # than being allowed to abort the whole run: `--prove-guards` must
-        # still see this span refused, and a span that cannot be built is
-        # refused in the way that matters.
-        chosen = None
-        refusal = None
-        bent_report: dict = {}
-        for spacing in BENT_SPACINGS_M:
-            bent_report = {}
-            try:
-                pieces = build_pieces(span, surface, deck_y,
-                                      bent_spacing_m=spacing,
-                                      report=bent_report, routes=routes,
-                                      existing=existing)
-            except SystemExit as e:
-                refusal = str(e)
-                break
-            pieces, trimmed = trim_buried_overhang(span, pieces, surface,
-                                                   deck_y)
-            verdict = asm.verify(
-                [*pieces, *existing], surface,
-                note=f"{span['crossing_id']} at deck_y={deck_y:.3f}, "
-                     f"bent spacing {spacing:g} m")
-            chosen = (spacing, pieces, trimmed, verdict, bent_report)
-            if verdict["ok"]:
-                break
-        if chosen is None:
-            guards = {n: [] for n in GUARDS}
-            guards["seating"] = [f"{span['crossing_id']}: REFUSED BY THE "
-                                 f"GENERATOR, before any piece was returned "
-                                 f"-- {refusal}"]
-            prepared.append({"span": span, "pieces": [], "verdict": None,
-                             "measurement": None, "guards": guards,
-                             "deck_y": deck_y, "trimmed": [],
-                             "bent_spacing_m": None,
-                             "generator_refusal": refusal})
-            continue
-        spacing, pieces, trimmed, verdict, bent_report = chosen
-        meas = measure(span, pieces, verdict, surface, deck_y)
-        meas["overhang_stations_trimmed"] = trimmed
-        meas["bent_spacing_m"] = spacing
-        meas["bent_spacing_solved_from"] = list(BENT_SPACINGS_M)
-        meas["bank_projection"] = span.get("bank_projection")
-        meas["bents"] = bent_report
-        meas["existing_bridge_pieces"] = len(existing)
-        meas["datum_resolution"] = dict(
-            planned_y=span["deck_y_REQUIRED"], emitted_y=deck_y,
-            bank_step_limit_m=ABUTMENT_STEP_MAX_M,
-            existing_floor_datums=sorted({
-                round(p.y + asm.facts()["wood_floor"].hi[1], 4)
-                for p in existing if p.prefab == "wood_floor"}),
-            reason="join a compatible existing deck without moving its pieces"
-                   if deck_y != span["deck_y_REQUIRED"] else "planned datum")
-        guards = run_guards(span, pieces, verdict, surface, deck_y,
-                            existing=existing)
-        guards["carriageway"].extend(
-            route_carriageway_guard(span, pieces, surface, routes,
-                                    existing=existing))
-        prepared.append({"span": span, "pieces": pieces, "verdict": verdict,
-                         "measurement": meas, "guards": guards,
-                         "deck_y": deck_y, "trimmed": trimmed,
-                         "existing": existing,
-                         "bent_spacing_m": spacing})
+        prepared.append(prepare_geometry(span, surface,
+                                        deck_override=deck_override,
+                                        routes=routes, existing=existing))
     return prepared, zones, surface
 
 
@@ -5956,7 +6564,189 @@ def segment_key(segment_id: str) -> str:
     return "road_" + segment_id.replace("-", "_")
 
 
+def _completed_bridged_ground(segments: dict, journal: list, rt) -> dict:
+    """Read this build's completed no-ground units, using its command identity.
+
+    A plan alone is not completion. A journal success alone is not proof that
+    there is no terrain to write. Require BOTH, with the same world, seed,
+    install root and canonical road-ground argv. Latest unit outcome wins, so
+    a later refusal or block cannot borrow an earlier success.
+    """
+    import buildstage                                      # noqa: PLC0415
+    import ribbon as ribbonmod                            # noqa: PLC0415
+
+    st = next(s for s in buildstage.BUILD_STEPS if s.name == "road_ground")
+    latest = {e["unit"]: (line, e) for line, e in enumerate(journal)
+              if isinstance(e, dict) and e.get("step") == st.ordinal
+              and e.get("name") == st.name and e.get("unit")}
+    out = {}
+    for sid, seg in segments.items():
+        nodes = seg.get("nodes") or []
+        if (seg.get("id") != sid or len(nodes) < 2
+                or len(seg.get("is_bridge") or []) != len(nodes)
+                or not ribbonmod.answers_without_writing(seg)):
+            continue
+        found = latest.get(sid)
+        if found is None:
+            continue
+        line, entry = found
+        env = entry.get("env") or {}
+        if (entry.get("rc") != 0 or not entry.get("cmd")
+                or env.get("VH_SEED") != rt.scope.seed
+                or env.get("VH_WORLD") != rt.scope.world
+                or not env.get("VALHEIM_WORLD_ROOT")
+                or Path(env["VALHEIM_WORLD_ROOT"]).resolve()
+                != rt.scope.world_root.resolve()):
+            continue
+        cmd = st.argv(rt, sid)[0]
+        wanted = {
+            buildstage.resume_key(st.ordinal, sid, cmd),
+            buildstage.resume_key(st.ordinal, sid,
+                                  cmd + ["--no-connection-collar"])}
+        if buildstage.resume_key(st.ordinal, sid, entry["cmd"]) not in wanted:
+            continue
+        out[sid] = dict(kind="fully_bridged_ground_completed",
+                        unit=sid, journal_line=line, rc=entry["rc"],
+                        stations=len(nodes), cmd=entry["cmd"], env=env)
+    return out
+
+
+def segment_ground_completed(world: str = "", seed: str = "") -> dict:
+    """Completed no-ground units in THIS world's build, never terrain records."""
+    import buildstage                                      # noqa: PLC0415
+    import yaml                                            # noqa: PLC0415
+
+    world, seed = world or WORLD, seed or SEED
+    work = JUMPSTART / "ledger" / "runs" / world / "pipeline"
+    journal = work / "build" / "buildstage.json"
+    if not journal.exists():
+        return {}
+    path = worldseed.segments_path(seed)
+    doc = yaml.safe_load(path.read_text()) or {}
+    worldseed.require_scope(
+        "deck ground prerequisite plan", path,
+        found_seed=doc.get("seed"), found_world=doc.get("world"),
+        seed_=seed, world_=world, produced_by="roads/network.py")
+    scope = buildstage.Scope(seed, world, work, worldseed.world_root(), JUMPSTART)
+    return _completed_bridged_ground(
+        {s["id"]: s for s in doc.get("segments") or []},
+        json.loads(journal.read_text()), buildstage.Runtime(scope, "deck-prerequisite"))
+
+
+def segment_ground_prerequisite(segment_id: str, terrain_written: dict,
+                                ground_completed: dict | None = None):
+    """The two distinct build-order witnesses; neither is a physical verdict."""
+    moved = terrain_written.get(segment_key(segment_id))
+    if moved is not None:
+        return dict(kind="bed_moved", **moved)
+    return (ground_completed or {}).get(segment_id)
+
+
+def ground_prerequisite_arms() -> list[dict]:
+    """Constructed completed/no-ground regression plus refusals and survivors.
+
+    Exercise the production journal reader, the shared prerequisite, the
+    remedy consumer and real datum/abutment guards. No live reads or writes.
+    """
+    import buildstage                                      # noqa: PLC0415
+
+    scope = buildstage.Scope("DeckSeed", "DeckWorld", Path("/deck-proof"),
+                             Path("/deck-install"), JUMPSTART)
+    rt = buildstage.Runtime(scope, "DeckProof")
+    sid = "proof-fully-bridged"
+    seg = dict(id=sid, nodes=[[0.0, 0.0], [10.0, 0.0]],
+               is_bridge=[True, True])
+    st = next(s for s in buildstage.BUILD_STEPS if s.name == "road_ground")
+    success = dict(step=st.ordinal, name=st.name, unit=sid, rc=0,
+                   cmd=st.argv(rt, sid)[0],
+                   env=dict(VH_SEED=scope.seed, VH_WORLD=scope.world,
+                            VALHEIM_WORLD_ROOT=str(scope.world_root)))
+    moved = {segment_key(sid): dict(file_line=2, seq=2, op="terrain_write",
+                                    moves_bed_because="deletes _TerrainCompiler")}
+    span = dict(crossing_id="proof-x01", segment=sid,
+                deck_y_REQUIRED=33.0, legal_deck_y_interval=[32.5, 34.0],
+                single_H_both_banks=True,
+                bank_a=dict(xz=[0.0, 0.0], ground_y=33.0),
+                bank_b=dict(xz=[10.0, 0.0], ground_y=33.0))
+    floor_top = asm.facts()["wood_floor"].hi[1]
+    tiles = [asm.Placed("wood_floor", x, 33.0 - floor_top, 0.0, 0.0,
+                        "proof-x01/deck") for x in (1.0, 9.0)]
+    # Clearing build order is not a physical verdict. Both guard directions
+    # are exercised on real constructed floor pieces and ground functions.
+    physical = (not deck_datum_guard(span, 33.0)
+                and bool(deck_datum_guard(span, SEA_DECK_DATUM_Y))
+                and not abutment_guard(span, tiles, lambda x, z: 33.0, 33.0)
+                and bool(abutment_guard(
+                    span, tiles, lambda x, z: 31.0, 33.0)))
+    out = []
+    for name, plan, log, written, want in (
+            ("completed fully bridged", {sid: seg}, [success], {}, True),
+            ("bed-moving survivor", {sid: {**seg, "is_bridge": [False, False]}},
+             [], moved, True),
+            ("unrun fully bridged", {sid: seg}, [], {}, False),
+            ("refused fully bridged", {sid: seg},
+             [{**success, "rc": 7}], {}, False),
+            ("later refusal", {sid: seg},
+             [success, {**success, "rc": 7}], {}, False),
+            ("later blocked", {sid: seg},
+             [success, dict(step=st.ordinal, name=st.name, unit=sid,
+                            blocked_by=["road_clear"])], {}, False),
+            ("missing segment", {}, [success], {}, False),
+            ("nonbridged segment", {sid: {**seg, "is_bridge": [True, False]}},
+             [success], {}, False),
+            ("malformed mask", {sid: {**seg, "is_bridge": [True]}},
+             [success], {}, False),
+            ("foreign world", {sid: seg},
+             [{**success, "env": {**success["env"], "VH_WORLD": "Other"}}],
+             {}, False),
+            ("foreign seed", {sid: seg},
+             [{**success, "env": {**success["env"], "VH_SEED": "Other"}}],
+             {}, False),
+            ("foreign install", {sid: seg},
+             [{**success, "env": {**success["env"],
+                                "VALHEIM_WORLD_ROOT": "/other-install"}}],
+             {}, False),
+            ("validate is not completion", {sid: seg},
+             [{**success, "cmd": success["cmd"] + ["--validate"]}], {}, False)):
+        completed = _completed_bridged_ground(plan, log, rt)
+        # A joiner must satisfy ALL of its abutment units, just like main.
+        other = "proof-graded-abutment"
+        join_written = {**written, segment_key(other): moved[segment_key(sid)]}
+        joiner = deck_remedy(
+            dict(crossing_id="proof-joiner", terrain_segments=[other, sid]),
+            terrain_written=join_written, ground_completed=completed,
+            segments=plan)
+        join_refused = any(r["precondition"] == "segment_terrain_write"
+                           for r in joiner["refused_by"])
+        ready = segment_ground_prerequisite(sid, written, completed) is not None
+        remedy = deck_remedy(
+            dict(crossing_id="proof-x01", segment_id=sid),
+            terrain_written=written, ground_completed=completed, segments=plan)
+        refused = any(r["precondition"] == "segment_terrain_write"
+                      for r in remedy["refused_by"])
+        out.append(dict(name=name, ready=ready, want_ready=want,
+                        ok=(ready == want and refused == (not want)
+                            and join_refused == (not want)
+                            and remedy["buildable"] is not True and physical)))
+    return out
+
+
+def _neuter_ground_requires_bed():
+    """Restore the shipped prerequisite, without replacing the journal reader."""
+    global segment_ground_prerequisite
+    prior = segment_ground_prerequisite
+    segment_ground_prerequisite = (
+        lambda sid, written, completed=None: written.get(segment_key(sid)))
+
+    def undo():
+        global segment_ground_prerequisite
+        segment_ground_prerequisite = prior
+
+    return undo
+
+
 def main() -> int:
+    import ribbon as ribbonmod
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("op", choices=["plan", "build", "census-selftest",
                                    "reconcile"])
@@ -6139,36 +6929,43 @@ def main() -> int:
               f"{[s['crossing_id'] for s in spans]}")
 
     written = segment_terrain_written(args.actor)
+    needs_completion = any(
+        segment_key(sid) not in written
+        for s in spans
+        for sid in (s.get("terrain_segments") or [s["segment"]]))
+    completed = segment_ground_completed() if needs_completion else {}
     # EVERY SEGMENT THIS DECK ABUTS, not just the one it is filed under.  A
     # crossing that JOINS two segments has no segment of its own, so the
     # precondition is BOTH of its abutment nodes' segments; a crossing that
     # lies on one has exactly that one and this loop is unchanged for it.
     for s in spans:
         segs = s.get("terrain_segments") or [s["segment"]]
-        unwritten = [g for g in segs if segment_key(g) not in written]
+        unwritten = [g for g in segs
+                     if segment_ground_prerequisite(g, written, completed) is None]
         if unwritten:
             msg = (f"{s['crossing_id']}: {len(unwritten)} of {len(segs)} "
-                   f"abutment segment(s) have NO BED-MOVING RECORD in the "
-                   f"chain -- {unwritten} (looked for params.name "
-                   f"{[segment_key(g) for g in unwritten]} on any record "
-                   f"accept/instruments.py::record_moves_bed accepts, which "
-                   f"is the WIRE the game received and not the op name the "
-                   f"writer chose). A deck carries flatten=FORBIDDEN, which "
-                   f"arms writer._flatten_forbidden_check against every "
-                   f"LATER terrain write inside its footprint -- so decking "
-                   f"first refuses the leg's own abutment ramp. Build the "
-                   f"terrain first.")
+                   f"abutment segment(s) have neither an attributed bed-moving "
+                   f"record nor a completed fully bridged ground unit in this "
+                   f"build -- {unwritten}. A deck carries flatten=FORBIDDEN, "
+                   f"which refuses later terrain movement inside its footprint. "
+                   f"Complete those ground units before decking them; a "
+                   f"fully bridged declaration alone is not completion.")
             if args.require_terrain:
                 raise SystemExit("REFUSING: " + msg)
             print("WARNING: " + msg)
-        else:
-            print(f"  {s['crossing_id']:26s} bed moved at file line(s) "
-                  + ", ".join(
-                      f"{g}:{written[segment_key(g)]['file_line']}"
-                      f"(seq {written[segment_key(g)]['seq']}, "
-                      f"{written[segment_key(g)]['op']}, "
-                      f"{written[segment_key(g)]['moves_bed_because']})"
-                      for g in segs))
+        for sid in segs:
+            evidence = segment_ground_prerequisite(sid, written, completed)
+            if evidence is None:
+                continue
+            if evidence["kind"] == "bed_moved":
+                print(f"  {s['crossing_id']:26s} {sid}: bed moved at file "
+                      f"line {evidence['file_line']} (seq {evidence['seq']}, "
+                      f"{evidence['op']}, {evidence['moves_bed_because']})")
+            else:
+                print(f"  {s['crossing_id']:26s} {sid}: ground unit completed "
+                      f"rc 0 at build journal line {evidence['journal_line']}; "
+                      f"all {evidence['stations']} stations bridged, no terrain "
+                      f"write owed. Deck physical guards still required.")
 
     prepared, zones, surface = prepare(spans, args.actor, out,
                                        args.zone_margin)
@@ -6285,7 +7082,8 @@ def main() -> int:
             # of these discs, and the only way the expectation can be right
             # about that is to measure rather than to assume zero.
             baseline: dict[str, int] = {}
-            for name in sorted(m["prefabs"]):
+            # Save always verifies wood_floor, even when every floor is reused.
+            for name in sorted(set(m["prefabs"]) | {"wood_floor"}):
                 if args.dry:
                     baseline[name] = 0
                     continue

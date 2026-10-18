@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Later road writes preserve earlier destination approaches using the owning
+  road's complete emitted geometry, rather than a newer design or a filtered
+  station list. Rim closure may cross the original ground only through the
+  existing water, ownership, clamp and walkability guards.
+- Deck prerequisites distinguish completed bridge-only ground units from
+  terrain-moving writes. Completion must match the build journal's canonical
+  command, seed, world and installation; a plan alone is not completion.
+- Deck landings and overhang trimming use actual native floor bounds and
+  station ownership. Compatible existing floors remain part of walking
+  coverage without being emitted again. Planning and construction share one
+  physical geometry preparation path and unchanged clearance/support guards.
+
 - North roads join their required source through the actual levelled footprint
   or a registered, structurally verified surviving deck, not exact snapped
   coordinate equality or bridge flags. Source proof and export use the same

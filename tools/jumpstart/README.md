@@ -62,6 +62,19 @@ North solo routes use the canonical adjacency and drowned-terminal remedies;
 later water rebuilds preserve successful trim, land-only and span-price choices.
 Refusal diagnostics identify the binding gate and its measurements.
 
+Later ground writes use complete, emission-bound road models to protect existing
+road approaches and ownership bands. A newer design or a filtered historical
+profile does not grant permission to move another road's ground. Rim closure
+may cross natural ground only while every existing physical/ownership guard
+still passes.
+
+Deck ground prerequisites accept either an attributed terrain-moving record or
+a completed bridge-only ground unit bound to this build's command and scope.
+The latter is not a terrain write and does not waive any deck guard. Landings
+are measured after assembly and trimming, using native floor bounds and actual
+station ownership; compatible existing floors contribute walking coverage
+without duplicate emissions. Planning and construction share `prepare_geometry`.
+
 Provisional base-road joint/writer refusals remain explicit `base_route_refusals`
 and keep their full survey/census geometry; they are not blamed on every north
 candidate or silently labelled clear. North-road failures still reject that

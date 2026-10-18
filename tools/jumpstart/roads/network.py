@@ -81,8 +81,7 @@ FIELD_BIN = "/tmp/roads/h1m.bin"
 # 2.000 x 0.130 x 2.000 collider solid, so 2 m tiles): it builds a 3-tile 6 m
 # deck on trunk crossings and a 2-tile 4 m deck on spurs.  A ribbon wider than
 # the deck is a pinch the operator sees at every bridge.
-WIDTH_M = {"trunk": 6.0, "spur": 4.0, "mountain": 4.0}
-BANK_LEVEL_M = 6.0      # Crossings' requirement: level run at each abutment
+from crossing_contract import WIDTH_M, BANK_LEVEL_M
 # Crossings' MEASURED absolute span ceiling: 72 m free span at a 3x safety
 # factor on an iron stringer under the deck, 96 m absolute, from its own
 # implementation of WearNTear::UpdateSupport.  Beyond this a "bridge" is not a

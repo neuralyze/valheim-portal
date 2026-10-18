@@ -77,7 +77,6 @@ import poi as poimod  # noqa: E402
 import precensus as censusmod  # noqa: E402
 import reemit as reemitmod  # noqa: E402
 import route as routemod  # noqa: E402
-import spec as specmod  # noqa: E402
 import tcdata  # noqa: E402
 import worldseed  # noqa: E402
 
@@ -1492,6 +1491,15 @@ def feather_envelopes(movable: dict, pinned_at, binds,
     return ceil, floor
 
 
+# Whether an OLD edge was already impassable is the rim gate's numerical
+# question, not the coordinate-inclusion question EDGE_EPS_M answers.  A
+# serialized face can be a few micrometres above tan(38) and still be inside
+# the canonical instrument's reading quantum.  Dropping that edge from the
+# feather/closure graph lets a later move deepen it by a fully resolved
+# amount, which the unchanged rim gate then correctly refuses.
+_RIM_BEFORE_STEP_MODE = "gate"   # gate | edge_eps (the old graph)
+
+
 def feather_toe(comps: dict, patches: dict, batter_at: dict,
                 road_cells: set, st: dict, limit_m: float,
                 natural_at=None,
@@ -1530,6 +1538,8 @@ def feather_toe(comps: dict, patches: dict, batter_at: dict,
     shipped, which judged a toe beside another road's batter against ground
     that road had already moved.  See FOREIGN_BATTER_DEPENDS_ON.
     """
+    import junction as _junction                          # noqa: PLC0415
+
     if natural_at is None:
         def natural_at(sx: int, sz: int):
             return appliedmod.generated_at(patches, float(sx), float(sz))
@@ -1604,7 +1614,9 @@ def feather_toe(comps: dict, patches: dict, batter_at: dict,
         gc, gn = ground_of(c), ground_of(n)
         if gc is None or gn is None:
             return True
-        return abs(gc - gn) <= limit_m + EDGE_EPS_M
+        if _RIM_BEFORE_STEP_MODE == "edge_eps":
+            return abs(gc - gn) <= limit_m + EDGE_EPS_M
+        return not _junction.step_over_limit(abs(gc - gn), limit_m)
 
     ceil_at, floor_at_ = ({}, {})
     if resolves_toward_ground and pins_hold:
@@ -1843,6 +1855,8 @@ def close_rim(comps: dict, patches: dict, batter_at: dict, road_cells: set,
     `record(cell, cause, height_m)`, when given, is told every cell a gate
     forbade the closure to lay, once, under that gate's cause, with the
     height over generated ground the closure asked (`clip_at`'s shape)."""
+    import junction as _junction                          # noqa: PLC0415
+
     out = {"cells": 0, "rounds": 0, "unclosable": 0, "worst_move_m": 0.0,
            "worst_at": None, "refeathered": 0}
 
@@ -1882,7 +1896,11 @@ def close_rim(comps: dict, patches: dict, batter_at: dict, road_cells: set,
                                      or fixed_at(*n) is not None):
             return True
         bc, bn = before_at(c[0], c[1]), before_at(n[0], n[1])
-        return bc is None or bn is None or abs(bc - bn) <= limit_m + EDGE_EPS_M
+        if bc is None or bn is None:
+            return True
+        if _RIM_BEFORE_STEP_MODE == "edge_eps":
+            return abs(bc - bn) <= limit_m + EDGE_EPS_M
+        return not _junction.step_over_limit(abs(bc - bn), limit_m)
 
     def movable(c) -> bool:
         cl = claim_of.get(c)
@@ -1971,8 +1989,9 @@ def close_rim(comps: dict, patches: dict, batter_at: dict, road_cells: set,
                 unclosable.add(c)
                 continue
             new = min(max(cur, lo), hi)
-            if (new - cur) * (cur - b) < 0.0:
-                continue              # toward its ground: the feather's move
+            if ((new - cur) * (cur - b) < 0.0
+                    and (new - b) * (cur - b) >= 0.0):
+                continue              # restitution only: the feather's move
             delta = new - g
             cause = ("over_clamp" if abs(delta) > tcdata.CLAMP_M
                      else refuse(float(c[0]), float(c[1]), g, delta))
@@ -3121,49 +3140,148 @@ FOREIGN_BATTER_DEPENDS_ON = ("who_authored_the_sample",
                              "the_live_surface_they_left")
 
 
-def foreign_road_band(road_claim_at, plans_by_write: dict, generated_at,
-                      grade: float = BATTER_GRADE):
-    """`(x, z) -> None | {who, paved, surface, lo, hi}` for a sample ANOTHER
-    road authored.  `road_claim_at` is `main`'s (delta, "name#seq") answer;
-    `plans_by_write` maps a write name to its plan.  A claim whose plan is
-    unknown, or whose foot cannot be found, is PAVED: the corridor rule's
-    conservative reading, never a licence to write."""
-    arrays: dict = {}
-    # ONE ANSWER PER LATTICE CELL: the claim, the plan and the live surface
-    # are all fixed for the life of one rasterisation.
-    memo: dict = {}
+def emitted_road_model(seg: dict, batter_m: float) -> dict:
+    """Lossless geometry actually rasterised, after snapping and feedback.
+
+    The containing terrain_write binds this model to its emission identity.
+    The old profile.nodes is deliberately terrain-only for existing replay
+    readers; it cannot encode skipped spans without inventing ground chords.
+    """
+    return {
+        "version": 1, "segment_id": str(seg["id"]),
+        "nodes": [[float(n[0]), float(n[1])] for n in seg["nodes"]],
+        "profile_y": [float(y) for y in seg["profile_y"]],
+        "is_bridge": [bool(b) for b in seg["is_bridge"]],
+        "width_m": float(seg["width_m"]), "shoulder_m": SHOULDER_M,
+        "batter_m": float(batter_m), "batter_grade": BATTER_GRADE,
+        "interp": "linear_arclength",
+        "claim": "terrain_runs_with_bank_ends_v1",
+    }
+
+
+def emitted_road_profile(seg: dict, batter_m: float) -> dict:
+    """One producer for validation and the actual terrain_write parameters."""
+    return {
+        "nodes": [[n[0], n[1], y] for n, y, brg
+                  in zip(seg["nodes"], seg["profile_y"], seg["is_bridge"])
+                  if not brg],
+        "half_width_m": seg["width_m"] / 2.0, "shoulder_m": SHOULDER_M,
+        "batter_m": batter_m, "batter_grade": round(BATTER_GRADE, 4),
+        "interp": "linear_arclength",
+    }
+
+
+def road_models_from_records(records) -> dict:
+    """Complete live models by exact name#seq, with ledger identity context.
+
+    No conversion from filtered legacy profile.nodes, no latest-name fallback.
+    Ambiguous identities provide no permission. File order, not seq ordering,
+    is recorded for consumers that select the last emission of a segment.
+    """
+    from writer import retired_seqs                       # noqa: PLC0415
+
+    records = list(records)
+    retired = retired_seqs(records)
+    models, seen = {}, set()
+    for line, rec in enumerate(records):
+        p = rec.get("params") or {}
+        if (rec.get("op") != "terrain_write" or p.get("role") != "road_segment"
+                or rec.get("seq") in retired):
+            continue
+        who = f"{p.get('name')}#{rec.get('seq')}"
+        if who in seen:
+            models.pop(who, None)
+            continue
+        seen.add(who)
+        model = (rec.get("meta") or {}).get("road_model")
+        if (_emitted_road_model_error(model) is not None
+                or p.get("name") != "road_" + str(
+                    model.get("segment_id", "")).replace("-", "_")):
+            continue
+        models[who] = {**model, "seq": rec["seq"], "actor": rec.get("actor"),
+                       "write_name": p["name"], "file_line": line}
+    return models
+
+
+def _emitted_road_model_error(model) -> str | None:
+    if not isinstance(model, dict):
+        return "no complete unique emitted road model"
+    if (model.get("version") != 1
+            or model.get("interp") != "linear_arclength"
+            or model.get("claim") != "terrain_runs_with_bank_ends_v1"):
+        return "unsupported emitted road model"
+    nodes, prof, br = (model.get(k) for k in
+                       ("nodes", "profile_y", "is_bridge"))
+    if (not isinstance(nodes, list) or not isinstance(prof, list)
+            or not isinstance(br, list) or len(nodes) < 2
+            or len(nodes) != len(prof) or len(nodes) != len(br)):
+        return "incomplete emitted station population"
+
+    def finite(v):
+        return (isinstance(v, (int, float)) and not isinstance(v, bool)
+                and math.isfinite(v))
+
+    if (any(not isinstance(n, list) or len(n) != 2
+            or not all(finite(v) for v in n) for n in nodes)
+            or not all(finite(y) for y in prof)
+            or not all(isinstance(b, bool) for b in br)):
+        return "invalid emitted station geometry"
+    if any(not finite(model.get(k)) for k in
+           ("width_m", "shoulder_m", "batter_m", "batter_grade")):
+        return "missing emitted band parameters"
+    if (model["width_m"] <= 0.0 or model["shoulder_m"] < 0.0
+            or model["batter_m"] < 0.0
+            or not 0.0 < model["batter_grade"] <= BATTER_GRADE):
+        return "invalid emitted band parameters"
+    return None
+
+
+def foreign_road_band(road_claim_at, models_by_emission: dict, generated_at):
+    """Read another author's band from that EXACT emission's complete model.
+
+    Absent/incomplete old evidence is an explicit refusal, not pavement by
+    guess and not permission to substitute a newer emission or current plan.
+    """
+    arrays, memo = {}, {}
 
     def at(x: float, z: float):
         sx, sz = int(round(x)), int(round(z))
-        if (sx, sz) in memo:
-            return memo[(sx, sz)]
-        memo[(sx, sz)] = got = _at(sx, sz)
-        return got
+        if (sx, sz) not in memo:
+            memo[(sx, sz)] = _at(sx, sz)
+        return memo[(sx, sz)]
 
     def _at(sx: int, sz: int):
         got = road_claim_at(float(sx), float(sz))
         if got is None:
             return None
         d, who = got
-        plan = plans_by_write.get(str(who).split("#")[0])
+        model = models_by_emission.get(who)
+        arr = arrays.get(who)
+        if arr is None:
+            error = _emitted_road_model_error(model)
+            if error is not None:
+                raise SystemExit(
+                    f"REFUSING foreign road band at ({sx}, {sz}): owning "
+                    f"emission {who}: {error}. Re-emit that owner with a "
+                    f"lossless road model; filtered profile.nodes and the "
+                    f"current design are not authority for its ground.")
+            arr = (np.array(model["nodes"], dtype=np.float64),
+                   np.array(model["profile_y"], dtype=np.float64),
+                   np.array(model["is_bridge"], dtype=bool))
+            arrays[who] = arr
         gen = generated_at(sx, sz)
-        if plan is None or gen is None:
+        if gen is None:
             return {"who": who, "paved": True, "surface": None,
                     "lo": None, "hi": None}
-        arr = arrays.get(id(plan))
-        if arr is None:
-            arr = (np.array(plan["nodes"], dtype=np.float64),
-                   np.array(plan["profile_y"], dtype=np.float64),
-                   np.array(plan["is_bridge"], dtype=bool))
-            arrays[id(plan)] = arr
         ly = lateral_and_y(*arr, float(sx), float(sz))
-        edge_t = plan["width_m"] / 2.0 + SHOULDER_M
+        edge_t = model["width_m"] / 2.0 + model["shoulder_m"]
         if ly is None or ly[0] <= edge_t + EDGE_EPS_M:
             return {"who": who, "paved": True, "surface": gen + d,
                     "lo": None, "hi": None}
         run = ly[0] - edge_t
         return {"who": who, "paved": False, "surface": gen + d,
-                "lo": ly[1] - grade * run, "hi": ly[1] + grade * run}
+                "lo": ly[1] - model["batter_grade"] * run,
+                "hi": ly[1] + model["batter_grade"] * run}
     return at
 
 
@@ -8148,11 +8266,13 @@ def selftest_interstice_taper(verbose: bool = True) -> dict:
         def claim(x: float, z: float):
             d = live(x, z)
             return None if abs(d) <= 1e-9 else (d, "road_S#1")
-        plans = {"road_S": {"nodes": [[-60.0, 0.0], [60.0, 0.0]],
-                            "profile_y": [their_y, their_y],
-                            "is_bridge": [False, False], "width_m": 4.0}}
-        band = foreign_road_band(claim, plans, lambda sx, sz: _js_ground(
-            float(sx), float(sz)))
+        model = emitted_road_model(
+            {"id": "S", "nodes": [[-60.0, 0.0], [60.0, 0.0]],
+             "profile_y": [their_y, their_y],
+             "is_bridge": [False, False], "width_m": 4.0}, BATTER_MAX_M)
+        band = foreign_road_band(
+            claim, {"road_S#1": model},
+            lambda sx, sz: _js_ground(float(sx), float(sz)))
         st = _rasterise(mine, _JS_MY_Y, _js_ground, width_m=4.0,
                         road_claim_at=claim, foreign_road_at=band,
                         live_delta_at=live)
@@ -8947,6 +9067,134 @@ def arrival_claims(seg: dict, arrivals: list[dict],
     return out
 
 
+def built_arrival_segments(records: list[dict], current_name: str) -> list[dict]:
+    """Latest non-retired built road geometry, never an unbuilt road plan.
+
+    Validated lossless emissions use the shared road-model reader. Legacy
+    terrain-only profile.nodes supplies endpoint evidence only: it neither
+    reconstructs skipped bridge spans nor grants reconciliation authority.
+    """
+    ledger_path = str(JUMPSTART / "ledger")
+    if ledger_path not in sys.path:
+        sys.path.insert(0, ledger_path)
+    import writer as writermod                            # noqa: PLC0415
+    gone = writermod.retired_seqs(records)
+    models = road_models_from_records(records)
+    latest = {}
+    for rec in records:
+        p = rec.get("params") or {}
+        if (rec.get("op") != "terrain_write" or rec.get("seq") in gone
+                or p.get("role") != "road_segment"):
+            continue
+        name = p["name"]
+        model = models.get(f"{name}#{rec.get('seq')}")
+        if model is not None:
+            latest[name] = {**model, "id": name, "reconcile_authority": True}
+        else:
+            # Acceptance's legacy endpoints remain observable, but a filtered
+            # population is not a lossless moving-ground contract.
+            nodes = p["profile"]["nodes"]
+            latest[name] = {
+                "id": name, "nodes": ([[float(n[0]), float(n[1])]
+                                       for n in (nodes[0], nodes[-1])]
+                                      if len(nodes) >= 2 else []),
+                "actor": rec.get("actor"), "seq": rec.get("seq"),
+                "reconcile_authority": False}
+    return [s for name, s in latest.items()
+            if name != current_name and len(s["nodes"]) >= 2]
+
+
+def arrival_walk_vertices(walk: dict) -> set:
+    """Exactly the arrival gate's vertices and diagonal mesh corners."""
+    need = set(walk["vertices"])
+    for (ax, az), (bx, bz) in zip(walk["vertices"], walk["vertices"][1:]):
+        need.update(((ax, bz), (bx, az)))
+    return need
+
+
+def prior_arrival_judgement(seg: dict, prior: list[dict],
+                            pad_keepouts: "PadKeepOut", comps: dict,
+                            height_now, height_after, actor: str) -> dict:
+    """Charge a later writer for arrivals its changed samples invalidate.
+
+    Both phases project only authoritative unlaid pad cores. Outside those
+    cores the before height is the current compiler, not a recorded profile.
+    A plan projection is not a claim that the pad has been built.
+
+    Existing arrival failures are not inherited unless worsened; unread
+    evidence always refuses. When a same-actor road's arrival is broken,
+    profile feedback may restore the new writer's changed walked samples.
+    This is conditional preservation, not equality at every road junction.
+    Foreign roads are judged too, but never supply reconciliation authority.
+    The candidate is re-stamped through every ordinary ownership/water gate.
+    """
+    failures, claims, checked = [], [], []
+    arc = node_arcs(seg["nodes"], seg["is_bridge"])
+
+    def before(x, z):
+        future = pad_keepouts.finished_y(x, z)
+        return height_now(x, z) if future is None else future
+
+    def changed_vertices(walk):
+        changed = set()
+        for x, z in arrival_walk_vertices(walk):
+            comp = comps.get(tcdata.zone_of(x, z))
+            if comp is None:
+                continue
+            gx, gy = tcdata.vertex_mask_index(*comp.centre, x, z)
+            if not comp.modified_height[gy * tcdata.PITCH + gx]:
+                continue
+            a, b = before(x, z), height_after(x, z)
+            # AUTHOR_TOLERANCE is not a physical arrival allowance: even a
+            # sub-centimetre nudge can cross a berm's unchanged capsule cap.
+            if a is None or b is None or a != b:
+                changed.add((x, z))
+        return changed
+
+    for road in prior:
+        walks = pad_keepouts.arrival_walks(road)
+        changed = {w["end"]: changed_vertices(w) for w in walks}
+        if not any(changed.values()):
+            continue
+        checked.append({"segment": road["id"], "seq": road["seq"]})
+        old = {(f["end"], f["check"], f["destination"]): f
+               for f in pad_keepouts.arrivals(road, before)}
+        for finding in pad_keepouts.arrivals(road, height_after):
+            if not changed.get(finding["end"]):
+                continue
+            key = (finding["end"], finding["check"], finding["destination"])
+            was = old.get(key)
+            if (was is not None and finding.get("measured") is not None
+                    and was.get("measured") is not None
+                    and float(finding["measured"]) <= float(was["measured"])
+                    and "unread" not in finding["check"]
+                    and "unmeasured" not in finding["check"]):
+                continue
+            failures.append({**finding, "prior_segment": road["id"],
+                             "prior_seq": road["seq"]})
+            if not road.get("reconcile_authority") or road.get("actor") != actor:
+                continue
+            for x, z in sorted(changed[finding["end"]]):
+                was_y, now_y = before(x, z), height_after(x, z)
+                if was_y is None or now_y is None:
+                    continue
+                foot = foot_station(seg["nodes"], seg["profile_y"],
+                                    seg["is_bridge"], arc, x, z)
+                if foot is None:
+                    continue
+                lat, y, s = foot
+                claim = {"s": s, "h": y + was_y - now_y, "slack": 0.0,
+                         "lat": lat, "label": "preserve arrival of " + road["id"],
+                         "rim_xz": [x, z], "taken_xz": [x, z],
+                         "step_m": abs(was_y - now_y)}
+                if abs(s - arc[0]) < 1e-9:
+                    claim["unpin"] = 0
+                elif abs(s - arc[-1]) < 1e-9:
+                    claim["unpin"] = len(arc) - 1
+                claims.append(claim)
+    return {"failures": failures, "claims": claims, "checked": checked}
+
+
 def regrade_for_claims(seg: dict, claims: list[dict],
                        ramp_grade: float) -> dict:
     """`{feasible, profile, nodes_regraded, max_move_m, claims_active, why}`:
@@ -9035,7 +9283,8 @@ def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
     def owed(j):
         """What the gates still charge: caused rim rows and arrival
         findings, as one count."""
-        return j["rim"]["caused"] + len(j.get("arrivals") or ())
+        return (j["rim"]["caused"] + len(j.get("arrivals") or ())
+                + len(j.get("prior_arrivals") or ()))
     report = {"mode": _PROFILE_FEEDBACK_MODE, "rounds": [],
               "caused_before": owed(judged),
               "worst_before_m": judged["rim"]["worst_caused_m"],
@@ -9059,7 +9308,8 @@ def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
         seg["profile_y"] = list(cur["prof"])
         claims = (rim_claims(seg, cur["judged"]["rim"]["caused_rows"],
                              cur["judged"]["labels"], limit_m, edge_m)
-                  + arrival_claims(seg, cur["judged"].get("arrivals") or []))
+                  + arrival_claims(seg, cur["judged"].get("arrivals") or [])
+                  + (cur["judged"].get("prior_arrival_claims") or []))
         step = regrade_for_claims(seg, claims, ramp)
         row = {"round": rnd + 1, "claims": len(claims),
                "claims_active": step["claims_active"],
@@ -10017,6 +10267,144 @@ def _fb_their_delta(sx: int, sz: int) -> float:
     return min(_FB_Y + BATTER_GRADE * (a - 4.0), _FB_PLAIN) - _FB_PLAIN
 
 
+def selftest_emitted_road_authority(verbose: bool = True) -> dict:
+    """Exact emitted geometry, not a newer profile bearing the same name.
+
+    The real closure must cut an authored batter cell slightly toward a
+    neighbouring road. Its emitted band permits the cut; a design one metre
+    higher does not. The same physical rim gate judges both surfaces.
+    """
+    import junction as _junction                          # noqa: PLC0415
+
+    actual = {"id": "owner", "nodes": [[4.0144, -30.0], [4.0144, 30.0]],
+              "profile_y": [64.192, 64.192], "is_bridge": [False, False],
+              "width_m": 6.0}
+    design = {**actual, "profile_y": [65.192, 65.192]}
+
+    def record(seq, seg, actor):
+        return {"op": "terrain_write", "seq": seq, "actor": actor,
+                "params": {"name": "road_owner", "role": "road_segment",
+                           "profile": emitted_road_profile(seg, 21.0)},
+                "meta": {"road_model": emitted_road_model(seg, 21.0)}}
+
+    first = record(10, actual, "first-emitter")
+    second = record(11, design, "second-emitter")
+    records = [first, second]
+    models = road_models_from_records(records)
+    assert models["road_owner#10"]["actor"] == "first-emitter", models
+    assert models["road_owner#11"]["seq"] == 11, models
+    assert models["road_owner#10"]["write_name"] == "road_owner", models
+    assert models["road_owner#10"]["file_line"] < \
+        models["road_owner#11"]["file_line"], models
+    # Producer output does not retain references to a mutable design profile.
+    changed = {**actual, "profile_y": list(actual["profile_y"])}
+    snapshot = emitted_road_model(changed, 21.0)
+    changed["profile_y"][0] += 5.0
+    assert snapshot["profile_y"][0] == actual["profile_y"][0], snapshot
+
+    gen = lambda x, z: _FR_GEN                          # noqa: E731
+    live = lambda x, z: _FR_LIVE[min(max(int(x), -2), 2)]  # noqa: E731
+    outcomes = {}
+    paved = {**actual, "nodes": [[0.0, -30.0], [0.0, 30.0]]}
+    protected_models = road_models_from_records([record(12, paved, "paver")])
+    for arm, who, population in (
+            ("actual_owner", "road_owner#10", models),
+            ("stale_or_wrong_emission", "road_owner#11", models),
+            ("protected_pavement", "road_owner#12", protected_models)):
+        def claim(x, z, who=who):
+            return (live(x, z) - gen(x, z), who) if int(x) == 0 else None
+
+        band = foreign_road_band(claim, population, gen)
+        fr = band(0, 0)
+        if arm == "actual_owner":
+            run = 4.0144 - (actual["width_m"] / 2.0 + SHOULDER_M)
+            assert abs(fr["lo"] - (64.192 - BATTER_GRADE * run)) < 1e-10, fr
+        if arm == "protected_pavement":
+            assert fr["paved"], fr
+        comp = tcdata.Compiler(zone_x=0, zone_z=0)
+        comps = {(0, 0): comp}
+        patches = {"z_0_0": _flat_patch(0, 0, gen)}
+        batter_at, road_cells, claims = {}, set(), {}
+        for z in range(-3, 4):
+            for x in (-2, -1):
+                gx, gy = tcdata.vertex_mask_index(*comp.centre, x, z)
+                comp.set_height(gx, gy, _FR_MINE - _FR_GEN)
+                if x == -2:
+                    road_cells.add((x, z))
+                else:
+                    batter_at[(x, z)] = (0, 0, gx, gy, _FR_GEN)
+            for x in (0, 1, 2):
+                claims[(x, z)] = (_FR_LAT0 + x, _FR_ROAD_Y)
+        close_rim(
+            comps, patches, batter_at, road_cells, claims, {},
+            _junction.SLIDE_PER_M, before_at=live, refuse=lambda *a: None,
+            foreign=band, edge_m=4.0, grade=BATTER_GRADE,
+            refeather=lambda: None)
+
+        def after(x, z):
+            return rim_height_after(x, z, gen(x, z), comps,
+                                    lambda x, z: live(x, z) - gen(x, z))
+
+        taken = {c: after(*c) for c in road_cells | set(batter_at)
+                 if abs(after(*c) - live(*c)) > appliedmod.AUTHOR_TOLERANCE_M}
+        judged = _junction.rim_transfer(taken, live, height_after=after,
+                                        top=10_000)
+        assert (-2, 0) in taken, arm
+        if arm == "actual_owner":
+            assert judged["verdict"] == "CLEAR", judged
+            assert after(0, 0) < live(0, 0), judged
+            assert fr["lo"] <= after(0, 0) <= fr["surface"], fr
+        else:
+            assert judged["verdict"] == "REFUSED", judged
+            assert after(0, 0) == live(0, 0), judged
+        outcomes[arm] = {"verdict": judged["verdict"],
+                         "worst_m": judged["worst_caused_m"]}
+
+    # Full flags preserve a skipped span. Treating filtered endpoint rows as
+    # an all-ground line would falsely put pavement through the gap's centre.
+    span = {**actual, "nodes": [[0.0, -10.0], [0.0, -5.0],
+                               [0.0, 5.0], [0.0, 10.0]],
+            "profile_y": [40.0] * 4,
+            "is_bridge": [False, True, True, False]}
+    span_record = record(13, span, "span-emitter")
+    span_model = road_models_from_records([span_record])
+    assert span_model["road_owner#13"]["nodes"] == span["nodes"], span_model
+    assert span_model["road_owner#13"]["is_bridge"] == span["is_bridge"]
+    span_band = foreign_road_band(
+        lambda x, z: (-1.0, "road_owner#13"), span_model,
+        lambda x, z: 41.0)
+    assert not span_band(0, 0)["paved"], span_band(0, 0)
+
+    legacy = {"op": "terrain_write", "seq": 14,
+              "params": {"name": "road_owner", "role": "road_segment",
+                         "profile": emitted_road_profile(span, 21.0)},
+              "meta": {}}
+    incomplete = record(15, actual, "incomplete")
+    incomplete["meta"]["road_model"]["is_bridge"].pop()
+    retired = {"op": "retire", "seq": 16, "params": {"retires": [10]}}
+    rejected = road_models_from_records(
+        [first, second, legacy, incomplete, retired])
+    assert "road_owner#10" not in rejected, rejected
+    assert "road_owner#14" not in rejected, rejected
+    assert "road_owner#15" not in rejected, rejected
+    assert "road_owner#11" in rejected, rejected
+    assert "road_owner#11" not in road_models_from_records([second, second])
+    for identity in ("road_owner#10", "road_owner#14", "road_owner#15"):
+        try:
+            foreign_road_band(
+                lambda x, z, identity=identity: (-1.0, identity),
+                rejected, gen)(0, 0)
+        except SystemExit as exc:
+            assert identity in str(exc) and "REFUSING" in str(exc), str(exc)
+        else:
+            raise AssertionError(f"missing authority granted for {identity}")
+    if verbose:
+        for arm, result in outcomes.items():
+            print(f"  {arm:26s} {result}")
+        print("ribbon emitted-road-authority selftest OK")
+    return outcomes
+
+
 def selftest_foreign_batter(verbose: bool = True) -> dict:
     """ANOTHER ROAD'S BATTER IS GROUND, BOTH WAYS -- see
     FOREIGN_BATTER_DEPENDS_ON.  The shipped rule (`foreign_batter_is_ground`
@@ -10029,10 +10417,12 @@ def selftest_foreign_batter(verbose: bool = True) -> dict:
     def claim(x: float, z: float):
         d = _fb_their_delta(int(round(x)), int(round(z)))
         return None if abs(d) <= 1e-9 else (d, "road_P#1")
-    plans = {"road_P": {"nodes": [[-60.0, 0.0], [60.0, 0.0]],
-                        "profile_y": [_FB_Y, _FB_Y],
-                        "is_bridge": [False, False], "width_m": 6.0}}
-    band = foreign_road_band(claim, plans, lambda sx, sz: _FB_PLAIN)
+    model = emitted_road_model(
+        {"id": "P", "nodes": [[-60.0, 0.0], [60.0, 0.0]],
+         "profile_y": [_FB_Y, _FB_Y],
+         "is_bridge": [False, False], "width_m": 6.0}, BATTER_MAX_M)
+    band = foreign_road_band(claim, {"road_P#1": model},
+                             lambda sx, sz: _FB_PLAIN)
     nodes = [(-30.0, _FB_SEP), (30.0, _FB_SEP)]
 
     def live(x: float, z: float) -> float:
@@ -10077,6 +10467,123 @@ def selftest_foreign_batter(verbose: bool = True) -> dict:
     return v
 
 
+def selftest_rim_before_resolution(verbose: bool = True) -> dict:
+    """Keep the solver's OLD-edge graph identical to the real rim gate.
+
+    A sub-quantum excess on an old face is not a pre-existing cliff.  Both
+    shipping solvers must still bind it: the feather returns its own cut to
+    ground; the closure moves permitted foreign batter inside its band.
+    Restoring the old EDGE_EPS graph leaves resolved caused steps in both
+    arms.  Placed ground, foreign pavement and an insufficient foreign band
+    remain refused; a genuinely pre-existing face is left alone.
+    """
+    global _RIM_BEFORE_STEP_MODE
+    import junction as _junction                          # noqa: PLC0415
+    from accept import instruments as _AI                  # noqa: PLC0415
+
+    lim = _junction.SLIDE_PER_M
+    quantum = _AI.GROUND_QUANTUM_M
+    excess = quantum / 2.0
+    assert EDGE_EPS_M < excess < quantum
+    was = _RIM_BEFORE_STEP_MODE
+    results = {}
+    try:
+        for arm, solver, mode, protection in (
+                ("current_feather", "feather", was, None),
+                ("old_feather", "feather", "edge_eps", None),
+                ("current_closure", "closure", was, None),
+                ("old_closure", "closure", "edge_eps", None),
+                ("placed", "closure", was, "placed"),
+                ("foreign_paved", "closure", was, "paved"),
+                ("foreign_band_short", "closure", was, "band"),
+                ("genuinely_preexisting", "closure", was, "preexisting")):
+            _RIM_BEFORE_STEP_MODE = mode
+            move = 0.5 if solver == "feather" else 0.0173
+            seam = (2, 0) if solver == "feather" else (1, 0)
+            over = 2.0 * quantum if protection == "preexisting" else excess
+
+            def ground(x, z):
+                return 40.0 + lim + over if (x, z) == seam else 40.0
+
+            comp = tcdata.Compiler(zone_x=0, zone_z=0)
+            comps = {(0, 0): comp}
+            patches = {"z_0_0": _flat_patch(0, 0, ground)}
+            batter_at = {}
+            road_cells = {(0, 0)}
+            gx, gy = tcdata.vertex_mask_index(*comp.centre, 0, 0)
+            comp.set_height(gx, gy, -move)
+            if solver == "feather":
+                gx, gy = tcdata.vertex_mask_index(*comp.centre, 1, 0)
+                comp.set_height(gx, gy, -move)
+                batter_at[(1, 0)] = (0, 0, gx, gy, 40.0)
+            st, records = {}, []
+
+            def foreign(x, z):
+                if (x, z) != seam:
+                    return None
+                if protection == "paved":
+                    return {"paved": True}
+                return {"who": "road_fixture#1", "paved": False,
+                        "surface": ground(x, z),
+                        "lo": ground(x, z) if protection == "band" else 40.0,
+                        "hi": 42.0}
+
+            if solver == "feather":
+                feather_toe(comps, patches, batter_at, road_cells, st, lim,
+                            before_at=ground)
+            else:
+                close_rim(
+                    comps, patches, batter_at, road_cells,
+                    {seam: (5.0, 40.0)}, st, lim, before_at=ground,
+                    refuse=lambda x, z, g, d: (
+                        "placed" if protection == "placed" else None),
+                    foreign=foreign, edge_m=4.0, grade=BATTER_GRADE,
+                    refeather=lambda: None,
+                    record=lambda c, cause, h: records.append((c, cause, h)))
+
+            def after(x, z):
+                return rim_height_after(x, z, ground(x, z), comps,
+                                        lambda x, z: 0.0)
+
+            taken = {c: after(*c) for c in road_cells | set(batter_at)
+                     if abs(after(*c) - ground(*c))
+                     > appliedmod.AUTHOR_TOLERANCE_M}
+            verdict = _junction.rim_transfer(
+                taken, ground, height_after=after, top=10_000)
+            assert abs(after(0, 0) - (40.0 - move)) < EDGE_EPS_M, arm
+            assert (0, 0) in taken, arm  # The road itself survives.
+            if protection in ("placed", "paved", "band", "preexisting"):
+                assert after(*seam) == ground(*seam), arm
+                assert seam not in batter_at, arm
+            if arm == "placed":
+                assert any(c == seam and cause == "placed"
+                           for c, cause, h in records), records
+            if arm == "current_closure":
+                assert 40.0 <= after(*seam) <= ground(*seam), arm
+                assert not _junction.step_over_limit(
+                    abs(after(0, 0) - after(*seam)), lim), arm
+            if arm == "current_feather":
+                assert abs(after(1, 0) - 40.0) < EDGE_EPS_M, arm
+            results[arm] = {
+                "verdict": verdict["verdict"], "caused": verdict["caused"],
+                "pre_existing": verdict["pre_existing"],
+                "worst_m": verdict["worst_caused_m"],
+                "seam_after_m": after(*seam)}
+    finally:
+        _RIM_BEFORE_STEP_MODE = was
+    for arm in ("current_feather", "current_closure", "genuinely_preexisting"):
+        assert results[arm]["verdict"] == "CLEAR", results
+    for arm in ("old_feather", "old_closure", "placed", "foreign_paved",
+                "foreign_band_short"):
+        assert results[arm]["verdict"] == "REFUSED", results
+    assert results["genuinely_preexisting"]["pre_existing"] > 0, results
+    if verbose:
+        for arm, row in results.items():
+            print(f"  {arm:24s} {row}")
+        print("ribbon rim-before-resolution selftest OK")
+    return results
+
+
 def selftest_rim_closure(verbose: bool = True) -> dict:
     """T8's (-390,624), IN MINIATURE, THROUGH `close_rim` ITSELF.
 
@@ -10101,14 +10608,20 @@ def selftest_rim_closure(verbose: bool = True) -> dict:
         return row.get(int(round(x)), 49.80 if x > 0 else 48.25)
     v: dict = {}
     for arm, (closes, road_y) in {"survivor": (True, 47.654),
+                                  "crosses_ground": (True, 47.654),
                                   "shipped": (False, 47.654),
                                   "no_band": (True, 50.5)}.items():
         comp = tcdata.Compiler(zone_x=0, zone_z=0)
         comps = {(0, 0): comp}
         patches = {"z_0_0": _flat_patch(0, 0, ground)}
         batter_at, road_cells, claim_of = {}, set(), {}
+        arm_after = dict(after_x)
+        if arm == "crosses_ground":
+            # A sub-resolution fill cannot be feathered, but the feasible
+            # closure lies past its old ground. It is not restitution.
+            arm_after[1] = gen_x[1] + EDGE_EPS_M / 2.0
         for z in (-1, 0, 1):
-            for x, h in after_x.items():
+            for x, h in arm_after.items():
                 gx, gy = tcdata.vertex_mask_index(*comp.centre, x, z)
                 comp.set_height(gx, gy, h - gen_x[x])
                 if x == 0:
@@ -10118,12 +10631,17 @@ def selftest_rim_closure(verbose: bool = True) -> dict:
             for x in range(1, 6):
                 claim_of[(x, z)] = (4.9 + x, road_y)
         st: dict = {}
+        def refeather():
+            if arm == "crosses_ground":
+                feather_toe(comps, patches, batter_at, road_cells, st,
+                            _junction.SLIDE_PER_M, before_at=ground)
+        refeather()
         if closes:
             close_rim(comps, patches, batter_at, road_cells, claim_of, st,
                       _junction.SLIDE_PER_M,
                       before_at=lambda sx, sz: ground(sx, sz),
                       refuse=lambda *a: None, foreign=lambda *a: None,
-                      edge_m=4.0, grade=BATTER_GRADE, refeather=lambda: None)
+                      edge_m=4.0, grade=BATTER_GRADE, refeather=refeather)
         taken = {}
         for c in list(batter_at) + list(road_cells):
             h = ground(*c) + delta_at(comps, float(c[0]), float(c[1]))
@@ -10138,6 +10656,7 @@ def selftest_rim_closure(verbose: bool = True) -> dict:
                   "closure": st.get("rim_closure")}
     assert v["shipped"]["verdict"] == "REFUSED", v
     assert v["survivor"]["verdict"] == "CLEAR", v
+    assert v["crosses_ground"]["verdict"] == "CLEAR", v
     assert v["survivor"]["closure"]["cells"] >= 2, v
     assert v["no_band"]["verdict"] == "REFUSED", v
     assert v["no_band"]["closure"]["unclosable"] > 0, v
@@ -10423,10 +10942,12 @@ def _pa_fixture():
     def claim(x: float, z: float):
         d = _pa_their_delta(int(round(x)), int(round(z)))
         return None if abs(d) <= 1e-9 else (d, "road_P#1")
-    plans = {"road_P": {"nodes": [[-60.0, 0.0], [60.0, 0.0]],
-                        "profile_y": [_PA_THEIRS_Y, _PA_THEIRS_Y],
-                        "is_bridge": [False, False], "width_m": 6.0}}
-    band = foreign_road_band(claim, plans, lambda sx, sz: _PA_PLAIN)
+    model = emitted_road_model(
+        {"id": "P", "nodes": [[-60.0, 0.0], [60.0, 0.0]],
+         "profile_y": [_PA_THEIRS_Y, _PA_THEIRS_Y],
+         "is_bridge": [False, False], "width_m": 6.0}, BATTER_MAX_M)
+    band = foreign_road_band(claim, {"road_P#1": model},
+                             lambda sx, sz: _PA_PLAIN)
 
     def live(x: float, z: float) -> float:
         return _pa_their_delta(int(round(x)), int(round(z)))
@@ -10866,6 +11387,198 @@ def selftest_finished_arrivals(verbose: bool = True) -> dict:
     return results
 
 
+def selftest_future_pad_arrival(verbose: bool = True) -> dict:
+    """Compare the road's future-pad projection with the real next pad write.
+
+    This is a timing regression, not evidence that a declaration is built.
+    The negative control reads the road before the pad exists: natural ground
+    inside the reserved rectangle still forms a berm.  The road's existing
+    finished_y projection must equal flatten.build's actual later write at
+    every walked vertex and diagonal corner, including untouched exterior
+    vertices.  Water and a protected approach remain refusals in both phases.
+    """
+    pad = {"site_id": "future", "name": "future", "x": 30.2, "z": 0.0,
+           "hw": 4.0, "hd": 4.0, "datum_y": 40.0}
+    pads = pad_keepouts_from_chain([], [], planned=[pad])
+    seg = {"id": "future-approach", "nodes": [[-10.0, 0.0], [18.0, 0.0]],
+           "profile_y": [41.0, 41.0], "is_bridge": [False, False],
+           "width_m": 3.0, "length_m": 28.0}
+    zones = sorted(set(segment_zones(seg["nodes"], seg["is_bridge"], 3.0))
+                   | pads.approach_zones(seg))
+    place = {"id": pad["site_id"], "solved": {
+        "x": pad["x"], "z": pad["z"], "y": pad["datum_y"],
+        "footprint_orientation": "8 m along x by 8 m along z",
+        "flatten_cost": {"target_y": pad["datum_y"]}}}
+    results = {}
+    for case in ("dry", "water", "protected"):
+        def ground(x, z):
+            if case == "water" and 22 <= x <= 24:
+                return 29.0
+            return 42.0 if 22 <= x <= 32 else 40.0
+        patches = {f"z_{x}_{z}": _flat_patch(x, z, ground) for x, z in zones}
+        road, _stats = stamp(
+            seg, patches, zones, pads,
+            poi_keepouts=[(23.0, 0.0, 2.0)] if case == "protected" else [])
+
+        def before(x, z):
+            return rim_height_after(x, z, ground(x, z), road,
+                                    lambda _x, _z: 0.0)
+
+        def projected(x, z):
+            future = pads.finished_y(x, z)
+            return before(x, z) if future is None else future
+
+        # Use the actual pad producer, not a second rectangle rasteriser.
+        pad_comps, op_y = {}, {}
+        flattenmod.build(place, patches, zones, "paved_cleared", 0.0,
+                         pad_comps, op_y)
+
+        def after(x, z):
+            return rim_height_after(
+                x, z, ground(x, z), pad_comps,
+                lambda sx, sz: before(sx, sz) - ground(sx, sz))
+
+        need = set()
+        for walk in pads.arrival_walks(seg):
+            need.update(walk["vertices"])
+            for (ax, az), (bx, bz) in zip(walk["vertices"],
+                                        walk["vertices"][1:]):
+                need.update(((ax, bz), (bx, az)))
+        assert need
+        for v in need:
+            assert abs(projected(*v) - after(*v)) < 1e-6, (case, v)
+            if pads.finished_y(*v) is None:
+                assert after(*v) == before(*v), (case, v)
+        raw = pads.arrivals(seg, before)
+        intended = pads.arrivals(seg, projected)
+        saved = pads.arrivals(seg, after)
+        assert intended == saved, (case, intended, saved)
+        results[case] = {"before_pad": [f["check"] for f in raw],
+                         "projected": [f["check"] for f in intended],
+                         "after_pad": [f["check"] for f in saved]}
+        if case == "dry":
+            assert any(f["check"] == "terminus_berm" for f in raw), raw
+            assert arrival_claims(seg, raw), raw
+            assert not intended and not arrival_claims(seg, intended), intended
+            assert before(28, 0) != after(28, 0)
+            assert pads.by_id["future"]["levelled"] is False
+            assert pads.by_id["future"]["seq"] is None
+            # Missing exterior readings cannot be cured by a future datum.
+            unread = pads.arrivals(
+                seg, lambda x, z: None if (x, z) == (23, 0)
+                else projected(x, z))
+            assert unread, "the unbuilt pad cannot supply an unread approach"
+        elif case == "water":
+            assert before(23, 0) < WATER_LEVEL_M
+            assert after(23, 0) == before(23, 0)
+            assert intended, "a future pad cannot grant water-fill permission"
+        else:
+            assert after(23, 0) == before(23, 0) == ground(23, 0)
+            assert intended, "the approach's protected owner still wins"
+    if verbose:
+        print("ribbon future-pad-arrival selftest OK", results)
+    return results
+
+
+def selftest_successive_arrivals(verbose: bool = True) -> dict:
+    """A real later road stamp must not lower a previously valid arrival.
+
+    The first road grades to a future pad. A perpendicular flat road then
+    lowers its terminus but leaves part of that approach carried forward,
+    creating a berm without exceeding the ordinary lattice-edge slide limit.
+    Re-stamp the later road after production profile claims, then re-read the
+    composed compilers. No recorded profile height supplies a ground reading.
+    """
+    pad = {"site_id": "destination", "name": "destination",
+           "x": 14.0, "z": 0.0, "hw": 4.0, "hd": 4.0, "datum_y": 40.0}
+    pads = pad_keepouts_from_chain([], [], planned=[pad])
+    old = {"id": "road_earlier", "nodes": [[-40.0, 0.0], [0.0, 0.0]],
+           "profile_y": [40.4, 40.4], "is_bridge": [False, False],
+           "width_m": 2.0, "length_m": 40.0}
+    later = {"id": "successor",
+             "nodes": [[0.0, float(z)] for z in range(-40, 41, 2)],
+             "profile_y": [40.0] * 41, "is_bridge": [False] * 41,
+             "width_m": 2.0, "length_m": 80.0, "grade_limit": 0.08}
+    zones = sorted(set(segment_zones(old["nodes"], old["is_bridge"], 2.0))
+                   | set(segment_zones(later["nodes"], later["is_bridge"], 2.0))
+                   | pads.approach_zones(old))
+    patches = {f"z_{x}_{z}": _flat_patch(x, z, lambda _x, _z: 40.0)
+               for x, z in zones}
+    earlier, _old_stats = stamp(old, patches, zones, pads)
+
+    def live_delta(x, z):
+        return delta_at(earlier, int(x), int(z))
+
+    def before(x, z):
+        future = pads.finished_y(x, z)
+        return 40.0 + live_delta(x, z) if future is None else future
+
+    assert not pads.arrivals(old, before), pads.arrivals(old, before)
+    records = [{"seq": 1, "op": "terrain_write", "actor": "factory",
+                "params": {"name": old["id"], "role": "road_segment",
+                           "profile": {"half_width_m": 1.0,
+                                       "nodes": [[x, z, y] for (x, z), y in
+                                                 zip(old["nodes"], old["profile_y"])]}}}]
+    records[0]["meta"] = {
+        "road_model": emitted_road_model(dict(old, id="earlier"), BATTER_MAX_M)}
+    prior = built_arrival_segments(records, "road_successor")
+    need = set().union(*(arrival_walk_vertices(w)
+                       for w in pads.arrival_walks(old)))
+
+    def rasterise():
+        return stamp(later, patches, zones, pads, live_delta_at=live_delta)
+
+    def judge(comps, population=prior):
+        def after(x, z):
+            future = pads.finished_y(x, z)
+            return (rim_height_after(x, z, 40.0, comps, live_delta)
+                    if future is None else future)
+        return prior_arrival_judgement(
+            later, population, pads, comps, before, after, "factory"), after
+
+    candidate, stats = rasterise()
+    broken, broken_height = judge(candidate)
+    assert stats["over_clamp"] == 0, stats["over_clamp"]
+    assert any(f["check"] == "terminus_berm"
+               for f in broken["failures"]), broken
+    assert not pads.arrivals(later, broken_height)
+    assert broken["claims"], broken
+    foreign = [dict(r, actor="another-owner") for r in prior]
+    foreign_j, _height = judge(candidate, foreign)
+    assert foreign_j["failures"] and not foreign_j["claims"], foreign_j
+    legacy = built_arrival_segments(
+        [dict(records[0], meta={})], "road_successor")
+    legacy_j, _height = judge(candidate, legacy)
+    assert legacy_j["failures"] and not legacy_j["claims"], legacy_j
+    fix = regrade_for_claims(later, broken["claims"], 0.08)
+    assert fix["feasible"] and fix["nodes_regraded"], fix
+    later["profile_y"] = fix["profile"]
+    corrected, corrected_stats = rasterise()
+    fixed, fixed_height = judge(corrected)
+    assert not fixed["failures"], fixed
+    assert not pads.arrivals(old, fixed_height)
+    assert not pads.arrivals(later, fixed_height)
+    assert corrected_stats["over_clamp"] == 0, corrected_stats["over_clamp"]
+    # The future pad changes only its own core, not the earlier roadhead.
+    pad_comps, op_y = {}, {}
+    flattenmod.build(
+        {"id": "destination", "solved": {
+            "x": 14.0, "z": 0.0, "y": 40.0,
+            "footprint_orientation": "8 m along x by 8 m along z",
+            "flatten_cost": {"target_y": 40.0}}},
+        patches, zones, "paved_cleared", 0.0, pad_comps, op_y)
+    for v in need:
+        actual = rim_height_after(
+            *v, 40.0, pad_comps,
+            lambda x, z: rim_height_after(x, z, 40.0, corrected, live_delta) - 40.0)
+        assert abs(actual - fixed_height(*v)) < 1e-6, v
+    result = {"broken": broken["failures"], "fixed": fixed["failures"],
+              "foreign": foreign_j["failures"], "nodes_regraded": fix["nodes_regraded"]}
+    if verbose:
+        print("ribbon successive-arrivals selftest OK", result)
+    return result
+
+
 
 def selftest_empty_footprint(verbose: bool = True) -> dict:
     """A leg that scans to NO zone has no keep-out discs and must not raise:
@@ -11076,11 +11789,15 @@ def main() -> int:
         selftest_pad_keepout_planned()
         selftest_planned_pad_rim()
         selftest_finished_arrivals()
+        selftest_future_pad_arrival()
+        selftest_successive_arrivals()
         selftest_snap_shared()
         selftest_half_lattice()
         selftest_empty_footprint()
         selftest_foreign_batter()
+        selftest_emitted_road_authority()
         selftest_rim_closure()
+        selftest_rim_before_resolution()
         selftest_rim_closure_band()
         selftest_rim_closure_foreign_reach()
         selftest_profile_feedback()
@@ -11582,6 +12299,7 @@ def main() -> int:
                       for d in (_sites_doc.get("declared_sites") or ())]
         pad_source = str(sites_path)
     else:
+        import spec as specmod
         site_list = [{"id": sid, "xz": list(s["xz"]),
                       "pad_radius_m": s["pad_radius_m"], "pad_y": s.get("pad_y")}
                      for sid, s in specmod.SETTLEMENT_SITES.items()]
@@ -11608,6 +12326,16 @@ def main() -> int:
     planned_approaches = planned_pad_claims(str(WORLD), str(SEED))
     approach_pads = pad_keepouts_from_chain([], [], planned=planned_approaches)
     zones = sorted(set(zones) | approach_pads.approach_zones(seg, batter_m))
+    prior_arrival_roads = built_arrival_segments(
+        _led_for_pads.records(), f"road_{seg['id']}".replace("-", "_"))
+    # A changed sample can invalidate another built road's arrival. Read its
+    # entire walk (both diagonal corners too), not only this road's corridor.
+    candidate_zones = set(zones)
+    for prior_road in prior_arrival_roads:
+        need = set().union(*(arrival_walk_vertices(w)
+                           for w in pad_keepouts.arrival_walks(prior_road)))
+        if any(tcdata.zone_of(*v) in candidate_zones for v in need):
+            zones = sorted(set(zones) | {tcdata.zone_of(*v) for v in need})
     # THE WINDOW THE PLANNER ALREADY RECORDED, AND NOTHING CONSUMED.
     # `junction.py::reconcile --apply` writes `reconciled[].zones_to_reemit`
     # into every segment it re-grades, and `junction.zones_touched` computes
@@ -11915,14 +12643,13 @@ def main() -> int:
             return None
         return (d, f"{w['name']}#{w['seq']}")
 
-    # ...AND READ AGAINST THAT ROAD'S OWN PLAN, so its batter is ground and
-    # only its carriageway is a corridor partner: FOREIGN_BATTER_DEPENDS_ON.
-    # EVERY PLAN IN THIS RUN'S SEGMENTS FILE, by the name its write carries;
-    # the rim-owner table below asks the same map.
+    # Current plans remain the authority for planned junctions and snapping.
+    # A foreign author's ground is instead bounded by the complete model
+    # carried by THAT exact emission, including its emit-time profile changes.
     plans_by_write = {"road_" + s_["id"].replace("-", "_"): s_
                       for s_ in doc["segments"]}
     foreign_road_at = foreign_road_band(
-        road_claim_at, plans_by_write,
+        road_claim_at, road_models_from_records(live.led.records()),
         lambda sx, sz: appliedmod.generated_at(patches, float(sx), float(sz)))
 
     # SHARED CORRIDORS (SNAP_SHARED_DEPENDS_ON): lie on the built leg.
@@ -11974,6 +12701,15 @@ def main() -> int:
         j = judge_rim(seg, cmps, stt, patches, live, pad_keepouts,
                       plans_by_write)
         j["arrivals"] = pad_keepouts.arrivals(seg, j["height_after"])
+        def height_before(x, z):
+            g = appliedmod.generated_at(patches, float(x), float(z))
+            return None if g is None else g + live.delta_at(float(x), float(z))
+        prior_j = prior_arrival_judgement(
+            seg, prior_arrival_roads, pad_keepouts, cmps,
+            height_before, j["height_after"], args.actor)
+        j["prior_arrivals"] = prior_j["failures"]
+        j["prior_arrival_claims"] = prior_j["claims"]
+        j["prior_arrivals_checked"] = prior_j["checked"]
         return j
     _walk0 = walkability(seg, comps, patches, pad_keepouts, prot["pieces"],
                          prot["discs"], road_clips=st["road_clip_at"])
@@ -12196,8 +12932,7 @@ def main() -> int:
     # set is this write's own emission, the rim is derived from it, and both
     # heights come from the patches this run already scanned plus the ledger's
     # own blobs.  No second world, no prior save, no reference artefact.
-    _judged = judge_rim(seg, comps, st, patches, live, pad_keepouts,
-                        plans_by_write)
+    _judged = _judge_rim(comps, st)
     rim, labels, rim_owed = (_judged["rim"], _judged["labels"],
                              _judged["rim_owed"])
     taken_after, taken_now, taken_gen = (_judged["taken_after"],
@@ -12327,11 +13062,11 @@ def main() -> int:
                   f"of a fresh seed.")
         return 7
 
-    arrivals = pad_keepouts.arrivals(seg, _height_after)
+    arrivals = _judged["arrivals"] + _judged["prior_arrivals"]
     st["arrival_failures"] = arrivals
     if arrivals:
-        print("REFUSING: the finished approach to a declared pad is not "
-              f"walkable: {arrivals}. Nothing has been sent.")
+        print("REFUSING: this write leaves its own or an affected built road's "
+              f"declared-pad approach unwalkable: {arrivals}. Nothing has been sent.")
         return 7
 
     # ---- THE WATER SIGN: A FILL OVER A SUBMERGED SAMPLE REMOVES WATER ----
@@ -12856,20 +13591,7 @@ def main() -> int:
                  "lowest_major_walkable_surface is a PAD datum and does not "
                  "apply to a ribbon, which has a different target height at "
                  "every station.",
-        "profile": {
-            "nodes": [[n[0], n[1], y] for n, y, brg
-                      in zip(seg["nodes"], seg["profile_y"], seg["is_bridge"])
-                      if not brg],
-            "half_width_m": seg["width_m"] / 2.0,
-            "shoulder_m": SHOULDER_M,
-            # The batter is part of the WRITTEN SURFACE, so it belongs in the
-            # field a replay re-derives deltas from. Without it a replay
-            # reproduces the carriageway and silently drops every side slope,
-            # which is the pre-repair geometry wearing this record's name.
-            "batter_m": batter_m,
-            "batter_grade": round(BATTER_GRADE, 4),
-            "interp": "linear_arclength",
-        },
+        "profile": emitted_road_profile(seg, batter_m),
         "max_cut_m": st["max_cut_m"], "max_fill_m": st["max_fill_m"],
         "over_clamp": st["over_clamp"],
         "location_check": loc,
@@ -12901,7 +13623,8 @@ def main() -> int:
                                      "ServerDevcommands", "ValheimRcon"],
                             "prefabs": ["_TerrainCompiler"],
                             "blobs": [e["blob_sha256"] for e in entries]},
-               "expect": {"terrain_compiler": True}, "meta": {},
+               "expect": {"terrain_compiler": True},
+               "meta": {"road_model": emitted_road_model(seg, batter_m)},
                "prev": "0" * 64}
         if args.preflight_out:
             pf = Path(args.preflight_out)
@@ -13171,16 +13894,7 @@ def main() -> int:
                 "datum": "road profile: fitted longitudinal profile, "
                          "lowest_major_walkable_surface is not applicable to a "
                          "ribbon",
-                "profile": {
-                    "nodes": [[n[0], n[1], y] for n, y, brg
-                              in zip(seg["nodes"], seg["profile_y"], seg["is_bridge"])
-                              if not brg],
-                    "half_width_m": seg["width_m"] / 2.0,
-                    "shoulder_m": SHOULDER_M,
-                    "batter_m": batter_m,
-                    "batter_grade": round(BATTER_GRADE, 4),
-                    "interp": "linear_arclength",
-                },
+                "profile": emitted_road_profile(seg, batter_m),
                 "max_cut_m": st["max_cut_m"], "max_fill_m": st["max_fill_m"],
                 "over_clamp": st["over_clamp"],
                 "location_check": {k: v for k, v in loc.items()
@@ -13194,6 +13908,7 @@ def main() -> int:
                       "blobs": shas},
             expect={"terrain_compiler": True},
             meta={**road_unit_meta(seg["id"]),
+                  "road_model": emitted_road_model(seg, batter_m),
                   "grade_limit": seg["grade_limit"],
                   "grade_max_measured": seg["grade_max_measured"],
                   "crossings_handed_to_Crossings": [c["crossing_id"]
@@ -13210,6 +13925,14 @@ def main() -> int:
                       Path(args.repair_before).read_text())
                       if args.repair_before else None),
                   "walkability": walk,
+                  "arrival_contract": {
+                      "surface": "candidate compiler plus current ledger; unlaid "
+                                 "pad cores projected from their declared datum",
+                      "saved_or_live_acceptance": False,
+                      "own_failures": _judged["arrivals"],
+                      "prior_failures": _judged["prior_arrivals"],
+                      "prior_checked": _judged["prior_arrivals_checked"],
+                  },
                   # THE ORDER, IN THE RECORD.  A road's ledger entry now
                   # carries WHICH reading of the ground it was routed against
                   # and when that reading was taken -- or, when there was
