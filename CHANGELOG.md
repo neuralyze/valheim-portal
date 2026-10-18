@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- North roads join their required source through the actual levelled footprint
+  or a registered, structurally verified surviving deck, not exact snapped
+  coordinate equality or bridge flags. Source proof and export use the same
+  canonical crossing population after joint fitting.
+- North solo routing reuses canonical adjacency and drowned-terminal recovery,
+  preserving successful trims and span decisions through later water rebuilds.
+  Refusals report the binding gate's measurements rather than unrelated water
+  clearance.
+
 - North joint-profile writer checks resolve existing base-road field roles
   through the canonical resolver, rather than indexing a role-named segment
   into an actual-window-keyed field map and crashing before frontier selection.

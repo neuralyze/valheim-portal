@@ -49,6 +49,19 @@ writer-water, location and census gates and merges north road-ground into the
 canonical seed-scoped segments/crossings files. Historical `north_segments.yaml`
 is diagnostic evidence, not a second generated network.
 
+Source junctions are judged against the actual levelled road footprint, including
+its inclusive end caps; a harmless lattice snap is not a disconnected road.
+Bridge flags alone cannot establish walking coverage. A deck source requires
+the canonical bank handoff and a surviving floor from the actual deck builder,
+including structural and carriageway guards on the composed planned surface.
+Source checks run after joint fitting and use the same collapsed crossing
+population exported for construction. This is planning evidence, not a saved
+world or a claim that a deck has been built.
+
+North solo routes use the canonical adjacency and drowned-terminal remedies;
+later water rebuilds preserve successful trim, land-only and span-price choices.
+Refusal diagnostics identify the binding gate and its measurements.
+
 Provisional base-road joint/writer refusals remain explicit `base_route_refusals`
 and keep their full survey/census geometry; they are not blamed on every north
 candidate or silently labelled clear. North-road failures still reject that

@@ -443,6 +443,73 @@ def load_itinerary(path, *, provisional_ok=False) -> dict:
     return doc
 
 
+def _north_route_builders(net, corr, raw):
+    """Use canonical solo remedies, then keep their decisions on water rebuilds."""
+    def first(*, trim=None):
+        return net.adjacency_reroute(
+            corr, lambda adj: raw(trim=trim, extra_forbid=adj))
+
+    rec, joint, base_trim = net.build_past_drowned(first)
+    worst = net.span_worst(rec)
+    if worst > net.MAX_BRIDGE_SPAN_M:
+        try:
+            land, land_joint = raw(land_only=True, trim=base_trim)
+        except net.DrownedFootprint:
+            raise
+        except ValueError as exc:
+            (rec, joint, base_trim), price = net.span_reprice(
+                corr, lambda: net.build_past_drowned(first),
+                first_worst=worst, land_exc=exc)
+            rec["span_reprice"] = price
+        else:
+            land["land_only_retry"] = {
+                "first_attempt_worst_span_m": worst,
+                "length_penalty_m": round(land["length_m"] - rec["length_m"], 1),
+                "why": "first route exceeded the canonical bridge span ceiling; "
+                       "re-routed with water forbidden"}
+            rec, joint = land, land_joint
+    adjacency = rec.get("adjacency_reroute")
+    drowned = rec.get("drowned_terminus")
+    retry = rec.get("land_only_retry")
+    price = rec.get("span_reprice")
+
+    def rebuild(*, extra_forbid=None, **kw):
+        if adjacency is not None:
+            mask = net.adjacency_mask(corr, adjacency["discs"])
+            extra_forbid = mask if extra_forbid is None else extra_forbid | mask
+        if retry is not None:
+            kw["land_only"] = True
+        rebuilt, rebuilt_joint = net.at_water_price(
+            corr, None if price is None else price["factor"],
+            lambda: raw(extra_forbid=extra_forbid, **kw))
+        for name, value in (("adjacency_reroute", adjacency),
+                            ("drowned_terminus", drowned),
+                            ("land_only_retry", retry), ("span_reprice", price)):
+            if value is not None:
+                rebuilt[name] = value
+        return rebuilt, rebuilt_joint
+
+    return rec, joint, net.tracked_build(net.keep_trim(rebuild, base_trim), None)
+
+
+def _north_gate_diagnostic(net, rec, gate, fld, pois):
+    """Return the failing instrument's binding, not an unrelated CLEAR reading."""
+    if gate == "write_gate":
+        rec["write_gate"] = net.write_gate(rec, pois, worldseed.seed())
+        return net.write_gate_rejection(rec)
+    if gate == "self_adjacency":
+        return net.self_adjacency_rejection(rec)
+    if gate == "terminal_landing":
+        return net.terminal_landing_rejection(rec, fld)
+    if gate == "uncensused":
+        return rec["census"]
+    if gate == "span":
+        return {"worst_span_m": net.span_worst(rec),
+                "ceiling_m": net.MAX_BRIDGE_SPAN_M,
+                "crossings": rec["crossings"]}
+    raise ValueError(f"unclassified canonical north road gate {gate!r}")
+
+
 def _joint_routed_profiles(base, segments, joints, fields, net, plan_state,
                            *, provisional):
     """Keep provisional base survey debt; never authorize it for construction."""
@@ -499,6 +566,160 @@ def _joint_routed_profiles(base, segments, joints, fields, net, plan_state,
             refused, base_refused)
 
 
+def _require_source_footprint(seg: dict, source_xz) -> None:
+    """Require actual levelled ground at the source, not nominal node identity.
+
+    Any terrain run may cover the source: a looping road can genuinely join
+    there away from its first station. The writer owns both the end-cap/bridge
+    convention and the inclusive level edge; batter is not walking coverage.
+    Joint datum, profile and writer-water gates still judge the resulting road.
+    """
+    import ribbon
+    foot = ribbon.lateral_and_y(
+        np.asarray([p[:2] for p in seg["nodes"]], dtype=np.float64),
+        np.asarray(seg["profile_y"], dtype=np.float64),
+        np.asarray(seg["is_bridge"], dtype=bool),
+        float(source_xz[0]), float(source_xz[1]))
+    half = ribbon.footprint_half_m(float(seg["width_m"]))
+    if foot is None or foot[0] > half + ribbon.EDGE_EPS_M:
+        raise ValueError(
+            f"north road {seg['id']} would lose its physical source junction: "
+            f"{list(source_xz)} outside its levelled footprint "
+            f"(half-width {half:g} m, "
+            f"distance {None if foot is None else foot[0]})")
+
+
+def _source_crossing_population(segments: list, crossings: dict, net) -> dict:
+    """The detected population exported and used for source walking proof."""
+    owners = {s["id"]: s for s in segments}
+    detected = []
+    for sg in segments:
+        for raw in sg.get("crossings", []):
+            if raw.get("segment_id") not in (None, sg["id"]):
+                raise ValueError(
+                    f"{raw.get('crossing_id')}: crossing owner is not {sg['id']}")
+            detected.append(raw | {"segment_id": sg["id"]})
+    retained, collapse = net.boardwalk.collapse_duplicate_declarations(detected)
+    handoffs = [a | {"segment_id": sg["id"], "cls": sg.get("cls")}
+                for sg in segments for a in sg.get("abutments", [])]
+    corpus = {**crossings, "detected": retained,
+              "abutment_handoffs": handoffs,
+              "north_crossing_collapse": collapse}
+    # Same declared-wins identity rule as boardwalk.crossing_corpus.
+    by_id = {c["crossing_id"]: c
+             for c in [*retained, *crossings.get("declared", [])]}
+    return {"corpus": corpus, "by_id": by_id, "owners": owners,
+            "collapse": collapse}
+
+
+def _require_source_connection(seg: dict, source_xz, *, fields: dict,
+                               segments: list, crossings: dict, net,
+                               population: dict) -> None:
+    """Ground coverage OR a registered, buildable deck carrying the source.
+
+    A bridge flag is not a surface. Detected spans must carry their solved
+    bank-level handoff; declared joiners must name this source's real abutment.
+    Deck pieces and all construction guards come from the canonical builder.
+    """
+    try:
+        _require_source_footprint(seg, source_xz)
+        return
+    except ValueError as exc:
+        ground_refusal = str(exc)
+    bw = net.boardwalk
+    corpus = population["corpus"]
+    candidates = []
+    for raw in seg.get("crossings", []):
+        cid = raw.get("crossing_id")
+        # The segment owns these records before corpus export adds segment_id.
+        # Never relabel an explicitly foreign crossing as this segment's.
+        if raw.get("segment_id") not in (None, seg["id"]):
+            continue
+        retained_id = population["collapse"]["collapsed"].get(cid, cid)
+        retained = population["by_id"].get(retained_id)
+        owner = (population["owners"].get(retained.get("segment_id"))
+                 if retained is not None else None)
+        if (cid and owner is not None
+                and any(h.get("crossing_id") == retained_id
+                        for h in owner.get("bank_level", []))):
+            candidates.append((retained, None))
+    for raw in crossings.get("declared", []):
+        cid = raw.get("crossing_id")
+        if not cid or not any((raw.get(end) or {}).get("node") == seg["from"]
+                              for end in ("bank_a", "bank_b")):
+            continue
+        # Abutments are node-owned, as fill_from_the_contract specifies.
+        # Bind that node to THIS road's real end and millimetre profile datum;
+        # no crossing_id is invented for the producer's node-owned handoff.
+        for h in seg.get("abutments", []):
+            if (h.get("node") == seg["from"]
+                    and h.get("ribbon_end_xz") == list(seg["nodes"][0][:2])
+                    and h.get("within_clamp") is True
+                    and h.get("level_y") is not None
+                    and abs(float(h["level_y"]) - float(seg["profile_y"][0]))
+                    <= 1e-3):
+                candidates.append((raw, h))
+    if not candidates:
+        raise ValueError(ground_refusal + "; no registered source deck handoff")
+    if not isinstance(crossings.get("contract"), dict):
+        raise ValueError(ground_refusal + "; registered source deck needs "
+                         "the canonical crossing contract")
+    planned, _ = planned_surface(fields, segments, net)
+    surface = bw.asm.Bed.applied(
+        lambda x, z: planned.at(x, z)[0],
+        "north planning model: measured Heightmap plus ribbon.stamp planned "
+        "terrain; not saved-world evidence")
+    routes = tuple({"seg": s["id"], "nodes": [p[:2] for p in s["nodes"]],
+                    "levels": s["profile_y"],
+                    "half_width_m": float(s["width_m"]) / 2.0}
+                   for s in segments)
+    failures = []
+    for raw, source_handoff in candidates:
+        c, _ = bw.fill_from_the_contract(raw, corpus)
+        missing = [src for src in bw.SPAN_FROM_CROSSING.values()
+                   if src != "segment_id" and c.get(src) is None]
+        if missing or any((c.get(end) or {}).get("xz") is None
+                          or (c.get(end) or {}).get("ground_y") is None
+                          for end in ("bank_a", "bank_b")):
+            failures.append(f"{c.get('crossing_id')}: incomplete deck contract")
+            continue
+        if (source_handoff is not None
+                and abs(float(source_handoff["level_y"])
+                        - float(c["required_deck_y"])) > 1e-3):
+            failures.append(f"{c['crossing_id']}: source handoff datum mismatch")
+            continue
+        span = {dst: c[src] for dst, src in bw.SPAN_FROM_CROSSING.items()
+                if src != "segment_id"}
+        span.update(segment=c.get("segment_id") or seg["id"],
+                    bank_a=dict(c["bank_a"]),
+                    bank_b=dict(c["bank_b"]),
+                    terminal_banks=list(c.get("terminal_banks") or []))
+        H = float(span["deck_y_REQUIRED"])
+        for spacing in bw.BENT_SPACINGS_M:
+            try:
+                pieces = bw.build_pieces(span, surface, H,
+                                         bent_spacing_m=spacing,
+                                         routes=routes)
+                pieces, _ = bw.trim_buried_overhang(span, pieces, surface, H)
+                verdict = bw.asm.verify(pieces, surface,
+                                        note=f"{span['crossing_id']} source")
+                guards = bw.run_guards(span, pieces, verdict, surface, H)
+                guards["carriageway"].extend(bw.route_carriageway_guard(
+                    span, pieces, surface, routes))
+            except (ValueError, SystemExit) as exc:
+                failures.append(str(exc))
+                break
+            if verdict["ok"] and not any(guards.values()) and any(
+                    p.prefab == "wood_floor" and bw.tile_covers(p, *source_xz)
+                    for p in pieces):
+                return
+            failures.append(f"{span['crossing_id']}: {guards}; "
+                            "source must lie on a surviving deck floor")
+            if verdict["ok"]:
+                break
+    raise ValueError(ground_refusal + "; deck refused: " + "; ".join(failures))
+
+
 def append_routes(doc: dict, fields: dict, base: dict, crossings: dict, net, census,
                   *, plan_state: dict) -> tuple[dict, dict]:
     """Measure every north road by the existing router/writer gates, then merge.
@@ -517,6 +738,7 @@ No ferry is inserted into the walking component graph as a pretend bridge.
     net.specmod.NODES.update(doc["nodes"])
     segments = []; refused = []; lines = []
     joints = {}
+    required_sources = {}
     for edge in doc["road_edges"]:
         f = fields[edge["patch"]]
         for nid in (edge["a"], edge["b"]):
@@ -535,23 +757,17 @@ No ferry is inserted into the walking component graph as a pretend bridge.
         corr.soft = soft
         searched = []
         try:
-            def build_north(**kw):
+            def raw_north(_f=f, _edge=edge, _corr=corr, _obstacles=obstacles,
+                          _searched=searched, **kw):
                 j = {}
-                rec = net.build_segment(f, edge, corr, obstacles, census=census,
-                                         joint=j, line_out=searched, **kw)
-                rec["patch"] = f.id
+                rec = net.build_segment(
+                    _f, _edge, _corr, _obstacles, census=census,
+                    joint=j, line_out=_searched, **kw)
+                rec["patch"] = _f.id
                 return rec, j
-            sg, joint = build_north()
-            if net.span_worst(sg) > net.MAX_BRIDGE_SPAN_M:
-                worst = net.span_worst(sg)
-                try:
-                    sg, joint = build_north(land_only=True)
-                except ValueError as exc:
-                    (sg, joint), ladder = net.span_reprice(
-                        corr, build_north, first_worst=worst, land_exc=exc)
-                    sg["span_reprice"] = ladder
+            sg, joint, rebuild = _north_route_builders(net, corr, raw_north)
             sg, joint = net.water_route(
-                f, corr, sg, joint, build=build_north,
+                f, corr, sg, joint, build=rebuild,
                 refusal=lambda rec: net.plan_refusal(
                     rec, pois, worldseed.seed(), fld=f, coverage=False))
             sg["patch"] = f.id
@@ -564,14 +780,15 @@ No ferry is inserted into the walking component graph as a pretend bridge.
             if water.get("collar") is False:
                 sg["connection_collar"] = False
             released = set((edge["a"], edge["b"])) - net._served_nodes(sg)
-            if why or released:
-                raise ValueError(f"north road {edge['id']} refused by "
-                                 f"{why or ('released endpoints ' + str(sorted(released)) if released else 'writer_water')}: "
-                                 f"{public_water}")
-            actual_start, actual_end = list(sg["nodes"][0][:2]), list(sg["nodes"][-1][:2])
-            if actual_start != list(doc["nodes"][edge["a"]]["xz"]):
-                raise ValueError(f"north road {edge['id']} would lose its physical "
-                                 f"source junction: {doc['nodes'][edge['a']]['xz']} -> {actual_start}")
+            if why:
+                raise CandidateRefusal(
+                    why, _north_gate_diagnostic(net, sg, why, f, pois))
+            if released:
+                raise CandidateRefusal(
+                    "released_endpoints", {"nodes": sorted(released),
+                                           "water": public_water})
+            required_sources[sg["id"]] = tuple(doc["nodes"][edge["a"]]["xz"])
+            actual_end = list(sg["nodes"][-1][:2])
             # Endpoints are solver output, not frozen coarse wishes. Carry the
             # measured legal arrival into the next road and every dock contract.
             doc["nodes"][edge["b"]]["xz"] = actual_end
@@ -583,7 +800,14 @@ No ferry is inserted into the walking component graph as a pretend bridge.
             segments.append(sg)
             joints[sg["id"]] = joint
         except ValueError as exc:
-            refused.append({"id": edge["id"], "error": str(exc)})
+            rec = {"id": edge["id"], "error": str(exc)}
+            if isinstance(exc, CandidateRefusal):
+                rec.update(kind=exc.stage, diagnostic=exc.reason)
+            elif isinstance(exc, net.DrownedFootprint):
+                rec.update(kind="drowned_footprint", diagnostic={
+                    "stations": list(exc.stations), "station_count": exc.n,
+                    "eligible_trims": net.drowned_trims(exc)})
+            refused.append(rec)
         if searched:
             lines.append({"id": edge["id"], "patch": f.id, "nodes": searched})
     base_refused = []
@@ -592,6 +816,21 @@ No ferry is inserted into the walking component graph as a pretend bridge.
             base, segments, joints, fields, net, plan_state,
             provisional=census is None)
         refused.extend(joint_refused)
+        source_segments = [*base["segments"], *segments]
+        source_population = _source_crossing_population(
+            source_segments, crossings, net)
+        connected = []
+        for sg in segments:
+            try:
+                # Source decks must see final joint profiles and survivors.
+                _require_source_connection(
+                    sg, required_sources[sg["id"]], fields=fields,
+                    segments=source_segments, crossings=crossings, net=net,
+                    population=source_population)
+                connected.append(sg)
+            except ValueError as exc:
+                refused.append({"id": sg["id"], "error": str(exc)})
+        segments = connected
     doc["base_route_refusals"] = base_refused
     if census is None:
         doc["provisional"] = True
@@ -633,13 +872,9 @@ No ferry is inserted into the walking component graph as a pretend bridge.
     doc["routed_road_ids"] = [s["id"] for s in segments]
     doc["frontier"]["road_endpoint_xz"] = list(doc["terminals"][doc["final_departure"]]["xz"])
     base["north_itinerary"] = str(worldseed.north_path())
-    crossings["detected"], collapsed = net.boardwalk.collapse_duplicate_declarations(
-        [c for s in base["segments"] for c in s["crossings"]])
-    crossings["north_crossing_collapse"] = collapsed
+    population = _source_crossing_population(base["segments"], crossings, net)
+    crossings.update(population["corpus"])
     base["totals"]["detected_crossings"] = len(crossings["detected"])
-    crossings.setdefault("abutment_handoffs", []).extend(
-        a | {"segment_id": sg["id"], "cls": sg["cls"]}
-        for sg in segments for a in sg["abutments"])
     net.carriageway_to_disk(base)
     return base, crossings
 
@@ -778,6 +1013,7 @@ class CandidateRefusal(ValueError):
     def __init__(self, stage, reason):
         super().__init__(str(reason))
         self.stage = stage
+        self.reason = reason
 
 
 def select_voyage_vessel(doc, pair, fields, *, surface):
@@ -1250,7 +1486,7 @@ def _measured_vessel_regression(kind):
                 and all(t["xz"] == roots[tid] for tid, t in terminals.items()))
 
 
-def _joint_field_role_regression():
+def _joint_field_role_regression(source_xz=(0.0, 0.0)):
     """A real joint/writer pass joins canonical north fields to a role-named base."""
     from unittest.mock import patch
     import network as net
@@ -1261,7 +1497,7 @@ def _joint_field_role_regression():
         np.ones((321, 321), np.uint8))
     nodes = {nid: {"xz": xz, "island": "spawn", "patch": f.id,
                    "kind": "road_junction"}
-             for nid, xz in (("numeric-a", [0.0, 0.0]),
+             for nid, xz in (("numeric-a", list(source_xz)),
                              ("numeric-b", [32.0, 0.0]))}
     saved = (copy.deepcopy(net.specmod.NODES), net._PLAN_PATCHES,
              net._PLAN_KEEPOUTS, net._PLAN_PAD_KEEPOUTS)
@@ -1295,8 +1531,9 @@ def _joint_field_role_regression():
                 plan_state=state)
         roads = {s["id"]: s for s in result["segments"]}
         return (set(roads) == {"numeric-base", "numeric-north"}
-                and net.plan_components(list(roads.values()), bridges=[])
-                == [["numeric-base", "numeric-north"]]
+                and doc["nodes"]["numeric-a"]["xz"] == list(source_xz)
+                and all(_require_source_footprint(s, source_xz) is None
+                        for s in roads.values())
                 and all(s["writer_water"]["final_verdict"] == "CLEAR"
                         for s in roads.values())
                 and doc["route_refusals"] == [])
@@ -1304,6 +1541,49 @@ def _joint_field_role_regression():
         net.specmod.NODES.clear()
         net.specmod.NODES.update(saved[0])
         net._PLAN_PATCHES, net._PLAN_KEEPOUTS, net._PLAN_PAD_KEEPOUTS = saved[1:]
+
+
+def _north_drowned_regression(kind):
+    """A real transverse wet footprint stays trimmed through later rebuilds."""
+    import network as net
+    sea = {"terminal": net._dt_terminus, "interior": net._dt_notch,
+           "dry": net._dt_dry}[kind]
+    corr = net._ww_corridor(net._ww_field(sea))
+    raw = net._dt_leg(sea)
+    original = raw()[0] if kind == "dry" else None
+    shortest = None
+    if kind == "terminal":
+        # Find the minimum physically successful CANONICAL trim independently
+        # of the recovery helper's ordering, including preceding wet attempts.
+        for count in sorted(net.WATER_TRIM_STATIONS):
+            for end in ("a", "b"):
+                try:
+                    candidate, _ = raw(trim={end: count})
+                except net.DrownedFootprint as exc:
+                    if not exc.stations:
+                        return False
+                    continue
+                shortest = candidate
+                break
+            if shortest is not None:
+                break
+    try:
+        rec, _, rebuild = _north_route_builders(net, corr, raw)
+        # A later water remedy may request less trim, but cannot resurrect the
+        # drowned stations removed by the initial canonical recovery.
+        again, _ = rebuild(**({"trim": {"b": 1}} if kind == "terminal" else {}))
+    except net.DrownedFootprint as exc:
+        return kind == "interior" and bool(exc.stations)
+    if kind == "dry":
+        preserved = (rec["nodes"][0] == original["nodes"][0]
+                     and rec["nodes"][-1] == original["nodes"][-1]
+                     and rec["length_m"] == original["length_m"])
+    else:
+        preserved = shortest is not None and rec["nodes"] == shortest["nodes"]
+    return (kind != "interior" and preserved
+            and min(rec["_footprint_min"]) >= net.WATER_LEVEL
+            and min(again["_footprint_min"]) >= net.WATER_LEVEL
+            and again["nodes"] == rec["nodes"])
 
 
 def _joint_phase_regression(kind, provisional):
@@ -1364,6 +1644,163 @@ def _joint_phase_regression(kind, provisional):
         net._PLAN_PATCHES, net._PLAN_KEEPOUTS, net._PLAN_PAD_KEEPOUTS = saved
 
 
+def _source_connection_regression(kind):
+    """Real numeric routing and deck assembly, judged by the source gate itself."""
+    import network as net
+    f = net.fieldmod.Field(
+        "numeric-source", 0.0, 0.0, 64.5, 1.0, 129,
+        np.full((129, 129), 40.0, np.float32),
+        np.ones((129, 129), np.uint8))
+    corr = net.routemod.Corridor(f, cell_m=1.0, grade_max=0.08,
+                                 roughness_weight=0.0)
+    road, _ = net._ww_leg(f, corr, (0.0, 0.0), (32.0, 0.0))()
+    # Retain nominal shared topology even for the physically detached cases.
+    road.update(id="numeric-source-road", **{"from": "shared-source"})
+    source, expected = {
+        "snap": ((-0.38, -0.38), True),
+        "shift2": ((-2.0, 0.0), True),
+        "diagonal": ((-2.0, -2.0), True),
+        "cap_edge": ((-4.0, 0.0), True),
+        "side_edge": ((16.0, 4.0), True),
+        "interior": ((16.0, 0.0), True),
+        "outside_edge": ((-4.001, 0.0), False),
+        "detached": ((-6.0, 0.0), False),
+        "far_detached": ((-35.0, 0.0), False),
+        "all_bridge": ((0.0, 0.0), False),
+        "bridge_fan": ((18.0, 0.0), False),
+        "registered_deck": ((0.0, 0.0), True),
+        "missing_handoff": ((0.0, 0.0), False),
+        "infeasible_deck": ((0.0, 0.0), False),
+        "detached_deck": ((-6.0, 0.0), False),
+        "foreign_deck": ((0.0, 0.0), False),
+        "declared_wrong_handoff": ((0.0, 0.0), False),
+        "declared_deck": ((0.0, 0.0), True),
+        "declared_wrong_endpoint": ((0.0, 0.0), False),
+        "declared_wrong_datum": ((0.0, 0.0), False),
+        "declared_unclamped": ((0.0, 0.0), False),
+        "unsupported_deck": ((0.0, 0.0), False),
+        "overlap_covered": ((0.0, 0.0), True),
+        "overlap_gap": ((0.0, 0.0), False),
+        "overlap_missing_handoff": ((0.0, 0.0), False),
+    }[kind]
+    deck_case = kind in ("registered_deck", "missing_handoff",
+                         "infeasible_deck", "detached_deck", "foreign_deck",
+                         "declared_wrong_handoff", "unsupported_deck",
+                         "declared_deck", "declared_wrong_endpoint",
+                         "declared_wrong_datum", "declared_unclamped",
+                         "overlap_covered", "overlap_gap",
+                         "overlap_missing_handoff")
+    if kind == "all_bridge" or deck_case:
+        road["is_bridge"] = [True] * len(road["nodes"])
+    elif kind == "bridge_fan":
+        road["is_bridge"] = [p[0] >= 16.0 for p in road["nodes"]]
+    crossing_doc = {"contract": {"deck_datum_y": 40.0, "bank_level_run_m": 6.0}}
+    structural_refusal = True
+    if deck_case:
+        road["crossings"] = [{
+            "crossing_id": "numeric-source-x01",
+            "status": "detected", "span_m": 32.0,
+            "required_deck_y": 40.0, "legal_deck_y_interval": [40.0, 40.0],
+            "ribbon_width_m": 6.0, "single_H_both_banks": True,
+            "bank_level_run_m": 6.0, "why_terrain_failed": "numeric deck",
+            "water_surface_y": 30.0,
+            "bank_a": {"xz": [0.0, 0.0], "ground_y": 40.0},
+            "bank_b": {"xz": [32.0, 0.0], "ground_y": 40.0},
+        }]
+        road["bank_level"] = ([] if kind == "missing_handoff" else [
+            {"crossing_id": "numeric-source-x01", "level_at_y": 40.0}])
+        if kind == "infeasible_deck":
+            road["crossings"][0]["legal_deck_y_interval"] = [35.0, 35.0]
+        if kind == "foreign_deck":
+            road["crossings"][0]["segment_id"] = "foreign-road"
+        if kind.startswith("declared_"):
+            crossing = road["crossings"].pop()
+            crossing["bank_a"].update(node=road["from"], road_deck_y=40.0)
+            crossing["bank_b"].update(node=road["to"], road_deck_y=40.0)
+            # Exercise the canonical bank-node/contract fills, not hand-added
+            # crossing IDs or pre-filled deck authority in the fixture.
+            for key in ("required_deck_y", "single_H_both_banks",
+                        "ribbon_width_m", "bank_level_run_m",
+                        "legal_deck_y_interval"):
+                crossing.pop(key)
+            crossing_doc.update(
+                declared=[crossing],
+                contract={"deck_datum_y": 40.0, "bank_level_run_m": 6.0})
+            road["abutments"] = [
+                {"node": node, "end": end, "level_y": 40.0,
+                 "level_run_m": 6.0, "within_clamp": True,
+                 "ribbon_width_m": 6.0, "ribbon_end_xz": list(xz)}
+                for node, end, xz in (
+                    (road["from"], "a", road["nodes"][0][:2]),
+                    (road["to"], "b", road["nodes"][-1][:2]))]
+            source_handoff = road["abutments"][0]
+            if kind == "declared_wrong_handoff":
+                source_handoff["node"] = "unrelated-source"
+            elif kind == "declared_wrong_endpoint":
+                source_handoff["ribbon_end_xz"] = [8.0, 0.0]
+            elif kind == "declared_wrong_datum":
+                source_handoff["level_y"] = 39.0
+            elif kind == "declared_unclamped":
+                source_handoff["within_clamp"] = False
+        if kind == "unsupported_deck":
+            # Eighty-metre piles on a real numeric bed: the real support
+            # solver must refuse, independently of the other deck guards.
+            f.h.fill(-40.0)
+            crossing = road["crossings"][0]
+            for bank in ("bank_a", "bank_b"):
+                crossing[bank]["ground_y"] = -40.0
+            bw = net.boardwalk
+            span = {dst: crossing[src]
+                    for dst, src in bw.SPAN_FROM_CROSSING.items()
+                    if src != "segment_id"}
+            span.update(segment=road["id"], bank_a=crossing["bank_a"],
+                        bank_b=crossing["bank_b"], terminal_banks=[])
+            bed = bw._fixture_bed(f.bilinear, "unsupported north source")
+            for spacing in bw.BENT_SPACINGS_M:
+                pieces = bw.build_pieces(
+                    span, bed, 40.0, bent_spacing_m=spacing)
+                pieces, _ = bw.trim_buried_overhang(span, pieces, bed, 40.0)
+                structural_refusal &= not bw.asm.verify(
+                    pieces, bed, note="numeric unsupported source")["ok"]
+    segments = [road]
+    if kind.startswith("overlap_"):
+        a, b = ((8.0, 0.0), (32.0, 0.0)) if kind == "overlap_gap" else (
+            (0.0, 0.0), (24.0, 0.0))
+        earlier, _ = net._ww_leg(f, corr, a, b)()
+        earlier.update(id="numeric-earlier-road",
+                       **{"from": "earlier-a", "to": "earlier-b"})
+        earlier["is_bridge"] = [True] * len(earlier["nodes"])
+        retained = copy.deepcopy(road["crossings"][0])
+        retained.update(crossing_id="numeric-earlier-x01",
+                        span_m=earlier["length_m"])
+        retained["bank_a"]["xz"] = list(a)
+        retained["bank_b"]["xz"] = list(b)
+        earlier["crossings"] = [retained]
+        earlier["bank_level"] = ([] if kind == "overlap_missing_handoff" else [
+            {"crossing_id": retained["crossing_id"], "level_at_y": 40.0}])
+        segments.insert(0, earlier)
+    population_matches = True
+    before = copy.deepcopy((road["nodes"], road["profile_y"], road["is_bridge"]))
+    try:
+        population = _source_crossing_population(segments, crossing_doc, net)
+        if kind.startswith("overlap_"):
+            # Real corridor census, not a manually supplied collapse map.
+            population_matches = (
+                population["collapse"]["collapsed"].get("numeric-source-x01")
+                == "numeric-earlier-x01"
+                and len(population["corpus"]["detected"]) == 1
+                and population["corpus"]["detected"][0]["segment_id"]
+                == "numeric-earlier-road")
+        _require_source_connection(
+            road, source, fields={f.id: f}, segments=segments,
+            crossings=crossing_doc, net=net, population=population)
+        covered = True
+    except ValueError:
+        covered = False
+    return (covered == expected and structural_refusal and population_matches
+            and (road["nodes"], road["profile_y"], road["is_bridge"]) == before)
+
+
 def selftest():
     """Deterministic known-bad cases; no scans, server, ledger or world writes."""
     import copy
@@ -1380,6 +1817,21 @@ def selftest():
         cases.append(ok)
     case("joint north writer resolves the base road's field role",
          _joint_field_role_regression)
+    case("fractional source joins through real routing, joint and writer gates",
+         lambda: _joint_field_role_regression((0.38, 0.38)))
+    for kind in ("snap", "shift2", "diagonal", "cap_edge", "side_edge",
+                 "interior", "outside_edge", "detached", "far_detached",
+                 "all_bridge", "bridge_fan", "registered_deck",
+                 "missing_handoff", "infeasible_deck", "detached_deck",
+                 "foreign_deck", "declared_wrong_handoff", "unsupported_deck",
+                 "declared_deck", "declared_wrong_endpoint",
+                 "declared_wrong_datum", "declared_unclamped",
+                 "overlap_covered", "overlap_gap", "overlap_missing_handoff"):
+        case(f"source physical connection {kind}",
+             lambda kind=kind: _source_connection_regression(kind))
+    for kind in ("terminal", "interior", "dry"):
+        case(f"north canonical drowned-footprint recovery {kind}",
+             lambda kind=kind: _north_drowned_regression(kind))
     for kind in ("base_writer", "base_joint", "north_writer"):
         for provisional in (True, False):
             case(f"{kind} keeps measured refusal with provisional={provisional}",
