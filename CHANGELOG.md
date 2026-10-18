@@ -20,6 +20,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   station ownership. Compatible existing floors remain part of walking
   coverage without being emitted again. Planning and construction share one
   physical geometry preparation path and unchanged clearance/support guards.
+- Crossing candidates must survive real routed, graded and rasterized bank
+  approaches plus the same native deck assembly/guards used by construction.
+  Narrow shore samples and a straight-axis guess no longer certify a crossing.
+  Rendered integer-lattice terrain is bound to its producer receipt and SHA.
+- Geography costs crossings from the current world's tool-solved portal hub,
+  never an old geography coordinate or a third human pin. World facts and
+  placements now precede geography; the shared installation reader remains
+  import-safe before route-node hydration.
+- Landing wet-floor checks preserve a declared low sea deck's original datum.
+  They do not impose a new minimum above that fixed datum; higher decks retain
+  their existing water-clearance minimum and all other guards.
+- All seeds now derive their scan geometry; the old default-seed numeric window
+  table is removed. Archived field-name translations retain no coordinates.
+- Shoreline sites and paired ferry destinations are generated from current
+  rendered terrain. Complete playable-domain component labels prevent cropped
+  windows from inventing disconnected islands; bootstrap and final scans must
+  agree on the complete-world height digest.
+- Shore approaches use their full measured routing envelopes. The far ferry
+  terminal requires its own inward road, and saved acceptance independently
+  rejects missing, provisional or misaligned serving roads.
+- Retained waterfront completion uses canonical native-pose reconciliation,
+  not a legacy ledger replay. Fabric closure selects actual emitted rail posts
+  and handles empty operation lists before opening a writer.
+- Crossing searches reuse exact canonical bank-road computations and narrowly
+  scoped seating-refusal certificates. Certificates include the transitive
+  station-spacing policy. Unmeasured optional handoffs remain explicitly
+  indeterminate rather than becoming physical impossibility claims.
 
 - North roads join their required source through the actual levelled footprint
   or a registered, structurally verified surviving deck, not exact snapped

@@ -319,15 +319,26 @@ def _north_itinerary(s: Scope) -> dict:
     return north_transport.load_itinerary(worldseed.north_path(s.seed),
                                           s.seed, s.world, for_write=True)
 
+def _shore_sites(s: Scope) -> list[dict]:
+    from roads import shores
+    with worldseed.scope(s.seed, s.world):
+        return shores.load()
+
+
 
 def _north_terminal_units(s: Scope) -> list[str]:
     # Missing, foreign and provisional are debts, never an empty population.
-    return list(_north_itinerary(s)["terminals"])
+    return list(_north_itinerary(s)["terminals"]) + [site["id"] for site in _shore_sites(s)]
 
 
 def _north_terminal_ground(s: Scope) -> dict[str, dict[str, tuple[str, ...]]]:
-    return {tid: {"segment": (terminal["segment_id"],)}
-            for tid, terminal in _north_itinerary(s)["terminals"].items()}
+    from roads import shore_build
+    out = {tid: {"segment": (terminal["segment_id"],)}
+           for tid, terminal in _north_itinerary(s)["terminals"].items()}
+    out.update({site["id"]: ({"segment": (shore_build.ROAD_OF[site["node"]],)}
+                if site["node"] in shore_build.ROAD_OF else {})
+                for site in _shore_sites(s)})
+    return out
 
 
 def _split(unit: str) -> tuple[str, str]:
@@ -354,6 +365,7 @@ def _inputs(s: Scope) -> list[Artefact]:
         # step that builds one.  See UNBUILT_DEPENDS_ON.
         Artefact("crossings", worldseed.crossings_path(s.seed), pipeline.SCOPE_YAML),
         Artefact("north_itinerary", worldseed.north_path(s.seed), pipeline.SCOPE_YAML),
+        Artefact("waterfront", worldseed.waterfront_path(s.seed, s.world), pipeline.SCOPE_YAML),
         Artefact("census", HERE / "roads" / "census" / f"{s.world}-census.json"),
         # THE CORRIDOR'S ZONES ARE NOT THE BUILD'S TO GENERATE.  `precensus.py
         # survey` generates a zone and reads it IN THE SAME CALL (stage 10), so
@@ -624,6 +636,16 @@ def _av_decks(rt: Runtime, unit: str) -> list[list[str]]:
 
 def _av_north_transport(rt: Runtime, unit: str) -> list[list[str]]:
     from roads import north_transport
+    if unit in {site["id"] for site in _shore_sites(rt.scope)}:
+        import yaml
+        doc = yaml.safe_load(worldseed.waterfront_path(
+            rt.scope.seed, rt.scope.world).read_text())
+        return [[PY, str(HERE / "roads" / "shore_build.py"),
+                 "plan" if rt.dry else "build", "--field", doc["field"],
+                 "--terminal", unit, "--seed", rt.scope.seed,
+                 "--world", rt.scope.world, "--actor", rt.actor,
+                 "--out", str(rt.work / "build" / "north_transport" / f"{unit}.json")]
+                + ([] if rt.dry else ["--apply"])]
     return [[PY, str(HERE / "roads" / "north_transport.py"),
              "plan" if rt.dry else "build",
              "--itinerary", str(worldseed.north_path(rt.scope.seed)),
@@ -845,12 +867,13 @@ BUILD_STEPS: tuple[BuildStep, ...] = (
     BuildStep(
         6.75, "north_transport", "roads/north_transport.py build --apply",
         _north_transport,
-        requires=("north_itinerary", "road_ground", "bodies", "decks"),
-        evidence="One unit per scoped itinerary terminal. Every paired endpoint "
-                 "is measured before any unit writes. Docks stand on their "
-                 "serving segment's already-graded road endpoint; no transport "
-                 "terrain ownership bypass. Final departure includes a full "
-                 "checksum-bound tall lighthouse blueprint and a large ship.",
+        requires=("north_itinerary", "waterfront", "road_ground", "bodies", "decks"),
+        evidence="One unit per generated north or semantic shoreline terminal. "
+                 "Every paired endpoint and full-hull voyage is measured before "
+                 "any unit writes. Serving road roots must already be graded; "
+                 "the far ferry dock meets measured natural destination ground. "
+                 "No transport terrain ownership bypass. Final north departure "
+                 "includes the full lighthouse body and measured large ship.",
         units=_north_terminal_units, argv=_av_north_transport,
         domain="north_terminal", stands_on=_north_terminal_ground,
         records=(("north_transport", "spawn_plan"), ("north_transport", "spawn")),

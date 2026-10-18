@@ -41,6 +41,42 @@ their `routing_window`. Routing consumers use those frames and preserve
 `measurement_patch` for provenance. Regenerate stage 8 when a publication lacks
 this routing evidence; an old survey ID must not silently become an island.
 
+World facts and installation placements now precede geography (stages 5, 6,
+then 7). Crossing costs read this world's actual solved portal hub. Prior
+geography output and an additional human-defined anchor are not inputs, and
+the resulting geography is world-scoped.
+
+Crossing eligibility runs the canonical routed bank approaches, profile fit,
+terrain rasterization and native deck preparation/guards. A straight-axis
+failure is not proof that a curved approach is impossible. Physical terrain
+inputs require a content-bound `.source.json` receipt from `roads.field.request`
+and actual integer 1 m Heightmap samples; old receipts are never handwritten
+onto unverified bytes.
+
+Approach search shares the canonical directed edge-cost calculation and isolated
+water-feedback masks. Each distinct bank road is fitted and compiled once;
+paired terrain and deck guards still evaluate the actual combined surface.
+Only direct nonterminal seating refusals can be reused, with identical span,
+datum, resolved station-spacing policy and every consumed terrain value.
+Exhausted optional measurement coverage is `unverified_coverage`, not physical
+impossibility. Required span coverage still refuses immediately, and unmet
+transport remains explicit.
+
+The default seed uses the same derived request path as every other seed; no
+historical scan-box geometry supplies a default. Stage 4 first measures the
+complete playable domain at 1 m to identify rendered land components, then
+freshly measures the final population and checks that the complete-world height
+digest is unchanged. Ferry separation uses those complete component identities,
+never labels recomputed inside cropped survey windows.
+
+`roads/shores.py` solves the boathouse, jetty and both eastern ferry terminals
+from current measured terrain and the world's solved installations. Serving
+roads use the full measured approach window. The far terminal requires its own
+`F1-ferry-eastisle-inland` road; it is transport-dependent, not connected by an
+imaginary walking bridge. Construction and retained waterfront completion share
+canonical native-pose reconciliation. Saved acceptance independently requires
+each terminal's final built serving road and physically accepted voyages.
+
 Stage 9 attaches a provisional itinerary to an actual station of the generated rooted
 network; no standing N0b junction, old north node table, ledger replay, or fixed
 ferry coordinates generate it. Census covers the roads, terminal search boxes,

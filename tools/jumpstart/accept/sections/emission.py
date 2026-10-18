@@ -635,6 +635,7 @@ def _case_declared_endpoints_are_attributed_and_derived_ones_are_named():
     `spec`'s classification tables are extended for the call and restored.
     """
     import yaml                                             # noqa: PLC0415
+    import installation_sites                              # noqa: PLC0415
     emitscope, _w, netmod = _mods()
     sp = netmod.specmod
     nodes = {
@@ -657,8 +658,8 @@ def _case_declared_endpoints_are_attributed_and_derived_ones_are_named():
                      "solved": {"x": 100.5, "z": 200.5, "y": 38.0}}]},
                 sort_keys=False))
         fld = _fresh_field(tmp, _F)
-        added = [(sp.PLACEMENT_OF, "fx-hub-a", ()),
-                 (sp.PLACEMENT_OF, "fx-hub-b", ()),
+        added = [(installation_sites.PLACEMENT_OF, "fx-hub-a", ()),
+                 (installation_sites.PLACEMENT_OF, "fx-hub-b", ()),
                  (sp.SETTLEMENT_SITES, "fx-approach", {})]
         # the settlement-site table the approach cites: the world's own is
         # another seed's file here, so a Fresh42 one is constructed

@@ -69,12 +69,11 @@ The functional ids:
                       ids were already functional (`plains23` = the plains
                       farm on land component 23) and are left alone
 
-WINDOW GEOMETRY IS NOW DERIVED, NOT BORROWED.  `ULFSLAND_WINDOWS` below is
-still MEASURED for Pirate68 and is still what the default path uses, byte for
-byte.  What changed is that it is no longer the ONLY window set that exists:
-`windows_for_components()` builds the same shape of answer out of whatever land
-a seed actually has, off `blueprints/site_finder.py::land_components`, and
-`roads/field.py::request_for_seed` runs PatchScan on it.  DRIVEN 2026-09-21 on
+WINDOW GEOMETRY IS DERIVED FOR EVERY SEED. `windows_for_components()` builds
+requests from `blueprints/site_finder.py::land_components`, and
+`roads/field.py::request_for_seed` measures those requests. Historical field
+names can still be read, but no historical window geometry supplies a default.
+DRIVEN 2026-09-21 on
 seed `Fresh42` with no world and no save: 446 land components measured, the
 spawn's own landmass identified (component 194, Meadows, 4.0 km2), nine windows
 derived and a 115,200,404-byte VHPATCH1 field produced whose header declares
@@ -466,6 +465,11 @@ def north_path(seed_: str | None = None) -> Path:
     return _slot(seed_, *_SLOTS["north_path"])
 
 
+def waterfront_path(seed_: str | None = None, world_: str | None = None) -> Path:
+    """Generated shoreline poses depend on both seed and solved world sites."""
+    return _JUMPSTART / "roads" / f"waterfront.{seed_ or seed()}.{world_ or world()}.yaml"
+
+
 def road_plan_names(seed_: str | None = None) -> dict[str, str]:
     """The two FILE NAMES `network.py emit` writes inside its `--out`, keyed
     by the stem the rest of the tree says."""
@@ -474,8 +478,9 @@ def road_plan_names(seed_: str | None = None) -> dict[str, str]:
 
 
 # WHERE A WORLD'S SOLVED INSTALLATIONS LIVE -- the one declaration both
-# readers (`roads/spec.py::installation_xz`, `settlements/sites.py::
-# existing_installations`) glob, and the one `pipeline.audit_reads` asks.
+# readers (`roads/installation_sites.py::installation_xz`,
+# `settlements/sites.py::existing_installations`) glob, and the one
+# `pipeline.audit_reads` asks.
 # Here and not in either reader because importing `roads/spec.py` loads the
 # node table, so a declaration living there could not be asked on a fresh seed.
 INSTALLATIONS_GLOB = "*/placements.yaml"
@@ -555,32 +560,18 @@ class Window:
     legacy: str = ""
 
 
-# MEASURED for seed Pirate68: this is `/tmp/roads/req1m.tsv` as it was actually
-# run, promoted out of a hand-edited scratch TSV into code so that a reader can
-# see what the 230 MB field file contains without a hex editor.  The `legacy`
-# column is the id INSIDE that binary.
-ULFSLAND_WINDOWS: tuple[Window, ...] = (
-    Window(TRUNK_PRIMARY, 798.0, 600.0, 1600.0, 1.0,
-           "holds the spawn point, StartTemple, the portal hall and the whole "
-           "priority-1 trunk", legacy="mainland"),
-    Window(TRUNK_SECONDARY, -760.0, 1188.0, 1600.0, 1.0,
-           "the other half of the main continent, reached over the S1/S2 "
-           "bridges rather than by portal", legacy="westisle"),
-    Window("outlier-south33", 1742.0, -3302.0, 1700.0, 1.0,
-           "the southern keep's landmass", legacy="south33"),
-    Window("outlier-blackforest6", -3292.0, -3714.0, 1300.0, 1.0,
-           "the black-forest base", legacy="blackforest6"),
-    Window("outlier-plains23", 578.0, -4478.0, 700.0, 1.0,
-           "the plains farm", legacy="plains23"),
-    Window("outlier-workshop3054", -4134.0, -906.0, 950.0, 1.0,
-           "the workshop island", legacy="workshop3054"),
-    Window("outlier-mtn7114", 46.0, 3668.0, 660.0, 1.0,
-           "the mountain post", legacy="mtn7114"),
-)
-
-# Both directions, so a caller holding either name can reach the other.
-LEGACY_OF = {w.fid: w.legacy for w in ULFSLAND_WINDOWS if w.legacy}
-FUNCTION_OF = {w.legacy: w.fid for w in ULFSLAND_WINDOWS if w.legacy}
+# Historical field-name translation is needed to read archived measurements.
+# It carries no coordinates and cannot create a new scan request.
+LEGACY_OF = {
+    TRUNK_PRIMARY: "mainland",
+    TRUNK_SECONDARY: "westisle",
+    "outlier-south33": "south33",
+    "outlier-blackforest6": "blackforest6",
+    "outlier-plains23": "plains23",
+    "outlier-workshop3054": "workshop3054",
+    "outlier-mtn7114": "mtn7114",
+}
+FUNCTION_OF = {legacy: functional for functional, legacy in LEGACY_OF.items()}
 
 
 def aliases(name: str) -> tuple[str, ...]:
@@ -607,7 +598,7 @@ def resolve(fields: dict, name: str):
         f"it holds {sorted(fields)}")
 
 
-def request_rows(windows: tuple[Window, ...] = ULFSLAND_WINDOWS,
+def request_rows(windows: tuple[Window, ...],
                  *, functional: bool = True) -> list[tuple[str, float, float, float, float]]:
     """PatchScan request tuples for `field.request`.
 
@@ -622,10 +613,8 @@ def request_rows(windows: tuple[Window, ...] = ULFSLAND_WINDOWS,
 # ---------------------------------------------------------------------------
 # WINDOW GEOMETRY DERIVED FROM THE SEED'S OWN LAND.
 #
-# `ULFSLAND_WINDOWS` above is MEASURED for Pirate68 and is the only window set
-# this build has ever had; a fresh seed that reads it plans against Ulfsland's
-# coastline.  What follows derives the same SHAPE of answer from whatever land
-# a seed actually has, so `VH_SEED=<new>` can be scanned rather than borrowed.
+# Every request is derived from the current seed's measured land components.
+# A default seed has no special geometric authority.
 #
 # The measurement is NOT here -- `blueprints/site_finder.py::land_components`
 # owns it, because it already owns the labelling that decides what one landmass
@@ -636,11 +625,7 @@ def request_rows(windows: tuple[Window, ...] = ULFSLAND_WINDOWS,
 # ---------------------------------------------------------------------------
 
 # PatchScan writes n = round(2*half/step) samples per side, each a float32
-# height plus a uint8 biome code (PatchScan.cs:291 and its wire-format note at
-# :121-123).  CHECKED against the file this build actually routes on: the seven
-# ULFSLAND_WINDOWS give 46,112,400 samples, 230,562,000 bytes of patch bodies,
-# and /tmp/roads/h1m.bin is 230,562,258 bytes -- the 258 is the header and the
-# seven per-patch descriptors.
+# height plus a uint8 biome code.
 WINDOW_BYTES_PER_SAMPLE = 5
 
 # The largest half-extent Ulfsland asked for, and the reason a window is not
@@ -788,8 +773,7 @@ def windows_for_components(components, spawn_xz, spawn_label, *,
             f"{step_m:g} m costs {cost / 1e6:,.0f} MB against a "
             f"{budget_bytes / 1e6:,.0f} MB budget. NOTHING IS DROPPED SILENTLY: "
             f"raise budget_bytes, raise min_area_m2 to scan fewer landmasses, or "
-            f"lower half_max_m to scan each one smaller. For scale, Ulfsland's "
-            f"own seven windows cost {windows_bytes(ULFSLAND_WINDOWS) / 1e6:,.0f} MB.")
+            f"lower half_max_m to scan each one smaller.")
     return tuple(out)
 
 
@@ -2049,10 +2033,6 @@ def selftest(verbose: bool = True) -> dict:
         else:
             raise AssertionError("resolve() must refuse a window it has not got")
 
-        # (f) the request rows round-trip to the ids in the binary on disk
-        legacy_ids = [r[0] for r in request_rows(functional=False)]
-        assert legacy_ids[:2] == ["mainland", "westisle"], legacy_ids
-        assert [r[0] for r in request_rows()][:2] == [TRUNK_PRIMARY, TRUNK_SECONDARY]
 
         # (g) the derived window set: spawn landmass first even when it is not
         #     the biggest, the spawn inside its own window, and the floor
@@ -2090,9 +2070,6 @@ def selftest(verbose: bool = True) -> dict:
         else:
             raise AssertionError("no spawn must refuse: trunk-primary holds it")
 
-        # (h) the default path is arithmetic, not a derivation: Ulfsland's seven
-        #     windows still price out to the file this build routes on.
-        assert windows_bytes(ULFSLAND_WINDOWS) == 230_562_000
 
         # (i) NEWEST_SAVE_DEPENDS_ON, neutered in each direction on a directory
         #     that reproduces the server's rotation: _main.9 and _main.10 both
@@ -2156,9 +2133,6 @@ def selftest(verbose: bool = True) -> dict:
         assert out["segment_files_fresh"] == ["roads/segments.Fresh42.yaml"]
         assert ledger_path(DEFAULT_WORLD) == (
             _JUMPSTART / "ledger" / "runs" / "Ulfsland" / "ledger.jsonl")
-        assert sorted(default_seed_names()) == sorted(
-            ["sites.yaml", "plan.json", "segments.yaml", "crossings.yaml",
-             "north_segments.yaml"]), default_seed_names()
 
         # (k) NO TOOL READS ANOTHER SEED'S ARTEFACT BY A FIXED NAME.
         out["fixed_names"] = fixed_name_selftest(verbose)

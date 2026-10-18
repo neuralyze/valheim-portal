@@ -452,20 +452,6 @@ def _save(s: Scope) -> list[Artefact]:
     return [Artefact("save", s.world_src, lineage=save_lineage)]
 
 
-# FIELD_WINDOWS_DEPENDS_ON: THE DEFAULT SEED IS SCANNED ON ITS DECLARED WINDOWS.
-# Stage 4 only ever DERIVED windows from the seed's land components, which is
-# right for a fresh seed and wrong for the one the committed corpus was built
-# on: for Pirate68 it caps `trunk-primary` at a 3200 m window around the spawn
-# and names the next landmass `trunk-secondary`, 7000 m away, so the west half
-# of the main continent -- where vestvik stands -- is in no window and the town
-# search finds 1 district candidate for 2 declared towns (MEASURED on the
-# from-scratch Ulfsland regeneration, stage 8: "seed 'Pirate68' yields 1 town
-# district candidate(s) and this plan declares 2 towns").  The default seed is
-# scanned with `worldseed.ULFSLAND_WINDOWS`, whose `trunk-secondary` is that
-# west half; every other seed still derives.  NEUTER `_FIELD_WINDOWS_MODE =
-# "derived"`.  Proven by `_default_seed_scans_declared`.
-FIELD_WINDOWS_DEPENDS_ON = ("declared_windows_for_the_default_seed",)
-_FIELD_WINDOWS_MODE = "declared"    # declared | derived
 
 
 # PLAN_NAME_DEPENDS_ON: STAGE 10 READS THE FILE STAGE 9 WROTE, BY ITS NAME.
@@ -487,15 +473,11 @@ def provisional_plan_name(seed: str) -> str:
     return worldseed.road_plan_names(seed)["segments"]
 
 
-def field_window_flags(seed: str) -> list[str]:
-    """The extra `roads/field.py request` arguments for this seed."""
-    if _FIELD_WINDOWS_MODE == "declared" and seed == worldseed.DEFAULT_SEED:
-        return ["--declared-windows"]
-    return []
-
-
 def _field(s: Scope) -> list[Artefact]:
-    return [Artefact("field", s.work / f"{s.seed}_1m.bin", SCOPE_BINARY)]
+    path = s.work / f"{s.seed}_1m.bin"
+    return [Artefact("field", path, SCOPE_BINARY),
+            Artefact("field_source", path.with_suffix(path.suffix + ".source.json"),
+                     SCOPE_YAML)]
 
 
 def _geography(s: Scope) -> list[Artefact]:
@@ -716,7 +698,8 @@ def _route(s: Scope) -> list[Artefact]:
     """
     return [Artefact("segments", worldseed.segments_path(s.seed), SCOPE_YAML),
             Artefact("crossings", worldseed.crossings_path(s.seed), SCOPE_YAML),
-            Artefact("north_itinerary", worldseed.north_path(s.seed), SCOPE_YAML)]
+            Artefact("north_itinerary", worldseed.north_path(s.seed), SCOPE_YAML),
+            Artefact("waterfront", worldseed.waterfront_path(s.seed, s.world), SCOPE_YAML)]
 
 
 def _route_plan_wanted(s: Scope) -> dict:
@@ -852,34 +835,11 @@ STAGES: tuple[Stage, ...] = (
                              "--north-coverage", "ordered-frontier-union-v1",
                              "--sandbox", str(s.sandbox),
                              "--budget-mb", f"{scan_budget_mb(s.work):.0f}",
-                             *field_window_flags(s.seed),
                              "--seed", s.seed],
           note="derives this seed's settlement windows and the union of EVERY "
                "eligible ordered 32m north frontier corridor, under the HOST budget",
           volatile=("--budget-mb",)),
-    Stage(5, "geography", "roads/geography.py emit", _geography,
-          requires=("field",),
-          command=lambda s: [sys.executable, str(HERE / "roads" / "geography.py"),
-                             "emit", "--field", str(s.work / f"{s.seed}_1m.bin"),
-                             "--seed", s.seed],
-          note="the seed's own road nodes. The portal-hall --anchor is "
-               "AUTHORED design, read from the prior document when there is "
-               "one; with none, only a seed whose crossing is costed from it "
-               "refuses, at that crossing (geography.ANCHOR_DEPENDS_ON)"),
-    # THE ORDER BELOW WAS `sites, world_facts, placements` UNTIL 2026-09-24,
-    # with world_facts and placements declaring they needed `sites`.  Neither
-    # reader opens a site set (derive.py and solve_placements.py have no read
-    # of one); `settlements/plan.py` DOES open this world's SOLVED placements
-    # -- its Picker keeps every settlement off the world's installations.
-    # MEASURED 2026-09-24, Fresh42 from scratch: stage 6 refused `seed
-    # 'Fresh42' has no sited installations` at 137.5 s (plan.py then imported
-    # roads/spec.py, whose import-time `installation_xz` refuses a world with
-    # none), and on every earlier drive it had run only because a previous
-    # drive left a worlds/Fresh42/ behind -- while reading ULFSLAND's 13
-    # installations, because the Picker's world defaulted to worlds/Ulfsland.
-    # The `reads` declarations are the readers' own, and `audit_reads` now
-    # refuses the old table (see `_prefix_table`).
-    Stage(6, "world_facts", "worlds/derive.py init + build", _world_facts,
+    Stage(5, "world_facts", "worlds/derive.py init + build", _world_facts,
           command=lambda s: [sys.executable, str(HERE / "worlds" / "derive.py"),
                              "init", s.world, "--seed", s.seed, "--write"],
           post=_render_world_tree,
@@ -890,7 +850,7 @@ STAGES: tuple[Stage, ...] = (
                "half that never depended on the world, placement-templates/ "
                "holds the durable requirement half the placement files "
                "themselves declare seed-independent"),
-    Stage(7, "placements", "blueprints/solve_placements.py", _placements,
+    Stage(6, "placements", "blueprints/solve_placements.py", _placements,
           # `field`: resolve.sh hands <work>/<seed>_1m.bin to the solver, which
           # judges a waterfront the roads serve on the router's own land
           # labelling (solve_placements NETWORK_LAND_DEPENDS_ON).
@@ -913,6 +873,17 @@ STAGES: tuple[Stage, ...] = (
                              str(HERE / "blueprints" / "resolve.sh")],
           note="coarse search -> 1 m patch scan -> verdict, per installation. "
                "FILLS the solved block of a placement that already exists"),
+    # Placement solving uses measured fields directly, not road geography.
+    # Crossings can therefore consume the actual solved hub without a cycle.
+    Stage(7, "geography", "roads/geography.py emit", _geography,
+          requires=("field", "field_source", "placements"),
+          reads=lambda s: [worldseed.installations_read(s.world)],
+          command=lambda s: [sys.executable, str(HERE / "roads" / "geography.py"),
+                             "emit", "--field", str(s.work / f"{s.seed}_1m.bin"),
+                             "--seed", s.seed, "--world", s.world],
+          note="the seed's road nodes and canonically buildable crossings, "
+               "costed from this world's current tool-solved portal hub; "
+               "never a prior geography coordinate or another human pin"),
     Stage(8, "sites", "settlements/plan.py", _sites,
           requires=("field", "locations", "placements"),
           command=lambda s: [sys.executable, str(HERE / "settlements" / "plan.py"),
@@ -1032,7 +1003,7 @@ STAGES: tuple[Stage, ...] = (
                    lambda s: ["--wanted", str(worldseed.segments_path(s.seed))],
                    _route_servable_unrouted)),
     Stage(12, "build", "buildstage.py run", _ledger,
-          requires=("save", "placements", "segments", "crossings", "north_itinerary", "census"),
+          requires=("save", "placements", "segments", "crossings", "north_itinerary", "waterfront", "census"),
           # THE GAP THIS ROW NAMED IS CLOSED.  It used to read `command=None`
           # with the manual "the one stage with no single entry point in this
           # tree: clear.py, flatten.py, sites.py, stock.py, ribbon.py and the
@@ -2494,8 +2465,6 @@ _NEUTERS: dict[str, tuple[str, str, object]] = {
                                       "cells-only"),
     # ADOPT_RESTAMP_DEPENDS_ON.
     "adopt skips identical": ("adopt_restamp", "_ADOPT_MODE", "skip"),
-    # FIELD_WINDOWS_DEPENDS_ON.
-    "field windows derived": ("field_windows", "_FIELD_WINDOWS_MODE", "derived"),
     # PLAN_NAME_DEPENDS_ON.
     "plan name seeded": ("plan_name", "_PLAN_NAME_MODE", "seeded"),
     # WRITER_LOCK_DEPENDS_ON, one arm per half.
@@ -2545,7 +2514,6 @@ def survivors(label: str) -> list[str]:
               ("world_guard", _stale_world_stage_refused),
               ("census_loop", _wanted_ground_read_and_rerouted),
               ("adopt_restamp", _identical_adoption_restamped),
-              ("field_windows", _default_seed_scans_declared),
               ("plan_name", _census_reads_the_plan_stage_nine_wrote),
               ("writer_lock", _second_run_refused))
     return [n for n, probe in probes if n != dropped and probe()]
@@ -3158,17 +3126,6 @@ def _census_reads_the_plan_stage_nine_wrote() -> bool:
     return True
 
 
-def _default_seed_scans_declared() -> bool:
-    """Stage 4 asks for the declared windows on the default seed and for
-    derived windows on every other."""
-    import dataclasses                                      # noqa: PLC0415
-    stage = next(st for st in STAGES if st.name == "field")
-    ulf = dataclasses.replace(_ROW_PROBE, seed=worldseed.DEFAULT_SEED)
-    fresh = dataclasses.replace(_ROW_PROBE, seed="Fresh42")
-    return ("--declared-windows" in [str(a) for a in stage.command(ulf)]
-            and "--declared-windows" not in [str(a) for a in stage.command(fresh)])
-
-
 def _identical_adoption_restamped() -> bool:
     """THE DRIVE-6 SHAPE: a stage-8 solve byte-identical to the slot it is
     adopted into, whose inputs are newer than that slot.  After adoption the
@@ -3359,16 +3316,6 @@ def selftest() -> int:
                            "went on writing to the staging server",
                neuter=_neuter("writer lock unlock"),
                neuters="writer lock unlock"),
-        R.Case("the_default_seed_is_scanned_on_its_declared_windows", False,
-               lambda: finding(_default_seed_scans_declared(),
-                               "stage 4 scans Pirate68 on ULFSLAND_WINDOWS and "
-                               "derives windows for any other seed", seeds=2),
-               prior_state="MEASURED on the from-scratch Ulfsland regeneration: "
-                           "derived windows left vestvik's west half of the "
-                           "main continent in no window, and stage 8 refused "
-                           "'1 town district candidate for 2 towns'",
-               neuter=_neuter("field windows derived"),
-               neuters="field windows derived"),
         R.Case("an_artefact_declaring_this_seed_is_accepted", False,
                lambda: finding(_own_header_accepted(),
                                "Fresh42-declared sites.yaml accepted for Fresh42",

@@ -1022,67 +1022,18 @@ def reachable_cost(cost, near_ok, far_ok):
     return np.where(np.asarray(near_ok) & np.asarray(far_ok), cost, np.inf)
 
 
-# CROSSING_LANDING_DEPENDS_ON: A BANK IS A PLACE A DECK CAN LAND ACROSS ITS WHOLE WIDTH.
-#
-# A candidate was costed by gap and reach alone.  MEASURED on Pirate68 regen
-# #6: the reachable narrowest pair (15.0 m, (-310.5, -73.5)) has 1.3-1.9 m of
-# ground height ACROSS the deck's width at its landing, on a shore skewed to
-# the span; the deck generator then refused S1 ("land seating needs 31.873 m
-# at station 2.000 m, but its footprint reaches wet ground 28.849 m") and the
-# deck, the road to it and the sites behind it were never built.  Of the 400
-# narrowest reachable pairs 94 land level (<= LANDING_SPREAD_MAX_M across
-# +/-LANDING_HALF_M, every sample on or above the water plane), the best a
-# 15.8 m span.
-# LANDING_SPREAD_MAX_M is a TASTE PICK (the bank-step limit is 0.35 m and a
-# ramp spends 0.30 m a tile); it is labelled one.
-# NEUTER `_CROSSING_LANDING_MODE = "off"`: the shipped rule, gap and reach.
-# Proven by `selftest_crossing_reach`.
-CROSSING_LANDING_DEPENDS_ON = ("the_deck_width", "the_water_plane")
-_CROSSING_LANDING_MODE = "level"        # level | off (the shipped)
-LANDING_SPREAD_MAX_M = 1.0
-LANDING_HALF_M = 3.0
-LANDING_INSET_M = 2.0
-
-
-def landing_spread(heights):
-    """`(spread_m, lowest_m)` of lateral ground samples, or None if unread."""
-    if heights is None or not len(heights):
-        return None
-    return (max(heights) - min(heights), min(heights))
-
-
-def landing_level(near_fld, far_fld, nx, nz, fx, fz, candidates):
-    """Boolean mask over `candidates` (indices): both landings level."""
-    import numpy as np
-    out = np.zeros(len(nx), dtype=bool)
-
-    def lateral(fld, x, z, ux, uz):
-        got = []
-        for k in np.arange(-LANDING_HALF_M, LANDING_HALF_M + 0.1, 1.0):
-            try:
-                got.append(sample_at(fld, x - uz * k, z + ux * k)[0])
-            except ValueError:
-                return None
-        return got
-
-    for i in candidates:
-        dx, dz = fx[i] - nx[i], fz[i] - nz[i]
-        n = math.hypot(dx, dz) or 1.0
-        ux, uz = dx / n, dz / n
-        a = landing_spread(lateral(near_fld, nx[i] - ux * LANDING_INSET_M,
-                                   nz[i] - uz * LANDING_INSET_M, ux, uz))
-        b = landing_spread(lateral(far_fld, fx[i] + ux * LANDING_INSET_M,
-                                   fz[i] + uz * LANDING_INSET_M, ux, uz))
-        out[i] = (a is not None and b is not None
-                  and max(a[0], b[0]) <= LANDING_SPREAD_MAX_M
-                  and min(a[1], b[1]) >= ABUTMENT_MIN_Y)
-    return out
+# Candidate eligibility reads the emitted deck and the legal approach raster,
+# not the former two inset cross-sections (<=1 m spread did not prove a landing).
+CROSSING_LANDING_DEPENDS_ON = (
+    "content-bound rendered integer Heightmap",
+    "canonical road profile and rasterised legal bank bench",
+    "boardwalk.prepare_geometry emitted pieces and every physical guard")
 
 
 def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
                    plan: tuple[dict, ...] = CROSSING_PLAN,
                    seed_varying: set | None = None,
-                   reach_near=None, reach_far=None
+                   reach_near=None, reach_far=None, *, physical=None
                    ) -> tuple[dict[str, dict], list[dict]]:
     """The abutment pairs for each authored crossing, and the crossings this
     seed does NOT have with the reason it does not have them.
@@ -1135,32 +1086,32 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
 
     near_ok = reach_near(near_x, near_z) if reach_near else None
     far_ok = reach_far(far_x, far_z) if reach_far else None
-    if (_CROSSING_LANDING_MODE == "level" and near_ok is not None
-            and far_ok is not None):
-        _cand = np.where(near_ok & far_ok)[0]
-        _cand = _cand[np.argsort(gaps[_cand])][:2000]
-        _lvl = landing_level(near_fld, far_fld, near_x, near_z, far_x, far_z,
-                             _cand)
-        near_ok = near_ok & _lvl
+    # Reach and gap rank candidates; only the actual writer and emitted-piece
+    # builder below authorise one. No gap-only top-2000 crop hides candidates.
     n_reach = (int((near_ok & far_ok).sum())
                if near_ok is not None and far_ok is not None else len(gaps))
     if n_reach == 0 and _CROSSING_REACH_MODE != "land":
         return {}, [dict(c, node_ids=[c["near"], c["far"]],
-                         reason=(f"PORTAL ONLY: none of {len(gaps)} candidate "
+                         reason=(f"TRANSPORT UNMET: none of {len(gaps)} candidate "
                                  f"bridge sites between the two trunk "
                                  f"landmasses has both banks inside the "
                                  f"router's reachable component "
                                  f"({int(near_ok.sum())} near / "
                                  f"{int(far_ok.sum())} far banks reachable "
                                  f"alone), so no road can arrive at a bridge "
-                                 f"here (CROSSING_REACH_DEPENDS_ON)."),
+                                 f"here (CROSSING_REACH_DEPENDS_ON). The west "
+                                 f"landmass remains a transport obligation."),
                          measured=dict(verdict["measured"],
                                        candidates=len(gaps),
-                                       reachable_pairs=0))
+                                       reachable_pairs=0),
+                         unmet_need={"kind": "transport", "required": True,
+                                     "crossing": c["id"], "status": "unserved"})
                     for c in plan]
 
     out: dict[str, dict] = {}
-    chosen: list[tuple[str, float, float]] = []
+    chosen: list[tuple[str, tuple, tuple]] = []
+    absent = []
+    physical_cache = {}
     for c in plan:
         if c["rule"] == "narrowest":
             cost = gaps
@@ -1176,20 +1127,97 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
         else:
             raise SystemExit(f"unknown crossing rule {c['rule']!r}")
         cost = reachable_cost(cost, near_ok, far_ok)
-        k = int(np.argmin(cost))
-        nxz = (float(near_x[k]), float(near_z[k]))
-        fxz = (float(far_x[k]), float(far_z[k]))
-        for prior, px, pz in chosen:
-            if math.hypot(nxz[0] - px, nxz[1] - pz) < CROSSING_MIN_SEPARATION_M:
-                raise SystemExit(
-                    f"REFUSING: crossing {c['id']} resolves to the same bank as "
-                    f"{prior} ({nxz} vs ({px}, {pz})). On this seed the two "
-                    f"authored crossings are one crossing, and the loop the "
-                    f"network is built around does not exist.")
-        chosen.append((c["id"], nxz[0], nxz[1]))
-
-        near_bank = walk_to_bank(near_fld, (snap(nxz[0]), snap(nxz[1])), fxz)
-        far_bank = walk_to_bank(far_fld, (snap(fxz[0]), snap(fxz[1])), nxz)
+        ordered = np.argsort(cost, kind="stable")
+        rejected = []
+        unverified = []
+        selected = None
+        seen_banks = set()
+        for index in ordered:
+            k = int(index)
+            if not np.isfinite(cost[k]):
+                break
+            nxz = (float(near_x[k]), float(near_z[k]))
+            fxz = (float(far_x[k]), float(far_z[k]))
+            try:
+                near_bank = walk_to_bank(near_fld, (snap(nxz[0]), snap(nxz[1])), fxz)
+                far_bank = walk_to_bank(far_fld, (snap(fxz[0]), snap(fxz[1])), nxz)
+            except SystemExit as error:
+                rejected.append({"stage": "bank_walk", "reason": str(error)})
+                continue
+            pair = (*near_bank["xz"], *far_bank["xz"])
+            if pair in seen_banks:
+                continue
+            seen_banks.add(pair)
+            reached = [
+                fn(np.array([bank["xz"][0]]), np.array([bank["xz"][1]]))[0]
+                for fn, bank in ((reach_near, near_bank), (reach_far, far_bank))
+                if fn is not None]
+            if reached and not all(reached):
+                rejected.append({"stage": "walked_bank_reach", "banks": list(pair)})
+                continue
+            if any(min(math.dist(near_bank["xz"], pa),
+                       math.dist(far_bank["xz"], pb))
+                   < CROSSING_MIN_SEPARATION_M for _prior, pa, pb in chosen):
+                rejected.append({"stage": "independent_crossing_separation",
+                                 "banks": list(pair)})
+                continue
+            if math.dist(near_bank["xz"], far_bank["xz"]) > BRIDGE_MAX_SPAN_M:
+                rejected.append({"stage": "walked_span_ceiling", "banks": list(pair)})
+                continue
+            if physical is None:
+                raise SystemExit("crossing_nodes requires the current rendered "
+                    "Heightmap physical context. Use geography.derive(--field) "
+                    "or crossing_physical.PhysicalFields.from_field; half-grid "
+                    "water.Field is not a substitute.")
+            query_key = (c["id"],pair)
+            if query_key not in physical_cache:
+                from crossing_physical import CoverageError
+                try:
+                    physical_cache[query_key] = physical.candidate(
+                        c, near_bank, far_bank, DECK_DATUM_Y)
+                except CoverageError as error:
+                    raise SystemExit(f"REFUSING crossing field coverage: {error}. "
+                        "Re-run roads/field.py request with complete trunk "
+                        "approach/batter/zone coverage; unread ground cannot "
+                        "be counted as a physically rejected candidate.") from error
+            proof = physical_cache[query_key]
+            status = proof.get("status")
+            if status not in ("verified","refused","unverified_coverage") or (
+                    bool(proof["ok"]) != (status == "verified")):
+                raise SystemExit("physical crossing query returned no consistent "
+                                 "verified/refused/unverified_coverage status")
+            if not proof["ok"]:
+                target = unverified if status == "unverified_coverage" else rejected
+                target.append({"banks": list(pair), **proof})
+                continue
+            selected = (k, nxz, fxz, near_bank, far_bank, proof)
+            break
+        if selected is None:
+            query_status = "unverified_coverage" if unverified else "refused"
+            absent.append(dict(c, node_ids=[c["near"], c["far"]],status=query_status,
+                reason=f"TRANSPORT UNMET: no covered independent {c['id']} "
+                       f"construction was verified among {len(gaps)} measured "
+                       f"approach pairs ({len(seen_banks)} distinct ranked walked "
+                       "pairs tested). Optional handoffs beyond construction "
+                       "coverage were not declared physically impossible. The "
+                       "west landmass remains an explicit transport obligation; "
+                       "no fake bridge or portal substitution is authorised.",
+                measured=dict(verdict["measured"], candidates=len(gaps),
+                    reachable_pairs=n_reach, distinct_walked_pairs=len(seen_banks),
+                    query_status=query_status,
+                    physical_refused_pairs=sum(r.get("status") == "refused" for r in rejected),
+                    prefilter_refusals=sum("status" not in r for r in rejected),
+                    unverified_coverage_pairs=len(unverified),
+                    unverified_coverage=unverified,
+                    construction_scope="measured Heightmap and canonical span request; "
+                                       "optional unmeasured handoffs are unavailable, never authorised",
+                    physical_refusals=rejected),
+                unmet_need={"kind": "transport", "required": True,
+                            "near": c["near"], "far": c["far"],
+                            "crossing": c["id"], "status": "unserved"}))
+            continue
+        k, nxz, fxz, near_bank, far_bank, proof = selected
+        chosen.append((c["id"], tuple(near_bank["xz"]), tuple(far_bank["xz"])))
         bx = far_bank["xz"][0] - near_bank["xz"][0]
         bz = far_bank["xz"][1] - near_bank["xz"][1]
         # the lowest bed anywhere under the span: the piles' height.  Read off
@@ -1214,6 +1242,9 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
             "bearing_deg": round(math.degrees(math.atan2(bx, bz)) % 360.0, 2),
             "near_bank_y": near_bank["ground_y"],
             "far_bank_y": far_bank["ground_y"],
+            "physical": proof,
+            "earlier_ranked_refusals": rejected,
+            "earlier_unverified_coverage": unverified,
         }
         for side, bank, fld_ in (("near", near_bank, near_fld),
                                  ("far", far_bank, far_fld)):
@@ -1239,9 +1270,7 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
                 "why": c["why"],
                 **per_bank,
             }
-    # Every crossing in the plan was sited: the empty list is the RECORD that
-    # nothing was ruled out, not the absence of one.
-    return out, []
+    return out, absent
 
 
 # ---------------------------------------------------------------------------
@@ -1249,7 +1278,7 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
 # ---------------------------------------------------------------------------
 
 def derive(field_path: str | Path,
-           anchors: dict[str, tuple[float, float]]) -> dict:
+           anchors: dict[str, tuple[float, float]], *, crossing_physical=None) -> dict:
     """Every seed-derived road node, as the `geography.yaml` document."""
     field_path = str(field_path)
     cs = crossings_survey()
@@ -1262,6 +1291,18 @@ def derive(field_path: str | Path,
     seed_varying: set[str] = set()
 
     fields = fieldmod.load(field_path)
+    if crossing_physical is None:
+        from crossing_physical import PhysicalFields, CoverageError
+        try:
+            crossing_physical = PhysicalFields.from_field(field_path, fields)
+        except CoverageError as error:
+            raise SystemExit(f"REFUSING crossing prerequisites: {error}") from error
+    else:
+        from crossing_physical import CoverageError
+        try:
+            crossing_physical.require_field(field_path)
+        except CoverageError as error:
+            raise SystemExit(f"REFUSING crossing prerequisites: {error}") from error
     for island, plan in EXTREMITY_PLAN.items():
         nodes.update(extremity_nodes(
             worldseed.resolve(fields, window_of_island(island)), plan,
@@ -1275,25 +1316,27 @@ def derive(field_path: str | Path,
         worldseed.resolve(fields, worldseed.TRUNK_PRIMARY))
     reach_far, _sf = traversable_reach(
         worldseed.resolve(fields, worldseed.TRUNK_SECONDARY))
+    crossing_physical.bind_approach_graphs(reach_near.__self__, reach_far.__self__)
     crossings, no_crossing = crossing_nodes(windows[near_id], windows[far_id],
                                             anchors, seed_varying=seed_varying,
                                             reach_near=reach_near,
-                                            reach_far=reach_far)
+                                            reach_far=reach_far,
+                                            physical=crossing_physical)
     nodes.update(crossings)
     nodes.update(location_nodes(windows, seed_varying=seed_varying))
 
     return {
         "seed": worldseed.seed(),
-        "world": None,
-        "world_agnostic": True,
+        "world": worldseed.world(),
+        "world_agnostic": False,
         "world_agnostic_why":
-            "worldgen geography is a function of the SEED alone, so this file is "
-            "valid in any world built on that seed; `require_scope` is therefore "
-            "called with no world.",
+            "terrain is seed-derived, but crossing costs use this world's "
+            "current solved portal placement",
         "owner": "RoadNet",
         "derived_by": "roads/geography.py",
         "provenance": {
             "height_field": field_path,
+            "crossing_physical_source": crossing_physical.provenance,
             "extremities": "roads/survey.py::survey_patch -- farthest sample per "
                            "45 deg sector at least INLAND_M from open water, on "
                            "the window's largest land component",
@@ -1426,12 +1469,12 @@ def load(path: Path | None = None) -> dict[str, dict]:
             f"{path} is missing. It is this seed's DERIVED road geography (11 "
             f"extremity nodes, 4 abutment nodes) and there is no frozen copy to "
             f"fall back on. Produce it with:\n"
-            f"  roads/geography.py emit --field <VHPATCH1 scanned on this seed> "
-            f"--anchor <x,z of the portal hall>")
+            f"  roads/geography.py emit --field <VHPATCH1 scanned on this seed>; "
+            f"first solve this world's installation placements")
     doc = yaml.safe_load(path.read_text())
     worldseed.require_scope(
         "derived road geography", path, found_seed=doc.get("seed"),
-        found_world=doc.get("world"),
+        found_world=doc.get("world"), world_=worldseed.world(),
         produced_by="roads/geography.py emit, from a VHPATCH1 field scanned on "
                     "this seed")
     _require_declarations(path, doc)
@@ -1458,7 +1501,7 @@ def absent_nodes(path: Path | None = None) -> dict[str, dict]:
     doc = yaml.safe_load(path.read_text())
     worldseed.require_scope(
         "derived road geography", path, found_seed=doc.get("seed"),
-        found_world=doc.get("world"),
+        found_world=doc.get("world"), world_=worldseed.world(),
         produced_by="roads/geography.py emit, from a VHPATCH1 field scanned on "
                     "this seed")
     if "no_crossing" not in doc:
@@ -1471,57 +1514,22 @@ def absent_nodes(path: Path | None = None) -> dict[str, dict]:
     for c in doc["no_crossing"] or []:
         for nid in c["node_ids"]:
             out[nid] = {"crossing": c.get("id"), "why": c["reason"],
-                        "measured": c.get("measured", {})}
+                        "status": c.get("status"),
+                        "measured": {**c.get("measured", {}),
+                            **({"unmet_need": c["unmet_need"]}
+                               if c.get("unmet_need") else {})}}
     return out
 
 
-# ANCHOR_DEPENDS_ON: whether THIS SEED has a crossing costed from the anchor.
-#
-# The portal-hall anchor is AUTHORED design and this module will not invent
-# one -- that refusal stands, and it stands WHERE THE ANCHOR IS CONSUMED:
-# `crossing_nodes`, on a `cheapest_from_anchor` crossing whose two trunk
-# landmasses are bridgeable.  `emit` used to refuse ONE STEP EARLIER, on "no
-# --anchor and no prior document", which is a key naming a SUPERSET of what
-# the output depends on: a seed on which no crossing exists never reads the
-# anchor, and was refused for not supplying it anyway.  MEASURED 2026-09-25,
-# Fresh42 from scratch (pipeline stage 5, no prior geography.Fresh42.yaml):
-# `--anchor is required on a first emit`, rc 1 in 0.8 s -- on a seed whose
-# drive-1 document records S1 and S2 both PORTAL ONLY (two trunk islands
-# 5,892 m apart), i.e. an output that does not contain the anchor's effect.
-# `pipeline.py` stage 5 passes no --anchor, so no fresh seed could pass
-# stage 5 without a human typing one.
-#
-# `_ANCHOR_MODE` restores each wrong key for the selftest: "upfront" is the
-# shipped refusal, "invented" is the other wrong answer (a default anchor
-# made up where none was authored), which must NOT make a consumed anchor
-# stop refusing.
-_ANCHOR_MODE = "real"           # real | upfront | invented
+def resolve_anchors(seed: str | None = None,
+                    world: str | None = None) -> dict[str, tuple[float, float]]:
+    """Cost crossings from this seed/world's actual solved portal placement.
 
-
-def resolve_anchors(anchor_arg: str | None, prior: Path
-                    ) -> dict[str, tuple[float, float]]:
-    """The AUTHORED anchors for this emit: `--anchor`, else the ones already
-    recorded in the document being re-emitted, else NONE.
-
-    None is not a refusal here.  `crossing_nodes` refuses, naming the
-    crossing, when a crossing this seed actually has is costed from an
-    anchor that was not supplied; a seed with no such crossing never asks.
+    Previous geography output is never an input to this choice. The placement
+    producer runs first; no third human-defined coordinate is required.
     """
-    if anchor_arg:
-        ax, az = (float(v) for v in anchor_arg.split(","))
-        return {"portalhub": (ax, az)}
-    if prior.exists():
-        return {k: (float(v[0]), float(v[1]))
-                for k, v in (yaml.safe_load(prior.read_text())
-                             .get("anchors") or {}).items()}
-    if _ANCHOR_MODE == "upfront":
-        raise SystemExit(
-            "--anchor is required on a first emit: it is AUTHORED design "
-            "(where the portal hall stands), not geography, so this module "
-            "will not invent it.")
-    if _ANCHOR_MODE == "invented":
-        return {"portalhub": (0.0, 0.0)}
-    return {}
+    from installation_sites import installation_xz
+    return {"portalhub": installation_xz(seed, world)["portalhub"]}
 
 
 # ---------------------------------------------------------------------------
@@ -1576,47 +1584,18 @@ def selftest_crossing_reach() -> int:
 
 
 def selftest_crossing_landing() -> int:
-    """CROSSING_LANDING_DEPENDS_ON both ways on the Pirate68 numbers."""
-    global _CROSSING_LANDING_MODE
-    bad = 0
-    skew = landing_spread([31.7, 31.2, 30.6, 30.3])      # 1.4 m across
-    flat = landing_spread([30.95, 31.1, 31.4, 31.6])     # 0.65 m
-    wet = landing_spread([30.9, 30.8, 29.9, 30.2])       # dips under 30.0
-    ok = (skew[0] > LANDING_SPREAD_MAX_M and flat[0] <= LANDING_SPREAD_MAX_M
-          and wet[1] < ABUTMENT_MIN_Y)
-    print(f"  {'ok  ' if ok else 'FAIL'}  skewed shore refused, level shore "
-          f"kept, wet sample refused")
-    bad += not ok
-    import numpy as np
-    from types import SimpleNamespace as NS
-    n = 60
-    zz, xx = np.mgrid[0:n, 0:n].astype(float)
-    # a shore skewed to the span: ground rises 0.5 m per metre ACROSS it
-    skewed = NS(id="t", x0=0.0, z0=0.0, step=1.0, n=n,
-                h=33.0 + 0.5 * (zz - 30.0))
-    flat = NS(id="t", x0=0.0, z0=0.0, step=1.0, n=n,
-              h=np.full((n, n), 31.0))
-    nx_, nz_ = np.array([30.0]), np.array([30.0])
-    fx_, fz_ = np.array([40.0]), np.array([30.0])
-    got_skew = bool(landing_level(skewed, skewed, nx_, nz_, fx_, fz_, [0])[0])
-    got_flat = bool(landing_level(flat, flat, nx_, nz_, fx_, fz_, [0])[0])
-    ok = (not got_skew) and got_flat
-    print(f"  {'ok  ' if ok else 'FAIL'}  a diagonal shore is not a landing "
-          f"(got {got_skew}), a level bench is ({got_flat})")
-    bad += not ok
-    prior, LANDING_SPREAD_MAX_M_ = LANDING_SPREAD_MAX_M, LANDING_SPREAD_MAX_M
-    globals()["LANDING_SPREAD_MAX_M"] = 99.0
-    try:
-        neutered = bool(landing_level(skewed, skewed, nx_, nz_, fx_, fz_,
-                                      [0])[0])
-    finally:
-        globals()["LANDING_SPREAD_MAX_M"] = prior
-    ok = neutered is True
-    print(f"  {'ok  ' if ok else 'FAIL'}  NEUTER no spread limit: the diagonal "
-          f"shore lands again ({neutered})")
-    bad += not ok
-    print(f"\n  crossing landing selftest {'PASS' if not bad else 'FAIL'}\n")
-    return bad
+    """Physical failing-before/survivor arms, through the canonical builder."""
+    from crossing_physical import (
+        constructed_geometry_cases, constructed_routed_approach_cases)
+    rows = constructed_geometry_cases() + constructed_routed_approach_cases()
+    from crossing_search_cases import (
+        search_parity_cases, seating_dependency_cases, coastal_handoff_cases,
+        coverage_exhaustion_cases)
+    rows += (search_parity_cases() + seating_dependency_cases() +
+             coastal_handoff_cases() + coverage_exhaustion_cases())
+    for row in rows:
+        print(row)
+    return sum(not row["matches_expected"] for row in rows)
 
 
 def selftest_extremity_reach() -> int:
@@ -1674,15 +1653,9 @@ def main(argv=None) -> int:
                     help="where to write; defaults to this SEED's document -- "
                          "geography.yaml for the default seed, "
                          "geography.<seed>.yaml otherwise")
-    ap.add_argument("--anchor", help="x,z of the portal hall: AUTHORED input, "
-                                     "the point S2's spur is costed from. "
-                                     "Defaults to the anchor already recorded "
-                                     "in --out, else none: a seed whose "
-                                     "crossing is costed from it then refuses "
-                                     "at that crossing (resolve_anchors).")
-    worldseed.add_arguments(ap, world_arg=False)
+    worldseed.add_arguments(ap)
     args = ap.parse_args(argv)
-    seed, _ = worldseed.apply(args)
+    seed, world = worldseed.apply(args)
     # `--out` unset means "this SEED's document", resolved the same way every
     # reader resolves it. A single default path is what made the scope refusal
     # uncompliable: a valid Fresh42 geography existed and could not be handed to
@@ -1696,29 +1669,14 @@ def main(argv=None) -> int:
         return 0
 
     fieldmod.require_seed(args.field, seed)
-    anchors = resolve_anchors(args.anchor, out)
+    anchors = resolve_anchors(seed, world)
 
     doc = derive(args.field, anchors)
-    # REFUSE TO WRITE AN OUTPUT THAT IS NOT ABOUT THIS WORLD. `require_scope`
-    # guards what this module READS; this is the same refusal pointed at what it
-    # WRITES -- one refusal, two directions, the shape `field.py::request`
-    # already used on PatchScan's own output.
-    #
-    # IT IS HERE, AT THE WRITE, AND NOT BESIDE `GEOGRAPHY_YAML`: a scope check
-    # belongs where the artefact is OPENED, never where its path is NAMED. The
-    # first fails the command that made the claim; the second fails everyone who
-    # imports the package, which is a stop-the-world this module has already
-    # caused once tonight.
-    #
-    # RUNGS A+B, STATED RATHER THAN INFERRED: the header (`seed`, and `world`
-    # deliberately null because worldgen geography is a function of the seed
-    # alone) and the CITATION -- `provenance.height_field` must resolve to a
-    # field declaring THIS seed. NOT rung C: every coordinate here is DERIVED
-    # from the field rather than copied out of another artefact, so there is no
-    # `source`/`verbatim` pair to check equality against, and equality is not
-    # the question rung C asks of a derived value.
+    # Guard the actual output header and field citation at the write boundary.
+    # Terrain is seed-derived; crossing costs additionally bind this world's
+    # current solved portal placement.
     emitscope.require_emission_scope(
-        f"geography.yaml ({seed})", out, doc, seed=seed, world=None,
+        f"geography.yaml ({seed})", out, doc, seed=seed, world=world,
         coordinates=None)
     out.write_text(yaml.safe_dump(doc, sort_keys=False, width=100))
     print(f"-> {out}: {len(doc['nodes'])} derived nodes on seed {seed}")

@@ -528,20 +528,33 @@ def road_transport_links(ctx, positions, segment_of):
     """Explicit voyage edges, never inserted into the walking graph."""
     result = run(ctx)
     doc, _ = I.north_itinerary(ctx)
+    terminals = getattr(ctx, "_transport_terminal_contract",
+                        doc["terminals"] if doc is not None else {})
     links, missing = [], []
     for pair in result.report.get("verified_pairs", []):
         keys = []
+        endpoint_positions = {}
+        natural_endpoints = {}
         for tid in (pair["a"], pair["b"]):
-            terminal = doc["terminals"][tid]
+            terminal = terminals[tid]
             vertex = I.snap(*terminal["xz"])
             candidates = [key for key, pos in positions.items()
                           if tuple(pos) == vertex
                           and segment_of.get(key) == terminal["segment_id"]]
-            keys.append(min(candidates) if candidates else None)
+            key = min(candidates) if candidates else None
+            if key is None and terminal.get("natural_ground") is True:
+                # Only a saved-accepted dock/access/boat/voyage can create this
+                # vertex, and ONLY in the multimodal journey graph.
+                key = "shore:" + tid
+                endpoint_positions[key] = vertex
+                natural_endpoints[key] = tid
+            keys.append(key)
         if None in keys:
             missing.append(pair["id"])
             continue
         links.append({**pair, "ka": keys[0], "kb": keys[1],
+                      "endpoint_positions": endpoint_positions,
+                      "natural_endpoints": natural_endpoints,
                       "walking_m": sum(result.report["terminals"][tid]["dock_walk_m"]
                                        for tid in (pair["a"], pair["b"]))})
     hard = [f for f in result.findings if not f.ok and not f.advisory]
@@ -557,6 +570,38 @@ def road_transport_links(ctx, positions, segment_of):
     return links, [finding], result.report
 
 
+def shore_road_population(sites, planned, built):
+    """Every road-backed shore requires its actual planned AND built root.
+
+    Source centres can legitimately be trimmed at pads; compare the serving
+    road's real final endpoints, not an invented centre-to-dock segment.
+    """
+    I._worldseed()
+    from roads.shore_build import ROAD_OF
+    rows = {row["id"]: row for row in planned.get("segments", [])}
+    findings = []
+    def xz(point):
+        return (float(point["x"]), float(point["z"])) if isinstance(point, dict) else tuple(map(float, point[:2]))
+    for site in sites:
+        sid = ROAD_OF.get(site["node"])
+        if sid is None:
+            findings.append(_finding(False, f"{site['id']}: no declared serving-road obligation",
+                tuple(site["root"]), check="north_routes", terminal=site["id"]))
+            continue
+        row = rows.get(sid)
+        record = built.get("road_"+sid.replace("-", "_"))
+        expected = None if not row or not row.get("nodes") else (xz(row["nodes"][0]), xz(row["nodes"][-1]))
+        actual = None if not record or not record.get("nodes") else (xz(record["nodes"][0]), xz(record["nodes"][-1]))
+        root = tuple(map(float, site["root"]))
+        ok = (not planned.get("provisional") and expected is not None
+              and root in expected and actual in (expected, tuple(reversed(expected))))
+        findings.append(_finding(ok,
+            f"{site['id']}: required serving road {sid} {'present at exact shore root' if ok else 'MISSING/misrouted/provisional'}",
+            root, check="north_routes", segment=sid, terminal=site["id"],
+            required_root=root, planned_ends=expected, built_ends=actual))
+    return findings
+
+
 def _measure(ctx):
     doc, findings = I.north_itinerary(ctx)
     findings = list(findings)
@@ -565,7 +610,8 @@ def _measure(ctx):
     # Population closure is also required for --section north_transport alone.
     # The roads section owns the full route/crossing physical verdict.
     from .roads import built_segments
-    findings += I.north_road_population(ctx, built_segments(ctx.ledger))
+    ordinary_roads = built_segments(ctx.ledger)
+    findings += I.north_road_population(ctx, ordinary_roads)
     seed, world = I.run_scope(ctx)
     try:
         I._worldseed()
@@ -580,6 +626,38 @@ def _measure(ctx):
         hulls = H.hull_table()
         plans = {tid: N.plan_terminal(doc, tid, field, actor="NorthAcceptance")
                  for tid in doc["terminals"]}
+        # Semantic waterfronts share this physical instrument, not a second
+        # acceptance path trusting planning booleans or a differently sized hull.
+        import yaml
+        import worldseed
+        from roads import shores, shore_build
+        with worldseed.scope(seed, world):
+            sites = shores.load()
+            shore_road_path = worldseed.segments_path(seed)
+            shore_roads = yaml.safe_load(shore_road_path.read_text()) or {}
+            worldseed.require_scope("shore serving-road population", shore_road_path,
+                found_seed=shore_roads.get("seed"), found_world=shore_roads.get("world"))
+            shore_population = shore_road_population(sites, shore_roads, ordinary_roads)
+            findings += shore_population
+            shore_road_verdicts = {f.numbers["terminal"]: f.ok for f in shore_population}
+            publication = yaml.safe_load(worldseed.waterfront_path(seed, world).read_text())
+            shore_fields = N.ScopedFields(shores.load_fields(publication["field"]),
+                                           seed, source=publication["field"])
+            shore_surface = N.Surface(shore_fields, world=world,
+                actor="ShoreAcceptance", led=N.LedgerView(world, seed))
+            shore_plans, _ = shore_build.plan(sites, shore_fields, shore_surface)
+        doc = dict(doc, terminals=dict(doc["terminals"]),
+                   transport=list(doc["transport"]))
+        for site in sites:
+            doc["terminals"][site["id"]] = dict(xz=site["root"],
+                segment_id=shore_build.ROAD_OF.get(site["node"]),
+                final_departure=False, shore=True,
+                natural_ground=site["node"] not in shore_build.ROAD_OF,
+                requires_large_ship=bool(site.get("large_ship")))
+            if site.get("pair_requirement"):
+                doc["transport"].append(site["pair_requirement"])
+        plans.update(shore_plans)
+        ctx._transport_terminal_contract = doc["terminals"]
     except (Exception, SystemExit) as exc:
         findings.append(_finding(False, f"north physical plan cannot be measured: {exc}", terminals=len(doc["terminals"]), check="instrument"))
         return SectionResult(findings=findings)
@@ -641,6 +719,10 @@ def _measure(ctx):
             if clear:
                 observed.setdefault(tid, []).append(ship)
             large |= is_large_departure(ship, clear)
+        if doc["terminals"][tid].get("requires_large_ship") and not doc["terminals"][tid]["final_departure"]:
+            findings.append(_finding(large,
+                f"{tid}: required physical large Odin vessel {'present' if large else 'MISSING/wrong provider or class'}",
+                tuple(root), accepted_large_ships=int(large), required=1, check="departure_ship"))
         if doc["terminals"][tid]["final_departure"]:
             standing, tower_evidence = (standing_lighthouse(lighthouse, tower, {
                 S.gkey(x, z): ground[I.gpoint(x, z)[0]] for x, z in queries
@@ -648,7 +730,8 @@ def _measure(ctx):
                 (False, {"saved_pieces": 0, "height_m": 0}))
             findings.append(_finding(standing, f"{tid}: tall connected lighthouse physically {'standing' if standing else 'MISSING/unsupported/incomplete'}", tuple(root), **tower_evidence, check="lighthouse"))
             findings.append(_finding(large, f"{tid}: physically usable measured large Odin departure ship {'present' if large else 'MISSING/wrong provider or class'}", tuple(root), accepted_large_ships=int(large), required=1, check="departure_ship"))
-        verdicts[tid] = all(f.ok or f.advisory for f in findings[start:])
+        verdicts[tid] = (all(f.ok or f.advisory for f in findings[start:])
+                         and (shore_road_verdicts.get(tid, True)))
         report[tid] = {"accepted": verdicts[tid], "saved_dock_pieces": len(dock),
                        "saved_lighthouse_pieces": len(tower), "saved_boats": sum(s is not None for _, s in boats),
                        "road_access": evidence,
@@ -920,6 +1003,30 @@ def _journey_link_case(missing_root=False, rejected=False):
     return findings
 
 
+def _natural_shore_link_case(rejected=False, missing_source=False):
+    doc = _itinerary()
+    far = doc["terminals"]["north-dock-001"]
+    far.update(segment_id=None, natural_ground=True)
+    result = SectionResult(findings=[] if not rejected else [
+        Finding(check="voyage", ok=False, message="constructed rejected physical pair")],
+        report={"verified_pairs": [] if rejected else [
+            dict(id="sail-0", a="north-dock-000", b="north-dock-001", sailing_m=20)],
+            "terminals": {tid: {"dock_walk_m": 2} for tid in doc["terminals"]}})
+    ctx = SimpleNamespace(_north_itinerary_read=(doc, []),
+        _north_transport_gate_result=result, _transport_terminal_contract=doc["terminals"])
+    positions = {} if missing_source else {"a": (0.0, 2.0)}
+    original = dict(positions)
+    links, findings, _ = road_transport_links(ctx, positions, {"a": "N0-a-b"})
+    assert positions == original, "journey extension mutated the walking graph"
+    if rejected or missing_source:
+        assert not links
+    else:
+        assert len(links) == 1 and links[0]["ka"] == "a"
+        assert links[0]["kb"] == "shore:north-dock-001"
+        assert links[0]["endpoint_positions"] == {"shore:north-dock-001": I.snap(*far["xz"])}
+    return findings
+
+
 def _connection_case(unbuilt_parent=False, missing_harbour=False):
     from . import roads
     doc = {"required_connections": [
@@ -950,7 +1057,26 @@ def _dock_support_case(lowered=False, unread=False):
                     (0, 0), check="dock_support", **evidence)
 
 
+def _shore_road_case(missing=None, wrong_root=False, provisional=False):
+    sites = [dict(node="dock-stathub", id="dock-stationhub", root=[10, 0]),
+             dict(node="ferry-terminal-eastisle", id="ferry-terminal-eastisle", root=[110, 0])]
+    rows = [dict(id="S13-stathub-dock", nodes=[[0, 0], [10, 0]]),
+            dict(id="F1-ferry-eastisle-inland", nodes=[[100, 0], [110, 0]])]
+    built = {"road_"+row["id"].replace("-", "_"): dict(nodes=row["nodes"])
+             for row in rows}
+    if missing is not None:
+        built.pop("road_"+rows[missing]["id"].replace("-", "_"))
+    if wrong_root:
+        built["road_F1_ferry_eastisle_inland"] = dict(nodes=[[100, 0], [109, 0]])
+    return shore_road_population(sites, dict(segments=rows, provisional=provisional), built)
+
+
 CASES = [
+    Case("ordinary shore requires its actually built serving road", True, lambda: _shore_road_case(missing=0)),
+    Case("far ferry requires its generated inward road", True, lambda: _shore_road_case(missing=1)),
+    Case("far inward road must meet the exact published dock root", True, lambda: _shore_road_case(wrong_root=True)),
+    Case("provisional shore roads cannot close saved acceptance", True, lambda: _shore_road_case(provisional=True)),
+    Case("both exact actual shore serving roads close population", False, _shore_road_case),
     Case("saved mast above the water-relative estimate still collides", True,
          _placed_height_case),
     Case("obstacle above the actual saved mast remains clear", False,
@@ -999,6 +1125,9 @@ CASES = [
     Case("accepted voyage binds exact physical road roots", False, _journey_link_case),
     Case("voyage cannot manufacture a missing road root", True, lambda: _journey_link_case(missing_root=True)),
     Case("rejected physical passage never becomes a road journey edge", True, lambda: _journey_link_case(rejected=True)),
+    Case("saved accepted far natural shoreline is a journey-only destination", False, _natural_shore_link_case),
+    Case("unaccepted natural shoreline creates no voyage destination", True, lambda: _natural_shore_link_case(rejected=True)),
+    Case("natural far bank cannot manufacture its source road", True, lambda: _natural_shore_link_case(missing_source=True)),
     Case("contiguous land route needs only final departure dock", False, _contiguous_case),
     Case("missing north artifact is a hard refusal", True, lambda: _artifact_case("missing")),
     Case("unreadable north artifact is a hard refusal", True, lambda: _artifact_case("unreadable")),

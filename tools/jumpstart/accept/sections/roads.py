@@ -4158,9 +4158,16 @@ def run(ctx) -> SectionResult:
     findings += transport_findings
     report["north_transport"] = transport_report
     travel_adj = {key: list(neighbours) for key, neighbours in adj.items()}
+    # Natural far shores are physical destinations, not invented road stations.
+    # Keep them out of walking/severance components and add them only after the
+    # shared saved dock/boat/passage instrument has accepted the complete pair.
+    travel_positions = dict(npos)
+    natural_destinations = {}
     voyages = {}
     for link in transport_links:
         ka, kb = link["ka"], link["kb"]
+        travel_positions.update(link.get("endpoint_positions") or {})
+        natural_destinations.update(link.get("natural_endpoints") or {})
         travel_adj.setdefault(ka, []).append(kb)
         travel_adj.setdefault(kb, []).append(ka)
         voyages[(ka, kb)] = voyages[(kb, ka)] = link
@@ -4206,9 +4213,9 @@ def run(ctx) -> SectionResult:
         dcur, cur = heapq.heappop(pq)
         if dcur > dist.get(cur, math.inf) + 1e-9:
             continue
-        cx, cz = npos[cur]
+        cx, cz = travel_positions[cur]
         for nxt in travel_adj.get(cur, ()):
-            nx, nz = npos[nxt]
+            nx, nz = travel_positions[nxt]
             voyage = voyages.get((cur, nxt))
             nd = dcur + (voyage["sailing_m"] + voyage["walking_m"]
                          if voyage else math.hypot(nx - cx, nz - cz))
@@ -4288,6 +4295,15 @@ def run(ctx) -> SectionResult:
         row["component_stations"] = (comps[comp[key]] if key in comp
                                      else 0)
         dests.append(row)
+    for key, name in sorted(natural_destinations.items()):
+        reachable = key in dist
+        row = dict(destination=name, segment=None, reachable=reachable,
+                   component=None, component_stations=0,
+                   access="saved-accepted dock to measured natural destination bank")
+        if reachable:
+            row.update(walked_m=round(dist[key]-sailed[key], 1),
+                       sailed_m=round(sailed[key], 1), journey_m=round(dist[key], 1))
+        dests.append(row)
     unreachable = [d for d in dests if not d["reachable"]]
     big = max(comps) if comps else 0
     report["connectivity"] = dict(
@@ -4297,8 +4313,9 @@ def run(ctx) -> SectionResult:
                    "full-hull saved sea passage. Voyages never enter the "
                    "walking graph or its physical component census.",
         transport_edges=transport_links,
-        population=f"{len(node_keys)} named endpoints of {len(segs)} built "
-                   f"segments, walked from '{origin_name}'",
+        population=f"{len(node_keys)} named road endpoints of {len(segs)} built "
+                   f"segments plus {len(natural_destinations)} physically accepted "
+                   f"natural shore destinations, travelled from '{origin_name}'",
         origin=origin_name,
         junction_steps=junctions,
         # THE NEAR MISSES THIS RUN READ RATHER THAN ASSUMED, with the count

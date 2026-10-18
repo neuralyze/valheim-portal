@@ -62,140 +62,27 @@ PATCH = "mainland"
 # owned by one side, quoted by both.
 # ---------------------------------------------------------------------------
 
-BRIDGES = [
-    dict(
-        id="bridge-s1-temple-strait",
-        role="bridge_assembly",
-        bank_a=(-312.0, -64.0),      # spawn island, snapped with RoadNet
-        bank_b=(-324.0, -64.0),      # west isle
-        bearing=270.0,
-        width_tiles=3,               # 6 m deck, matches RoadNet's trunk ribbon
-        why=("The join between the two halves of the largest landmass in the "
-             "world. MEASURED: spawn island 2.7754 km2 and west isle 2.6343 km2 "
-             "are separated here by 12.0 m of water 2.52 m deep, and the next "
-             "nearest approach between them is 197 m. 260 m from StartTemple, so "
-             "this is on the operator's first walk out of the spawn."),
-    ),
-    dict(
-        id="bridge-s2-portalhall-strait",
-        role="bridge_assembly",
-        bank_a=(-318.0, 230.0),      # spawn island, snapped with RoadNet
-        bank_b=(-348.0, 246.0),      # west isle
-        bearing=298.07,
-        width_tiles=3,
-        why=("The second crossing of the same channel, 300 m north of S1, which "
-             "turns an out-and-back into a walkable loop: RoadNet's W1 segment "
-             "runs S1-west-bank to S2-west-bank. MEASURED span 31.9 m over water "
-             "4.86 m deep. Its spawn-island bank is ~30 m from the portal hall "
-             "centre, so the spur to it is nearly free."),
-    ),
-]
+def bridge_specs():
+    import spec
+    names = {"S1": "bridge-s1-temple-strait", "S2": "bridge-s2-portalhall-strait"}
+    out = []
+    for crossing in spec.DECLARED_CROSSINGS:
+        a, b = crossing["bank_a"], crossing["bank_b"]
+        if "xz" not in a or "xz" not in b:
+            continue
+        out.append(dict(id=names[crossing["crossing_id"]], role="bridge_assembly",
+            bank_a=a["xz"], bank_b=b["xz"], bearing=a["bearing_deg"],
+            deck_y=a["road_deck_y"], width_tiles=3,
+            patch=spec.NODES[a["node"]]["patch"], why=crossing["significance"]))
+    return out
 
-# Jetties, harbours and slips. `bearing` points OUT to sea from the root.
-# Sites come from `survey.py bays`, which measures shelter (fraction of 24 rays
-# at 70 m ending on land), water fraction in a 35 m disc, and the deepest berth
-# in that disc against the 2.5 m a Longship needs
-# (MEASURED Ship.m_waterLevelOffset = 1.5 on VikingShip).
-WATERFRONT = [
-    dict(
-        id="harbour-temple-south",
-        role="harbour_place",
-        kind="harbour",
-        root=(11.0, -258.0),
-        bearing=180.0,
-        length_m=24.0,
-        width_tiles=3,
-        portal_tag="x-harbour",
-        sign_text="HARBOUR - Longship berth, 8.9 m water. Temple 268 m north.",
-        why=("The main harbour. MEASURED shelter 0.62, water fraction 0.45, "
-             "berth depth 8.95 m -- the deepest sheltered berth on the spawn "
-             "island's south shore and the only one over 8 m within 300 m of "
-             "the spawn. 268 m from StartTemple (-64.68, 3.31)."),
-    ),
-    dict(
-        id="boathouse-temple-strait",
-        role="boathouse_place",
-        kind="slip",
-        root=(-305.0, -100.0),
-        bearing=170.0,
-        length_m=24.0,
-        inner_width_m=11.0,
-        sign_text="BOATHOUSE - Longship slip. Bridge to West Isle 36 m north.",
-        why=("A Longship slip in the strait lagoon 36 m south of bridge S1, on "
-             "the spawn-island bank. MEASURED shelter 0.96 -- the most enclosed "
-             "water on either island -- with a 5.15 m berth. Sized from the hull: "
-             "VikingShip colliders span 9.16 m x 21.56 m, so 11 m inner width and "
-             "24 m length berth it with a margin. It is SOUTH of the bridge so a "
-             "boat reaches open water without passing under a 0.6 m deck."),
-    ),
-    dict(
-        id="dock-stationhub",
-        role="dock_place",
-        kind="jetty",
-        root=(502.0, 1062.0),
-        bearing=0.0,
-        length_m=20.0,
-        width_tiles=2,
-        sign_text="DOCK - Station Hub 160 m east.",
-        why=("Serves the station hub installation at (661.5, 1088.5), 160 m away. "
-             "MEASURED shelter 0.79, water fraction 0.50, berth 5.47 m: the best "
-             "sheltered water on the island's north-west coast."),
-    ),
-    dict(
-        id="ferry-terminal-east",
-        role="ferry_terminal_place",
-        kind="jetty",
-        root=(1751.0, 660.0),
-        bearing=335.0,
-        length_m=20.0,
-        width_tiles=2,
-        prefer_bearing=116.0,
-        sign_text="FERRY EAST - 223 m to the East Isle. Longship moored here.",
-        why=("Spawn-island end of the only ferry on this world that a bridge "
-             "cannot replace. MEASURED: the gap from the spawn island to the "
-             "east isle (0.396 km2, 99% BlackForest) is 223.2 m over water 30.0 m "
-             "deep -- 2.3x my measured 96 m absolute iron-stringer span ceiling "
-             "and 30 m of depth where a wood pile reaches ~20 m."),
-    ),
-    dict(
-        id="harbour-vestvik",
-        role="harbour_place",
-        kind="jetty",
-        patch="westisle",
-        root=(-1031.5, 1656.5),
-        bearing=0.0,
-        length_m=22.0,
-        width_tiles=3,
-        portal_tag="x-vestvik",
-        sign_text="VESTVIK HARBOUR - the village is 94 m inland to the south.",
-        why=("The waterfront of Settlements' west-isle village Vestvik at "
-             "(-906, 1846), which it reported as 94 m from water. I MEASURE the "
-             "nearest SHORELINE sample (land h>30.5 4-connected to water) at "
-             "(-1029.5, 1896.5), 133.7 m from the village centre -- and that "
-             "shoreline is too shallow for a 22 m pier at any bearing (my aimer "
-             "refused it). The nearest shoreline that takes one is "
-             "(-1031.5, 1656.5), 227.3 m from the village, MEASURED berth 7.11 m "
-             "with 0.61 water fraction in a 35 m disc. One waterfront, "
-             "one owner each side of the shoreline: Settlements owns the village, "
-             "this owns the quay. Bearing and root are MEASURED by aim_seaward, "
-             "not assumed from the village bearing."),
-    ),
-    dict(
-        id="ferry-terminal-eastisle",
-        role="ferry_terminal_place",
-        kind="jetty",
-        root=(1953.0, 566.0),
-        bearing=155.0,
-        length_m=20.0,
-        width_tiles=2,
-        prefer_bearing=296.0,
-        portal_tag="x-ferry-e",
-        sign_text="FERRY WEST - 223 m to the main island. Longship moored here.",
-        why=("East-isle end of the same ferry. Paired with ferry-terminal-east "
-             "across 223.2 m of open water; both ends get a jetty, a sign naming "
-             "the far shore, and a Longship."),
-    ),
-]
+# Production waterfront poses are the same seed/world publication the roads
+# hydrate. Never independently snap/aim a second root after a road was solved.
+def waterfront_specs():
+    import shores
+    sites = shores.load()
+    shores.require_pairs(sites)
+    return sites
 
 # Boats. One per ferry terminal, so a boat that has drifted at one end does not
 # strand the crossing.
@@ -211,58 +98,32 @@ PAIR_ENDS = {
     "x-ferry-e": "WayFinding: portal hall hub end",
 }
 
-BOATS = [
-    dict(id="ferry-boat-east", terminal="ferry-terminal-east", prefab="VikingShip"),
-    dict(id="ferry-boat-eastisle", terminal="ferry-terminal-eastisle",
-         prefab="VikingShip"),
-    dict(id="boathouse-longship", terminal="boathouse-temple-strait",
-         prefab="VikingShip"),
-]
-
-
-
-FERRY_ROUTES = [
-    dict(id="ferry-east-isle", a="ferry-terminal-east", b="ferry-terminal-eastisle",
-         why=("The only crossing on this world a bridge cannot replace. MEASURED: "
-              "the spawn island and the east isle come no closer than 223.2 m and "
-              "the water between them reaches the y=0 ocean floor clamp, 30.0 m "
-              "down. My measured ceilings are a 96 m absolute free span (iron "
-              "stringer, 1500 max support / 20 min at 0.076923 per metre) and "
-              "~20 m of pile reach (HardWood log piles, 140/10 at 0.1 vertical). "
-              "This crossing is 2.3x the first and 1.5x the second, so it is a "
-              "ferry and not a bridge I declined to build.")),
-]
 
 
 def ferry_routes(fields: dict, records: dict) -> list[dict]:
-    """Measure the water between two terminal heads, because a ferry route with
-    a sandbar in it is not a route.
-
-    The test is not 'is there water': it is one CONTIGUOUS wet run at or above
-    the draught a Longship needs. MEASURED Ship.m_waterLevelOffset = 1.5 on
-    VikingShip, so the shallowest sample on the line must leave more than that.
-    """
+    """The same whole-hull passage contract used by generated north transport."""
+    import shores
+    import north_transport
+    import worldseed
     out = []
-    for spec in FERRY_ROUTES:
-        ra, rb = records[spec["a"]], records[spec["b"]]
-        fld = fields[ra["patch"]]
-        ha, hb = ra["head_xz"], rb["head_xz"]
-        p = W.profile(fld, ha[0], ha[1], hb[0], hb[1])
-        shallowest = float(max(p.heights))
-        out.append(dict(
-            id=spec["id"], a=spec["a"], b=spec["b"],
-            head_a=ha, head_b=hb,
-            water_route_m=round(p.length_m, 1),
-            wet_fraction=round(p.wet_fraction, 3),
-            wet_runs=p.wet_runs,
-            max_depth_m=round(p.max_depth_m, 2),
-            min_depth_m=round(A.WATER_LEVEL - shallowest, 2),
-            navigable=(p.wet_fraction == 1.0 and p.wet_runs == 1
-                       and A.WATER_LEVEL - shallowest > 1.5),
-            draught_required_m=1.5,
-            bearing_deg=round(p.bearing_deg, 2),
-            why=spec["why"],
-        ))
+    sites = shores.load()
+    shores.require_pairs(sites)
+    for site in sites:
+        pair = site.get("pair_requirement")
+        if pair is None:
+            continue
+        plans = {}
+        for tid in (pair["a"], pair["b"]):
+            rec = records[tid]
+            plans[tid] = dict(seed=worldseed.seed(), world=worldseed.world(),
+                final_departure=False, boats=[dict(prefab=b["prefab"],
+                    pos=[b["x"], b["y"], b["z"]], yaw_deg=b["yaw"])
+                    for b in rec["boats"]])
+        proof = north_transport.measure_passage(pair, plans, fields,
+                                                surface=shores.GeneratedSurface(fields))
+        out.append(dict(proof, navigable=True,
+            water_route_m=sum(math.dist(a, b) for a, b in
+                              zip(proof["waypoints"], proof["waypoints"][1:]))))
     return out
 
 
@@ -696,19 +557,10 @@ def boat_for(fld: W.Field, spec: dict, prefab: str) -> dict:
     boat spawned high FALLS, and `Ship.m_waterImpactDamage` is 10 per hard
     landing (MEASURED on all five ship prefabs).
     """
-    ux, uz = A._unit(spec["bearing"])
-    lx, lz = uz, -ux
-    along = spec["length_m"] * 0.6
-    off = 0.0 if spec["kind"] == "slip" else 7.5
-    bx = spec["root"][0] + ux * along + lx * off
-    bz = spec["root"][1] + uz * along + lz * off
-    ground = fld.height_at(bx, bz)
-    depth = A.WATER_LEVEL - ground
-    return dict(prefab=prefab, x=round(bx, 2), y=A.WATER_LEVEL, z=round(bz, 2),
-                yaw=spec["bearing"], berth_depth_m=round(depth, 2),
-                bed_y=round(ground, 2),
-                deep_enough=depth >= 2.5,
-                offset_from_centreline_m=off)
+    solved = spec.get("boat")
+    if not solved or solved.get("prefab") != prefab:
+        raise SystemExit(f"{spec['id']}: missing matching measured full-hull boat pose; rerun shore producer")
+    return dict(solved)
 
 
 def deck_continuity(fld: W.Field, pieces, bank_a, bank_b, deck_y: float) -> dict:
@@ -738,15 +590,15 @@ def deck_continuity(fld: W.Field, pieces, bank_a, bank_b, deck_y: float) -> dict
 def build(fields: dict, default_patch: str) -> dict:
     out = {"structures": [], "ledger": [], "verify": {}, "commands": {}}
 
-    for spec in BRIDGES:
+    for spec in bridge_specs():
         fld = fields[spec.get("patch", default_patch)]
         ground, bed = profiles(fld)
         p = W.profile(fld, *spec["bank_a"], *spec["bank_b"])
         pieces = A.bridge(spec["bank_a"], spec["bank_b"], spec["bearing"],
-                          A.DECK_Y, bed, width_tiles=spec["width_tiles"],
+                          spec["deck_y"], bed, width_tiles=spec["width_tiles"],
                           name=spec["id"])
         verdict = A.verify(pieces, ground, note=spec["id"])
-        cont = deck_continuity(fld, pieces, spec["bank_a"], spec["bank_b"], A.DECK_Y)
+        cont = deck_continuity(fld, pieces, spec["bank_a"], spec["bank_b"], spec["deck_y"])
         measured = dict(
             span_m=round(p.span_m, 1),
             wet_runs=p.wet_runs,
@@ -760,7 +612,7 @@ def build(fields: dict, default_patch: str) -> dict:
             id=spec["id"], role=spec["role"], kind="bridge",
             provisional=False,
             bank_a=list(spec["bank_a"]), bank_b=list(spec["bank_b"]),
-            bearing_deg=spec["bearing"], deck_y=A.DECK_Y,
+            bearing_deg=spec["bearing"], deck_y=spec["deck_y"],
             deck_width_m=spec["width_tiles"] * 2.0,
             measured=measured, continuity=cont,
             zdo_cost=len(pieces),
@@ -771,7 +623,7 @@ def build(fields: dict, default_patch: str) -> dict:
                 owner_of_coordinates="Crossings",
                 agreed_with="RoadNet",
                 ribbon_level_last_m=6.0,
-                ribbon_level_y=A.DECK_Y,
+                ribbon_level_y=spec["deck_y"],
                 ribbon_width_m=spec["width_tiles"] * 2.0,
                 straight_bearing_required_m=6.0),
             why=spec["why"],
@@ -793,15 +645,9 @@ def build(fields: dict, default_patch: str) -> dict:
             pair_ends={})
         out["commands"][spec["id"]] = cmds
 
-    for spec in WATERFRONT:
-        fld = fields[spec.get("patch", default_patch)]
+    for spec in waterfront_specs():
+        fld = fields[spec["measurement_patch"]]
         ground, bed = profiles(fld)
-        aim = aim_seaward(fld, tuple(spec["root"]), spec["length_m"],
-                          prefer_bearing=spec.get("prefer_bearing"))
-        spec = dict(spec)
-        spec["root"] = tuple(aim["root"])
-        spec["bearing"] = aim["bearing"]
-        spec["aim"] = aim
         if spec["kind"] == "slip":
             pieces = A.slip(spec["root"], spec["bearing"], spec["length_m"],
                             spec["inner_width_m"], A.DECK_Y, bed, name=spec["id"])
@@ -858,8 +704,7 @@ def build(fields: dict, default_patch: str) -> dict:
                              xz=[round(p.x, 2), round(p.z, 2)], y=round(p.y, 3),
                              yaw=p.yaw) for p in fixt],
             ),
-            boats=[boat_for(fld, spec, b["prefab"]) for b in BOATS
-                   if b["terminal"] == spec["id"]],
+            boats=[boat_for(fld, spec, spec["boat"]["prefab"])],
             prepare=prepare_block(fld, pieces + fixt, spec["id"]),
             poi_check=poi_check(pieces + fixt,
                                 half_width_m=spec.get("width_tiles", 2)),
@@ -987,7 +832,7 @@ def write_structures_yaml(path: Path, res: dict, field_path: str = FIELD) -> Non
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--field", default=FIELD)
+    ap.add_argument("--field", required=True)
     ap.add_argument("--patch", default=PATCH)
     ap.add_argument("--out", default=str(HERE / "out"))
     # THE SCOPE IS AN ARGUMENT, not a constant in the emitter.  Without this
@@ -998,12 +843,9 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     worldseed.apply(args)
 
-    wanted = {args.patch} | {s.get("patch", args.patch)
-                             for s in list(BRIDGES) + list(WATERFRONT)}
-    fields = W.load(args.field, only=wanted)
-    missing = sorted(wanted - set(fields))
-    if missing:
-        raise SystemExit(f"patches {missing} are not in {args.field}")
+    import shores
+    shores.produce(args.field)
+    fields = shores.load_fields(args.field)
     res = build(fields, args.patch)
 
     outdir = Path(args.out)

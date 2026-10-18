@@ -293,6 +293,8 @@ def request(patches: list[tuple[str, float, float, float, float]], seed: str,
     blueprints/run_patchscan.sh).
     """
     out = Path(out)
+    old = out.stat() if out.exists() else None
+    previous = None if old is None else (old.st_ino, old.st_mtime_ns, old.st_size)
     req = out.with_suffix(".req.tsv")
     req.parent.mkdir(parents=True, exist_ok=True)
     req.write_text("".join(
@@ -306,12 +308,30 @@ def request(patches: list[tuple[str, float, float, float, float]], seed: str,
                           env=env, capture_output=True, text=True)
     if not out.exists() or out.stat().st_size == 0:
         raise SystemExit(f"patchscan produced nothing:\n{proc.stderr[-4000:]}")
+    current = out.stat()
+    if previous == (current.st_ino, current.st_mtime_ns, current.st_size):
+        raise SystemExit("REFUSING PatchScan provenance: scanner did not replace/update the requested output; an old field cannot be relabelled as rendered Heightmap")
     # The file must declare the seed we asked for.  PatchScan writes the seed
     # NAME into its header, so this catches a stale OUT, a sandbox that ignored
     # $SEED, and any future path where the scan silently scanned something else
     # -- the whole point of producing a field is that it is THIS seed's ground.
     require_seed(out, seed)
-    return load(out)
+    fields = load(out)
+    if set(fields) != {row[0] for row in patches}:
+        raise SystemExit("REFUSING PatchScan: produced patch population differs from the complete request")
+    for fid, cx, cz, half, step in patches:
+        field = fields[fid]
+        if any(abs(a-b) > 1e-6 for a, b in (
+                (field.cx, cx), (field.cz, cz), (field.half, half), (field.step, step))):
+            raise SystemExit(f"REFUSING PatchScan: {fid} geometry differs from the requested scan; no metadata receipt will be issued")
+    import hashlib
+    with out.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    out.with_suffix(out.suffix + ".source.json").write_text(json.dumps({
+        "schema_version": 1, "seed": seed, "surface": "heightmap",
+        "lattice": "PatchScan", "sha256": digest,
+        "producer": "roads.field.request"}, indent=2) + "\n")
+    return fields
 
 
 def request_for_seed(seed: str, grid: str | Path, out: str | Path,
@@ -323,16 +343,14 @@ def request_for_seed(seed: str, grid: str | Path, out: str | Path,
                      step_m: float | None = None,
                      min_area_m2: float | None = None,
                      budget_bytes: int | None = None,
-                     declared_windows: bool = False,
                      north_preset: str | None = None,
                      ) -> tuple[dict[str, Field], tuple]:
     """PRODUCE A HEIGHT FIELD FOR A SEED FROM THAT SEED'S OWN LAND.
 
-    This is the stage that was missing.  `worldseed.ULFSLAND_WINDOWS` is seven
-    hand-written window geometries MEASURED for Pirate68; every later stage
-    reads a field, `require_seed` correctly refuses a foreign one, and there
-    was nothing to hand a fresh seed -- so driving one meant hand-writing a
-    synthetic VHPATCH1, which is a measurement of nothing.
+    Windows are derived for every seed, including the default fixture. Readers
+    require a field for their own seed; this producer obtains genuine rendered
+    Heightmap measurements instead of borrowing old boxes or fabricating a
+    synthetic VHPATCH1.
 
     The chain, all of it seed-scoped and each link refused if it is not:
 
@@ -351,6 +369,9 @@ def request_for_seed(seed: str, grid: str | Path, out: str | Path,
     sf = _site_finder()
     grid, out = Path(grid), Path(out)
     g = sf.load_grid(grid)
+    import hashlib
+    with grid.open("rb") as stream:
+        coarse_digest = hashlib.file_digest(stream, "sha256").hexdigest()
     # load_grid refuses against `$VH_SEED`; this run has an EXPLICIT seed, and
     # an explicit one that nobody compared is exactly the unread declaration
     # this whole guard exists for.
@@ -375,15 +396,12 @@ def request_for_seed(seed: str, grid: str | Path, out: str | Path,
     kw = {k: v for k, v in (("half_max_m", half_max_m), ("step_m", step_m),
                             ("min_area_m2", min_area_m2),
                             ("budget_bytes", budget_bytes)) if v is not None}
-    windows = (ws.ULFSLAND_WINDOWS if declared_windows else ws.windows_for_components(
-        sf.land_components(g), spawn_xz,
-        None if comp is None else comp["label"],
-        # So each window records how far its landmass is from the spawn's, in
-        # metres of water, rather than leaving a reader to infer it from
-        # whether two windows happen to overlap.
+    components = sf.land_components(g)
+    windows = ws.windows_for_components(
+        components, spawn_xz, None if comp is None else comp["label"],
         separation_of=(None if comp is None else
                        lambda label: sf.separation_m(g, comp["label"], label)),
-        **kw))
+        **kw)
     # The road-to-dock preview stamps the writer's INTEGER Heightmap lattice.
     # Read those vertices in the producer itself; stage 9 must not interpolate
     # half-grid settlement samples or issue a second unprovenanced terrain scan.
@@ -394,20 +412,63 @@ def request_for_seed(seed: str, grid: str | Path, out: str | Path,
         cx=round(w.cx-w.half+w.step/2.0)+w.half-w.step/2.0,
         cz=round(w.cz-w.half+w.step/2.0)+w.half-w.step/2.0)
         for w in windows)
+    shore_scope = _by_path("jumpstart_roads_shore_scope", HERE / "shore_scope.py")
+    windows = shore_scope.request_windows(windows)
     north = _by_path("jumpstart_roads_north_itinerary", HERE / "north_itinerary.py")
     coarse = north.coarse_route(g, spawn_xz, preset=north_preset)
-    windows = tuple(windows) + north.route_windows(coarse)
+    connectivity = shore_scope.connectivity_window(windows, north.WORLD_RADIUS_M)
+    windows = tuple(windows) + (connectivity,) + north.route_windows(coarse)
     limit = ws.DEFAULT_WINDOW_BUDGET_BYTES if budget_bytes is None else budget_bytes
     cost = ws.windows_bytes(windows)
     if cost > limit:
         raise SystemExit(
-            f"REFUSING field request: settlement AND all eligible north frontier "
-            f"union tiles cost {cost / 1e6:.1f} MB against {limit / 1e6:.1f} MB. "
+            f"REFUSING field request: settlement, full waterfront search AND "
+            f"all eligible north frontier union tiles cost {cost / 1e6:.1f} MB "
+            f"against {limit / 1e6:.1f} MB. "
             f"The {len(coarse['candidate_order'])} ordered 32m shore candidates "
             "have NOT been capped or silently omitted; raise --budget-mb.")
+    # First read the COMPLETE rendered identity. Only then can this seed's
+    # actual major destination components nominate their shore/road windows.
+    # Both phases are real PatchScan requests; no synthetic subpatch aliases.
+    bootstrap_out = out.with_name(out.stem + ".connectivity-bootstrap" + out.suffix)
+    bootstrap_fields = request(ws.request_rows((connectivity,)), seed, bootstrap_out,
+                               vh_src=vh_src, sandbox=sandbox)
+    topology = _by_path("jumpstart_shore_connectivity", HERE / "shore_connectivity.py")
+    watermod = _by_path("jumpstart_shore_water", JUMPSTART / "crossings" / "water.py")
+    bootstrap_water = watermod.load(bootstrap_out, only={topology.PATCH_ID})
+    complete = topology.CompleteLand(bootstrap_water[topology.PATCH_ID], north.WORLD_RADIUS_M)
+    world_digest = hashlib.sha256(memoryview(
+        bootstrap_fields[topology.PATCH_ID].h).cast("B")).hexdigest()
+    ferry_windows, ferry_candidates = shore_scope.ferry_search(
+        windows, complete, spawn_xz,
+        ws.MIN_COMPONENT_AREA_M2 if min_area_m2 is None else min_area_m2)
+    windows = tuple(windows) + ferry_windows
+    final_cost = ws.windows_bytes(windows)
+    if final_cost > limit:
+        raise SystemExit(f"REFUSING complete rendered ferry request: every major destination's shore/road/hull envelope costs {final_cost/1e6:.1f} MB against {limit/1e6:.1f} MB; {len(ferry_candidates)} measured components retained; raise --budget-mb")
+    del complete, bootstrap_water, bootstrap_fields
     fields = request(ws.request_rows(windows), seed, out,
                      vh_src=vh_src, sandbox=sandbox)
+    if hashlib.sha256(memoryview(fields[topology.PATCH_ID].h).cast("B")).hexdigest() != world_digest:
+        raise SystemExit("REFUSING ferry request: complete rendered world changed between connectivity and final scans; no old identity may authorize new shore geometry")
     north.require_search_coverage(coarse, fields)
+    source_path = out.with_suffix(out.suffix + ".source.json")
+    source = json.loads(source_path.read_text())
+    with grid.open("rb") as stream:
+        if hashlib.file_digest(stream, "sha256").hexdigest() != coarse_digest:
+            raise SystemExit("REFUSING ferry request receipt: coarse grid changed during PatchScan")
+    source.update(coarse_grid=str(grid.resolve()),
+                  coarse_grid_sha256=coarse_digest,
+                  locations=str(Path(locations).resolve()),
+                  ferry_search=ferry_candidates,
+                  ferry_search_policy="east-major-components-rendered-complete-v2",
+                  rendered_connectivity=dict(schema_version=1, patch=topology.PATCH_ID,
+                      radius_m=north.WORLD_RADIUS_M, connectivity=8,
+                      height_sha256=world_digest))
+    source_path.write_text(json.dumps(source, indent=2) + "\n")
+    for generated in (bootstrap_out, bootstrap_out.with_suffix(bootstrap_out.suffix + ".source.json"),
+                      bootstrap_out.with_suffix(".req.tsv")):
+        generated.unlink(missing_ok=True)
     return fields, windows
 
 
@@ -461,12 +522,6 @@ if __name__ == "__main__":
     req.add_argument("--north-coverage", choices=("ordered-frontier-union-v1",),
                      default="ordered-frontier-union-v1",
                      help="provenance contract: scan the union of ALL eligible frontier corridors")
-    req.add_argument("--declared-windows", action="store_true",
-                     help="scan worldseed.ULFSLAND_WINDOWS, the window set "
-                          "MEASURED for the default seed (and the one its "
-                          "committed corpus was built on) instead of deriving "
-                          "windows from the land components; refused for any "
-                          "other seed (FIELD_WINDOWS_DEPENDS_ON)")
     ws.add_arguments(req, world_arg=False)
 
     # `field.py <a field>` was the whole interface before `request` existed and
@@ -479,26 +534,6 @@ if __name__ == "__main__":
 
     if args.op == "request":
         seed, _ = ws.apply(args)
-        if args.declared_windows:
-            if seed != ws.DEFAULT_SEED:
-                raise SystemExit(
-                    f"REFUSING --declared-windows for seed {seed!r}: "
-                    f"ULFSLAND_WINDOWS are geometries measured for "
-                    f"{ws.DEFAULT_SEED!r} and are ground nobody measured on "
-                    f"any other seed. Drop the flag to derive this seed's "
-                    f"windows from its own land.")
-            fields, windows = request_for_seed(
-                seed, args.grid, args.out, args.locations, declared_windows=True,
-                north_preset=args.north_preset,
-                vh_src=Path(args.vh_src), sandbox=args.sandbox,
-                budget_bytes=None if args.budget_mb is None
-                else int(args.budget_mb * 1024 * 1024))
-            for w in windows:
-                print(f"{w.fid:24s} ({w.cx:9.1f},{w.cz:9.1f}) half={w.half:6.0f}"
-                      f"  {w.role}")
-            print(f"{args.out}: {len(fields)} declared base + derived north windows, "
-                  f"{Path(args.out).stat().st_size:,} bytes, seed {seed}")
-            raise SystemExit(0)
         fields, windows = request_for_seed(
             seed, args.grid, args.out, args.locations,
             north_preset=args.north_preset,

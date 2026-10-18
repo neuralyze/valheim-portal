@@ -78,7 +78,23 @@ for _p in (JUMPSTART, JUMPSTART / "crossings", JUMPSTART / "roads",
 import assemble as A  # noqa: E402  crossings' piece geometry + support model
 import data_entry as DE  # noqa: E402  the one ZDO-blob encoder in this repo
 import fixtures as FX  # noqa: E402  portal tag validation
-import plan as CP  # noqa: E402  crossings' aimer and POI gate, as a library
+# The command-side crossing planner must not resolve the ambiguous `plan` name
+# during a geometry-only import (settlements/plan.py imports the road spec).
+class _CrossingPlan:
+    def __getattr__(self, name):
+        import importlib.util
+        module_name = "_waterfront_crossings_plan"
+        module = sys.modules.get(module_name)
+        if module is None:
+            spec = importlib.util.spec_from_file_location(
+                module_name, JUMPSTART / "crossings" / "plan.py")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+        return getattr(module, name)
+
+
+CP = _CrossingPlan()
 import water as W  # noqa: E402  VHPATCH1 -> numpy, water datums
 
 # WHO THE LEDGER SAYS DID IT.  `HarbourWork` MEASURED all of this and wrote
@@ -92,23 +108,8 @@ import water as W  # noqa: E402  VHPATCH1 -> numpy, water datums
 ACTOR = "WaterfrontRun"
 MEASURED_BY = "HarbourWork"
 
-# The lattice-aligned field this module measures against.  Aligned means
-# `cx - half + step/2` is an INTEGER, so every field sample sits exactly on a
-# TerrainComp sample centre and the generated height under a written delta needs
-# no interpolation.  Produced by blueprints/run_patchscan.sh (rivers included).
-FIELD = "/tmp/harbour/h1m.bin"
-WORLD_FIELD = "/tmp/harbour/world.bin"
-# The east-isle ferry corridor.  A SEPARATE patch because neither `h1m.bin` nor
-# `extra.bin` covers it -- both ferry terminals sit ~1.75-1.95 km east and the
-# nearest 1 m field that did reach them, `/tmp/roads/h1m.bin`, is NOT lattice
-# aligned (its `mainland` patch has x0 = -801.5), which `Surface` correctly
-# refuses.  Scanned with the same blueprints/run_patchscan.sh, seed Pirate68,
-# centre (1850, 610) half 500.5 step 1.0 -> x0 1350.0, z0 110.0, both integers.
-# CROSS-CHECKED against the unaligned roads field at the six ferry control
-# points (two pier heads, two pier roots, two planned berths): worst
-# disagreement 0.0275 m, which is also the noise floor any berth margin has to
-# beat before "it floats" means anything.
-FERRY_FIELD = "/tmp/harbour/ferry.bin"
+# Height fields are read from the current generated waterfront publication at
+# operation time. Geometry-only imports never load historical fixture fields.
 
 # MEASURED in a sandbox copy of the Ulfsland server with Jotunn + JsonDotNET +
 # OdinShip + RavenwoodVikingHouses + RavenwoodRestorations staged, dumping
@@ -193,29 +194,21 @@ class Surface:
     total order on this artefact).
     """
 
-    def __init__(self, field: str = FIELD, actor: str = ACTOR,
+    def __init__(self, field: str | None = None, actor: str = ACTOR,
                  extra: str | None = None):
         import applied as AP  # noqa: PLC0415  roads/, imported lazily
-        # THE UNION IS NOT OPTIONAL, and this was MEASURED as a real refusal:
-        # `newbuild --site dock-northcape` aimed its pier off `extra.bin` and
-        # then could not measure its own berth, because the `north` patch
-        # (centre -170,2570 half 150.5) lives in `extra.bin` while this class
-        # loaded `h1m.bin` alone -- so `(-148.91, 2644.61) is in no patch`, and
-        # the vessel was silently dropped for want of a height. Unioned in the
-        # same order `cmd_newbuild` already uses, so both read one surface.
-        # `patch_for` still takes the SMALLEST containing patch, so a 1 m
-        # question is never answered off a coarser overview patch.
-        # `FERRY_FIELD` joins the union for the same reason `extra.bin` did:
-        # the two east-isle ferry terminals are in NEITHER of the other two
-        # files, and a site whose height cannot be read gets its vessel
-        # silently dropped rather than refused.
-        self.field_names = [p for p in (extra or EXTRA_FIELD, FERRY_FIELD, field)
-                            if p and Path(p).exists()]
+        import shores
+        import yaml
+        # Current generated site publication is the authority on every seed.
+        # Never union ambient historical fixture fields into a real world.
+        if field is None:
+            shores.load()
+            doc = yaml.safe_load(shores.publication_path().read_text())
+            field = doc["field"]
+        self.field_names = [p for p in (field, extra) if p]
         self.fields = {}
-        for p in self.field_names:
-            self.fields |= W.load(p)
-        if not self.fields:
-            raise SystemExit(f"no PatchScan field loaded from {self.field_names}")
+        for path in self.field_names:
+            self.fields.update(shores.load_fields(path))
         self.applied = AP.Applied(actor=actor)
         for fid, f in self.fields.items():
             off = (f.cx - f.half + f.step / 2.0)
@@ -773,83 +766,35 @@ def already_emitted(site: str) -> set:
 # the sites this module owns work on
 # ---------------------------------------------------------------------------
 #
-# `bearing` is the SEAWARD bearing of the pier, taken from the structure that is
-# already standing (measured from its own deck tiles) or from the planned record
-# for one that is not.  `stair` names the deck edge a road/deck step has to be
-# bridged at, and it is only set where the step was MEASURED, never where it was
-# assumed.
-SITES: dict[str, dict] = {
-    "harbour-temple-south": dict(
-        kind="harbour", root=(11.5, -258.5), bearing=220.0, length_m=24.1,
-        head=(-4.06, -276.88), deck_top_y=30.597, width_tiles=3,
-        boat_offset_m=7.5,
-        stair=dict(foot=(10.797, -256.383), bearing=45.0),
-        rail_from="wood_pole",
-        why=("The main harbour, 268 m from StartTemple and the first waterfront "
-             "a player sees. Standing and complete as 72 pieces, but its road "
-             "join steps and its signed Longship berth is empty."),
-    ),
-    "boathouse-temple-strait": dict(
-        kind="slip", root=(-305.98, -110.4), bearing=190.0, length_m=24.0,
-        inner_width_m=11.0, deck_top_y=30.597,
-        why=("A slip in the strait lagoon 36 m south of bridge S1, shelter 0.96 "
-             "-- the most enclosed water on either island. Built as a SLIP ONLY: "
-             "its sign post, sign and boat were never emitted."),
-    ),
-    "dock-stationhub": dict(
-        kind="jetty", root=(510.41, 1058.09), bearing=115.0, length_m=20.0,
-        deck_top_y=30.597,
-        why="Planned, verified and never built. Serves the station hub 160 m east.",
-    ),
-    "harbour-vestvik": dict(
-        kind="jetty", root=(-1038.22, 1661.95), bearing=305.0, length_m=22.0,
-        deck_top_y=30.597, width_tiles=3,
-        # the curtain arc is centred on the SHORELINE root (-1031.5, 1656.5),
-        # not on the spawn_plan anchor, so the wall stands behind the quay
-        # rather than around its middle. Road arrives on bearing 125.
-        port_centre=(-1031.5, 1656.5), gate_bearing_deg=125.0,
-        why=("Planned, verified and never built. Vestvik's own shoreline is too "
-             "shallow for a 22 m pier at any bearing, so this is the village's "
-             "quay and the road joins the two."),
-    ),
-    # --- the two ends of the east-isle ferry ------------------------------
-    #
-    # A FERRY IS A PAIR. Both entries exist here together on purpose: the
-    # operator's report was that the crossing had one end, and the way a
-    # one-ended ferry happened is that only one end was ever a site anything
-    # operated on. `bearing` is the MEASURED SEAWARD bearing, which is NOT the
-    # `bearing` in crossings/plan.py for either of them -- that field is the
-    # assembly axis, and at both terminals the deck marches out along its
-    # NEGATIVE direction. Taking plan.py's number at face value put the "head"
-    # on dry land at 30.559 and the "root" in 9.4 m of water, i.e. exactly
-    # backwards, so it is derived here from which end of the deck line is wet.
-    "ferry-terminal-east": dict(
-        kind="jetty", root=(1746.84, 656.44), bearing=155.0, length_m=20.0,
-        head=(1764.95, 647.72), deck_top_y=30.597, width_tiles=2,
-        boat_offset_m=7.5,
-        why=("THE MISSING END. Planned and structurally verified by Crossings "
-             "(ledger seq 39, zones [[27,10],[28,10]]) and never built: "
-             "MEASURED live at (1745.2, 655.6) over a 40 m radius, wood_floor "
-             "0 / wood_pole 0 / wood_pole_log_4 0. Its counterpart "
-             "ferry-terminal-eastisle has stood since seq 43 with a sign that "
-             "names a destination that does not exist, and road segment "
-             "S14-eastlobe-ferryeast was deliberately not built for the stated "
-             "reason that it 'terminates at ferry-terminal-east, which has zero "
-             "pieces in the world'. This is the spawn-island end."),
-    ),
-    "ferry-terminal-eastisle": dict(
-        kind="jetty", root=(1951.08, 555.59), bearing=335.0, length_m=20.0,
-        head=(1933.80, 565.86), deck_top_y=30.597, width_tiles=2,
-        boat_offset_m=7.5, portal_tag="x-ferry-e",
-        why=("The east-isle end, standing since ledger seq 43: 22 wood_floor, "
-             "11 wood_pole, 15 wood_pole_log_4, a sign post, a sign and portal "
-             "x-ferry-e, all MEASURED live at tolerance 0. Its BOAT is the "
-             "defect: the VikingShip at (1943.55, 29.75, 568.46) has a "
-             "shallowest sample of -0.465 m under its own 9.16 x 21.57 m hull "
-             "ellipse -- seabed 0.465 m ABOVE the water plane, i.e. aground -- "
-             "because the berth was sized by a POINT sample that read 4.21 m."),
-    ),
-}
+# Geometry-only imports do not load any world publication. Operational callers
+# hydrate the same generated poses used by roads and crossings, on demand.
+from collections.abc import Mapping
+
+
+class _GeneratedSites(Mapping):
+    def _rows(self):
+        import shores
+        rows = {}
+        for site in shores.load():
+            ux, uz = A._unit(site["bearing"])
+            rows[site["id"]] = dict(site, deck_top_y=shores.DECK_Y,
+                head=(site["root"][0] + ux * site["length_m"],
+                      site["root"][1] + uz * site["length_m"]),
+                berth_seed_xz=(site["boat"]["x"], site["boat"]["z"]))
+        return rows
+
+    def __getitem__(self, key):
+        return self._rows()[key]
+
+
+    def __iter__(self):
+        return iter(self._rows())
+
+    def __len__(self):
+        return len(self._rows())
+
+
+SITES = _GeneratedSites()
 
 
 # EVERY `role` MUST BE IN `ledger/schema.py::KNOWN_ROLES` -- the schema refuses
@@ -1356,158 +1301,29 @@ def site_anchor(ops: list[dict], site: str) -> dict:
 
 
 def cmd_complete(args) -> int:
-    """Emit the planned ops for a site that are NOT already in the world.
+    """Complete the current generated model through canonical pose reconciliation.
 
-    The already-built test is taken from the LIVE LEDGER and then CONFIRMED
-    against a live census, because an existence check is never a completeness
-    check: `boathouse-temple-strait` has three records and 97 pieces and is
-    still missing its sign and its boat.
+    A missing legacy plan_ref/op_key says nothing about a standing modern deck.
+    The canonical builder measures/reconciles actual native poses before emitting
+    only missing pieces; it never replays crossings/out/ledger.jsonl here.
     """
-    from ledger.live import LiveBuilder  # noqa: PLC0415
-    surf = Surface()
-    site = args.site
-    ops = planned_ops(site)
-    done = already_emitted(site)
-    todo = [o for o in ops if op_key(o) not in done]
-    print(f"=== {site}: {len(ops)} planned ops, {len(done)} already in the "
-          f"ledger, {len(todo)} to emit")
-    for o in ops:
-        mark = "SKIP" if op_key(o) not in [op_key(t) for t in todo] else "EMIT"
-        p = o.get("params") or {}
-        print(f"  {mark} {o['op']:14s} {p.get('prefab') or p.get('plan_ref') or ''}")
-    todo = substitute_boat(surf, site, todo)
-    # A FERRY TERMINAL IS FINISHED AS A PAIR OR NOT AT ALL.  Measuring BOTH
-    # ends here -- not just this one -- is what makes the guidepost able to
-    # name a real distance to a real far terminal, and it REFUSES (inside
-    # `ferry_pair`) if either end cannot float the vessel its own sign will
-    # promise. A sign that names a destination nobody verified is how this
-    # crossing came to have one end.
-    fpair = ferry_pair(surf) if route_for(site) else None
-    if fpair:
-        todo = substitute_sign(surf, site, todo, fpair)
-        print(json.dumps(dict(ferry_pair=fpair), indent=1, default=float))
-    # THE PORTAL GAP, CLOSED HERE.  Any tag whose SITE end this pass opens gets
-    # its HUB end appended to the SAME op list, so one pass emits both ends or
-    # neither.  Emitting the site end alone leaves a tag that pairs with
-    # nothing, which is the operator's original reported defect.
-    todo, pairing = pair_ops(site, todo)
-    if pairing:
-        print(json.dumps(dict(pairing=pairing), indent=1, default=float))
-    if not todo:
-        print("nothing to do")
-        return 0
-    if not args.apply:
-        print(json.dumps(dict(site=site, would_emit=[o["op"] for o in todo],
-                              pairing=pairing,
-                              vessel=pick_vessel(surf, site)), indent=1,
-                         default=float))
-        return 0
-    # `--actor`, not the module constant. `ACTOR` is the agent that wrote the
-    # earlier waterfront records; recording this pass under that name would put
-    # a name in the ledger that did not do the work, which is the defect the
-    # `--actor` flag was added for and which `cmd_lighthouse` already honours.
-    with LiveBuilder(actor=getattr(args, "actor", None) or ACTOR) as b:
-        b.note(args.note or
-               f"{site}: completing a structure that was planned and verified by "
-               f"Crossings and left incomplete. Emitting ONLY the planned ops "
-               f"whose (op, prefab, position) key is absent from the live "
-               f"ledger; the deck itself is not re-sent, because a spawn_plan "
-               f"re-emit would double every piece and its own postcondition "
-               f"would then fail.", role=SITE_ROLE[site], site_id=site)
-        if fpair:
-            b.observe(f"ferry_pair::{site}",
-                      "MEASURED on the lattice-aligned 1 m ferry PatchScan "
-                      "patch (centre 1850,610 half 500.5, x0/z0 integers), "
-                      "cross-checked against roads/h1m.bin at six control "
-                      "points to 0.0275 m: BOTH terminals of the route, each "
-                      "one's vessel chosen by the shallowest sample inside "
-                      "that hull's own elliptical footprint with every sample "
-                      "required to be flood-fill connected to open sea and to "
-                      "beat the requirement by the margin floor, plus the "
-                      "three distances that get confused for one another "
-                      "(shore gap, head to head, berth to berth).",
-                      "tools/jumpstart/settlements/waterfront.py::ferry_pair",
-                      fpair)
-        if pairing:
-            for row in pairing:
-                if row.get("bay"):
-                    row["bay"]["live_confirmed"] = confirm_bay_clear(
-                        b.srv, row["bay"])
-            b.observe(f"portal_pair_bays::{site}",
-                      "MEASURED by portal_hall's own bay gate (fixtures.probe "
-                      "against the placed hall body, interior mask class, 4.4 m "
-                      "separation from every standing seat) and then CONFIRMED "
-                      "EMPTY LIVE with a scoped objects_count. NOT a "
-                      "least-squares fit over the seat records: that fit put "
-                      "this arch 0.198 m into blackmarble_column_2 on a "
-                      "covered_unenclosed cell",
-                      "tools/jumpstart/settlements/waterfront.py::hub_bay",
-                      pairing)
-        emit(b, todo, label=site)
-        last = site_anchor(todo, site)
-        lp = last["params"]
-        emit(b, [save_op((lp["pos"][0], lp["pos"][2]), lp["prefab"], 1,
-                         max(3.0, lp.get("guard_radius_m", 0.5) * 2.0),
-                         SITE_ROLE[site])], label=f"{site} save")
-        if fpair:
-            rid, _r, other = route_for(site)
-            s = SITES[site]
-            b.note(
-                f"{site} NOW EXISTS, so the stated blocker on road segment "
-                f"S14-eastlobe-ferryeast is REMOVED. RoadBuild recorded that "
-                f"segment as validated-but-deliberately-not-built with the "
-                f"reason 'terminates at ferry-terminal-east, which has zero "
-                f"pieces in the world' -- MEASURED then as wood_floor 0 / "
-                f"wood_pole_log_4 0 over a 40 m radius at (1745.2, 655.6). "
-                f"That is no longer true. WHEN IT IS ROUTED, THE TERMINUS "
-                f"SOLVES AGAINST THE DECK DATUM, NOT AGAINST TERRAIN: the "
-                f"walking surface of this pier is y={DECK_DATUM_Y} exactly "
-                f"(wood_floor authored at 30.5031 with a +{FLOOR_TOP_OFFSET} m "
-                f"top face), it is IDENTICAL at the far terminal "
-                f"{other}, and the landward deck tile stands at "
-                f"({s['root'][0]:.2f}, {s['root'][1]:.2f}) where the generated "
-                f"ground is 30.559 -- a 0.041 m step, already inside any "
-                f"reasonable join tolerance, and a road that levels its last "
-                f"run to 30.6 removes it entirely. A road once stopped 10.4 m "
-                f"below a town's floor because nothing read the datum that "
-                f"existed for exactly this purpose. NO TERRAIN MAY BE WRITTEN "
-                f"INSIDE THE PIER FOOTPRINT: every record here carries "
-                f"flatten: FORBIDDEN because levelling it would drain the "
-                f"water the piles are driven into.",
-                role=SITE_ROLE[site], site_id=site)
-        # BOTH ENDS, off the ZDO, before this pass is called done.
-        pairs = []
-        for row in pairing:
-            ends = [dict(e, end=("hub" if e.get("site_id") == "portal-hall"
-                                 else "site")) for e in tag_ends(row["tag"])]
-            emitted = [o["params"] for o in todo
-                       if o["op"] == "portal"
-                       and (o["params"] or {}).get("tag") == row["tag"]]
-            for p in emitted:
-                if not any(abs(e["x"] - p["pos"][0]) < 0.5
-                           and abs(e["z"] - p["pos"][2]) < 0.5 for e in ends):
-                    ends.append(dict(x=p["pos"][0], y=p["pos"][1],
-                                     z=p["pos"][2],
-                                     site_id=p.get("site_id"),
-                                     end=("hub" if p.get("site_id")
-                                          == "portal-hall" else "site")))
-            pairs.append(verify_pair(b.srv, row["tag"], ends))
-        if pairs:
-            b.observe(f"portal_pair_readback::{site}",
-                      "MEASURED: findObjects -detailed bounded to 3 m at EVERY "
-                      "end of the tag, tag string required in the ZDO listing "
-                      "at both, because the record that wrote a tag is not "
-                      "evidence the tag is on the ZDO",
-                      "tools/jumpstart/settlements/waterfront.py::verify_pair",
-                      pairs)
-            broken = [p["tag"] for p in pairs if not p["paired"]]
-            if broken:
-                raise SystemExit(
-                    f"the tag(s) {broken} did NOT read back off both ZDOs. The "
-                    f"pass is NOT complete and the ledger says so; do not "
-                    f"annotate this away, fix the end that is missing.")
-        print(json.dumps(b.close(), indent=1))
-    return 0
+    import shores
+    import shore_build
+    import worldseed
+    import yaml
+    sites = {site["id"]: site for site in shores.load()}
+    if args.site not in sites:
+        raise SystemExit(f"unknown generated shoreline terminal {args.site!r}")
+    doc = yaml.safe_load(shores.publication_path().read_text())
+    argv = ["build" if args.apply else "plan",
+            "--field", doc["field"], "--terminal", args.site,
+            "--seed", worldseed.seed(), "--world", worldseed.world(),
+            "--actor", getattr(args, "actor", None) or ACTOR]
+    if args.apply:
+        argv.append("--apply")
+    if getattr(args, "note", None):
+        argv += ["--note", args.note]
+    return shore_build.main(argv)
 
 
 def ferry_census(srv, site: str) -> dict:
@@ -2295,6 +2111,11 @@ def verify_pair(srv, tag: str, ends: list[dict]) -> dict:
     return out
 
 
+def fabric_save_anchor(ops):
+    """Resolve the save anchor BEFORE any writer/notes, including empty runs."""
+    return ops[-1] if ops else None
+
+
 def cmd_fabric(args) -> int:
     """Finish the fabric of a standing structure: rails, light, berthed vessel.
 
@@ -2309,14 +2130,17 @@ def cmd_fabric(args) -> int:
     surf = Surface()
     site = args.site
     s = SITES[site]
+    rail_prefabs = set(s["rail_post_prefabs"])
     hx, hz = s.get("head") or s["root"]
     with R.Server(dry=False) as srv:
         srv.probe()
         rep = audit(srv, min(s["root"][0], hx) - 8, max(s["root"][0], hx) + 8,
                     min(s["root"][1], hz) - 8, max(s["root"][1], hz) + 8)
-    posts = [o for o in rep["objects"] if o["prefab"] == s.get("rail_from")]
+    posts = [o for o in rep["objects"] if o["prefab"] in rail_prefabs]
     print(f"live census: {rep['total']} objects, {len(posts)} "
           f"{s.get('rail_from')} rail posts, {rep['socket_calls']} socket calls")
+    if not posts:
+        raise SystemExit(f"{site}: no standing canonical {sorted(rail_prefabs)} railposts; construct/complete the actual generated terminal before fabric; no writer opened")
     ops: list[dict] = []
     pairs = []
     for i in range(len(posts)):
@@ -2410,6 +2234,11 @@ def cmd_fabric(args) -> int:
                               vessel=(pick["chosen"] or {}).get("vessel"),
                               wires=[o["wire"][0][:110] for o in ops]), indent=1))
         return 0
+    anchor = fabric_save_anchor(ops)
+    if anchor is None:
+        print(json.dumps(dict(site=site, operations=0, applied=False,
+                              why="nothing to fabricate; no writer opened")))
+        return 0
     with LiveBuilder(actor=ACTOR) as b:
         b.note(f"{site}: finishing the fabric. Rails between the "
                f"{len(posts)} rail posts that a LIVE census found standing, the "
@@ -2425,300 +2254,15 @@ def cmd_fabric(args) -> int:
                   "tools/jumpstart/settlements/waterfront.py::berth_spot",
                   pick, units="m")
         emit(b, ops, label=f"{site} fabric")
-        lp = ops[-1]["params"]
+        lp = anchor["params"]
         emit(b, [save_op((lp["pos"][0], lp["pos"][2]), lp["prefab"], 1, 12.0,
                          SITE_ROLE[site])], label=f"{site} save")
         print(json.dumps(b.close(), indent=1))
     return 0
 
-# ---------------------------------------------------------------------------
-# NEW waterfront structures
-# ---------------------------------------------------------------------------
-#
-# The qualifying measurement is in `why` for every one of them, because the
-# operator asked for boathouses "at the key map locations where it makes sense
-# to travel to another area" and that is a MEASURABLE claim, not a taste one.
-EXTRA_FIELD = "/tmp/harbour/extra.bin"
-
-NEW_SITES: dict[str, dict] = {
-    "dock-dockshore": dict(
-        kind="jetty", role="dock_place",
-        near=(675.4, -85.6), bearing_hint=130.0, length_m=40.0,
-        width_tiles=3,
-        sign_text="DOCK - Dockshore. Temple 762 m WNW, Wolf Town 826 m N.",
-        portal_tag=None,
-        why=("THE BEST-JUSTIFIED NEW WATERFRONT ON THIS WORLD, and the test is "
-             "road access rather than water: TWO built trunk roads terminate "
-             "here and there is nothing at the end of either. T5-temple-"
-             "dockshore and T9-wttown-dockshore both end at the `dockshore` "
-             "node (675.4, -85.6), whose own spec says 'early-dock / sandbox-"
-             "harbour solved to water_dist_m 0.0. The ROAD stops on the "
-             "shoreline; the pier is Crossings'' over-water structure' -- and "
-             "Crossings never built one. MEASURED at 8 m: water fraction 0.820 "
-             "in a 35 m disc, the HIGHEST of all 14 key places on this world; "
-             "max depth 7.05 m; shelter 0.542. "
-             "WHY 40 m AND NOT 24: crossings/plan.py::aim_seaward REFUSED a "
-             "24 m pier here at EVERY one of 72 bearings and at every head "
-             "depth from 2.2 to 3.0 m -- the shelf is shallow and a short pier "
-             "cannot reach water a boat floats in. Swept by length, 40 m is the "
-             "shortest that the aimer accepts: root (691,-94), bearing 130, wet "
-             "fraction 0.512 under the deck, head depth 4.33 m. 48 m would "
-             "reach 6.05 m and is not needed, because 4.33 m already clears the "
-             "deepest-draught vessel in the world (CargoShip, 2.0 m) by 1.33 m. "
-             "The refusal is the measurement: a 24 m boathouse here would have "
-             "been scenery."),
-    ),
-    "harbour-stenvik-port": dict(
-        kind="jetty", role="harbour_place",
-        near=(470.0, 1045.0), bearing_hint=355.0, length_m=24.0,
-        width_tiles=3,
-        sign_text="STENVIK PORT - the town is 165 m SE. Deep berth, 5.0 m.",
-        portal_tag="x-port",
-        why=("THE LARGE HARBOUR PORT, and the operator's own test decided it: "
-             "'is there a sheltered body of water big enough AND a town "
-             "adjacent'. Two towns exist on this world. MEASURED over all 14 "
-             "key places, this inlet has the HIGHEST SHELTER of any of them -- "
-             "0.792 at (484,1072) on 24 rays at 70 m -- and it serves THREE "
-             "installations at once: Stenvik town (496,904) at 144 m, the "
-             "station hub (661.5,1088.5) at 177 m and Hognest castle "
-             "(530,1348) at 276 m. Vestvik, the only other town, measures "
-             "shelter 0.500, so it gets a quay and not a port. "
-             "At 1 m the site is better than the 8 m scan suggested: root "
-             "(476,1045), bearing 355, WET FRACTION 0.96 under a 24 m deck and "
-             "5.03 m at the head -- the deepest-draught vessel in the world "
-             "(CargoShip, 2.0 m) clears by 2.03 m. "
-             "The 35.5 ha body at (1086,1110) was REJECTED as a port site by "
-             "the same instrument: it is an INLAND LAKE, not 4-connected to "
-             "the patch boundary, so nothing can sail out of it."),
-    ),
-    "dock-northcape": dict(
-        kind="jetty", role="dock_place",
-        near=(-186.0, 2582.0), bearing_hint=60.0, length_m=48.0,
-        width_tiles=3, search_r=48.0,
-        sign_text="NORTH DOCK - the northernmost quay on the continent.",
-        portal_tag="x-north",
-        why=("THE NORTH DOCK the operator asked for, at the northernmost point "
-             "of the ROAD-CONNECTED continent that can actually take a pier. "
-             "MEASURED: the absolute northernmost land of the two bridged "
-             "halves is comp278's tip at (-292,2720), a ONE-CELL spit whose "
-             "nearest sea-connected water at or over 2.5 m is 112 m away with "
-             "shelter 0.417 -- exposed, and unreachable by any pier. The "
-             "surveyed sector-0 extremity `w-north` (-186,2582) measures "
-             "shelter 0.750 with sea at 53.7 m, and at 1 m the aimer accepts a "
-             "48 m pier from root (-192,2612) at bearing 60: wet fraction "
-             "0.816, head depth 3.25 m. 3.25 m clears a CargoShip's 2.0 m "
-             "draught by 1.25 m, so the large OdinShip vessel the operator "
-             "asked for at the north dock floats -- but only just, and the "
-             "20/24/28/32/40 m lengths were ALL REFUSED, so this pier cannot "
-             "be shortened. It is portal-only: the west isle's built road "
-             "network reaches w-south and treenear, and w-north is ~2.8 km "
-             "from either."),
-    ),
-}
 
 
-def cmd_newbuild(args) -> int:
-    """Plan and build a NEW slip or jetty, measuring every gate before it writes.
 
-    Everything structural is `crossings/assemble.py` and every gate is
-    `crossings/plan.py`'s, used as libraries: the aimer that measures which way
-    is out to sea, the game's own WearNTear support algorithm, the per-type POI
-    clearance instrument, and the clear-radius limit that is the only thing
-    standing between an `objects_remove` and the one damage class this project
-    records as unrepairable.  Nothing here re-implements a check that exists.
-    """
-    from ledger.live import LiveBuilder  # noqa: PLC0415
-    import ledger_ops as LO  # noqa: PLC0415  crossings/
-    spec = NEW_SITES[args.site]
-    sid = args.site
-    fields = W.load(EXTRA_FIELD) | W.load(FIELD)
-    fld = None
-    for f in fields.values():
-        if f.step <= 1.0 and f.contains(spec["near"][0], spec["near"][1], 60.0):
-            if fld is None or f.half < fld.half:
-                fld = f
-    if fld is None:
-        raise SystemExit(f"{sid}: no 1 m patch covers {spec['near']} with 60 m "
-                         f"of margin; extend the PatchScan request")
-    # 1. WHICH WAY IS OUT TO SEA -- measured, swept at 5 deg, scored on what the
-    #    deck would actually stand over. A hand-picked bearing once put a 20 m
-    #    jetty with 0 of 22 tiles over water and its head 4.4 m up a hillside.
-    aim = CP.aim_seaward(fld, spec["near"], spec["length_m"],
-                         prefer_bearing=spec.get("bearing_hint"),
-                         search_r=spec.get("search_r", 24.0))
-    root = (aim["root"][0], aim["root"][1])
-    bearing = aim["bearing"]
-    ground, bed = CP.profiles(fld)
-    print(json.dumps(dict(aim=aim), indent=1))
-    # 2. GEOMETRY
-    if spec["kind"] == "slip":
-        pieces = A.slip(root, bearing, spec["length_m"], spec["inner_width_m"],
-                        A.DECK_Y, bed, name=sid)
-    else:
-        pieces = A.jetty(root, bearing, spec["length_m"], A.DECK_Y, bed,
-                         width_tiles=spec.get("width_tiles", 2), name=sid)
-    verdict = A.verify(pieces, ground, note=sid)
-    if not verdict["ok"]:
-        raise SystemExit(f"{sid}: the game's own support algorithm REFUSES this "
-                         f"assembly: {verdict['failures'][:4]}")
-    fx_spec = dict(id=sid, root=root, bearing=bearing,
-                   length_m=spec["length_m"], kind=spec["kind"],
-                   sign_text=spec.get("sign_text"),
-                   portal_tag=spec.get("portal_tag"),
-                   width_tiles=spec.get("width_tiles", 2),
-                   inner_width_m=spec.get("inner_width_m"))
-    fixt = CP.fixtures_for(fld, fx_spec)
-    fcmds = CP.fixture_commands(fld, fx_spec, fixt)
-    poi = CP.poi_check(pieces + fixt, half_width_m=spec.get("width_tiles", 2))
-    decks = [p for p in pieces if p.role.endswith("/deck")
-             or p.role.endswith("/head")]
-    wet = [p for p in decks if ground(p.x, p.z) < W.WATER_LEVEL]
-    measured = dict(
-        deck_tiles=len(decks), deck_tiles_over_water=len(wet),
-        deck_over_water_fraction=round(len(wet) / max(1, len(decks)), 3),
-        root_ground_y=round(ground(*root), 3),
-        head_depth_m=aim["head_depth_m"], wet_fraction=aim["wet_fraction"],
-        deck_top_y=round(A.DECK_Y, 3),
-        deck_clears_water_by_m=round(A.DECK_Y - W.WATER_LEVEL, 3))
-    print(json.dumps(dict(pieces=len(pieces), verdict_ok=verdict["ok"],
-                          measured=measured,
-                          poi=json.loads(json.dumps(poi, default=float))),
-                     indent=1))
-    if poi.get("verdict") not in (None, "CLEAR", "clear", True):
-        print(f"    !! POI gate verdict {poi.get('verdict')!r}")
-    rec = dict(
-        id=sid, role=spec["role"], kind=spec["kind"], why=spec["why"],
-        flatten_reason=OVER_WATER,
-        prepare=CP.prepare_block(fld, pieces + fixt, sid),
-        structural=verdict, measured=measured, continuity=None,
-        poi_check=poi, boats=[],
-        fixtures=dict(sign_text=spec.get("sign_text"),
-                      portal_tag=spec.get("portal_tag"),
-                      portal_pair_end_owner=None,
-                      pieces=[dict(prefab=p.prefab, role=p.role,
-                                   xz=[round(p.x, 2), round(p.z, 2)],
-                                   y=round(p.y, 3), yaw=p.yaw) for p in fixt]),
-        zdo_cost=len(pieces) + len(fixt))
-    cmds = [A.command(p) for p in pieces] + fcmds
-    outdir = HERE / "out"
-    outdir.mkdir(exist_ok=True)
-    plan_ref = f"settlements/out/{sid}.commands.txt"
-    (outdir / f"{sid}.commands.txt").write_text("\n".join(cmds) + "\n")
-    ops = LO.ops_for(rec, cmds,
-                     [dict(xz=[p.x, p.z]) for p in pieces + fixt],
-                     fixture_cmds={p.role: c for p, c in zip(fixt, fcmds)},
-                     plan_ref=plan_ref, pair_ends={})
-    # The vessel is chosen AFTER the geometry exists, from the geometry.
-    ux0, uz0 = A._unit(bearing)
-    wet_tiles = [(p.x, p.z) for p in decks if ground(p.x, p.z) < W.WATER_LEVEL]
-    head = max(wet_tiles, key=lambda t: t[0] * ux0 + t[1] * uz0)
-    SITES[sid] = dict(kind=spec["kind"], root=root, bearing=bearing,
-                      length_m=spec["length_m"],
-                      inner_width_m=spec.get("inner_width_m"),
-                      width_tiles=spec.get("width_tiles", 2),
-                      deck_top_y=A.DECK_Y, why=spec["why"],
-                      berth_seed_xz=(round(head[0] + ux0 * 6.0, 2),
-                                     round(head[1] + uz0 * 6.0, 2)),
-                      berth_seed_why=(
-                          f"deck tile farthest along bearing {bearing:.0f} that "
-                          f"stands over water ({head[0]:.2f},{head[1]:.2f}), "
-                          f"depth {W.WATER_LEVEL - ground(*head):.3f} m, pushed "
-                          f"6 m to seaward"))
-    surf = Surface()
-    pick = None
-    try:
-        pick = pick_vessel(surf, sid)
-    except SystemExit as exc:
-        print(f"    berth not measurable on the working field: {exc}")
-    if pick and pick["chosen"]:
-        c = pick["chosen"]
-        ops.append(boat_op(sid, c["vessel"], c["x"], c["z"], c["yaw"], c))
-        ops[-1]["meta"]["rejected"] = pick["rejected"]
-        print(f"    vessel: {c['vessel']} at ({c['x']},{c['z']}), "
-              f"{c['min_depth_under_hull_m']} m under the hull "
-              f"(needs {c['required_depth_m']})")
-        for r in pick["rejected"]:
-            print("      rejected:", r)
-    elif pick:
-        print("    NO VESSEL FLOATS THIS SLIP -- it would be scenery. "
-              "Rejections:")
-        for r in pick["rejected"]:
-            print("      ", r)
-    # THE PORTAL GAP, CLOSED HERE TOO.  `ledger_ops.ops_for` is handed
-    # `pair_ends={}` and emits the SITE end only, so a new site with a
-    # `portal_tag` would stand with a tag that pairs with nothing.  At
-    # `dock-northcape` that is not cosmetic: the site is ~2.8 km from the
-    # nearest built road and the portal IS the access, so a one-ended tag
-    # strands the operator at the top of the map.
-    ops, pairing = pair_ops(sid, ops)
-    if pairing:
-        print(json.dumps(dict(pairing=pairing), indent=1, default=float))
-    if not args.apply:
-        print(json.dumps(dict(ops=[o["op"] for o in ops],
-                              pairing=pairing), indent=1, default=float))
-        return 0
-    with LiveBuilder(actor=ACTOR) as b:
-        b.note(f"{sid}: a NEW waterfront structure. {spec['why']}",
-               role=spec["role"], site_id=sid)
-        b.observe(f"waterfront_site::{sid}",
-                  "MEASURED on a 1 m PatchScan field (rivers included): bearing "
-                  "swept at 5 deg by crossings/plan.py::aim_seaward and scored on "
-                  "wet fraction under the deck and head depth; structure verified "
-                  "with the game's own WearNTear support algorithm; POI clearance "
-                  "by settlements/clearance.py per type",
-                  "tools/jumpstart/settlements/waterfront.py::cmd_newbuild",
-                  dict(aim=aim, measured=measured,
-                       structural_ok=verdict["ok"],
-                       poi=json.loads(json.dumps(poi, default=float)),
-                       vessel=json.loads(json.dumps(pick, default=float))))
-        if pairing:
-            for row in pairing:
-                if row.get("bay"):
-                    row["bay"]["live_confirmed"] = confirm_bay_clear(
-                        b.srv, row["bay"])
-            b.observe(f"portal_pair_bays::{sid}",
-                      "MEASURED by portal_hall's own bay gate (fixtures.probe "
-                      "against the placed hall body, interior mask class, 4.4 m "
-                      "separation from every standing seat) and then CONFIRMED "
-                      "EMPTY LIVE with a scoped objects_count",
-                      "tools/jumpstart/settlements/waterfront.py::hub_bay",
-                      pairing)
-        emit(b, ops, label=sid)
-        lp = site_anchor(ops, sid)["params"]
-        emit(b, [save_op((lp["pos"][0], lp["pos"][2]), lp["prefab"], 1, 12.0,
-                         spec["role"])], label=f"{sid} save")
-        pairs = []
-        for row in pairing:
-            ends = [dict(e, end=("hub" if e.get("site_id") == "portal-hall"
-                                 else "site")) for e in tag_ends(row["tag"])]
-            for o in ops:
-                if o["op"] != "portal":
-                    continue
-                p = o["params"]
-                if p.get("tag") != row["tag"]:
-                    continue
-                if not any(abs(e["x"] - p["pos"][0]) < 0.5
-                           and abs(e["z"] - p["pos"][2]) < 0.5 for e in ends):
-                    ends.append(dict(x=p["pos"][0], y=p["pos"][1],
-                                     z=p["pos"][2], site_id=p.get("site_id"),
-                                     end=("hub" if p.get("site_id")
-                                          == "portal-hall" else "site")))
-            pairs.append(verify_pair(b.srv, row["tag"], ends))
-        if pairs:
-            b.observe(f"portal_pair_readback::{sid}",
-                      "MEASURED: findObjects -detailed bounded to 3 m at EVERY "
-                      "end of the tag, tag string required in the ZDO listing "
-                      "at both. At dock-northcape the portal IS the access, so "
-                      "an unproven pair is a stranded operator",
-                      "tools/jumpstart/settlements/waterfront.py::verify_pair",
-                      pairs)
-            broken = [p["tag"] for p in pairs if not p["paired"]]
-            if broken:
-                raise SystemExit(
-                    f"the tag(s) {broken} did NOT read back off both ZDOs; "
-                    f"{sid} is portal-only and this pass is NOT complete.")
-        print(json.dumps(b.close(), indent=1))
-    return 0
 
 
 def cmd_probe(args) -> int:
@@ -2943,7 +2487,7 @@ def cmd_measure(args) -> int:
     surf = Surface()
     out = dict(
         tool="tools/jumpstart/settlements/waterfront.py::cmd_measure",
-        field=FIELD, world_field=WORLD_FIELD,
+        fields=surf.field_names,
         water_level_y=W.WATER_LEVEL, land_level_y=W.LAND_LEVEL,
         deck_datum_y=DECK_DATUM_Y,
         vessels=VESSELS, keel_clearance_m=KEEL_CLEARANCE_M,
@@ -3033,7 +2577,7 @@ def cmd_retire(args) -> int:
             f"are therefore NOT buried; retiring a visible deck tile would take "
             f"a hole out of the pier. Re-measure before running this.")
     # 2. THE SUPPORT, asked of the game's own algorithm
-    fields = W.load(EXTRA_FIELD) | W.load(FIELD)
+    fields = surf.fields
     fld = None
     for f in fields.values():
         if f.step <= 1.0 and f.contains(s["root"][0], s["root"][1], 40.0):
@@ -4657,11 +4201,13 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name, fn in (("measure", cmd_measure), ("audit", cmd_audit),
                      ("complete", cmd_complete), ("stair", cmd_stair),
-                     ("fabric", cmd_fabric), ("newbuild", cmd_newbuild),
+                     ("fabric", cmd_fabric),
                      ("probe", cmd_probe), ("port", cmd_port),
                      ("retire", cmd_retire), ("lighthouse", cmd_lighthouse),
                      ("ferry", cmd_ferry)):
         p = sub.add_parser(name)
+        import worldseed
+        worldseed.add_arguments(p)
         p.add_argument("--site", default=None)
         p.add_argument("--prefabs", nargs="*", default=[])
         p.add_argument("--predict", default=None)
@@ -4706,6 +4252,7 @@ def main(argv=None) -> int:
                             "pieces nor re-sending placed commands is right.")
         p.set_defaults(fn=fn)
     args = ap.parse_args(argv)
+    worldseed.apply(args)
     if args.cmd not in ("measure", "probe") and not args.site:
         raise SystemExit("--site is required")
     return args.fn(args)

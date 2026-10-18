@@ -57,8 +57,15 @@ if str(JUMPSTART) not in sys.path:
 import field as fieldmod  # noqa: E402
 import poi as poimod  # noqa: E402
 import route as routemod  # noqa: E402
-import spec as specmod  # noqa: E402
+import installation_sites  # noqa: E402
 import worldseed  # noqa: E402
+if __name__ == "__main__" and sys.argv[1:2] == ["plan"]:
+    # Scope must precede every publication reader, including the initial spec.
+    _scope_parser = argparse.ArgumentParser(add_help=False)
+    worldseed.add_arguments(_scope_parser)
+    _scope_args, _unused = _scope_parser.parse_known_args(sys.argv[2:])
+    worldseed.apply(_scope_args)
+import spec as specmod  # noqa: E402
 import emitscope  # noqa: E402
 from field import BIOME_NAMES, WATER_LEVEL  # noqa: E402
 import precensus as censusmod  # noqa: E402
@@ -81,20 +88,15 @@ FIELD_BIN = "/tmp/roads/h1m.bin"
 # 2.000 x 0.130 x 2.000 collider solid, so 2 m tiles): it builds a 3-tile 6 m
 # deck on trunk crossings and a 2-tile 4 m deck on spurs.  A ribbon wider than
 # the deck is a pinch the operator sees at every bridge.
-from crossing_contract import WIDTH_M, BANK_LEVEL_M
+from crossing_contract import (
+    WIDTH_M, BANK_LEVEL_M, STATION_M, SIMPLIFY_TOL_M,
+    straighten, transverse_window)
 # Crossings' MEASURED absolute span ceiling: 72 m free span at a 3x safety
 # factor on an iron stringer under the deck, 96 m absolute, from its own
 # implementation of WearNTear::UpdateSupport.  Beyond this a "bridge" is not a
 # thing that can be built, so a route needing one is rejected rather than
 # handed over.
 MAX_BRIDGE_SPAN_M = 96.0
-STATION_M = 2.0         # profile station spacing; also Crossings' snap
-# The Ramer-Douglas-Peucker tolerance `build_segment` simplifies the A*
-# staircase at.  With half the diagonal of a corridor cell it is how far a
-# station can stand from every cell centre the search was allowed -- the
-# chord slack each corridor mask is grown by (`poi.masks`, `pad_forbid_mask`)
-# and the census confinement is shrunk by (precensus.CENSUS_CONFINE_DEPENDS_ON).
-SIMPLIFY_TOL_M = 1.0
 
 
 def chord_slack_m(cell_m: float) -> float:
@@ -125,22 +127,6 @@ def plain(o):
     return o
 
 
-def straighten(pts, s, a: int, b: int):
-    """Replace stations a..b with a straight line between their endpoints.
-
-    `Crossings` cannot build a curve mid-span and asked for a constant bearing
-    across the span plus 6 m each side.  Done on the STATION list, not the
-    corridor nodes, so station count and spacing survive and the profile indices
-    stay valid.
-    """
-    ax, az = pts[a]
-    bx, bz = pts[b]
-    span = s[b] - s[a]
-    out = list(pts)
-    for k in range(a + 1, b):
-        f = (s[k] - s[a]) / span if span > 0 else 0.0
-        out[k] = (ax + (bx - ax) * f, az + (bz - az) * f)
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -561,94 +547,6 @@ def declare_banks(c: dict, pts, t, tw_lo, ia: int, ib: int, wa: int,
             f"not the deck" for end, k in ends)
 
 
-def transverse_window(fld, pts, width_m: float, lat_step_m: float = 0.5
-                      ) -> tuple[np.ndarray, np.ndarray,
-                                 list[tuple[int, float, float, float]]]:
-    """Per-station MIN and MAX generated height across the LEVEL road surface.
-
-    WHY THIS EXISTS, and it is the fourth instance of one defect: a quantity
-    certified over one object and consumed as though it were about another.
-    `fit_profile` was being handed `t`, the generated height ON THE
-    CENTRELINE, and its `+/-cut_fill_max` box was therefore a statement about
-    a LINE.  `TerrainComp::ApplyToHeightmap` clamps PER SAMPLE against that
-    sample's own generated height, and the ribbon writes a LEVEL bench out to
-    `route.footprint_half_m(width)` -- 4.0 m either side on a 6 m trunk.  On a
-    cross slope the outermost shoulder sample therefore carries about half the
-    transverse relief ON TOP OF whatever cut the profile already owes.
-
-    MEASURED on N4-mid2-terminus, 2026-09-18, by `ribbon.py`'s rasteriser
-    after the router had passed the leg: 112 carriageway samples past the
-    +/-8 m clamp in the best of three routing variants (239 and 120 in the
-    other two), of which 71 were in the carriageway band and **every single
-    one sat at lat 3.99-4.12 m** -- the outermost shoulder sample line, not
-    one of them on the paved +/-3.0 m.  First breach at arc 24.0 m of
-    3,038.4 m and the last at 2,802.8 m, so there was no prefix worth
-    terminating at either.  The leg's own routing record read
-    `stations_over_clamp: 0`, truthfully, about stations.
-
-    THE CONSTRAINT THIS MAKES EXPRESSIBLE.  For one profile value `y` to be
-    writable across a station's whole footprint:
-
-        y <= min(generated over footprint) + clamp
-        y >= max(generated over footprint) - clamp
-
-    which is a per-station [lo, hi] pair -- exactly the shape `fit_profile`
-    already solves exactly by interval propagation.  Nothing new is modelled;
-    the existing solver is finally given the right bounds.  It also makes the
-    impossible case a PROOF rather than a surprise: where the footprint's own
-    relief exceeds `2 * clamp`, lo > hi and the propagation reports an empty
-    interval, which is the honest statement "no profile at any gradient can
-    carry a level bench here".
-
-    Sampled at `lat_step_m = 0.5` m -- HALF the 1 m lattice the ribbon is
-    written on, so no written sample can hide between two probes.  The
-    endpoints of the sweep are INCLUSIVE of `+/-e` because the sample at
-    exactly `e` IS written: `ribbon.EDGE_EPS_M` exists because one float ULP
-    at `lat = 4.000000000000001` once dropped that sample out of the
-    carriageway and left a 1 m wide, 1.76 m deep trench under a batter.
-
-    The normal is taken from the CENTRAL difference of the neighbouring
-    stations, which is the tangent the ribbon itself rasterises against, and
-    falls back to the one-sided difference at the two ends.
-    """
-    e = routemod.footprint_half_m(width_m)
-    n = int(math.floor(e / lat_step_m + 1e-9))
-    lats = np.concatenate([np.arange(-n, n + 1) * lat_step_m, [-e, e]])
-    lats = np.unique(lats)
-    P = np.asarray(pts, dtype=np.float64)
-    tang = np.empty_like(P)
-    tang[1:-1] = P[2:] - P[:-2]
-    tang[0] = P[1] - P[0]
-    tang[-1] = P[-1] - P[-2]
-    norm = np.hypot(tang[:, 0], tang[:, 1])
-    norm[norm < 1e-9] = 1.0
-    # left normal of (dx, dz) is (dz, -dx)
-    nx = tang[:, 1] / norm
-    nz = -tang[:, 0] / norm
-    lo = np.empty(len(P))
-    hi = np.empty(len(P))
-    # UNREAD IS NOT CLEAR, AND `Field.bilinear` CANNOT SAY SO: it CLAMPS its
-    # sample indices to the patch, so a probe that walks off the window comes
-    # back as the edge height instead of as a refusal.  On a footprint sweep
-    # that is silent and load-bearing -- the outermost shoulder is the sample
-    # this whole function exists for, and it is the first one to leave the
-    # patch.  `field.py`'s own request manifest is the DENOMINATOR here: two
-    # Fresh42 fields on this host carry the SAME seed name and the SAME seed
-    # hash and cover 26 windows and 9, and `require_seed` accepts both.
-    # Counted and returned rather than raised, so the caller can name the
-    # station and the offset rather than the whole segment.
-    off = []
-    for i in range(len(P)):
-        xs = P[i, 0] + nx[i] * lats
-        zs = P[i, 1] + nz[i] * lats
-        hs = np.array([fld.bilinear(float(x), float(z))
-                       for x, z in zip(xs, zs)], dtype=np.float64)
-        for x, z, lat in zip(xs, zs, lats):
-            if not fld.contains(float(x), float(z)):
-                off.append((i, float(lat), float(x), float(z)))
-        lo[i] = hs.min()
-        hi[i] = hs.max()
-    return lo, hi, off
 
 
 # ---------------------------------------------------------------------------
@@ -2899,9 +2797,10 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
 
     rec = {
         "id": edge["id"], "cls": cls, "pri": edge["pri"],
-        "island": a_node["island"], "patch": a_node["patch"],
+        "island": a_node["island"], "patch": edge.get("patch", a_node["patch"]),
         "from": edge["a"], "to": edge["b"],
         "why": edge.get("why", ""),
+        **({"transport_access": edge["transport_access"]} if edge.get("transport_access") else {}),
         "width_m": width_m, "station_m": STATION_M,
         "length_m": round(float(s[-1]), 1),
         "endpoint_standoff_m": {edge["a"]: standoff(edge["a"], pts[0]),
@@ -3814,7 +3713,7 @@ def node_anchors(edges: list[dict], nodes: dict,
     the corridor a leg of that class is searched in."""
     classes: dict[str, dict[str, str]] = {}
     for e in edges:
-        patch = nodes[e["a"]]["patch"]
+        patch = e.get("patch", nodes[e["a"]]["patch"])
         for nid in (e["a"], e["b"]):
             classes.setdefault(nid, {}).setdefault(e["cls"], patch)
     out: dict[str, tuple[float, float]] = {}
@@ -4142,6 +4041,14 @@ def join_orphans(segments: list[dict], refused: list[dict], nodes: dict,
                     specmod.DECLARED_CROSSINGS)
                 r_islands = {nodes[n]["island"] for n in r_nodes if n in nodes}
                 o_islands = {nodes[n]["island"] for n in o_nodes}
+                transport = {pair["id"] for pair in getattr(specmod, "REQUIRED_TRANSPORT", [])
+                    if pair.get("status") == "measured" and pair.get("b") in o_nodes}
+                if transport and all(by_id[sid].get("transport_access") in transport for sid in orphan):
+                    row.update(verdict="TRANSPORT_DEPENDENT",
+                        transport=sorted(transport),
+                        why="separate local walking component; only a saved-accepted dock/boat voyage may connect its journey")
+                    out["joins"].append(row)
+                    continue
                 if o_islands and not o_islands & (
                         r_islands | (reachable_islands or set())):
                     row["verdict"] = "UNROOTED_ISLAND"
@@ -4887,7 +4794,9 @@ def node_provenance(segments, nodes=None) -> dict:
             n = nodes[nid]
             if nid in specmod.DERIVED_GEOGRAPHY:
                 src, verbatim = geo, True
-            elif nid in specmod.PLACEMENT_OF:
+            elif nid in specmod.CROSSING_TERMINALS:
+                src, verbatim = str(specmod.shores.publication_path()), True
+            elif nid in installation_sites.PLACEMENT_OF:
                 # The reader resolves `<world>` for the world being built, so
                 # no seed can inherit another's directory by transcription.
                 src, verbatim = "worlds/<world>/*/placements.yaml", True
@@ -7522,9 +7431,10 @@ def selftest_foreign_nodes() -> int:
         finally:
             specmod._MEASURED_SEED_MODE = was
 
-    hs = specmod.CROSSING_TERMINALS["harbour-south"]
-    table = {"harbour-south": {"xz": hs["xz"], "island": hs["island"],
-                               "patch": hs["patch"],
+    # The seed guard is exercised with constructed geometry, not a generated
+    # shoreline publication or Pirate68's former production coordinates.
+    table = {"harbour-south": {"xz": (12.0, -24.0), "island": "constructed",
+                               "patch": "constructed",
                                "kind": "waterfront_terminal"}}
 
     def verdict(seed) -> str:
@@ -7546,11 +7456,11 @@ def selftest_foreign_nodes() -> int:
          "REFUSED at plan: harbour-south measured on Pirate68")
     want("NEUTER seed=unscoped (the shipped read): Fresh42 routes to "
          "Pirate68's point", moded("unscoped", lambda: verdict("Fresh42")),
-         "ROUTED to (11.5, -258.5)")
-    print("case: the default seed keeps its own terminal "
-          "(REQUIRED TO ROUTE)")
+         "ROUTED to (12.0, -24.0)")
+    print("case: a constructed survey applies on its measured seed "
+          "(generic guard, not waterfront production authority)")
     want("Pirate68", verdict(worldseed.DEFAULT_SEED),
-         "ROUTED to (11.5, -258.5)")
+         "ROUTED to (12.0, -24.0)")
     print("case: the refusal carries THIS seed's reading at the point")
     fld = _ww_field(_ww_shore)
     r = foreign_reading(fld, 20.0, 0.0)
@@ -8231,6 +8141,10 @@ def main(*, plan_state: dict | None = None) -> int:
 
     global SEED, WORLD, _PLAN_KEEPOUTS, _PLAN_PATCHES, _PLAN_PAD_KEEPOUTS
     SEED, WORLD = worldseed.apply(args)
+    import importlib
+    import shores
+    shores.produce(args.field)
+    importlib.reload(specmod)
     # A SITE A PERSON DECLARED IS A NODE THIS PLAN MUST ROUTE TO.  A published
     # site set that does not carry it is not "a plan with one node fewer": it is
     # a road network that has forgotten a city.  `spec` imported anyway (so the
@@ -8609,8 +8523,12 @@ def main(*, plan_state: dict | None = None) -> int:
             print(f"{edge['id']:22s} p{edge['pri']} CROSS-ISLAND: "
                   f"{a_node['island']} -> {specmod.NODES[edge['b']]['island']}")
             return
+        transport_access = edge.get("transport_access")
+        declared_transport = any(pair.get("id") == transport_access
+            and pair.get("status") == "measured" and pair.get("b") == edge["b"]
+            for pair in getattr(specmod, "REQUIRED_TRANSPORT", []))
         if (_ORPHAN_JOIN_MODE == "join" and reach_isl
-                and a_node["island"] not in reach_isl):
+                and a_node["island"] not in reach_isl and not declared_transport):
             why = (f"island {a_node['island']!r} holds no node a walk from "
                    f"{ORPHAN_ROOT} reaches (reachable: "
                    f"{', '.join(sorted(reach_isl))}) and no declared crossing "
@@ -8626,7 +8544,7 @@ def main(*, plan_state: dict | None = None) -> int:
                   f"{a_node['island']} (reachable from {ORPHAN_ROOT}: "
                   f"{', '.join(sorted(reach_isl))})")
             return
-        patch = a_node["patch"]
+        patch = edge.get("patch", a_node["patch"])
         key = corridor_for(patch, edge["cls"])
         searched: list = []
         base_trim: dict | None = None
@@ -8971,7 +8889,7 @@ def main(*, plan_state: dict | None = None) -> int:
     rejected.sort(key=lambda r: rank[r["id"]])
     corr_rank = {}
     for e in specmod.EDGES:
-        k = f"{specmod.NODES[e['a']]['patch']}:{e['cls']}"
+        k = f"{e.get('patch', specmod.NODES[e['a']]['patch'])}:{e['cls']}"
         corr_rank.setdefault(k, len(corr_rank))
     poi_masked = {k: poi_masked[k]
                   for k in sorted(poi_masked, key=lambda k: corr_rank.get(
@@ -9230,6 +9148,7 @@ def main(*, plan_state: dict | None = None) -> int:
     doc = {
         "schema_version": 2, "owner": "RoadNet", "world": WORLD, "seed": SEED,
         "connection_requirements": specmod.connection_requirements(),
+        "waterfront_requirements": specmod.REQUIRED_TRANSPORT,
         # A MEASUREMENT OF ONE SEED'S LAND, AND IT WAS EMITTED FOR EVERY SEED.
         # MEASURED 2026-09-22: a Fresh42 plan carried this sentence verbatim --
         # "spawn island + west isle joined by two bridges", 5.4559 km2, bbox

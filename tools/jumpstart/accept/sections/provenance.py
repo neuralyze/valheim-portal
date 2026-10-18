@@ -159,10 +159,7 @@ def _placement_sets(ctx):
 
 
 def _geography_scope(path: Path):
-    """`roads/geography.yaml`'s own declaration.  `world` is deliberately null:
-    worldgen geography is a function of the SEED alone, so the file is valid in
-    any world built on that seed and claiming otherwise would be a refusal
-    overstating its evidence."""
+    """Scope includes the world whose solved portal placement costs crossings."""
     import yaml                                            # noqa: PLC0415
     doc = yaml.safe_load(path.read_text())
     return doc.get("seed"), doc.get("world")
@@ -1577,91 +1574,64 @@ def _neuter_absent_is_empty():
 
 
 # ---------------------------------------------------------------------------
-# THE AUTHORED ANCHOR, DEMANDED WHERE IT IS CONSUMED (geography.ANCHOR_DEPENDS_ON).
-#
-# The fields below are CONSTRUCTED: 1 m rasters at the water plane +/- 10 m,
-# one with a single landmass (no channel, so no crossing reads an anchor) and
-# one with two landmasses 20 m apart whose far window's main landmass is the
-# near window's second one (bridgeable, so S2 is costed from the anchor).
-# ---------------------------------------------------------------------------
-def _anchor_fields(bridgeable: bool):
-    import numpy as np                                      # noqa: PLC0415
-    W = _geography_mod().crossings_survey().W
+# A crossing's cost anchor follows the seed's solved portal placement, not a
+# coordinate retained in an earlier geography document.
+def _case_crossing_anchor_follows_solved_placement():
+    import yaml                                            # noqa: PLC0415
 
-    def fld(fid, cx, n, land_cols):
-        h = np.full((n, n), 20.0, dtype=np.float32)
-        for a, b in land_cols:
-            h[:, a:b] = 40.0
-        return W.Field(fid, cx, 0.0, n / 2.0, 1.0, n, h,
-                       np.ones((n, n), np.uint8))
-    if not bridgeable:
-        lone = fld("near", 0.0, 128, [(0, 70)])
-        return lone, lone
-    return (fld("near", 0.0, 128, [(0, 70), (90, 128)]),
-            fld("far", 64.0, 128, [(26, 128)]))
-
-
-def _first_emit_crossings(bridgeable: bool):
-    """`emit`'s anchor resolution with NO --anchor and NO prior document, then
-    the S2 (`cheapest_from_anchor`) crossing on the constructed fields.
-    `(refusal, abutment ids)`."""
     geomod = _geography_mod()
-    s2 = tuple(c for c in geomod.CROSSING_PLAN
-               if c["rule"] == "cheapest_from_anchor")
-    near, far = _anchor_fields(bridgeable)
+    installmod = _installation_mod()
+    ws, _poi = _mods()
+    saved_root = ws._JUMPSTART
+    seed, world = "AnchorFixture", "AnchorWorld"
+    observed = []
     with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        path = root / "worlds" / world / "fixture" / "placements.yaml"
+        path.parent.mkdir(parents=True)
+        rows = [{"id": ids[0], "solved": {"x": 80.0 + i, "z": 160.0 + i}}
+                for i, ids in enumerate(installmod.PLACEMENT_OF.values())]
+        hub = next(row for row in rows if row["id"] == "sandbox-portal-hub")
+        prior = root / "roads" / f"geography.{seed}.yaml"
+        prior.parent.mkdir()
+        prior.write_text(yaml.safe_dump(
+            {"seed": seed, "anchors": {"portalhub": [-700.0, 900.0]}}))
+        ws._JUMPSTART = root
         try:
-            anchors = geomod.resolve_anchors(
-                None, Path(td) / "geography.Fresh42.yaml")
-            got, _why = geomod.crossing_nodes(near, far, anchors, plan=s2)
-        except SystemExit as exc:
-            return exc, []
-    return None, sorted(got)
-
-
-def _case_a_first_emit_with_no_crossing_needs_no_anchor():
-    exc, got = _first_emit_crossings(False)
-    if exc is not None:
-        return Finding(
-            check="first_emit_needs_no_unconsumed_anchor", ok=False,
-            message=(f"REFUSED a first emit on a seed with no crossing, for an "
-                     f"anchor nothing on it reads: {str(exc)[:110]}"),
-            numbers={"crossings": 0, "anchor_supplied": False})
+            for x, z in ((80.0, 160.0), (120.0, 210.0)):
+                hub["solved"] = {"x": x, "z": z}
+                path.write_text(yaml.safe_dump({
+                    "seed": seed, "world": world, "placements": rows}))
+                try:
+                    got = geomod.resolve_anchors(seed, world)
+                except (SystemExit, ValueError, TypeError) as error:
+                    return Finding(
+                        check="crossing_anchor_follows_solved_placement", ok=False,
+                        message=f"could not derive the current solved anchor: {error}",
+                        numbers={"observed": observed})
+                observed.append(got.get("portalhub"))
+                if got.get("portalhub") != (x, z):
+                    return Finding(
+                        check="crossing_anchor_follows_solved_placement", ok=False,
+                        message="crossing anchor did not follow the current solved portal",
+                        numbers={"expected": [x, z], "observed": observed})
+        finally:
+            ws._JUMPSTART = saved_root
     return Finding(
-        check="first_emit_needs_no_unconsumed_anchor", ok=True,
-        message=("a first emit with no --anchor on a seed with no crossing "
-                 "derived its nodes and recorded the crossing absent"),
-        numbers={"crossings": 0, "abutments": len(got)})
+        check="crossing_anchor_follows_solved_placement", ok=True,
+        message="crossing cost follows both current portal placements, not old geography",
+        numbers={"observed": observed})
 
 
-def _case_a_crossing_costed_from_an_unsupplied_anchor_is_refused():
-    exc, got = _first_emit_crossings(True)
-    if exc is not None:
-        return Finding(
-            check="consumed_anchor_is_authored", ok=False,
-            message=("a bridgeable S2 with no authored anchor was refused: "
-                     f"{str(exc)[:110]}"),
-            numbers={"crossings": 1, "anchor_supplied": False})
-    return Finding(
-        check="consumed_anchor_is_authored", ok=True,
-        message=(f"NOT REFUSED: S2 was sited at {got} from an anchor nobody "
-                 f"authored"),
-        numbers={"crossings": 1, "abutments": len(got)})
+def _neuter_anchor():
+    geomod = _geography_mod()
+    saved = geomod.resolve_anchors
+    geomod.resolve_anchors = lambda seed=None, world=None: {
+        "portalhub": (-700.0, 900.0)}
 
-
-def _neuter_anchor(mode: str):
-    """RESTORE ONE WRONG KEY in `geography.resolve_anchors`: "upfront" is the
-    shipped refusal of any first emit without --anchor, "invented" is a
-    default anchor made up where none was authored."""
-    def apply():
-        geomod = _geography_mod()
-        saved = geomod._ANCHOR_MODE
-        geomod._ANCHOR_MODE = mode
-
-        def undo():
-            geomod._ANCHOR_MODE = saved
-        return undo
-    return apply
+    def undo():
+        geomod.resolve_anchors = saved
+    return undo
 
 
 # ---------------------------------------------------------------------------
@@ -1785,12 +1755,12 @@ def _neuter_the_declared_crossing_filter():
     return undo
 
 
-def _spec_mod():
+def _installation_mod():
     roads = JUMPSTART / "roads"
     if str(roads) not in sys.path:
         sys.path.insert(0, str(roads))
-    import spec as specmod                                   # noqa: PLC0415
-    return specmod
+    import installation_sites                              # noqa: PLC0415
+    return installation_sites
 
 
 def _case_installations_are_sited_for_this_seed():
@@ -1804,18 +1774,18 @@ def _case_installations_are_sited_for_this_seed():
     coordinate is READ from `worlds/<world>/*/placements.yaml` for the seed
     being planned, and a seed that has not sited its buildings is REFUSED.
     """
-    specmod = _spec_mod()
+    installmod = _installation_mod()
     ghost_s, ghost_w = "NoSeedHasThisName42", "NoWorldHasThisName42"
     try:
-        got = specmod.installation_xz(seed=ghost_s, world=ghost_w)
+        got = installmod.installation_xz(seed=ghost_s, world=ghost_w)
     except SystemExit as exc:
         return Finding(
             check="installations_sited_for_this_seed", ok=False,
             message=(f"a seed with no placement set and no declaration was "
                      f"refused rather than handed the default seed's "
-                     f"{len(specmod.PLACEMENT_OF)} building centres: "
+                     f"{len(installmod.PLACEMENT_OF)} building centres: "
                      f"{str(exc)[:110]}"),
-            numbers={"nodes": len(specmod.PLACEMENT_OF)})
+            numbers={"nodes": len(installmod.PLACEMENT_OF)})
     anchored = _FROZEN_ULFSLAND_INSTALLATIONS
     same = sorted(n for n, xz in got.items()
                   if n in anchored and tuple(xz) == tuple(anchored[n]))
@@ -1823,7 +1793,7 @@ def _case_installations_are_sited_for_this_seed():
         check="installations_sited_for_this_seed", ok=True,
         message=(f"NOT REFUSED: seed {ghost_s} was handed {len(got)} building "
                  f"centres, {len(same)} of them byte-identical to "
-                 f"{specmod.worldseed.DEFAULT_SEED}'s -- "
+                 f"{installmod.worldseed.DEFAULT_SEED}'s -- "
                  f"{[got[n] for n in same[:2]]}"),
         numbers={"handed": len(got), "identical_to_default_seed": len(same)})
 
@@ -1842,17 +1812,17 @@ def _neuter_the_installation_reader():
     """RESTORE THE DEFECT VERBATIM: the 8 coordinates as frozen literals,
     answered for every seed with no placement read and no refusal -- which is
     what `spec.py` did when they were transcribed into the NODES table."""
-    specmod = _spec_mod()
-    saved = specmod.installation_xz
+    installmod = _installation_mod()
+    saved = installmod.installation_xz
     frozen = dict(_FROZEN_ULFSLAND_INSTALLATIONS)
 
     def constant(seed=None, world=None):
         return dict(frozen)
 
-    specmod.installation_xz = constant
+    installmod.installation_xz = constant
 
     def undo():
-        specmod.installation_xz = saved
+        installmod.installation_xz = saved
     return undo
 
 
@@ -2759,27 +2729,11 @@ register(Section(
              neuters="absent_nodes with the presence check dropped, so a "
                      "missing record reads as an empty one and an edge may "
                      "lose a terminus with nothing recorded"),
-        Case("a_first_emit_with_no_crossing_needs_no_anchor", False,
-             _case_a_first_emit_with_no_crossing_needs_no_anchor,
-             prior_state=("MEASURED 2026-09-25, Fresh42 from scratch: "
-                          "pipeline stage 5 `geography.py emit` refused "
-                          "`--anchor is required on a first emit` (rc 1, "
-                          "0.8 s) on a seed whose S1 and S2 are both PORTAL "
-                          "ONLY -- the anchor is read by no crossing it has, "
-                          "and stage 5 passes no --anchor, so no fresh seed "
-                          "could pass stage 5 without a human typing one"),
-             neuter=_neuter_anchor("upfront"),
-             neuters="resolve_anchors refusing any first emit without "
-                     "--anchor, which is what emit shipped"),
-        Case("a_crossing_costed_from_an_unsupplied_anchor_is_refused", True,
-             _case_a_crossing_costed_from_an_unsupplied_anchor_is_refused,
-             prior_state=("the refusal that must survive the fix: on Pirate68 "
-                          "S2 IS bridgeable and costed from the portal hall "
-                          "(-292.5, 213.5), so an emit with no authored "
-                          "anchor must still stop at that crossing"),
-             neuter=_neuter_anchor("invented"),
-             neuters="resolve_anchors inventing (0, 0) where none was "
-                     "authored, so S2 is sited from a made-up hall"),
+        Case("crossing_anchor_follows_solved_placement", False,
+             _case_crossing_anchor_follows_solved_placement,
+             prior_state="geography reused a frozen portal coordinate or required a third human pin",
+             neuter=_neuter_anchor,
+             neuters="reuse the previous geography's portal coordinate"),
         Case("an_unbuildable_crossing_is_not_published", True,
              _case_an_unbuildable_crossing_is_not_published,
              prior_state=("MEASURED 2026-09-22 by driving Fresh42 end to end "

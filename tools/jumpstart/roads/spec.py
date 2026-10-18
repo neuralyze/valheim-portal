@@ -65,6 +65,7 @@ if str(_HERE.parent) not in sys.path:
     sys.path.append(str(_HERE.parent))
 
 import declared_sites as DS  # noqa: E402  the owner's declared sites, as nodes
+import installation_sites  # noqa: E402
 import geography  # noqa: E402
 import worldseed  # noqa: E402
 
@@ -160,92 +161,9 @@ NODES: dict[str, dict] = {
 # the coordinates did not.
 # ---------------------------------------------------------------------------
 
-# node id -> the `placements.yaml` record that SOLVED it.  `dockshore` is solved
-# to the same centre by two presets (deepnorth-sandbox#sandbox-harbour and
-# pre-elder#early-dock); either answers, and a disagreement between them is
-# REFUSED below rather than resolved by whichever file was globbed first.
-PLACEMENT_OF: dict[str, tuple[str, ...]] = {
-    "portalhub": ("sandbox-portal-hub",),
-    "meadhall": ("meadows-starter-hall",),
-    "stathub": ("complete-station-hub",),
-    "dockshore": ("sandbox-harbour", "early-dock"),
-    "blacbase": ("blackforest-walled-base",),
-    "plainsfm": ("plains-farm-base",),
-    "workshop": ("iron-era-workshop",),
-    "mtnpost": ("mountain-outpost",),
-}
-
-# A seed whose world has no placement set is REFUSED -- it has not sited its
-# portal hall yet, and that is a missing prerequisite (stage 7), not a crossing
-# the planet cannot have.
 
 
-def installation_xz(seed: str | None = None,
-                    world: str | None = None) -> dict[str, tuple[float, float]]:
-    """Where this seed's 8 authored installations actually stand.
-
-    Read from `worlds/<world>/*/placements.yaml` FOR THE SEED BEING PLANNED,
-    through `worldseed.require_scope`, so a placement set solved on another seed
-    is refused rather than transcribed, and refuses when this world has NO
-    placement set at all -- because a road planned to a portal hall nobody has
-    sited is the 59% defect wearing a different header.
-    """
-    import yaml                                             # noqa: PLC0415
-    want_s = seed or worldseed.seed()
-    want_w = world or worldseed.world()
-    root, pattern, key = worldseed.installations_read(want_w)
-    sets = sorted(root.glob(pattern)) if root.is_dir() else []
-    found: dict[str, tuple[float, float, str]] = {}
-    for path in sets:
-        doc = yaml.safe_load(path.read_text())
-        worldseed.require_scope(
-            "installation placement set", path, found_seed=doc.get("seed"),
-            found_world=doc.get("world"), seed_=want_s, world_=want_w,
-            produced_by="blueprints/solve_placements.py, which solves this "
-                        "world's buildings onto this seed's ground")
-        for rec in doc.get("placements") or []:
-            for nid, ids in PLACEMENT_OF.items():
-                if rec.get("id") not in ids:
-                    continue
-                solved = rec.get(key) or {}
-                if solved.get("x") is None or solved.get("z") is None:
-                    continue
-                xz = (float(solved["x"]), float(solved["z"]))
-                prior = found.get(nid)
-                if prior is not None and (prior[0], prior[1]) != xz:
-                    raise SystemExit(
-                        f"REFUSING: installation {nid!r} is solved to "
-                        f"{(prior[0], prior[1])} in {prior[2]} and to {xz} in "
-                        f"{path}. Two presets of the same world disagree about "
-                        f"where one building stands, and a road cannot be "
-                        f"planned to both.")
-                found[nid] = (xz[0], xz[1], str(path))
-    if found:
-        missing = sorted(set(PLACEMENT_OF) - set(found))
-        if missing:
-            raise SystemExit(
-                f"REFUSING: world {want_w!r} has a placement set for seed "
-                f"{want_s!r} but it does not site {', '.join(missing)}. "
-                f"{len(missing)} road node(s) would fall back to another "
-                f"world's coordinates inside a plan the rest of which is this "
-                f"seed's -- which is exactly the join of two planets this "
-                f"module refuses everywhere else. Solve them with "
-                f"blueprints/solve_placements.py for this world.")
-        return {nid: (x, z) for nid, (x, z, _p) in found.items()}
-    raise SystemExit(
-        f"REFUSING: seed {want_s!r} has no sited installations. The 8 "
-        f"installation and shoreline nodes are WHERE THIS PROJECT PUT ITS "
-        f"BUILDINGS, and on seed {worldseed.DEFAULT_SEED!r} the "
-        f"{len(PLACEMENT_OF)} of them carry 12 of the 40 EDGES and, MEASURED "
-        f"on Fresh42, 59% of the planned metreage. "
-        f"There is no frozen copy to fall back on: a frozen copy is "
-        f"how a Fresh42 plan came to run 830.3 m from Ulfsland's portal hall "
-        f"to Fresh42's own temple in one segment. Produce them with:\n"
-        f"  blueprints/solve_placements.py for world {want_w!r} on seed "
-        f"{want_s!r}")
-
-
-for _nid, _xz in installation_xz().items():
+for _nid, _xz in installation_sites.installation_xz().items():
     NODES[_nid]["xz"] = _xz
     NODES[_nid]["provenance"] = (
         "MEASURED, worlds/<world>/*/placements.yaml solved centre for this seed")
@@ -632,73 +550,39 @@ for _nid, _d in DECLARED_SITES.items():
 OUTLYING_NODES: dict[str, tuple[float, float]] = {}
 
 
-# ---------------------------------------------------------------------------
-# Crossings' waterfront structures that a road has to ARRIVE at, with the
-# approach bearings it asked for.  MEASURED by Crossings (scipy label over the
-# 1 m land mask of the same PatchScan field, script
-# tools/jumpstart/crossings/survey.py) and taken verbatim.
-#
-# The approach bearing is not decoration.  A jetty runs out on one bearing and a
-# spur arriving on the RECIPROCAL puts the operator at the landward end facing
-# down the deck; arriving perpendicular puts them walking onto it sideways,
-# which is a thing they would see on the first step.
-#
-# The ribbon width per terminal is Crossings' deck width, not my road class
-# default: bringing a 6 m trunk ribbon to a 4 m jetty CREATES the pinch that
-# matching widths avoids.
-# ---------------------------------------------------------------------------
+# Waterfront coordinates are disposable solver output on EVERY seed.
+# The ordinary producer runs after placements/sites and before importing this
+# network specification. Importing spec hydrates the scoped publication only;
+# it never scans, imports old geometry or guesses a missing terminal.
+import shores
+
+WATERFRONT_SITES = shores.load(required=False)
 CROSSING_TERMINALS: dict[str, dict] = {
-    "harbour-south":   {"xz": (11.5, -258.5),    "island": "spawn", "patch": "mainland",
-                        "arrive_bearing_deg": 45.0,  "width_m": 6.0, "cls": "trunk",
-                        "jetty_bearing_deg": 225.0, "owner": "Crossings"},
-    "dock-stathub":    {"xz": (502.5, 1062.5),   "island": "spawn", "patch": "mainland",
-                        "arrive_bearing_deg": 295.0, "width_m": 4.0, "cls": "spur",
-                        "jetty_bearing_deg": 115.0, "owner": "Crossings"},
-    "boathouse-strait": {"xz": (-303.5, -99.5),  "island": "spawn", "patch": "mainland",
-                        "arrive_bearing_deg": 10.0,  "width_m": 4.0, "cls": "spur",
-                        "jetty_bearing_deg": 190.0, "owner": "Crossings"},
-    "ferry-east":      {"xz": (1746.5, 655.5),   "island": "spawn", "patch": "mainland",
-                        "arrive_bearing_deg": 290.0, "width_m": 4.0, "cls": "spur",
-                        "jetty_bearing_deg": 110.0, "owner": "Crossings",
-                        "keep_clear": [(1745.47, 654.47, 1.0)],
-                        "note": "sign and post stand 3 m inland on bearing 290; the "
-                                "ribbon centreline keeps 1 m clear of it"},
+    s["node"]: dict(xz=tuple(s["root"]), island=s["island"], patch=s["patch"],
+                   arrive_bearing_deg=s["arrive_bearing_deg"],
+                   jetty_bearing_deg=s["bearing"], width_m=s["width_m"],
+                   cls=s["cls"], owner="Crossings")
+    for s in WATERFRONT_SITES
 }
+NODES.update(shores.road_nodes(WATERFRONT_SITES))
 
-# ---------------------------------------------------------------------------
-# MEASURED_SEED_DEPENDS_ON: A NODE MEASURED ON ONE SEED IS NOT A NODE OF
-# ANOTHER.
-#
-# `CROSSING_TERMINALS` above is Crossings' survey of PIRATE68's shore and
-# must not be adopted on another seed. Standing-world R3/R4 repairs are NOT
-# a regeneration topology: town/network/harbour requirements below use the
-# actual solved town, harbour installation and declared harbour landings.
-# Fresh42 drive 4 (stage 11, /tmp/regen2/d4_stage11f.log, gate on save
-# af96bfb62427): T13-temple-harboursouth was routed and PAVED 260.0 m to
-# harbour-south's Pirate68 point (11.5, -258.5), which on Fresh42 is open
-# water at h=24.82 m; S13-stathub-dock 950.5 m toward dock-stathub (502.5,
-# 1062.5), open sea at h=0.00 with no land within 255 m; S14, R3 and R4
-# "outside the corridor grid".  The gate found both paved far ends meeting
-# nothing (settlements terminus_unmeasured, 1C).  It is the one-segment-two-
-# worlds defect `installation_xz` closed for the installations, one table
-# further down.
-#
-# THE RULE IS EVERY SEED-SCOPED TABLE'S: a measured node applies on the seed it was
-# measured on and on no other.  WITHHELD, NOT DROPPED: every leg naming one
-# leaves `EDGES` for `FOREIGN_EDGES` carrying the node, the seed it was
-# measured on and its OWNER, and `network.py plan` refuses it with the number
-# read off THIS seed's field at that point.  On the default seed nothing
-# moves: same nodes, same order, same edges.
-#   the_seed_the_node_was_measured_on   the table's own seed, compared with
-#       the seed being planned.
-# NEUTER `_MEASURED_SEED_MODE = "unscoped"`: the shipped read, every seed gets
-# Pirate68's nodes.  Proven by `network.selftest_foreign_nodes`.
-# ---------------------------------------------------------------------------
+# Foreign survey records may still be diagnosed by the generic guard, but no
+# waterfront requirement is sourced from a seed-specific survey table.
 MEASURED_SEED_DEPENDS_ON = ("the_seed_the_node_was_measured_on",)
-_MEASURED_SEED_MODE = "scoped"       # scoped | unscoped (the shipped read)
-
-# node id -> its record, withheld on this seed, with `measured_on` and `owner`.
+_MEASURED_SEED_MODE = "scoped"
 FOREIGN_NODES: dict[str, dict] = {}
+if not WATERFRONT_SITES:
+    # This is an unmet producer obligation, NOT an empty waterfront design.
+    # Numeric importers may supply their own geometry; actual CLI planning runs
+    # shores.produce(--field) before reloading this module.
+    FOREIGN_NODES.update({
+        r["node"]: dict(owner="roads.shores.produce after placements/sites",
+                        measured_on=worldseed.seed(), requirement=r["id"])
+        for r in shores.REQUIREMENTS
+    })
+    for _nid in ("ferry-eastisle-inland", "ferry-terminal-eastisle"):
+        FOREIGN_NODES[_nid] = dict(owner="roads.shore_transport.solve_pair",
+            measured_on=worldseed.seed(), requirement="ferry-east-isle destination access")
 
 
 def seed_scoped(table: dict[str, dict], *, measured_on: str, owner: str,
@@ -712,33 +596,11 @@ def seed_scoped(table: dict[str, dict], *, measured_on: str, owner: str,
                 for nid, rec in table.items()}
 
 
-_KEPT, _WITHHELD = seed_scoped(
-    {_tid: {
-        "island": _t["island"], "patch": _t["patch"], "xz": _t["xz"],
-        "kind": "waterfront_terminal", "owner": _t["owner"],
-        "arrive_bearing_deg": _t["arrive_bearing_deg"],
-        "jetty_bearing_deg": _t["jetty_bearing_deg"],
-        "ribbon_width_m": _t["width_m"],
-        "keep_clear": _t.get("keep_clear", []),
-        "provenance": "MEASURED by Crossings, published over hub",
-        "why": _t.get("note", "waterfront terminal owned by Crossings"),
-    } for _tid, _t in CROSSING_TERMINALS.items()},
-    measured_on=worldseed.DEFAULT_SEED,
-    owner="Crossings: no per-seed waterfront terminal derivation")
-NODES.update(_KEPT)
-FOREIGN_NODES.update(_WITHHELD)
 
-# ferry-terminal-eastisle is DELIBERATELY ABSENT from the road network.
-# MEASURED by Crossings: its root (1951.5, 556.5) sits on land component 273,
-# 0.396 km2, bbox x[1655.5,2397.5] z[-117.5,1048.5], 99 % BlackForest -- a
-# SEPARATE ISLAND from the spawn island's component 7.  So it is portal-only and
-# the operator reaches it by portal and rides the ferry BACK, which on a world
-# with `portals_casual` is the only way a ferry gets used at all.  Recorded here
-# because "why is there no road to the far ferry terminal" must have an answer.
-NO_ROAD: dict[str, str] = {
-    "ferry-terminal-eastisle": "on land component 273 (0.396 km2), a separate "
-                               "island from the spawn island; portal only",
-}
+NO_ROAD: dict[str, str] = {}
+REQUIRED_TRANSPORT = ([s["pair_requirement"] for s in WATERFRONT_SITES
+                      if s.get("pair_requirement")] or [dict(shores.FERRY_REQUIREMENT)])
+
 
 
 TERMINAL_EDGES: list[dict] = [
@@ -748,12 +610,28 @@ TERMINAL_EDGES: list[dict] = [
             "is 6 m"},
     {"id": "S12-brgs1-boathouse", "a": "brg-s1-e", "b": "boathouse-strait",
      "cls": "spur", "pri": 1, "width_m": 4.0,
-     "why": "36 m from the S1 east abutment, so almost free off the same trunk"},
+     "why": "boathouse serving this seed's generated S1 source bank"},
     {"id": "S13-stathub-dock", "a": "stathub", "b": "dock-stathub",
      "cls": "spur", "pri": 2, "width_m": 4.0},
     {"id": "S14-eastlobe-ferryeast", "a": "eastlobe", "b": "ferry-east",
      "cls": "spur", "pri": 2, "width_m": 4.0},
+    {"id": "S15-vestvik-harbour", "a": "vestvik", "b": "harbour-vestvik",
+     "cls": "trunk", "pri": 3, "width_m": 6.0,
+     "why": "the generated village's measured harbour approach, not a frozen quay"},
+    {"id": "S16-dockshore-dock", "a": "dockshore", "b": "dock-dockshore",
+     "cls": "trunk", "pri": 2, "width_m": 6.0},
+    {"id": "S17-stenvik-port", "a": "stenvik", "b": "harbour-stenvik-port",
+     "cls": "trunk", "pri": 2, "width_m": 6.0},
+    {"id": "S18-northcape-dock", "a": "northcape", "b": "dock-northcape",
+     "cls": "trunk", "pri": 2, "width_m": 6.0},
+    {"id": "F1-ferry-eastisle-inland", "a": "ferry-eastisle-inland",
+     "b": "ferry-terminal-eastisle", "cls": "spur", "pri": 2,
+     "width_m": 4.0, "transport_access": "ferry-east-isle",
+     "why": "required generated inward road on the actual ferry destination component"},
 ]
+for _edge in TERMINAL_EDGES:
+    if _edge["b"] in CROSSING_TERMINALS:
+        _edge["patch"] = CROSSING_TERMINALS[_edge["b"]]["patch"]
 EDGES.extend(TERMINAL_EDGES)
 
 # THE DECLARED SITES' LEGS, derived (`declared_sites.legs`) and appended last.
