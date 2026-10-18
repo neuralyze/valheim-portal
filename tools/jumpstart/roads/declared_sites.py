@@ -49,7 +49,8 @@ def load(path: Path | None, seed_: str | None, island_of) -> dict[str, dict]:
     """`{node id: record}` for every site `worldseed.human_sites(seed_)`
     declares, as stage 8 measured it; `{}` for a seed that declares none.
 
-    `island_of(patch)` is the road network's own window-to-landmass table."""
+    `island_of(routing_window)` is the network's window-to-landmass table.
+    `patch` records the routing field; `measurement_patch` retains the survey."""
     want = worldseed.human_sites(seed_)
     if not want:
         return {}
@@ -85,12 +86,21 @@ def load(path: Path | None, seed_: str | None, island_of) -> dict[str, dict]:
                 f"worldseed.HUMAN_SITES now says {list(rec['xz'])} as "
                 f"{rec['kind']!r}/{rec['node']!r}. A node measured for a "
                 f"request nobody is making is stale: re-run stage 8.")
+        routing_window = d.get("routing_window")
+        if not routing_window:
+            raise SystemExit(
+                f"REFUSING: {path} declared site {sid!r} lacks required "
+                f"routing_window. Re-run settlements/plan.py (pipeline "
+                f"stage 8) for this seed to regenerate its covering rooted "
+                f"routing field; measurement patch {d['patch']!r} is not "
+                f"evidence of a separate landmass.")
         out[d["node"]] = {
             "site_id": sid, "type": d["type"],
             "xz": (float(d["xz"][0]), float(d["xz"][1])),
             "requested_xz": (float(d["requested_xz"][0]),
                              float(d["requested_xz"][1])),
-            "island": island_of(d["patch"]), "patch": d["patch"],
+            "island": island_of(routing_window), "patch": routing_window,
+            "measurement_patch": d["patch"],
             "pad_radius_m": float(d["pad_radius_m"]),
             "district_m": float(d["district_m"]),
             "road_priority": d["road_priority"],
@@ -346,12 +356,14 @@ def _published(sites=None, *, request_a=(500.0, 500.0), seed=_SEED) -> dict:
             id="harbour-city-a", type="harbour_city", node="cityA",
             requested_xz=list(request_a), xz=[470.5, 520.5], pad_radius_m=12.0,
             district_m=160.0, road_priority="trunk", road_to=[],
-            patch="trunk-primary", pad_y=33.0, why="w", measured={}),
+            patch="trunk-primary", routing_window="trunk-primary",
+            pad_y=33.0, why="w", measured={}),
         "harbour-village-b": dict(
             id="harbour-village-b", type="harbour_village", node="villB",
             requested_xz=[900.0, 100.0], xz=[880.5, 120.5], pad_radius_m=10.0,
             district_m=90.0, road_priority="trunk", road_to=["harbour-city-a"],
-            patch="trunk-primary", pad_y=33.0, why="w", measured={}),
+            patch="trunk-primary", routing_window="trunk-primary",
+            pad_y=33.0, why="w", measured={}),
     }
     return {"world": None, "seed": seed, "seed_hash": 1, "sites": [],
             "declared_sites": [rec[s] for s in sites]}
@@ -362,7 +374,8 @@ def _load(doc: dict):
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / worldseed.sites_name(_SEED)
         p.write_text(yaml.safe_dump(doc))
-        return load(p, _SEED, lambda patch: "spawn")
+        return load(p, _SEED,
+                    lambda patch: {"trunk-primary": "spawn"}.get(patch, patch))
 
 
 def _refused(fn) -> str | None:
@@ -408,6 +421,41 @@ def _case_the_declared_set_is_loaded_at_the_measured_node() -> list[str]:
             got["cityA"]["requested_xz"] != (500.0, 500.0):
         bad.append(f"the node is not the measured landing: {got['cityA']}")
     return bad
+
+
+def _case_a_survey_measurement_joins_the_published_routing_landmass():
+    undo = _declare()
+    try:
+        doc = _published()
+        doc["declared_sites"][0]["patch"] = "north-survey"
+        declared = _load(doc)
+    finally:
+        undo()
+    city = declared["cityA"]
+    bad = []
+    if (city["measurement_patch"], city["patch"], city["island"]) != (
+            "north-survey", "trunk-primary", "spawn"):
+        bad.append(f"survey patch replaced the published routing role: {city}")
+    got = legs(declared, _nodes_with(declared), list(_EDGES))
+    pairs = [(e["a"], e["b"]) for e in got]
+    if pairs != [("cityA", "wtnear"), ("cityA", "villB")]:
+        bad.append(f"survey-measured city did not join spawn trunk: {pairs}")
+    return bad
+
+
+def _case_a_missing_routing_window_is_REFUSED():
+    undo = _declare()
+    try:
+        doc = _published()
+        doc["declared_sites"][0]["patch"] = "north-survey"
+        del doc["declared_sites"][0]["routing_window"]
+        msg = _refused(lambda: _load(doc))
+    finally:
+        undo()
+    return [] if msg and all(s in msg for s in (
+        "harbour-city-a", "routing_window", "stage 8")) else [
+        f"a survey-measured site without routing_window was not refused "
+        f"with the stage 8 remedy: {msg}"]
 
 
 def _case_a_publication_missing_a_declared_site_is_REFUSED() -> list[str]:
@@ -639,11 +687,11 @@ def _case_a_landmass_with_no_trunk_node_is_returned_not_raised() -> list[str]:
     return bad
 
 
-def _case_a_publication_without_verdicts_derives_nothing() -> list[str]:
+def _case_an_empty_solved_site_set_derives_nothing() -> list[str]:
     _s, nodes, edges, crossings = _site_world()
     got, unjoined = site_legs({}, nodes, edges, crossings)
     return [] if (got, unjoined) == ([], {}) else [
-        f"a publication that predates the verdict got {got} {unjoined}"]
+        f"an empty solved site set got {got} {unjoined}"]
 
 
 def _case_the_numbering_skips_the_site_ids_already_taken() -> list[str]:
@@ -669,6 +717,10 @@ def _case_NEUTER_derived_site_legs_off_leaves_the_sites_dangling():
 CASES = (
     ("the_declared_set_is_loaded_at_the_measured_node",
      _case_the_declared_set_is_loaded_at_the_measured_node),
+    ("a_survey_measurement_joins_the_published_routing_landmass",
+     _case_a_survey_measurement_joins_the_published_routing_landmass),
+    ("a_missing_routing_window_is_REFUSED",
+     _case_a_missing_routing_window_is_REFUSED),
     ("a_publication_missing_a_declared_site_is_REFUSED",
      _case_a_publication_missing_a_declared_site_is_REFUSED),
     ("a_publication_carrying_an_undeclared_site_is_REFUSED",
@@ -694,8 +746,8 @@ CASES = (
      _case_sites_connected_to_each_other_get_one_leg),
     ("a_landmass_with_no_trunk_node_is_returned_not_raised",
      _case_a_landmass_with_no_trunk_node_is_returned_not_raised),
-    ("a_publication_without_verdicts_derives_nothing",
-     _case_a_publication_without_verdicts_derives_nothing),
+    ("an_empty_solved_site_set_derives_nothing",
+     _case_an_empty_solved_site_set_derives_nothing),
     ("the_numbering_skips_the_site_ids_already_taken",
      _case_the_numbering_skips_the_site_ids_already_taken),
     ("NEUTER_derived_site_legs_off_leaves_the_sites_dangling",

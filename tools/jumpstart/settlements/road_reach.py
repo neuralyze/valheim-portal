@@ -189,8 +189,11 @@ class SiteReach:
     def verdict(self, patch: str, x: float, z: float, priority: str,
                 pad_y: float | None = None, pad_m: float | None = None
                 ) -> dict:
-        """The verdict for a site at (x, z) in window `patch` whose declared
-        road class is `priority` (`trunk` | `spur` | `mountain` | `none`)."""
+        """Judge independently in covering rooted windows; never join graphs.
+
+        `window` remains the measurement patch. `topology_window` identifies the
+        single window supplying the graph, landmass and approach evidence.
+        """
         rec = {"class": priority, "window": patch,
                "xz": [round(float(x), 1), round(float(z), 1)]}
         if priority != "none" and priority not in ROAD_CLASSES:
@@ -207,16 +210,47 @@ class SiteReach:
             return {**rec, "roaded": True, "reason": "declared",
                     "why": f"road_priority {priority}: taken as a road",
                     "evidence": {}}
-        island = self.island_of(patch)
-        if island not in self._joined():
+        joined = self._joined()
+        windows = [pid for pid, fld in self.fields.items()
+                   if self.island_of(pid) in joined and fld.contains(x, z)]
+        windows.sort(key=lambda pid: (pid != patch, pid))
+        if not windows:
             return {**rec, "roaded": False, "reason": "unrooted_window",
-                    "why": (f"window {patch!r} holds island {island!r}, and no "
-                            f"crossing joins it to the spawn island on this "
-                            f"seed (joined: {sorted(self._joined())}): a road "
-                            f"there is walkable from nowhere a walk from the "
-                            f"portal hall starts"),
-                    "evidence": {"island": island,
-                                 "joined_islands": sorted(self._joined())}}
+                    "topology_window": None,
+                    "why": (f"no rooted window covers ({x:.0f}, {z:.0f}); "
+                            f"measurement window {patch!r} is not evidence "
+                            f"of a separate island or of road connectivity"),
+                    "evidence": {"island": self.island_of(patch),
+                                 "joined_islands": sorted(joined),
+                                 "covering_rooted_windows": []}}
+        attempts = []
+        first = None
+        for pid in windows:
+            verdict = self._window_verdict(
+                pid, x, z, priority, pad_y=pad_y, pad_m=pad_m)
+            attempts.append({"window": pid, "reason": verdict["reason"],
+                             "roaded": verdict["roaded"],
+                             "evidence": verdict["evidence"]})
+            if first is None:
+                first = verdict
+            if verdict["roaded"]:
+                break
+        else:
+            verdict = first
+        evidence = {**verdict["evidence"],
+                    "island": self.island_of(verdict["window"]),
+                    "joined_islands": sorted(joined)}
+        if len(attempts) > 1:
+            evidence["topology_attempts"] = attempts
+        return {**verdict, **rec, "topology_window": verdict["window"],
+                "evidence": evidence}
+
+    def _window_verdict(self, patch: str, x: float, z: float, priority: str,
+                        pad_y: float | None = None,
+                        pad_m: float | None = None) -> dict:
+        """All constraints must hold in this one rooted, covering window."""
+        rec = {"class": priority, "window": patch,
+               "xz": [round(float(x), 1), round(float(z), 1)]}
         g = self.graph(patch, priority)
         at = g.at([x], [z])
         piece, snap = int(at["piece_cells"][0]), float(at["snap_m"][0])

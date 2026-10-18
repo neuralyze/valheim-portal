@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- North joint-profile writer checks resolve existing base-road field roles
+  through the canonical resolver, rather than indexing a role-named segment
+  into an actual-window-keyed field map and crashing before frontier selection.
+
+- North planning preserves refused provisional base roads and their complete
+  census geometry as explicit base-route debt, while keeping new north-road
+  failures strict. Census-backed routing still rejects all combined failures;
+  final readers, transport writers and independent saved-world acceptance
+  refuse unresolved road debt even on a final-labelled artifact.
+
+- Settlement topology no longer treats an overlapping survey tile as an island.
+  Road and spawn-component verdicts use covering rooted evidence windows;
+  routing nodes retain the separate measurement provenance. Declared harbours
+  publish an explicit routing window, and stale publications require stage 8
+  regeneration rather than silently routing under a survey ID.
+
+- Town placement tries a finite junction-outward frontage lattice after its
+  preferred anchor sweeps fail, without extending streets or relaxing physical
+  and ownership checks. Unplaced requests remain explicit sampled refusals.
+  Cross-street construction now uses the bearing and length its profile
+  actually measured, rather than swapping those arguments.
+
 - Settlement candidate deduplication compares actual measured candidates, not
   every overlapping survey window. Adding northern scan coverage can no longer
   erase otherwise valid town districts. Nearby duplicates still select the

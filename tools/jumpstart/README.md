@@ -33,6 +33,14 @@ derives budgeted union tiles covering every eligible ordered coarse frontier
 corridor. Settlement and north requests sample the real integer Heightmap
 lattice with preserved boundaries; the scanner explicitly uses the rendered
 Heightmap blend. Existing half-grid bytes require a real rescan, not relabelling.
+Survey windows identify where a measurement came from, not a road landmass.
+Settlement road verdicts evaluate a covering rooted window without stitching
+independent graphs together. Publications retain the measurement `patch` and
+name the road's `topology_window`; declared harbour nodes separately publish
+their `routing_window`. Routing consumers use those frames and preserve
+`measurement_patch` for provenance. Regenerate stage 8 when a publication lacks
+this routing evidence; an old survey ID must not silently become an island.
+
 Stage 9 attaches a provisional itinerary to an actual station of the generated rooted
 network; no standing N0b junction, old north node table, ledger replay, or fixed
 ferry coordinates generate it. Census covers the roads, terminal search boxes,
@@ -40,6 +48,15 @@ and sea lanes before the final pass. Stage 11 uses the existing route/profile,
 writer-water, location and census gates and merges north road-ground into the
 canonical seed-scoped segments/crossings files. Historical `north_segments.yaml`
 is diagnostic evidence, not a second generated network.
+
+Provisional base-road joint/writer refusals remain explicit `base_route_refusals`
+and keep their full survey/census geometry; they are not blamed on every north
+candidate or silently labelled clear. North-road failures still reject that
+candidate. A provisional choice is census guidance, not a highest-buildable or
+construction claim. The census-backed pass tries the complete ordered frontier
+again and applies all combined base/north gates. Final loaders, transport
+writers and independent saved-world acceptance reject either outstanding base
+or north road debt, even if an artifact claims `provisional: false`.
 
 `VH_NORTH_PRESET` selects a shipped preset (default `pre-kall`), explicitly passed
 as `field.py request --north-preset` and `north.py network --preset`. Permitted

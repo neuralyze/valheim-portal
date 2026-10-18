@@ -113,7 +113,8 @@ def validate_itinerary(doc, *, seed, world, for_write=False, path="<itinerary>")
                             found_world=doc.get("world"), seed_=seed, world_=world)
     if not isinstance(doc.get("provisional"), bool):
         raise SystemExit(f"{path}: provisional must be explicitly boolean")
-    if for_write and (doc["provisional"] or doc.get("refusal")):
+    if for_write and (doc["provisional"] or doc.get("refusal")
+                      or doc.get("route_refusals") or doc.get("base_route_refusals")):
         raise SystemExit(f"{path}: provisional/refused itinerary cannot authorize transport writes")
     nodes, terminals = doc.get("nodes"), doc.get("terminals")
     edges, pairs = doc.get("road_edges"), doc.get("transport")
@@ -733,6 +734,10 @@ def selftest():
     expect("foreign world", lambda d: d.update(world="Foreign"), True)
     expect("undeclared world", lambda d: d.pop("world"), True)
     expect("provisional transport writes", lambda d: d.update(provisional=True), True)
+    expect("unresolved base roads cannot authorize final transport",
+           lambda d: d.update(base_route_refusals=[{"id": "base", "kind": "writer"}]), True)
+    expect("unresolved north roads cannot authorize final transport",
+           lambda d: d.update(route_refusals=[{"id": "r0", "kind": "joint"}]), True)
     expect("unpaired crossing", lambda d: d.update(transport=[]), True)
     expect("nonendpoint dock", lambda d: d["terminals"]["north-dock-000"].update(xz=[1, 20]), True)
     expect("missing final ship lighthouse obligation", lambda d: d.update(final_departure=None), True)

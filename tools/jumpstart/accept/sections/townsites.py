@@ -843,6 +843,151 @@ def _neuter_dedupe_to_global_field_ownership():
     return undo
 
 
+def _case_street_geometry_matches_its_walk_measurement():
+    import math
+    import numpy as np
+    pm = _plan()
+    field = pm.T.Field(
+        "trunk-primary", 0.0, 0.0, 300.0, 1.0, 600,
+        np.full((600, 600), 40.0, dtype=np.float32),
+        np.full((600, 600), pm.T.BIOME_CODE["Meadows"], dtype=np.uint8))
+    planner = pm.LY.TownPlanner(
+        types.SimpleNamespace(fields={field.id: field}), audit_rows=[])
+    doc = planner.plan(_candidate(0.0, 0.0, field.id), "constructed", [],
+                       street_len_m=160.0)
+    measurements = []
+    for street in doc["streets"]:
+        bearing = math.radians(street["bearing_deg"])
+        nodes = street["nodes"]
+        lateral = max(abs(-math.sin(bearing) * x + math.cos(bearing) * z)
+                      for x, z in nodes)
+        length = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                     for a, b in zip(nodes, nodes[1:]))
+        measurements.append({"street": street["name"], "lateral_m": lateral,
+                             "actual_length_m": length,
+                             "measured_length_m": street["profile"]["length_m"]})
+    return Finding(
+        check="street_geometry_matches_walk_measurement",
+        ok=all(m["lateral_m"] < 1e-9
+               and abs(m["actual_length_m"] - m["measured_length_m"]) <= 0.050000001
+               for m in measurements),
+        message="street nodes must follow their advertised bearing and measured walking distance",
+        numbers={"streets": measurements})
+
+
+def _neuter_cross_street_arguments():
+    module = _plan().LY
+    saved = module.street_through
+
+    def swapped(field, cx, cz, *args, **kwargs):
+        if "bearing_deg" in kwargs and "length_m" in kwargs:
+            kwargs["bearing_deg"], kwargs["length_m"] = (
+                kwargs["length_m"], kwargs["bearing_deg"])
+        return saved(field, cx, cz, *args, **kwargs)
+
+    module.street_through = swapped
+
+    def undo():
+        module.street_through = saved
+    return undo
+
+
+def _frontage_world():
+    """Construct rough ground with one remote legal pad, not a canned bill."""
+    import numpy as np
+    pm = _plan()
+    n, half = 400, 200.0
+    axis = -half + 0.5 + np.arange(n)
+    x, z = np.meshgrid(axis, axis)
+    h = np.where(np.indices((n, n)).sum(axis=0) % 2, 20.0, 60.0)
+    # Two narrow level roads, the square, and a flat plot 80 m from it.
+    level = ((np.abs(z) <= 3) | (np.abs(x) <= 3)
+             | ((np.abs(x) <= 12) & (np.abs(z) <= 12))
+             | ((x >= -90) & (x <= -70) & (z >= 4) & (z <= 24)))
+    h[level] = 40.0
+    field = pm.T.Field(
+        "frontage-ground", 0.0, 0.0, half, 1.0, n, h.astype(np.float32),
+        np.full((n, n), pm.T.BIOME_CODE["Meadows"], dtype=np.uint8))
+    loc = pm.clearance.Locations(
+        xz=np.array([[10000.0, 10000.0]], dtype=np.float32),
+        names=["far marker"], prefabs=["Runestone"],
+        reach=np.array([0.0]), protected=np.array([False]),
+        standoff=np.array([10.0]), spawn=(0.0, 0.0), by_type={})
+    picker = object.__new__(pm.S.Picker)
+    picker.fields, picker.loc, picker.installations = {field.id: field}, loc, []
+    row = {"name": "constructed-house", "sha256": "constructed",
+           "footprint_x_m": 8.0, "footprint_z_m": 8.0, "pieces": 12,
+           "flat_pad_verdict": "grounds", "floating_fraction": 0.0,
+           "stations": 0, "beds": 2}
+    return pm, field, picker, row
+
+
+def _case_frontage_fallback_finds_ground_the_sweeps_miss():
+    pm, field, picker, row = _frontage_world()
+    ly = pm.LY
+    planner = ly.TownPlanner(picker, audit_rows=[row])
+    # Exercise the actual old anchors and sweeps first: none reaches the
+    # level pad at x=-80. Every refusal is measured by the real terrain bill.
+    for bearing, length in ((0.0, 300.0), (90.0, 180.0)):
+        street = ly.Street("preferred", bearing,
+                          ly.street_through(field, 0, 0, bearing, length), {})
+        anchor = length / 2 + 8 + ly.MIN_BUILDING_GAP_M + 3
+        for side in (1, -1):
+            assert planner.place([], field, "probe", "house", row, street,
+                                 side, anchor) is None
+    doc = planner.plan(_candidate(0, 0, field.id), "constructed",
+                       [("house", row["name"], 1)], street_len_m=300.0)
+    assert doc["totals"]["buildings_requested"] == 1
+    assert doc["totals"]["buildings_unplaced"] == 0, doc["unplaced"]
+    building, = doc["buildings"]
+    assert -90 <= building["x"] <= -70 and 4 <= building["z"] <= 24, building
+    assert building["pad"]["clamp_ok"] and not building["pad"]["wet_samples"]
+    assert field.contains(building["x"], building["z"],
+                          max(building["pad"]["width_m"],
+                              building["pad"]["depth_m"]))
+    return []
+
+
+def _case_frontage_fallback_keeps_installation_refusal():
+    pm, field, picker, row = _frontage_world()
+    # The only level pad is now occupied. The real Picker installation
+    # stand-off must still refuse it, even in the exhaustive fallback pass.
+    picker.installations = [{"x": -80.0, "z": 14.0, "radius_m": 20.0}]
+    planner = pm.LY.TownPlanner(picker, audit_rows=[row])
+    doc = planner.plan(_candidate(0, 0, field.id), "constructed",
+                       [("house", row["name"], 1)], street_len_m=300.0)
+    assert doc["buildings"] == [], doc["buildings"]
+    assert doc["totals"]["buildings_requested"] == 1
+    assert doc["totals"]["buildings_unplaced"] == 1
+    miss, = doc["unplaced"]
+    assert miss["sampled_frontages_exhausted"] and miss["positions_evaluated"] > 0
+    return []
+
+
+def _neuter_frontage_fallback():
+    module = _plan().LY
+    saved = module.TownPlanner.frontage_positions
+
+    def preferred_only(street, along_m=None):
+        return () if along_m is None else saved(street, along_m)
+
+    module.TownPlanner.frontage_positions = staticmethod(preferred_only)
+
+    def undo():
+        module.TownPlanner.frontage_positions = staticmethod(saved)
+    return undo
+
+
+def _neuter_frontage_installation_gate():
+    module = _plan().S
+    saved = module.Picker.installation_conflict
+    module.Picker.installation_conflict = lambda self, x, z, half_diag_m: None
+
+    def undo():
+        module.Picker.installation_conflict = saved
+    return undo
+
+
 def _case_a_field_with_no_trunk_window_is_refused():
     """A TOWN IS DEFINED AS STANDING ON A TRUNK LANDMASS.  Searching whatever
     windows happen to be in the file instead would plant a town on an outlier
@@ -1621,12 +1766,14 @@ def _solved_fixture() -> dict:
         why = ("road_priority is none: portal-only, by design" if prio == "none"
                else "the router snap stands in the largest strong component")
         return {"type": "watchtower", "xz": (x, z), "island": "spawn",
-                "patch": patch, "pad_radius_m": r, "priority": prio,
+                "patch": patch, "measurement_patch": patch,
+                "pad_radius_m": r, "priority": prio,
                 "tag": f"u-{sid}", "pad_y": 70.25, "solver_id": sid,
                 "road": {"class": prio, "roaded": roaded,
+                         "window": patch, "topology_window": patch,
                          "reason": ("reached" if roaded
                                     else "declared_portal_only"),
-                         "why": why, "evidence": {}}}
+                         "why": why, "evidence": {"island": "spawn"}}}
     return {"stenvik": rec("stenvik", 700.0, -300.0, r=100.0),
             "wtspawn": rec("wt-spawn", 1432.0, 1546.0),
             "sudrberg": rec("sudrberg-keep", 1542.0, 802.0, prio="none",
@@ -1721,6 +1868,166 @@ def _road_reach_fixture(joined=("spawn",)):
             f, forbid=np.zeros((m, m), dtype=bool), cls=c))
     return sr, {"land": (-50.0, 60.0), "pocket": (25.0, 0.0),
                 "islet": (130.0, 0.0)}
+
+
+def _coverage_reach_fixture():
+    sr, pts = _road_reach_fixture()
+    # A search window measures the same terrain, but has no island role.
+    sr.fields["survey-tile"] = sr.fields["trunk-primary"]
+    sr.island_of = lambda pid: "spawn" if pid == "trunk-primary" else pid
+    return sr, pts
+
+
+def _case_a_survey_tile_preserves_measured_road_reach():
+    sr, pts = _coverage_reach_fixture()
+    baseline = sr.verdict("trunk-primary", *pts["land"], "trunk")
+    survey = sr.verdict("survey-tile", *pts["land"], "trunk")
+    return Finding(
+        check="survey_preserves_road_reach",
+        ok=(baseline["roaded"] and survey["roaded"]
+            and survey["window"] == "survey-tile"
+            and survey.get("topology_window") == "trunk-primary"),
+        message=f"the same land is {baseline['reason']} from its trunk window "
+                f"and {survey['reason']} from its survey measurement",
+        where=pts["land"], numbers={"source_windows": 2})
+
+
+def _case_survey_coverage_does_not_root_an_islet_or_pocket():
+    sr, pts = _coverage_reach_fixture()
+    verdicts = [sr.verdict("survey-tile", *pts[p], "trunk")
+                for p in ("pocket", "islet")]
+    # These are the real graph and land labels from the sloped-coast fixture.
+    return Finding(
+        check="survey_keeps_topology_refusals",
+        ok=any(v["roaded"] for v in verdicts),
+        message="survey measurements: " + ", ".join(
+            f"{p} -> {v['reason']}" for p, v in
+            zip(("pocket", "islet"), verdicts)),
+        where=pts["pocket"],
+        numbers={"roaded": sum(v["roaded"] for v in verdicts),
+                 "reasons": [v["reason"] for v in verdicts]})
+
+
+def _case_survey_coverage_keeps_approach_grade():
+    sr, pts = _coverage_reach_fixture()
+    cliff = sr.verdict("survey-tile", *pts["land"], "spur",
+                       pad_y=60.0, pad_m=22.0)
+    return Finding(
+        check="survey_keeps_approach_grade", ok=cliff["roaded"],
+        message=f"survey pad 60 m over the coast -> {cliff['reason']}",
+        where=pts["land"], numbers={"pad_y": 60.0})
+
+
+def _case_survey_coverage_without_a_root_is_not_a_road():
+    sr, pts = _coverage_reach_fixture()
+    # A rooted window exists, but not HERE. Shared window names or other
+    # windows' components cannot provide a path at this coordinate.
+    sr.fields["trunk-primary"] = _StubField(
+        "trunk-primary", 1000.0, 1200.0, 1000.0, 1200.0)
+    unknown = sr.verdict("survey-tile", *pts["land"], "trunk")
+    declared = sr.verdict("survey-tile", *pts["land"], "none")
+    return Finding(
+        check="survey_requires_covering_root",
+        ok=unknown["roaded"] or declared["roaded"],
+        message=f"no covering root -> {unknown['reason']}; "
+                f"declared none -> {declared['reason']}",
+        where=pts["land"], numbers={"covering_rooted_windows": 0})
+
+
+def _neuter_reach_to_the_measurement_window():
+    """Restore the source-window island gate without weakening any graph."""
+    mod = _plan().RR
+    saved = mod.SiteReach.verdict
+
+    def source_only(self, patch, x, z, priority, **kw):
+        if priority != "none" and self.island_of(patch) not in self._joined():
+            return {"class": priority, "window": patch, "xz": [x, z],
+                    "roaded": False, "reason": "unrooted_window",
+                    "why": "the source window ID is taken as its island",
+                    "evidence": {}}
+        return saved(self, patch, x, z, priority, **kw)
+
+    mod.SiteReach.verdict = source_only
+
+    def undo():
+        mod.SiteReach.verdict = saved
+    return undo
+
+
+def _coverage_land_fixture():
+    pm = _plan()
+    sr, pts = _coverage_reach_fixture()
+    f = sr.fields["trunk-primary"]
+    terrain = pm.T.Field(f.id, f.cx, f.cz, f.half, f.step, f.n, f.h, f.biome)
+    picker = types.SimpleNamespace(
+        fields={"trunk-primary": terrain, "survey-tile": terrain},
+        loc=types.SimpleNamespace(spawn=pts["land"]))
+    islands = pm.island_membership(picker, patches=("trunk-primary",))
+    return pm, picker, islands, pts
+
+
+def _case_survey_id_is_not_a_separate_landmass():
+    pm, picker, islands, pts = _coverage_land_fixture()
+    got = pm.site_island(islands, picker, "survey-tile", *pts["pocket"])
+    return Finding(
+        check="survey_landmass_uses_components",
+        ok=(got["same_landmass_as_spawn"] is True
+            and got.get("topology_window") == "trunk-primary"
+            and got.get("window") == "survey-tile"),
+        message=f"survey pocket on spawn's land: {got['evidence']}",
+        where=pts["pocket"], numbers={"labelled_windows": len(islands)})
+
+
+def _case_survey_landmass_keeps_separate_and_unknown_distinct():
+    pm, picker, islands, pts = _coverage_land_fixture()
+    islet = pm.site_island(islands, picker, "survey-tile", *pts["islet"])
+    # This window has labels, but no measured spawn component. The same
+    # numeric label in a different window cannot establish connectivity.
+    islands = {"survey-tile": {**islands["trunk-primary"], "spawn_label": None}}
+    unknown = pm.site_island(islands, picker, "survey-tile", *pts["land"])
+    return Finding(
+        check="survey_landmass_distinguishes_unknown",
+        ok=(islet["same_landmass_as_spawn"] is False
+            and unknown["same_landmass_as_spawn"] is None
+            and unknown.get("topology_window") is None),
+        message=f"islet -> {islet['same_landmass_as_spawn']}; "
+                f"no spawn label -> {unknown['same_landmass_as_spawn']}",
+        where=pts["islet"], numbers={"unrooted_label_windows": 1})
+
+
+def _neuter_landmass_to_the_measurement_window():
+    """Restore the missing-source-label-map means separate-island defect."""
+    pm = _plan()
+    saved = pm.site_island
+
+    def source_only(islands, picker, patch, x, z):
+        if patch not in islands:
+            return {"same_landmass_as_spawn": False,
+                    "evidence": "survey ID taken as a separate landmass"}
+        return saved(islands, picker, patch, x, z)
+
+    pm.site_island = source_only
+
+    def undo():
+        pm.site_island = saved
+    return undo
+
+
+def _neuter_landmass_unknown_to_separate():
+    pm = _plan()
+    saved = pm.site_island
+
+    def unknown_is_separate(*a, **kw):
+        got = saved(*a, **kw)
+        if got["same_landmass_as_spawn"] is None:
+            got["same_landmass_as_spawn"] = False
+        return got
+
+    pm.site_island = unknown_is_separate
+
+    def undo():
+        pm.site_island = saved
+    return undo
 
 
 def _reach_finding(check: str, point: str, priority: str = "trunk",
@@ -2240,6 +2547,21 @@ register(Section(
              prior_state="a nearer field could erase a district without offering a competing candidate",
              neuter=_neuter_dedupe_to_global_field_ownership,
              neuters="dedupe uses global field ownership instead of actual duplicate candidates"),
+        Case("street_geometry_matches_walk_measurement", False,
+             _case_street_geometry_matches_its_walk_measurement,
+             prior_state="cross-street bearing and length were swapped after its profile was measured",
+             neuter=_neuter_cross_street_arguments,
+             neuters="cross-street construction swaps bearing and length"),
+        Case("frontage_fallback_finds_ground_the_sweeps_miss", False,
+             _case_frontage_fallback_finds_ground_the_sweeps_miss,
+             prior_state="body-dependent anchors and 48 m sweeps miss an in-bounds legal pad",
+             neuter=_neuter_frontage_fallback,
+             neuters="only the original preferred frontage sweeps are enumerated"),
+        Case("frontage_fallback_keeps_installation_refusal", False,
+             _case_frontage_fallback_keeps_installation_refusal,
+             prior_state="the only legal pad remains occupied throughout the fallback",
+             neuter=_neuter_frontage_installation_gate,
+             neuters="fallback placement ignores the recorded installation stand-off"),
         Case("no_trunk_window_is_refused", True,
              _case_a_field_with_no_trunk_window_is_refused,
              prior_state=("a field of outlier windows only returned zero town "
@@ -2449,6 +2771,34 @@ register(Section(
              neuter=_neuter_the_solver_is_pinned_again,
              neuters="the pin layer, applied over the solver on the default "
                      "pair"),
+        Case("survey_tile_preserves_measured_road_reach", False,
+             _case_a_survey_tile_preserves_measured_road_reach,
+             prior_state="an added survey tile ID refused a reachable site "
+                         "before consulting the covering rooted graph",
+             neuter=_neuter_reach_to_the_measurement_window,
+             neuters="the measurement-window island gate"),
+        Case("survey_coverage_keeps_islet_and_pocket_refusals", True,
+             _case_survey_coverage_does_not_root_an_islet_or_pocket,
+             neuter=_neuter_the_road_is_taken_on_the_declaration,
+             neuters="the declaration accepted without measured constraints"),
+        Case("survey_coverage_keeps_approach_grade", True,
+             _case_survey_coverage_keeps_approach_grade,
+             neuter=_neuter_the_approach_is_not_asked,
+             neuters="the rooted graph's snap accepted without approach grade"),
+        Case("survey_coverage_requires_a_covering_root", True,
+             _case_survey_coverage_without_a_root_is_not_a_road,
+             neuter=_neuter_the_road_is_taken_on_the_declaration,
+             neuters="the road declaration accepted without a covering root"),
+        Case("survey_id_is_not_a_separate_landmass", False,
+             _case_survey_id_is_not_a_separate_landmass,
+             prior_state="a survey ID absent from the trunk label map was "
+                         "reported as measured separate land",
+             neuter=_neuter_landmass_to_the_measurement_window,
+             neuters="missing source label map taken as separate land"),
+        Case("survey_landmass_keeps_separate_and_unknown_distinct", False,
+             _case_survey_landmass_keeps_separate_and_unknown_distinct,
+             neuter=_neuter_landmass_unknown_to_separate,
+             neuters="no measured spawn component reported as separate land"),
         Case("a_pocket_the_router_cannot_enter_is_portal_only", True,
              _case_a_pocket_the_router_cannot_enter_is_portal_only,
              prior_state=("Pirate68 with the pins out: wt-spawn (1432, 1546) "

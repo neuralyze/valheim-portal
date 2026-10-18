@@ -436,10 +436,67 @@ def load_itinerary(path, *, provisional_ok=False) -> dict:
         node = (doc.get("nodes") or {}).get(nid)
         if node is None or list(node["xz"]) != list(terminal["xz"]):
             raise ValueError(f"{path}: terminal {tid} is not on its road node")
-    if not doc["provisional"] and (doc.get("route_refusals") or
-            set(doc.get("routed_road_ids") or []) != set(edges)):
+    if not doc["provisional"] and (
+            doc.get("route_refusals") or doc.get("base_route_refusals")
+            or set(doc.get("routed_road_ids") or []) != set(edges)):
         raise ValueError(f"{path}: final itinerary omits or refuses required road-ground")
     return doc
+
+
+def _joint_routed_profiles(base, segments, joints, fields, net, plan_state,
+                           *, provisional):
+    """Keep provisional base survey debt; never authorize it for construction."""
+    participants = plan_state["pads"]
+    base_ids = {s["id"] for s in base["segments"]}
+    combined = base["segments"] + segments
+    all_joints = {**plan_state["joints"], **joints}
+    judged = {s["id"]: list(s["profile_y"]) for s in combined}
+    jd = net.water_after_joint(
+        combined, all_joints, participants, fields, judged,
+        plan_state["water_cache"])
+    refused, base_refused, rejected_ids = [], [], set()
+
+    def record(sid, kind, diagnostic):
+        rec = {"id": sid, "kind": kind, "error": str(diagnostic),
+               "diagnostic": diagnostic}
+        if provisional and sid in base_ids:
+            base_refused.append(rec)
+        else:
+            refused.append(rec)
+            rejected_ids.add(sid)
+
+    joint_refusals = {r["id"]: net.junction_rejection(r)
+                      for r in jd["refused"]}
+    for sg in combined:
+        sid = sg["id"]
+        if sid in joint_refusals:
+            sg["junction_datum"] = {"verdict": "REFUSED", **joint_refusals[sid]}
+            record(sid, "joint", joint_refusals[sid])
+        else:
+            sg.setdefault("junction_datum", {})["verdict"] = "JOINED"
+        key = (sid, tuple(sg["profile_y"]))
+        reading = plan_state["water_cache"].get(key)
+        if reading is None:
+            reading = net.writer_water(sg, worldseed.resolve(fields, sg["patch"]))
+            plan_state["water_cache"][key] = reading
+        public = {**net.water_public(reading), **net.judged_public(reading)}
+        water = sg.setdefault("writer_water", {})
+        water.update(public)
+        water["after_junction"] = public
+        water["final_verdict"] = net.final_verdict(public)
+        if reading.get("collar") is False:
+            sg["connection_collar"] = False
+        else:
+            sg.pop("connection_collar", None)
+        if water["final_verdict"] == "REFUSED":
+            record(sid, "writer", public)
+    base["segments"] = [s for s in base["segments"]
+                        if s["id"] not in rejected_ids]
+    base["north_junction_datum"] = {
+        "refused": jd["refused"], "pads_missing": plan_state["pads_missing"],
+        "participants": len(participants)}
+    return ([s for s in segments if s["id"] not in rejected_ids],
+            refused, base_refused)
 
 
 def append_routes(doc: dict, fields: dict, base: dict, crossings: dict, net, census,
@@ -529,38 +586,15 @@ No ferry is inserted into the walking component graph as a pretend bridge.
             refused.append({"id": edge["id"], "error": str(exc)})
         if searched:
             lines.append({"id": edge["id"], "patch": f.id, "nodes": searched})
+    base_refused = []
     if segments:
-        participants = plan_state["pads"]
-        missing = plan_state["pads_missing"]
-        combined = base["segments"] + segments
-        all_joints = {**plan_state["joints"], **joints}
-        judged = {s["id"]: list(s["profile_y"]) for s in combined}
-        jd = net.water_after_joint(combined, all_joints, participants, fields,
-                                   judged, plan_state["water_cache"])
-        rejected_ids = set()
-        for rejection in jd["refused"]:
-            rejected_ids.add(rejection["id"])
-            refused.append({"id": rejection["id"],
-                            "error": str(net.junction_rejection(rejection))})
-        for sg in combined:
-            key = (sg["id"], tuple(sg["profile_y"]))
-            reading = plan_state["water_cache"].get(key)
-            if reading is None:
-                reading = net.writer_water(sg, fields[sg["patch"]])
-                plan_state["water_cache"][key] = reading
-            public = {**net.water_public(reading), **net.judged_public(reading)}
-            sg.setdefault("writer_water", {}).update(public)
-            sg["writer_water"]["final_verdict"] = net.final_verdict(public)
-            if reading.get("collar") is False:
-                sg["connection_collar"] = False
-            if net.final_verdict(public) == "REFUSED" and sg["id"] not in rejected_ids:
-                rejected_ids.add(sg["id"])
-                refused.append({"id": sg["id"], "error": f"final writer-water gate: {public}"})
-        segments = [s for s in segments if s["id"] not in rejected_ids]
-        base["segments"] = [s for s in base["segments"] if s["id"] not in rejected_ids]
-        base["north_junction_datum"] = {"refused": jd["refused"],
-                                        "pads_missing": missing,
-                                        "participants": len(participants)}
+        segments, joint_refused, base_refused = _joint_routed_profiles(
+            base, segments, joints, fields, net, plan_state,
+            provisional=census is None)
+        refused.extend(joint_refused)
+    doc["base_route_refusals"] = base_refused
+    if census is None:
+        doc["provisional"] = True
     base["segments"].extend(segments)
     base.setdefault("unroutable", []).extend(refused)
     base.setdefault("census_lines", []).extend(lines)
@@ -1097,6 +1131,10 @@ def general_main(argv=None):
     print(f"north: {len(doc['road_edges'])} required roads, {len(doc['routed_road_ids'])} routed; "
           f"{len(doc['transport'])} paired ferries, final departure {doc['final_departure']}; "
           f"{len(doc['route_refusals'])} refused")
+    if doc.get("base_route_refusals"):
+        print(f"north: {len(doc['base_route_refusals'])} base joint/writer "
+              f"refusals retained for census; provisional survey only, "
+              f"NOT construction authorization")
     if doc["route_refusals"] and not args.provisional:
         for rec in doc["route_refusals"]:
             print(f"REFUSED {rec['id']}: {rec['error']}", file=sys.stderr)
@@ -1212,6 +1250,120 @@ def _measured_vessel_regression(kind):
                 and all(t["xz"] == roots[tid] for tid, t in terminals.items()))
 
 
+def _joint_field_role_regression():
+    """A real joint/writer pass joins canonical north fields to a role-named base."""
+    from unittest.mock import patch
+    import network as net
+    import poi
+    f = net.fieldmod.Field(
+        "trunk-primary", 0.0, 0.0, 160.5, 1.0, 321,
+        np.full((321, 321), 40.0, np.float32),
+        np.ones((321, 321), np.uint8))
+    nodes = {nid: {"xz": xz, "island": "spawn", "patch": f.id,
+                   "kind": "road_junction"}
+             for nid, xz in (("numeric-a", [0.0, 0.0]),
+                             ("numeric-b", [32.0, 0.0]))}
+    saved = (copy.deepcopy(net.specmod.NODES), net._PLAN_PATCHES,
+             net._PLAN_KEEPOUTS, net._PLAN_PAD_KEEPOUTS)
+    try:
+        net._PLAN_PATCHES = net._PLAN_KEEPOUTS = net._PLAN_PAD_KEEPOUTS = None
+        net.specmod.NODES.update(nodes)
+        doc = {
+            "attachment": {"node": "numeric-a"}, "nodes": copy.deepcopy(nodes),
+            "terminals": {"end": {"node_id": "numeric-b", "xz": [32.0, 0.0]}},
+            "road_edges": [{"id": "numeric-north", "a": "numeric-a",
+                            "b": "numeric-b", "patch": f.id,
+                            "cls": "trunk", "pri": 1}],
+            "phase": {"allowed_biomes": ["meadows"]}, "frontier": {},
+            "final_departure": "end", "transport": []}
+        base, _ = net._ww_leg(
+            f, net._ww_corridor(f), (-32.0, 0.0), (0.0, 0.0))()
+        base.update(id="numeric-base", patch="mainland", cls="trunk", pri=1,
+                    station_m=1.0, terrain_stations=len(base["nodes"]),
+                    grade_max_measured=0.0, zones_carriageway=[],
+                    abutments=[], **{"from": "numeric-source", "to": "numeric-a"})
+        _, joint = net._jd_fixture(
+            base["id"], base["nodes"], base["profile_y"])
+        state = {"pads": [], "pads_missing": [],
+                 "joints": {base["id"]: joint}, "water_cache": {}}
+        # Empty environmental populations; routing, joint fitting and the
+        # terrain writer remain the real implementations over the numeric bed.
+        with patch.object(poi, "load", return_value=[]), \
+                patch.object(net, "pad_claims", return_value=[]):
+            result, _ = append_routes(
+                doc, {f.id: f}, {"segments": [base]}, {}, net, None,
+                plan_state=state)
+        roads = {s["id"]: s for s in result["segments"]}
+        return (set(roads) == {"numeric-base", "numeric-north"}
+                and net.plan_components(list(roads.values()), bridges=[])
+                == [["numeric-base", "numeric-north"]]
+                and all(s["writer_water"]["final_verdict"] == "CLEAR"
+                        for s in roads.values())
+                and doc["route_refusals"] == [])
+    finally:
+        net.specmod.NODES.clear()
+        net.specmod.NODES.update(saved[0])
+        net._PLAN_PATCHES, net._PLAN_KEEPOUTS, net._PLAN_PAD_KEEPOUTS = saved[1:]
+
+
+def _joint_phase_regression(kind, provisional):
+    """Real protected-disc and incompatible-datum failures across both phases."""
+    import network as net
+    f = net.fieldmod.Field(
+        "trunk-primary", 0.0, 0.0, 64.5, 1.0, 129,
+        np.full((129, 129), 40.0, np.float32),
+        np.ones((129, 129), np.uint8))
+    base_height = 42.0 if kind == "base_writer" else 40.0
+    north_height = 42.0 if kind in ("north_writer", "base_joint") else 40.0
+    base, bj = net._jd_fixture(
+        "numeric-base", [(float(x), 0.0) for x in range(-32, 1)],
+        [base_height] * 33, t=[40.0] * 33, pri=3,
+        pin=(32, 32, base_height) if kind == "base_joint" else None)
+    north, nj = net._jd_fixture(
+        "numeric-north", [(float(x), 0.0) for x in range(33)],
+        [north_height] * 33, t=[40.0] * 33, pri=1,
+        pin=(0, 0, north_height) if kind == "base_joint" else None)
+    base.update(patch="mainland", **{"from": "numeric-source", "to": "numeric-split"})
+    north.update(patch=f.id, **{"from": "numeric-split", "to": "numeric-end"})
+    state = {"pads": [], "pads_missing": [], "joints": {base["id"]: bj},
+             "water_cache": {}}
+    saved = net._PLAN_PATCHES, net._PLAN_KEEPOUTS, net._PLAN_PAD_KEEPOUTS
+    try:
+        net._PLAN_PATCHES = net._PLAN_PAD_KEEPOUTS = None
+        discs = ([(-16.0, 6.0, 3.0)] if kind == "base_writer" else
+                 [(16.0, 6.0, 3.0)] if kind == "north_writer" else [])
+        net._PLAN_KEEPOUTS = lambda zones: discs
+        doc = {"segments": [base]}
+        kept, refused, debt = _joint_routed_profiles(
+            doc, [north], {north["id"]: nj}, {f.id: f}, net, state,
+            provisional=provisional)
+        north_fails = kind == "north_writer"
+        expected_id = "numeric-north" if north_fails else "numeric-base"
+        diagnostic_kind = "joint" if kind == "base_joint" else "writer"
+        records = debt if provisional and not north_fails else refused
+        matching = [r for r in records
+                    if r["id"] == expected_id and r["kind"] == diagnostic_kind]
+        if not matching:
+            return False
+        diagnostic = matching[0]["diagnostic"]
+        measured_failure = (diagnostic["junction_spread_m"] > 1.0
+                            if diagnostic_kind == "joint"
+                            else diagnostic["steps"] > 0
+                            and diagnostic["keepout_steps"] > 0)
+        base_retained = any(s["id"] == "numeric-base" for s in doc["segments"])
+        north_retained = any(s["id"] == "numeric-north" for s in kept)
+        return (measured_failure
+                and base_retained == (provisional or north_fails)
+                and north_retained == (not north_fails)
+                and (not refused if provisional and not north_fails else not debt)
+                and (base["junction_datum"]["verdict"] == "REFUSED"
+                     if kind == "base_joint" else
+                     (north if north_fails else base)["writer_water"]["final_verdict"]
+                     == "REFUSED"))
+    finally:
+        net._PLAN_PATCHES, net._PLAN_KEEPOUTS, net._PLAN_PAD_KEEPOUTS = saved
+
+
 def selftest():
     """Deterministic known-bad cases; no scans, server, ledger or world writes."""
     import copy
@@ -1226,6 +1378,13 @@ def selftest():
             return
         print(f"{'OK' if ok else 'BAD'} {name}")
         cases.append(ok)
+    case("joint north writer resolves the base road's field role",
+         _joint_field_role_regression)
+    for kind in ("base_writer", "base_joint", "north_writer"):
+        for provisional in (True, False):
+            case(f"{kind} keeps measured refusal with provisional={provisional}",
+                 lambda kind=kind, provisional=provisional:
+                 _joint_phase_regression(kind, provisional))
     case("pre-kall uses actual preset Fader key and excludes Deep North",
          lambda: "defeated_fader" in phase_policy("pre-kall")["global_keys"]
          and "deepnorth" not in phase_policy("pre-kall")["allowed_biomes"])
@@ -1379,6 +1538,9 @@ def selftest():
          lambda: rejected(lambda d: d.update(seed="Foreign")))
     case("provisional itinerary cannot be built",
          lambda: rejected(lambda d: d.update(provisional=True)))
+    case("unresolved base survey debt cannot become a final itinerary",
+         lambda: rejected(lambda d: d.update(
+             base_route_refusals=[{"id": "base", "kind": "writer"}])))
     case("unread provisional declaration fails closed",
          lambda: rejected(lambda d: d.pop("provisional")))
     case("missing final departure is not accepted as an empty transport job",

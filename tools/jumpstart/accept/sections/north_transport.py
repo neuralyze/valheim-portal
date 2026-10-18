@@ -1019,6 +1019,12 @@ CASES = [
     Case("final departure ledger without physical ship fails", True, lambda: _departure_case(missing=True)),
     Case("provisional north plan is not accepted", True, lambda: _schema_case(lambda d: d.update(provisional=True))),
     Case("absent provisional declaration fails closed", True, lambda: _schema_case(lambda d: d.pop("provisional"))),
+    Case("unresolved base survey debt is not final-world acceptance", True,
+         lambda: _schema_case(lambda d: d.update(
+             base_route_refusals=[{"id": "base", "kind": "writer"}]))),
+    Case("unresolved north road debt is not final-world acceptance", True,
+         lambda: _schema_case(lambda d: d.update(
+             route_refusals=[{"id": "N0-a-b", "kind": "joint"}]))),
     Case("empty north cannot hide behind core roads", True, lambda: _schema_case(lambda d: d.update(road_edges=[]))),
     Case("terminal must be exact serving road endpoint", True, lambda: _schema_case(lambda d: d["terminals"]["north-dock-000"].update(xz=[0, 1]))),
     Case("unpaired endpoint is not a crossing", True, lambda: _schema_case(lambda d: d.update(transport=[]))),

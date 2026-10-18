@@ -3463,6 +3463,9 @@ def north_itinerary_errors(doc) -> list[str]:
         errors.append("provisional must explicitly be false")
     if doc.get("refusal"):
         errors.append(f"planner refused: {doc['refusal']}")
+    for key in ("route_refusals", "base_route_refusals"):
+        if doc.get(key):
+            errors.append(f"unresolved {key}: {doc[key]}")
     nodes, edges = doc.get("nodes"), doc.get("road_edges")
     terminals, transport = doc.get("terminals"), doc.get("transport")
     if not isinstance(nodes, dict) or not nodes:

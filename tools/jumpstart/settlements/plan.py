@@ -1122,25 +1122,48 @@ def island_membership(picker: S.Picker, patches=None) -> dict:
 
 
 def site_island(islands: dict, picker: S.Picker, patch: str, x: float, z: float) -> dict:
-    info = islands.get(patch)
-    if info is None:
-        return {"same_landmass_as_spawn": False,
-                "evidence": f"patch {patch} does not contain the spawn point; "
-                            f"separate landmass, portal-only"}
-    f = picker.fields[patch]
-    iz, ix = f.idx(x, z)
-    lab = int(info["labels"][iz, ix])
-    same = bool(lab and info["spawn_label"] and lab == info["spawn_label"])
-    area = next((c["area_m2"] for c in info["components"] if c["label"] == lab), None)
-    return {"landmass_label": lab, "landmass_area_m2": area,
-            "same_landmass_as_spawn": same,
-            "evidence": ("MEASURED: 4-connected land (h > 30, the measured "
-                         "c_WaterLevel) at 1 m puts this site in the same "
-                         "component as the StartTemple"
-                         if same else
-                         "MEASURED: 4-connected land at 1 m puts this site in a "
-                         "DIFFERENT component from the StartTemple -- it is not "
-                         "walkable from spawn and needs a portal or a boat")}
+    """Compare labels only WITHIN a window containing both site and spawn.
+
+    A survey patch is measurement provenance, not a landmass. Windows without
+    a measured spawn label cannot establish either sameness or separation.
+    """
+    measured = []
+    for pid in sorted(islands, key=lambda pid: (pid != patch, pid)):
+        info = islands[pid]
+        f = picker.fields[pid]
+        if not info["spawn_label"] or not f.contains(x, z):
+            continue
+        iz, ix = f.idx(x, z)
+        labels = info["labels"]
+        if not (0 <= iz < labels.shape[0] and 0 <= ix < labels.shape[1]):
+            continue
+        lab = int(labels[iz, ix])
+        same = bool(lab and lab == info["spawn_label"])
+        area = next((c["area_m2"] for c in info["components"]
+                     if c["label"] == lab), None)
+        measured.append({"topology_window": pid, "landmass_label": lab,
+                         "spawn_label": info["spawn_label"],
+                         "landmass_area_m2": area,
+                         "same_landmass_as_spawn": same})
+        if same:
+            break
+    if not measured:
+        return {"window": patch, "topology_window": None,
+                "same_landmass_as_spawn": None,
+                "evidence": ("UNKNOWN: no labelled window containing this "
+                             "site has a measured StartTemple land component; "
+                             "the survey patch ID does not establish a "
+                             "separate landmass")}
+    result = measured[-1] if measured[-1]["same_landmass_as_spawn"] else measured[0]
+    same = result["same_landmass_as_spawn"]
+    return {"window": patch, **result, "topology_measurements": measured,
+            "evidence": (
+                f"MEASURED: 4-connected land (h > 30, the measured "
+                f"c_WaterLevel) at {picker.fields[result['topology_window']].step:g} m "
+                f"in window {result['topology_window']!r} puts this site "
+                + ("in the same component as the StartTemple" if same else
+                   "outside the StartTemple component in this window; no "
+                   "covering labelled window proves a land path to spawn"))}
 
 
 def block_rise(picker: S.Picker, patch: str, x: float, z: float,
@@ -2023,6 +2046,17 @@ def declared_harbours(picker: S.Picker, seed: str, claims: "SiteClaims",
     for sid, rec in worldseed.human_sites(seed).items():
         m = HS.measure(picker.fields, picker.loc.spawn, sid, rec, clear=clear)
         m["island"] = site_island(islands, picker, m["patch"], *m["xz"])
+        # Measurement windows may overlap a trunk window; their survey IDs
+        # are not routing frames. Preserve both identities in the publication.
+        covering = [pid for pid in S.trunk_patches(picker.fields)
+                    if picker.fields[pid].contains(*m["xz"])]
+        if not covering:
+            raise ValueError(
+                f"declared site {sid!r} landing {m['xz']} has no covering "
+                f"trunk routing window; scan its road approach before routing")
+        preferred = m["island"]["topology_window"]
+        m["routing_window"] = (preferred if preferred in covering
+                               else covering[0])
         claim = SiteClaims.claim(sid, m["kind"], [HS.claim_unit(m)], m["pad_y"])
         hits = claims.conflicts(claim)
         if hits:
@@ -3701,6 +3735,7 @@ def sites_yaml(plan: dict) -> str:
         "pad_radius_m": d["pad_radius_m"], "district_m": d["district_m"],
         "road_priority": d["road_priority"], "road_to": d["road_to"],
         "patch": d["patch"], "pad_y": d["pad_y"],
+        "routing_window": d["routing_window"],
         # THE LANDING THE ROADS ARE ROUTED TO AND THE BUILDER LEVELS: one
         # rectangle, one datum (`pad_y` IS its target), published once so a
         # road arrives at what is built and not at a disc with nothing in it.

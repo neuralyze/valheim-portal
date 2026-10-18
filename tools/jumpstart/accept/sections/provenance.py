@@ -578,8 +578,12 @@ def _sites_bytes(seed: str, world: str) -> str:
     return (f"world: {world}\nseed: {seed}\nseed_hash: 147627509\n"
             "sites:\n"
             "- id: stenvik\n  type: village\n  xz: [496.0, 904.0]\n"
-            "  patch: mainland\n  pad_radius_m: 30.0\n  road_priority: 1\n"
-            "  portal_tag: stenvik\n  pad_y: 34.0\n")
+            "  patch: mainland\n  pad_radius_m: 30.0\n  road_priority: trunk\n"
+            "  portal_tag: stenvik\n  pad_y: 34.0\n"
+            "  road:\n    class: trunk\n    roaded: true\n"
+            "    window: mainland\n    topology_window: mainland\n"
+            "    reason: reached\n    why: constructed rooted-road evidence\n"
+            "    evidence: {island: spawn}\n")
 
 
 def _case_foreign_site_set_is_refused():

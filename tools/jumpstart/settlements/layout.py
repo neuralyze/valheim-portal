@@ -221,14 +221,55 @@ class TownPlanner:
         self.clearing = clearing
 
     # --- plots ---------------------------------------------------------
+    @staticmethod
+    def frontage_positions(street: Street, along_m: float | None = None):
+        """Preferred anchor sweep, or a finite junction-outward 4 m lattice.
+
+        The fallback stays on the existing street segment and reports sampled
+        exhaustion, not proof that no continuous placement exists.
+        """
+        length = math.dist(street.nodes[0], street.nodes[-1])
+        if along_m is not None:
+            for slide in range(13):
+                for direction in (1, -1):
+                    s = along_m + direction * slide * PLOT_PITCH_M
+                    yield s
+        else:
+            junction = length / 2
+            yield junction
+            for step in range(1, math.floor(junction / PLOT_PITCH_M) + 1):
+                for direction in (1, -1):
+                    yield junction + direction * step * PLOT_PITCH_M
+
     def place(self, out: list[Building], f: T.Field, bid: str, role: str,
-              row: dict, street: Street, side: int, along_m: float,
+              row: dict, street: Street, side: int, along_m: float | None,
               pad_margin_m: float = BD.PAD_MARGIN_M, site: str | None = None,
-              tally: dict | None = None) -> Building | None:
-        """Try to stand one body on one plot, sliding along the street until a
-        position is buildable, legal, clear of its neighbours and on ground no
-        other write claims.  `tally` counts the plots refused on claimed
-        ground and whose ground it was, so an unplaced building says so."""
+              tally: dict | None = None,
+              evaluated: set | None = None) -> Building | None:
+        """Enumerate one frontage; None selects the full fallback lattice.
+
+        The per-body evaluated set spans all preferred and fallback passes,
+        so a refused position is never billed twice for the same body.
+        """
+        seen = evaluated if evaluated is not None else set()
+        for s in self.frontage_positions(street, along_m):
+            key = (street.name, side, round(s, 8))
+            if key in seen:
+                continue
+            seen.add(key)
+            if tally is not None:
+                tally["positions_evaluated"] = tally.get("positions_evaluated", 0) + 1
+            placed = self.place_at(out, f, bid, role, row, street, side, s,
+                                   pad_margin_m, site, tally)
+            if placed is not None:
+                return placed
+        return None
+
+    def place_at(self, out: list[Building], f: T.Field, bid: str, role: str,
+                 row: dict, street: Street, side: int, along_m: float,
+                 pad_margin_m: float = BD.PAD_MARGIN_M, site: str | None = None,
+                 tally: dict | None = None) -> Building | None:
+        """Evaluate one position through the same writer and legality gates."""
         w = float(row["footprint_x_m"])
         d = float(row["footprint_z_m"])
         pad_w, pad_d = w + 2 * pad_margin_m, d + 2 * pad_margin_m
@@ -238,96 +279,85 @@ class TownPlanner:
         nx, nz = -dz, dx                  # street normal
         offset = STREET_HALF_WIDTH_M + VERGE_M + pad_d / 2
         cx0, cz0 = street.nodes[0]
-        for slide in range(0, 13):
-            for direction in (1, -1):
-                s = along_m + direction * slide * PLOT_PITCH_M
-                px = cx0 + dx * s + nx * offset * side
-                pz = cz0 + dz * s + nz * offset * side
-                stub = {"id": bid, "role": role, "body": row["name"],
-                        "sha256": row["sha256"], "x": round(px, 1),
-                        "z": round(pz, 1), "yaw_deg": round(yaw, 1),
-                        "footprint": (w, d), "pieces": int(row["pieces"]),
-                        "pad": {"width_m": pad_w, "depth_m": pad_d,
-                                "target_y": 0.0}}
-                # THE PAD THAT WILL BE WRITTEN is the pad that is kept inside
-                # the window, cleared of every stand-off and billed: its extent
-                # is asked of the writer's unit, never assumed here.
-                bw, bd = pad_w, pad_d
-                if self.claims is not None:
-                    unit = self.claims.building_unit(site, f.id, stub)
-                    bw, bd = float(unit["pad_w"]), float(unit["pad_d"])
-                if not f.contains(px, pz, max(bw, bd)):
-                    continue
-                halfdiag = math.hypot(bw, bd) / 2
-                viol = self.p.loc.violations(px, pz, halfdiag)
-                if viol:
-                    continue
-                if self.p.installation_conflict(px, pz, halfdiag) is not None:
-                    continue
-                if self.clearing is not None:
-                    gated = self.clearing(site, f.id, stub)
-                    if gated:
-                        if tally is not None:
-                            tally["clearing_refused_slots"] = (
-                                tally.get("clearing_refused_slots", 0) + 1)
-                            by = tally.setdefault("clearing_bound_by", {})
-                            for g in gated:
-                                k = str(g["location"])
-                                by[k] = by.get(k, 0) + 1
-                        continue
+        px = cx0 + dx * along_m + nx * offset * side
+        pz = cz0 + dz * along_m + nz * offset * side
+        stub = {"id": bid, "role": role, "body": row["name"],
+                "sha256": row["sha256"], "x": round(px, 1),
+                "z": round(pz, 1), "yaw_deg": round(yaw, 1),
+                "footprint": (w, d), "pieces": int(row["pieces"]),
+                "pad": {"width_m": pad_w, "depth_m": pad_d,
+                        "target_y": 0.0}}
+        # Ask the writer for its actual pad before containment and billing.
+        bw, bd = pad_w, pad_d
+        if self.claims is not None:
+            unit = self.claims.building_unit(site, f.id, stub)
+            bw, bd = float(unit["pad_w"]), float(unit["pad_d"])
+        if not f.contains(px, pz, max(bw, bd)):
+            return None
+        halfdiag = math.hypot(bw, bd) / 2
+        if self.p.loc.violations(px, pz, halfdiag):
+            return None
+        if self.p.installation_conflict(px, pz, halfdiag) is not None:
+            return None
+        if self.clearing is not None:
+            gated = self.clearing(site, f.id, stub)
+            if gated:
+                if tally is not None:
+                    tally["clearing_refused_slots"] = (
+                        tally.get("clearing_refused_slots", 0) + 1)
+                    by = tally.setdefault("clearing_bound_by", {})
+                    for g in gated:
+                        k = str(g["location"])
+                        by[k] = by.get(k, 0) + 1
+                return None
+        try:
+            pad = self.bill(f, px, pz, bw, bd, yaw)
+        except ValueError:
+            return None
+        if not pad["clamp_ok"] or pad["wet_samples"]:
+            return None
+        cand = (px, pz, w, d, yaw)
+        if any(obb_gap(cand, b.rect()) < MIN_BUILDING_GAP_M for b in out):
+            return None
+        if self.claims is not None:
+            hits = self.claims.conflicts(
+                self.claims.building(site, f.id, {**stub, "pad": pad}))
+            # Neighbours in this town may share a terrace only at ONE datum.
+            # Every alternate is re-billed on the writer's surface; another
+            # site's ground is never shared.
+            for t in sorted({h["targets"][1] for h in hits
+                             if h.get("against") == site
+                             and h["targets"][1] is not None}):
                 try:
-                    pad = self.bill(f, px, pz, bw, bd, yaw)
-                except ValueError:
+                    alt = self.bill(f, px, pz, bw, bd, yaw, target_y=t)
+                except (TypeError, ValueError):
                     continue
-                if not pad["clamp_ok"] or pad["wet_samples"]:
+                if not alt["clamp_ok"] or alt["wet_samples"]:
                     continue
-                cand = (px, pz, w, d, yaw)
-                if any(obb_gap(cand, b.rect()) < MIN_BUILDING_GAP_M for b in out):
-                    continue
-                if self.claims is not None:
-                    hits = self.claims.conflicts(
-                        self.claims.building(site, f.id, {**stub, "pad": pad}))
-                    # THE SOLVER'S OTHER MOVE.  Ground this town's own
-                    # neighbour claims is one terrace if both pads are
-                    # written at ONE datum: the samples they share then hold
-                    # the same height whichever lands last, and each bill is
-                    # still its write.  Tried at each such neighbour's target,
-                    # clamp-checked like any bill.  Ground another SITE
-                    # claims is never shared.
-                    for t in sorted({h["targets"][1] for h in hits
-                                     if h.get("against") == site
-                                     and h["targets"][1] is not None}):
-                        try:
-                            alt = self.bill(f, px, pz, bw, bd, yaw, target_y=t)
-                        except (TypeError, ValueError):
-                            continue
-                        if not alt["clamp_ok"] or alt["wet_samples"]:
-                            continue
-                        if not self.claims.conflicts(self.claims.building(
-                                site, f.id, {**stub, "pad": alt})):
-                            pad, hits = alt, []
-                            break
-                    if hits:
-                        if tally is not None:
-                            tally["claim_refused_slots"] = (
-                                tally.get("claim_refused_slots", 0) + 1)
-                            by = tally.setdefault("claimed_by", {})
-                            for h in hits:
-                                k = str(h.get("against_unit") or h.get("against"))
-                                by[k] = by.get(k, 0) + 1
-                        continue
-                pad["x"], pad["z"] = px, pz
-                return Building(
-                    id=bid, role=role, body=row["name"], sha256=row["sha256"],
-                    x=round(px, 1), z=round(pz, 1), yaw_deg=round(yaw, 1),
-                    footprint=(w, d), pad=pad, street=street.name,
-                    side=("north" if side > 0 else "south"),
-                    pieces=int(row["pieces"]), grounded=row["flat_pad_verdict"],
-                    floating_fraction=float(row["floating_fraction"]),
-                    stations=int(row["stations"]), beds=int(row["beds"]),
-                    poi_clearance=self.p.loc.nearest(px, pz),
-                )
-        return None
+                if not self.claims.conflicts(self.claims.building(
+                        site, f.id, {**stub, "pad": alt})):
+                    pad, hits = alt, []
+                    break
+            if hits:
+                if tally is not None:
+                    tally["claim_refused_slots"] = (
+                        tally.get("claim_refused_slots", 0) + 1)
+                    by = tally.setdefault("claimed_by", {})
+                    for h in hits:
+                        k = str(h.get("against_unit") or h.get("against"))
+                        by[k] = by.get(k, 0) + 1
+                return None
+        pad["x"], pad["z"] = px, pz
+        return Building(
+            id=bid, role=role, body=row["name"], sha256=row["sha256"],
+            x=round(px, 1), z=round(pz, 1), yaw_deg=round(yaw, 1),
+            footprint=(w, d), pad=pad, street=street.name,
+            side=("north" if side > 0 else "south"),
+            pieces=int(row["pieces"]), grounded=row["flat_pad_verdict"],
+            floating_fraction=float(row["floating_fraction"]),
+            stations=int(row["stations"]), beds=int(row["beds"]),
+            poi_clearance=self.p.loc.nearest(px, pz),
+        )
 
     # --- the town ------------------------------------------------------
     def plan(self, site: S.Site, name: str, plan_spec: list[tuple[str, str, int]],
@@ -339,7 +369,8 @@ class TownPlanner:
                       street_through(f, cx, cz, b1, street_len_m), p1)
         b2, p2 = flattest_bearing(f, cx, cz, street_len_m * 0.6, exclude_deg=b1)
         cross = Street(f"{name}-cross", b2,
-                       street_through(f, cx, cz, street_len_m * 0.6, b2), p2)
+                       street_through(f, cx, cz, bearing_deg=b2,
+                                      length_m=street_len_m * 0.6), p2)
         streets = [main, cross]
 
         buildings: list[Building] = []
@@ -372,6 +403,7 @@ class TownPlanner:
                 bid = f"{name}-{role}-{k + 1}"
                 placed = None
                 tally: dict = {}
+                evaluated: set = set()
                 order = slots[dealt % len(slots):] + slots[:dealt % len(slots)]
                 dealt += 1
                 for street, side in order:
@@ -381,25 +413,41 @@ class TownPlanner:
                                 float(row["footprint_z_m"])) + MIN_BUILDING_GAP_M + 3
                     a_m = along[id(street)] + ((n // 2) + 1) * pitch * (1 if n % 2 == 0 else -1)
                     placed = self.place(buildings, f, bid, role, row, street,
-                                        side, a_m, site=name, tally=tally)
+                                        side, a_m, site=name, tally=tally,
+                                        evaluated=evaluated)
                     step[key] = n + 1
                     if placed:
-                        buildings.append(placed)
-                        if self.claims is not None:
-                            self.claims.add(self.claims.building(
-                                name, f.id, placed.__dict__))
                         break
+                if placed is None:
+                    # Only after every preferred frontage failed, exhaust the
+                    # existing segments in the same rotating frontage order.
+                    for street, side in order:
+                        placed = self.place(
+                            buildings, f, bid, role, row, street, side, None,
+                            site=name, tally=tally, evaluated=evaluated)
+                        if placed:
+                            break
+                if placed is not None:
+                    buildings.append(placed)
+                    if self.claims is not None:
+                        self.claims.add(self.claims.building(
+                            name, f.id, placed.__dict__))
                 if placed is None:
                     print(f"  ! no plot for {bid} ({body_name})")
                     miss = {
                         "id": bid, "role": role, "body": body_name,
                         "slots_tried": len(order),
+                        "positions_evaluated": tally.get("positions_evaluated", 0),
+                        "fallback_pitch_m": PLOT_PITCH_M,
+                        "sampled_frontages_exhausted": True,
                         "claim_refused_slots": tally.get("claim_refused_slots", 0),
                         "claimed_by": tally.get("claimed_by", {}),
-                        "why": "no frontage slot on either side of either "
-                               "street cleared the pad, the POI stand-off, "
-                               "the building gap and the ground other writes "
-                               "already claim"}
+                        "why": "preferred sweeps and the finite 4 m "
+                               "junction-outward lattice on both sides of "
+                               "both existing streets were exhausted; no "
+                               "sample cleared the pad, POI stand-off, "
+                               "building gap and existing ground claims "
+                               "(not proof against continuous placements)"}
                     if tally.get("clearing_refused_slots"):
                         miss["clearing_refused_slots"] = tally[
                             "clearing_refused_slots"]

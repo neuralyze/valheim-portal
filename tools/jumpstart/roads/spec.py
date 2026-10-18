@@ -417,15 +417,34 @@ EDGES: list[dict] = [
 # the exception is listed rather than special-cased in the function.
 SOLVER_ID_ALIASES = {"hognest-castle": "hognest"}
 
-# The window a site sits in decides which land component a road may reach it
-# over.  `network.main` refuses an edge whose ends disagree, so this mapping is
-# load-bearing, not decorative.  ONE TABLE, in `geography.py`, because the
-# derived extremity and abutment nodes are keyed off the same island roles and
-# two copies of a load-bearing mapping is two things to keep true.  A window
-# with no entry is its own island, which is the safe answer -- an unknown
-# landmass gets no road rather than a road to somewhere it cannot reach.
+# A site's measurement window need not be its routing window. Roaded sites use
+# the covering rooted window and actual landmass role in their road evidence;
+# declared sites use their separately published routing window. ONE TABLE in
+# geography.py resolves window roles for geography and declared nodes alike.
 ISLAND_OF_WINDOW = geography.ISLAND_OF_WINDOW
 _island_of = geography.island_of_window
+
+
+def _require_site_road(road, site_id: str, source) -> dict:
+    """Refuse publications predating the routing evidence, never infer a road."""
+    missing = []
+    if not isinstance(road, dict) or not isinstance(road.get("roaded"), bool):
+        missing.append("road.roaded")
+    else:
+        if not road.get("window"):
+            missing.append("road.window")
+        if road["roaded"]:
+            if not road.get("topology_window"):
+                missing.append("road.topology_window")
+            if not (road.get("evidence") or {}).get("island"):
+                missing.append("road.evidence.island")
+    if missing:
+        raise SystemExit(
+            f"REFUSING: {source} site {site_id!r} lacks required routing "
+            f"metadata {', '.join(missing)}. Re-run settlements/plan.py "
+            f"(pipeline stage 8) for this seed to regenerate its road "
+            f"topology evidence; a measurement patch is not connectivity.")
+    return road
 
 
 def load_solved_sites(path: Path | None = None) -> dict[str, dict]:
@@ -465,19 +484,21 @@ def load_solved_sites(path: Path | None = None) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for s in doc["sites"]:
         sid = SOLVER_ID_ALIASES.get(s["id"], s["id"].replace("-", ""))
+        road = _require_site_road(s.get("road"), s["id"], path)
         out[sid] = {
             "type": s["type"],
             "xz": (float(s["xz"][0]), float(s["xz"][1])),
-            "island": _island_of(s["patch"]),
-            "patch": s["patch"],
+            "island": (road["evidence"]["island"] if road["roaded"]
+                       else (road.get("evidence") or {}).get("island")),
+            "patch": (road["topology_window"] if road["roaded"]
+                      else s["patch"]),
+            "measurement_patch": s["patch"],
             "pad_radius_m": float(s["pad_radius_m"]),
             "priority": s["road_priority"],
             "tag": s["portal_tag"],
             "pad_y": s.get("pad_y"),
             "solver_id": s["id"],
-            # THE ROAD VERDICT, or None for a publication that predates it:
-            # nothing is then known, and nothing is withheld on its account.
-            "road": s.get("road"),
+            "road": road,
         }
     return out
 
@@ -492,22 +513,25 @@ def adopt_sites(solved: dict[str, dict] | None = None
     where the router's own graph has no way in (settlements/road_reach.py) --
     is PORTAL-ONLY: returned in `provenance["portal_only"]` with the verdict's
     reason and numbers, and not a node, so no edge can name it and none
-    routes to nothing.  A publication that predates the verdict (`road` is
-    None) withholds nothing: every site in it is adopted, as before.
+    routes to nothing. Missing road/topology evidence is refused with a stage 8
+    remedy, not treated as permission to adopt a site.
     """
     solved = load_solved_sites() if solved is None else solved
     sites: dict[str, dict] = {}
     portal_only: dict[str, dict] = {}
     for sid, s in solved.items():
-        road = s.get("road")
-        if road is not None and not road["roaded"]:
+        road = _require_site_road(
+            s.get("road"), s["solver_id"], worldseed.sites_path())
+        if not road["roaded"]:
             portal_only[sid] = {
                 "solver_id": s["solver_id"], "xz": list(s["xz"]),
-                "window": s["patch"], "class": road["class"],
+                "window": s["measurement_patch"], "class": road["class"],
                 "reason": road["reason"], "why": road["why"],
                 "evidence": road.get("evidence") or {}}
             continue
         sites[sid] = {k: v for k, v in s.items() if k != "solver_id"}
+        sites[sid].update(patch=road["topology_window"],
+                          island=road["evidence"]["island"])
     provenance = {
         "source": str(worldseed.sites_path()),
         "portal_only": portal_only,
@@ -521,6 +545,7 @@ PORTAL_ONLY: dict[str, dict] = SITE_PROVENANCE["portal_only"]
 for _sid, _s in SETTLEMENT_SITES.items():
     NODES[_sid] = {
         "island": _s["island"], "patch": _s["patch"], "xz": _s["xz"],
+        "measurement_patch": _s["measurement_patch"],
         "kind": _s["type"], "pad_radius_m": _s["pad_radius_m"],
         "portal_tag": _s["tag"],
         "provenance": "MEASURED by Settlements at 1 m, published over hub as PROVISIONAL",
@@ -592,6 +617,7 @@ for _nid, _d in DECLARED_SITES.items():
             f"worldseed.HUMAN_SITES.")
     NODES[_nid] = {
         "island": _d["island"], "patch": _d["patch"], "xz": _d["xz"],
+        "measurement_patch": _d["measurement_patch"],
         "raw_xz": _d["requested_xz"], "kind": _d["type"],
         "pad_radius_m": _d["pad_radius_m"], "portal_tag": None,
         "provenance": ("DECLARED by worldseed.HUMAN_SITES (the owner's "
@@ -956,12 +982,11 @@ for _c in list(DECLARED_CROSSINGS):
 # authored partner is portal-only, stands on another landmass, or was never
 # typed (the east watchtower and the east lighthouse never were) -- gets ONE
 # derived leg, in its own declared class, to the nearest trunk node its
-# landmass reaches.  `J<n>` ids; nothing is typed.  A publication that
-# predates the verdict has no roaded site by this definition and gets none:
-# its authored topology is all it ever had.
+# landmass reaches. `J<n>` ids; nothing is typed. Publications predating the
+# required routing evidence were refused at load/adoption, not given the old
+# permissive authored-only topology.
 # ---------------------------------------------------------------------------
-_ROADED_SITES = {sid: s for sid, s in SETTLEMENT_SITES.items()
-                 if s.get("road") and s["road"]["roaded"]}
+_ROADED_SITES = SETTLEMENT_SITES
 SITE_JOINS, SITE_UNJOINED = DS.site_legs(_ROADED_SITES, NODES, EDGES,
                                          DECLARED_CROSSINGS)
 EDGES.extend(SITE_JOINS)
