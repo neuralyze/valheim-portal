@@ -466,8 +466,6 @@ def run_console(rc: Rcon, cmd: str, settle: float = 1.2,
             except Exception:  # noqa: BLE001 -- diagnosis must not mask this
                 pass
     raise last
-                pass
-    raise last
 
 
 def count_query_batchable(cmd: str) -> bool:
@@ -569,6 +567,8 @@ def run_count_queries(rc: Rcon, cmds: list[str], settle: float = 2.0,
                 import rcon as _rc  # noqa: PLC0415
                 _rc.keep_sink_clear(note="count batch output missing")
             except Exception:  # noqa: BLE001 -- preserve the UNKNOWN refusal
+                pass
+    raise last
 
 
 def main() -> int:
