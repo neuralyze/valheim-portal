@@ -39,6 +39,26 @@ class PhysicalFields:
             raise CoverageError("no measured integer 1 m Heightmap lattice; "
                                 "rerun roads/field.py request")
         self._patches = {}
+        # Frames are fixed measurement metadata. Index their extents once,
+        # while retaining every overlapping source and reading heights afresh.
+        self._tiles = {}
+        pitch = fieldmod.HEIGHTMAP_ZONE_M
+        for f in self.fields:
+            x0, z0 = f.x0, f.z0
+            x1, z1 = x0+f.n-1, z0+f.n-1
+            entry = (f, x0, x1, z0, z1)
+            for iz in range(math.floor((z0-1e-6)/pitch),
+                            math.floor((z1+1e-6)/pitch)+1):
+                for ix in range(math.floor((x0-1e-6)/pitch),
+                                math.floor((x1+1e-6)/pitch)+1):
+                    self._tiles.setdefault((ix, iz), []).append(entry)
+
+    def _covering(self, x, z, tolerance=0.0):
+        pitch = fieldmod.HEIGHTMAP_ZONE_M
+        tile = (math.floor(x/pitch), math.floor(z/pitch))
+        return (f for f, x0, x1, z0, z1 in self._tiles.get(tile, ())
+                if x0-tolerance <= x <= x1+tolerance
+                and z0-tolerance <= z <= z1+tolerance)
 
     @classmethod
     def from_field(cls, path, fields=None):
@@ -74,9 +94,7 @@ class PhysicalFields:
     def vertex(self, x, z):
         if abs(x - round(x)) > 1e-6 or abs(z - round(z)) > 1e-6:
             raise CoverageError(f"non-integer Heightmap vertex ({x}, {z})")
-        values = [f.at(x, z) for f in self.fields
-                  if f.x0 - 1e-6 <= x <= f.x0 + f.n - 1 + 1e-6
-                  and f.z0 - 1e-6 <= z <= f.z0 + f.n - 1 + 1e-6]
+        values = [f.at(x, z) for f in self._covering(x, z, 1e-6)]
         if not values or not all(math.isfinite(v) for v in values):
             raise CoverageError(f"unread rendered Heightmap vertex ({x}, {z})")
         if max(values) - min(values) > 1e-4:
@@ -94,8 +112,7 @@ class PhysicalFields:
         x0, z0 = math.floor(x), math.floor(z)
         xs = (x0,) if x == x0 else (x0, x0+1)
         zs = (z0,) if z == z0 else (z0, z0+1)
-        return all(any(f.x0 <= sx <= f.x0+f.n-1
-                       and f.z0 <= sz <= f.z0+f.n-1 for f in self.fields)
+        return all(next(self._covering(sx, sz), None) is not None
                    for sx in xs for sz in zs)
 
     def patches(self, zones):
@@ -199,9 +216,18 @@ class PhysicalFields:
     def _route_paths(self, graph, bank, stats):
         """Covered handoffs on the complete graph; one shared base search tree."""
         import copy
+        import sys
+        import time
         corr = copy.copy(graph.corr)
         corr.forbid = ~graph.ok
         corr.forbid_all_water = True
+        from crossing_search import empty_bank_key
+        key = empty_bank_key(graph, corr, bank, BANK_LEVEL_M+STATION_M)
+        empty_banks = self.__dict__.setdefault("_empty_bank_routes", {})
+        if key is not None and key in empty_banks:
+            stats.update(empty_banks[key])
+            stats["empty_bank_reuses"] = 1
+            return
         trees = {}
         try:
             start = corr.nearest_allowed(*bank["xz"])
@@ -218,9 +244,24 @@ class PhysicalFields:
         goals = np.flatnonzero(distance >= BANK_LEVEL_M+STATION_M)
         goals = goals[np.argsort(distance[goals], kind="stable")]
         stats["eligible_graph_goals"] = len(goals)
-        for index in goals:
+        next_progress = time.monotonic()+30.0
+        all_goals = goals
+        position = 0
+        pruned = False
+        while position < len(goals):
+            index = goals[position]
+            position += 1
             stats["goals_considered"] = stats.get("goals_considered",0)+1
+            now = time.monotonic()
+            if now >= next_progress:
+                print(f"crossing bank {bank['xz']}: handoffs "
+                      f"{stats['goals_considered']}/{len(goals)}, "
+                      f"legal plans {stats.get('legal_approach_plans',0)}, "
+                      f"router refusals {stats.get('router_refused',0)}",
+                      file=sys.stderr, flush=True)
+                next_progress = now+30.0
             try:
+                stats["route_queries"] = stats.get("route_queries",0)+1
                 path = self.routed_approach(graph, bank,
                     (float(xs[index]),float(zs[index])), float(bank["level_y"]),
                     _trees=trees, _base=corr)
@@ -232,6 +273,29 @@ class PhysicalFields:
                 continue
             stats["base_search_expansions"] = (
                 trees["base"][1].expanded if "base" in trees else 0)
+            tree = trees.get("base")
+            if tree is not None and not tree[1].queue and not pruned:
+                closed = tree[1].closed
+                remaining = goals[position:]
+                reachable = np.fromiter(
+                    (int(ii[g])*corr.m+int(jj[g]) in closed for g in remaining),
+                    dtype=bool, count=len(remaining))
+                eliminated = int((~reachable).sum())
+                stats["goals_considered"] += eliminated
+                stats["router_refused"] = stats.get("router_refused",0)+eliminated
+                stats["goals_proven_unreachable"] = eliminated
+                goals, position, pruned = remaining[reachable], 0, True
+                if key is not None and not any(
+                        int(ii[g])*corr.m+int(jj[g]) in closed for g in all_goals):
+                    if len(empty_banks) >= 64:
+                        empty_banks.pop(next(iter(empty_banks)))
+                    empty_banks[key] = {
+                        "eligible_graph_goals": len(all_goals),
+                        "goals_considered": len(all_goals),
+                        "router_refused": len(all_goals),
+                        "base_search_expansions": tree[1].expanded,
+                        "route_queries": 0,
+                        "goals_proven_unreachable": len(all_goals)}
             if path is not None:
                 yield path
             else:
@@ -288,6 +352,10 @@ class PhysicalFields:
         self._compiler_pool = {}
         self._bank_pin_failures = {}
         stats = [{},{}]
+        def bank_evidence():
+            # Cache scheduling is execution telemetry, not geometric evidence.
+            execution = {"route_queries", "empty_bank_reuses", "goals_proven_unreachable"}
+            return [{k:v for k,v in row.items() if k not in execution} for row in stats]
         generators = [iter(self._side_options(crossing,bank,other,graph,datum,side,
             stats[side])) for side,(bank,other,graph) in enumerate((
                 (near_bank,far_bank,self.approach_graphs[0]),
@@ -319,6 +387,11 @@ class PhysicalFields:
                     plan = next(generators[side])
                 except StopIteration:
                     exhausted[side] = True
+                    # A complete pair cannot exist without a plan on both
+                    # banks. Do not exhaust the opposite island after this
+                    # side has already proved the Cartesian product empty.
+                    if not plans[side]:
+                        break
                     continue
                 index = len(plans[side])
                 plans[side].append(plan)
@@ -356,7 +429,7 @@ class PhysicalFields:
                                 proof["approach_search"] = dict(
                                     routed_pairs_tested=actual_pairs,
                                     equivalent_groups_pruned=equivalent_groups,
-                                    banks=stats,seating_dependencies=memo.summary(),
+                                    banks=bank_evidence(),seating_dependencies=memo.summary(),
                                     frontier="all covered same-landmass graph goals; no radius/candidate cap")
                                 return proof
                             stage = proof["stage"]
@@ -381,7 +454,7 @@ class PhysicalFields:
                  if skipped else
                  "all evaluated canonical approach pairs failed the unchanged physical contract"],
             coverage=coverage,skipped_optional_total=skipped,
-            banks=stats,near_paths=len(plans[0]),far_paths=len(plans[1]),
+            banks=bank_evidence(),near_paths=len(plans[0]),far_paths=len(plans[1]),
             routed_pairs_tested=actual_pairs,equivalent_groups_pruned=equivalent_groups,
             refusal_counts=counts,representative_refusals=examples,
             seating_dependencies=memo.summary())

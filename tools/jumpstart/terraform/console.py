@@ -97,6 +97,17 @@ NOISE = re.compile(
 WINDOW_S = 120
 ECHO_RE = re.compile(r"Command '(?P<cmd>.*)' executed\.")
 
+# Only short, concrete-prefab counts have a bounded two-line answer.  Keep the
+# aggregate log burst small too; this is not RCON payload batching/pipelining.
+COUNT_BATCH_MAX = 8
+_COUNT_QUERY_RE = re.compile(
+    r"objects_count id=(?P<ident>[A-Za-z0-9_]+)"
+    r"(?: ignore=[A-Za-z0-9_*,.-]+)?"
+    r" pos=-?\d+\.\d{2},-?\d+\.\d{2} max=\d+\.\d{2}")
+_COUNT_TOTAL_RE = re.compile(r"Total:?\s*(\d+)\s*")
+_COUNT_ROW_RE = re.compile(r"(\S+):\s*(\d+)\s*")
+_COUNT_LOG_ROTATED = "__jumpstart_count_log_interval_lost__"
+
 
 class OutputNotFound(RuntimeError):
     """The command's own echo is not in the log window, so its output is unknown.
@@ -241,8 +252,20 @@ def sup_log_size() -> tuple[str, int] | None:
         return None
 
 
-def sup_log_since(path: str, offset: int) -> list[str]:
-    """Everything appended to `path` after `offset`, rotation-aware."""
+def sup_log_since(path: str, offset: int, *,
+                  require_unrotated: bool = False) -> list[str]:
+    """Everything appended after `offset`; count batches refuse lost cursors."""
+    if require_unrotated:
+        got = _exec(
+            f"sz=$(wc -c < '{path}' 2>/dev/null || echo 0); "
+            f"if [ \"$sz\" -ge {offset} ]; then "
+            f"  tail -c +{offset + 1} '{path}' 2>/dev/null; "
+            f"else echo '{_COUNT_LOG_ROTATED}'; fi")
+        if _COUNT_LOG_ROTATED in got.splitlines():
+            raise OutputNotFound(
+                "count query log rotated past its byte cursor; the batch's "
+                "output is UNKNOWN, not empty")
+        return got.splitlines()
     got = _exec(
         f"sz=$(wc -c < '{path}' 2>/dev/null || echo 0); "
         f"if [ \"$sz\" -lt {offset} ]; then "
@@ -443,6 +466,109 @@ def run_console(rc: Rcon, cmd: str, settle: float = 1.2,
             except Exception:  # noqa: BLE001 -- diagnosis must not mask this
                 pass
     raise last
+                pass
+    raise last
+
+
+def count_query_batchable(cmd: str) -> bool:
+    """A short scoped query with at most one concrete-prefab result row."""
+    return len(cmd) <= 120 and _COUNT_QUERY_RE.fullmatch(cmd) is not None
+
+
+def _count_slices(lines: list[str], cmds: list[str]) -> list[list[str]]:
+    """Attribute each named count to its own unique trailing echo cluster.
+
+    Whole response blocks may reach the file out of request order.  Duplicate
+    noise-only echo copies belong to one block; two actual runs of the same
+    command in this fresh interval are ambiguous and may not authorize a count.
+    """
+    clusters: dict[str, list[tuple[int, int]]] = {}
+    previous = None
+    for i, line in enumerate(lines):
+        match = ECHO_RE.search(line)
+        if match is None:
+            continue
+        cmd = match.group("cmd")
+        if (previous is not None and previous[0] == cmd
+                and all(NOISE.search(ln) for ln in lines[previous[2] + 1:i])):
+            start, _end = clusters[cmd][-1]
+            clusters[cmd][-1] = (start, i)
+        else:
+            clusters.setdefault(cmd, []).append((i, i))
+        previous = (cmd, clusters[cmd][-1][0], i)
+
+    outputs = []
+    for cmd in cmds:
+        hits = clusters.get(cmd, [])
+        if len(hits) != 1:
+            raise OutputNotFound(
+                f"count query needs one unique `Command '{cmd}' executed.` "
+                f"echo cluster, got {len(hits)}; output is UNKNOWN, not empty")
+        end = hits[0][0]
+        start = 0
+        for i in range(end - 1, -1, -1):
+            if ECHO_RE.search(lines[i]):
+                start = i + 1
+                break
+        out = check_recognized(cmd, console_output(lines[start:end]))
+        ident = _COUNT_QUERY_RE.fullmatch(cmd).group("ident")
+        totals, rows, unexpected = [], [], []
+        for line in out:
+            total = _COUNT_TOTAL_RE.fullmatch(line)
+            row = _COUNT_ROW_RE.fullmatch(line)
+            if total:
+                totals.append(int(total.group(1)))
+            elif row and row.group(1) == ident:
+                rows.append(int(row.group(2)))
+            else:
+                unexpected.append(line)
+        if (len(totals) != 1 or unexpected
+                or (totals[0] != 0 and rows != totals)
+                or (totals[0] == 0 and rows not in ([], [0]))):
+            raise OutputNotFound(
+                f"count query `{cmd}` has no complete, uniquely attributed "
+                f"Total/prefab table: {out!r}; output is UNKNOWN, not zero")
+        outputs.append(out)
+    return outputs
+
+
+def run_count_queries(rc: Rcon, cmds: list[str], settle: float = 2.0,
+                      waits: int = 4) -> list[list[str]]:
+    """Read independent named counts from one fresh log interval, settling once.
+
+    Each request still completes its synchronous socket round trip before the
+    next starts.  Wildcards, duplicate commands and large groups are forbidden;
+    there is no compound command or combined RCON reply.  Without a file cursor
+    the old per-command reader remains necessary to avoid stale-window matches.
+    """
+    if (not 1 <= len(cmds) <= COUNT_BATCH_MAX
+            or len(set(cmds)) != len(cmds)
+            or not all(count_query_batchable(cmd) for cmd in cmds)):
+        raise ValueError("count batches require 1..8 distinct short named queries")
+    got = sup_log_size()
+    if got is None:
+        return [run_console(rc, cmd, settle=settle, waits=waits) for cmd in cmds]
+    path, offset = got
+    for cmd in cmds:
+        reply = rc.console(cmd).strip()
+        if reply != f"Command '{cmd}' executed.":
+            raise OutputNotFound(
+                f"count query `{cmd}` socket reply did not match its exact "
+                f"echo: {reply[:300]!r}; output is UNKNOWN, not zero")
+    last = None
+    for i in range(max(1, waits)):
+        time.sleep(settle if i == 0 else 1.0)
+        try:
+            return _count_slices(
+                sup_log_since(path, offset, require_unrotated=True), cmds)
+        except OutputNotFound as exc:
+            last = exc
+            # As in run_console: draining the forwarded sink cannot consume
+            # this supervisor file, and no query is resent while waiting.
+            try:
+                import rcon as _rc  # noqa: PLC0415
+                _rc.keep_sink_clear(note="count batch output missing")
+            except Exception:  # noqa: BLE001 -- preserve the UNKNOWN refusal
 
 
 def main() -> int:

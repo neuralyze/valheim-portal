@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Starter kits price stacks from measured item facts, with explicit active
+  configuration overrides resolved from the selected installation at call time.
+  An unreadable declared override refuses instead of falling back. The 32-slot
+  grid, carry-weight budget, kit contents and unknown-item rules are unchanged.
+- Expanded geography surveys retain the measured trunk roots when selecting
+  capes, road components, generator-location membership and crossing landmasses;
+  a larger unrelated island in the same measurement cannot replace the root.
+- Crossing terrain queries index fixed measurement extents by Heightmap zone
+  instead of scanning every issued window at every footprint sample. Every
+  overlapping height is still checked; unread and nonfinite data still refuse.
+  The regression suite checks query-work growth, interpolation across frames,
+  changed overlaps, unread corners and negative-coordinate boundaries.
+- Physical crossing searches stop immediately when either bank has exhausted
+  its handoffs without a legal approach: the opposite bank cannot make an
+  empty pair set viable. Remaining candidates and physical guards are unchanged.
+  Geography reports ranked crossing queries, durations and periodic bank
+  handoff counts so long searches no longer run without visible progress.
+- Crossing search eliminates unreachable handoffs using exhausted canonical
+  routing trees and content-bound empty-frontier certificates. Two bounded
+  fork workers evaluate immutable queries, while decisions, exceptions and
+  geometric evidence remain rank-ordered and independent of cache placement.
+  Child-only dependencies and controlled cancellation remain producer-traced.
+- Existing ledgers no longer trigger an unused heavy world fingerprint on
+  every live-builder construction. Compatible named postcondition counts use
+  bounded synchronous batches with exact echoed-response attribution; missing,
+  ambiguous and truncated output still refuses rather than becoming zero.
+- Town searches expand through measured, rooted land beyond clipped role
+  surveys. Their native routing views survive adoption, both-end road-domain
+  selection, corridor caching and north joint-water rereads without stitching
+  surveys or allocating a whole-world corridor for a local leg.
+- Trunk nomination uses complete rendered spawn/component identity and nearby
+  progression-allowed land instead of coarse world area rank. Issued role
+  windows retain complete required bounds, and old unnominated fields refuse.
+  Genuine bootstrap reuse is content-validated and read-only; final scans must
+  match both the complete-world height and biome bytes.
 - Later road writes preserve earlier destination approaches using the owning
   road's complete emitted geometry, rather than a newer design or a filtered
   station list. Rim closure may cross the original ground only through the

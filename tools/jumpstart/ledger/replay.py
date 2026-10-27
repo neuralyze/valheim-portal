@@ -702,8 +702,9 @@ class Server:
                 f"decides, and this stops before it is measured.")
         return reply
 
-    def count(self, ident: str, x: float, z: float, radius: float,
-              ignore: str = "_*") -> tuple[int, dict[str, int]]:
+    @staticmethod
+    def _count_command(ident: str, x: float, z: float, radius: float,
+                       ignore: str = "_*") -> str:
         """Scoped `objects_count`.  `ident='*'` is allowed only inside a small
         radius: an unbounded star over a generated zone is the question whose
         ANSWER is long, and it wedges the console sink."""
@@ -739,7 +740,9 @@ class Server:
         if ignore:
             parts.append(f"ignore={ignore}")
         parts.append(f"pos={x:.2f},{z:.2f} max={radius:.2f}")
-        lines = self.console(" ".join(parts))
+        return " ".join(parts)
+
+    def _count_result(self, lines: list[str]) -> tuple[int, dict[str, int]]:
         text = "\n".join(lines)
         total = TOTAL_RE.search(text)
         if not total:
@@ -752,6 +755,52 @@ class Server:
         return int(total.group(1)), {n: int(c) for n, c in
                                      COUNT_LINE_RE.findall(text)
                                      if n != "Total"}
+
+    def count(self, ident: str, x: float, z: float, radius: float,
+              ignore: str = "_*") -> tuple[int, dict[str, int]]:
+        """One scoped count; an absent Total remains UNKNOWN, never zero."""
+        cmd = self._count_command(ident, x, z, radius, ignore)
+        return self._count_result(self.console(cmd))
+
+    def count_many(self, queries: Sequence[tuple[str, float, float, float, str]]
+                   ) -> list[tuple[int, dict[str, int]]]:
+        """Measure independent counts in order, sharing only their log settle.
+
+        Small groups of distinct concrete-prefab queries have bounded replies.
+        Wildcards, compound ids, long commands and duplicate rendered queries
+        keep their individual reads; no observation is cached or deduplicated.
+        All query guards run before the first request in this group is sent.
+        """
+        commands = [self._count_command(*query) for query in queries]
+        if self.dry or not commands:
+            return [self.count(*query) for query in queries]
+        from console import (COUNT_BATCH_MAX, count_query_batchable,  # noqa: PLC0415
+                             run_count_queries)
+        results = []
+        pending = []
+        pending_cmds = []
+
+        def flush():
+            if len(pending) == 1:
+                results.append(self.count(*pending[0]))
+            elif pending:
+                self.sent.extend(pending_cmds)
+                outputs = run_count_queries(self.rc, pending_cmds)
+                results.extend(self._count_result(out) for out in outputs)
+            pending.clear()
+            pending_cmds.clear()
+
+        for query, cmd in zip(queries, commands):
+            if not count_query_batchable(cmd):
+                flush()
+                results.append(self.count(*query))
+                continue
+            if len(pending) == COUNT_BATCH_MAX or cmd in pending_cmds:
+                flush()
+            pending.append(query)
+            pending_cmds.append(cmd)
+        flush()
+        return results
 
 
 def restart_and_wait(world: str, timeout: float = 300.0) -> dict:
@@ -824,9 +873,10 @@ def check_expect(srv: Server, rec: dict) -> list[dict]:
         # max=1 is exact and the answer is two lines.
         zones = [tuple(z) for z in rec["params"].get("zones", [])]
         missing = []
-        for zx, zz in zones:
-            cx, cz = zx * 64.0, zz * 64.0
-            got, _ = srv.count("_ZoneCtrl", cx, cz, 1.0, ignore="")
+        counts = srv.count_many([
+            ("_ZoneCtrl", zx * 64.0, zz * 64.0, 1.0, "")
+            for zx, zz in zones])
+        for (zx, zz), (got, _) in zip(zones, counts):
             if got < 1:
                 missing.append([zx, zz])
         results.append({"check": "zone_ctrl", "want": len(zones),
@@ -866,9 +916,10 @@ def check_expect(srv: Server, rec: dict) -> list[dict]:
                        f"another zone's control object"})
         else:
             per = {}
-            for zx, zz in zones:
-                got, _ = srv.count("_ZoneCtrl", zx * 64.0, zz * 64.0, radius,
-                                   ignore="")
+            counts = srv.count_many([
+                ("_ZoneCtrl", zx * 64.0, zz * 64.0, radius, "")
+                for zx, zz in zones])
+            for (zx, zz), (got, _) in zip(zones, counts):
                 per[f"{zx},{zz}"] = got
             results.append({
                 "check": "zone_ctrl_exact", "want": want, "got": per,
@@ -931,9 +982,11 @@ def check_expect(srv: Server, rec: dict) -> list[dict]:
                         "per_prefab": per})
 
     if "prefab_count" in exp:
-        for c in exp["prefab_count"]:
-            got, _ = srv.count(c["prefab"], c["pos"][0], c["pos"][1],
-                               float(c["max"]))
+        checks = exp["prefab_count"]
+        counts = srv.count_many([
+            (c["prefab"], c["pos"][0], c["pos"][1], float(c["max"]), "_*")
+            for c in checks])
+        for c, (got, _) in zip(checks, counts):
             tol = int(c.get("tolerance", 0))
             results.append({"check": f"prefab_count[{c['prefab']}]",
                             "want": c["count"], "got": got, "tolerance": tol,
@@ -990,18 +1043,22 @@ def check_expect(srv: Server, rec: dict) -> list[dict]:
         # a demolition happened: `deleteObjects` echoes a line per object, so
         # a reply that looks empty is indistinguishable from a reply that was
         # truncated.
-        for c in exp["absent"]:
-            got, _ = srv.count(c["prefab"], c["pos"][0], c["pos"][1],
-                               float(c["max"]))
+        checks = exp["absent"]
+        counts = srv.count_many([
+            (c["prefab"], c["pos"][0], c["pos"][1], float(c["max"]), "_*")
+            for c in checks])
+        for c, (got, _) in zip(checks, counts):
             results.append({"check": f"absent[{c['prefab']}]", "want": 0,
                             "got": got, "ok": got == 0})
 
     if "terrain_compiler" in exp:
         # One compiler per zone, counted at the zone centre inside a radius
         # smaller than half a zone so neighbours cannot leak in.
-        for entry in rec["params"]["entries"]:
-            cx, cz = entry["centre"]
-            got, _ = srv.count("_TerrainCompiler", cx, cz, 31.0, ignore="")
+        entries = rec["params"]["entries"]
+        counts = srv.count_many([
+            ("_TerrainCompiler", *entry["centre"], 31.0, "")
+            for entry in entries])
+        for entry, (got, _) in zip(entries, counts):
             results.append({"check": f"terrain_compiler{entry['zone']}",
                             "want": 1, "got": got, "ok": got == 1,
                             "why": "Heightmap::GetAndCreateTerrainCompiler "

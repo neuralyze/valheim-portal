@@ -885,7 +885,7 @@ STAGES: tuple[Stage, ...] = (
                "costed from this world's current tool-solved portal hub; "
                "never a prior geography coordinate or another human pin"),
     Stage(8, "sites", "settlements/plan.py", _sites,
-          requires=("field", "locations", "placements"),
+          requires=("field", "locations", "placements", "geography"),
           command=lambda s: [sys.executable, str(HERE / "settlements" / "plan.py"),
                              "--patches", str(s.work / f"{s.seed}_1m.bin"),
                              "--locations", str(s.work / "loc" / f"{s.seed_hash}.json"),
@@ -1686,12 +1686,28 @@ def _install():
         doc = {"pid": _os.getpid(), "modules": sorted(mods),
                "read": sorted(read), "wrote": sorted(wrote),
                "execd": sorted(execd), "untraced": untraced}
-        tmp = _os.path.join(out, token + ".json.tmp")
+        tmp = _os.path.join(out, token + "." + uuid.uuid4().hex + ".json.tmp")
         with open(tmp, "w") as fh:
             json.dump(doc, fh)
         _os.replace(tmp, _os.path.join(out, token + ".json"))
 
     atexit.register(dump)
+    # multiprocessing workers use os._exit, bypassing atexit. Their query
+    # boundary and controlled shutdown explicitly flush this same instrument.
+    _sys._vh_producer_trace_flush = dump
+
+    def forked():
+        nonlocal token
+        token = "%d-%s" % (_os.getpid(), uuid.uuid4().hex[:12])
+        read.clear()
+        wrote.clear()
+        execd.clear()
+        untraced.clear()
+        with open(_os.path.join(out, token + ".start"), "w"):
+            pass
+
+    if hasattr(_os, "register_at_fork"):
+        _os.register_at_fork(after_in_child=forked)
 
 
 _chain()

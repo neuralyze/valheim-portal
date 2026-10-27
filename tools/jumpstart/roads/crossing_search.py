@@ -6,6 +6,37 @@ import json
 import math
 
 
+def empty_bank_key(graph, corr, bank, minimum_run):
+    """Identity of routing inputs, not rendered wet/compiled-road refusals."""
+    import hashlib
+    import numpy as np
+    import route
+    if type(corr) is not route.Corridor:
+        return None
+    digest = hashlib.sha256()
+    for name, value in sorted(vars(corr).items()):
+        if name == "fld":
+            # The canonical edge predicate reads derived corridor arrays.
+            continue
+        if isinstance(value, np.ndarray):
+            digest.update(repr((name, value.dtype.str, value.shape)).encode())
+            digest.update(value.tobytes())
+        elif value is None or isinstance(value, (bool, int, float, str, dict)):
+            digest.update(repr((name, value)).encode())
+        else:
+            return None
+    for name in ("lab", "land_lab"):
+        value = getattr(graph, name)
+        digest.update(repr((name, value.dtype.str, value.shape)).encode())
+        digest.update(value.tobytes())
+    policy = (route.GRADE_CEILING, tuple(sorted(route.BIOME_NAMES.items())),
+              graph.big, tuple(map(float, bank["xz"])), minimum_run)
+    return (digest.digest(), policy,
+            route.Corridor._step_cost, route.Corridor.blocked,
+            route.Corridor.nearest_allowed, route.Corridor.cell_of,
+            route.Corridor.cell_world)
+
+
 class ApproachTree:
     """Incremental single-source search using Corridor's actual edge predicate.
 

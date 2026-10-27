@@ -419,7 +419,7 @@ class RoadGraph:
 
     HALF_WIDTH_M = {"trunk": 3.0, "spur": 2.0, "mountain": 2.0}
 
-    def __init__(self, fld, forbid=None, cls: str = "trunk", loc=None):
+    def __init__(self, fld, forbid=None, cls: str = "trunk", loc=None, root=None):
         import numpy as np
         from scipy import ndimage, sparse
         from scipy.sparse import csgraph
@@ -484,6 +484,30 @@ class RoadGraph:
         self.dist, (self.si, self.sj) = ndimage.distance_transform_edt(
             ~allowed, return_indices=True)
         self.snap_m = routemod.Corridor.nearest_allowed.__defaults__[0]
+        # A measured root can occupy a smaller component than an unrelated
+        # landmass in an expanded survey. Never replace that root by the
+        # survey's largest component, or snap it across open water.
+        self.root = None if root is None else tuple(map(float, root))
+        self.root_snap_m = None
+        self.network_id, self.trunk_land_id = self.big, self.land_big
+        if self.root is not None:
+            self.network_id = self.trunk_land_id = -1
+            j = int(round((self.root[0] - corr.x0) / corr.cell_m))
+            i = int(round((self.root[1] - corr.z0) / corr.cell_m))
+            if 0 <= i < m and 0 <= j < m:
+                pi, pj = self.si[i, j], self.sj[i, j]
+                self.root_snap_m = float(self.dist[i, j] * corr.cell_m)
+                root_land = int(self.land_lab[i, j])
+                if (self.root_snap_m <= self.snap_m and self.ok[pi, pj]
+                        and root_land > 0
+                        and int(self.land_lab[pi, pj]) == root_land):
+                    self.network_id = int(self.lab[pi, pj])
+                    self.trunk_land_id = root_land
+
+    @property
+    def network_cells(self) -> int:
+        return 0 if self.network_id < 0 else int(self.sizes[self.network_id])
+
 
     @property
     def largest_cells(self) -> int:
@@ -491,16 +515,17 @@ class RoadGraph:
 
     @property
     def trunk_land_cells(self) -> int:
-        return int(self.land_sizes[self.land_big])
+        return (0 if self.trunk_land_id < 0
+                else int(self.land_sizes[self.trunk_land_id]))
 
     def at(self, xs, zs) -> dict:
         """Where each point stands in the graph, as arrays over the points:
-        `reached` (on an allowed cell of the largest strong component, within
+        `reached` (on an allowed cell of the selected strong component, within
         the router's snap), `piece_cells` (the size of the component its snap
         stands in; 0 when it has none), `snap_m` (the distance to that snap),
         `inside` (the point is on the corridor grid at all), `land_cells`
         (the size of the LAND component its snap stands on) and
-        `on_trunk_landmass` (that component is the window's largest)."""
+        `on_trunk_landmass` (that component is the selected trunk landmass)."""
         import numpy as np
         corr, m = self.corr, self.corr.m
         xs, zs = np.asarray(xs, dtype=float), np.asarray(zs, dtype=float)
@@ -517,11 +542,11 @@ class RoadGraph:
         near = self.dist[ii, jj] * corr.cell_m
         snap[inside] = near
         stands = (near <= self.snap_m) & self.ok[pi, pj]
-        reached[inside] = stands & (self.lab[pi, pj] == self.big)
+        reached[inside] = stands & (self.lab[pi, pj] == self.network_id)
         piece[inside] = np.where(stands, self.sizes[self.lab[pi, pj]], 0)
         ll = self.land_lab[pi, pj]
         land[inside] = np.where(stands, self.land_sizes[ll], 0)
-        on_land[inside] = stands & (ll == self.land_big)
+        on_land[inside] = stands & (ll == self.trunk_land_id)
         return {"reached": reached, "piece_cells": piece, "snap_m": snap,
                 "inside": inside, "land_cells": land,
                 "on_trunk_landmass": on_land}
@@ -530,17 +555,17 @@ class RoadGraph:
         return self.at(xs, zs)["reached"]
 
 
-def traversable_reach(fld, forbid=None):
+def traversable_reach(fld, forbid=None, *, root=None):
     """`(ok(xs, zs) -> bool array, stats)`: which samples of a window stand
     on an allowed cell of the LARGEST component of the trunk corridor's own
     graph (EXTREMITY_REACH_DEPENDS_ON).  `forbid` overrides the generator
     keep-out mask (a fixture has no dump)."""
-    graph = RoadGraph(fld, forbid, "trunk")
+    graph = RoadGraph(fld, forbid, "trunk", root=root)
     return graph.reach, {"largest_cells": graph.largest_cells,
                          "cell_m": graph.corr.cell_m}
 
 
-def _sector_samples(fld, inland_m: float):
+def _sector_samples(fld, inland_m: float, *, root=None):
     """`survey_patch`'s own arrays for the window's largest land component
     -- xs, zs, inland distance, radius and bearing from its centroid --
     recomputed so a sector can be asked for its farthest QUALIFYING
@@ -551,7 +576,9 @@ def _sector_samples(fld, inland_m: float):
     land = fld.h > fieldmod.WATER_LEVEL + rsurvey.FREEBOARD_M
     lab, n = ndimage.label(land, structure=np.ones((3, 3)))
     sizes = ndimage.sum(land, lab, range(1, n + 1))
-    m = lab == int(np.argmax(sizes)) + 1
+    component = (int(np.argmax(sizes)) + 1 if root is None else
+                 rsurvey.component_at_root(fld, lab, root))
+    m = lab == component
     ii, jj = np.nonzero(m)
     xs, zs = fld.x0 + jj, fld.z0 + ii
     di = ndimage.distance_transform_edt(m)[ii, jj]
@@ -565,30 +592,29 @@ def _sector_samples(fld, inland_m: float):
 def extremity_nodes(fld, plan: dict[int, str], *,
                     inland_m: float | None = None,
                     seed_varying: set | None = None,
-                    forbid=None) -> dict[str, dict]:
+                    forbid=None, root=None, island=None) -> dict[str, dict]:
     """`survey_patch`'s extremities for one window's LARGEST land component,
     keyed by this network's node ids -- each moved, when it must be, to the
     farthest sample of its sector a road can reach
     (EXTREMITY_REACH_DEPENDS_ON).
 
-    The largest component is the landmass the window exists to hold.  A window
-    whose largest component is not the one a road is wanted on is a WINDOW
-    defect and is not patched over here.
+    With a measured root, the component containing that root is authoritative;
+    an unrelated larger island inside an expanded survey cannot replace it.
     """
     import numpy as np
     rsurvey = roads_survey()  # scipy; loaded only when a derivation runs
 
     if inland_m is None:
         inland_m = rsurvey.INLAND_M
-    patch = rsurvey.survey_patch(fld, {}, inland_m=inland_m)
+    patch = rsurvey.survey_patch(fld, {}, inland_m=inland_m, root=root)
     comp = patch["components"][0]
-    if not comp["is_largest"]:
+    if root is None and not comp["is_largest"]:
         raise SystemExit(
             f"REFUSING: window {fld.id!r} ranks its components by area and the "
             f"first is not the largest in the patch; the derivation would site "
             f"a trunk on the wrong landmass.")
     by_sector = {int(e["sector_deg"]): e for e in comp["extremities"]}
-    island = island_of_window(fld.id)
+    island = island if island is not None else island_of_window(fld.id)
     out: dict[str, dict] = {}
     # The caller's sink for "which fields this derivation MEASURED". Optional so
     # the function stays callable on its own; when `derive` passes one, the
@@ -596,7 +622,7 @@ def extremity_nodes(fld, plan: dict[int, str], *,
     seed_varying = set() if seed_varying is None else seed_varying
     reach = samples = None
     if _EXTREMITY_REACH_MODE == "traversable":
-        reach, reach_stats = traversable_reach(fld, forbid)
+        reach, reach_stats = traversable_reach(fld, forbid, root=root)
     for sector, nid in sorted(plan.items()):
         e = by_sector.get(sector)
         if e is None:
@@ -610,7 +636,7 @@ def extremity_nodes(fld, plan: dict[int, str], *,
         moved = None
         if reach is not None and not bool(reach([e["xz"][0]], [e["xz"][1]])[0]):
             if samples is None:
-                samples = _sector_samples(fld, inland_m)
+                samples = _sector_samples(fld, inland_m, root=root)
             s = samples
             sector_sel = ((np.abs((s["ang"] - sector + 180.0) % 360.0 - 180.0)
                            < 22.5) & (s["di"] >= inland_m))
@@ -675,7 +701,7 @@ def extremity_nodes(fld, plan: dict[int, str], *,
 # DERIVATION -- generator locations, from `roads/poi.py`
 # ---------------------------------------------------------------------------
 
-def island_of_point(x: float, z: float, windows: dict) -> tuple[str, str]:
+def island_of_point(x: float, z: float, windows: dict, *, roots=None) -> tuple[str, str]:
     """(island role, patch id) for a point, by LAND COMPONENT, not by bbox.
 
     The trunk windows OVERLAP -- MEASURED, the spawn point (-64.68, 3.31) is
@@ -696,7 +722,9 @@ def island_of_point(x: float, z: float, windows: dict) -> tuple[str, str]:
         lab, sizes = cs.label_land(fld)
         i, j = fld.index(x, z)
         cid = int(lab[i, j])
-        if cid and cid == int(np.argmax(sizes[1:])) + 1:
+        target = (int(np.argmax(sizes[1:])) + 1 if roots is None else
+                  roads_survey().component_at_root(fld, lab, roots[pid]))
+        if cid and cid == target:
             hits.append((pid, int(sizes[cid])))
     if not hits:
         raise SystemExit(
@@ -708,7 +736,7 @@ def island_of_point(x: float, z: float, windows: dict) -> tuple[str, str]:
 
 
 def location_nodes(windows: dict, plan: tuple[dict, ...] = LOCATION_PLAN,
-                   seed_varying: set | None = None) -> dict[str, dict]:
+                   seed_varying: set | None = None, *, roots=None) -> dict[str, dict]:
     """Nodes that ARE a generator location, read out of this seed's own dump."""
     pois = _by_path("roads_poi", _HERE / "poi.py").load()
     by_prefab: dict[str, list] = {}
@@ -727,7 +755,7 @@ def location_nodes(windows: dict, plan: tuple[dict, ...] = LOCATION_PLAN,
                 f"(which one?) and the network has to answer it, not this "
                 f"derivation.")
         p = found[0]
-        island, pid = island_of_point(p.x, p.z, windows)
+        island, pid = island_of_point(p.x, p.z, windows, roots=roots)
         # `protected` and `clearance_radius_m` are read from this seed's dump
         # but are NOT seed-varying: they are properties of the PREFAB, and
         # StartTemple carries the same exterior radius on every planet. Putting
@@ -868,7 +896,7 @@ def _closest_approach_m(near_fld, near_mask, far_fld, far_mask, np):
     return float(d.min())
 
 
-def trunk_landmasses(near_fld, far_fld, near_lab, near_sizes, np) -> dict:
+def trunk_landmasses(near_fld, far_fld, near_lab, near_sizes, np, *, roots=None) -> dict:
     """Are the two trunk landmasses ONE BRIDGE APART, and which components are
     they in the primary window?
 
@@ -888,13 +916,15 @@ def trunk_landmasses(near_fld, far_fld, near_lab, near_sizes, np) -> dict:
     caller emits no abutments and records why, and the refusal that is kept is
     the one that means something.
     """
-    a_id = int(np.argmax(near_sizes[1:])) + 1
+    a_id = (int(np.argmax(near_sizes[1:])) + 1 if roots is None else
+            roads_survey().component_at_root(near_fld, near_lab, roots[0]))
     ai, aj = np.nonzero(near_lab == a_id)
     a_box = _bbox(ai, aj, near_fld, np)
 
     cs = crossings_survey()
     flab, fsizes = cs.label_land(far_fld)
-    fmain = int(np.argmax(fsizes[1:])) + 1
+    fmain = (int(np.argmax(fsizes[1:])) + 1 if roots is None else
+             roads_survey().component_at_root(far_fld, flab, roots[1]))
     fi, fj = np.nonzero(flab == fmain)
     b_box = _bbox(fi, fj, far_fld, np)
 
@@ -1033,7 +1063,8 @@ CROSSING_LANDING_DEPENDS_ON = (
 def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
                    plan: tuple[dict, ...] = CROSSING_PLAN,
                    seed_varying: set | None = None,
-                   reach_near=None, reach_far=None, *, physical=None
+                   reach_near=None, reach_far=None, *, physical=None, roots=None,
+                   workers=2
                    ) -> tuple[dict[str, dict], list[dict]]:
     """The abutment pairs for each authored crossing, and the crossings this
     seed does NOT have with the reason it does not have them.
@@ -1062,7 +1093,7 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
                                    "land_components": max(0, len(sizes) - 1)})
                     for c in plan]
 
-    verdict = trunk_landmasses(near_fld, far_fld, lab, sizes, np)
+    verdict = trunk_landmasses(near_fld, far_fld, lab, sizes, np, roots=roots)
     if not verdict["bridgeable"]:
         return {}, [dict(c, node_ids=[c["near"], c["far"]],
                          reason=verdict["reason"],
@@ -1111,7 +1142,6 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
     out: dict[str, dict] = {}
     chosen: list[tuple[str, tuple, tuple]] = []
     absent = []
-    physical_cache = {}
     for c in plan:
         if c["rule"] == "narrowest":
             cost = gaps
@@ -1132,66 +1162,82 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
         unverified = []
         selected = None
         seen_banks = set()
-        for index in ordered:
-            k = int(index)
-            if not np.isfinite(cost[k]):
-                break
-            nxz = (float(near_x[k]), float(near_z[k]))
-            fxz = (float(far_x[k]), float(far_z[k]))
-            try:
-                near_bank = walk_to_bank(near_fld, (snap(nxz[0]), snap(nxz[1])), fxz)
-                far_bank = walk_to_bank(far_fld, (snap(fxz[0]), snap(fxz[1])), nxz)
-            except SystemExit as error:
-                rejected.append({"stage": "bank_walk", "reason": str(error)})
-                continue
-            pair = (*near_bank["xz"], *far_bank["xz"])
-            if pair in seen_banks:
-                continue
-            seen_banks.add(pair)
-            reached = [
-                fn(np.array([bank["xz"][0]]), np.array([bank["xz"][1]]))[0]
-                for fn, bank in ((reach_near, near_bank), (reach_far, far_bank))
-                if fn is not None]
-            if reached and not all(reached):
-                rejected.append({"stage": "walked_bank_reach", "banks": list(pair)})
-                continue
-            if any(min(math.dist(near_bank["xz"], pa),
-                       math.dist(far_bank["xz"], pb))
-                   < CROSSING_MIN_SEPARATION_M for _prior, pa, pb in chosen):
-                rejected.append({"stage": "independent_crossing_separation",
-                                 "banks": list(pair)})
-                continue
-            if math.dist(near_bank["xz"], far_bank["xz"]) > BRIDGE_MAX_SPAN_M:
-                rejected.append({"stage": "walked_span_ceiling", "banks": list(pair)})
-                continue
-            if physical is None:
-                raise SystemExit("crossing_nodes requires the current rendered "
-                    "Heightmap physical context. Use geography.derive(--field) "
-                    "or crossing_physical.PhysicalFields.from_field; half-grid "
-                    "water.Field is not a substitute.")
-            query_key = (c["id"],pair)
-            if query_key not in physical_cache:
-                from crossing_physical import CoverageError
+        from collections import deque
+        from contextlib import closing
+        from time import monotonic
+        from crossing_parallel import ordered_candidates
+        from crossing_physical import CoverageError
+        pending_refusals = deque()
+
+        def requests():
+            for rank, index in enumerate(ordered, 1):
+                k = int(index)
+                if not np.isfinite(cost[k]):
+                    break
+                nxz = (float(near_x[k]), float(near_z[k]))
+                fxz = (float(far_x[k]), float(far_z[k]))
                 try:
-                    physical_cache[query_key] = physical.candidate(
-                        c, near_bank, far_bank, DECK_DATUM_Y)
-                except CoverageError as error:
-                    raise SystemExit(f"REFUSING crossing field coverage: {error}. "
-                        "Re-run roads/field.py request with complete trunk "
-                        "approach/batter/zone coverage; unread ground cannot "
-                        "be counted as a physically rejected candidate.") from error
-            proof = physical_cache[query_key]
-            status = proof.get("status")
-            if status not in ("verified","refused","unverified_coverage") or (
-                    bool(proof["ok"]) != (status == "verified")):
-                raise SystemExit("physical crossing query returned no consistent "
-                                 "verified/refused/unverified_coverage status")
-            if not proof["ok"]:
-                target = unverified if status == "unverified_coverage" else rejected
-                target.append({"banks": list(pair), **proof})
-                continue
-            selected = (k, nxz, fxz, near_bank, far_bank, proof)
-            break
+                    near_bank = walk_to_bank(near_fld, (snap(nxz[0]), snap(nxz[1])), fxz)
+                    far_bank = walk_to_bank(far_fld, (snap(fxz[0]), snap(fxz[1])), nxz)
+                except SystemExit as error:
+                    pending_refusals.append((rank, {"stage":"bank_walk","reason":str(error)}))
+                    continue
+                pair = (*near_bank["xz"], *far_bank["xz"])
+                if pair in seen_banks:
+                    continue
+                seen_banks.add(pair)
+                reached = [
+                    fn(np.array([bank["xz"][0]]), np.array([bank["xz"][1]]))[0]
+                    for fn, bank in ((reach_near, near_bank), (reach_far, far_bank))
+                    if fn is not None]
+                reason = None
+                if reached and not all(reached):
+                    reason = "walked_bank_reach"
+                elif any(min(math.dist(near_bank["xz"], pa),
+                             math.dist(far_bank["xz"], pb))
+                         < CROSSING_MIN_SEPARATION_M for _prior, pa, pb in chosen):
+                    reason = "independent_crossing_separation"
+                elif math.dist(near_bank["xz"], far_bank["xz"]) > BRIDGE_MAX_SPAN_M:
+                    reason = "walked_span_ceiling"
+                if reason is not None:
+                    pending_refusals.append((rank, {"stage":reason,"banks":list(pair)}))
+                    continue
+                if physical is None:
+                    raise SystemExit("crossing_nodes requires the current rendered "
+                        "Heightmap physical context, not a half-grid water.Field")
+                print(f"crossing {c['id']}: ranked pair {rank}/{len(ordered)}, "
+                      f"walked banks {pair}", file=sys.stderr, flush=True)
+                yield dict(rank=rank, k=k, nxz=nxz, fxz=fxz, pair=pair,
+                    near_bank=near_bank, far_bank=far_bank, datum=DECK_DATUM_Y,
+                    started=monotonic())
+
+        try:
+            with closing(ordered_candidates(physical, c, requests(), workers)) as results:
+                for request, proof in results:
+                    while pending_refusals and pending_refusals[0][0] <= request["rank"]:
+                        rejected.append(pending_refusals.popleft()[1])
+                    print(f"crossing {c['id']}: {proof['status']} in "
+                          f"{monotonic()-request['started']:.2f}s",
+                          file=sys.stderr, flush=True)
+                    status = proof.get("status")
+                    if status not in ("verified","refused","unverified_coverage") or (
+                            bool(proof["ok"]) != (status == "verified")):
+                        raise SystemExit("physical crossing query returned no consistent "
+                                         "verified/refused/unverified_coverage status")
+                    if not proof["ok"]:
+                        target = unverified if status == "unverified_coverage" else rejected
+                        target.append({"banks":list(request["pair"]), **proof})
+                        continue
+                    selected = (request["k"], request["nxz"], request["fxz"],
+                                request["near_bank"], request["far_bank"], proof)
+                    break
+        except CoverageError as error:
+            raise SystemExit(f"REFUSING crossing field coverage: {error}. "
+                "Re-run roads/field.py request with complete trunk "
+                "approach/batter/zone coverage; unread ground cannot "
+                "be counted as a physically rejected candidate.") from error
+        if selected is None:
+            rejected.extend(refusal for _rank, refusal in pending_refusals)
         if selected is None:
             query_status = "unverified_coverage" if unverified else "refused"
             absent.append(dict(c, node_ids=[c["near"], c["far"]],status=query_status,
@@ -1278,7 +1324,8 @@ def crossing_nodes(near_fld, far_fld, anchors: dict[str, tuple[float, float]],
 # ---------------------------------------------------------------------------
 
 def derive(field_path: str | Path,
-           anchors: dict[str, tuple[float, float]], *, crossing_physical=None) -> dict:
+           anchors: dict[str, tuple[float, float]], *, crossing_physical=None,
+           workers=2) -> dict:
     """Every seed-derived road node, as the `geography.yaml` document."""
     field_path = str(field_path)
     cs = crossings_survey()
@@ -1303,27 +1350,55 @@ def derive(field_path: str | Path,
             crossing_physical.require_field(field_path)
         except CoverageError as error:
             raise SystemExit(f"REFUSING crossing prerequisites: {error}") from error
+    nomination = crossing_physical.provenance.get("trunk_nomination")
+    if not isinstance(nomination, dict):
+        raise SystemExit(
+            "REFUSING geography: rendered trunk nomination is absent; rerun "
+            "roads/field.py request. Old role rectangles cannot authorize "
+            "trunk identity, even when their terrain bytes are genuine.")
+    roots = {}
+    for role in ("primary", "secondary"):
+        record = nomination.get(role)
+        if not record:
+            raise SystemExit(
+                f"REFUSING geography: no measured {role} trunk nomination; "
+                f"{len(nomination.get('candidates', []))} candidates meet "
+                f"the {nomination.get('bridge_max_span_m')} m span and "
+                f"{nomination.get('min_area_m2')} m2 area criteria; "
+                "the required transport component remains unserved")
+        field_id = record["field_id"]
+        if field_id not in fields:
+            raise SystemExit(
+                f"REFUSING geography: nominated {role} field {field_id!r} "
+                "was not measured")
+        roots[field_id] = tuple(record["root_xz"])
     for island, plan in EXTREMITY_PLAN.items():
         nodes.update(extremity_nodes(
             worldseed.resolve(fields, window_of_island(island)), plan,
-            seed_varying=seed_varying))
+            seed_varying=seed_varying,
+            root=roots.get(_patch_id(fields, window_of_island(island))),
+            island=island))
 
     near_id = _patch_id(fields, worldseed.TRUNK_PRIMARY)
     far_id = _patch_id(fields, worldseed.TRUNK_SECONDARY)
     windows = {near_id: cs.load_field(field_path, near_id),
                far_id: cs.load_field(field_path, far_id)}
     reach_near, _sn = traversable_reach(
-        worldseed.resolve(fields, worldseed.TRUNK_PRIMARY))
+        worldseed.resolve(fields, worldseed.TRUNK_PRIMARY), root=roots.get(near_id))
     reach_far, _sf = traversable_reach(
-        worldseed.resolve(fields, worldseed.TRUNK_SECONDARY))
+        worldseed.resolve(fields, worldseed.TRUNK_SECONDARY), root=roots.get(far_id))
     crossing_physical.bind_approach_graphs(reach_near.__self__, reach_far.__self__)
     crossings, no_crossing = crossing_nodes(windows[near_id], windows[far_id],
                                             anchors, seed_varying=seed_varying,
                                             reach_near=reach_near,
                                             reach_far=reach_far,
-                                            physical=crossing_physical)
+                                            physical=crossing_physical,
+                                            workers=workers,
+                                            roots=((roots[near_id], roots[far_id])
+                                                   if roots else None))
     nodes.update(crossings)
-    nodes.update(location_nodes(windows, seed_varying=seed_varying))
+    nodes.update(location_nodes(windows, seed_varying=seed_varying,
+                                roots=roots or None))
 
     return {
         "seed": worldseed.seed(),
@@ -1337,9 +1412,10 @@ def derive(field_path: str | Path,
         "provenance": {
             "height_field": field_path,
             "crossing_physical_source": crossing_physical.provenance,
-            "extremities": "roads/survey.py::survey_patch -- farthest sample per "
+            "extremities": ("roads/survey.py::survey_patch -- farthest sample per "
                            "45 deg sector at least INLAND_M from open water, on "
-                           "the window's largest land component",
+                           + ("the measured root's land component" if roots else
+                              "the window's largest land component")),
             "abutments": "crossings/survey.py::approaches -- distance transform "
                          "between the two trunk land components",
             "snap_m": NODE_SNAP_M,
@@ -1588,6 +1664,14 @@ def selftest_crossing_landing() -> int:
     from crossing_physical import (
         constructed_geometry_cases, constructed_routed_approach_cases)
     rows = constructed_geometry_cases() + constructed_routed_approach_cases()
+    from crossing_sampling_cases import sampling_cases
+    rows += sampling_cases()
+    from crossing_empty_bank_cases import empty_bank_cases
+    rows += empty_bank_cases()
+    from crossing_reachability_cases import reachability_cases
+    rows += reachability_cases()
+    from crossing_parallel_cases import parallel_cases
+    rows += parallel_cases()
     from crossing_search_cases import (
         search_parity_cases, seating_dependency_cases, coastal_handoff_cases,
         coverage_exhaustion_cases)
@@ -1642,13 +1726,82 @@ def selftest_extremity_reach() -> int:
     return fails
 
 
+def selftest_rooted_reach() -> int:
+    """An expanded measurement cannot replace its real root by a bigger island."""
+    import numpy as np
+    n = 601
+    axis = np.arange(n) - 300
+    xx, zz = np.meshgrid(axis, axis)
+    heights = np.full((n, n), 20.0, dtype=np.float32)
+    heights[(((xx >= -260) & (xx <= -160) & (np.abs(zz) <= 80))
+             | ((xx >= -20) & (xx <= 280) & (np.abs(zz) <= 280)))] = 40.0
+    fld = fieldmod.Field("constructed-rooted-window", 0.0, 0.0, n / 2,
+                         1.0, n, heights,
+                         np.ones((n, n), dtype=np.uint8))
+    clear = np.zeros((n // 4, n // 4), dtype=bool)
+    largest = RoadGraph(fld, forbid=clear)
+    rooted = RoadGraph(fld, forbid=clear, root=(-210.0, 0.0))
+    outside = RoadGraph(fld, forbid=clear, root=(-1000.0, 0.0))
+    blocked = clear.copy()
+    blocked[:, :50] = True
+    protected = RoadGraph(fld, forbid=blocked, root=(-210.0, 0.0))
+    root_point = (-210.0, 0.0)
+    rooted_cape = extremity_nodes(
+        fld, {90: "root-east"}, forbid=clear, root=root_point, island="spawn")
+    largest_cape = extremity_nodes(
+        fld, {90: "root-east"}, forbid=clear, island="spawn")
+    cs = crossings_survey()
+    near = cs.W.Field(worldseed.TRUNK_PRIMARY, fld.cx, fld.cz, fld.half,
+                      fld.step, fld.n, fld.h, fld.biome)
+    far = cs.W.Field(worldseed.TRUNK_SECONDARY, fld.cx, fld.cz, fld.half,
+                     fld.step, fld.n, fld.h, fld.biome)
+    labels, sizes = cs.label_land(near)
+    trunks = trunk_landmasses(
+        near, far, labels, sizes, np, roots=(root_point, (100.0, 0.0)))
+    unrooted_trunks = trunk_landmasses(near, far, labels, sizes, np)
+    location_role, _ = island_of_point(
+        *root_point, {near.id: near, far.id: far},
+        roots={near.id: root_point, far.id: (100.0, 0.0)})
+
+    def roaded(graph, x):
+        at = graph.at([x], [0.0])
+        return bool(at["reached"][0] and at["on_trunk_landmass"][0])
+
+    cases = (
+        ("largest unrelated island does not establish the small root",
+         not roaded(largest, -210.0)),
+        ("the actual root establishes its own smaller landmass",
+         roaded(rooted, -210.0)),
+        ("the unrelated larger landmass stays unjoined",
+         not roaded(rooted, 100.0)),
+        ("an outside root cannot authorize the surveyed land",
+         not roaded(outside, -210.0)),
+        ("a protected root cannot snap across water to another landmass",
+         protected.network_id < 0 and not roaded(protected, -210.0)),
+        ("the cape remains on its nominated smaller island",
+         rooted_cape["root-east"]["xz"][0] < -150.0
+         and largest_cape["root-east"]["xz"][0] > 0.0),
+        ("overlapping windows cannot collapse distinct rooted trunk identities",
+         trunks["bridgeable"] and trunks["a"] != trunks["b"]
+         and not unrooted_trunks["bridgeable"]),
+        ("a generator location belongs to its rooted component",
+         location_role == "spawn"),
+    )
+    for name, ok in cases:
+        print(f"  {'PASS' if ok else 'FAIL'} {name}")
+    return sum(not ok for _, ok in cases)
+
+
 def main(argv=None) -> int:
     if (sys.argv[1:] if argv is None else list(argv))[:1] == ["selftest"]:
-        return 1 if (selftest_extremity_reach() | selftest_crossing_reach() | selftest_crossing_landing()) else 0
+        return 1 if (selftest_extremity_reach() | selftest_rooted_reach()
+                     | selftest_crossing_reach() | selftest_crossing_landing()) else 0
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["emit", "show"])
     ap.add_argument("--field", default="/tmp/roads/h1m.bin")
+    ap.add_argument("--workers", type=int, default=2,
+                    help="bounded fork workers for ranked physical crossings; 1 is serial")
     ap.add_argument("--out", default=None,
                     help="where to write; defaults to this SEED's document -- "
                          "geography.yaml for the default seed, "
@@ -1671,7 +1824,9 @@ def main(argv=None) -> int:
     fieldmod.require_seed(args.field, seed)
     anchors = resolve_anchors(seed, world)
 
-    doc = derive(args.field, anchors)
+    if args.workers < 1:
+        ap.error("--workers must be positive")
+    doc = derive(args.field, anchors, workers=args.workers)
     # Guard the actual output header and field citation at the write boundary.
     # Terrain is seed-derived; crossing costs additionally bind this world's
     # current solved portal placement.

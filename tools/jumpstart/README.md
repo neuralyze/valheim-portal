@@ -41,6 +41,15 @@ their `routing_window`. Routing consumers use those frames and preserve
 `measurement_patch` for provenance. Regenerate stage 8 when a publication lacks
 this routing evidence; an old survey ID must not silently become an island.
 
+Town discovery grows bounded native views around physically joined trunk roots
+until their measured land components are enclosed. A covering window does not
+make an unrelated island eligible. Published `road.routing_view` records the
+actual source measurement and native sample bounds. Road planning chooses one
+genuine measurement covering both endpoints and their approved topology views;
+it never stitches independent surveys or reopens a whole-world corridor merely
+because that measurement supplied a local town. Joint north/water rereads use
+the same recorded view. Stage 8 explicitly depends on geography.
+
 World facts and installation placements now precede geography (stages 5, 6,
 then 7). Crossing costs read this world's actual solved portal hub. Prior
 geography output and an additional human-defined anchor are not inputs, and
@@ -53,6 +62,18 @@ inputs require a content-bound `.source.json` receipt from `roads.field.request`
 and actual integer 1 m Heightmap samples; old receipts are never handwritten
 onto unverified bytes.
 
+Trunk identity comes from complete rendered topology, not coarse global area
+rank. The primary root is the actual spawn; secondary candidates require
+substantial progression-allowed land and a measured coast gap within the
+canonical bridge-span bound. Selected trunks and eligible alternatives receive
+complete measured bounds plus the physical margin. Receipts name exact
+`trunk_nomination` roots and component identities; nomination never proves a
+crossing joined. Geography refuses old fields without this identity contract.
+`roads/field.py request --bootstrap-field <field> --request-only` validates an
+existing genuine receipt and content before printing a coordinate-free request.
+Reuse never rewrites the bootstrap, and final issuance still performs a real
+scan matching the bootstrap's complete-world height and biome bytes.
+
 Approach search shares the canonical directed edge-cost calculation and isolated
 water-feedback masks. Each distinct bank road is fitted and compiled once;
 paired terrain and deck guards still evaluate the actual combined surface.
@@ -61,6 +82,36 @@ datum, resolved station-spacing policy and every consumed terrain value.
 Exhausted optional measurement coverage is `unverified_coverage`, not physical
 impossibility. Required span coverage still refuses immediately, and unmet
 transport remains explicit.
+
+The physical sampler indexes measurement extents by native Heightmap zone.
+Footprint probes inspect only local windows, including every overlap; the index
+does not cache heights, merge disagreeing measurements, or fill unread corners.
+`roads/geography.py selftest` includes deterministic query-work and sampling
+boundary cases alongside the physical construction/coverage guards.
+Paired crossing search stops as soon as either bank is completely exhausted
+without a legal approach; it never caps the remaining viable handoffs. Geography
+prints ranked pair starts/results with elapsed time and emits bank handoff
+counts at 30-second intervals between goals. These are search-work indicators,
+not a completion percentage or a promise that later construction will pass.
+
+Crossing queries default to two bounded fork workers (`geography.py emit
+--workers 1` selects serial execution). Results and exceptions are consumed in
+rank order, not completion order; accepting a candidate cancels and reaps unused
+workers. Native terrain and graph snapshots are inherited, not copied per query.
+The pipeline records child-only producer inputs, including controlled cancellation.
+
+An exhausted base routing tree proves all destinations outside its reachable
+set unavailable at once. Only a wholly empty eligible routing frontier can be
+reused across bank queries, keyed by current corridor arrays, masks, geometry
+and policy. Wet-footprint and compiler failures are not empty-bank certificates.
+Execution/cache counters are excluded from deterministic geometric evidence.
+
+Live builders measure a heavy world manifest only when creating a ledger.
+Compatible named postcondition counts share bounded groups of at most eight
+distinct commands and one log interval; RCON requests remain synchronous.
+Every response must have its own exact echo and complete count table. Missing,
+ambiguous or truncated responses remain unknown, never zero; wildcard, duplicate
+and unsupported queries retain individual observations.
 
 The default seed uses the same derived request path as every other seed; no
 historical scan-box geometry supplies a default. Stage 4 first measures the
@@ -310,6 +361,14 @@ by being unable to walk away from the spawn. `worlds/derive.py` now refuses to
 render a template over `inventory.carry_budget_fraction` of that capacity, and
 per-prefab weights live in `data/item_weights.json` (regenerate with
 `extract_item_weights.py`).
+
+Stack sizes come from `max_stack` in the same measured item facts. The absent
+ItemStacksRewrite mod's historical profile config is not a runtime dependency.
+If that mod is installed, set `inventory.stack_table` to its active config:
+absolute paths stay absolute; relative paths use the call-time
+`VALHEIM_WORLD_ROOT` / `VALHEIM_ROOT` selection. A declared unreadable override
+refuses. Unmeasured items retain explicitly labelled fallback/unknown pricing;
+neither the 32-slot grid nor the carry-weight limit is increased.
 
 The authoring rule that follows, applied to all nine presets:
 

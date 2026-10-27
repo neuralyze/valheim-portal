@@ -56,13 +56,13 @@ import worldseed  # noqa: E402
 
 try:
     from . import schema
-    from .writer import Ledger, fingerprint
+    from .writer import Ledger
     from .schema import LedgerError
     from . import replay as R
     from . import writer as W
 except ImportError:  # run as a script
     import schema
-    from writer import Ledger, fingerprint
+    from writer import Ledger
     from schema import LedgerError
     import replay as R
     import writer as W
@@ -278,8 +278,7 @@ class LiveBuilder:
         self.world = world
         self.dry = dry
         self.root = Path(root) if root else (R.HERE / "runs" / world)
-        self.led = Ledger.open(world, actor=actor, root=self.root,
-                               manifest=fingerprint(world, heavy=True))
+        self.led = Ledger.open(world, actor=actor, root=self.root)
         # `Ledger.open` only writes the manifest when the ledger is new, but
         # the actor must be THIS agent for the records it appends -- siblings
         # share one ledger and the log has to say who did what.
