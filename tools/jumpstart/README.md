@@ -88,6 +88,10 @@ Footprint probes inspect only local windows, including every overlap; the index
 does not cache heights, merge disagreeing measurements, or fill unread corners.
 `roads/geography.py selftest` includes deterministic query-work and sampling
 boundary cases alongside the physical construction/coverage guards.
+Native footprint sweeps batch integer-lattice interpolation in bounded chunks,
+retaining every overlapping source, positive-weight corners, first-error order
+and CPython's compensated floating-point summation. Heights are never cached;
+custom sampler/field implementations keep scalar dispatch.
 Paired crossing search stops as soon as either bank is completely exhausted
 without a legal approach; it never caps the remaining viable handoffs. Geography
 prints ranked pair starts/results with elapsed time and emits bank handoff
@@ -105,6 +109,16 @@ set unavailable at once. Only a wholly empty eligible routing frontier can be
 reused across bank queries, keyed by current corridor arrays, masks, geometry
 and policy. Wet-footprint and compiler failures are not empty-bank certificates.
 Execution/cache counters are excluded from deterministic geometric evidence.
+
+A separate continuous bank-clearance proof can rule out every inland handoff
+when no orientation fits the mandatory dry road footprint at that bank.
+It uses outward interval bounds over the rendered bilinear terrain, not sampled
+headings. A conservative station-count displacement bound covers duplicate or
+tiny leading stations before the first nondegenerate normal. Unread local data,
+disagreement or exhausted proof effort means unknown and keeps exhaustive search.
+Required span coverage still runs first. A proved local impossibility needs no
+remote optional-route reads: its refusal counts do **not** claim those routes
+were fully sampled, or that unvisited remote terrain was covered.
 
 Live builders measure a heavy world manifest only when creating a ledger.
 Compatible named postcondition counts share bounded groups of at most eight

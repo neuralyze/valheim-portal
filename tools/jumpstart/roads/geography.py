@@ -1666,6 +1666,10 @@ def selftest_crossing_landing() -> int:
     rows = constructed_geometry_cases() + constructed_routed_approach_cases()
     from crossing_sampling_cases import sampling_cases
     rows += sampling_cases()
+    from crossing_bulk_cases import bulk_cases
+    rows += bulk_cases()
+    from crossing_bank_clearance_cases import bank_clearance_cases
+    rows += bank_clearance_cases()
     from crossing_empty_bank_cases import empty_bank_cases
     rows += empty_bank_cases()
     from crossing_reachability_cases import reachability_cases

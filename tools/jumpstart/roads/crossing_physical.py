@@ -108,6 +108,32 @@ class PhysicalFields:
             for dx, dz, w in ((0, 0, (1-tx)*(1-tz)), (1, 0, tx*(1-tz)),
                              (0, 1, (1-tx)*tz), (1, 1, tx*tz)) if w)
 
+    def sample_many(self, xs, zs):
+        """Batch native float64 probes; preserve custom sampler dispatch."""
+        xs, zs = np.broadcast_arrays(np.asarray(xs, dtype=np.float64),
+                                     np.asarray(zs, dtype=np.float64))
+        native = (all(type(f) is fieldmod.Field for f in self.fields)
+                  and getattr(self.generated, "__func__", None) is PhysicalFields.generated
+                  and getattr(self.vertex, "__func__", None) is PhysicalFields.vertex
+                  and getattr(self._covering, "__func__", None) is PhysicalFields._covering
+                  and getattr(self.contains, "__func__", None) is PhysicalFields.contains)
+        if not native:
+            values = np.array([self.generated(float(x), float(z))
+                               for x, z in zip(xs.flat, zs.flat)],
+                              dtype=np.float64).reshape(xs.shape)
+        else:
+            from crossing_sampling import generated_many
+            values = generated_many(self.fields, self._tiles, xs, zs, CoverageError)
+        if native and all(f.step == 1.0 and f.x0 == round(f.x0)
+                          and f.z0 == round(f.z0) for f in self.fields):
+            # Successful generated() checked precisely these required vertices.
+            covered = np.ones(xs.shape, dtype=bool)
+        else:
+            covered = np.array([self.contains(float(x), float(z))
+                                for x, z in zip(xs.flat, zs.flat)],
+                               dtype=bool).reshape(xs.shape)
+        return values, covered
+
     def contains(self, x, z):
         x0, z0 = math.floor(x), math.floor(z)
         xs = (x0,) if x == x0 else (x0, x0+1)
@@ -150,7 +176,8 @@ class PhysicalFields:
         trees = {} if _trees is None else _trees
         actual = tuple(map(float, bank["xz"]))
         goal_cell = corr.cell_of(*goal)
-        sampler = SimpleNamespace(bilinear=self.generated, contains=self.contains)
+        sampler = SimpleNamespace(bilinear=self.generated, contains=self.contains,
+                                  sample_many=self.sample_many)
         width = max(WIDTH_M.values())
         rounds = 0
         def refuse(reason):
@@ -213,6 +240,53 @@ class PhysicalFields:
             corr.forbid = corr.forbid | extra
             rounds += 1
 
+    def _bank_clearance_certificate(self, graph, bank):
+        """Optional necessary footprint proof, including tiny/duplicate stations."""
+        import crossing_contract as contract
+        from crossing_bank_clearance import wet_bank_certificate
+
+        if (type(self) is not PhysicalFields
+                or not all(type(f) is fieldmod.Field for f in self.fields)
+                or getattr(self.generated, "__func__", None) is not PhysicalFields.generated
+                or getattr(self.vertex, "__func__", None) is not PhysicalFields.vertex
+                or getattr(self._covering, "__func__", None) is not PhysicalFields._covering
+                or getattr(self.contains, "__func__", None) is not PhysicalFields.contains
+                or getattr(self.sample_many, "__func__", None) is not PhysicalFields.sample_many
+                or getattr(self.routed_approach, "__func__", None)
+                    is not PhysicalFields.routed_approach):
+            return None
+        corr = graph.corr
+        epsilon = contract.TANGENT_MIN_NORM_M
+        minimum_run = BANK_LEVEL_M+STATION_M
+        if (type(corr) is not route.Corridor or corr.m < 2
+                or not all(math.isfinite(v) and v > 0
+                           for v in (corr.cell_m, STATION_M, epsilon, minimum_run))):
+            return None
+        x, z = bank["xz"]
+        side = (corr.m-1)*corr.cell_m
+        if not (corr.x0 <= x <= corr.x0+side and corr.z0 <= z <= corr.z0+side):
+            return None
+        # A positive-cost tree path visits at most m² grid vertices. Adding
+        # the actual bank costs at most one corridor diagonal; simplification
+        # shortens arc length, resampling adds at most arc/spacing plus one
+        # endpoint per input segment, and straighten preserves station count.
+        arc_bound = (corr.m*corr.m+corr.m+2)*math.sqrt(2)*corr.cell_m
+        station_bound = math.ceil(arc_bound/STATION_M)+corr.m*corr.m+8
+        # Until the first non-clipped central difference, P[i+1] is within
+        # 2*epsilon of P[i-1]. Thus that first unit normal's station lies within
+        # this box of the bank, even with repeated/tiny leading stations.
+        # An endpoint >= minimum_run away cannot have ONLY clipped tangents.
+        origin_tolerance = 2*(station_bound+2)*max(epsilon, 1e-9)
+        if origin_tolerance >= minimum_run/4:
+            return None
+        proof = wet_bank_certificate(self, bank,
+            route.footprint_half_m(max(WIDTH_M.values())),
+            origin_tolerance_m=origin_tolerance)
+        if proof is not None:
+            proof["canonical_station_count_upper_bound"] = station_bound
+            proof["minimum_handoff_distance_m"] = minimum_run
+        return proof
+
     def _route_paths(self, graph, bank, stats):
         """Covered handoffs on the complete graph; one shared base search tree."""
         import copy
@@ -244,6 +318,13 @@ class PhysicalFields:
         goals = np.flatnonzero(distance >= BANK_LEVEL_M+STATION_M)
         goals = goals[np.argsort(distance[goals], kind="stable")]
         stats["eligible_graph_goals"] = len(goals)
+        certificate = self._bank_clearance_certificate(graph, bank)
+        if certificate is not None:
+            stats.update(goals_considered=len(goals), router_refused=len(goals),
+                         route_queries=0, base_search_expansions=0,
+                         footprint_proven_impossible=len(goals),
+                         bank_clearance_certificate=certificate)
+            return
         next_progress = time.monotonic()+30.0
         all_goals = goals
         position = 0
@@ -473,7 +554,8 @@ class PhysicalFields:
         points = np.asarray([*road,other_bank["xz"]],dtype=float)
         arc = np.r_[0.0,np.cumsum(np.linalg.norm(np.diff(points,axis=0),axis=1))]
         width = max(WIDTH_M.values())
-        sampler = SimpleNamespace(bilinear=self.generated,contains=self.contains)
+        sampler = SimpleNamespace(bilinear=self.generated,contains=self.contains,
+                                  sample_many=self.sample_many)
         pinned_road = arc[:-1] >= arc[-2]-BANK_LEVEL_M
         first = max(int(np.flatnonzero(pinned_road)[0])-1,0)
         neighbourhood = np.asarray(road[first:],dtype="<f8")

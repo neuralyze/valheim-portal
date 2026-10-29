@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every live-builder construction. Compatible named postcondition counts use
   bounded synchronous batches with exact echoed-response attribution; missing,
   ambiguous and truncated output still refuses rather than becoming zero.
+- Native crossing footprint sweeps use bounded array interpolation while
+  preserving scalar rounding, overlap validation and unread-corner refusals.
+- Crossing banks too narrow for the complete dry road footprint are rejected
+  with a continuous all-orientation terrain proof, including degenerate-prefix
+  displacement bounds. Unknown local measurements retain exhaustive search;
+  no handoff cap or relaxed wet-ground rule replaces the proof.
 - Town searches expand through measured, rooted land beyond clipped role
   surveys. Their native routing views survive adoption, both-end road-domain
   selection, corridor caching and north joint-water rereads without stitching
