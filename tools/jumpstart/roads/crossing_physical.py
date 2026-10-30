@@ -191,15 +191,10 @@ class PhysicalFields:
                 return refuse("no allowed fixed-bank snap under the canonical water mask")
             if corr.blocked(*goal_cell):
                 return refuse("the fixed inland handoff is forbidden by the canonical water mask")
-            from crossing_search import ApproachTree
-            bucket = "base" if corr.forbid is base_forbid else "masked"
-            key = (start, None if bucket == "base" else
-                   hashlib.sha256(corr.forbid.tobytes()).digest())
-            entry = trees.get(bucket)
-            if entry is None or entry[0] != key:
-                entry = (key, ApproachTree(corr, start))
-                trees[bucket] = entry
-            raw = entry[1].path_to(goal_cell)
+            from crossing_search import approach_tree
+            tree = approach_tree(trees, corr, start,
+                                 base=corr.forbid is base_forbid)
+            raw = tree.path_to(goal_cell)
             if raw is None:
                 return refuse("canonical A* exhausted the allowed graph")
             if math.dist(actual, raw[0]) > 1e-9:
@@ -281,7 +276,8 @@ class PhysicalFields:
             return None
         proof = wet_bank_certificate(self, bank,
             route.footprint_half_m(max(WIDTH_M.values())),
-            origin_tolerance_m=origin_tolerance)
+            origin_tolerance_m=origin_tolerance,
+            mandatory_offsets_m=contract.footprint_offsets(max(WIDTH_M.values())))
         if proof is not None:
             proof["canonical_station_count_upper_bound"] = station_bound
             proof["minimum_handoff_distance_m"] = minimum_run
@@ -325,6 +321,14 @@ class PhysicalFields:
                          footprint_proven_impossible=len(goals),
                          bank_clearance_certificate=certificate)
             return
+        from crossing_search import EdgeCosts
+        try:
+            edge_costs = EdgeCosts(corr)
+        except ValueError:
+            pass  # Custom routing data/policy retains native evaluation.
+        else:
+            corr = edge_costs.corr
+            trees["edge_costs"] = edge_costs
         next_progress = time.monotonic()+30.0
         all_goals = goals
         position = 0

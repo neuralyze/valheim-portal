@@ -12,6 +12,14 @@ STATION_M = 2.0
 SIMPLIFY_TOL_M = 1.0
 TANGENT_MIN_NORM_M = 1e-9
 
+
+def footprint_offsets(width_m: float, lat_step_m: float = 0.5) -> np.ndarray:
+    """Exact mandatory lateral probes shared by sweeps and necessary proofs."""
+    extent = routemod.footprint_half_m(width_m)
+    count = int(math.floor(extent / lat_step_m + 1e-9))
+    return np.unique(np.concatenate(
+        [np.arange(-count, count+1)*lat_step_m, [-extent, extent]]))
+
 def straighten(pts, s, a: int, b: int):
     """Replace stations a..b with a straight line between their endpoints.
 
@@ -79,10 +87,7 @@ def transverse_window(fld, pts, width_m: float, lat_step_m: float = 0.5,
     stations, which is the tangent the ribbon itself rasterises against, and
     falls back to the one-sided difference at the two ends.
     """
-    e = routemod.footprint_half_m(width_m)
-    n = int(math.floor(e / lat_step_m + 1e-9))
-    lats = np.concatenate([np.arange(-n, n + 1) * lat_step_m, [-e, e]])
-    lats = np.unique(lats)
+    lats = footprint_offsets(width_m, lat_step_m)
     P = np.asarray(pts, dtype=np.float64)
     tang = np.empty_like(P)
     tang[1:-1] = P[2:] - P[:-2]

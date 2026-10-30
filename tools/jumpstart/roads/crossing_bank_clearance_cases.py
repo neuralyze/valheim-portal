@@ -67,10 +67,23 @@ def _audit(physical, certificate):
     water = route.WATER_LEVEL
     for interval in certificate["covered_angle_intervals"]:
         low, high = interval["angle_rad"]
-        if low != end or not low < high or interval["endpoint_sign"] not in (-1, 1):
+        if low != end or not low < high:
             return False
+        if "mandatory_offsets_m" in certificate:
+            offset = interval["lateral_offset_m"]
+            if offset not in certificate["mandatory_offsets_m"]:
+                return False
+            expected_role = ("endpoint" if abs(offset) == certificate["half_width_m"]
+                             else "center" if offset == 0 else "interior")
+            if interval["probe_role"] != expected_role:
+                return False
+            box = interval["probe_box_xz"]
+        else:
+            if interval["endpoint_sign"] not in (-1, 1):
+                return False
+            box = interval["endpoint_box_xz"]
         axes = []
-        for lower, upper in interval["endpoint_box_xz"]:
+        for lower, upper in box:
             axes.append([lower, *range(math.floor(lower)+1, math.ceil(upper)), upper])
         # Independent scalar extrema on every grid-clipped rectangle, including
         # fractional corners and grid-line crossings. No proof-module private
@@ -331,6 +344,185 @@ def _remote_unread():
                     and all(p["status"] == "refused" for p in proofs)))
 
 
+def _interior_fixture():
+    from crossing_contract import footprint_offsets
+    width, water = 10.0, route.WATER_LEVEL
+    radius = route.footprint_half_m(width)
+    field = _field("interior-wet-band", lambda x, z: np.where(
+        ((abs(x) <= 1) & (abs(z) <= 1)) | (abs(x) >= 4) | (abs(z) >= 4),
+        water+3, water-10))
+    return field, {"xz": [0.0, 0.0]}, radius, footprint_offsets(width)
+
+
+def _scalar_probes(physical, bank, offsets, angle):
+    x, z = bank["xz"]
+    heights = [physical.generated(x+d*math.cos(angle), z+d*math.sin(angle))
+               for d in offsets]
+    return dict(angle_rad=angle, lateral_offsets_m=list(map(float, offsets)),
+        generated_heights_m=heights, minimum_height_m=min(heights),
+        all_probes_dry=bool(min(heights) >= route.WATER_LEVEL))
+
+
+def _mandatory_interior_hole():
+    from types import SimpleNamespace
+    from crossing_contract import transverse_window
+    field, bank, radius, offsets = _interior_fixture()
+    physical = _physical(field)
+    endpoints = wet_bank_certificate(physical, bank, radius)
+    interior = wet_bank_certificate(physical, bank, radius,
+                                     mandatory_offsets_m=offsets)
+    witnesses = [_scalar_probes(physical, bank, offsets, angle)
+                 for angle in (0.0, math.pi/4, math.pi/2)]
+    endpoint_witness = _scalar_chord(physical, bank, radius, 0.0)
+    wet = []
+    lo, _hi, off = transverse_window(
+        SimpleNamespace(bilinear=physical.generated, contains=physical.contains),
+        [(0.0, 0.0), (1.0, 0.0)], 10.0, wet_at=wet)
+    return dict(case="mandatory_interior_wet_hole_refuses_dry_endpoints",
+        matches_expected=bool(endpoints is None
+            and _audit(physical, interior)
+            and endpoint_witness["endpoints_dry"]
+            and all(not w["all_probes_dry"] for w in witnesses)
+            and all(box["probe_role"] == "interior"
+                    for box in interior["covered_angle_intervals"])
+            and not off and lo[0] < route.WATER_LEVEL
+            and any(k == 0 and abs(z) < radius for _x, z, k in wet)),
+        scalar_witnesses=witnesses, scalar_chord=endpoint_witness)
+
+
+def _mandatory_narrow_survivor():
+    from crossing_contract import footprint_offsets
+    water, width = route.WATER_LEVEL, 8.0
+    physical = _physical(_field("full-probe-narrow-diagonal", lambda x, z: np.where(
+        (abs(x) <= 4) & (abs(z) <= 3), water+0.0001, water-10)))
+    bank, radius = {"xz": [0.0, 0.0]}, route.footprint_half_m(width)
+    offsets = footprint_offsets(width)
+    proof = wet_bank_certificate(physical, bank, radius, mandatory_offsets_m=offsets)
+    angle = math.atan2(3.0, 4.0)
+    witness = _scalar_probes(physical, bank, offsets, angle)
+    chord = _scalar_chord(physical, bank, radius, angle)
+    coarse = _scalar_wet(physical, bank, radius)
+    return dict(case="full_mandatory_probes_preserve_narrow_viable_chord",
+        matches_expected=bool(proof is None and witness["all_probes_dry"]
+            and chord["sampled_chord_dry"]
+            and coarse["every_sampled_pair_has_wet_endpoint"]),
+        scalar_witness=witness, scalar_chord=chord,
+        misleading_regular_angle_witness=coarse)
+
+
+def _mandatory_changes():
+    field, bank, radius, offsets = _interior_fixture()
+    physical = _physical(field)
+    initial = wet_bank_certificate(physical, bank, radius,
+                                    mandatory_offsets_m=offsets)
+    changed_offsets = wet_bank_certificate(physical, bank, radius,
+                                           mandatory_offsets_m=(-radius, radius))
+    field.h[:] = route.WATER_LEVEL+3
+    changed_heights = wet_bank_certificate(physical, bank, radius,
+                                           mandatory_offsets_m=offsets)
+    witness = _scalar_probes(physical, bank, offsets, 0.0)
+    return dict(case="mandatory_probe_policy_and_raw_heights_are_not_cached",
+        matches_expected=bool(initial is not None and changed_offsets is None
+            and changed_heights is None and witness["all_probes_dry"]),
+        scalar_witness=witness)
+
+
+def _mandatory_missing_data():
+    a, bank, radius, offsets = _interior_fixture()
+    b, _bank, _radius, _offsets = _interior_fixture()
+    a.id, b.id = "probe-a", "probe-b"
+    physical = _physical(a, b)
+    def certificate():
+        return wet_bank_certificate(physical, bank, radius,
+                                     mandatory_offsets_m=offsets)
+    initial = certificate()
+    old = float(b.h[10, 8])  # (0,2), a required interior probe
+    b.h[10, 8] = old+1
+    overlap, overlap_unread = certificate(), _scalar_unread(physical, (0.0, 2.0))
+    b.h[10, 8] = old
+    a.h[10, 8] = np.nan
+    hole, hole_unread = certificate(), _scalar_unread(physical, (0.0, 2.0))
+    a.h[10, 8] = old
+    repaired = certificate()
+    return dict(case="mandatory_probe_overlap_and_holes_remain_unknown",
+        matches_expected=bool(initial is not None and overlap is None
+            and hole is None and overlap_unread and hole_unread
+            and _audit(physical, repaired)))
+
+
+def _mandatory_origin_uncertainty():
+    from crossing_contract import footprint_offsets
+    water = route.WATER_LEVEL
+    physical = _physical(_field("probe-offset-square", lambda x, z: np.where(
+        (x >= -2) & (x <= 4) & (abs(z) <= 3), water+1, water-100)))
+    bank, offsets = {"xz": [0.0, 0.0]}, footprint_offsets(6.0)
+    exact = wet_bank_certificate(physical, bank, 4.0, mandatory_offsets_m=offsets)
+    uncertain = wet_bank_certificate(physical, bank, 4.0,
+        mandatory_offsets_m=offsets, origin_tolerance_m=1.0)
+    witness = _scalar_probes(physical, {"xz": [1.0, 0.0]}, offsets, math.pi/4)
+    return dict(case="full_mandatory_probes_respect_station_origin_uncertainty",
+        matches_expected=bool(exact is not None and uncertain is None
+                               and witness["all_probes_dry"]),
+        scalar_witness=witness)
+
+
+def _mandatory_route_consumer():
+    from crossing_reachability_cases import fixture
+    _coarse, graph, _bank = fixture(n=65)
+    bank = {"xz": [0.0, 0.0], "level_y": 30.6}
+    native = _field("exact-interior-annulus", lambda x, z: np.where(
+        (x*x+z*z >= 1) & (x*x+z*z <= 9), 26.0, 34.0), extent=128)
+    # Separate exact generated terrain from the all-dry coarse routing hint.
+    # Do not wrap native methods: that would deliberately disable the proof.
+    physical, stats = _physical(native), {}
+    refused_paths = list(physical._route_paths(graph, bank, stats))
+    eligible = stats.get("eligible_graph_goals", 0)
+    endpoint_witness = _scalar_chord(physical, bank, 4.0, 0.0)
+    native.h[:] = 34.0
+    survivor_stats = {}
+    stream = physical._route_paths(graph, bank, survivor_stats)
+    try:
+        survivor = next(stream, None)
+    finally:
+        stream.close()
+    return dict(case="interior_annulus_exhausts_handoffs_without_route_queries",
+        matches_expected=bool(not refused_paths and eligible > 10
+            and stats.get("footprint_proven_impossible") == eligible
+            and stats.get("route_queries") == 0
+            and endpoint_witness["endpoints_dry"]
+            and not endpoint_witness["sampled_chord_dry"]
+            and survivor is not None),
+        eligible_graph_goals=eligible,
+        footprint_proven_impossible=stats.get("footprint_proven_impossible"),
+        route_queries=stats.get("route_queries"),
+        changed_raw_heights_have_survivor=survivor is not None,
+        scalar_witness=endpoint_witness)
+
+
+def _mandatory_probe_cases():
+    field, bank, radius, offsets = _interior_fixture()
+    physical = _physical(field)
+    invalid = ((), (1.0,), (-radius-1, radius+1),
+               (math.nan, -math.nan), (-math.inf, math.inf))
+    boundary = _physical(_field("probe-water-boundary",
+                                lambda x, z: route.WATER_LEVEL, dtype=np.float64))
+    near_water = _physical(_field("probe-water-gap",
+        lambda x, z: route.WATER_LEVEL-1e-10, dtype=np.float64))
+    return [
+        _mandatory_interior_hole(), _mandatory_narrow_survivor(),
+        _mandatory_changes(), _mandatory_missing_data(), _mandatory_origin_uncertainty(),
+        _mandatory_route_consumer(),
+        dict(case="invalid_mandatory_probe_sets_return_unknown",
+            matches_expected=all(wet_bank_certificate(physical, bank, radius,
+                mandatory_offsets_m=bad) is None for bad in invalid)),
+        dict(case="mandatory_probes_preserve_water_boundary_and_strict_gap",
+            matches_expected=bool(all(wet_bank_certificate(p, bank, radius,
+                mandatory_offsets_m=offsets) is None for p in (boundary, near_water))
+                and boundary.generated(0.0, 2.0) == route.WATER_LEVEL
+                and near_water.generated(0.0, 2.0) < route.WATER_LEVEL)),
+    ]
+
+
 def bank_clearance_cases():
     water = route.WATER_LEVEL
     bank = {"xz": [0.0, 0.0]}
@@ -359,4 +551,4 @@ def bank_clearance_cases():
             matches_expected=bool(
                 wet_bank_certificate(near_water, bank, 4.0) is None
                 and near_water.generated(4.0, 0.0) < water)),
-    ]
+    ] + _mandatory_probe_cases()

@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a continuous all-orientation terrain proof, including degenerate-prefix
   displacement bounds. Unknown local measurements retain exhaustive search;
   no handoff cap or relaxed wet-ground rule replaces the proof.
+- Bank-clearance proofs include every mandatory interior lateral probe, using
+  the road sweep's own policy. Dry endpoints cannot hide an impassable wet band.
+- Mask-feedback routing shares immutable directed edge costs and retains a
+  bounded exact-mask Dijkstra cache; mask changes, eviction and unsupported
+  inputs retain real evaluation and do not become false refusals.
 - Town searches expand through measured, rooted land beyond clipped role
   surveys. Their native routing views survive adoption, both-end road-domain
   selection, corridor caching and north joint-water rereads without stitching

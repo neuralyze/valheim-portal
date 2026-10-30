@@ -1,4 +1,4 @@
-"""Optional, continuous bank-near wet-endpoint proof on the native Heightmap.
+"""Optional continuous bank-near mandatory-probe proofs on native Heightmaps.
 
 A returned certificate covers every normal orientation, not a set of sampled
 routes or angles. Failure to prove anything (including optional measurement
@@ -153,16 +153,16 @@ def _box_bounds(vertices, box, work):
     return low, high
 
 
-def wet_bank_certificate(physical, bank, half_width, *, origin_tolerance_m=0.0):
-    """Prove that every unit normal has a wet required footprint endpoint.
+def wet_bank_certificate(physical, bank, half_width, *, origin_tolerance_m=0.0,
+                         mandatory_offsets_m=None):
+    """Prove every normal has a wet required probe; None means unknown.
 
-    ``bank`` is the actual bank record with an ``xz`` pair; ``half_width`` is
-    the complete mandatory footprint radius, not half the paved road width.
-    None means unknown, including degenerate radius, exhausted proof effort,
-    unread/nonfinite/disagreeing optional native vertices, or a dry witness.
-    No measurements or negative results are cached between calls.
-    ``origin_tolerance_m`` expands every endpoint box for a separately proved
-    bound on the first nondegenerate normal's station displacement from bank.
+    Retains the wet-only API and endpoint evidence by default. ``half_width``
+    is the complete mandatory footprint radius, not half the paved width.
+    Optional offsets must be actual mandatory, finite, sign-symmetric lateral
+    probes within that radius. The caller must independently bound the first
+    nondegenerate station's displacement from ``bank`` by
+    ``origin_tolerance_m``. No heights/results are cached.
     """
     try:
         x, z = map(float, bank["xz"])
@@ -174,6 +174,17 @@ def wet_bank_certificate(physical, bank, half_width, *, origin_tolerance_m=0.0):
             or radius <= 0 or origin_tolerance < 0
             or max(abs(x), abs(z), radius, origin_tolerance) >= 2**52-2):
         return None
+    if mandatory_offsets_m is None:
+        offsets = (radius, -radius)
+    else:
+        try:
+            offsets = tuple(dict.fromkeys(float(v) for v in mandatory_offsets_m))
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if (not offsets or any(not math.isfinite(v) or abs(v) > radius
+                               for v in offsets)
+                or set(offsets) != {-v for v in offsets}):
+            return None
 
     # A computed normal need not have length exactly one: enclose its component
     # error from hypot normalization/division BEFORE multiplying by the radius.
@@ -230,17 +241,26 @@ def wet_bank_certificate(physical, bank, half_width, *, origin_tolerance_m=0.0):
             return None
         ranges = _trig_ranges(low, high, cache)
         bounds = []
-        for sign in (1, -1):
-            box = _endpoint_box((x, z), radius, sign, ranges, padding)
+        for offset in offsets:
+            sign = -1 if offset < 0 else 1
+            box = _endpoint_box((x, z), abs(offset), sign, ranges, padding)
             bound = _box_bounds(vertices, box, work)
             if bound is None:
                 return None
             bounds.append(bound)
             generated_upper = _up(bound[1]+margin)
             if generated_upper < threshold:
-                intervals.append(dict(angle_rad=[low, high], endpoint_sign=sign,
-                    endpoint_box_xz=[list(axis) for axis in box],
-                    bilinear_upper_m=bound[1], generated_upper_m=generated_upper))
+                if mandatory_offsets_m is None:
+                    evidence = dict(endpoint_sign=sign,
+                        endpoint_box_xz=[list(axis) for axis in box],
+                        bilinear_upper_m=bound[1], generated_upper_m=generated_upper)
+                else:
+                    evidence = dict(lateral_offset_m=offset,
+                        probe_role=("endpoint" if abs(offset) == radius else
+                                    "center" if offset == 0 else "interior"),
+                        probe_box_xz=[list(axis) for axis in box],
+                        bilinear_upper_m=bound[1], generated_upper_m=generated_upper)
+                intervals.append(dict(angle_rad=[low, high], **evidence))
                 break
         else:
             if all(bound[0] >= water for bound in bounds):
@@ -251,7 +271,7 @@ def wet_bank_certificate(physical, bank, half_width, *, origin_tolerance_m=0.0):
             stack.append((midpoint, high, depth+1))
             stack.append((low, midpoint, depth+1))
 
-    return dict(kind="all_orientations_wet_bank_near_station_endpoint",
+    certificate = dict(
         bank_xz=[x, z], half_width_m=radius, water_level_m=water,
         angle_domain_rad=[0.0, _PI_HI], normal_orientation_mod_pi=True,
         coordinate_inflation_m=padding, strict_wet_margin_m=margin,
@@ -267,3 +287,9 @@ def wet_bank_certificate(physical, bank, half_width, *, origin_tolerance_m=0.0):
         native_grid=dict(x0=x0, z0=z0, nx=nx, nz=nz, heights_zx=rows,
                          vertex_reads=nx*nz),
         angle_intervals_examined=examined, bound_points_evaluated=work[0])
+    if mandatory_offsets_m is None:
+        certificate["kind"] = "all_orientations_wet_bank_near_station_endpoint"
+    else:
+        certificate.update(kind="all_orientations_wet_bank_near_station_probe",
+                           mandatory_offsets_m=list(offsets))
+    return certificate

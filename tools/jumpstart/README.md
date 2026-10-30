@@ -109,12 +109,19 @@ set unavailable at once. Only a wholly empty eligible routing frontier can be
 reused across bank queries, keyed by current corridor arrays, masks, geometry
 and policy. Wet-footprint and compiler failures are not empty-bank certificates.
 Execution/cache counters are excluded from deterministic geometric evidence.
+Within an immutable bank snapshot, lazy directed edge costs are shared across
+water-feedback searches. A bounded exact-mask LRU retains masked Dijkstra trees
+instead of rebuilding alternating masks for every destination. Masks are applied
+separately from geometric costs; owner, policy, start and complete mask equality
+govern reuse. Unsupported inputs and eviction recompute normally, never refuse.
 
 A separate continuous bank-clearance proof can rule out every inland handoff
 when no orientation fits the mandatory dry road footprint at that bank.
 It uses outward interval bounds over the rendered bilinear terrain, not sampled
-headings. A conservative station-count displacement bound covers duplicate or
-tiny leading stations before the first nondegenerate normal. Unread local data,
+headings, and the same mandatory lateral probe helper as the road sweep.
+Dry outer endpoints do not establish a dry road: interior probes also matter.
+A conservative station-count displacement bound covers duplicate or tiny leading
+stations before the first nondegenerate normal. Unread local data,
 disagreement or exhausted proof effort means unknown and keeps exhaustive search.
 Required span coverage still runs first. A proved local impossibility needs no
 remote optional-route reads: its refusal counts do **not** claim those routes

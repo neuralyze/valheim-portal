@@ -1674,6 +1674,8 @@ def selftest_crossing_landing() -> int:
     rows += empty_bank_cases()
     from crossing_reachability_cases import reachability_cases
     rows += reachability_cases()
+    from crossing_edge_cost_cases import edge_cost_cases
+    rows += edge_cost_cases()
     from crossing_parallel_cases import parallel_cases
     rows += parallel_cases()
     from crossing_search_cases import (
