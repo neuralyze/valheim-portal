@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mask-feedback routing shares immutable directed edge costs and retains a
   bounded exact-mask Dijkstra cache; mask changes, eviction and unsupported
   inputs retain real evaluation and do not become false refusals.
+- Complete native bank-routing enumerations are replayed only against identical
+  immutable rendered/coarse inputs and routing policy. Partial or failed searches
+  are never admitted; crossing-specific side compilation still runs normally.
+- Ranked crossing workers drain later results and advance within a bounded
+  lookahead window instead of idling behind a slow earlier query. Result/error
+  order and producer-traced cleanup are retained; parent cancellation is immediate.
 - Town searches expand through measured, rooted land beyond clipped role
   surveys. Their native routing views survive adoption, both-end road-domain
   selection, corridor caching and north joint-water rereads without stitching

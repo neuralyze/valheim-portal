@@ -59,6 +59,52 @@ class _CPUQuery:
                     cpu=sum(k*k for k in range(100 + rank)))
 
 
+class _LookaheadQuery(_CPUQuery):
+    """Rank zero needs work beyond the initial workers, not just rank one."""
+    def __init__(self, head_started, independent_done, **kwargs):
+        super().__init__(**kwargs)
+        self.head_started = head_started
+        self.independent_done = independent_done
+
+    def candidate(self, crossing, near_bank, far_bank, datum):
+        rank = near_bank['rank']
+        if rank == 0:
+            self.head_started.set()
+            if not self.independent_done.wait(10):
+                raise AssertionError('idle worker never advanced beyond its first rank')
+        elif not self.head_started.wait(10):
+            raise AssertionError('earliest worker never entered its blocked query')
+        proof = super().candidate(crossing, near_bank, far_bank, datum)
+        if rank == 1:
+            # Exceed pipe capacity: collecting only rank zero would strand this
+            # child in send(), not merely leave a small completed result unread.
+            proof['transfer_fixture'] = bytes(1024 * 1024)
+        if rank == 2:
+            self.independent_done.set()
+        return proof
+
+
+class _ExitingQuery(_CPUQuery):
+    def __init__(self, exit_code, **kwargs):
+        super().__init__(**kwargs)
+        self.exit_code = exit_code
+
+    def candidate(self, crossing, near_bank, far_bank, datum):
+        if near_bank['rank'] == 1:
+            self.later_done.set()
+            os._exit(self.exit_code)
+        return super().candidate(crossing, near_bank, far_bank, datum)
+
+
+class _UnsendableDatum:
+    def __init__(self, release):
+        self.release = release
+
+    def __reduce__(self):
+        self.release.set()
+        raise TypeError('constructed payload serialization failure')
+
+
 def _requests(n):
     return [dict(near_bank={'rank': rank}, far_bank={'rank': rank + 10},
                  datum=30.6 + rank, parent_only=lambda: None)
@@ -71,31 +117,31 @@ def _children():
 
 def rank_order_cases():
     context = mp.get_context('fork')
-    later_done = context.Event()
-    completion, count = context.Array('i', 5), context.Value('i', 0)
-    requests, pulled = _requests(5), []
+    head_started, independent_done = context.Event(), context.Event()
+    completion, count = context.Array('i', 9), context.Value('i', 0)
+    requests, pulled = _requests(9), []
 
     def lazy_requests():
         for request in requests:
             pulled.append(request['near_bank']['rank'])
             yield request
-    worker_pids = context.Array('i', 5)
-    physical = _CPUQuery(later_done=later_done, completion=completion, count=count,
-                         worker_pids=worker_pids)
+    worker_pids = context.Array('i', 9)
+    physical = _LookaheadQuery(head_started, independent_done,
+        completion=completion, count=count, worker_pids=worker_pids)
     baseline = _children()
-    identities, ranks, bounded = [], [], True
+    identities, ranks = [], []
     with closing(ordered_candidates(physical, {'id': 'constructed'}, lazy_requests(), 2)) as candidates:
         for request, proof in candidates:
             rank = proof['rank']
             identities.append(request is requests[rank])
             ranks.append(rank)
-            bounded = bounded and len(pulled) <= len(ranks) + 1
     return [dict(case='fork_completion_order_differs_but_results_retain_rank',
                  completion_order=list(completion), result_order=ranks,
                  worker_pids=list(worker_pids),
-                 matches_expected=ranks == list(range(5))
-                    and list(completion)[:2] == [1, 0] and all(identities)
-                    and bounded and _children() == baseline
+                 matches_expected=ranks == list(range(len(requests)))
+                    and list(completion).index(2) < list(completion).index(0)
+                    and head_started.is_set() and independent_done.is_set()
+                    and all(identities) and pulled == ranks and _children() == baseline
                     and len(set(worker_pids)) == 2 and os.getpid() not in worker_pids)]
 
 
@@ -105,7 +151,14 @@ def close_after_acceptance_cases():
     close_done, deadline = threading.Event(), threading.Event()
     physical = _CPUQuery(blocked=blocked, release=release)
     baseline = _children()
-    candidates = ordered_candidates(physical, {'id': 'constructed'}, _requests(2), 2)
+    pulled = []
+
+    def lazy_requests():
+        for request in _requests(9):
+            pulled.append(request['near_bank']['rank'])
+            yield request
+
+    candidates = ordered_candidates(physical, {'id': 'constructed'}, lazy_requests(), 2)
     # Start the watchdog only AFTER fork: production requires a single-threaded
     # forking caller. A broken close is released after the deadline, not hung.
     watchdog = None
@@ -121,8 +174,10 @@ def close_after_acceptance_cases():
 
         watchdog = threading.Thread(target=release_on_deadlock, daemon=True)
         watchdog.start()
+        pulled_at_acceptance = tuple(pulled)
         candidates.close()
         closed_while_blocked = not release.is_set()
+        no_refill = tuple(pulled) == pulled_at_acceptance
         no_children = _children() == baseline
         close_done.set()
     finally:
@@ -141,7 +196,7 @@ def close_after_acceptance_cases():
     return [dict(case='accepted_rank_closes_without_waiting_for_blocked_later_query',
                  matches_expected=proof['ok'] and request['near_bank']['rank'] == 0
                     and blocked.is_set() and closed_while_blocked and no_children
-                    and not deadline.is_set())]
+                    and no_refill and not deadline.is_set())]
 
 
 def ordered_exception_cases():
@@ -215,6 +270,124 @@ def parity_and_lazy_failure_cases():
     return rows
 
 
+def buffered_head_cases():
+    context = mp.get_context('fork')
+    rows = []
+    for error in (None, CoverageError('constructed lookahead coverage failure'),
+                  SystemExit('constructed lookahead exit'),
+                  ValueError('constructed lookahead candidate failure')):
+        baseline = _children()
+        requests, pulled = _requests(9), []
+        head_started, independent_done = context.Event(), context.Event()
+
+        def lazy_requests():
+            for request in requests:
+                pulled.append(request['near_bank']['rank'])
+                yield request
+
+        physical = _LookaheadQuery(head_started, independent_done, failure=error)
+        with closing(ordered_candidates(physical, {'id': 'constructed'},
+                                        lazy_requests(), 2)) as candidates:
+            first = next(candidates)
+            pulled_at_first = tuple(pulled)
+            try:
+                second = next(candidates)
+            except BaseException as actual:
+                second_expected = (error is not None and type(actual) is type(error)
+                                   and actual.args == error.args)
+            else:
+                second_expected = (error is None and second[0] is requests[1]
+                                   and second[1]['rank'] == 1
+                                   and len(second[1]['transfer_fixture']) == 1024 * 1024)
+            no_refill_before_second = tuple(pulled) == pulled_at_first
+        rows.append(dict(case='buffered_' + ('result' if error is None else type(error).__name__)
+                         + '_precedes_refill_and_lookahead_unblocks_earliest',
+            matches_expected=first[0] is requests[0] and first[1]['rank'] == 0
+                and head_started.is_set() and independent_done.is_set()
+                and second_expected and no_refill_before_second
+                and tuple(pulled) == pulled_at_first and _children() == baseline))
+    return rows
+
+
+def prefetched_input_failure_cases():
+    context = mp.get_context('fork')
+    rows = []
+    for failure in ('iteration', 'request_fields', 'serialization'):
+        for consume_error in (False, True):
+            baseline = _children()
+            head_started, release = context.Event(), context.Event()
+            requests, pulled = _requests(3), []
+            physical = _LookaheadQuery(head_started, release)
+
+            def lazy_failure():
+                for request in requests[:2]:
+                    pulled.append(request['near_bank']['rank'])
+                    yield request
+                pulled.append(2)
+                if failure == 'iteration':
+                    release.set()
+                    raise ValueError('constructed prefetched input failure')
+                if failure == 'request_fields':
+                    release.set()
+                    yield dict(far_bank={}, datum=0)
+                else:
+                    request = dict(requests[2], datum=_UnsendableDatum(release))
+                    yield request
+                raise AssertionError('enumerated beyond failed submission')
+
+            expected_type = dict(iteration=ValueError, request_fields=KeyError,
+                                 serialization=TypeError)[failure]
+            prefix, expected_error = [], not consume_error
+            with closing(ordered_candidates(physical, {'id': 'constructed'},
+                                            lazy_failure(), 2)) as candidates:
+                first_request, first_proof = next(candidates)
+                prefix.append(first_proof['rank'])
+                pulled_at_acceptance = tuple(pulled)
+                if consume_error:
+                    prefix.append(next(candidates)[1]['rank'])
+                    try:
+                        next(candidates)
+                    except BaseException as actual:
+                        expected_error = type(actual) is expected_type
+                    else:
+                        expected_error = False
+            rows.append(dict(case='prefetched_' + failure + '_failure_'
+                             + ('follows_prefix' if consume_error else 'ignored_on_acceptance'),
+                matches_expected=first_request is requests[0] and release.is_set()
+                    and prefix == ([0, 1] if consume_error else [0])
+                    and pulled_at_acceptance == (0, 1, 2) and expected_error
+                    and tuple(pulled) == pulled_at_acceptance and _children() == baseline))
+    return rows
+
+
+def worker_exit_cases():
+    context = mp.get_context('fork')
+    rows = []
+    for exit_code in (0, 23):
+        for consume_error in (False, True):
+            baseline = _children()
+            later_done = context.Event()
+            physical = _ExitingQuery(exit_code, later_done=later_done)
+            requests = _requests(2)
+            expected_error = not consume_error
+            with closing(ordered_candidates(physical, {'id': 'constructed'},
+                                            requests, 3)) as candidates:
+                first_request, first_proof = next(candidates)
+                if consume_error:
+                    try:
+                        next(candidates)
+                    except RuntimeError as actual:
+                        expected_error = 'worker' in str(actual) and 'outcome' in str(actual)
+                    else:
+                        expected_error = False
+            rows.append(dict(case=f'worker_exit_{exit_code}_'
+                             + ('eof_follows_earlier_result' if consume_error
+                                else 'ignored_on_acceptance'),
+                matches_expected=first_request is requests[0] and first_proof['rank'] == 0
+                    and later_done.is_set() and expected_error and _children() == baseline))
+    return rows
+
+
 def _unsupported_method_probe(connection, method):
     mp.set_start_method(method, force=True)
     try:
@@ -253,7 +426,41 @@ def unsupported_method_cases():
     return rows
 
 
+def parent_cancellation_cases():
+    from multiprocessing.connection import Connection
+    from unittest.mock import patch
+
+    context = mp.get_context("fork")
+    baseline, parent_pid = _children(), os.getpid()
+    head_started, release = context.Event(), context.Event()
+    receive = Connection.recv
+    interrupted = False
+
+    def cancelling_receive(connection):
+        nonlocal interrupted
+        outcome = receive(connection)
+        if (os.getpid() == parent_pid and not interrupted
+                and type(outcome[0]) is bool):
+            interrupted = True
+            release.set()
+            raise KeyboardInterrupt("constructed parent cancellation")
+        return outcome
+
+    propagated = False
+    with patch.object(Connection, "recv", cancelling_receive):
+        with closing(ordered_candidates(_LookaheadQuery(head_started, release),
+                {"id": "constructed"}, _requests(2), 2)) as candidates:
+            try:
+                next(candidates)
+            except KeyboardInterrupt:
+                propagated = True
+    return [dict(case="parent_cancellation_cannot_be_buffered_or_discarded",
+        matches_expected=interrupted and propagated and _children() == baseline)]
+
+
 def parallel_cases():
     return (rank_order_cases() + close_after_acceptance_cases()
             + ordered_exception_cases() + parity_and_lazy_failure_cases()
-            + unsupported_method_cases())
+            + buffered_head_cases() + prefetched_input_failure_cases()
+            + worker_exit_cases() + unsupported_method_cases()
+            + parent_cancellation_cases())

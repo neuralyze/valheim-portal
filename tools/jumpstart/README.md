@@ -103,12 +103,24 @@ Crossing queries default to two bounded fork workers (`geography.py emit
 rank order, not completion order; accepting a candidate cancels and reaps unused
 workers. Native terrain and graph snapshots are inherited, not copied per query.
 The pipeline records child-only producer inputs, including controlled cancellation.
+Idle workers may evaluate later ranks within a bounded pending window while an
+earlier rank is slow. Later results are drained without changing acceptance/error
+order. Parent cancellation unwinds immediately; it cannot be buffered behind an
+earlier query or discarded when that query succeeds.
 
 An exhausted base routing tree proves all destinations outside its reachable
-set unavailable at once. Only a wholly empty eligible routing frontier can be
-reused across bank queries, keyed by current corridor arrays, masks, geometry
-and policy. Wet-footprint and compiler failures are not empty-bank certificates.
+set unavailable at once. A wholly empty eligible routing frontier provides a
+small reusable point-graph certificate, keyed by current corridor arrays, masks,
+geometry and policy. Wet-footprint and compiler failures are not that certificate.
 Execution/cache counters are excluded from deterministic geometric evidence.
+Complete native routing enumerations can also be replayed for an identical bank,
+datum, corridor and policy. This includes every routing refusal and optional
+coverage unknown, but **not** side-compiler results: each crossing compiles the
+replayed roads again. Only normally exhausted generators enter the bounded catalog;
+partial searches, exceptions and admission overflow never create a refusal.
+Reuse requires byte-owned immutable rendered and coarse fields. Same-source role
+views coexist; replacing byte roots or using mutable/custom sampling drops reuse.
+The route-data budget excludes one borrowed current native input snapshot.
 Within an immutable bank snapshot, lazy directed edge costs are shared across
 water-feedback searches. A bounded exact-mask LRU retains masked Dijkstra trees
 instead of rebuilding alternating masks for every destination. Masks are applied

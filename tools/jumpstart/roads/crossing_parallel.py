@@ -75,12 +75,13 @@ def _candidate_worker(physical, crossing, connection, inherited_connections):
 def ordered_candidates(physical, crossing, requests, workers):
     """Yield ``(original_request, proof)`` in exactly the iterable's order.
 
-    At most ``workers`` requests are outstanding, including completed results
-    awaiting their rank. Request metadata stays in the parent, so need not be
-    pickleable. Only banks, datum, proofs and exception objects cross pipes.
-    Candidate errors (including CoverageError and SystemExit) are raised only
-    when their request's rank is consumed. Input-iteration/submission errors
-    likewise cannot overtake earlier results.
+    At most ``2 * workers`` requests are outstanding, including completed
+    results awaiting their rank. Idle workers can advance within that bounded
+    lookahead while an earlier query runs. Request metadata stays in the
+    parent, so need not be pickleable. Only banks, datum, proofs and exception
+    objects cross pipes. Candidate errors (including CoverageError and
+    SystemExit), worker exits, and ordinary input-iteration/submission errors are
+    raised only when their rank is consumed. Parent cancellation is immediate.
 
     ``workers=1`` directly evaluates in the caller. Parallel execution requires
     the configured multiprocessing start method to be fork; spawn/forkserver
@@ -103,7 +104,9 @@ def ordered_candidates(physical, crossing, requests, workers):
                          f"got {context.get_start_method()!r}")
 
     processes, connections, pending = [], [], deque()
+    running, idle = {}, deque()
     exhausted = False
+    lookahead = 2 * workers
 
     def submit(slot):
         nonlocal exhausted
@@ -112,18 +115,56 @@ def ordered_candidates(physical, crossing, requests, workers):
         except StopIteration:
             exhausted = True
             return
-        except BaseException as error:
+        except Exception as error:
             exhausted = True
-            pending.append((None, None, error))
+            pending.append([None, (False, error)])
             return
         try:
             payload = request['near_bank'], request['far_bank'], request['datum']
+            # A slot has at most one request: its preceding outcome has been
+            # drained before it becomes idle, so its child is ready to recv.
             connections[slot].send(payload)
-        except BaseException as error:
+        except Exception as error:
             exhausted = True
-            pending.append((request, None, error))
+            pending.append([request, (False, error)])
         else:
-            pending.append((request, slot, None))
+            entry = [request, None]
+            pending.append(entry)
+            running[slot] = entry
+
+    def collect(*, block):
+        if not running:
+            return False
+        ready = wait(tuple(handle for slot in running
+                           for handle in (connections[slot], processes[slot].sentinel)),
+                     timeout=None if block else 0)
+        collected = False
+        for slot, entry in tuple(running.items()):
+            connection, process = connections[slot], processes[slot]
+            if connection not in ready and process.sentinel not in ready:
+                continue
+            reusable = False
+            try:
+                if connection not in ready and not connection.poll():
+                    raise RuntimeError("physical candidate worker exited without an outcome "
+                                       f"(exit code {process.exitcode})")
+                try:
+                    ok, outcome = connection.recv()
+                except EOFError as error:
+                    raise RuntimeError("physical candidate worker closed without an outcome") from error
+                entry[1] = ok, outcome
+                reusable = process.sentinel not in ready
+            except Exception as error:
+                # Transport failures belong to the assigned rank, just like
+                # candidate exceptions; another worker can still finish first.
+                # Parent cancellation must unwind immediately, not wait behind
+                # an earlier rank or disappear when that rank is accepted.
+                entry[1] = False, error
+            del running[slot]
+            if reusable:
+                idle.append(slot)
+            collected = True
+        return collected
 
     try:
         for slot in range(workers):
@@ -143,30 +184,27 @@ def ordered_candidates(physical, crossing, requests, workers):
                 raise RuntimeError("physical candidate worker failed during startup")
             if connection.recv() != ("ready", None):
                 raise RuntimeError("physical candidate worker sent no startup acknowledgement")
-        for slot in range(workers):
-            submit(slot)
-            if exhausted:
+        idle.extend(range(workers))
+        while pending or not exhausted:
+            if pending and pending[0][1] is not None:
+                request, (ok, outcome) = pending.popleft()
+                if not ok:
+                    raise outcome
+                yield request, outcome
+                # Only resume permits more input or work. In particular, an
+                # already buffered next rank is yielded before any refill.
+                continue
+            # Always drain ready slots before refilling, even when the window
+            # is full. A fast child's result pipe must not wait for rank zero.
+            if collect(block=False):
+                continue
+            if not exhausted and idle and len(pending) < lookahead:
+                submit(idle.popleft())
+                continue
+            if running:
+                collect(block=True)
+            else:
                 break
-        while pending:
-            request, slot, error = pending.popleft()
-            if error is not None:
-                raise error
-            connection, process = connections[slot], processes[slot]
-            ready = wait((connection, process.sentinel))
-            if connection not in ready and not connection.poll():
-                raise RuntimeError(f"physical candidate worker exited without an outcome "
-                                   f"(exit code {process.exitcode})")
-            try:
-                ok, outcome = connection.recv()
-            except EOFError as error:
-                raise RuntimeError("physical candidate worker closed without an outcome") from error
-            if not ok:
-                raise outcome
-            yield request, outcome
-            # Refill only on resume: accepting and closing this result cannot
-            # pull another request, surface its failure, or start more work.
-            if not exhausted:
-                submit(slot)
     finally:
         # Untraced workers have no writes to finish. Traced workers get one
         # shared, bounded grace period to flush their child-specific token.

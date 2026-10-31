@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 
@@ -52,6 +53,8 @@ class PhysicalFields:
                 for ix in range(math.floor((x0-1e-6)/pitch),
                                 math.floor((x1+1e-6)/pitch)+1):
                     self._tiles.setdefault((ix, iz), []).append(entry)
+        self._tiles = MappingProxyType({
+            tile: tuple(entries) for tile, entries in self._tiles.items()})
 
     def _covering(self, x, z, tolerance=0.0):
         pitch = fieldmod.HEIGHTMAP_ZONE_M
@@ -283,7 +286,106 @@ class PhysicalFields:
             proof["minimum_handoff_distance_m"] = minimum_run
         return proof
 
+    def _route_catalog_binding(self, graph):
+        """Bind native routing inputs; compiler state is intentionally excluded."""
+        import types
+        import crossing_contract as contract
+        import crossing_sampling as sampling
+        import crossing_search as search
+        import crossing_bank_clearance as clearance
+        import ribbon
+        from crossing_route_catalog import native_frame_binding
+
+        if (type(self) is not PhysicalFields
+                or type(self._tiles) is not MappingProxyType
+                or type(graph.corr) is not route.Corridor):
+            return None
+        methods = ("generated", "vertex", "_covering", "contains", "sample_many",
+                   "routed_approach", "_bank_clearance_certificate",
+                   "_route_paths_uncached")
+        if any(getattr(getattr(self, name), "__func__", None)
+               is not getattr(PhysicalFields, name) for name in methods):
+            return None
+
+        def plain(value):
+            if type(value) in (type(None), bool, int, float, str, bytes):
+                return value
+            if isinstance(value, (types.CodeType, Path)):
+                return value
+            if type(value) in (tuple, list):
+                return tuple(plain(item) for item in value)
+            if type(value) is dict:
+                return tuple((plain(key), plain(item)) for key, item in value.items())
+            raise TypeError("noncanonical mutable policy")
+
+        def function_token(fn):
+            return (fn, fn.__code__, plain(fn.__defaults__),
+                    plain(fn.__kwdefaults__))
+
+        try:
+            token = [id(self._tiles), tuple(function_token(
+                getattr(PhysicalFields, name)) for name in methods)]
+            # Include helper code/defaults and the plain configuration it reads.
+            # Keeping this local also detects policy edits while a generator is
+            # suspended. No rendered height array is copied or hashed.
+            for module in (route, contract, sampling, search, clearance, fieldmod):
+                functions = tuple(function_token(value)
+                    for value in vars(module).values()
+                    if isinstance(value, types.FunctionType)
+                    and value.__module__ == module.__name__)
+                constants = tuple((name, plain(value))
+                    for name, value in vars(module).items()
+                    if name.isupper() and type(value) in
+                    (type(None), bool, int, float, str, bytes, tuple, list, dict))
+                token.append((module, functions, constants))
+            for cls in (fieldmod.Field, route.Corridor,
+                        search.ApproachTree, search.EdgeCosts):
+                token.append((cls, tuple(function_token(value)
+                    for name, value in vars(cls).items()
+                    if isinstance(value, types.FunctionType)
+                    and not (name == "__init__"
+                             and cls in (fieldmod.Field, route.Corridor)))))
+            token.extend((plain(WIDTH_M), BANK_LEVEL_M, STATION_M,
+                          SIMPLIFY_TOL_M, ribbon.BATTER_GRADE,
+                          ribbon.BATTER_MAX_M,
+                          tuple(function_token(getattr(route.ndimage, name))
+                                for name in ("label", "binary_dilation",
+                                             "distance_transform_edt"))))
+            return native_frame_binding((*self.fields, graph.corr.fld),
+                                        policy_token=tuple(token))
+        except (AttributeError, TypeError, ValueError):
+            return None
+
     def _route_paths(self, graph, bank, stats):
+        """Replay only exhausted immutable routing, never side compilation."""
+        import copy
+        from crossing_route_catalog import RouteCatalog
+        from crossing_search import empty_bank_key
+
+        binding = lambda: self._route_catalog_binding(graph)
+        if binding() is None:
+            catalog = self.__dict__.get("_route_catalog")
+            if catalog is not None:
+                catalog.clear()
+            yield from self._route_paths_uncached(graph, bank, stats)
+            return
+
+        def signature():
+            corr = copy.copy(graph.corr)
+            corr.forbid = ~graph.ok
+            corr.forbid_all_water = True
+            key = empty_bank_key(graph, corr, bank, BANK_LEVEL_M+STATION_M)
+            return None if key is None else (key, float(bank["level_y"]))
+
+        catalog = self.__dict__.get("_route_catalog")
+        if catalog is None:
+            catalog = self._route_catalog = RouteCatalog()
+        yield from catalog.routes(signature=signature(),
+            current_signature=signature, binding=binding,
+            producer=lambda local: self._route_paths_uncached(graph, bank, local),
+            stats=stats)
+
+    def _route_paths_uncached(self, graph, bank, stats):
         """Covered handoffs on the complete graph; one shared base search tree."""
         import copy
         import sys
@@ -341,7 +443,6 @@ class PhysicalFields:
             if now >= next_progress:
                 print(f"crossing bank {bank['xz']}: handoffs "
                       f"{stats['goals_considered']}/{len(goals)}, "
-                      f"legal plans {stats.get('legal_approach_plans',0)}, "
                       f"router refusals {stats.get('router_refused',0)}",
                       file=sys.stderr, flush=True)
                 next_progress = now+30.0
@@ -439,7 +540,8 @@ class PhysicalFields:
         stats = [{},{}]
         def bank_evidence():
             # Cache scheduling is execution telemetry, not geometric evidence.
-            execution = {"route_queries", "empty_bank_reuses", "goals_proven_unreachable"}
+            execution = {"route_queries", "empty_bank_reuses", "goals_proven_unreachable",
+                         "base_search_expansions", "route_catalog_reuses"}
             return [{k:v for k,v in row.items() if k not in execution} for row in stats]
         generators = [iter(self._side_options(crossing,bank,other,graph,datum,side,
             stats[side])) for side,(bank,other,graph) in enumerate((

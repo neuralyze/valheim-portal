@@ -1678,6 +1678,8 @@ def selftest_crossing_landing() -> int:
     rows += edge_cost_cases()
     from crossing_parallel_cases import parallel_cases
     rows += parallel_cases()
+    from crossing_route_catalog_cases import route_catalog_cases
+    rows += route_catalog_cases()
     from crossing_search_cases import (
         search_parity_cases, seating_dependency_cases, coastal_handoff_cases,
         coverage_exhaustion_cases)
