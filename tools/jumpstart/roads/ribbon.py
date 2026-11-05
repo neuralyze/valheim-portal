@@ -308,6 +308,24 @@ RIBBON_CLAIM_DEPENDS_ON = ("perpendicular_distance_to_a_terrain_run",
                            "what_the_polyline_does_past_that_run's_end")
 
 
+def _adjacent_ground_run(nodes, br, k: int, step: int) -> int | None:
+    """First usable run or bridge boundary past run `k`, else a true terminus.
+
+    Duplicate ground vertices do not create caps, but even a zero-length run
+    containing a bridge marker is a boundary and must never be skipped.
+    """
+    j = k + step
+    while 0 <= j < len(nodes) - 1:
+        if br[j] or br[j + 1]:
+            return j
+        dx = float(nodes[j + 1][0]) - float(nodes[j][0])
+        dz = float(nodes[j + 1][1]) - float(nodes[j][1])
+        if dx * dx + dz * dz > 1e-12:
+            return j
+        j += step
+    return None
+
+
 def clamp_ends(nodes, br, k: int) -> tuple[bool, bool]:
     """May terrain run `k`'s projection be CLAMPED at its low and high ends?
 
@@ -338,9 +356,41 @@ def clamp_ends(nodes, br, k: int) -> tuple[bool, bool]:
     cuts the fan to the half-disc BEHIND the abutment and leaves the abutment
     itself fully graded.
     """
-    lo = not (k >= 1 and bool(br[k - 1]))
-    hi = not (k + 2 < len(nodes) and bool(br[k + 2]))
+    previous = _adjacent_ground_run(nodes, br, k, -1)
+    following = _adjacent_ground_run(nodes, br, k, 1)
+    lo = previous is None or not (br[previous] or br[previous + 1])
+    hi = following is None or not (br[following] or br[following + 1])
     return lo, hi
+
+
+def _projection_eligible(nodes, br, k: int, x, z, tt):
+    """Scalar/mask eligibility before clamping, or None if unrestricted.
+
+    An internal cap owns only the adjacent runs' Voronoi wedge: behind this
+    run's low end but past the previous run, or past this run's high end but
+    before the next run. Interior feet and the wedge boundaries are inclusive.
+    True termini keep full caps; bridge boundaries defer to `clamp_ends`, so
+    replacing that policy still exercises the shipped projection arithmetic.
+    """
+    lo_ok, hi_ok = clamp_ends(nodes, br, k)
+    ok = None
+    for step, permitted, endpoint in ((-1, lo_ok, k), (1, hi_ok, k + 1)):
+        interior = None
+        if not permitted:
+            interior = tt >= 0.0 if step < 0 else tt <= 1.0
+        else:
+            adjacent = _adjacent_ground_run(nodes, br, k, step)
+            if (adjacent is not None
+                    and not (br[adjacent] or br[adjacent + 1])):
+                dx = float(nodes[adjacent + 1][0]) - float(nodes[adjacent][0])
+                dz = float(nodes[adjacent + 1][1]) - float(nodes[adjacent][1])
+                dot = ((x - float(nodes[endpoint][0])) * dx
+                       + (z - float(nodes[endpoint][1])) * dz)
+                interior = ((tt >= 0.0) | (dot >= 0.0) if step < 0
+                            else (tt <= 1.0) | (dot <= 0.0))
+        if interior is not None:
+            ok = interior if ok is None else (ok & interior)
+    return ok
 
 
 def lateral_and_y(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
@@ -352,7 +402,8 @@ def lateral_and_y(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
     Crossings' -- which is also how the ribbon avoids paving the riverbed, but
     ONLY TOGETHER WITH `clamp_ends`: see RIBBON_CLAIM_DEPENDS_ON.
 
-    THE PROJECTION PARAMETER IS CLAMPED, NOT REJECTED, and that is a DEFECT FIX
+    THE PROJECTION PARAMETER IS CLAMPED IN THE VERTEX'S VORONOI WEDGE,
+    rather than rejected everywhere outside the run, and that is a DEFECT FIX
     rather than a refinement.  MEASURED on T3-temple-meadhall: rejecting `tt`
     outside [0, 1] leaves the WEDGE on the outside of every polyline vertex
     claimed by NO segment, so 61 of 1,795 centreline stations -- 22 separate
@@ -363,16 +414,16 @@ def lateral_and_y(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
     that DID accept the projection then answered with a far branch of the same
     road: the sample at (-31, -34) came back as 58.69 m from the centreline
     while standing 1 m from it, so the check reported a lateral distance for a
-    place the road does not go.  Clamping makes the measure the true distance
-    to the POLYLINE, and at a vertex both adjacent segments agree on the same
-    clamped point and the same profile height, so the surface stays continuous.
-    The end behaviour is unchanged: clamping caps a ribbon end at the distance
-    to its last station, which is exactly what the old fallback below computed.
+    place the road does not go. Clamping within the adjacent-run wedge makes
+    the measure the true distance to the POLYLINE: both adjacent segments agree
+    on the vertex and its profile there, while an earlier collinear station
+    cannot extend a cap past a later bank. True termini retain their full caps.
 
     WHERE THE RUN ENDS AT A BANK THE CLAMP IS WITHHELD, because there the
     half-plane past the end is the DECK's ground and not this ribbon's.
     """
     best = None
+    has_ground_run = False
     for k in range(len(nodes) - 1):
         if br[k] or br[k + 1]:
             continue
@@ -382,23 +433,19 @@ def lateral_and_y(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
         L2 = dx * dx + dz * dz
         if L2 <= 1e-12:
             continue
+        has_ground_run = True
         tt = ((x - ax) * dx + (z - az) * dz) / L2
-        lo_ok, hi_ok = clamp_ends(nodes, br, k)
-        if tt < 0.0:
-            if not lo_ok:
-                continue
-            tt = 0.0
-        elif tt > 1.0:
-            if not hi_ok:
-                continue
-            tt = 1.0
+        ok = _projection_eligible(nodes, br, k, x, z, tt)
+        if ok is not None and not ok:
+            continue
+        tt = max(0.0, min(1.0, tt))
         px, pz = ax + dx * tt, az + dz * tt
         d = math.hypot(x - px, z - pz)
         if best is None or d < best[0]:
             best = (d, prof[k] + (prof[k + 1] - prof[k]) * tt)
-    if best is None:
-        # Every segment is bridged (or there are none): the terrain part of the
-        # ribbon is the bank only, measured to the nearest terrain station.
+    if best is None and not has_ground_run:
+        # No nondegenerate ground run: measure the bank-only geometry to its
+        # nearest terrain station, never resurrect an excluded real-road foot.
         idx = [k for k in range(len(nodes)) if not br[k]]
         if not idx:
             return None
@@ -550,17 +597,8 @@ def lateral_and_y_grid(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
             continue
         seglen = math.sqrt(L2)
         tt = ((X - ax) * dx + (Z - az) * dz) / L2
-        # THE SAME CONDITIONAL CLAMP THE SCALAR FORM USES, and it has to be
-        # the same or the two answers diverge at exactly the banks this
-        # exists for.  A withheld end does not clamp and does not claim:
-        # `ok` drops the half-plane past it instead.
-        lo_ok, hi_ok = clamp_ends(nodes, br, k)
-        ok = None
-        if not lo_ok:
-            ok = tt >= 0.0
-        if not hi_ok:
-            hiok = tt <= 1.0
-            ok = hiok if ok is None else (ok & hiok)
+        # One footprint rule for scalar, winner and second-claimant feet.
+        ok = _projection_eligible(nodes, br, k, X, Z, tt)
         np.clip(tt, 0.0, 1.0, out=tt)
         px, pz = ax + dx * tt, az + dz * tt
         d = np.hypot(X - px, Z - pz)
@@ -651,13 +689,7 @@ def lateral_and_y_grid(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
             if L2 <= 1e-12:
                 continue
             tt = ((X - ax) * dx + (Z - az) * dz) / L2
-            lo_ok, hi_ok = clamp_ends(nodes, br, k)
-            ok = None
-            if not lo_ok:
-                ok = tt >= 0.0
-            if not hi_ok:
-                hiok = tt <= 1.0
-                ok = hiok if ok is None else (ok & hiok)
+            ok = _projection_eligible(nodes, br, k, X, Z, tt)
             np.clip(tt, 0.0, 1.0, out=tt)
             px, pz = ax + dx * tt, az + dz * tt
             d = np.hypot(X - px, Z - pz)
@@ -8982,15 +9014,10 @@ def foot_station(nodes, prof, br, arc, x: float, z: float
         if l2 <= 1e-12:
             continue
         tt = ((x - ax) * dx + (z - az) * dz) / l2
-        lo_ok, hi_ok = clamp_ends(nodes, br, k)
-        if tt < 0.0:
-            if not lo_ok:
-                continue
-            tt = 0.0
-        elif tt > 1.0:
-            if not hi_ok:
-                continue
-            tt = 1.0
+        ok = _projection_eligible(nodes, br, k, x, z, tt)
+        if ok is not None and not ok:
+            continue
+        tt = max(0.0, min(1.0, tt))
         d = math.hypot(x - (ax + dx * tt), z - (az + dz * tt))
         if best is None or d < best[0]:
             best = (d, float(prof[k]) + (float(prof[k + 1]) - float(prof[k]))

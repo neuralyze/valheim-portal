@@ -62,6 +62,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Constant native road profiles skip the provably empty second-claimant raster
   pass. Nearest-foot/tie/station outputs and all fill-floor results are retained;
   nonconstant or unsupported numeric inputs keep the original evaluation.
+- Redundant road stations cannot extend internal endpoint caps past a bridge
+  bank. Scalar projection, both raster claimant passes and station lookup
+  share the same corner-wedge ownership; duplicate ground vertices cannot
+  hide a bridge boundary. True land termini and genuine other branches keep
+  their claims. Native terrain replay confirms the reproduced submerged
+  vertex stays underwater; independent rim failures remain refused.
 - Town searches expand through measured, rooted land beyond clipped role
   surveys. Their native routing views survive adoption, both-end road-domain
   selection, corridor caching and north joint-water rereads without stitching
