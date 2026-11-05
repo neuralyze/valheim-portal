@@ -134,6 +134,12 @@ instead of rebuilding alternating masks for every destination. Masks are applied
 separately from geometric costs; owner, policy, start and complete mask equality
 govern reuse. Unsupported inputs and eviction recompute normally, never refuse.
 
+Geometry-only road lattices use a constant profile. On fully claimed native
+grids that profile cannot give a farther claimant positive height exceedance,
+so the second-claimant pass is skipped. Nearest feet, stations, strict ties and
+all nine output arrays retain their meaning; nonconstant branch reconciliation
+and unsupported numeric inputs use the unchanged calculation.
+
 A separate continuous bank-clearance proof can rule out every inland handoff
 when no orientation fits the mandatory dry road footprint at that bank.
 It uses outward interval bounds over the rendered bilinear terrain, not sampled

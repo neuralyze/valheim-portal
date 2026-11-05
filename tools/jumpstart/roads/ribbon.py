@@ -620,7 +620,23 @@ def lateral_and_y_grid(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
     inband = np.isfinite(lat)
     floor = np.full(X.shape, -np.inf, dtype=np.float64)
     edge = (3.0 + SHOULDER_M) if edge_m is None else float(edge_m)
-    if inband.any():
+    # A finite constant profile gives every claimed foot the SAME height.
+    # A farther claimant then has exceedance -grade*(d-lat) <= 0: neither
+    # runner-up nor fill floor can change. The route lattice uses zeros.
+    # Restrict the shortcut to ordinary numeric inputs and fully claimed grids;
+    # unusual grades/unclaimed arithmetic retain the original evaluation.
+    constant_profile = (
+        type(prof) is np.ndarray and prof.dtype == np.dtype(np.float64)
+        and type(nodes) is np.ndarray and nodes.dtype == np.dtype(np.float64)
+        and type(br) is np.ndarray and br.dtype == np.dtype(np.bool_)
+        and type(X) is np.ndarray and X.dtype == np.dtype(np.float64)
+        and type(Z) is np.ndarray and Z.dtype == np.dtype(np.float64)
+        and prof.ndim == 1 and len(prof) == len(nodes) and len(prof) > 0
+        and np.isfinite(prof[0]) and np.all(prof == prof[0])
+        and type(absorb_grade) is float and 0.0 < absorb_grade <= 1.0
+        and type(reach_m) is float and math.isfinite(reach_m)
+        and inband.all())
+    if inband.any() and not constant_profile:
         exc = np.zeros(X.shape, dtype=np.float64)
         for k in range(len(nodes) - 1):
             if br[k] or br[k + 1]:
@@ -11804,6 +11820,10 @@ def main() -> int:
         selftest_arrival_claims()
         selftest_rim_bank_end()
         selftest_ribbon_beside_itself()
+        from ribbon_constant_cases import constant_profile_cases
+        for row in constant_profile_cases(lateral_and_y_grid):
+            print(row)
+            assert row["matches_expected"], row
         selftest_road_unit_key()
         selftest_fully_bridged()
         # THE CROSSING PREMISE, WHICH THIS FILE NOW REFUSES ON, PROVES
