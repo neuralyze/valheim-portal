@@ -820,46 +820,88 @@ PROBE_ROLE = "site_prop"
 # passes
 # ---------------------------------------------------------------------------
 
-def hull_footprint(surf, bearing, bx, bz, vessel):
-    """The existing measured hull mask, shared with saved-world route probes."""
-    v = VESSELS[vessel]
+def measured_hulls(surf):
+    """One corpus snapshot per operation-owned Surface (including duck surfaces).
+
+    Repeated berth scans reuse these immutable harbours.Hull models. A new
+    Surface reads the current corpus/override; no process-global cache survives
+    an operation or needs an invalidation policy.
+    """
+    hulls = getattr(surf, "_measured_hulls", None)
+    if hulls is None:
+        from accept.sections import harbours
+        hulls = harbours.hull_table()
+        surf._measured_hulls = hulls
+    return hulls
+
+
+def hull_footprint(surf, bearing, bx, bz, vessel, *, hulls=None):
+    """Measured root-relative convex hull mask, or None for incomplete coverage.
+
+    harbours owns the collider projection and separating axes. Use its exact
+    yaw transform and edge tolerance, vectorised on the field's integer lattice;
+    neither dimensions nor the prefab pivot substitute for measured geometry.
+    """
+    model = (measured_hulls(surf) if hulls is None else hulls).get(vessel)
+    if (model is None or len(model.profile) < 3 or not model.separating_axes
+            or not all(math.isfinite(v) for p in model.profile for v in p)):
+        raise ValueError(f"{vessel}: no measured full-hull footprint")
     ux, uz = A._unit(bearing)
-    lx, lz = uz, -ux
-    fld = surf.patch_for(bx, bz, margin=v["hull_l"])
-    hl, hw = v["hull_l"] / 2.0, v["hull_w"] / 2.0
-    ci, cj = fld.index(bx, bz)
-    r = int(math.ceil(max(hl, hw) / fld.step)) + 1
-    ii, jj = np.mgrid[max(0, ci - r):min(fld.n, ci + r + 1),
-                      max(0, cj - r):min(fld.n, cj + r + 1)]
-    dx = fld.world_x(jj) - bx
-    dz = fld.world_z(ii) - bz
-    hull = ((dx * ux + dz * uz) / hl) ** 2 + ((dx * lx + dz * lz) / hw) ** 2 <= 1.0
+    corners = [(bx + x * uz + z * ux, bz - x * ux + z * uz)
+               for x, z in model.profile]
+    # Open sea is defined at the selected patch boundary: shrinking the legacy
+    # search window can turn a landlocked pool into a false escape route.
+    margin = max(VESSELS[vessel]["hull_l"], model.radius_m + 1.0)
+    fld = surf.patch_for(bx, bz, margin=margin)
+    if (abs(fld.step - 1.0) > 1e-9
+            or abs(fld.x0 - round(fld.x0)) > 1e-6
+            or abs(fld.z0 - round(fld.z0)) > 1e-6):
+        return None
+    j0 = math.floor((min(x for x, _ in corners) - fld.x0) / fld.step)
+    j1 = math.ceil((max(x for x, _ in corners) - fld.x0) / fld.step)
+    i0 = math.floor((min(z for _, z in corners) - fld.z0) / fld.step)
+    i1 = math.ceil((max(z for _, z in corners) - fld.z0) / fld.step)
+    # Never clip an off-centre bow/corner to the available patch. In particular,
+    # duck patch_for adapters are not evidence that their returned field covers it.
+    if min(i0, j0) < 0 or max(i1, j1) >= fld.n:
+        return None
+    ii, jj = np.mgrid[i0:i1 + 1, j0:j1 + 1]
+    dx, dz = fld.world_x(jj) - bx, fld.world_z(ii) - bz
+    local_x, local_z = dx * uz - dz * ux, dx * ux + dz * uz
+    roundoff = 32.0 * math.ulp(max(1.0, model.radius_m, abs(bx), abs(bz)))
+    hull = np.ones(ii.shape, dtype=bool)
+    for nx, nz, lo, hi, norm in model.separating_axes:
+        projection = local_x * nx + local_z * nz
+        tolerance = roundoff * math.sqrt(norm)
+        hull &= (projection >= lo - tolerance) & (projection <= hi + tolerance)
     return fld, ii, jj, hull
 
 
 def hull_depths(surf: Surface, bearing: float, bx: float, bz: float,
-                vessel: str, *, open_sea=None):
-    """`(min, max, connected, samples)` water depth under a hull centred here.
+                vessel: str, *, open_sea=None, hulls=None):
+    """`(min, max, connected, samples, field)` under the measured full hull.
 
-    The footprint is an ELLIPSE of the vessel's solid-collider half-extents
-    rotated onto the pier bearing, not a disc and not a point: a point check
-    passes on a 3 m pothole inside a 2 m shoal and a 21 m hull does not fit in a
-    pothole.  The binding number is the SHALLOWEST sample, because that is what
-    the keel touches.
+    All solid-collider corners and root-relative offsets belong to the shared
+    conservative convex envelope at the vessel's own yaw. The SHALLOWEST sample
+    binds: a deep centre point cannot float a bow resting on a shoal. Missing
+    field coverage returns None, never a reading of a clipped footprint.
     """
     v = VESSELS[vessel]
     need = v["draught_m"] + KEEL_CLEARANCE_M
-    fld, ii, jj, hull = hull_footprint(surf, bearing, bx, bz, vessel)
+    footprint = hull_footprint(surf, bearing, bx, bz, vessel, hulls=hulls)
+    if footprint is None:
+        return None
+    fld, ii, jj, hull = footprint
     if not hull.any():
         return None
     depth = W.WATER_LEVEL - fld.heights[ii, jj]
+    if not np.isfinite(depth[hull]).all():
+        return None
     if open_sea is None:
         _deep, open_sea = sea_mask(fld, need)
-    # `open_sea[ii, jj][hull]`, NOT `(hull & open_sea).all()`: the second form
-    # is False wherever the hull mask is False, i.e. everywhere outside the
-    # ellipse, so it answers "is the whole neighbourhood navigable" and reported
-    # a 4.669 m berth as unusable. MEASURED: it rejected every vessel at every
-    # site, including a 6.1 m one.
+    if np.shape(open_sea) != np.shape(fld.heights):
+        raise ValueError(f"{vessel}: open-sea mask does not cover the hull field")
+    # Only hull samples must connect; dry neighbourhood outside it is irrelevant.
     return (float(depth[hull].min()), float(depth[hull].max()),
             bool(open_sea[ii, jj][hull].all()), int(hull.sum()), fld)
 
@@ -1012,7 +1054,7 @@ def berth_spot(surf: Surface, site: str, vessel: str) -> dict:
     out["why"] = ("MEASURED: seeded on the planned berth or the deepest-water "
                   "planned deck tile, then swept along and across the pier. Each "
                   "candidate is scored on the SHALLOWEST sample inside the "
-                  "hull's own elliptical footprint, with EVERY hull sample "
+                  "hull's measured convex footprint, with EVERY hull sample "
                   "required to lie in water that is flood-fill connected to the "
                   "open sea, and the shallowest sample required to beat the "
                   f"requirement by {BERTH_MARGIN_FLOOR_M} m so the verdict is "
@@ -1051,7 +1093,7 @@ def pick_vessel(surf: Surface, site: str) -> dict:
                           floats_but_inside_instrument_noise=spot["floats"]))
     return dict(site=site, chosen=chosen, rejected=tried,
                 margin_floor_m=BERTH_MARGIN_FLOOR_M,
-                rule=("largest by draught whose own elliptical hull footprint "
+                rule=("largest by draught whose measured full-hull footprint "
                       "proves it floats by at least the margin floor, and that "
                       "fits the slip's inner width less 1 m of fender and its "
                       "length. A large boathouse berthing a rowboat is the same "
@@ -1380,7 +1422,7 @@ def cmd_ferry(args) -> int:
     `complete` builds a terminal that was never built.  This is the other half:
     a terminal that exists and is WRONG.  At `ferry-terminal-eastisle` the
     Longship its own sign promises has -0.465 m of water under the shallowest
-    sample of its 9.16 x 21.57 m hull ellipse -- seabed ABOVE the water plane,
+    sample of its 9.16 x 21.57 m hull footprint -- seabed ABOVE the water plane,
     i.e. aground -- because the berth was sized from a single point sample that
     read 4.21 m.  That is the same point-versus-footprint error that would have
     oversized every slip on this world by 60%, and it is not repaired by
@@ -1438,8 +1480,8 @@ def cmd_ferry(args) -> int:
     grounding: list[dict] = []
     # --- the boat -----------------------------------------------------------
     for pf, listing in boats.items():
-        # POSITION *AND* ROTATION, both off the ZDO. The hull footprint is an
-        # ellipse and a 21.57 m hull turned 39 degrees covers different seabed:
+        # POSITION *AND* ROTATION, both off the ZDO. The measured root-relative
+        # hull turned 39 degrees covers different seabed:
         # measuring this ship against the PIER's bearing instead of its own
         # would be the same class of error as measuring it at a point.
         found = [re.search(r"Position:\s*\((-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\)"
@@ -1481,7 +1523,7 @@ def cmd_ferry(args) -> int:
                                 f"{pf} at ({bx:.2f}, {by:.2f}, {bz:.2f}) yaw "
                                 f"{byaw:.2f} is AGROUND. MEASURED shallowest "
                                 f"sample inside its own {VESSELS[pf]['hull_w']} "
-                                f"x {VESSELS[pf]['hull_l']} m hull ellipse at "
+                                f"x {VESSELS[pf]['hull_l']} m measured hull at "
                                 f"that live pose: "
                                 f"{rep['min_depth_under_hull_m']:+.3f} m of "
                                 f"water, against "
@@ -1573,7 +1615,7 @@ def cmd_ferry(args) -> int:
                role=SITE_ROLE[site], site_id=site)
         b.observe(f"ferry_pair::{site}",
                   "MEASURED: both ends of the route in one pass, each vessel "
-                  "chosen by the shallowest sample inside its own elliptical "
+                  "chosen by the shallowest sample inside its own measured "
                   "hull footprint with every sample required to be flood-fill "
                   "connected to open sea and to clear the requirement by the "
                   "margin floor; plus the live census of what stands at this "
@@ -1592,7 +1634,7 @@ def cmd_ferry(args) -> int:
                       "ZDO position AND its own live ZDO rotation, on the "
                       "lattice-aligned 1 m ferry PatchScan patch: the "
                       "shallowest generated-height sample inside the hull's "
-                      "elliptical solid-collider footprint, against "
+                      "measured convex solid-collider footprint, against "
                       "Ship.m_waterLevelOffset plus the project's 1.0 m keel "
                       "clearance. The record that placed this vessel measured "
                       "ONE POINT at the spawn position and read 4.21 m; the "
@@ -2248,7 +2290,7 @@ def cmd_fabric(args) -> int:
                f"so there are 60 cm of headroom beside open water here and a cut "
                f"is the early-dock defect.", role=SITE_ROLE[site], site_id=site)
         b.observe(f"berth::{site}",
-                  "MEASURED: shallowest sample inside the hull's elliptical solid-"
+                  "MEASURED: shallowest sample inside the hull's convex solid-"
                   "collider footprint, every hull sample required to be in water "
                   "flood-fill connected to the open sea",
                   "tools/jumpstart/settlements/waterfront.py::berth_spot",
@@ -3780,7 +3822,7 @@ def dock_confirm(srv, spec: dict) -> dict:
                 "intact. The vessel counted in its 12 m berth disc; the depth "
                 "recomputed as c_WaterLevel minus the APPLIED surface off the "
                 "1 m PatchScan `north` patch, at the pier head taken from the "
-                "pier's own plan and under the hull's elliptical collider "
+                "pier's own plan and under the hull's measured convex collider "
                 "footprint; and the portal tag read back off BOTH ZDOs with "
                 "`findObjects -detailed`, because the record that wrote a tag "
                 "is not evidence the tag is on the ZDO."),

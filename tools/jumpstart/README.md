@@ -307,6 +307,11 @@ colliders in the prefab-root frame, preserving off-centre bows and corners.
 An ellipse fitted inside the hull dimensions is not a full-hull clearance
 proof. Static berth samples and continuous sweeps share the measured envelope;
 missing geometry refuses rather than reducing it to the ship's pivot.
+Waterfront berth selection and live probe requests use every integer vertex of
+the same envelope, not an independent ellipse. Native repeated scans retain one
+measured geometry table per owning surface/operation. Field selection preserves
+the previous open-sea connectivity margin and expands it when the measured
+root-relative radius needs more coverage; partial or unaligned fields refuse.
 Saved-solid heights bound overhead collision checks, and the observed keel can
 increase required depth. A water-relative air-draft estimate cannot hide a mast
 or certify a ship whose actual bottom penetrates the bed.

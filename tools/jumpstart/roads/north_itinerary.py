@@ -965,7 +965,9 @@ def planned_surface(fields, segments, net):
             return y, generated, y-generated
 
         def hull_depths(self, bearing, x, z, vessel):
-            f = self.patch_for(x, z, margin=NT.WF.VESSELS[vessel]["hull_l"])
+            hulls = NT.WF.measured_hulls(self)
+            margin = max(NT.WF.VESSELS[vessel]["hull_l"], hulls[vessel].radius_m + 1.0)
+            f = self.patch_for(x, z, margin=margin)
             if f.id not in self._patches:
                 heights = f.heights.copy()
                 for comps in compiled:
@@ -996,7 +998,8 @@ def planned_surface(fields, segments, net):
                 self._masks[key] = NT.WF.sea_mask(
                     patch, NT.WF.VESSELS[vessel]["draught_m"] + NT.WF.KEEL_CLEARANCE_M)[1]
             return NT.WF.hull_depths(SimpleNamespace(patch_for=lambda *a, **kw: patch),
-                                    bearing, x, z, vessel, open_sea=self._masks[key])
+                                    bearing, x, z, vessel, open_sea=self._masks[key],
+                                    hulls=hulls)
     return Planned(), scoped
 
 

@@ -1286,7 +1286,7 @@ def quay(pl: Plan, s, *, z0: float, z1: float, side: str, x_centre: float,
 # ON THE RIM at y 32.825 and 33.902, because a 9.16 x 21.57 m hull does not fit
 # in a 13 m hole and its bow and stern rest on the uncut ground outside.  So
 # every berth here is verified with `waterfront.hull_depths` under the hull's
-# OWN ellipse at its OWN yaw, re-run against the POST-DREDGE surface.
+# OWN measured convex footprint at its OWN yaw, re-run against the POST-DREDGE surface.
 
 # The U, solved rather than hand-picked.  2,688 candidate (west face, east
 # face, south face) triples were swept over x_w 1032..1060, x_e 1096..1120,
@@ -1509,7 +1509,7 @@ class DredgedSurface(WF.Surface):
     It is a real `waterfront.Surface` with one in-memory patch whose heights
     are the applied heights PLUS this dredge, so `hull_depths` and `sea_mask`
     -- the project's own instruments, unmodified -- measure the dredged bed.
-    Reimplementing the ellipse or the flood fill here would answer a different
+    Reimplementing the hull projection or flood fill here would answer a different
     question with the same words.
 
     THE DOCSTRING ABOVE WAS TRUE AND THE CODE WAS NOT.  `__init__` loaded
@@ -1766,13 +1766,13 @@ U_BERTHS = [
 
 
 def u_berth_table(ds: "DredgedSurface") -> list[dict]:
-    """Every berth against every hull, under the hull's OWN ellipse at its OWN
+    """Every berth against every hull, under its measured convex footprint at its OWN
     yaw, on the DREDGED bed, flood-filled to open sea at that hull's own
     required depth.
 
     A point reading is not reported at all here, deliberately.  A 4.21 m point
     reading is what put a Longship aground at `ferry-terminal-eastisle` with
-    -0.465 m under its bow for 48 h 47 m, and printing one next to the ellipse
+    -0.465 m under its bow for 48 h 47 m, and printing one next to the full-hull
     result invites somebody to quote the wrong column.
     """
     out = []
@@ -2507,7 +2507,7 @@ def design_b(s) -> dict:
 def berth_table(s, spots: list[tuple[float, float, str]]) -> list[dict]:
     """Per berth, the water depth against THAT hull's own measured draught.
 
-    The depth is the minimum over the hull's own elliptical footprint, flood-fill
+    The depth is the minimum over the hull's measured convex footprint, flood-fill
     connected to open sea -- not a centre point and not a bounding box.  A
     centre-point reading is what declared a berth afloat in 4.21 m of water
     while part of the same 9.16 x 21.57 m hull stood on a bank 0.465 m ABOVE
@@ -2524,7 +2524,7 @@ def berth_table(s, spots: list[tuple[float, float, str]]) -> list[dict]:
         for vessel in sorted(WF.VESSELS):
             g = WF.VESSELS[vessel]
             # (min_depth, max_depth, connected, samples, field) over the
-            # hull's own ELLIPTICAL footprint rotated onto the berth bearing.
+            # hull's measured root-relative convex footprint at the berth bearing.
             hull = WF.hull_depths(s, bearing, x, z, vessel)
             b = WF.berth(s, x, z, vessel, radius_m=10.0)
             need = g["draught_m"] + WF.KEEL_CLEARANCE_M
@@ -2579,7 +2579,7 @@ def solve_berths(s, *, x_range: tuple[float, float],
     The first pass hand-picked three berths at B and two of them were aground:
     (1185,458) read 1.96 m at its centre point and every hull class failed
     under its footprint, and (1196,470) read 3.657 m at the point while a
-    VikingShip's own ellipse touched 1.30 m short.  That is the same defect
+    VikingShip's own footprint touched 1.30 m short. That is the same defect
     FerryPair measured on the existing ferry, whose VikingShip sits on a bank
     0.465 m ABOVE the water plane from a record that read 4.21 m at a point.
     So a berth is only a berth if the SHALLOWEST sample under that specific
@@ -3558,7 +3558,7 @@ def u_summary(d: dict) -> str:
                  f"ground at {l['landing_h']:.3f}, step "
                  f"{l['step_from_deck_m']:+.3f} m off the 30.6 deck")
     L.append("")
-    L.append("  BERTHS, shallowest sample under each hull's OWN ellipse at its OWN yaw")
+    L.append("  BERTHS, shallowest sample under each measured full hull at its OWN yaw")
     for b in d["berths"]:
         L.append(f"    {b['id']} {b['face']:<5} ({b['x']:.1f},{b['z']:.1f}) "
                  f"yaw {b['yaw']:.0f}  largest berthable: {b['largest_berthable']}")
@@ -3975,36 +3975,16 @@ def _strip_op(op: dict) -> dict:
 VERIFY_DIR = Path("/tmp/hc/verify")
 
 
-def hull_ellipse_points(bx: float, bz: float, yaw: float, vessel: str,
-                        step: float = 1.0) -> list[tuple[float, float]]:
-    """The integer lattice samples inside a hull's own ellipse at its own yaw.
-
-    The SAME ellipse `waterfront.hull_depths` uses -- half-extents of the solid
-    collider AABB rotated onto the vessel's yaw -- so the live reading and the
-    design reading are measurements of the same footprint and can be compared.
-    """
-    v = WF.VESSELS[vessel]
-    ux, uz = A._unit(yaw)
-    lx, lz = uz, -ux
-    hl, hw = v["hull_l"] / 2.0, v["hull_w"] / 2.0
-    r = int(math.ceil(max(hl, hw))) + 1
-    out = []
-    for dx in np.arange(-r, r + 1, step):
-        for dz in np.arange(-r, r + 1, step):
-            a = (dx * ux + dz * uz) / hl
-            b = (dx * lx + dz * lz) / hw
-            if a * a + b * b <= 1.0:
-                out.append((round(bx + dx, 3), round(bz + dz, 3)))
-    return out
-
-
 def verify_points(d: dict) -> tuple[Path, list[dict]]:
     """Every point the terrain half has to read, with what it is for.
 
-    Written to a FILE rather than an env var: four hull ellipses are ~640
-    samples and the basin grid another ~1,000, and the design also wants the
-    bed under every one of its 1,011 pieces.
+    Written to a FILE rather than an env var: full measured hull footprints,
+    the basin grid, and the bed under every piece exceed a bounded env payload.
     """
+    from accept.sections import harbours as H
+    # The live request and design depth checks use the same measured authority.
+    # One table belongs to this whole request, not to each vertex or berth.
+    hulls = H.hull_table()
     rows = []
     xw, xe = U["x_west_face"], U["x_east_face"]
     zs, zn = U["z_south_face"], U["z_north_end"]
@@ -4017,10 +3997,16 @@ def verify_points(d: dict) -> tuple[Path, list[dict]]:
     for z in np.arange(746.0, 778.1, 2.0):
         rows.append(dict(label=f"approach|{z:g}", x=1066.5, z=float(z),
                          kind="approach"))
-    # every berth, every large ADMITTED hull, under its own ellipse
+    # every berth, every large ADMITTED hull, at its measured root pose and yaw
     for b in U_BERTHS:
         for v in ("CargoShip", "WarShip", "VikingShip", "MercantShip"):
-            for (px, pz) in hull_ellipse_points(b["x"], b["z"], b["yaw"], v):
+            hull = hulls.get(v)
+            if hull is None or len(hull.profile) < 3 or not hull.separating_axes:
+                raise ValueError(f"{v}: no measured full-hull footprint")
+            points = H.footprint(hull, b["x"], b["z"], b["yaw"])
+            if not points:
+                raise ValueError(f"{v}: no measured full-hull lattice samples")
+            for px, pz in points:
                 rows.append(dict(label=f"hull|{b['id']}|{v}|{px:g}|{pz:g}",
                                  x=px, z=pz, kind="hull", berth=b["id"],
                                  vessel=v))
@@ -4292,7 +4278,7 @@ def cmd_uverify(args) -> int:
                 n=len(surf), min=round(min(surf.values()), 4),
                 max=round(max(surf.values()), 4),
                 any_missing=sum(1 for v in surf.values() if v < 0.0))
-            # per-berth, per-hull, shallowest sample under the hull's OWN ellipse
+            # per-berth, per-hull, shallowest sample under the measured full hull
             per = {}
             for k, v in bed.items():
                 if not k.startswith("hull|"):

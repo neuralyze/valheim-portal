@@ -189,6 +189,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clearance requirements; a real Odin mast above the former estimated ceiling
   no longer clears an obstacle. Voyage broad-phase queries use the measured
   root-relative hull radius as well.
+  Waterfront berth searches, native planning adapters and live probe requests
+  now use that same full integer footprint too. Geometry belongs to the owning
+  operation/surface; missing or partial coverage refuses, and measured radius
+  expansion never shrinks the previous open-sea connectivity margin.
 
 - The northern departure requires a measured large OdinShip vessel, never a
   vanilla longship substitute. Terminal planning tries eligible hulls against

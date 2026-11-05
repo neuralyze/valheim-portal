@@ -232,13 +232,16 @@ class Surface(WF.Surface):
 
     def hull_depths(self, bearing, x, z, vessel):
         from types import SimpleNamespace
-        patch = self.applied_patch_for(x, z, margin=WF.VESSELS[vessel]["hull_l"])
+        hulls = WF.measured_hulls(self)
+        margin = max(WF.VESSELS[vessel]["hull_l"], hulls[vessel].radius_m + 1.0)
+        patch = self.applied_patch_for(x, z, margin=margin)
         key = (patch.id, vessel)
         if key not in self._hull_masks:
             self._hull_masks[key] = WF.sea_mask(
                 patch, WF.VESSELS[vessel]["draught_m"] + WF.KEEL_CLEARANCE_M)[1]
         return WF.hull_depths(SimpleNamespace(patch_for=lambda *a, **k: patch),
-                              bearing, x, z, vessel, open_sea=self._hull_masks[key])
+                              bearing, x, z, vessel, open_sea=self._hull_masks[key],
+                              hulls=hulls)
 
 
 def _piece_rows(commands):
@@ -480,7 +483,7 @@ def measure_passage(pair, terminals, fields, *, surface=None):
             raise SystemExit(f"{pair['id']}: blocked full-hull passage at {xz}, heading {yaw:.2f}; min depth {measured}, connected={connected}, needs {WF.VESSELS[vessel]['draught_m'] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M:.3f}m")
         minimum = min(minimum, depths[0])
     spec = WF.VESSELS[vessel]
-    hull = H.hull_table()[vessel]
+    hull = WF.measured_hulls(surface)[vessel]
     if not hull.profile:
         raise SystemExit(f"{pair['id']}: measured full-hull geometry is absent for {vessel}")
     vertices = H.swept_footprint(hull, poses)
@@ -683,7 +686,7 @@ def _departure_preflight_regression(doc):
     import numpy as np
     from types import SimpleNamespace
     heights = np.full((513, 513), W.WATER_LEVEL-2.4, np.float32)
-    field = W.Field("departure-preflight", 0.0, 0.0, 256.0, 1.0, 513,
+    field = W.Field("departure-preflight", 0.0, 0.0, 256.5, 1.0, 513,
                     heights, np.ones_like(heights, dtype=np.uint8))
     root = doc["terminals"][doc["final_departure"]]["xz"]
     heights[field.index(*root)] = A.DECK_Y
@@ -701,6 +704,9 @@ def _departure_preflight_regression(doc):
                                   open_sea=self.masks[vessel])
     surface = RasterSurface()
     small = surface.hull_depths(0, root[0]+15, root[1]+20, "DoubleRowingCanoe")
+    large = {vessel: surface.hull_depths(
+        0, root[0]+15, root[1]+20, vessel)
+        for vessel in vessel_candidates(True)}
     try:
         plan_terminal(doc, doc["final_departure"], fields, surface=surface)
         refused, error = False, ""
@@ -708,8 +714,13 @@ def _departure_preflight_regression(doc):
         refused, error = True, str(exc)
     return dict(name="writer preflight refuses no eligible large Odin berth despite floating small Odin",
                 ok=refused and _hull_usable(small, "DoubleRowingCanoe")
-                   and "large Odin ship" in error and "measured candidates=" in error,
-                small_hull_min_depth_m=small[0], refusal=error)
+                   and bool(large) and all(
+                       reading is not None and not _hull_usable(reading, vessel)
+                       for vessel, reading in large.items()),
+                small_hull_min_depth_m=small[0],
+                large_hull_min_depth_m={
+                    vessel: reading[0] if reading is not None else None
+                    for vessel, reading in large.items()}, refusal=error)
 
 
 def selftest():

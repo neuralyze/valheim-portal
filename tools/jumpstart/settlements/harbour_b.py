@@ -689,7 +689,7 @@ def solve_berths_alongside(s, deck_xz: list[tuple[float, float]], *,
     """Berths that float the hull AND are a stride from a planned deck tile.
 
     Two gates, because either alone passes a defect: `floats` is the
-    shallowest sample under the hull's own rotated ellipse, flood-fill
+    shallowest sample under the hull's measured rotated convex footprint, flood-fill
     connected to open sea; `boardable` is a deck tile within `face_max_m` of
     the hull's own SIDE at that berth's latitude.  MEASURED on `design_b`'s
     own output: its third berth floats every hull in the table and is 8.06 m
@@ -1796,7 +1796,7 @@ def verify_grounding(s, d: dict) -> dict:
 
 
 def verify_berths(s, d: dict) -> dict:
-    """Per berth: depth under the hull's OWN ellipse at its OWN yaw, plus
+    """Per berth: depth under the measured full hull at its OWN yaw, plus
     whether a player can board it from the dock face."""
     rows = d["_plan"].sorted_rows()
     deck = [(r[1], r[3]) for r in rows if r[0] == GEOM["floor"]["prefab"]]
@@ -1833,7 +1833,7 @@ def verify_berths(s, d: dict) -> dict:
         out.append(row)
     return dict(berths=out, water_level_y=W.WATER_LEVEL,
                 margin_floor_m=WF.BERTH_MARGIN_FLOOR_M,
-                why=("the hull's own rotated ellipse at the berth's own "
+                why=("the hull's measured convex footprint at the berth's own "
                      "bearing, shallowest sample, every sample flood-fill "
                      "connected to open sea. A point reading of 4.21 m put a "
                      "Longship aground with -0.465 m under its bow."))

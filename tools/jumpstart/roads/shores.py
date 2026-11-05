@@ -72,13 +72,16 @@ class GeneratedSurface(WF.Surface):
 
     def hull_depths(self, bearing, x, z, vessel):
         from types import SimpleNamespace
-        patch = self.patch_for(x, z, margin=WF.VESSELS[vessel]["hull_l"])
+        hulls = WF.measured_hulls(self)
+        margin = max(WF.VESSELS[vessel]["hull_l"], hulls[vessel].radius_m + 1.0)
+        patch = self.patch_for(x, z, margin=margin)
         key = (patch.id, vessel)
         if key not in self._masks:
             self._masks[key] = WF.sea_mask(
                 patch, WF.VESSELS[vessel]["draught_m"] + WF.KEEL_CLEARANCE_M)[1]
         return WF.hull_depths(SimpleNamespace(patch_for=lambda *a, **k: patch),
-                              bearing, x, z, vessel, open_sea=self._masks[key])
+                              bearing, x, z, vessel, open_sea=self._masks[key],
+                              hulls=hulls)
 
 
 def load_fields(path=None):
