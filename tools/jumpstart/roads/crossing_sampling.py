@@ -36,13 +36,17 @@ def _vertices(tiles, xs, zs, error_type):
     seen = np.zeros(count, dtype=bool)
     bad = np.zeros(count, dtype=bool)
     pitch = fieldmod.HEIGHTMAP_ZONE_M
-    tile_keys, inverse = np.unique(
-        np.column_stack((np.floor(xs/pitch), np.floor(zs/pitch))),
-        axis=0, return_inverse=True)
-    for group, (tile_x, tile_z) in enumerate(tile_keys):
+    # Keep both float64 tile coordinates exactly, without the structured-row
+    # sort used by unique(axis=0). Complex ordering is the same lexicographic
+    # (x, z) ordering; assigning components avoids arithmetic on coordinates.
+    keys = np.empty(count, dtype=np.complex128)
+    keys.real = np.floor(xs/pitch)
+    keys.imag = np.floor(zs/pitch)
+    tile_keys, inverse = np.unique(keys, return_inverse=True)
+    for group, tile in enumerate(tile_keys):
         positions = np.flatnonzero(inverse == group)
         vx, vz = xs[positions], zs[positions]
-        for f, x0, x1, z0, z1 in tiles.get((int(tile_x), int(tile_z)), ()):
+        for f, x0, x1, z0, z1 in tiles.get((int(tile.real), int(tile.imag)), ()):
             covered = ((x0-1e-6 <= vx) & (vx <= x1+1e-6)
                        & (z0-1e-6 <= vz) & (vz <= z1+1e-6))
             selected = positions[covered]

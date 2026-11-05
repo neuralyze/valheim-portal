@@ -1387,7 +1387,9 @@ def derive(field_path: str | Path,
         worldseed.resolve(fields, worldseed.TRUNK_PRIMARY), root=roots.get(near_id))
     reach_far, _sf = traversable_reach(
         worldseed.resolve(fields, worldseed.TRUNK_SECONDARY), root=roots.get(far_id))
-    crossing_physical.bind_approach_graphs(reach_near.__self__, reach_far.__self__)
+    from crossing_graph_snapshot import routing_snapshot
+    crossing_physical.bind_approach_graphs(
+        routing_snapshot(reach_near.__self__), routing_snapshot(reach_far.__self__))
     crossings, no_crossing = crossing_nodes(windows[near_id], windows[far_id],
                                             anchors, seed_varying=seed_varying,
                                             reach_near=reach_near,
@@ -1668,6 +1670,8 @@ def selftest_crossing_landing() -> int:
     rows += sampling_cases()
     from crossing_bulk_cases import bulk_cases
     rows += bulk_cases()
+    from crossing_transverse_cases import transverse_cases
+    rows += transverse_cases()
     from crossing_bank_clearance_cases import bank_clearance_cases
     rows += bank_clearance_cases()
     from crossing_empty_bank_cases import empty_bank_cases
@@ -1680,6 +1684,8 @@ def selftest_crossing_landing() -> int:
     rows += parallel_cases()
     from crossing_route_catalog_cases import route_catalog_cases
     rows += route_catalog_cases()
+    from crossing_graph_snapshot_cases import graph_snapshot_cases
+    rows += graph_snapshot_cases()
     from crossing_search_cases import (
         search_parity_cases, seating_dependency_cases, coastal_handoff_cases,
         coverage_exhaustion_cases)

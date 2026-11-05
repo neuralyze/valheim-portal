@@ -121,6 +121,13 @@ partial searches, exceptions and admission overflow never create a refusal.
 Reuse requires byte-owned immutable rendered and coarse fields. Same-source role
 views coexist; replacing byte roots or using mutable/custom sampling drops reuse.
 The route-data budget excludes one borrowed current native input snapshot.
+Production approach graphs own one immutable coarse-array copy before workers
+fork. Catalog validation checks those arrays' identities and layouts, plus fresh
+scalar/container metadata, rather than copying and hashing every matrix per road.
+Signatures retain no coarse buffers; changed or unsupported graphs keep the
+content-hashing fallback. Native footprint sweeps reduce/filter bulk arrays
+without per-station dispatch, and tile grouping retains both exact float64
+coordinates without structured-row sorting. Custom dispatch remains unchanged.
 Within an immutable bank snapshot, lazy directed edge costs are shared across
 water-feedback searches. A bounded exact-mask LRU retains masked Dijkstra trees
 instead of rebuilding alternating masks for every destination. Masks are applied

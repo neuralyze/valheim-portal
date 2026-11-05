@@ -52,6 +52,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ranked crossing workers drain later results and advance within a bounded
   lookahead window instead of idling behind a slow earlier query. Result/error
   order and producer-traced cleanup are retained; parent cancellation is immediate.
+- Production crossing graphs own immutable coarse-array snapshots before fork;
+  catalog validation checks small identities/layouts and fresh policy metadata
+  instead of copying and hashing matrices at every handoff. Original mutable
+  graphs retain conservative hashing, and catalog keys retain no old buffers.
+- Native footprint sweeps reduce/filter bulk arrays directly, and Heightmap
+  sampling groups exact float64 tile coordinates without structured-row sorting.
+  Probe order, scalar rounding, coverage refusals and custom dispatch are retained.
 - Town searches expand through measured, rooted land beyond clipped role
   surveys. Their native routing views survive adoption, both-end road-domain
   selection, corridor caching and north joint-water rereads without stitching

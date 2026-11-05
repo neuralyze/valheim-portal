@@ -293,6 +293,7 @@ class PhysicalFields:
         import crossing_sampling as sampling
         import crossing_search as search
         import crossing_bank_clearance as clearance
+        import crossing_graph_snapshot as snapshot
         import ribbon
         from crossing_route_catalog import native_frame_binding
 
@@ -328,7 +329,8 @@ class PhysicalFields:
             # Include helper code/defaults and the plain configuration it reads.
             # Keeping this local also detects policy edits while a generator is
             # suspended. No rendered height array is copied or hashed.
-            for module in (route, contract, sampling, search, clearance, fieldmod):
+            for module in (route, contract, sampling, search, clearance, fieldmod,
+                           snapshot):
                 functions = tuple(function_token(value)
                     for value in vars(module).values()
                     if isinstance(value, types.FunctionType)
@@ -361,6 +363,7 @@ class PhysicalFields:
         import copy
         from crossing_route_catalog import RouteCatalog
         from crossing_search import empty_bank_key
+        from crossing_graph_snapshot import native_routing_signature
 
         binding = lambda: self._route_catalog_binding(graph)
         if binding() is None:
@@ -371,6 +374,9 @@ class PhysicalFields:
             return
 
         def signature():
+            key = native_routing_signature(graph, bank, BANK_LEVEL_M+STATION_M)
+            if key is not None:
+                return key, float(bank["level_y"])
             corr = copy.copy(graph.corr)
             corr.forbid = ~graph.ok
             corr.forbid_all_water = True
@@ -394,7 +400,10 @@ class PhysicalFields:
         corr.forbid = ~graph.ok
         corr.forbid_all_water = True
         from crossing_search import empty_bank_key
-        key = empty_bank_key(graph, corr, bank, BANK_LEVEL_M+STATION_M)
+        from crossing_graph_snapshot import native_routing_signature
+        key = native_routing_signature(graph, bank, BANK_LEVEL_M+STATION_M)
+        if key is None:
+            key = empty_bank_key(graph, corr, bank, BANK_LEVEL_M+STATION_M)
         empty_banks = self.__dict__.setdefault("_empty_bank_routes", {})
         if key is not None and key in empty_banks:
             stats.update(empty_banks[key])

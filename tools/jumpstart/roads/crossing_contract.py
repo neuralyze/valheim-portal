@@ -116,6 +116,28 @@ def transverse_window(fld, pts, width_m: float, lat_step_m: float = 0.5,
         all_xs = P[:, 0, None] + nx[:, None]*lats
         all_zs = P[:, 1, None] + nz[:, None]*lats
         all_hs, covered = bulk(all_xs, all_zs)
+        # Only native arrays and an ordinary collector have no observable
+        # per-row dispatch.  Keep custom samplers/collections on the old loop.
+        if (type(all_hs) is np.ndarray
+                and all_hs.dtype == np.dtype(np.float64)
+                and all_hs.flags.c_contiguous
+                and all_hs.ndim == 2
+                and all_hs.shape == all_xs.shape
+                and all_hs.shape[1] > 0
+                and type(covered) is np.ndarray
+                and covered.dtype == np.dtype(np.bool_)
+                and covered.shape == all_xs.shape
+                and (wet_at is None or type(wet_at) is list)):
+            all_hs.min(axis=1, out=lo)
+            all_hs.max(axis=1, out=hi)
+            stations, offsets = np.nonzero(~covered)
+            off.extend((int(i), float(lats[j]), float(all_xs[i, j]),
+                        float(all_zs[i, j])) for i, j in zip(stations, offsets))
+            if wet_at is not None:
+                stations, offsets = np.nonzero(all_hs < routemod.WATER_LEVEL)
+                wet_at.extend((float(all_xs[i, j]), float(all_zs[i, j]), int(i))
+                              for i, j in zip(stations, offsets))
+            return lo, hi, off
     for i in range(len(P)):
         if bulk is not None:
             xs, zs, hs = all_xs[i], all_zs[i], all_hs[i]
