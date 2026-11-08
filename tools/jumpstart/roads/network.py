@@ -3019,6 +3019,8 @@ def plan_refusal(seg: dict, gen_pois: list, seed: str, *, fld,
         return "span"
     if terminal_landing_rejection(seg, fld) is not None:
         return "terminal_landing"
+    if bridge_approach_rejection(seg) is not None:
+        return "bridge_approach"
     if coverage and (seg.get("census") or {}).get("verdict") == "UNCENSUSED":
         return "uncensused"
     if write_gate_rejection({**seg, "write_gate": write_gate(
@@ -3833,6 +3835,42 @@ def bridge_approach_gaps(seg: dict, *, nodes: dict | None = None,
                         "released": released.get(node),
                         "depends_on": list(BRIDGE_APPROACH_DEPENDS_ON)})
     return out
+
+
+# ---------------------------------------------------------------------------
+# BRIDGE_APPROACH_REFUSAL: A LEG WHOSE WRITTEN ENDPOINT STANDS FARTHER FROM ITS
+# DECLARED BRIDGE BANK THAN THE FOOTPRINT REACH IS REFUSED AT PLAN TIME.
+# W8-brgs2-vestvik: terminal trimming left the end 100 m off the bank (77
+# stations trimmed, cut/fill 25.386 m against a 7.0 m clamp) and the leg was
+# adopted; only the network-level bridge_approaches report noticed, later.
+# The measurement is `bridge_approach_gaps`; the threshold is its own
+# `level_half_m` (`_level_half`, `route.footprint_half_m`) -- no new constant.
+# A leg with no declared bank, or served within reach, is never refused.
+# NEUTER `_BRIDGE_APPROACH_REFUSAL_MODE = "off"`: the shipped plan, the far
+# leg adopted.  Proven by `selftest_bridge_approaches`.
+# ---------------------------------------------------------------------------
+_BRIDGE_APPROACH_REFUSAL_MODE = "refused"    # refused | off (the shipped)
+
+
+def bridge_approach_rejection(seg: dict) -> dict | None:
+    """The plan's refusal of `seg`, or None: a declared bank this leg's
+    written endpoint stands past the footprint reach of."""
+    if _BRIDGE_APPROACH_REFUSAL_MODE != "refused":
+        return None
+    far = [g for g in bridge_approach_gaps(seg)
+           if g["gap_m"] > g["level_half_m"]]
+    if not far:
+        return None
+    g0 = far[0]
+    return {
+        "why": f"the leg's {g0['end']} endpoint stands {g0['gap_m']} m from "
+               f"its declared bridge bank {g0['node']}, past the "
+               f"{g0['level_half_m']} m footprint reach"
+               + (f" (terminal trimming released the abutment: "
+                  f"{g0['released']})" if g0.get("released") else "")
+               + ". Re-route so the bank is served.",
+        "bridge_approach": far,
+    }
 
 
 def _served_nodes(seg: dict, *, nodes: dict | None = None,
@@ -7854,16 +7892,35 @@ def selftest_bridge_approaches() -> int:
         want("the 100 m bank gap remains measured, not a phantom bridge edge",
              (bridge_approach_gaps(partial)[0]["gap_m"],
               plan_components([root, partial])), (100.0, [["partial"], ["root"]]))
+        global _BRIDGE_APPROACH_REFUSAL_MODE
+        want("the 100 m bank-gap leg is refused at plan time",
+             (bridge_approach_rejection(partial) or {}).get(
+                 "bridge_approach", [{}])[0].get("gap_m"), 100.0)
+        shipped_mode = _BRIDGE_APPROACH_REFUSAL_MODE
+        _BRIDGE_APPROACH_REFUSAL_MODE = "off"
+        try:
+            want("NEUTER bridge-approach refusal=off (the shipped): adopted",
+                 bridge_approach_rejection(partial), None)
+        finally:
+            _BRIDGE_APPROACH_REFUSAL_MODE = shipped_mode
+        want("the plan_refusal gate names it before coverage checks",
+             plan_refusal({**partial, "crossings": [], "census": {
+                 "verdict": "UNCENSUSED"}}, [], "FIXTURE", fld=None),
+             "bridge_approach")
         unmarked = {k: v for k, v in partial.items() if k != "abutments_released"}
         want("forgetting release metadata cannot restore a distant bank name",
              "west" in _served_nodes(unmarked), False)
         nearby = _oj_leg("nearby", "west", "town", nodes, start=(62.0, 0.0))
         want("an existing 2 m footprint offset remains a served approach",
              bridge_approach_gaps(nearby), [])
+        want("the 2 m-offset served leg is not refused",
+             bridge_approach_rejection(nearby), None)
         pad = _oj_leg("pad", "level-pad", "portalhub", nodes, start=(7.28, -100.0))
         want("a level pad is not mistaken for a declared bridge bank",
              (bridge_approach_gaps(pad), "level-pad" in _served_nodes(pad)),
              ([], True))
+        want("an unrelated level pad leg is not refused",
+             bridge_approach_rejection(pad), None)
         reqs = bridge_approach_requirements(segs, nodes)
         want("declared obligations survive roads that released their banks",
              [(r["node"], r["verdict"]) for r in reqs],
@@ -8733,6 +8790,15 @@ def main(*, plan_state: dict | None = None) -> int:
             seg["rejected"] = rej
             rejected.append({"id": seg["id"], **rej})
             keep_for_census(seg["id"], patch, seg["nodes"], "terminal landing")
+            print(f"{seg['id']:22s} p{seg['pri']} REJECTED: {rej['why']}")
+            return
+        # A LEG ENDING FARTHER FROM ITS DECLARED BRIDGE BANK THAN THE
+        # FOOTPRINT REACH IS A REJECTED SEGMENT -- see `bridge_approach_rejection`.
+        rej = bridge_approach_rejection(seg)
+        if rej is not None:
+            seg["rejected"] = rej
+            rejected.append({"id": seg["id"], **rej})
+            keep_for_census(seg["id"], patch, seg["nodes"], "bridge approach")
             print(f"{seg['id']:22s} p{seg['pri']} REJECTED: {rej['why']}")
             return
         # AN UNCENSUSED STATION IS A REJECTED SEGMENT.  This is the check that

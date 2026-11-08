@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tools/jumpstart/roads/network.py` (`bridge_approach_rejection`) — a road leg whose written endpoint stands farther from its declared bridge bank than the footprint reach (`bridge_approach_gaps`' own `level_half_m`) is refused at plan time as `bridge_approach`, in `plan_refusal` (so water-route attempts, terminal-crossing trims and the band-free probe reject it) and in `route_edge`'s final gates. Previously W8-brgs2-vestvik (100 m gap, 77 stations trimmed, 25.386 m cut/fill against a 7.0 m clamp) was adopted and only the network-level `bridge_approaches` report noticed. Legs with no declared bank, or served within reach, are unaffected. NEUTER `_BRIDGE_APPROACH_REFUSAL_MODE = "off"`, proven by `selftest_bridge_approaches`.
 - Starter kits price stacks from measured item facts, with explicit active
   configuration overrides resolved from the selected installation at call time.
   An unreadable declared override refuses instead of falling back. The 32-slot
