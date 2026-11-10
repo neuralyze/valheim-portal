@@ -1686,6 +1686,8 @@ def selftest_crossing_landing() -> int:
     rows += route_catalog_cases()
     from crossing_graph_snapshot_cases import graph_snapshot_cases
     rows += graph_snapshot_cases()
+    from water_feedback_cases import water_feedback_cases
+    rows += water_feedback_cases()
     from crossing_search_cases import (
         search_parity_cases, seating_dependency_cases, coastal_handoff_cases,
         coverage_exhaustion_cases)

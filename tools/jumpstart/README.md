@@ -134,6 +134,12 @@ instead of rebuilding alternating masks for every destination. Masks are applied
 separately from geometric costs; owner, policy, start and complete mask equality
 govern reuse. Unsupported inputs and eviction recompute normally, never refuse.
 
+Water feedback retains wet-body connectivity over the complete original crop.
+Distance transforms visit only source/query tiles with complete influence halos;
+they preserve nearest-feature height ties, snapped-seed maximum heights and strict
+reach decisions. Dense or large-coordinate cases keep full transforms. Expanding
+the dry space between sparse hazards does not expand transform work quadratically.
+
 Geometry-only road lattices use a constant profile. On fully claimed native
 grids that profile cannot give a farther claimant positive height exceedance,
 so the second-claimant pass is skipped. Nearest feet, stations, strict ties and

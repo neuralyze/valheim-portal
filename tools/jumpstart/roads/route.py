@@ -2628,6 +2628,36 @@ WATER_STANDOFF_DEPENDS_ON = ("the_seed_wet_ground_the_writer_refused_at",
 WATER_STANDOFF_SIMPLIFY_M = 1.0
 
 
+def _water_edt_tiles(shape, rows, cols, radius, tile_cells):
+    """Core rectangles intersecting the inclusive square reach of snapped seeds."""
+    tiles = set()
+    for row, col in zip(rows, cols):
+        ia = max(0, int(row) - radius) // tile_cells
+        ib = min(shape[0] - 1, int(row) + radius) // tile_cells
+        ja = max(0, int(col) - radius) // tile_cells
+        jb = min(shape[1] - 1, int(col) + radius) // tile_cells
+        tiles.update((i, j) for i in range(ia, ib + 1)
+                     for j in range(ja, jb + 1))
+    for i, j in sorted(tiles):
+        yield (i * tile_cells, min((i + 1) * tile_cells, shape[0]),
+               j * tile_cells, min((j + 1) * tile_cells, shape[1]))
+
+
+def _water_edt_halo(features, core, halo):
+    """EDT over a complete halo, or None without an explicit source feature."""
+    ia, ib, ja, jb = core
+    ha, hb = max(0, ia - halo), min(features.shape[0], ib + halo)
+    hc, hd = max(0, ja - halo), min(features.shape[1], jb + halo)
+    local = features[ha:hb, hc:hd]
+    if not local.any():
+        # SciPy's all-true transform has an implicit (-1, 0) feature. It is
+        # NOT a source in the original crop and cannot answer a bounded query.
+        return None
+    distance, nearest = ndimage.distance_transform_edt(
+        ~local, return_indices=True)
+    return distance, nearest, ha, hc
+
+
 def water_standoff_forbid(corr: "Corridor", seeds, *, half_m: float,
                           grade: float, reach_m: float) -> np.ndarray:
     """Corridor cells a road may not take, from the seed-wet samples the
@@ -2669,28 +2699,74 @@ def water_standoff_forbid(corr: "Corridor", seeds, *, half_m: float,
     touch = ndimage.binary_dilation(seed, structure=np.ones((3, 3), dtype=bool))
     keep = np.unique(lab[touch & wet])
     keep = keep[keep > 0]
-    d_seed, (ni, nj) = ndimage.distance_transform_edt(~seed,
-                                                      return_indices=True)
-    hazard = (np.isin(lab, keep) & (d_seed * f.step <= rmax)) | seed
-    y_haz = y_seed[ni, nj]
-    d_h, (hi_, hj_) = ndimage.distance_transform_edt(~hazard,
-                                                     return_indices=True)
+    # Keep connectivity on the ORIGINAL crop: a wet body can leave a halo
+    # and reenter it. Only the two feature transforms have bounded domains.
+    # One extra lattice sample guards the radius/step rounding used to size
+    # halos; actual decisions still use the original sqrt(distance)*step.
+    halo = max(0, int(math.ceil(rmax / f.step)) + 1)
+    span = max(wet.shape)
+    # SciPy's 2-D feature transform breaks ties by (column, row). Translating
+    # a rectangle preserves that order when every minimizing feature is kept.
+    # Its double-precision envelope uses cubic integer expressions; beyond
+    # 4*span**3 < 2**53, retain the dense domain rather than assume exact ties.
+    tile_cells = 128 if span < 131072 and halo < span else span
+    seed_i, seed_j = np.nonzero(seed)
+    seed_cores = tuple(_water_edt_tiles(
+        wet.shape, seed_i, seed_j, halo, tile_cells))
+    query_cores = tuple(_water_edt_tiles(
+        wet.shape, seed_i, seed_j, 2 * halo, tile_cells))
+    work = sum((min(wet.shape[0], ib + halo) - max(0, ia - halo))
+               * (min(wet.shape[1], jb + halo) - max(0, ja - halo))
+               for ia, ib, ja, jb in (*seed_cores, *query_cores))
+    if work >= 2 * wet.size:
+        # Dense seeds or a large reach can make overlapping halos costlier
+        # than the original two transforms. Same semantics, one full core.
+        seed_cores = query_cores = ((0, wet.shape[0], 0, wet.shape[1]),)
+    hazard = np.zeros_like(seed)
+    y_haz = np.full(wet.shape, -np.inf)
+    for core in seed_cores:
+        transformed = _water_edt_halo(seed, core, halo)
+        if transformed is None:
+            continue
+        distance, nearest, ha, hc = transformed
+        ia, ib, ja, jb = core
+        local_core = np.s_[ia - ha:ib - ha, ja - hc:jb - hc]
+        target = np.s_[ia:ib, ja:jb]
+        active = ((np.isin(lab[target], keep)
+                   & (distance[local_core] * f.step <= rmax)) | seed[target])
+        hazard[target] = active
+        ni, nj = nearest[:, local_core[0], local_core[1]]
+        heights = y_seed[ni + ha, nj + hc]
+        y_haz[target] = np.where(active, heights, -np.inf)
     cj0 = max(0, int(math.floor((f.x0 + j0 * f.step - corr.x0) / corr.cell_m)))
     cj1 = min(corr.m - 1, int(math.ceil((f.x0 + j1 * f.step - corr.x0)
                                          / corr.cell_m)))
     ci0 = max(0, int(math.floor((f.z0 + i0 * f.step - corr.z0) / corr.cell_m)))
     ci1 = min(corr.m - 1, int(math.ceil((f.z0 + i1 * f.step - corr.z0)
                                          / corr.cell_m)))
-    CI, CJ = np.mgrid[ci0:ci1 + 1, cj0:cj1 + 1]
-    fi = np.rint((corr.z0 + CI * corr.cell_m - f.z0) / f.step).astype(int) - i0
-    fj = np.rint((corr.x0 + CJ * corr.cell_m - f.x0) / f.step).astype(int) - j0
-    inside = ((fi >= 0) & (fi < wet.shape[0]) & (fj >= 0)
-              & (fj < wet.shape[1]))
-    fi, fj = np.clip(fi, 0, wet.shape[0] - 1), np.clip(fj, 0, wet.shape[1] - 1)
-    dist = d_h[fi, fj] * f.step
-    y_near = y_haz[hi_[fi, fj], hj_[fi, fj]]
-    reach = np.minimum(np.maximum(y_near - WATER_LEVEL, 0.0) / grade, reach_m)
-    out[CI, CJ] = inside & (dist < half_m + reach + slack)
+    coarse_i = np.arange(ci0, ci1 + 1)
+    coarse_j = np.arange(cj0, cj1 + 1)
+    fi = np.rint((corr.z0 + coarse_i * corr.cell_m - f.z0) / f.step).astype(int) - i0
+    fj = np.rint((corr.x0 + coarse_j * corr.cell_m - f.x0) / f.step).astype(int) - j0
+    # Hazards lie within rmax of a snapped seed; forbidden queries lie less
+    # than rmax from a hazard. Square 2*halo bounds are a conservative superset,
+    # including coarse-grid round-to-even snapping at crop and tile edges.
+    for core in query_cores:
+        ia, ib, ja, jb = core
+        ii = np.flatnonzero((fi >= ia) & (fi < ib))
+        jj = np.flatnonzero((fj >= ja) & (fj < jb))
+        if not ii.size or not jj.size:
+            continue
+        transformed = _water_edt_halo(hazard, core, halo)
+        if transformed is None:
+            continue
+        distance, nearest, ha, hc = transformed
+        query = np.ix_(fi[ii] - ha, fj[jj] - hc)
+        dist = distance[query] * f.step
+        hi_, hj_ = nearest[:, query[0], query[1]]
+        y_near = y_haz[hi_ + ha, hj_ + hc]
+        reach = np.minimum(np.maximum(y_near - WATER_LEVEL, 0.0) / grade, reach_m)
+        out[np.ix_(coarse_i[ii], coarse_j[jj])] = dist < half_m + reach + slack
     return out
 
 

@@ -68,6 +68,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hide a bridge boundary. True land termini and genuine other branches keep
   their claims. Native terrain replay confirms the reproduced submerged
   vertex stays underwater; independent rim failures remain refused.
+- Water feedback bounds distance transforms by their complete influence radius
+  without changing full-crop wet-body connectivity or any route mask.
+  Nearest-feature height ties, snapped-seed maxima, coarse rounding and strict
+  reach boundaries are retained; dense or large-coordinate cases use full
+  transforms. Sparse-hazard work scaling now has a failing-before regression,
+  alongside actual native mask and routed-approach parity checks.
 - Town searches expand through measured, rooted land beyond clipped role
   surveys. Their native routing views survive adoption, both-end road-domain
   selection, corridor caching and north joint-water rereads without stitching
