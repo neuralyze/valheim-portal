@@ -3828,10 +3828,11 @@ def bridge_approach_gaps(seg: dict, *, nodes: dict | None = None,
         x, z = nodes[node]["xz"]
         gap = math.hypot(float(p[0]) - x, float(p[1]) - z)
         reach = _level_half(seg)
+        # Downstream admission uses this distance; do not round away a gap.
         if node in released or gap > reach:
             out.append({"node": node, "end": end,
                         "endpoint_xz": list(p[:2]), "bank_xz": [x, z],
-                        "gap_m": round(gap, 3), "level_half_m": reach,
+                        "gap_m": gap, "level_half_m": reach,
                         "released": released.get(node),
                         "depends_on": list(BRIDGE_APPROACH_DEPENDS_ON)})
     return out
@@ -7915,6 +7916,17 @@ def selftest_bridge_approaches() -> int:
              bridge_approach_gaps(nearby), [])
         want("the 2 m-offset served leg is not refused",
              bridge_approach_rejection(nearby), None)
+        reach = _level_half(nearby)
+        wx, wz = nodes["west"]["xz"]
+        for offset, refused in ((-0.0001, False), (0.0, False), (0.0001, True)):
+            boundary = {**nearby, "nodes": [
+                [wx + reach + offset, wz], list(nodes["town"]["xz"])]}
+            for end in ("a", "b"):
+                leg = boundary if end == "a" else {
+                    **boundary, "from": boundary["to"], "to": boundary["from"],
+                    "nodes": list(reversed(boundary["nodes"]))}
+                want(f"bank {end}: footprint reach {offset:+.4f} m",
+                     bridge_approach_rejection(leg) is not None, refused)
         pad = _oj_leg("pad", "level-pad", "portalhub", nodes, start=(7.28, -100.0))
         want("a level pad is not mistaken for a declared bridge bank",
              (bridge_approach_gaps(pad), "level-pad" in _served_nodes(pad)),
