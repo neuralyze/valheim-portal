@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Waterfront searches reject assemblies that fail measured seating and continue
+  through the remaining shore candidates instead of aborting the named travel
+  requirement. The seating refusal retains its full geometry diagnostics;
+  exhausted searches retain rejection counts and the last seating refusal.
+  Invalid inputs and other unexpected failures still propagate. A constructed
+  coast regression rejects the original buried jetty, then finds a structurally
+  supported alternative; burial and foundation limits are unchanged.
 - Road planning refuses detached declared-bank approaches using the existing
   road footprint reach, both during remedy selection and final admission.
   Gap measurements retain full precision so rounding cannot admit an endpoint

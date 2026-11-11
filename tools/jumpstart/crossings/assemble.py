@@ -1116,6 +1116,10 @@ def check_seating(pieces: list[Placed], bed) -> dict:
                     f"lattice vertices under each piece's own footprint"))
 
 
+class SeatingRefusal(SystemExit):
+    """A measured assembly cannot stand here; a site search may try elsewhere."""
+
+
 def refuse_on_seating(pieces: list[Placed], bed, name: str) -> dict:
     """`check_seating`, raising on anything a player would meet as a defect.
 
@@ -1152,7 +1156,7 @@ def refuse_on_seating(pieces: list[Placed], bed, name: str) -> dict:
                    f"{r['applied_ground_y']:.3f} m - a buried centre tile is "
                    f"a hole in the road")
     if bad:
-        raise SystemExit(
+        raise SeatingRefusal(
             f"{name}: REFUSED by the seating re-test against the APPLIED "
             f"surface ({m['bed']['note']}). "
             + f"{len(m['piles_under_the_bed'])} pile(s) under the bed, "

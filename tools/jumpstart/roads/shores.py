@@ -428,6 +428,7 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
     need = WF.VESSELS[vessel]["draught_m"] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M
     bed = A.Bed.applied(lambda x, z: surf.at(x, z)[0], "seed-scoped measured generated Heightmap")
     rejected = {"road": 0, "approach": 0, "water": 0, "hull": 0, "support": 0}
+    last_seating_refusal = None
     road_cache = {}
     for root, reached in zip(candidates, reachable):
         if not reached:
@@ -463,10 +464,15 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                     rejected["hull"] += 1
                     continue
                 inner = WF.VESSELS[vessel]["hull_w"] + 2 * 0.75
-                pieces = (A.slip(root, bearing, length, inner, DECK_Y, bed,
-                                 name=requirement["id"]) if requirement["kind"] == "slip"
-                          else A.jetty(root, bearing, length, DECK_Y, bed,
-                                       width_tiles=requirement["width_tiles"], name=requirement["id"]))
+                try:
+                    pieces = (A.slip(root, bearing, length, inner, DECK_Y, bed,
+                                     name=requirement["id"]) if requirement["kind"] == "slip"
+                              else A.jetty(root, bearing, length, DECK_Y, bed,
+                                           width_tiles=requirement["width_tiles"], name=requirement["id"]))
+                except A.SeatingRefusal as exc:
+                    rejected["support"] += 1
+                    last_seating_refusal = str(exc)
+                    continue
                 pieces = emitted_pieces(pieces)
                 verdict = A.verify(pieces, bed, note=requirement["id"])
                 if not verdict["ok"]:
@@ -496,7 +502,9 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                 if accept is not None and not accept(candidate):
                     continue
                 return candidate
-    raise SystemExit(f"REFUSING {requirement['id']}: all {len(candidates)} measured shore candidates fail production road/approach/water/hull/support criteria: {rejected}; required site remains unmet")
+    raise SystemExit(f"REFUSING {requirement['id']}: all {len(candidates)} measured shore candidates fail production road/approach/water/hull/support criteria: {rejected}; required site remains unmet"
+                     + (f"\nLast seating refusal: {last_seating_refusal}"
+                        if last_seating_refusal is not None else ""))
 
 
 def derive(nodes, fields, *, ferry_search, complete):
@@ -634,6 +642,30 @@ def selftest():
     requirement = dict(next(r for r in REQUIREMENTS if r["node"] == "dock-stathub"))
     nodes = {"stathub": dict(xz=(0, -40), patch="trunk-primary", island="spawn")}
     first = solve_site(requirement, nodes, fields, graph_factory=fixture_graph)
+    # A raised patch under the first jetty's bent is a real seating refusal,
+    # not failure of the named shore requirement: search must try alternatives.
+    from dataclasses import replace
+    obstructed = {}
+    for key, source in fields.items():
+        xs = source.world_x(np.arange(source.n))[None, :]
+        zs = source.world_z(np.arange(source.n))[:, None]
+        h = source.heights.copy()
+        h[(abs(xs) <= 3) & (zs >= 3) & (zs <= 5)] = DECK_Y + 0.4
+        obstructed[key] = replace(source, heights=h)
+    obstruction = GeneratedSurface(obstructed)
+    bed = A.Bed.applied(lambda x, z: obstruction.at(x, z)[0], "raised shore bent")
+    try:
+        A.jetty(tuple(first["root"]), first["bearing"], first["length_m"],
+                DECK_Y, bed, width_tiles=requirement["width_tiles"])
+    except SystemExit as exc:
+        assert "seating re-test" in str(exc)
+    else:
+        raise AssertionError("constructed shore did not reject its buried jetty")
+    alternative = solve_site(requirement, nodes, obstructed,
+                             graph_factory=fixture_graph)
+    assert alternative["structural"]["ok"]
+    assert (alternative["root"], alternative["bearing"]) != (
+        first["root"], first["bearing"])
     nodes["stathub"]["xz"] = (100, -40)
     second = solve_site(requirement, nodes, fields, graph_factory=fixture_graph)
     assert first["root"] != second["root"]
@@ -676,7 +708,6 @@ def selftest():
     assert WF.fabric_save_anchor(planned["ops"])["params"]["prefab"] == first["boat"]["prefab"]
     # Source lies in the original core; its only genuine shore lies OUTSIDE it
     # but INSIDE the promised measured shore envelope. No graph stitching.
-    from dataclasses import replace
     wide = fields["shore-trunk-primary"]
     zrows = wide.world_z(np.arange(wide.n))[:, None]
     shifted_h = np.broadcast_to(np.where(zrows <= 300,
