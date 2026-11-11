@@ -250,6 +250,10 @@ def fingerprint(world: str = "", *, game_build_anchor: str | None = None,
     `heavy=False` skips hashing 120 DLLs, for a caller that only wants the
     world identity.  A manifest written with heavy=False records that, so a
     replay does not mistake "not measured" for "no mods".
+
+    `VALHEIM_SERVER_PLUGINS` selects an independently launched server's actual
+    plugin directory. Explicit paths must be absolute, existing directories,
+    even for a light fingerprint; unset keeps the deployment's world-local path.
     """
     world = world or worldseed.world()
     base = worldseed.world_root() / world
@@ -257,7 +261,15 @@ def fingerprint(world: str = "", *, game_build_anchor: str | None = None,
     newest_fwl = worldseed.newest_save(worlds, "fwl2")
     wf = read_fwl(newest_fwl) if newest_fwl else {}
     newest_db = worldseed.newest_save(worlds, "db2")
-    plugins = base / "config_merged" / "bepinex" / "plugins"
+    configured_plugins = os.environ.get("VALHEIM_SERVER_PLUGINS")
+    if configured_plugins is None:
+        plugins = base / "config_merged" / "bepinex" / "plugins"
+    else:
+        plugins = Path(configured_plugins)
+        if not plugins.is_absolute() or not plugins.is_dir():
+            raise LedgerError(
+                "VALHEIM_SERVER_PLUGINS must name an absolute, existing "
+                f"plugin directory: {configured_plugins!r}")
     mods = mod_inventory(plugins) if heavy else []
 
     anchor_file = base / "mods" / ".game-build-anchor"
