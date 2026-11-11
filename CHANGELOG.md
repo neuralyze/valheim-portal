@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An over-water installation's shore search uses the measured land components
+  inside its actual allowed road-source cell when its centre has no dry-land
+  label. A fillable cell's centre may itself be wet; every fine component in
+  that cell remains eligible, never the survey's largest island by assumption.
+  Snap limits, protected masks, complete-world identity and physical route,
+  hull and support checks remain required. Publication records the chosen
+  shore's own rendered component.
 - Waterfront searches can use an anchor's existing measured routing frame when
   it already covers the full search and hull/approach envelope. Rooted towns
   published on expanded shore frames no longer request a fictitious second

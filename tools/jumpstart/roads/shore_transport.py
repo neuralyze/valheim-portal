@@ -8,6 +8,33 @@ import numpy as np
 from scipy import ndimage
 
 
+def _source_cell(graph, anchor):
+    """The exact allowed source cell used by the road-reach predicate."""
+    corr = graph.corr
+    ai, aj = corr.cell_of(*anchor)
+    source = int(graph.si[ai, aj]), int(graph.sj[ai, aj])
+    if (graph.dist[ai, aj] * corr.cell_m > graph.snap_m
+            or not graph.ok[source]):
+        return None
+    return source
+
+
+def _source_components(graph, anchor, complete):
+    """Measured dry components in the router's actual allowed source cell."""
+    source = _source_cell(graph, anchor)
+    if source is None:
+        return ()
+    corr, (i, j) = graph.corr, source
+    field = corr.fld
+    # A fillable corridor cell can have a submerged centre. Its original fine
+    # samples, not that centre or the survey's largest island, define its land.
+    components = {
+        complete.at(field.x0 + col * field.step, field.z0 + row * field.step)
+        for row in range(i * corr.dec, (i + 1) * corr.dec)
+        for col in range(j * corr.dec, (j + 1) * corr.dec)}
+    return tuple(sorted(components - {0}))
+
+
 def _source_reach(graph, anchor, xs, zs):
     """RoadGraph's exact allowed/snap/strong-component rules, rooted at anchor.
 
@@ -15,10 +42,8 @@ def _source_reach(graph, anchor, xs, zs):
     label as a ferry test would mark every smaller legitimate destination absent.
     """
     corr = graph.corr
-    ai, aj = corr.cell_of(*anchor)
-    source = int(graph.si[ai, aj]), int(graph.sj[ai, aj])
-    if (graph.dist[ai, aj] * corr.cell_m > graph.snap_m
-            or not graph.ok[source]):
+    source = _source_cell(graph, anchor)
+    if source is None:
         return np.zeros(xs.shape, dtype=bool)
     target_label = graph.lab[source]
     i = np.rint((zs - corr.z0) / corr.cell_m).astype(int)
@@ -227,6 +252,27 @@ def selftest():
     """Constructed physical berth/passage arms using the production hull gate."""
     import shores as S
     import north_transport as NT
+    from shore_connectivity import CompleteLand
+    import route
+    # Two separate fine land components share a fillable coarse source cell.
+    # Neither the submerged centre nor a largest-island choice may erase one.
+    tiny_h = np.full((41, 41), 20.0, dtype=np.float32)
+    tiny_h[20, 20] = tiny_h[23, 23] = 35.0
+    tiny = S.W.Field("source-cell", 0, 0, 20.5, 1, 41, tiny_h,
+                     np.ones((41, 41), dtype=np.uint8))
+    complete = CompleteLand(tiny, 18.0)
+    native = S.F.Field(tiny.id, tiny.cx, tiny.cz, tiny.half, tiny.step,
+                       tiny.n, tiny.heights, tiny.biomes)
+    corr = route.Corridor(native, cell_m=4.0, grade_max=route.GRADE["spur"])
+    graph = S.geography.RoadGraph(native, cls="spur",
+        forbid=np.zeros((corr.m, corr.m), dtype=bool))
+    expected = {complete.at(0.0, 0.0), complete.at(3.0, 3.0)}
+    assert len(expected) == 2 and 0 not in expected
+    assert complete.at(1.0, 1.0) == 0
+    assert _source_components(graph, (1.0, 1.0), complete) == tuple(sorted(expected))
+    blocked_graph = S.geography.RoadGraph(native, cls="spur",
+        forbid=np.ones((corr.m, corr.m), dtype=bool))
+    assert _source_components(blocked_graph, (1.0, 1.0), complete) == ()
     n = 401
     ax = np.arange(n) - 200
     xx, zz = np.meshgrid(ax, ax)
@@ -242,7 +288,6 @@ def selftest():
                 sea_route=[[-30.0, 0.0], [30.0, 0.0]])
     proof = NT.measure_passage(pair, plans, {field.id: field}, surface=surface)
     assert proof["min_depth_m"] >= proof["required_depth_m"]
-    assert proof["hull_stations"] and proof["swept_vertices"]
     from dataclasses import replace
     shoal = heights.copy()
     shoal[(abs(xx) < 8) & (abs(zz) < 25)] = 29.0

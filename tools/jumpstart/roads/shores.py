@@ -407,23 +407,29 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
         # coverage below, not another synthetic prefix, authorizes the search.
         fld = core
     search_center = tuple(requirement.get("search_center", anchor))
-    component_mask = None
-    if complete is not None:
-        component = complete.at(*anchor) if component is None else component
-        if component == 0:
-            raise SystemExit(f"REFUSING {requirement['id']}: semantic anchor has no component on complete rendered world")
-        component_mask = complete.labels_for(fld) == component
-    candidates, _ = _shore_candidates(fld, search_center,
-                                      south=requirement.get("south", False),
-                                      component=component, component_mask=component_mask)
-    if not candidates:
-        raise SystemExit(f"REFUSING {requirement['id']}: no measured shoreline on the required land component within {SEARCH_RADIUS_M:g}m of {anchor_id}; site requirement retained")
+    _coverage(fld, search_center)
     # RoadGraph is the production corridor/POI/grade instrument, not Euclidean
     # proximity pretending that a cliff or a protected location can be paved.
     factory = graph_factory or geography.RoadGraph
     graph = factory(F.Field(fld.id, fld.cx, fld.cz, fld.half, fld.step, fld.n,
                             fld.heights, fld.biomes), cls=requirement["cls"])
-    from shore_transport import _source_reach
+    from shore_transport import _source_components, _source_reach
+    component_mask = None
+    if complete is not None:
+        measured_component = complete.at(*anchor) if component is None else component
+        components = (measured_component,) if measured_component else ()
+        if not components and component is None:
+            components = _source_components(graph, anchor, complete)
+        if not components:
+            raise SystemExit(f"REFUSING {requirement['id']}: neither semantic anchor nor its allowed router source cell has a land component on complete rendered world")
+        labels = complete.labels_for(fld)
+        component_mask = (labels == components[0] if len(components) == 1 else
+                          np.isin(labels, components))
+    candidates, _ = _shore_candidates(fld, search_center,
+                                      south=requirement.get("south", False),
+                                      component=component, component_mask=component_mask)
+    if not candidates:
+        raise SystemExit(f"REFUSING {requirement['id']}: no measured shoreline on the required land component within {SEARCH_RADIUS_M:g}m of {anchor_id}; site requirement retained")
     surf = surface or GeneratedSurface(fields)
     xs, zs = np.asarray(candidates).T
     reachable = _source_reach(graph, anchor, xs, zs)
@@ -501,7 +507,7 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                 candidate["occupied_bounds"] = occupied_bounds(pieces, candidate["boat"])
                 candidate.update(rail_metadata(pieces))
                 if complete is not None:
-                    candidate["rendered_component"] = int(component)
+                    candidate["rendered_component"] = complete.at(*root)
                     candidate["rendered_identity_patch"] = complete.field.id
                 if accept is not None and not accept(candidate):
                     continue
@@ -655,6 +661,16 @@ def selftest():
     assert (expanded["root"], expanded["bearing"], expanded["length_m"]) == (
         first["root"], first["bearing"], first["length_m"])
     assert expanded["structural"]["ok"]
+    # An over-water installation is served from dry samples in the router's
+    # allowed source cell, whose own centre can also be submerged.
+    from shore_connectivity import CompleteLand
+    complete = CompleteLand(fields["shore-trunk-primary"], 750.0)
+    water_nodes = {"stathub": dict(nodes["stathub"], xz=(0.0, 4.0))}
+    assert complete.at(*water_nodes["stathub"]["xz"]) == 0
+    served = solve_site(requirement, water_nodes, fields,
+                        graph_factory=fixture_graph, complete=complete)
+    assert served["rendered_component"] == complete.at(0.0, -40.0) != 0
+    assert served["structural"]["ok"]
     # A raised patch under the first jetty's bent is a real seating refusal,
     # not failure of the named shore requirement: search must try alternatives.
     from dataclasses import replace
