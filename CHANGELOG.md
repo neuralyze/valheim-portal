@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Road planning refuses detached declared-bank approaches using the existing
+  road footprint reach, both during remedy selection and final admission.
+  Gap measurements retain full precision so rounding cannot admit an endpoint
+  just outside that reach. Regressions cover a released 100 m bank gap,
+  both endpoint boundaries, and unaffected nearby approaches and level pads.
 - Starter kits price stacks from measured item facts, with explicit active
   configuration overrides resolved from the selected installation at call time.
   An unreadable declared override refuses instead of falling back. The 32-slot
