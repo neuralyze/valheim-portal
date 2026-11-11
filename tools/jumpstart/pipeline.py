@@ -2270,8 +2270,12 @@ def _run(scope: Scope, through: int, stages: tuple[Stage, ...] = STAGES,
                 f"\nSTOPPING at stage {st.ordinal} {st.name!r}: no tool in this "
                 f"tree runs it unattended.\n  {st.manual}\n")
             return 4
-        rc = _execute(scope, st, stages, st.command(scope), why, root, log,
-                      journal)
+        cmd = st.command(scope)
+        # Forward the operator's explicit authorization only to the builder;
+        # buildstage still enforces its own archived-ledger guard.
+        if st.name == "build" and replace_live:
+            cmd += ["--replace-live"]
+        rc = _execute(scope, st, stages, cmd, why, root, log, journal)
         if rc != 0:
             return rc
         ran.append(st.name)

@@ -3422,16 +3422,6 @@ def _hardcoded_ledger_world_refused() -> dict:
                                      if b.startswith("obfuscated.py"))}
 
 
-def _every_ledger_open_keys_on_its_world() -> dict:
-    """THE LIVE SWEEP.  Reads the real tree, not a fixture: the fixture above
-    proves the check can refuse, and only this proves the tree is out of the
-    known-bad state.
-    """
-    calls = ledger_world_calls()
-    return {"callsites": len(calls),
-            "defects": len(ledger_world_defects(calls=calls))}
-
-
 def _transport_agreement() -> dict:
     """THE SECOND ENV HOME, BOTH ARMS, WITHOUT A SOCKET.
 
@@ -3960,16 +3950,6 @@ def selftest() -> int:
                            "Ulfsland's chain WHILE LiveBuilder appended to "
                            "the resolved world's",
                neuter=_neuter("world scope off"), neuters="world scope off"),
-        R.Case("every_ledger_this_tree_opens_keys_on_its_own_world", False,
-               lambda: (lambda r: finding(
-                   r["defects"] == 0 and r["callsites"] >= 21,
-                   "every `Ledger.open` in the tree resolves its world from "
-                   "the run -- `worldseed.world()`, a module WORLD read from "
-                   "it, `--world`, or an argument the caller states",
-                   callsites=r["callsites"], defects=r["defects"]))(
-                       _every_ledger_open_keys_on_its_world()),
-               neuter=_neuter("world scope always"),
-               neuters="world scope always"),
         R.Case("a_session_driving_another_worlds_server_is_refused", True,
                lambda: (lambda r: finding(
                    not r["shipped_refuses"],

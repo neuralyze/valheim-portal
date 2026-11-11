@@ -165,6 +165,18 @@ Every response must have its own exact echo and complete count table. Missing,
 ambiguous or truncated responses remain unknown, never zero; wildcard, duplicate
 and unsupported queries retain individual observations.
 
+For an independently launched dedicated server, set `VALHEIM_SERVER_PLUGINS`
+to its actual absolute plugin directory before creating or checking a ledger.
+The manifest and replay drift check hash that directory, not a scanner's
+`VH_SRC` or an unrelated world-local plugin copy. Unset retains the deployment
+path `<world-root>/<world>/config_merged/bepinex/plugins`; an explicitly empty
+value, relative path or missing directory refuses rather than falling back. Light
+fingerprints still do not hash DLLs or establish mod-set agreement.
+
+An explicit `pipeline.py run --replace-live` is also passed to its build stage.
+The builder still requires the replaced ledger to survive as a distinct
+archive; pipeline authorization does not bypass that guard.
+
 The default seed uses the same derived request path as every other seed; no
 historical scan-box geometry supplies a default. Stage 4 first measures the
 complete playable domain at 1 m to identify rendered land components, then
