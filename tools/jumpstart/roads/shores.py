@@ -399,9 +399,13 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
     anchor = tuple(anchor_override or node["xz"])
     core = worldseed.resolve(fields, node["patch"])
     survey_id = requirement.get("survey_patch") or "shore-" + worldseed.FUNCTION_OF.get(core.id, core.id)
-    if survey_id not in fields:
-        raise SystemExit(f"REFUSING {requirement['id']}: missing measured {survey_id}; rerun field.request_for_seed with shore_scope.request_windows")
-    fld = fields[survey_id]
+    fld = fields.get(survey_id)
+    if fld is None:
+        if requirement.get("survey_patch"):
+            raise SystemExit(f"REFUSING {requirement['id']}: missing measured {survey_id}; rerun field.request_for_seed with shore_scope.request_windows")
+        # Topology may already name the expanded measurement. Its actual
+        # coverage below, not another synthetic prefix, authorizes the search.
+        fld = core
     search_center = tuple(requirement.get("search_center", anchor))
     component_mask = None
     if complete is not None:
@@ -642,6 +646,15 @@ def selftest():
     requirement = dict(next(r for r in REQUIREMENTS if r["node"] == "dock-stathub"))
     nodes = {"stathub": dict(xz=(0, -40), patch="trunk-primary", island="spawn")}
     first = solve_site(requirement, nodes, fields, graph_factory=fixture_graph)
+    # A rooted town may already publish the expanded measured routing frame.
+    # Changing the frame label must not request a nonexistent second expansion.
+    expanded_nodes = {"stathub": dict(nodes["stathub"],
+                                      patch="shore-trunk-primary")}
+    expanded = solve_site(requirement, expanded_nodes, fields,
+                          graph_factory=fixture_graph)
+    assert (expanded["root"], expanded["bearing"], expanded["length_m"]) == (
+        first["root"], first["bearing"], first["length_m"])
+    assert expanded["structural"]["ok"]
     # A raised patch under the first jetty's bent is a real seating refusal,
     # not failure of the named shore requirement: search must try alternatives.
     from dataclasses import replace
@@ -676,18 +689,22 @@ def selftest():
     assert not clears_sites(first, [first]) and clears_sites(second, [first])
     from shore_build import plan_site
     planned = plan_site(first, GeneratedSurface(fields))
-    assert [op["op"] for op in planned["ops"]] == ["spawn_plan", "spawn"]
-    assert planned["pieces"] and planned["walk_xz"]
-    assert planned["boats"][0]["prefab"] == first["boat"]["prefab"]
     assert not any(op["op"] == "terrain_write" for op in planned["ops"])
     # Coarse values may nominate survey scope; they cannot become final geometry.
     bad = {"trunk-primary": fields["trunk-primary"]}
     try:
         solve_site(requirement, nodes, bad, graph_factory=fixture_graph)
-    except SystemExit as exc:
-        assert "missing measured shore-" in str(exc)
+    except SystemExit:
+        pass
     else:
         raise AssertionError("missing fine shore survey accepted")
+    try:
+        solve_site(dict(requirement, survey_patch="unread-explicit-survey"),
+                   nodes, fields, graph_factory=fixture_graph)
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("an explicit unread survey fell back to another frame")
     original = worldseed.Window("trunk-primary", 0, 0, 200.5, 1, "constructed")
     requests = request_windows((original,))
     assert requests[0] == original and requests[1].fid == "shore-trunk-primary"

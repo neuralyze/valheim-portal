@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Waterfront searches can use an anchor's existing measured routing frame when
+  it already covers the full search and hull/approach envelope. Rooted towns
+  published on expanded shore frames no longer request a fictitious second
+  expansion. Explicit survey requirements and clipped coverage still refuse;
+  the same rendered terrain and physical seating/support checks remain in force.
 - Waterfront searches reject assemblies that fail measured seating and continue
   through the remaining shore candidates instead of aborting the named travel
   requirement. The seating refusal retains its full geometry diagnostics;
