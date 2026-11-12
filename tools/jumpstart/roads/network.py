@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import copy
 import math
 import sys
 from pathlib import Path
@@ -1355,11 +1356,10 @@ _WET_TEST = "walked"
 # the remedy that was tried and reverted: it cannot serve a ray whose ceiling
 # is under the freeboard floor.
 _WET_REMEDY = "alignment"
-# Rounds of each remedy.  Each alignment round unions the stand-off of every
-# seed-wet body the writer refused so far; each ceiling round lowers only the
-# stations whose rays are still refused.  The loop keeps the best candidate
-# it has seen and ends at the first clear one.
-WATER_ALIGN_ROUNDS = 4
+# Alignment feedback continues while its leg-local masks or span costs grow;
+# no retry count truncates the candidate search.  Ceiling rounds lower only
+# stations whose rays are still refused.  Every candidate keeps the ordinary
+# physical checks, and a numerical refusal never proves every route impossible.
 WATER_CEILING_ROUNDS = 3
 # THE TERMINAL TRIMS TRIED, in stations (2 m each), shortest first: the
 # first that leaves no refusal within batter reach of that end is kept.
@@ -1704,15 +1704,18 @@ def tracked_build(build, base: dict | None):
     base = base or {}
     used: dict[int, dict] = {}
 
-    def wrapped(*, extra_forbid=None, trim=None, ceiling=None):
+    def wrapped(*, extra_forbid=None, extra_guidance=None, trim=None, ceiling=None):
         b_ef, b_tr = base.get("extra_forbid"), base.get("trim")
         ef = (extra_forbid if b_ef is None else b_ef if extra_forbid is None
               else b_ef | extra_forbid)
+        b_eg = base.get("extra_guidance")
+        eg = (extra_guidance if b_eg is None else b_eg if extra_guidance is None
+              else b_eg + extra_guidance)
         tr = (trim if not b_tr else
               {k: max(int(b_tr.get(k, 0)), int((trim or {}).get(k, 0)))
                for k in ("a", "b")})
-        rec, j = build(extra_forbid=ef, trim=tr, ceiling=ceiling)
-        used[id(rec)] = {"extra_forbid": ef, "trim": tr}
+        rec, j = build(extra_forbid=ef, extra_guidance=eg, trim=tr, ceiling=ceiling)
+        used[id(rec)] = {"extra_forbid": ef, "extra_guidance": eg, "trim": tr}
         return rec, j
     wrapped.used = used
     return wrapped
@@ -2306,6 +2309,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   census: censusmod.Census | None,
                   joint: dict | None = None,
                   extra_forbid: np.ndarray | None = None,
+                  extra_guidance: np.ndarray | None = None,
                   ceiling: dict[int, float] | None = None,
                   trim: dict[str, int] | None = None,
                   line_out: list | None = None) -> dict:
@@ -2326,7 +2330,8 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
         try:
             result, raw_endpoints = _build_segment_once(
                 fld, edge, corr, pois, land_only, fixed_pts, census=census,
-                joint=joint, extra_forbid=overlay, ceiling=ceiling,
+                joint=joint, extra_forbid=overlay, extra_guidance=extra_guidance,
+                ceiling=ceiling,
                 trim=trim, line_out=line_out)
         except _StraighteningRefusal as exc:
             if fixed_pts is not None:
@@ -2387,6 +2392,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   census: censusmod.Census | None,
                   joint: dict | None = None,
                   extra_forbid: np.ndarray | None = None,
+                  extra_guidance: np.ndarray | None = None,
                   ceiling: dict[int, float] | None = None,
                   trim: dict[str, int] | None = None,
                   line_out: list | None = None) -> tuple[dict, tuple]:
@@ -2457,6 +2463,18 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # of grade on a bridge approach is worse for the operator than a short ramp.
     # Overrides are recorded per segment and are never silent.
     g_max = float(edge.get("grade_max") or routemod.GRADE[cls])
+
+    if extra_guidance is not None:
+        guidance = np.asarray(extra_guidance, dtype=np.float64)
+        if (guidance.shape != (corr.m, corr.m) or
+                not np.all(np.isfinite(guidance)) or np.any(guidance < 0.0)):
+            raise ValueError("route guidance must be a finite nonnegative corridor grid")
+        if corr.guidance is not None:
+            guidance = corr.guidance + guidance
+            if not np.all(np.isfinite(guidance)):
+                raise ValueError("combined route guidance exceeds finite cost range")
+        corr = copy.copy(corr)
+        corr.guidance = guidance
 
     terminal = None
     if fixed_pts is not None:
@@ -3410,6 +3428,45 @@ def adjacency_mask(corr: routemod.Corridor, discs) -> np.ndarray:
     return out
 
 
+def span_retry_guidance(corr: routemod.Corridor, rec: dict) -> np.ndarray | None:
+    """Cost hints over over-ceiling crossing footprints, never physical forbids."""
+    out = np.zeros((corr.m, corr.m), dtype=bool)
+    radius = (routemod.footprint_half_m(float(rec["width_m"]))
+              + math.sqrt(2.0) * corr.cell_m / 2.0)
+    nodes = rec["nodes"]
+    for crossing in rec.get("crossings") or ():
+        if float(crossing["span_m"]) <= MAX_BRIDGE_SPAN_M:
+            continue
+        stations = crossing.get("stations")
+        if stations is None or len(stations) != 2:
+            continue
+        first, last = map(int, stations)
+        if not 0 <= first <= last < len(nodes):
+            continue
+        points = nodes[first:last + 1]
+        pairs = (zip(points, points[1:]) if len(points) > 1
+                 else ((points[0], points[0]),))
+        for a, b in pairs:
+            ax, az = map(float, a)
+            bx, bz = map(float, b)
+            j0 = max(0, int(math.floor((min(ax, bx) - radius - corr.x0) / corr.cell_m)))
+            j1 = min(corr.m - 1, int(math.ceil((max(ax, bx) + radius - corr.x0) / corr.cell_m)))
+            i0 = max(0, int(math.floor((min(az, bz) - radius - corr.z0) / corr.cell_m)))
+            i1 = min(corr.m - 1, int(math.ceil((max(az, bz) + radius - corr.z0) / corr.cell_m)))
+            if j0 > j1 or i0 > i1:
+                continue
+            ii, jj = np.mgrid[i0:i1 + 1, j0:j1 + 1]
+            x = corr.x0 + jj * corr.cell_m
+            z = corr.z0 + ii * corr.cell_m
+            dx, dz = bx - ax, bz - az
+            length2 = dx * dx + dz * dz
+            t = (np.clip(((x - ax) * dx + (z - az) * dz) / length2, 0.0, 1.0)
+                 if length2 else 0.0)
+            out[i0:i1 + 1, j0:j1 + 1] |= (
+                np.hypot(x - (ax + t * dx), z - (az + t * dz)) <= radius)
+    return out if np.any(out) else None
+
+
 def adjacency_reroute(corr: routemod.Corridor, one) -> tuple[dict, dict]:
     """ADJACENCY_REROUTE_DEPENDS_ON.  `one(extra_forbid)` builds the leg on
     `corr` with that mask laid over the search (None: none) and returns
@@ -3466,7 +3523,7 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
     kept on a tie.  The verdict, what was tried and what won ride on the
     record as `writer_water`.
 
-    `build(extra_forbid=, trim=, ceiling=)` returns `(record, joint)` for
+    `build(extra_forbid=, extra_guidance=, trim=, ceiling=)` returns `(record, joint)` for
     this leg (`build_segment`, in `main`) and raises ValueError where no line
     or profile exists.  Every candidate RE-SEARCHES with the same inputs plus
     its remedy, so a trim or a ceiling on the as-routed line is that line and
@@ -3479,10 +3536,16 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
     best = {"seg": seg, "joint": joint, "ww": ww0, "by": "as routed",
             "kw": {}}
     tried: list[dict] = []
+    last_refused: tuple[dict, str] | None = None
 
     def attempt(kw: dict, by: str) -> tuple[dict, dict] | None:
+        nonlocal last_refused
+        last_refused = None
         try:
             cand, j = build(**kw)
+        except OverflowError as exc:
+            tried.append({"by": by, "guidance_refusal": str(exc)})
+            return None
         except ValueError as exc:
             tried.append({"by": by, "unbuildable": str(exc)[:200]})
             return None
@@ -3490,6 +3553,7 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
         if why is not None:
             tried.append({"by": by, "refused_by_plan": why,
                           "length_m": cand["length_m"]})
+            last_refused = cand, why
             return None
         cw = writer_water(cand, fld)
         tried.append({"by": by, "steps": cw["steps"],
@@ -3502,20 +3566,54 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
     # 1. THE ALIGNMENT: off the water's refused bodies and the refused POI
     #    discs (WALKED_KEEPOUT_DEPENDS_ON) alike.
     if _water_score(ww0) and _WET_REMEDY == "alignment":
-        extra, cur = None, ww0
-        for rnd in range(1, WATER_ALIGN_ROUNDS + 1):
-            m = routemod.water_standoff_forbid(corr, cur["_seeds"],
-                                               half_m=half, grade=grade,
-                                               reach_m=reach)
-            m |= keepout_standoff_forbid(corr, cur.get("_keepout") or (),
-                                         half_m=half, grade=grade,
-                                         reach_m=reach)
-            extra = m if extra is None else (extra | m)
-            got = attempt({"extra_forbid": extra}, f"alignment {rnd}")
-            if got is None or not _water_score(got[1]) or not (
-                    got[1]["_seeds"] or got[1].get("_keepout")):
-                break
+        cur = ww0
+        extra = routemod.water_standoff_forbid(
+            corr, cur["_seeds"], half_m=half, grade=grade, reach_m=reach)
+        extra |= keepout_standoff_forbid(
+            corr, cur.get("_keepout") or (), half_m=half, grade=grade, reach_m=reach)
+        guidance = None
+        rnd = 0
+        while True:
+            rnd += 1
+            kw = {"extra_forbid": extra}
+            if guidance is not None:
+                kw["extra_guidance"] = guidance
+            got = attempt(kw, f"alignment {rnd}")
+            if got is None:
+                if last_refused is None or last_refused[1] != "span":
+                    break
+                hint = span_retry_guidance(corr, last_refused[0])
+                if hint is None:
+                    break
+                previous = np.zeros((corr.m, corr.m), dtype=np.float64) if guidance is None else guidance
+                with np.errstate(over="ignore"):
+                    prices = np.maximum(1.0, previous[hint] * 2.0)
+                if not np.all(np.isfinite(prices)):
+                    tried[-1]["guidance_refusal"] = "finite span-cost range exhausted"
+                    break
+                guidance = previous.copy()
+                guidance[hint] = prices
+                tried[-1]["span_feedback"] = {
+                    "worst_span_m": span_worst(last_refused[0]),
+                    "hint_cells": int(np.count_nonzero(hint)),
+                    "max_cost_per_m": float(np.max(prices)),
+                }
+                print(f"{seg['id']}: completed alignment {rnd}; span refused "
+                      f"{span_worst(last_refused[0]):.2f}m > {MAX_BRIDGE_SPAN_M:g}m; "
+                      f"next leg-local span cost {float(np.max(prices)):g}/m",
+                      flush=True)
+                continue
             cur = got[1]
+            if not _water_score(cur) or not (cur["_seeds"] or cur.get("_keepout")):
+                break
+            more = routemod.water_standoff_forbid(
+                corr, cur["_seeds"], half_m=half, grade=grade, reach_m=reach)
+            more |= keepout_standoff_forbid(
+                corr, cur.get("_keepout") or (), half_m=half, grade=grade, reach_m=reach)
+            combined = extra | more
+            if np.array_equal(combined, extra):
+                break
+            extra = combined
 
     def on_top(by: str) -> str:
         return by if base_by == "as routed" else f"{base_by} + {by}"
@@ -5956,15 +6054,15 @@ def _ww_leg(fld, corr, a, b, width: float = 6.0, grade: float = 0.08):
     """A `build` for `water_route` over a fixture: the corridor search, the
     footprint box and the fit -- `build_segment`'s path with no census, pad
     or crossing to read."""
-    def build(*, extra_forbid=None, trim=None, ceiling=None):
-        shared = corr.forbid
+    def build(*, extra_forbid=None, extra_guidance=None, trim=None, ceiling=None):
+        local = copy.copy(corr)
         if extra_forbid is not None:
-            corr.forbid = (extra_forbid if shared is None
-                           else shared | extra_forbid)
-        try:
-            raw = corr.search(a, b)
-        finally:
-            corr.forbid = shared
+            local.forbid = (extra_forbid if corr.forbid is None
+                            else corr.forbid | extra_forbid)
+        if extra_guidance is not None:
+            local.guidance = (extra_guidance if corr.guidance is None
+                              else corr.guidance + extra_guidance)
+        raw = local.search(a, b)
         pts, s = routemod.resample(routemod.simplify(raw, tol_m=SIMPLIFY_TOL_M),
                                    STATION_M)
         s = np.asarray(s, dtype=np.float64)
@@ -8947,7 +9045,7 @@ def main(*, plan_state: dict | None = None) -> int:
         # THE WRITER'S WATER, ASKED BEFORE ANY OTHER GATE READS THE LINE --
         # see `water_route`.  A leg the writer would lay comes back untouched.
 
-        def build_leg(*, extra_forbid=None, trim=None, ceiling=None,
+        def build_leg(*, extra_forbid=None, extra_guidance=None, trim=None, ceiling=None,
                       _edge=edge, _fld=fld_p, _corr=corridors[key],
                       _retry=seg.get("land_only_retry"),
                       _reprice=seg.get("span_reprice"),
@@ -8966,6 +9064,7 @@ def main(*, plan_state: dict | None = None) -> int:
                                       land_only=_retry is not None,
                                       census=census, joint=j,
                                       extra_forbid=ef,
+                                      extra_guidance=extra_guidance,
                                       trim=trim, ceiling=ceiling))
             if _retry is not None:
                 rec["land_only_retry"] = _retry

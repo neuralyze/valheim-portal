@@ -16,7 +16,8 @@ _NATIVE_CORRIDOR = _route.Corridor
 _NATIVE_STEP = _route.Corridor._step_cost
 _NATIVE_BLOCKED = _route.Corridor.blocked
 _NATIVE_CODES = (_NATIVE_STEP.__code__, _NATIVE_BLOCKED.__code__)
-_EDGE_ARRAYS = ("water", "water_forbidden", "S", "rough", "soft", "Bi", "fillable")
+_EDGE_ARRAYS = ("water", "water_forbidden", "S", "rough", "soft", "Bi", "fillable",
+                "guidance")
 _EDGE_VALUES = ("m", "cell_m", "x0", "z0", "grade_max", "grade_weight",
                 "roughness_weight", "poi_weight", "bridge_per_m_cost",
                 "bridge_entry_cost_m", "forbid_all_water", "shore_cost_mult")
@@ -64,7 +65,7 @@ class EdgeCosts:
         self.corr = copy.copy(base_corr)
         for name in _EDGE_ARRAYS:
             value = getattr(base_corr, name)
-            if name == "soft" and value is None:
+            if name in ("soft", "guidance") and value is None:
                 continue
             if (type(value) is not np.ndarray or value.shape != (base_corr.m, base_corr.m)
                     or name == "S" and value.dtype != np.dtype("float64")):

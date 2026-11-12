@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Writer-remedy searches continue when an alternative is refused for an
+  overlong crossing on dry terrain, not just when water provides new hints.
+  Rejected span footprints receive increasing leg-local per-metre costs,
+  never physical forbids; every candidate retains the original span, grade,
+  terrain, ownership and terminal checks. Guidance participates in immutable
+  routing ownership and mutable-input cache invalidation. Numeric cost
+  exhaustion is reported separately from physical unreachability.
 - Arrival checks no longer omit a road ending at its destination pad's
   centre. Writer and prior-road preservation walks follow the terminal
   bearing, matching saved-world acceptance; curved approaches use their

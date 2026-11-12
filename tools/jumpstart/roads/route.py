@@ -346,6 +346,23 @@ class Corridor:
     # any bridge can be: see network.build_segment.
     forbid_all_water: bool = False
 
+    def __setattr__(self, name, value):
+        if name == "guidance" and value is not None:
+            m = self.__dict__.get("m")
+            if (not isinstance(value, np.ndarray) or value.dtype.kind not in "biuf"
+                    or value.ndim != 2 or value.shape[0] != value.shape[1]
+                    or m is not None and value.shape != (m, m)
+                    or not np.isfinite(value).all() or (value < 0).any()):
+                raise ValueError("guidance must be a finite nonnegative corridor-grid array")
+            if m is not None:
+                # A cheapest positive-cost path is simple.  Reserve half the
+                # finite range for ordinary terrain costs, before guidance
+                # can overflow a complete path in any search/cache backend.
+                path_m = max(1, m * m) * math.sqrt(2.0) * self.cell_m
+                if float(value.max()) > sys.float_info.max / (2.0 * path_m):
+                    raise OverflowError("guidance exceeds finite route-cost range")
+        super().__setattr__(name, value)
+
     def __post_init__(self) -> None:
         f = self.fld
         self.dec = max(1, int(round(self.cell_m / f.step)))
@@ -362,6 +379,8 @@ class Corridor:
         # penalty multiplier, and cheaper than a mode over 16 samples.
         self.Bi = bb[:, 0, :, 0]
         self.m = self.H.shape[0]
+        # Constructor guidance is assigned before the derived grid exists.
+        self.guidance = self.guidance
         self.x0 = f.x0 + (self.dec - 1) * f.step / 2
         self.z0 = f.z0 + (self.dec - 1) * f.step / 2
         # ACHIEVABLE SURFACE.  Two steps, and the second one is the one that
@@ -451,6 +470,9 @@ class Corridor:
     unread: np.ndarray | None = None
     # What the last `search` did to an end under TERMINAL_REACH, or None.
     last_terminal: dict | None = None
+    # Additive road-metres per traversed metre, independent of POI/biome prices.
+    # Borrowed like soft/forbid; immutable routing owners take their own copy.
+    guidance: np.ndarray | None = None
 
     def blocked(self, i: int, j: int) -> bool:
         return self.forbid is not None and bool(self.forbid[i, j])
@@ -584,8 +606,15 @@ class Corridor:
             # still reach an otherwise unreachable target and the resulting span
             # is handed to Crossings.  Forbidding it would answer "unreachable"
             # where the truth is "needs a bridge".
-            return d * self.bridge_per_m_cost + (
+            cost = d * self.bridge_per_m_cost + (
                 self.bridge_entry_cost_m if not self.water[ai, aj] else 0.0)
+            if self.guidance is not None:
+                extra = d * float(self.guidance[bi, bj])
+                if (not math.isfinite(extra) or not math.isfinite(cost)
+                        or extra > sys.float_info.max - float(cost)):
+                    raise OverflowError("guided edge exceeds finite route-cost range")
+                cost += extra
+            return cost
         g = abs(self.S[bi, bj] - self.S[ai, aj]) / d
         if g > GRADE_CEILING:
             return None
@@ -602,7 +631,14 @@ class Corridor:
             # oddly, but far BELOW a bridge, so the router prefers paving a
             # beach over spanning it.
             mult *= self.shore_cost_mult
-        return d * (1.0 + pen) * mult
+        cost = d * (1.0 + pen) * mult
+        if self.guidance is not None:
+            extra = d * float(self.guidance[bi, bj])
+            if (not math.isfinite(extra) or not math.isfinite(cost)
+                    or extra > sys.float_info.max - float(cost)):
+                raise OverflowError("guided edge exceeds finite route-cost range")
+            cost += extra
+        return cost
 
     def search(self, start_xz: tuple[float, float], goal_xz: tuple[float, float]) -> list[tuple[float, float]]:
         self.last_terminal = None
@@ -659,6 +695,8 @@ class Corridor:
                 c = self._step_cost((ci, cj), (ni, nj), dd * cm)
                 if c is None:
                     continue
+                if not math.isfinite(c) or c > sys.float_info.max - gc:
+                    raise OverflowError("accumulated route cost exceeds finite range")
                 ng = gc + c
                 if ng < g_score.get(nk, math.inf):
                     g_score[nk] = ng

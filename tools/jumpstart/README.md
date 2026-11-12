@@ -122,6 +122,16 @@ geometry, not serialized node coordinates. Fixed geometry is never re-routed.
 A failed guided search remains a numerical refusal, not a claim that every
 possible alignment is impossible and not permission to omit the road.
 
+Writer-water alignment retries also continue through a candidate refused for
+an overlong dry crossing. The measured crossing's full polyline footprint
+receives an increasing additive cost per metre; its cells remain traversable.
+The cost is local to that leg, separate from biome/POI multipliers, and follows
+the candidate through later remedy rebuilds. Span, grade, terrain, ownership,
+terminal and writer checks remain unchanged, with no retry-count truncation.
+Immutable search owners copy guidance; mutable replacements and in-place
+changes invalidate incompatible cached routes. Finite-cost exhaustion is a
+distinct guidance refusal, never evidence that the physical graph is disconnected.
+
 Crossing queries default to two bounded fork workers (`geography.py emit
 --workers 1` selects serial execution). Results and exceptions are consumed in
 rank order, not completion order; accepting a candidate cancels and reaps unused
