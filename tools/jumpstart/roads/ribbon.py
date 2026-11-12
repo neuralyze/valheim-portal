@@ -2395,7 +2395,11 @@ class PadKeepOut:
             dx, dz = cx - x, cz - z
             length = math.hypot(dx, dz)
             if length < 1e-9:
-                continue
+                # Finished-world acceptance follows the terminal bearing
+                # when the destination centre supplies no direction.
+                px, pz = seg["nodes"][1 if end == "A" else -2]
+                dx, dz = x - px, z - pz
+                length = math.hypot(dx, dz) or 1.0
             ux, uz = dx / length, dz / length
             entry = gate.ray_entry_m(x, z, ux, uz, cx, cz, hw, hd)
             n = int(round((max(gap, entry or 0.0) + gate.INSIDE_PROBE_M)

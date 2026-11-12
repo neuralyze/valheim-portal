@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Arrival checks no longer omit a road ending at its destination pad's
+  centre. Writer and prior-road preservation walks follow the terminal
+  bearing, matching saved-world acceptance; curved approaches use their
+  last local leg. Real sampled steps and berms retain their existing limits.
 - Bridge straightening cannot introduce a generator hard-clearance breach.
   Such chords trigger a leg-local guided re-search and the full original
   construction checks. Guidance grows without a retry-count cap, leaves the

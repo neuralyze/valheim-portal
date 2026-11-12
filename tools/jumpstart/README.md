@@ -105,6 +105,11 @@ bounded grid, masks and cell coordinates; reading a measured shoulder outside
 that grid does not authorize a larger search or a different survey. A footprint
 outside the original measurement still refuses rather than clamping to its edge.
 
+An arrival exactly at a pad centre still has a walked direction: the road's
+terminal bearing. Writer checks and protection of earlier built-road arrivals
+use that local bearing, as finished-world acceptance does. A centre coincidence
+does not remove the arrival or relax its step and berm limits.
+
 Straight crossing chords must retain the searched route's generator hard
 clearance. A newly introduced breach triggers another leg-local search using
 additional guidance, then the ordinary crossing, profile and writer checks.
