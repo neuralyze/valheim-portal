@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -631,9 +632,31 @@ def _source_crossing_population(segments: list, crossings: dict, net) -> dict:
             "collapse": collapse}
 
 
+def _source_preview(fields, segments, net):
+    """One lazy terrain/route model for an unchanged final-profile batch."""
+    result = None
+
+    def get():
+        nonlocal result
+        if result is None:
+            started = time.monotonic()
+            print(f"north source terrain start segments={len(segments)}", flush=True)
+            planned, _ = planned_surface(fields, segments, net)
+            routes = tuple({"seg": s["id"], "nodes": [p[:2] for p in s["nodes"]],
+                            "levels": s["profile_y"],
+                            "half_width_m": float(s["width_m"]) / 2.0}
+                           for s in segments)
+            result = planned, routes
+            print(f"north source terrain complete segments={len(segments)} "
+                  f"seconds={time.monotonic()-started:.3f}", flush=True)
+        return result
+
+    return get
+
+
 def _require_source_connection(seg: dict, source_xz, *, fields: dict,
                                segments: list, crossings: dict, net,
-                               population: dict) -> None:
+                               population: dict, preview=None) -> None:
     """Ground coverage OR a registered, buildable deck carrying the source.
 
     A bridge flag is not a surface. Detected spans must carry their solved
@@ -683,15 +706,13 @@ def _require_source_connection(seg: dict, source_xz, *, fields: dict,
     if not isinstance(crossings.get("contract"), dict):
         raise ValueError(ground_refusal + "; registered source deck needs "
                          "the canonical crossing contract")
-    planned, _ = planned_surface(fields, segments, net)
+    if preview is None:
+        preview = _source_preview(fields, segments, net)
+    planned, routes = preview()
     surface = bw.asm.Bed.applied(
         lambda x, z: planned.at(x, z)[0],
         "north planning model: measured Heightmap plus ribbon.stamp planned "
         "terrain; not saved-world evidence")
-    routes = tuple({"seg": s["id"], "nodes": [p[:2] for p in s["nodes"]],
-                    "levels": s["profile_y"],
-                    "half_width_m": float(s["width_m"]) / 2.0}
-                   for s in segments)
     failures = []
     for raw, source_handoff in candidates:
         c, _ = bw.fill_from_the_contract(raw, corpus)
@@ -758,7 +779,9 @@ No ferry is inserted into the walking component graph as a pretend bridge.
     segments = []; refused = []; lines = []
     joints = {}
     required_sources = {}
-    for edge in doc["road_edges"]:
+    for edge_index, edge in enumerate(doc["road_edges"], 1):
+        print(f"north route start {edge_index}/{len(doc['road_edges'])} "
+              f"{edge['id']}", flush=True)
         f = fields[edge["patch"]]
         for nid in (edge["a"], edge["b"]):
             net.specmod.NODES[nid]["patch"] = f.id
@@ -829,26 +852,36 @@ No ferry is inserted into the walking component graph as a pretend bridge.
             refused.append(rec)
         if searched:
             lines.append({"id": edge["id"], "patch": f.id, "nodes": searched})
+        print(f"north route complete {edge_index}/{len(doc['road_edges'])} "
+              f"{edge['id']} routed={len(segments)} refused={len(refused)}", flush=True)
     base_refused = []
     if segments:
+        print(f"north joint start roads={len(segments)}", flush=True)
         segments, joint_refused, base_refused = _joint_routed_profiles(
             base, segments, joints, fields, net, plan_state,
             provisional=census is None)
         refused.extend(joint_refused)
+        print(f"north joint complete roads={len(segments)} "
+              f"north_refusals={len(joint_refused)} base_refusals={len(base_refused)}",
+              flush=True)
         source_segments = [*base["segments"], *segments]
         source_population = _source_crossing_population(
             source_segments, crossings, net)
+        source_preview = _source_preview(fields, source_segments, net)
         connected = []
-        for sg in segments:
+        for source_index, sg in enumerate(segments, 1):
             try:
                 # Source decks must see final joint profiles and survivors.
                 _require_source_connection(
                     sg, required_sources[sg["id"]], fields=fields,
                     segments=source_segments, crossings=crossings, net=net,
-                    population=source_population)
+                    population=source_population, preview=source_preview)
                 connected.append(sg)
             except ValueError as exc:
                 refused.append({"id": sg["id"], "error": str(exc)})
+            print(f"north source complete {source_index}/{len(segments)} "
+                  f"{sg['id']} connected={len(connected)} "
+                  f"refused={source_index-len(connected)}", flush=True)
         segments = connected
     doc["base_route_refusals"] = base_refused
     if census is None:
@@ -941,7 +974,7 @@ def planned_surface(fields, segments, net):
     compiled = []
     pads = (net._PLAN_PAD_KEEPOUTS() if net is not None and net._PLAN_PAD_KEEPOUTS is not None
             else ribbon.PadKeepOut([], []))
-    for sg in segments:
+    for terrain_index, sg in enumerate(segments, 1):
         zones = sorted(set(ribbon.segment_zones(sg["nodes"], sg["is_bridge"], sg["width_m"]))
                        | pads.approach_zones(sg))
         if not zones:
@@ -950,6 +983,8 @@ def planned_surface(fields, segments, net):
         comps, _ = ribbon.stamp(sg, patches, zones, pads,
                                 poi_keepouts=net.writer_keepouts(zones))
         compiled.append(comps)
+        print(f"north terrain complete {terrain_index}/{len(segments)} "
+              f"{sg['id']} zones={len(zones)}", flush=True)
 
     class Planned(NT.WF.Surface):
         def __init__(self):
@@ -1150,12 +1185,19 @@ def evaluate_candidate(coarse, candidate_id, fields, base, crossings, net, censu
 def select_frontier(coarse, evaluate):
     """No top-N cap: exhaust eligible shores or return the first full success."""
     rejected = []
-    for candidate_id in coarse["candidate_order"]:
+    for candidate_index, candidate_id in enumerate(coarse["candidate_order"], 1):
+        print(f"north frontier start {candidate_index}/{len(coarse['candidate_order'])} "
+              f"candidate={candidate_id}", flush=True)
         try:
             result = evaluate(candidate_id)
         except CandidateRefusal as exc:
             rejected.append({"candidate_id": candidate_id, "stage": exc.stage, "reason": str(exc)})
+            print(f"north frontier refused {candidate_index}/{len(coarse['candidate_order'])} "
+                  f"candidate={candidate_id} stage={exc.stage} "
+                  f"reason_excerpt={str(exc)[:320]!r}", flush=True)
             continue
+        print(f"north frontier accepted {candidate_index}/{len(coarse['candidate_order'])} "
+              f"candidate={candidate_id}", flush=True)
         return result, rejected
     raise CandidateRefusal("exhausted", json.dumps({
         "eligible_candidates": len(coarse["candidate_order"]), "rejected": rejected,

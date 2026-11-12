@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- North source-deck validation builds the unchanged final-profile terrain and
+  route model once per validation batch, lazily, rather than once per deck.
+  Every deck still runs its own construction, bed sampling and physical guards;
+  failed or partial model construction is never reused. Real registered,
+  declared and detached-deck regressions reject repeated terrain generation
+  while preserving their physical verdicts. Flushed frontier, route, terrain
+  and source-completion records expose actual advancement, not process liveness.
 - North writer previews select aligned measured fields through a scope-owned
   spatial index instead of scanning every window per vertex. North half-extent
   bounds remain distinct from shoreline sample-centre bounds; both endpoints,

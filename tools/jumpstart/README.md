@@ -154,6 +154,15 @@ sample-centre bounds and `(step, half)` priority. Each preview owns its geometry
 index; changing the field collection or geometry requires a new scope. Actual
 height and bilinear reads remain uncached, and missing coverage still refuses.
 
+After the north joint solve, source-connection checks share one lazily compiled
+terrain/route model for that unchanged segment population. Each deck still
+constructs its own pieces and samples the physical bed through all guards.
+Ground-only checks do not build the model; failed construction does not enter
+reuse. A changed segment set or profile gets a new model, including the later
+transport check over the final survivors. Flushed `north ... complete` records
+report finished route, terrain and source-check work; frontier refusals retain
+their full evidence in the result rather than claiming overall completion.
+
 Geometry-only road lattices use a constant profile. On fully claimed native
 grids that profile cannot give a farther claimant positive height exceedance,
 so the second-claimant pass is skipped. Nearest feet, stations, strict ties and
