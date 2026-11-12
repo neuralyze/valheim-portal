@@ -184,6 +184,14 @@ freshly measures the final population and checks that the complete-world height
 digest is unchanged. Ferry separation uses those complete component identities,
 never labels recomputed inside cropped survey windows.
 
+Installation shore identity follows the placement producer's landward apron,
+not the wet building centre's nearest sandbar. The shore consumer resolves the
+declared canonical owner, reads `flatten.pad_extent`, enumerates the exact
+writer samples and requires positive contact with the solved portal hub's
+complete rendered component. Duplicate aliases never contribute extra pad area.
+The same route, approach, vessel and structural checks still follow; publication
+freshness also binds the owner, footprint and network-root coordinates.
+
 Shore-search progress is written next to the generated waterfront publication
 with the suffix `.progress.json`, and a short `[shore]` line is flushed at
 requirement transitions and at most every 15 seconds of search callbacks.

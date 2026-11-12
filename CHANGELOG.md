@@ -21,13 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   measured field/manifest, geometry, semantic and declared input content.
   Ferry endpoints checkpoint together; partial search telemetry is never an
   accepted site or a world-acceptance result.
-- An over-water installation's shore search uses the measured land components
-  inside its actual allowed road-source cell when its centre has no dry-land
-  label. A fillable cell's centre may itself be wet; every fine component in
-  that cell remains eligible, never the survey's largest island by assumption.
-  Snap limits, protected masks, complete-world identity and physical route,
-  hull and support checks remain required. Publication records the chosen
-  shore's own rendered component.
+- Installation shore searches measure land contact on the canonical owner's
+  exact written pad, using the solved portal hub's rendered component. A wet
+  centre snapping to a foreign sandbar cannot replace the producer's rooted
+  apron identity, and duplicate installations cannot enlarge that footprint.
+  Publication and checkpoint inputs bind the owner, pad and network root.
+  Other wet semantic anchors retain their actual allowed road-source cell's
+  fine components. Snap, coverage, approach, hull and support checks remain
+  unchanged; accepted sites record their measured source contact.
 - Waterfront searches can use an anchor's existing measured routing frame when
   it already covers the full search and hull/approach envelope. Rooted towns
   published on expanded shore frames no longer request a fictitious second

@@ -137,9 +137,12 @@ def semantic_nodes():
     import installation_sites
     installations = installation_sites.installation_xz(
         seed=worldseed.seed(), world=worldseed.world())
+    from shore_sources import installation_footprints
+    footprints = installation_footprints(installations)
     for nid in ("stathub", "dockshore"):
         nodes[nid] = dict(xz=installations[nid],
-                         patch=worldseed.TRUNK_PRIMARY, island="spawn")
+                         patch=worldseed.TRUNK_PRIMARY, island="spawn",
+                         source_footprint=footprints[nid])
     path = worldseed.sites_path()
     doc = yaml.safe_load(path.read_text()) or {}
     worldseed.require_scope("shore settlement sites", path,
@@ -154,6 +157,13 @@ def semantic_nodes():
         nodes[nid] = dict(xz=tuple(site["xz"]),
             patch=road["topology_window"], island=road["evidence"]["island"])
     return nodes
+
+def _semantic_anchors(nodes):
+    wanted = {r["anchor"] for r in REQUIREMENTS}
+    return {k: dict(xz=list(v["xz"]), patch=v["patch"], island=v["island"],
+                    **({"source_footprint": v["source_footprint"]}
+                       if "source_footprint" in v else {}))
+            for k, v in nodes.items() if k in wanted}
 
 
 def produce(field_path):
@@ -189,9 +199,7 @@ def produce(field_path):
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     doc = dict(schema_version=1, seed=worldseed.seed(), world=worldseed.world(),
         derived_by="roads.shores.solve_site", field=str(Path(field_path).resolve()),
-        field_sha256=digest, semantic_anchors={k: dict(xz=list(v["xz"]),
-            patch=v["patch"], island=v["island"]) for k, v in nodes.items()
-            if k in {r["anchor"] for r in REQUIREMENTS}}, sites=sites)
+        field_sha256=digest, semantic_anchors=_semantic_anchors(nodes), sites=sites)
     path = publication_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(doc, sort_keys=False))
@@ -226,8 +234,7 @@ def load(*, required=True):
     if digest != doc.get("field_sha256"):
         raise SystemExit(f"REFUSING {path}: measured field changed; rerun the shore producer")
     nodes = semantic_nodes()
-    expected = {k: dict(xz=list(v["xz"]), patch=v["patch"], island=v["island"])
-        for k, v in nodes.items() if k in {r["anchor"] for r in REQUIREMENTS}}
+    expected = _semantic_anchors(nodes)
     if doc.get("semantic_anchors") != expected:
         raise SystemExit(f"REFUSING {path}: generated semantic anchors changed; rerun shore producer")
     sites = doc.get("sites") or []
@@ -440,11 +447,17 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                             fld.heights, fld.biomes), cls=requirement["cls"])
     from shore_transport import _source_components, _source_reach
     component_mask = None
+    source_contact = None
     if complete is not None:
-        measured_component = complete.at(*anchor) if component is None else component
-        components = (measured_component,) if measured_component else ()
-        if not components and component is None:
-            components = _source_components(graph, anchor, complete)
+        if component is None and anchor_override is None and node.get("source_footprint"):
+            from shore_sources import footprint_contact
+            source_contact = footprint_contact(complete, node["source_footprint"])
+            components = (source_contact["component"],)
+        else:
+            measured_component = complete.at(*anchor) if component is None else component
+            components = (measured_component,) if measured_component else ()
+            if not components and component is None:
+                components = _source_components(graph, anchor, complete)
         if not components:
             raise SystemExit(f"REFUSING {requirement['id']}: neither semantic anchor nor its allowed router source cell has a land component on complete rendered world")
         labels = complete.labels_for(fld)
@@ -555,6 +568,8 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                 if complete is not None:
                     candidate["rendered_component"] = complete.at(*root)
                     candidate["rendered_identity_patch"] = complete.field.id
+                if source_contact is not None:
+                    candidate["source_contact"] = source_contact
                 if accept is not None and not accept(candidate):
                     continue
                 return candidate
