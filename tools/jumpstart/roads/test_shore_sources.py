@@ -75,5 +75,38 @@ class InstallationSourceTests(unittest.TestCase):
                                      'portalhub': (10., 0.)}, placements=records)
 
 
+class PhysicalSourceConsumerTests(unittest.TestCase):
+    def test_rooted_apron_not_foreign_sandbar_supplies_served_coast(self):
+        import contextlib
+        import io
+        import route
+
+        half = 800.5
+        axis = -half + .5 + np.arange(1601)
+        x, z = np.meshgrid(axis, axis)
+        heights = np.where(z <= 0, S.DECK_Y,
+                           np.maximum(25., S.DECK_Y-z*.8)).astype(np.float32)
+        heights[(abs(x) <= 1) & (abs(z-20) <= 1)] = S.DECK_Y
+        field = S.W.Field('shore-trunk-primary', 0, 0, half, 1, 1601,
+                          heights, np.ones(heights.shape, dtype=np.uint8))
+        complete = CompleteLand(field, 200)
+        footprint = dict(owner='fixture#station', xz=[0., 20.],
+                         width_m=64., depth_m=64., network_root_xz=[0., -40.])
+        nodes = {'stathub': dict(xz=(0., 20.), patch='trunk-primary',
+                                island='spawn', source_footprint=footprint)}
+        def graph(field, cls):
+            corridor = route.Corridor(field, cell_m=4., grade_max=route.GRADE[cls])
+            return S.geography.RoadGraph(field, cls=cls,
+                forbid=np.zeros((corridor.m, corridor.m), dtype=bool))
+        requirement = next(r for r in S.REQUIREMENTS if r['id'] == 'dock-stationhub')
+        with contextlib.redirect_stdout(io.StringIO()):
+            site = S.solve_site(requirement, nodes,
+                {field.id: field, 'trunk-primary': field}, complete=complete,
+                graph_factory=graph)
+        self.assertEqual(site['rendered_component'], complete.at(0., -40.))
+        self.assertNotEqual(site['rendered_component'], complete.at(0., 20.))
+        self.assertTrue(site['structural']['ok'])
+
+
 if __name__ == '__main__':
     unittest.main()

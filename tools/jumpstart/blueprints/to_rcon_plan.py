@@ -102,6 +102,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.append(str(HERE.parent))
 
 from inventory import (  # noqa: E402  (local module, path set above)
     FORAGE_RE,
@@ -115,7 +116,7 @@ from inventory import (  # noqa: E402  (local module, path set above)
 )
 import base_geometry  # noqa: E402  (local module, path set above)
 import data_entry  # noqa: E402  (local module, path set above)
-import materialise  # noqa: E402  (checksum-bound authored additions)
+from blueprints import materialise  # noqa: E402  (checksum-bound authored additions)
 import preflight  # noqa: E402  (local module, path set above)
 from fixtures import PORTAL_PREFABS  # noqa: E402  (the ONE set of prefabs that teleport)
 

@@ -36,8 +36,8 @@ sys.path.insert(0, str(HERE))
 import base_geometry as bg  # noqa: E402
 from to_rcon_plan import read_objects  # noqa: E402
 
-sys.path.insert(0, str(JUMPSTART / "library"))
-from materialise import load_rows, locate  # noqa: E402
+sys.path.insert(0, str(JUMPSTART))
+from library.materialise import load_rows, locate  # noqa: E402
 
 
 def resolve_bodies() -> dict[str, Path]:

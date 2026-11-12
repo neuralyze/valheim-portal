@@ -74,21 +74,16 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 JUMPSTART = HERE.parent
-# `blueprints/` and `library/` BOTH contain a `materialise.py`, so import order
-# decides which one `import materialise` reaches. The library's own directory
-# goes last so it wins, and the blueprints modules are imported by their
-# unambiguous names first.
+sys.path.insert(0, str(JUMPSTART))
 sys.path.insert(0, str(JUMPSTART / "blueprints"))
 
 import base_geometry as bg  # noqa: E402
 from to_rcon_plan import read_objects  # noqa: E402
 
 sys.path.insert(0, str(HERE))
-for _shadowed in ("materialise",):
-    sys.modules.pop(_shadowed, None)
 
 from classify import BEDS, PORTALS, STATIONS, TIER_ORDER, load_evidence  # noqa: E402
-from materialise import load_rows, locate  # noqa: E402
+from library.materialise import load_rows, locate  # noqa: E402
 
 # How far a floating column may be from the nearest grounded column before the
 # air under it stops reading as "between supports" and starts reading as "this

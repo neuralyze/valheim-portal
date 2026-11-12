@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Library body resolution and checksum-bound authored blueprint repairs use
+  distinct package imports, independent of import order. Installation loading,
+  pad planning, datum surveys and body audits no longer share an ambiguous
+  `materialise` module or evict each other's module-cache entries.
 - Immutable generated-shore searches reuse ray prefixes and exact spatial
   terrain dispatch instead of repeatedly sampling each shorter ray and scanning
   every survey patch. Candidate order, scalar interpolation, score arithmetic,

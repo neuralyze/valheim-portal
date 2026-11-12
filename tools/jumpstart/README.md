@@ -184,6 +184,11 @@ freshly measures the final population and checks that the complete-world height
 digest is unchanged. Ferry separation uses those complete component identities,
 never labels recomputed inside cropped survey windows.
 
+Library body resolution uses `library.materialise`; checksum-bound authored
+blueprint additions and poses use `blueprints.materialise`. Consumers name
+their package explicitly, so loading installations before blueprint conversion
+cannot replace repair logic with the library resolver (or vice versa).
+
 Installation shore identity follows the placement producer's landward apron,
 not the wet building centre's nearest sandbar. The shore consumer resolves the
 declared canonical owner, reads `flatten.pad_extent`, enumerates the exact

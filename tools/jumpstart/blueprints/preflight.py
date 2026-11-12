@@ -2735,7 +2735,7 @@ def _case_workshop_gable_pose(*, apply_pose: bool = True) -> bool:
     neuter omits the authored pose, not the gate's seam discriminator.
     """
     import json
-    import materialise as M
+    from blueprints import materialise as M
     import to_rcon_plan as TP
 
     geom, _build = _gate_corpus()
@@ -2773,7 +2773,7 @@ def _case_authored_repair_identity() -> list[str]:
     """A repair is bound to both the source body and the addition's content."""
     import json
     import tempfile
-    import materialise as M
+    from blueprints import materialise as M
     import to_rcon_plan as TP
 
     bad = []
@@ -3027,7 +3027,7 @@ def _case_registry_additions_are_intact() -> list[str]:
     addition, or one whose pieces the gate cannot read, fails here and not at
     the first emission that composes it."""
     import json
-    import materialise as M
+    from blueprints import materialise as M
     import to_rcon_plan as TP
 
     geom, _build = _gate_corpus()

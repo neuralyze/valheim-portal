@@ -48,15 +48,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 JUMPSTART = HERE.parent
 
-# `library/` and `blueprints/` both contain a `materialise.py`, so the library's
-# directory is named explicitly rather than left to import order.
-sys.path.insert(0, str(JUMPSTART / "library"))
-# APPENDED, not inserted: `blueprints/` also holds a `materialise.py` and the
-# line above is what decides which one answers.  A second insert at the head
-# would silently take that decision back.
 sys.path.append(str(HERE))
 sys.path.append(str(JUMPSTART))
-import materialise  # noqa: E402
+from library import materialise  # noqa: E402
 import flatten  # noqa: E402  THE placements reader lives here
 import worldseed  # noqa: E402
 
