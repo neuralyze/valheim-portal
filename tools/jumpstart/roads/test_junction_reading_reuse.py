@@ -1,8 +1,11 @@
 """Conflicts must follow the current live graph, not removed bridge legs."""
 import unittest
 from unittest.mock import patch
+from pathlib import Path
+import sys
 
 import numpy as np
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from roads import network
 
 
