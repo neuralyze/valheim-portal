@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Bridge straightening cannot introduce a generator hard-clearance breach.
+  Such chords trigger a leg-local guided re-search and the full original
+  construction checks. Guidance grows without a retry-count cap, leaves the
+  original terminals' outward escape open, and never changes shared physical
+  or census masks. Fixed input geometry refuses instead of moving silently.
+  Terminal continuity uses unrounded geometry and recognizes real attachment
+  to the same pad, including alternate faces; unrelated pads cannot substitute.
 - Road searches retain their bounded native views, while footprint, profile,
   arrival and writer probes read the original measurement named by that view.
   Source identity and bounds must agree; genuinely unread terrain still

@@ -2216,6 +2216,90 @@ def profile_stats(y, s, t, tw_lo, tw_hi, free) -> dict:
     }
 
 
+class _StraighteningRefusal(ValueError):
+    """A new routing-clearance breach introduced by a straight crossing chord."""
+
+    def __init__(self, violations, displacement_m, endpoints):
+        self.violations = violations
+        self.displacement_m = displacement_m
+        self.endpoints = endpoints
+        super().__init__("crossing alignment breaches generator clearance: " +
+                         "; ".join(f"{v['name']} distance {v['distance_m']:.6f}m "
+                                   f"< required {v['required_m']:.6f}m"
+                                   for v in violations))
+
+
+def _check_straightening(before, after, pois, width_m, cell_m):
+    if not pois:
+        return
+    displacement = max((math.hypot(b[0]-a[0], b[1]-a[1])
+                        for a, b in zip(before, after)), default=0.0)
+    if displacement == 0.0:
+        return
+    xs, zs = [p.x for p in pois], [p.z for p in pois]
+    old = poimod.polyline_dist(before, xs, zs)
+    new = poimod.polyline_dist(after, xs, zs)
+    half = width_m / 2.0
+    violations = []
+    for p, d0, d1 in zip(pois, old, new):
+        need = p.hard_m(half)
+        # Existing unsafe alignments retain their normal final-gate refusal.
+        # This is specifically a loss of clearance caused by straightening.
+        if d1 < need <= d0:
+            violations.append({
+                "name": p.name, "xz": [p.x, p.z],
+                "distance_before_m": float(d0), "distance_m": float(d1),
+                "required_m": need,
+                "writer_required_m": p.gate_m(half),
+                "guidance_radius_m": p.hard_m(half) + chord_slack_m(cell_m)
+                                     + max(displacement, cell_m)})
+    if violations:
+        raise _StraighteningRefusal(violations, displacement, (before[0], before[-1]))
+
+
+def _retry_terminal_rejection(edge, original_endpoints, nodes):
+    """A clearance retry must preserve its original terminal attachments."""
+    reach = routemod.footprint_half_m(float(edge.get("width_m") or WIDTH_M[edge["cls"]]))
+    for end, old, new in zip(("a", "b"), original_endpoints, (nodes[0], nodes[-1])):
+        gap = math.hypot(new[0]-old[0], new[1]-old[1])
+        if gap > reach:
+            pads = terminal_pads(edge[end], reach)
+            def contacts(point, pad):
+                # Use world-coordinate closed bounds: subtracting a large pad
+                # centre first can turn native contact into a few ULPs of gap.
+                for k, axis, extent in ((0, "x", "hw"), (1, "z", "hd")):
+                    centre = float(pad[axis])
+                    radius = float(pad[extent]) + reach + ARRIVAL_EPS_M
+                    if not (math.nextafter(centre-radius, -math.inf) <= point[k]
+                            <= math.nextafter(centre+radius, math.inf)):
+                        return False
+                return True
+            if any(contacts(old, pad) and contacts(new, pad) for pad in pads):
+                continue
+            return {"end": end, "distance_m": gap, "reach_m": reach}
+    return None
+
+
+def _chord_guidance_mask(corr, radii, endpoints):
+    """Grow routing guidance without blocking original terminal escape.
+
+    A tangent half-plane at each original end leaves its outward escape open.
+    This clips only retry guidance: the shared physical and census masks remain
+    in force, including every POI's original hard radius.
+    """
+    out = np.zeros((corr.m, corr.m), dtype=bool)
+    xs = corr.x0 + np.arange(corr.m, dtype=np.float64) * corr.cell_m
+    zs = corr.z0 + np.arange(corr.m, dtype=np.float64) * corr.cell_m
+    for (_name, x, z), radius in radii.items():
+        disc = adjacency_mask(corr, [(x, z, radius)])
+        for ex, ez in endpoints:
+            ux, uz = ex-x, ez-z
+            if 0.0 < math.hypot(ux, uz) < radius:
+                disc &= ((xs[None, :]-ex)*ux + (zs[:, None]-ez)*uz < 0.0)
+        out |= disc
+    return out
+
+
 def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   land_only: bool = False,
                   fixed_pts: list | None = None, *,
@@ -2225,6 +2309,87 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   ceiling: dict[int, float] | None = None,
                   trim: dict[str, int] | None = None,
                   line_out: list | None = None) -> dict:
+    """Build a legal alignment, re-searching if a crossing chord cuts a POI.
+
+    Extra search clearance is guidance, never a changed physical boundary.
+    Every candidate repeats the normal crossing, profile and writer contracts.
+    Masks are leg-local and grow strictly; no retry count caps the search.
+    Exhausting this guided search is not proof that every alignment is impossible.
+    Fixed input geometry is never silently re-routed.
+    """
+    overlay = extra_forbid
+    radii = {}
+    attempts = []
+    original_endpoints = None
+    last = None
+    while True:
+        try:
+            result, raw_endpoints = _build_segment_once(
+                fld, edge, corr, pois, land_only, fixed_pts, census=census,
+                joint=joint, extra_forbid=overlay, ceiling=ceiling,
+                trim=trim, line_out=line_out)
+        except _StraighteningRefusal as exc:
+            if fixed_pts is not None:
+                raise
+            if original_endpoints is None:
+                original_endpoints = exc.endpoints
+            last = exc
+            for v in exc.violations:
+                x, z = v["xz"]
+                key = (v["name"], x, z)
+                previous = radii.get(key)
+                radii[key] = max(v["guidance_radius_m"],
+                                 previous + max(exc.displacement_m, corr.cell_m)
+                                 if previous is not None else 0.0)
+            mask = _chord_guidance_mask(corr, radii, original_endpoints)
+            added = mask.copy()
+            if overlay is not None:
+                added &= ~overlay
+            if corr.forbid is not None:
+                added &= ~corr.forbid
+            if not np.any(added):
+                raise
+            overlay = mask if overlay is None else overlay | mask
+            attempts.append({"violations": exc.violations,
+                             "displacement_m": exc.displacement_m,
+                             "added_search_cells": int(np.count_nonzero(added))})
+            print(f"{edge['id']} crossing clearance retry {len(attempts)} "
+                  f"added_cells={attempts[-1]['added_search_cells']} "
+                  f"introduced_breaches={len(exc.violations)}", flush=True)
+            continue
+        except ValueError as exc:
+            if last is None:
+                raise
+            raise ValueError(f"{edge['id']}: {last}; alternate alignment "
+                             f"under accumulated chord-clearance guidance "
+                             f"refused: {exc}") from exc
+        if attempts:
+            detached = _retry_terminal_rejection(edge, original_endpoints, raw_endpoints)
+            if detached is not None:
+                raise ValueError(f"{edge['id']}: chord-clearance retry moved "
+                                 f"terminal {detached['end']} "
+                                 f"{detached['distance_m']:.6f}m from its original "
+                                 f"alignment, outside its {detached['reach_m']:.6f}m "
+                                 f"level footprint; {last}")
+            result["chord_reroute"] = {
+                "attempts": attempts,
+                "guidance_discs": [{"name": name, "xz": [x, z], "radius_m": r}
+                                  for (name, x, z), r in radii.items()],
+                "why": "a straight crossing chord entered a generator's "
+                       "unchanged writer-clearance boundary; re-searched "
+                       "with leg-local guidance, then rebuilt normally"}
+        return result
+
+
+def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
+                  land_only: bool = False,
+                  fixed_pts: list | None = None, *,
+                  census: censusmod.Census | None,
+                  joint: dict | None = None,
+                  extra_forbid: np.ndarray | None = None,
+                  ceiling: dict[int, float] | None = None,
+                  trim: dict[str, int] | None = None,
+                  line_out: list | None = None) -> tuple[dict, tuple]:
     """Route and profile one leg.
 
     ``fld`` supplies the original measurement for all physical sampling;
@@ -2466,7 +2631,9 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # (CROSSING_BANKS_DEPENDS_ON), then re-sample the terrain because
     # straightening moved the stations.
     free, windows = crossing_windows(pts, s, detected)
+    before_straightening = pts
     pts, windows = straighten_windows(pts, s, windows, abut_windows)
+    _check_straightening(before_straightening, pts, pois, width_m, corr.cell_m)
     if windows or abut_windows:
         t = np.array([fld.bilinear(x, z) for x, z in pts], dtype=np.float64)
         # ...AND `s` IS RE-MEASURED, because `straighten` MOVED the stations.
@@ -2924,7 +3091,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
         rec["terminal_reach"] = {
             "node": edge["b"] if terminal["end"] == "goal" else edge["a"],
             **{k: v for k, v in terminal.items() if k != "cell"}}
-    return rec
+    return rec, (pts[0], pts[-1])
 
 
 def write_gate(seg: dict, pois: list, seed: str) -> dict:
