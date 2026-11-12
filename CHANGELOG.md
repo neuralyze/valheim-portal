@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Joint datum solves build fixed reading adjacency once and use native-indexed
+  live masks during feasibility probes. Conflict walks still filter every
+  refused leg in canonical neighbour order; heights, bounds, rung choices and
+  refusal decisions remain unchanged. A bounded-work regression preserves
+  survivors across separate conflicts and rejects repeated raw-reading scans.
 - Library body resolution and checksum-bound authored blueprint repairs use
   distinct package imports, independent of import order. Installation loading,
   pad planning, datum surveys and body audits no longer share an ambiguous

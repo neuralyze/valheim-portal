@@ -140,6 +140,12 @@ they preserve nearest-feature height ties, snapped-seed maximum heights and stri
 reach decisions. Dense or large-coordinate cases keep full transforms. Expanding
 the dry space between sparse hazards does not expand transform work quadratically.
 
+Joint datum probes reuse canonical adjacency for the fixed readings within one
+solve and build live masks with native indexing. Every probe and conflict walk
+still filters the current live legs, including removals made while isolating a
+conflict. Bounds, weights, closure, rung escalation and refusal selection retain
+their existing calculations; no live state or result is cached across solves.
+
 Geometry-only road lattices use a constant profile. On fully claimed native
 grids that profile cannot give a farther claimant positive height exceedance,
 so the second-claimant pass is skipped. Nearest feet, stations, strict ties and

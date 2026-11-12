@@ -1821,6 +1821,35 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
     tight_p = ea0 > JUNCTION_DATUM_EPS_M
     tight_u = eu0 > JUNCTION_DATUM_EPS_M
 
+    # Reading geometry is fixed for this solve. Only leg liveness changes
+    # while probing conflicts; do not rebuild its graph for every probe.
+    all_neighbours: dict[int, set[int]] = {}
+    tight_neighbours: dict[int, set[int]] = {}
+    for a, b, tight in zip(P["la"], P["lb"], tight_p):
+        if a == b:
+            continue
+        a, b = int(a), int(b)
+        all_neighbours.setdefault(a, set()).add(b)
+        all_neighbours.setdefault(b, set()).add(a)
+        if tight:
+            tight_neighbours.setdefault(a, set()).add(b)
+            tight_neighbours.setdefault(b, set()).add(a)
+    all_adjacency = {a: tuple(sorted(q)) for a, q in all_neighbours.items()}
+    tight_adjacency = {a: tuple(sorted(q)) for a, q in tight_neighbours.items()}
+
+    def connected(li, adjacency):
+        seen, order, k = {li}, [li], 0
+        while k < len(order):
+            here = order[k]
+            neighbours = adjacency.get(here, ())
+            if neighbours and alive[here]:
+                for q in neighbours:
+                    if alive[q] and q not in seen:
+                        seen.add(q)
+                        order.append(q)
+            k += 1
+        return order
+
     def own_bounds(li):
         lg = legs[li]
         y = Y0[li]
@@ -1847,9 +1876,9 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
 
     def attempt(tp, tu, lp, lu, closure_only=False):
         r = np.asarray(rung)
-        live_p = np.asarray([alive[a] and alive[b]
-                             for a, b in zip(P["la"], P["lb"])], dtype=bool)
-        live_u = np.asarray([alive[a] for a in U["la"]], dtype=bool)
+        active = np.asarray(alive, dtype=np.bool_)
+        live_p = active[P["la"]] & active[P["lb"]]
+        live_u = active[U["la"]]
         tgt = budget_p + lp * (P["allow"] - budget_p)
         allow_s = (np.maximum(tgt - JUNCTION_DATUM_MARGIN_M
                               - r[P["la"]] * da - r[P["lb"]] * db, 0.0)
@@ -1906,19 +1935,7 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
     def component(li):
         """Legs joined to `li` by a reading the design breaks, NEAREST
         FIRST: breadth-first from `li`, neighbours in canonical order."""
-        adj: dict[int, set[int]] = {}
-        for a, b, t in zip(P["la"], P["lb"], tight_p):
-            if t and a != b and alive[a] and alive[b]:
-                adj.setdefault(int(a), set()).add(int(b))
-                adj.setdefault(int(b), set()).add(int(a))
-        seen, order, k = {li}, [li], 0
-        while k < len(order):
-            for q in sorted(adj.get(order[k], ())):
-                if q not in seen:
-                    seen.add(q)
-                    order.append(q)
-            k += 1
-        return order
+        return connected(li, tight_adjacency)
 
     def closes(members, tp, tu, lp, lu) -> bool:
         """Does the system restricted to the live legs in `members` -- every
@@ -1942,18 +1959,7 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
         last that the others still fail without, dropped."""
         if _CONFLICT_SCOPE != "conflict":
             return component(li)
-        adj: dict[int, set[int]] = {}
-        for a, b in zip(P["la"], P["lb"]):
-            if a != b and alive[a] and alive[b]:
-                adj.setdefault(int(a), set()).add(int(b))
-                adj.setdefault(int(b), set()).add(int(a))
-        order, seen, k = [li], {li}, 0
-        while k < len(order):
-            for q in sorted(adj.get(order[k], ())):
-                if q not in seen:
-                    seen.add(q)
-                    order.append(q)
-            k += 1
+        order = connected(li, all_adjacency)
         if closes(order, tp, tu, lp, lu):
             return component(li)
         lo_k, hi_k = 0, len(order)
