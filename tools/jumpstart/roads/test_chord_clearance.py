@@ -119,6 +119,9 @@ class ChordClearanceTests(unittest.TestCase):
         centre = self.corr.cell_of(0., 0.)
         self.assertTrue(mask[centre])
         np.testing.assert_array_equal(self.corr.forbid, original)
+        boundary = {('Scenery', 0., endpoint[1]): abs(endpoint[0])}
+        exact = net._chord_guidance_mask(self.corr, boundary, (endpoint, (-60.,-100.)))
+        self.assertFalse(exact[self.corr.cell_of(*endpoint)])
 
 
 if __name__ == '__main__':

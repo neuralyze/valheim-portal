@@ -2294,7 +2294,7 @@ def _chord_guidance_mask(corr, radii, endpoints):
         disc = adjacency_mask(corr, [(x, z, radius)])
         for ex, ez in endpoints:
             ux, uz = ex-x, ez-z
-            if 0.0 < math.hypot(ux, uz) < radius:
+            if 0.0 < math.hypot(ux, uz) <= radius:
                 disc &= ((xs[None, :]-ex)*ux + (zs[:, None]-ez)*uz < 0.0)
         out |= disc
     return out

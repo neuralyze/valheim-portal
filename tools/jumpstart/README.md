@@ -109,7 +109,8 @@ Straight crossing chords must retain the searched route's generator hard
 clearance. A newly introduced breach triggers another leg-local search using
 additional guidance, then the ordinary crossing, profile and writer checks.
 Guidance radii grow without a retry-count cap; tangent caps leave original
-terminals an outward escape, while every original physical/census mask stays
+terminals an outward escape, including cells exactly on a guidance-disc
+boundary, while every original physical/census mask stays
 in force. The retry must still reach its original terminal footprint or make
 verified contact with the same terminal pad. These decisions use unrounded
 geometry, not serialized node coordinates. Fixed geometry is never re-routed.
