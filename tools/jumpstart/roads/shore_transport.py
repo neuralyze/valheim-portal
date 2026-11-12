@@ -128,7 +128,7 @@ def _endpoint_plan(site, seed, world):
             pos=[boat["x"], boat["y"], boat["z"]], yaw_deg=boat["yaw"])])
 
 
-def solve_pair(nodes, fields, search, complete, *, occupied=()):
+def solve_pair(nodes, fields, search, complete, *, occupied=(), progress=None):
     """Both endpoint/road populations use component-complete rendered identity.
 
     Local labels never certify separation; every destination's identity and
@@ -234,13 +234,15 @@ def solve_pair(nodes, fields, search, complete, *, occupied=()):
                 try:
                     S.solve_site(far_req, far_nodes, fields, component=fine_label,
                                  accept=accept_far, complete=complete,
-                                 graph_factory=lambda _field, cls: far_graph)
+                                 graph_factory=lambda _field, cls: far_graph,
+                                 progress=progress)
                     return True
                 except SystemExit as exc:
                     last[:] = [str(exc)]
                     return False
             try:
-                S.solve_site(src_req, nodes, fields, accept=accept_source, complete=complete)
+                S.solve_site(src_req, nodes, fields, accept=accept_source,
+                             complete=complete, progress=progress)
                 return [selected["source"], selected["far"]]
             except SystemExit as exc:
                 failures.append(dict(component=fine_label, fine_component=fine_label,

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Immutable generated-shore searches reuse ray prefixes and exact spatial
+  terrain dispatch instead of repeatedly sampling each shorter ray and scanning
+  every survey patch. Candidate order, scalar interpolation, score arithmetic,
+  inset priority, coverage errors and physical checks are unchanged. The captured
+  Vestvik root's complete 39-length/72-bearing ray search is bit-for-bit equal
+  and measured 75.83s before versus 0.164s after (462x for that hot loop).
+- Shore planning emits flushed, throttled requirement/root/length/bearing and
+  rejection-counter progress and atomically checkpoints accepted requirements.
+  Restarts reuse only an ordered completed prefix with identical source,
+  measured field/manifest, geometry, semantic and declared input content.
+  Ferry endpoints checkpoint together; partial search telemetry is never an
+  accepted site or a world-acceptance result.
 - An over-water installation's shore search uses the measured land components
   inside its actual allowed road-source cell when its centre has no dry-land
   label. A fillable cell's centre may itself be wet; every fine component in

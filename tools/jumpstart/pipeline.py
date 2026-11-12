@@ -1754,7 +1754,10 @@ def _not_producer(scope: Scope, stages: tuple[Stage, ...]) -> Callable[[Path], b
     """What a stage touches that is NOT its producer: artefacts (any stage's),
     the work directory, the world ledgers, bytecode caches."""
     fences = [scope.work.resolve(), (HERE / "ledger" / "runs").resolve()]
-    files: set[Path] = set()
+    # Search telemetry/checkpoints are generated operational state, not source.
+    files: set[Path] = {
+        worldseed.waterfront_path(scope.seed, scope.world)
+        .with_suffix(".progress.json").resolve()}
     for st in stages:
         for a in st.produces(scope):
             p = a.path.resolve()

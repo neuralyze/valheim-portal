@@ -69,6 +69,14 @@ class GeneratedSurface(WF.Surface):
         self.field_names = ["this seed's explicit measured shore field"]
         self.applied = SimpleNamespace(delta_at=lambda x, z: 0.0)
         self._masks = {}
+        from shore_sampling import GeneratedSampler
+        self._sampler = GeneratedSampler(self.fields, self.field_names)
+
+    def patch_for(self, x, z, margin=2.0):
+        return self._sampler.patch_for(x, z, margin)
+
+    def gen_sample(self, sx, sz):
+        return self._sampler.gen_sample(sx, sz)
 
     def hull_depths(self, bearing, x, z, vessel):
         from types import SimpleNamespace
@@ -167,7 +175,16 @@ def produce(field_path):
     worldseed.require_scope("shore coarse request grid", grid_path, found_seed=grid.get("seed"))
     from shore_connectivity import CompleteLand
     complete = CompleteLand.from_fields(fields, manifest)
-    sites = derive(nodes, fields, ferry_search=manifest.get("ferry_search"), complete=complete)
+    from shore_basis import checkpoint_basis
+    from shore_progress import ShoreProgress
+    progress = ShoreProgress(publication_path().with_suffix(".progress.json"),
+        checkpoint_basis(field_path, manifest, nodes, REQUIREMENTS))
+    try:
+        sites = derive(nodes, fields, ferry_search=manifest.get("ferry_search"),
+                       complete=complete, progress=progress)
+    except (Exception, SystemExit) as exc:
+        progress({"phase": "failed", "error": str(exc)})
+        raise
     with Path(field_path).open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     doc = dict(schema_version=1, seed=worldseed.seed(), world=worldseed.world(),
@@ -180,6 +197,7 @@ def produce(field_path):
     path.write_text(yaml.safe_dump(doc, sort_keys=False))
     _PREPARED_SCOPE = worldseed.seed(), worldseed.world()
     _PREPARED_SITES = tuple(sites)
+    progress({"phase": "done"})
     return doc
 
 
@@ -379,7 +397,8 @@ def road_preview(graph, surf, node, root, bearing):
 
 
 def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
-               component=None, anchor_override=None, accept=None, complete=None):
+               component=None, anchor_override=None, accept=None, complete=None,
+               progress=None):
     """Search ALL measured same-component shoreline samples, not a pinned seed."""
     if requirement.get("large_ship") and not requirement.get("vessel"):
         import north_transport
@@ -388,11 +407,17 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
             try:
                 return solve_site(dict(requirement, vessel=vessel), nodes, fields,
                     graph_factory=graph_factory, surface=surface, component=component,
-                    anchor_override=anchor_override, accept=accept, complete=complete)
+                    anchor_override=anchor_override, accept=accept, complete=complete,
+                    progress=progress)
             except SystemExit as exc:
                 failures.append(dict(vessel=vessel, reason=str(exc)))
         raise SystemExit(f"REFUSING {requirement['id']}: every measured large Odin vessel/shore alternative failed: {failures}")
     anchor_id = requirement["anchor"]
+    import time
+    started = time.monotonic()
+    if progress is not None:
+        progress({"requirement_id": requirement["id"], "phase": "preparing",
+                  "counters": {}, "vessel": requirement.get("vessel", VESSEL)})
     if anchor_override is None and anchor_id not in nodes:
         raise SystemExit(f"REFUSING {requirement['id']}: required generated semantic anchor {anchor_id} is absent; its travel/site requirement remains unmet")
     node = nodes[anchor_id]
@@ -440,25 +465,46 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
     rejected = {"road": 0, "approach": 0, "water": 0, "hull": 0, "support": 0}
     last_seating_refusal = None
     road_cache = {}
-    for root, reached in zip(candidates, reachable):
+    aim_evaluations = 0
+    from shore_rays import ShoreRays
+    for root_index, (root, reached) in enumerate(zip(candidates, reachable), 1):
         if not reached:
             rejected["road"] += 1
             continue
+        rays = (ShoreRays(surf, root, A._unit, W.WATER_LEVEL)
+                if type(surf) is GeneratedSurface else None)
         for length in range(24 if requirement["kind"] in ("slip", "harbour") else 20, 98, 2):
-            aims = []
-            for bearing in range(0, 360, 5):
-                ux, uz = A._unit(bearing)
-                hs = [surf.at(root[0] + ux * t, root[1] + uz * t)[0]
-                      for t in range(length + 1)]
-                wet = [h < W.WATER_LEVEL for h in hs]
-                if not all(wet[len(wet) // 2:]) or W.WATER_LEVEL - hs[-1] < need:
-                    rejected["water"] += 1
-                    continue
-                # Same wet-fraction/depth score as crossings.plan.aim_seaward,
-                # but each shore is tested rather than fixing the nearest one.
-                score = sum(wet) / len(wet) * 10 + min(W.WATER_LEVEL - hs[-1], 8)
-                aims.append((-score, bearing))
+            if rays is not None:
+                aims = rays.aims(length, need)
+                rejected["water"] += 72 - len(aims)
+            else:
+                # Custom/live surfaces keep their original sampling semantics.
+                aims = []
+                for bearing in range(0, 360, 5):
+                    ux, uz = A._unit(bearing)
+                    hs = [surf.at(root[0] + ux * t, root[1] + uz * t)[0]
+                          for t in range(length + 1)]
+                    wet = [h < W.WATER_LEVEL for h in hs]
+                    if not all(wet[len(wet) // 2:]) or W.WATER_LEVEL - hs[-1] < need:
+                        rejected["water"] += 1
+                        continue
+                    score = sum(wet) / len(wet) * 10 + min(W.WATER_LEVEL - hs[-1], 8)
+                    aims.append((-score, bearing))
+            aim_evaluations += 72
+            if progress is not None:
+                progress({"requirement_id": requirement["id"], "phase": "search",
+                    "root_index": root_index, "root_total": len(candidates),
+                    "root": list(root), "length": length, "bearing": None,
+                    "elapsed_seconds": round(time.monotonic() - started, 1),
+                    "counters": dict(rejected, aim_evaluations=aim_evaluations)})
             for _, bearing in sorted(aims):
+                if progress is not None:
+                    progress({"requirement_id": requirement["id"], "phase": "search",
+                        "root_index": root_index, "root_total": len(candidates),
+                        "root": list(root), "length": length, "bearing": bearing,
+                        "vessel": vessel,
+                        "elapsed_seconds": round(time.monotonic() - started, 1),
+                        "counters": dict(rejected, aim_evaluations=aim_evaluations)})
                 if not approach(surf, root, bearing, width):
                     rejected["approach"] += 1
                     continue
@@ -517,15 +563,33 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                         if last_seating_refusal is not None else ""))
 
 
-def derive(nodes, fields, *, ferry_search, complete):
+def derive(nodes, fields, *, ferry_search, complete, progress=None):
     from shore_transport import solve_pair
+    completed = progress.load_completed() if progress is not None else {}
     sites = []
     for requirement in REQUIREMENTS:
         if requirement["node"] == "ferry-east":
             continue
-        sites.append(solve_site(requirement, nodes, fields, complete=complete,
-            accept=lambda candidate: clears_sites(candidate, sites)))
-    sites.extend(solve_pair(nodes, fields, ferry_search, complete, occupied=sites))
+        site = completed.get(requirement["id"])
+        if site is None:
+            site = solve_site(requirement, nodes, fields, complete=complete,
+                accept=lambda candidate: clears_sites(candidate, sites),
+                progress=progress)
+            if progress is not None:
+                progress.complete_requirement(requirement["id"], site)
+        elif (site.get("id") != requirement["id"]
+              or not site.get("structural", {}).get("ok")
+              or not clears_sites(site, sites)):
+            raise SystemExit(f"REFUSING invalid completed shore checkpoint: {requirement['id']}")
+        sites.append(site)
+    pair = completed.get("ferry-east-isle")
+    if pair is None:
+        pair = solve_pair(nodes, fields, ferry_search, complete, occupied=sites,
+                          progress=progress)
+        require_pairs(sites + pair)
+        if progress is not None:
+            progress.complete_requirement("ferry-east-isle", pair)
+    sites.extend(pair)
     require_pairs(sites)
     return sites
 

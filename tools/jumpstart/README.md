@@ -184,6 +184,27 @@ freshly measures the final population and checks that the complete-world height
 digest is unchanged. Ferry separation uses those complete component identities,
 never labels recomputed inside cropped survey windows.
 
+Shore-search progress is written next to the generated waterfront publication
+with the suffix `.progress.json`, and a short `[shore]` line is flushed at
+requirement transitions and at most every 15 seconds of search callbacks.
+Inspect the requirement, `root_index/root_total`, current length/bearing,
+`aim_evaluations`, rejection counters, update time and last counter advancement.
+An alive process or increasing elapsed time alone is not completed work; a stale
+progress file requires diagnosis, not an assumed ETA.
+
+Accepted fixed requirements are checkpointed immediately; both eastern ferry
+ends commit as one requirement after their pair passes. A restart reuses only
+the ordered completed prefix with exactly matching input/code/geometry/semantic
+content. Different or malformed checkpoints are reported and not reused.
+Current-root work is not a resumable cursor, and neither a progress record nor
+an accepted shore replaces construction and saved-world acceptance.
+
+Generated-only terrain uses an operation-local spatial index and lazy ray
+prefixes. The shortest request still reads only its own measured coverage,
+all lengths and bearings retain their original order, and live/custom surfaces
+retain their original uncached sampling semantics.
+
+
 `roads/shores.py` solves the boathouse, jetty and both eastern ferry terminals
 from current measured terrain and the world's solved installations. Serving
 roads use the full measured approach window. The far terminal requires its own
