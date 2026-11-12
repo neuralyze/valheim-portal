@@ -99,6 +99,48 @@ from crossing_contract import (
 MAX_BRIDGE_SPAN_M = 96.0
 
 
+def _measurement_field(fields: dict, record: dict):
+    """Original measured terrain for physical probes, never the search crop.
+
+    A bounded routing view identifies its source, not a new measurement.  Its
+    published source bounds must still bind exactly before a footprint,
+    profile or writer can read beyond the search domain.  Resolve historical
+    measurement aliases as usual, but never accept a differently named field
+    merely because it was stored under the requested dictionary key.
+
+    This lookup inspects only scalar provenance; it neither builds a Corridor
+    nor derives any full-measurement masks or resampled arrays.
+    """
+    patch = record.get("patch")
+    if not isinstance(patch, str) or not patch:
+        raise ValueError("physical record has no measurement patch")
+    view = record.get("routing_view")
+    if view is not None and (not isinstance(view, dict)
+                             or view.get("measurement_patch") != patch):
+        raise ValueError("routing patch differs from its physical measurement")
+    try:
+        source = worldseed.resolve(fields, patch)
+    except KeyError as exc:
+        raise ValueError(f"physical measurement {patch!r} is absent") from exc
+    if source.id not in worldseed.aliases(patch):
+        raise ValueError(f"physical measurement {patch!r} resolves to "
+                         f"foreign source {source.id!r}")
+    if view is not None:
+        expected = view.get("measurement_bounds")
+        actual = (source.cx - source.half, source.cx + source.half,
+                  source.cz - source.half, source.cz + source.half)
+        try:
+            matches = (isinstance(expected, (tuple, list)) and len(expected) == 4
+                       and all(math.isfinite(float(a)) and float(a) == b
+                               for a, b in zip(expected, actual)))
+        except (TypeError, ValueError, OverflowError):
+            matches = False
+        if not matches:
+            raise ValueError(f"routing view predates measurement bounds of "
+                             f"{patch!r}")
+    return source
+
+
 def chord_slack_m(cell_m: float) -> float:
     """How far a station can stand from the corridor cell centres its search
     walked: half a cell diagonal plus the simplify tolerance."""
@@ -1224,13 +1266,15 @@ def arrival_start(node_id: str, xz, corr, width_m: float,
                   extra_forbid: np.ndarray | None = None, *,
                   claims: list[dict] | None = None,
                   datums: dict | None = None,
+                  fld,
                   search_m: float = 200.0) -> tuple[tuple[int, int], dict | None]:
     """The cell a search at this node starts from (ARRIVAL_REACH_DEPENDS_ON)
     and the arrival record that chose it: `Corridor.nearest_allowed` unless
     its spur reaches a pad whose datum it cannot meet at the ceiling rung,
     then the cell of the first ring outside the pad's mask, nearest the one it
-    replaces, whose spur meets it at the ceiling rung.  Raises what
-    `nearest_allowed` raises."""
+    replaces, whose spur meets it at the ceiling rung.  ``fld`` is the original
+    physical measurement; corridor indices and masks remain on ``corr``.
+    Raises what `nearest_allowed` raises."""
     base = corr.nearest_allowed(float(xz[0]), float(xz[1]), search_m)
     if _ARRIVAL_REACH_MODE != "datum":
         return base, None
@@ -1245,7 +1289,7 @@ def arrival_start(node_id: str, xz, corr, width_m: float,
     ids = {id(q) for q in mine}
     clear = _spur_clear(corr, [q for q in claims if id(q) not in ids], level,
                         extra_forbid)
-    rec0 = arrival_reach(corr.cell_world(*base), xz, mine, datums, corr.fld,
+    rec0 = arrival_reach(corr.cell_world(*base), xz, mine, datums, fld,
                          width_m, clear)
     if rec0["verdict"] != "OUT OF REACH":
         return base, rec0
@@ -1271,7 +1315,7 @@ def arrival_start(node_id: str, xz, corr, width_m: float,
                               (i - i0) ** 2 + (j - j0) ** 2, i, j))
     for _db, _dn, i, j in sorted(cands):
         rec = arrival_reach(corr.cell_world(i, j), xz, mine, datums,
-                            corr.fld, width_m, clear)
+                            fld, width_m, clear)
         if rec["verdict"] == "MEETS":
             break
     else:
@@ -2183,6 +2227,11 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   line_out: list | None = None) -> dict:
     """Route and profile one leg.
 
+    ``fld`` supplies the original measurement for all physical sampling;
+    ``corr`` alone owns search cells, masks and their index frame.  They may
+    have different origins and dimensions.  Do not derive graph matrices from
+    ``fld`` or index its samples with corridor indices.
+
     `fixed_pts` TAKES THE CENTRELINE AS AN INPUT instead of searching for one,
     and it exists so a leg's GEOMETRY can be held while its PROFILE is
     re-solved.  That is not a convenience: a centreline is the object the
@@ -2265,9 +2314,9 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                            else shared_forbid | extra_forbid)
         try:
             raw = corr.search(
-                search_xz(edge["a"], corr, width_m=width_m,
+                search_xz(edge["a"], corr, width_m=width_m, fld=fld,
                           extra_forbid=extra_forbid),
-                search_xz(edge["b"], corr, width_m=width_m,
+                search_xz(edge["b"], corr, width_m=width_m, fld=fld,
                           extra_forbid=extra_forbid))
         finally:
             corr.forbid_all_water = False
@@ -3709,10 +3758,11 @@ _NODE_ANCHORS: dict[str, tuple[float, float]] = {}
 
 
 def node_anchors(edges: list[dict], nodes: dict,
-                 corridor_of) -> dict[str, tuple[float, float]]:
+                 corridor_of, measurement_of) -> dict[str, tuple[float, float]]:
     """node id -> the cell every leg meeting there starts from, for each node
     served by more than one carriageway width.  `corridor_of(patch, cls)` is
-    the corridor a leg of that class is searched in."""
+    the corridor a leg of that class is searched in; `measurement_of(patch)`
+    supplies the original terrain for its physical arrival test."""
     classes: dict[str, dict[str, str]] = {}
     for e in edges:
         patch = e.get("patch", nodes[e["a"]]["patch"])
@@ -3725,8 +3775,9 @@ def node_anchors(edges: list[dict], nodes: dict,
         cls = max(sorted(by_cls), key=lambda c: WIDTH_M[c])
         corr = corridor_of(by_cls[cls], cls)
         try:
-            (i, j), _rec = arrival_start(nid, nodes[nid]["xz"], corr,
-                                         WIDTH_M[cls])
+            (i, j), _rec = arrival_start(
+                nid, nodes[nid]["xz"], corr, WIDTH_M[cls],
+                fld=measurement_of(by_cls[cls]))
         except ValueError:
             continue
         x, z = corr.cell_world(i, j)
@@ -3736,7 +3787,7 @@ def node_anchors(edges: list[dict], nodes: dict,
 
 def search_xz(node_id: str, corr: routemod.Corridor, nodes: dict | None = None,
               anchors: dict | None = None, *, width_m: float | None = None,
-              extra_forbid: np.ndarray | None = None) -> tuple[float, float]:
+              extra_forbid: np.ndarray | None = None, fld) -> tuple[float, float]:
     """Where a search at this node starts (NODE_ANCHOR_DEPENDS_ON): the
     node's anchor where it has one and this corridor allows it; else, given
     the carriageway width, the cell `arrival_start` picks when that is not
@@ -3756,7 +3807,8 @@ def search_xz(node_id: str, corr: routemod.Corridor, nodes: dict | None = None,
     if width_m is None:
         return xz
     try:
-        (i, j), rec = arrival_start(node_id, xz, corr, width_m, extra_forbid)
+        (i, j), rec = arrival_start(node_id, xz, corr, width_m, extra_forbid,
+                                   fld=fld)
     except ValueError:
         return xz
     return corr.cell_world(i, j) if rec and "moved_from" in rec else xz
@@ -4453,8 +4505,7 @@ def water_after_joint(segments: list[dict], joints: dict[str, dict],
                 continue
             key = (sid, tuple(sg["profile_y"]))
             if key not in cache:
-                cache[key] = writer_water(sg, worldseed.resolve(flds,
-                                                                sg["patch"]))
+                cache[key] = writer_water(sg, _measurement_field(flds, sg))
             fw = cache[key]
             if fw["verdict"] != "REFUSED":
                 continue
@@ -6720,7 +6771,7 @@ def selftest_arrival_reach() -> int:
 
     def verdict() -> str:
         (i, j), _rec = arrival_start("stathub", node, corr, 6.0,
-                                     claims=[_RCH_PAD], datums=datums)
+                                     claims=[_RCH_PAD], datums=datums, fld=fld)
         sx, sz = corr.cell_world(i, j)
         spur = arrival_spur((sx, sz), node, [_RCH_PAD], level)
         L = math.hypot(sx, sz)
@@ -7546,8 +7597,9 @@ def selftest_node_anchor() -> int:
 
     def verdict() -> str:
         anchors = node_anchors(edges, nodes,
-                               lambda _p, c: {"trunk": trunk, "spur": spur}[c])
-        starts = [corr.search(search_xz("temple", corr, nodes, anchors),
+                               lambda _p, c: {"trunk": trunk, "spur": spur}[c],
+                               lambda _p: fld)
+        starts = [corr.search(search_xz("temple", corr, nodes, anchors, fld=fld),
                               nodes[e["b"]]["xz"])[0]
                   for corr, e in ((trunk, edges[0]), (spur, edges[1]))]
         d = math.hypot(starts[0][0] - starts[1][0],
@@ -8297,7 +8349,7 @@ def main(*, plan_state: dict | None = None) -> int:
         is no confinement to lift."""
         if census is None or args.census_band_free:
             return None
-        fld_p, corr = worldseed.resolve(flds, patch), corridors[key]
+        fld_p, corr = _measurement_field(flds, dict(edge, patch=patch)), corridors[key]
 
         def build(**kw):
             ef = kw.pop("extra_forbid", None)
@@ -8565,7 +8617,8 @@ def main(*, plan_state: dict | None = None) -> int:
     _NODE_ANCHORS.clear()
     _ARRIVAL_STARTS.clear()
     _NODE_ANCHORS.update(node_anchors(
-        routable, specmod.NODES, lambda p, c: corridors[corridor_for(p, c)]))
+        routable, specmod.NODES, lambda p, c: corridors[corridor_for(p, c)],
+        lambda p: _measurement_field(flds, {"patch": p})))
     print(f"node anchors at PLAN time: {len(_NODE_ANCHORS)} node(s) served "
           f"by more than one carriageway width start every leg from one cell"
           + (f" ({', '.join(f'{n} {list(v)}' for n, v in sorted(_NODE_ANCHORS.items()))})"
@@ -8618,10 +8671,11 @@ def main(*, plan_state: dict | None = None) -> int:
         searched: list = []
         base_trim: dict | None = None
         try:
-            def first(*, trim=None, _p=patch, _k=key, _e=edge):
+            fld_p = _measurement_field(flds, dict(edge, patch=patch))
+            def first(*, trim=None, _fld=fld_p, _k=key, _e=edge):
                 def one(adj=None):
                     jo: dict = {}
-                    return (build_segment(worldseed.resolve(flds, _p), _e,
+                    return (build_segment(_fld, _e,
                                           corridors[_k], pois + census_pois,
                                           census=census, joint=jo, trim=trim,
                                           line_out=searched,
@@ -8660,7 +8714,7 @@ def main(*, plan_state: dict | None = None) -> int:
                 # rather than refused with the land-only "no route found".
                 joint = {}
                 try:
-                    land = build_segment(worldseed.resolve(flds, patch), edge,
+                    land = build_segment(fld_p, edge,
                                          corridors[key], pois + census_pois,
                                          land_only=True, census=census,
                                          joint=joint, trim=base_trim,
@@ -8725,7 +8779,6 @@ def main(*, plan_state: dict | None = None) -> int:
             return
         # THE WRITER'S WATER, ASKED BEFORE ANY OTHER GATE READS THE LINE --
         # see `water_route`.  A leg the writer would lay comes back untouched.
-        fld_p = worldseed.resolve(flds, patch)
 
         def build_leg(*, extra_forbid=None, trim=None, ceiling=None,
                       _edge=edge, _fld=fld_p, _corr=corridors[key],
@@ -8991,7 +9044,7 @@ def main(*, plan_state: dict | None = None) -> int:
         key = (sg["id"], tuple(sg["profile_y"]))
         if key not in water_cache:
             water_cache[key] = writer_water(
-                sg, worldseed.resolve(flds, sg["patch"]))
+                sg, _measurement_field(flds, sg))
         return water_cache[key]
 
     def remedy_leg(sg: dict, _fw: dict) -> tuple[dict, dict] | None:
@@ -9112,7 +9165,7 @@ def main(*, plan_state: dict | None = None) -> int:
             if key not in water_cache:
                 sg.pop("connection_collar", None)
                 water_cache[key] = writer_water(
-                    sg, worldseed.resolve(flds, sg["patch"]))
+                    sg, _measurement_field(flds, sg))
             fw = water_cache[key]
             # The collar is re-decided on the profile that will be EMITTED,
             # and the leg records it for ribbon.stamp (COLLAR_CHOICE).

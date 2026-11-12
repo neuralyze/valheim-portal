@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Road searches retain their bounded native views, while footprint, profile,
+  arrival and writer probes read the original measurement named by that view.
+  Source identity and bounds must agree; genuinely unread terrain still
+  refuses. Search masks and cell coordinates are not enlarged or reinterpreted.
+  Numeric regressions cover cropped detours, off-centre arrival frames,
+  stale sources and true measurement exhaustion.
 - North source-deck validation builds the unchanged final-profile terrain and
   route model once per validation batch, lazily, rather than once per deck.
   Every deck still runs its own construction, bed sampling and physical guards;

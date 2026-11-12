@@ -98,6 +98,13 @@ prints ranked pair starts/results with elapsed time and emits bank handoff
 counts at 30-second intervals between goals. These are search-work indicators,
 not a completion percentage or a promise that later construction will pass.
 
+Bounded road-search views are not separate terrain measurements. Physical
+footprint, profile, arrival and writer checks resolve the view's original
+measurement and verify its identity and bounds before sampling. A* keeps its
+bounded grid, masks and cell coordinates; reading a measured shoulder outside
+that grid does not authorize a larger search or a different survey. A footprint
+outside the original measurement still refuses rather than clamping to its edge.
+
 Crossing queries default to two bounded fork workers (`geography.py emit
 --workers 1` selects serial execution). Results and exceptions are consumed in
 rank order, not completion order; accepting a candidate cancels and reaps unused

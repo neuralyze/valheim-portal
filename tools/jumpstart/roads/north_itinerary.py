@@ -564,7 +564,7 @@ def _joint_routed_profiles(base, segments, joints, fields, net, plan_state,
         key = (sid, tuple(sg["profile_y"]))
         reading = plan_state["water_cache"].get(key)
         if reading is None:
-            reading = net.writer_water(sg, worldseed.resolve(fields, sg["patch"]))
+            reading = net.writer_water(sg, net._measurement_field(fields, sg))
             plan_state["water_cache"][key] = reading
         public = {**net.water_public(reading), **net.judged_public(reading)}
         water = sg.setdefault("writer_water", {})
@@ -782,10 +782,11 @@ No ferry is inserted into the walking component graph as a pretend bridge.
     for edge_index, edge in enumerate(doc["road_edges"], 1):
         print(f"north route start {edge_index}/{len(doc['road_edges'])} "
               f"{edge['id']}", flush=True)
-        f = fields[edge["patch"]]
+        search_field = fields[edge["patch"]]
+        f = net._measurement_field(fields, edge)
         for nid in (edge["a"], edge["b"]):
             net.specmod.NODES[nid]["patch"] = f.id
-        corr = route.Corridor(f, cell_m=1.0, grade_max=route.GRADE_CEILING,
+        corr = route.Corridor(search_field, cell_m=1.0, grade_max=route.GRADE_CEILING,
                               bridge_entry_cost_m=300.0, bridge_per_m_cost=15.0)
         forbid, soft, _ = poi.masks(obstacles, corr.x0, corr.z0, corr.cell_m,
                                     corr.m, net.WIDTH_M[edge["cls"]]/2.0)
