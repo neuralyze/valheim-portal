@@ -213,17 +213,36 @@ def require_search_coverage(coarse, fields):
                              "rerun the scoped stage-4 field producer under its declared budget")
 
 
-def _field_for(fields: dict, a, b, *, margin=32.0):
-    candidates = [f for f in fields.values()
-                  if abs(f.step - 1.0) < 1e-9
-                  and abs(f.x0 - round(f.x0)) < 1e-6
-                  and abs(f.z0 - round(f.z0)) < 1e-6
-                  and f.contains(*a, margin=margin)
-                  and f.contains(*b, margin=margin)]
-    if not candidates:
+def _aligned_fields(fields):
+    return ((key, f) for key, f in fields.items()
+            if abs(f.step - 1.0) < 1e-9
+            and abs(f.x0 - round(f.x0)) < 1e-6
+            and abs(f.z0 - round(f.z0)) < 1e-6)
+
+
+def _aligned_field_index(fields):
+    """Metadata dispatch owned by one preview; source samples remain live."""
+    from roads.field_index import FieldEntry, FieldIndex
+    ordered = sorted((f for _, f in _aligned_fields(fields)),
+                     key=lambda f: (f.half, f.id))
+    return FieldIndex([FieldEntry(f, rank, f.cx-f.half, f.cz-f.half,
+                                  f.cx+f.half, f.cz+f.half)
+                       for rank, f in enumerate(ordered)])
+
+
+def _field_for(fields: dict, a, b, *, margin=32.0, index=None):
+    if index is None:
+        candidates = [f for _, f in _aligned_fields(fields)
+                      if f.contains(*a, margin=margin)
+                      and f.contains(*b, margin=margin)]
+        selected = min(candidates, key=lambda f: (f.half, f.id)) if candidates else None
+    else:
+        entry = index.find(*a, margin=margin, x2=b[0], z2=b[1])
+        selected = entry.field if entry is not None else None
+    if selected is None:
         raise ValueError(f"north aligned 1m coverage missing for {a} -> {b} plus {margin}m; "
                          "rerun pipeline field with the coarse-derived north windows")
-    return min(candidates, key=lambda f: (f.half, f.id))
+    return selected
 
 
 def _dry_point(fields: dict, p, allowed_biomes: set[str], *, radius=WAYPOINT_REFINE_RADIUS_M):
@@ -915,10 +934,9 @@ def planned_surface(fields, segments, net):
     from types import SimpleNamespace
     if segments and net is None:
         raise ValueError("planned road terrain requires the production writer providers")
+    field_index = _aligned_field_index(fields)
     transport_fields = {key: NT.W.Field(f.id, f.cx, f.cz, f.half, f.step, f.n, f.h, f.biome)
-                        for key, f in fields.items() if abs(f.step-1.0) < 1e-9
-                        and abs(f.x0-round(f.x0)) < 1e-6
-                        and abs(f.z0-round(f.z0)) < 1e-6}
+                        for key, f in _aligned_fields(fields)}
     scoped = NT.ScopedFields(transport_fields, worldseed.seed(), source="scoped stage-4 field")
     compiled = []
     pads = (net._PLAN_PAD_KEEPOUTS() if net is not None and net._PLAN_PAD_KEEPOUTS is not None
@@ -928,7 +946,7 @@ def planned_surface(fields, segments, net):
                        | pads.approach_zones(sg))
         if not zones:
             continue
-        patches = scoped_writer_patches(fields, zones)
+        patches = scoped_writer_patches(fields, zones, index=field_index)
         comps, _ = ribbon.stamp(sg, patches, zones, pads,
                                 poi_keepouts=net.writer_keepouts(zones))
         compiled.append(comps)
@@ -941,7 +959,7 @@ def planned_surface(fields, segments, net):
             self._masks = {}
 
         def at(self, x, z):
-            f = _field_for(fields, [x, z], [x, z], margin=1.0)
+            f = _field_for(fields, [x, z], [x, z], margin=1.0, index=field_index)
             generated = f.bilinear(x, z)
             # Later stamps replace claimed samples; road profiles are not added.
             def vertex(sx, sz):
@@ -1003,11 +1021,16 @@ def planned_surface(fields, segments, net):
     return Planned(), scoped
 
 
-def scoped_writer_patches(fields, zones):
-    """Writer-shaped patches read ONLY measured integer lattice vertices."""
+def scoped_writer_patches(fields, zones, *, index=None):
+    """Writer-shaped patches read ONLY measured integer lattice vertices.
+
+    Field geometry is fixed for this preview, but no source height is cached.
+    """
     import ribbon
+    if index is None:
+        index = _aligned_field_index(fields)
     def generated(x, z):
-        f = _field_for(fields, [x, z], [x, z], margin=0.0)
+        f = _field_for(fields, [x, z], [x, z], margin=0.0, index=index)
         return f.at(x, z)
     return {f"z_{x}_{z}": ribbon._flat_patch(x, z, generated) for x, z in zones}
 

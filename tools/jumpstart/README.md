@@ -146,6 +146,14 @@ still filters the current live legs, including removals made while isolating a
 conflict. Bounds, weights, closure, rung escalation and refusal selection retain
 their existing calculations; no live state or result is cached across solves.
 
+North writer previews share the metadata-only spatial hierarchy with generated
+shore sampling, but retain their own aligned-1m eligibility, `(half, id)`
+priority and half-extent containment frame. Both requested endpoints must fit
+one field, including the requested margin. Shore sampling instead retains its
+sample-centre bounds and `(step, half)` priority. Each preview owns its geometry
+index; changing the field collection or geometry requires a new scope. Actual
+height and bilinear reads remain uncached, and missing coverage still refuses.
+
 Geometry-only road lattices use a constant profile. On fully claimed native
 grids that profile cannot give a farther claimant positive height exceedance,
 so the second-claimant pass is skipped. Nearest feet, stations, strict ties and

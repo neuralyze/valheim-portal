@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- North writer previews select aligned measured fields through a scope-owned
+  spatial index instead of scanning every window per vertex. North half-extent
+  bounds remain distinct from shoreline sample-centre bounds; both endpoints,
+  margins, overlap priority and coverage refusals are preserved. The captured
+  six-zone preview is exactly equal across all 25,350 heights: 21.68s before
+  versus 0.426s after. This is preview evidence, not completed north/world
+  acceptance. Geometry indexes are rebuilt per scope; heights stay uncached.
 - Joint datum solves build fixed reading adjacency once and use native-indexed
   live masks during feasibility probes. Conflict walks still filter every
   refused leg in canonical neighbour order; heights, bounds, rung choices and
