@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lateral A* snap. Alternative contacts remain eligible; all physical masks,
   owned heights, full-profile and writer checks still apply. Shore preview
   and road construction share the same landing level-run distance.
+  Fixed shore landings also measure their mandatory outer shoulders against
+  water and the unchanged cut/fill clamp; missing shoulder coverage refuses
+  explicitly. Legal shoulder grading remains eligible. Owned waterfront
+  contact searches retain the real bank domain without claiming bridge caps.
 - Solo and joint road profiles verify actual interpolated lattice-foot
   constraints before declaring them infeasible. Conservative station boxes
   remain a fast path, not an impossibility proof. Exact sparse fitting retains

@@ -2586,6 +2586,8 @@ def _bank_profile_contacts(edge, end, corr, original, extra_forbid):
     # is an intermediate cell, so use its area, not only its centre: otherwise
     # a diagonal cell touching the owned footprint is silently excluded.
     restored = node.get("kind") == "abutment" and bool(node.get("crossing"))
+    full_domain = restored or (node.get("kind") == "waterfront_terminal"
+                               and node.get("owner") == "Crossings")
     cell_half = corr.cell_m / 2.0 if restored else 0.0
     r = math.ceil((radius + cell_half) / corr.cell_m)
 
@@ -2600,7 +2602,7 @@ def _bank_profile_contacts(edge, end, corr, original, extra_forbid):
                     or extra_forbid is not None and extra_forbid[i, j]):
                 continue
             point = tuple(map(float, corr.cell_world(i, j)))
-            if touches(point, (x, z)) and (restored or touches(point, original)):
+            if touches(point, (x, z)) and (full_domain or touches(point, original)):
                 out.append(point)
     out.sort(key=lambda p: (math.hypot(p[0]-original[0], p[1]-original[1]), p))
     return out

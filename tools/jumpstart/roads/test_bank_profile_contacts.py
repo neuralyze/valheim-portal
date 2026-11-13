@@ -83,6 +83,25 @@ class BankProfileContactsTests(unittest.TestCase):
         for name, value in before.items():
             np.testing.assert_array_equal(getattr(corr, name), value)
 
+    def test_waterfront_domain_uses_real_bank_without_claiming_bridge_cap_area(self):
+        corr = _corridor()
+        origin = tuple(map(float, corr.cell_world(*corr.cell_of(0., 0.))))
+        intermediate = (origin[0] + 4 * corr.cell_m, origin[1])
+        edge = dict(a='shore', b='elsewhere', cls='trunk', width_m=6.)
+        node = dict(xz=origin, level_y=30.6, kind='waterfront_terminal',
+                    owner='Crossings', arrive_bearing_deg=0.)
+        corr.forbid[corr.cell_of(origin[0] - corr.cell_m, origin[1])] = True
+        before = _physical_snapshot(corr)
+        expected = {origin, (origin[0] + corr.cell_m, origin[1]),
+                    (origin[0], origin[1] - corr.cell_m),
+                    (origin[0], origin[1] + corr.cell_m)}
+        with patch.object(N.specmod, 'NODES', {'shore': node}):
+            contacts = N._bank_profile_contacts(
+                edge, 'a', corr, intermediate, None)
+        self.assertEqual(set(contacts), expected)
+        for name, value in before.items():
+            np.testing.assert_array_equal(getattr(corr, name), value)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -160,8 +160,13 @@ using the same level-run distance as the shore preview. This works at either
 end of a road and does not reshape a fixed-profile repair. The approach must
 fit the current physical and leg-local masks; ordinary alternative contacts
 remain eligible, and the complete constructor and writer still decide
-whether any candidate is buildable. A valid centre-line shore preview alone
-does not establish that its road's full footprint can be constructed.
+whether any candidate is buildable. The shore's fixed landing samples the
+complete shared bench footprint, including outer shoulders, for submerged
+ground and the existing cut/fill clamp. Missing coverage is not a clear
+sample. Shoulders may use legal grading without meeting the carriageway's
+natural-relief comfort rule. This is a necessary landing check, not approval
+of the whole road. Waterfront alternative contacts retain the real bank's
+domain without acquiring declared bridge-cap ownership.
 
 The intermediate snapped search contact does not clip a restored bank's
 eligible contact domain. Self-overlapping bank candidates also try the

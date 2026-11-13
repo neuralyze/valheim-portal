@@ -22,11 +22,12 @@ for directory in (HERE.parent, HERE.parent / "blueprints",
 import worldseed
 import geography
 import field as F
+import route
 import water as W
 import assemble as A
 from settlements import waterfront as WF
 
-from crossing_contract import BANK_LEVEL_M
+from crossing_contract import BANK_LEVEL_M, footprint_offsets
 from shore_scope import SEARCH_RADIUS_M, FOOTPRINT_MARGIN_M, request_windows
 DECK_Y = geography.DECK_DATUM_Y
 VESSEL = "VikingShip"
@@ -250,7 +251,7 @@ def load(*, required=True):
     return sites
 
 
-def approach(surf, root, bearing, width_m, *, length_m=6.0):
+def approach(surf, root, bearing, width_m, *, length_m=BANK_LEVEL_M):
     """The existing straight reciprocal road approach, on measured dry ground.
 
     The first metre meets the deck within the player's 0.35m step limit; the
@@ -259,6 +260,7 @@ def approach(surf, root, bearing, width_m, *, length_m=6.0):
     """
     ux, uz = A._unit(bearing)
     lx, lz = uz, -ux
+    bench_lats = footprint_offsets(width_m)
     previous = DECK_Y
     for along in np.arange(0.0, length_m + 0.5, 1.0):
         hs = [surf.at(root[0] - ux * along + lx * across,
@@ -273,6 +275,16 @@ def approach(surf, root, bearing, width_m, *, length_m=6.0):
         if abs(height - previous) > (0.35 if along == 0 else 0.25):
             return False
         previous = height
+        # The constructor holds this whole level bench, including shoulders,
+        # at DECK_Y. Shoulders may use the unchanged cut/fill allowance; they
+        # need not satisfy the carriageway's natural-relief comfort rule.
+        # Sample through the real surface so missing coverage stays explicit.
+        for across in bench_lats:
+            h = surf.at(root[0] - ux * along + lx * across,
+                        root[1] - uz * along + lz * across)[0]
+            if (not math.isfinite(h) or h < W.WATER_LEVEL
+                    or abs(h - DECK_Y) > route.CUT_FILL_MAX):
+                return False
     return True
 
 
