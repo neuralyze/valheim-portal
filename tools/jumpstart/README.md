@@ -119,10 +119,13 @@ silently move to another attachment.
 An owned arrival is a real constraint even when a corner gap leaves no
 ordinary road/pad collision pair. Its endpoint and declared pad datum enter
 the existing native joint solver with the allowance for the actual
-unauthored gap; the solver reserves its emission margin once. Selection is
-restricted to the pad holding that road node, so a nearby foreign foundation
-cannot substitute for the destination. Native writer and saved-world checks
-remain in force on the complete resulting surface.
+unauthored gap; the solver reserves its emission margin once. The pad holding
+the road node remains its routing destination, but every actual native
+arrival walk is also enforced, including at a terminal resited outside its
+original pocket. A nearer foundation cannot hide an owned arrival, nor can
+owner filtering erase a walk the finished-world gate will judge. Incompatible
+readings remain numerical refusals. Native writer and saved-world checks stay
+in force on the complete resulting surface.
 
 Protected-ground feedback uses the largest absolute cut/fill gap from a
 complete observed face pair. It does not combine heights from unrelated

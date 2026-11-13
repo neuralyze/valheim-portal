@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a diagonal cap is outside the ordinary footprint-pair gate. These readings
   retain actual pad identity, endpoint geometry, physical gap allowance and
   the native emission margin; nearby foreign pads cannot replace an owner.
+  Native arrival walks also remain constraints at resited terminals lacking a
+  containing named-node pad. A nearer foundation cannot hide either obligation;
+  incompatible readings refuse numerically instead of producing a false fit.
 - Protected-ground feedback handles cuts as well as fills, retaining complete
   observed height pairs instead of combining unrelated extrema. Water-route
   hairpins receive the existing adjacency remedy without losing accumulated

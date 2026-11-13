@@ -2348,24 +2348,31 @@ def _fit_pad_arrivals(seg: dict, joint: dict) -> dict:
         return {}
     keepouts = _PLAN_PAD_KEEPOUTS()
     level_half = _level_half(seg)
-    walks = []
+    actual = keepouts.arrival_walks(seg)
+    walks = {(walk["end"], walk["nums"]["destination"]): walk
+             for walk in actual}
+    destinations = {
+        walk["end"].lower(): {
+            "pad": walk["nums"]["destination"], "datum_y": walk["datum"]}
+        for walk in actual}
     for end, node in (("A", seg["from"]), ("B", seg["to"])):
         owners = {str(pad["site_id"])
                   for pad in terminal_pads(node, level_half)}
         if not owners:
             continue
-        # A nearby building is not this endpoint's destination. Restrict
-        # selection before asking the native walks, so a closer foreign
-        # pad cannot hide or replace the pad the road actually serves.
+        # Preserve the declared destination if a nearer pad attracts the
+        # native walk, but do not discard that actual walk: acceptance still
+        # judges it, including at terminals resited out of a closed pocket.
         owned = copy.copy(keepouts)
         owned.rects = [rect for rect in keepouts.rects if rect[0] in owners]
-        walks.extend(walk for walk in owned.arrival_walks(seg)
-                     if walk["end"] == end)
-    destinations = {
-        walk["end"].lower(): {
-            "pad": walk["nums"]["destination"], "datum_y": walk["datum"]}
-        for walk in walks}
-    ids = {v["pad"] for v in destinations.values()}
+        for walk in owned.arrival_walks(seg):
+            if walk["end"] != end:
+                continue
+            walks[end, walk["nums"]["destination"]] = walk
+            destinations[end.lower()] = {
+                "pad": walk["nums"]["destination"], "datum_y": walk["datum"]}
+    walks = list(walks.values())
+    ids = {walk["nums"]["destination"] for walk in walks}
     pads = [
         {"kind": "pad", "id": sid, "label": sid, "role": "site_pad",
          "x": x, "z": z, "hw": hw, "hd": hd,
@@ -2408,8 +2415,7 @@ def _pad_arrival_candidates(edge, which, destination, corr, fld, width_m,
     node_id = edge[which]
     xz = specmod.NODES[node_id]["xz"]
     claims = pad_claims()
-    mine = [q for q in terminal_pads(node_id, level, claims)
-            if str(q["site_id"]) == destination["pad"]]
+    mine = [q for q in claims if str(q["site_id"]) == destination["pad"]]
     if not mine:
         return []
     ids = {id(q) for q in mine}

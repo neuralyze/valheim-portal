@@ -99,17 +99,6 @@ class PadArrivalProfileTests(unittest.TestCase):
         self.assertTrue(all(row['spread_m'] <= row['slide_allow_m'] + 1e-6
                             for row in rows))
 
-    def test_unrelated_pad_does_not_become_a_terminal_constraint(self):
-        unrelated = dict(site_id='other', name='other', x=-25.5, z=25.5,
-                         hw=2., hd=2., datum_y=70., planned=True)
-        pads = R.pad_keepouts_from_chain([], [], planned=[self.pad, unrelated])
-        points = [[-35.5, 18.5], [-15.5, 18.5], [1.45, 12.5]]
-        with patch.object(N, '_PLAN_PAD_KEEPOUTS', lambda: pads):
-            result = N.build_segment(
-                self.field, self.edge, self.corr, [], census=None,
-                fixed_pts=points)
-        self.assertTrue(all(y < 60. for y in result['profile_y']))
-
     def test_no_eligible_same_pad_escape_remains_numerically_refused(self):
         # Census/POI-style exclusion leaves only a thin west approach. The
         # retry may not remove that mask or escape to an unrelated pad.
@@ -188,7 +177,35 @@ class PadArrivalProfileTests(unittest.TestCase):
             np.abs(np.diff(y)) <=
             seg['grade_limit'] * np.diff(joint['s']) + .002))
 
-    def test_closer_foreign_pad_cannot_hide_the_owned_corner_arrival(self):
+    def test_resited_terminal_keeps_the_native_walk_obligation(self):
+        points = [[-35.5, 18.5], [-15.5, 18.5], [1.45, 12.5]]
+        joint = {}
+        with patch.object(N, '_PLAN_PAD_KEEPOUTS', None):
+            seg = N.build_segment(
+                self.field, self.edge, self.corr, [], census=None,
+                fixed_pts=points, joint=joint)
+        other = dict(site_id='approach', name='approach', x=-25.5, z=25.5,
+                     hw=2., hd=2., datum_y=44., planned=True)
+        pads = R.pad_keepouts_from_chain([], [], planned=[other])
+        walk = next(w for w in pads.arrival_walks(seg) if w['end'] == 'A')
+        self.assertEqual(walk['nums']['destination'], 'approach')
+        self.assertEqual(N.terminal_pads('source', N._level_half(seg)), [])
+        gap = max(0., walk['gap_m'] -
+                  N.routemod.footprint_half_m(seg['width_m']))
+        allowance = max(0., N.routemod._junction().slide_allow(gap) -
+                        N.routemod.JUNCTION_DATUM_MARGIN_M)
+        before = seg['profile_y'][0]
+        datum = before + allowance + .5
+        other['datum_y'] = datum
+        pads = R.pad_keepouts_from_chain([], [], planned=[other])
+        with patch.object(N, '_PAD_CLAIMS', [other]), \
+                patch.object(N, '_PLAN_PAD_KEEPOUTS', lambda: pads):
+            N._fit_pad_arrivals(seg, joint)
+        self.assertLessEqual(abs(datum - seg['profile_y'][0]),
+                             allowance + .002)
+        self.assertGreater(seg['profile_y'][0], before + .25)
+
+    def test_incompatible_foreign_and_owned_corner_walks_are_refused(self):
         seg, joint, allowance = self._corner_arrival()
         datum = float(np.min(joint['hi'])) - .5 + allowance
         owned = dict(self.pad, datum_y=datum)
@@ -199,13 +216,14 @@ class PadArrivalProfileTests(unittest.TestCase):
         # foundation; post-filtering that walk would lose the owed arrival.
         self.assertEqual(
             pads.arrival_walks(seg)[0]['nums']['destination'], 'foreign')
-        before = seg['profile_y'][-1]
         with patch.object(N, '_PAD_CLAIMS', [owned, foreign]), \
                 patch.object(N, '_PLAN_PAD_KEEPOUTS', lambda: pads):
-            N._fit_pad_arrivals(seg, joint)
-        self.assertLessEqual(abs(datum - seg['profile_y'][-1]),
-                             allowance + .002)
-        self.assertGreater(seg['profile_y'][-1], before + 1.)
+            with self.assertRaises(ValueError) as caught:
+                N._fit_pad_arrivals(seg, joint)
+        binding = caught.exception.refusal['binding']
+        self.assertTrue({'terrace', 'foreign'} & set(binding['segments']))
+        self.assertGreater(binding['interval_there'][0],
+                           binding['interval_there'][1])
 
     def test_corner_walk_above_native_bounds_is_numerically_refused(self):
         seg, joint, allowance = self._corner_arrival()
