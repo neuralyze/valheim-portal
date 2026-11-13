@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Waterfront roads first try the solved shore's inland approach and exact
+  root, in either road direction, instead of losing that geometry to a
+  lateral A* snap. Alternative contacts remain eligible; all physical masks,
+  owned heights, full-profile and writer checks still apply. Shore preview
+  and road construction share the same landing level-run distance.
 - Solo and joint road profiles verify actual interpolated lattice-foot
   constraints before declaring them infeasible. Conservative station boxes
   remain a fast path, not an impossibility proof. Exact sparse fitting retains

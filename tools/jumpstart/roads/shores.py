@@ -26,6 +26,7 @@ import water as W
 import assemble as A
 from settlements import waterfront as WF
 
+from crossing_contract import BANK_LEVEL_M
 from shore_scope import SEARCH_RADIUS_M, FOOTPRINT_MARGIN_M, request_windows
 DECK_Y = geography.DECK_DATUM_Y
 VESSEL = "VikingShip"
@@ -366,7 +367,7 @@ def road_preview(graph, surf, node, root, bearing):
     """
     import route
     ux, uz = A._unit(bearing)
-    entry = (root[0] - ux * 6.0, root[1] - uz * 6.0)
+    entry = (root[0] - ux * BANK_LEVEL_M, root[1] - uz * BANK_LEVEL_M)
     graph.corr.forbid = ~graph.ok
     try:
         path = graph.corr.search(tuple(node["xz"]), entry)
@@ -381,8 +382,8 @@ def road_preview(graph, surf, node, root, bearing):
         terrain = np.array([surf.at(*p)[0] for p in points])
         s = np.asarray(arcs)
         lo, hi = terrain - route.CUT_FILL_MAX, terrain + route.CUT_FILL_MAX
-        target = s >= s[-1] - 6.0 - 1e-6
-        source = s <= 6.0 + 1e-6
+        target = s >= s[-1] - BANK_LEVEL_M - 1e-6
+        source = s <= BANK_LEVEL_M + 1e-6
         level = node.get("level_y")
         if level is not None and np.any(source & target) and abs(level-DECK_Y) > 1e-6:
             return None

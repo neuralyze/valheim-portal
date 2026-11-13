@@ -154,6 +154,15 @@ current routing masks. No cached approval is reused. Every candidate still
 repeats the native geometry, held-height and writer checks. Boundary
 ownership is not proof that a complete approach or road is buildable.
 
+Solved waterfront terminals also supply an inland arrival bearing. Ordinary
+road construction first tries that approach and its exact published root,
+using the same level-run distance as the shore preview. This works at either
+end of a road and does not reshape a fixed-profile repair. The approach must
+fit the current physical and leg-local masks; ordinary alternative contacts
+remain eligible, and the complete constructor and writer still decide
+whether any candidate is buildable. A valid centre-line shore preview alone
+does not establish that its road's full footprint can be constructed.
+
 The intermediate snapped search contact does not clip a restored bank's
 eligible contact domain. Self-overlapping bank candidates also try the
 remaining owned contacts. If all fail, only a candidate that has passed the

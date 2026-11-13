@@ -2535,9 +2535,25 @@ def _bank_path_allowed(corr, path, extra_forbid):
 
 
 def _bank_approach_contacts(edge, end, corr, extra_forbid):
-    """Try measured approach geometry, never its cached acceptance verdict."""
+    """Try owned terminal approach geometry, never a cached acceptance verdict."""
     node_id = edge[end]
     node = specmod.NODES[node_id]
+    if node.get("kind") == "waterfront_terminal":
+        if node.get("owner") != "Crossings":
+            return []
+        root = tuple(map(float, node["xz"]))
+        angle = math.radians(float(node["arrive_bearing_deg"]))
+        entry = (root[0] + BANK_LEVEL_M * math.sin(angle),
+                 root[1] + BANK_LEVEL_M * math.cos(angle))
+        try:
+            cell = tuple(map(float, corr.cell_world(
+                *corr.nearest_allowed(*entry, 200.0))))
+        except ValueError:
+            return []
+        path = (root, entry, cell)
+        if not _bank_path_allowed(corr, path, extra_forbid):
+            return []
+        return [{"xz": cell, "bank_path": path, "owner": {"node": node_id}}]
     if node.get("kind") != "abutment" or not node.get("crossing"):
         return []
     owner = _declared_bank_owner(node_id)
@@ -2608,8 +2624,17 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     Exhaustion names the numerical refusal, not global infeasibility.
     """
     from collections import deque                          # noqa: PLC0415
-    pending = deque([{}])
-    seen = {(None, None)}
+    preferred = {}
+    if fixed_pts is None:
+        for end in ("a", "b"):
+            if specmod.NODES[edge[end]].get("kind") == "waterfront_terminal":
+                contacts = _bank_approach_contacts(edge, end, corr, extra_forbid)
+                if contacts:
+                    preferred[end] = contacts[0]
+    # Keep the solved shore's inland bearing/root before trying an arbitrary
+    # cell beside it. Every candidate still runs the complete physical checks.
+    pending = deque([preferred, {}] if preferred else [{}])
+    seen = {_terminal_contact_key(ends) for ends in pending}
     candidates = {}
     required = {}
     attempts = []
