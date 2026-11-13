@@ -127,6 +127,11 @@ owner filtering erase a walk the finished-world gate will judge. Incompatible
 readings remain numerical refusals. Native writer and saved-world checks stay
 in force on the complete resulting surface.
 
+Newly detected crossings choose their initial flat deck heights together,
+against the whole profile and its grade ladder. Each choice retains its
+measured span-bed floor, legal interval, ceilings and existing declared-bank
+obligations. Compatible preferred heights remain unchanged.
+
 Physical bridge and abutment heights are hard constraints, including where
 their level runs overlap. A later owner intersects the existing obligation;
 it cannot replace it. Terrain-infeasible residuals may be handed to Crossings,

@@ -2343,6 +2343,64 @@ def _hold_profile(lo, hi, held, stations, datum):
     held[stations] = True
 
 
+def _choose_bank_levels(lo, hi, held, s, choices, ladder):
+    """Choose new detected decks together, before their heights become owned.
+
+    Existing declared datums stay fixed. Compatible preferred choices retain
+    their exact values; otherwise native interval closure finds legal flat
+    windows at the first feasible grade rung. No input bound is mutated.
+    """
+    if not choices:
+        return []
+    preferred_lo, preferred_hi = lo.copy(), hi.copy()
+    preferred_held = held.copy()
+    for choice in choices:
+        stations = slice(choice["first"], choice["last"] + 1)
+        _hold_profile(preferred_lo, preferred_hi, preferred_held, stations,
+                      choice["preferred_y"])
+    ds = np.diff(s)
+    empty = np.zeros(0, dtype=np.int64)
+    allowances = np.zeros(0)
+    for rung in ladder:
+        _L, _U, ok = routemod._close_bounds(
+            preferred_lo, preferred_hi, rung * ds, empty, empty, allowances)
+        if ok:
+            return [choice["preferred_y"] for choice in choices]
+
+    lower, upper, assigned = lo.copy(), hi.copy(), held.copy()
+    for choice in choices:
+        stations = slice(choice["first"], choice["last"] + 1)
+        lower[stations] = np.where(
+            assigned[stations], np.maximum(lower[stations], choice["lower_y"]),
+            choice["lower_y"])
+        upper[stations] = np.where(
+            assigned[stations], np.minimum(upper[stations], choice["upper_y"]),
+            choice["upper_y"])
+        assigned[stations] = True
+    for rung in ladder:
+        caps = rung * ds
+        for choice in choices:
+            caps[choice["first"]:choice["last"]] = 0.0
+        L, U, ok = routemod._close_bounds(
+            lower, upper, caps, empty, empty, allowances)
+        if not ok:
+            continue
+        heights = []
+        for choice in choices:
+            stations = slice(choice["first"], choice["last"] + 1)
+            height = min(max(choice["preferred_y"], float(np.max(L[stations]))),
+                         float(np.min(U[stations])))
+            L[stations] = U[stations] = height
+            L, U, ok = routemod._close_bounds(
+                L, U, caps, empty, empty, allowances)
+            if not ok:
+                break
+            heights.append(height)
+        else:
+            return heights
+    return None
+
+
 def _fit_pad_arrivals(seg: dict, joint: dict) -> dict:
     """Fit the FULL incoming line to its actual terminal pads, before water.
 
@@ -3247,6 +3305,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # fact Crossings needs (its deck then has a grade) rather than something to
     # average away.
     bank_level = []
+    level_choices = []
     bank_lowered = bank_under_floor = 0
     for c, ia, ib, wa, wb in windows:
         dry = [k for k in range(wa, wb + 1) if not free[k]]
@@ -3298,17 +3357,16 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
             b_xz = (round(float(pts[ib][0]), 2), round(float(pts[ib][1]), 2))
             sb = span_bed_floor(a_xz, b_xz, lattice_ground(fld, a_xz, b_xz))
             floor_y = sb["floor_y"]
-            if floor_y is not None and floor_y > lvl["H"] + 1e-9:
-                span_bed = {**sb, "depends_on": list(BANK_SPAN_BED_DEPENDS_ON),
-                            "height_before_y": round(float(lvl["H"]), 3),
-                            "clipped_at_interval_top": bool(floor_y > h_top)}
+            if floor_y is not None:
+                if floor_y > lvl["H"] + 1e-9:
+                    span_bed = {**sb, "depends_on": list(BANK_SPAN_BED_DEPENDS_ON),
+                                "height_before_y": round(float(lvl["H"]), 3),
+                                "clipped_at_interval_top": bool(floor_y > h_top)}
                 h_lo = max(h_lo, min(floor_y, h_top))
                 lvl = bank_level_height(ref, h_lo, h_top, caps)
         h_hi, single, H = lvl["h_hi"], lvl["single"], lvl["H"]
         bank_lowered += lvl["lowered"]
         bank_under_floor += lvl["under_floor"]
-        if single:
-            _hold_profile(lo, hi, held, slice(wa, wb + 1), H)
         ax, az = pts[wa]
         bx, bz = pts[wb]
         brg = (math.degrees(math.atan2(bx - ax, bz - az)) + 360.0) % 360.0
@@ -3331,6 +3389,10 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
                            "level_at_y": c["required_deck_y"],
                            "single_H_both_banks": bool(single),
                            "legal_interval": [round(h_lo, 3), round(h_hi, 3)]})
+        if single:
+            level_choices.append({
+                "first": wa, "last": wb, "lower_y": h_lo, "upper_y": h_hi,
+                "preferred_y": H, "crossing": c, "bank_level": bank_level[-1]})
 
     # A declared abutment's height is NOT mine to choose: Crossings owns the
     # deck at exactly y = 30.6 (the same datum early-dock already declares), so
@@ -3404,6 +3466,18 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     ladder = [g_max] + [g for g in (routemod.GRADE["spur"],
                                     routemod.GRADE["mountain"],
                                     routemod.GRADE_CEILING) if g > g_max]
+    heights = _choose_bank_levels(lo, hi, held, s, level_choices, ladder)
+    for index, choice in enumerate(level_choices):
+        # An impossible whole-line choice remains a physical refusal; retain
+        # the original pins so existing diagnostics and bank retries see it.
+        H = choice["preferred_y"] if heights is None else heights[index]
+        _hold_profile(lo, hi, held,
+                      slice(choice["first"], choice["last"] + 1), H)
+        crossing = choice["crossing"]
+        crossing["required_deck_y"] = round(H, 3)
+        crossing["bank_a"]["road_deck_y"] = round(H, 3)
+        crossing["bank_b"]["road_deck_y"] = round(H, 3)
+        choice["bank_level"]["level_at_y"] = round(H, 3)
     design_rung = g_max
     sa_grade, sa_batter, sa_lattice = writer_batter()
     terminal_caps, terminal_owners = _declared_terminal_caps(

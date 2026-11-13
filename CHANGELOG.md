@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Newly detected bridge runs choose their initial flat deck heights together
+  within measured legal intervals and the whole road's grade bounds. Compatible
+  original choices remain unchanged; declared bank datums, span-bed floors and
+  ceiling constraints stay binding rather than being released to make a fit.
 - Incoming roads meet terminal-pad datums using the full native profile
   bounds and grade ladder, not just the short added arrival spur. A refused
   attachment searches existing eligible contacts on the same pad; fixed
