@@ -1034,6 +1034,8 @@ STAGES: tuple[Stage, ...] = (
           command=lambda s: [sys.executable, "-m", "accept",
                              "--world", s.world, "--seed", s.seed,
                              "--world-src", str(s.world_src),
+                             "--vh-src", str(s.vh_src),
+                             "--sandbox", str(s.sandbox),
                              "--json", str(s.work / f"gate-{s.world}.json")],
           note="eleven SECTIONS, one process -- the gate is one STAGE"),
 )
@@ -1260,7 +1262,8 @@ def _header_scope(path: Path, kind: str) -> tuple[str | None, str | None]:
     """What the artefact says about ITSELF.  Never what its name implies."""
     if kind == SCOPE_YAML:
         import yaml                                         # noqa: PLC0415
-        doc = yaml.safe_load(path.read_text())
+        doc = yaml.load(path.read_text(),
+                        Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
         if not isinstance(doc, dict):
             return None, None
         return doc.get("seed"), doc.get("world")

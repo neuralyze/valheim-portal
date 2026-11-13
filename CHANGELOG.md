@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Pipeline artifact scope checks use the existing fast safe-YAML loader when
+  available, still parsing the complete document and rejecting malformed or
+  unsafe content. The saved-world gate inherits the run's selected Valheim
+  installation and disposable per-seed sandbox instead of production defaults.
 - Waterfront roads first try the solved shore's inland approach and exact
   root, in either road direction, instead of losing that geometry to a
   lateral A* snap. Alternative contacts remain eligible; all physical masks,
