@@ -16,8 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   owned landing and source attachment. Missing measurements, including
   those first encountered on a retry, remain prerequisites rather than
   falling back to the smooth field. Final named-road, pad, census and
-  saved-world gates still apply. Initial construction and continuation both
-  restore the caller's import path, including cold native module imports.
+  saved-world gates still apply. The complete preview call restores the
+  caller's import path, including cold imports during final verdict checks
+  as well as initial construction and continuation.
 - Self-overlap retry costs select the later measured road foot by arc
   distance, not the second column of a spatial lattice-edge witness.
   Reversing the measured pair no longer penalizes the wrong branch.

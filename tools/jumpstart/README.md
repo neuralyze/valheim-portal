@@ -224,7 +224,8 @@ The canonical `writer_water` receipt records the local result and selected
 collar; it does not replace the final named road's applied-pad, census or
 saved-world authority. The existing native alignment, trim and ceiling
 remedies run before rejecting a root, preserving its landing and source
-attachment on every candidate.
+attachment on every candidate. The entire preview call owns its temporary
+import-path changes, including final rejection checks and error exits.
 
 If the native pad solve refuses a self-overlapping incoming line, its
 measured candidate remains available to the same adjacency-guidance search.

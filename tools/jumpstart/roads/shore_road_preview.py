@@ -114,6 +114,18 @@ class NativeShorePreview:
 
     def __call__(self, *, graph, surf, source_id, source_node, terminal_id,
                  root, bearing, width_m, level_y, source_approach=None):
+        old_path = sys.path[:]
+        try:
+            return self._evaluate(
+                graph=graph, surf=surf, source_id=source_id,
+                source_node=source_node, terminal_id=terminal_id,
+                root=root, bearing=bearing, width_m=width_m, level_y=level_y,
+                source_approach=source_approach)
+        finally:
+            sys.path[:] = old_path
+
+    def _evaluate(self, *, graph, surf, source_id, source_node, terminal_id,
+                  root, bearing, width_m, level_y, source_approach=None):
         kernel = self._prepare()
         matches = [edge for edge in self._spec.TERMINAL_EDGES
                    if edge["a"] == source_id and edge["b"] == terminal_id]
