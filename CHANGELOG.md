@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Native arrival walks also remain constraints at resited terminals lacking a
   containing named-node pad. A nearer foundation cannot hide either obligation;
   incompatible readings refuse numerically instead of producing a false fit.
+- Flat bridge and abutment datums remain binding through terrain residuals,
+  branch fitting and joint closure. Overlapping owners intersect rather than
+  overwrite each other; incompatible heights refuse with their numerical
+  interval instead of turning a declared flat deck into a ramp. Refused
+  chains are removed from the live solve without poisoning unrelated roads.
 - Protected-ground feedback handles cuts as well as fills, retaining complete
   observed height pairs instead of combining unrelated extrema. Water-route
   hairpins receive the existing adjacency remedy without losing accumulated

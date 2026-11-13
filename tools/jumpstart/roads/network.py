@@ -2336,6 +2336,13 @@ class _PadArrivalRefusal(ValueError):
         super().__init__(junction_rejection(refusal)["why"])
 
 
+def _hold_profile(lo, hi, held, stations, datum):
+    """Intersect physical owners; a later owner cannot erase an earlier one."""
+    lo[stations] = np.where(held[stations], np.maximum(lo[stations], datum), datum)
+    hi[stations] = np.where(held[stations], np.minimum(hi[stations], datum), datum)
+    held[stations] = True
+
+
 def _fit_pad_arrivals(seg: dict, joint: dict) -> dict:
     """Fit the FULL incoming line to its actual terminal pads, before water.
 
@@ -2992,6 +2999,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
             f"the leg.", drowned, len(pts))
     lo = np.maximum(tw_hi - CF, WATER_LEVEL + routemod.ROAD_FREEBOARD_M)
     hi = tw_lo + CF
+    held = np.zeros(len(pts), dtype=bool)
     for _c, ia, ib, _wa, _wb in windows:
         # Footprint again, for the same reason as the detector: whether the
         # deck must clear water is a fact about the bench, not about the line.
@@ -3068,8 +3076,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         bank_lowered += lvl["lowered"]
         bank_under_floor += lvl["under_floor"]
         if single:
-            lo[wa:wb + 1] = H
-            hi[wa:wb + 1] = H
+            _hold_profile(lo, hi, held, slice(wa, wb + 1), H)
         ax, az = pts[wa]
         bx, bz = pts[wb]
         brg = (math.degrees(math.atan2(bx - ax, bz - az)) + 360.0) % 360.0
@@ -3104,8 +3111,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         # full road surface and every sample of it is clamped independently.
         worst = float(np.max(np.maximum(np.abs(H - tw_lo[sel]),
                                         np.abs(H - tw_hi[sel]))))
-        lo[sel] = H
-        hi[sel] = H
+        _hold_profile(lo, hi, held, sel, H)
         k_end = 0 if which == "a" else len(pts) - 1
         k_in = hi_i if which == "a" else lo_i
         bx, bz = pts[k_in]
@@ -3170,7 +3176,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     sa_grade, sa_batter, sa_lattice = writer_batter()
     fl = routemod.fit_ladder(t, s, lo, hi, free, ladder, pts=pts,
                              width_m=width_m, grade=sa_grade,
-                             batter_m=sa_batter, lattice_m=sa_lattice)
+                             batter_m=sa_batter, lattice_m=sa_lattice, held=held)
     fit, g_max = fl["fit"], fl["rung"]
     relaxed_to = (ladder[-1] if not fl["terrain_feasible"]
                   else None if g_max == design_rung else g_max)
@@ -3217,7 +3223,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     relief_infeasible = int((relief > 2.0 * routemod.CLAMP_M).sum())
     if joint is not None:
         joint.update({"s": np.asarray(s, dtype=np.float64), "t": t,
-                      "lo": lo, "hi": hi, "free": free,
+                      "lo": lo, "hi": hi, "free": free, "held": held,
                       "tw_lo": tw_lo, "tw_hi": tw_hi,
                       "spans": [tuple(v) for v in fit["infeasible_spans"]],
                       "cand": fl["cand"], "rung": float(g_max),
@@ -4854,6 +4860,7 @@ def junction_legs(segments: list[dict], joints: dict[str, dict]) -> list[dict]:
              "is_bridge": sg["is_bridge"], "y0": joints[sg["id"]]["y0"],
              "s": joints[sg["id"]]["s"], "lo": joints[sg["id"]]["lo"],
              "hi": joints[sg["id"]]["hi"],
+             "held": joints[sg["id"]].get("held"),
              "spans": joints[sg["id"]]["spans"],
              "cand": joints[sg["id"]]["cand"],
              "rung": joints[sg["id"]]["rung"],

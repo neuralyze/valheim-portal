@@ -127,6 +127,14 @@ owner filtering erase a walk the finished-world gate will judge. Incompatible
 readings remain numerical refusals. Native writer and saved-world checks stay
 in force on the complete resulting surface.
 
+Physical bridge and abutment heights are hard constraints, including where
+their level runs overlap. A later owner intersects the existing obligation;
+it cannot replace it. Terrain-infeasible residuals may be handed to Crossings,
+but they never release these fixed heights in branch or joint fitting.
+Incompatible datums remain a numerical refusal, not a ramp under unchanged
+flat-deck metadata. Refusing that leg removes its chain from the live solve;
+unrelated roads remain independently eligible.
+
 Protected-ground feedback uses the largest absolute cut/fill gap from a
 complete observed face pair. It does not combine heights from unrelated
 faces. A water-route retry that develops a hairpin receives the existing

@@ -1188,7 +1188,11 @@ def join_branches(y0, s, grade_max: float, lo, hi, cand: dict) -> dict:
             "candidate_edges": int(len(cand["edges"]["s1"])),
             "pairs_before": len(viol),
             "worst_before": viol[0] if viol else None}
-    if not viol:
+    within_bounds = bool(np.all(y0 >= np.asarray(lo) - 1e-9)
+                         and np.all(y0 <= np.asarray(hi) + 1e-9))
+    within_grade = bool(np.all(np.abs(np.diff(y0))
+                               <= grade_max * np.diff(s) + 1e-9))
+    if not viol and within_bounds and within_grade:
         return {**base, "verdict": "CLEAR", "y": y0, "pairs_after": 0,
                 "worst_after": None, "stations_moved": 0, "max_move_m": 0.0}
     reach = grade_max * np.diff(s)
@@ -1199,7 +1203,7 @@ def join_branches(y0, s, grade_max: float, lo, hi, cand: dict) -> dict:
         empty = np.nonzero(L > U + 1e-9)[0]
         k = int(empty[0]) if len(empty) else -1
         return {**base, "verdict": "UNJOINABLE", "y": y0,
-                "pairs_after": len(viol), "worst_after": viol[0],
+                "pairs_after": len(viol), "worst_after": viol[0] if viol else None,
                 "stations_moved": 0, "max_move_m": 0.0,
                 "proof": {"grade_max": grade_max,
                           "empty_stations": int(len(empty)),
@@ -1222,9 +1226,22 @@ def join_branches(y0, s, grade_max: float, lo, hi, cand: dict) -> dict:
             "max_move_m": round(float(moved.max()), 3)}
 
 
+def _residual_bounds(lo, hi, y0, spans, held=None):
+    """Only unfinished terrain can be opened; physical datums stay binding."""
+    lo = np.asarray(lo, dtype=np.float64)
+    hi = np.asarray(hi, dtype=np.float64)
+    held = lo == hi if held is None else np.asarray(held, dtype=bool)
+    lower, upper = np.minimum(lo, y0), np.maximum(hi, y0)
+    for a, b in spans:
+        lower[a:b + 1] = -1e6
+        upper[a:b + 1] = 1e6
+    lower[held], upper[held] = lo[held], hi[held]
+    return lower, upper
+
+
 def fit_ladder(t: np.ndarray, s: np.ndarray, lo: np.ndarray, hi: np.ndarray,
                free: np.ndarray, ladder: list[float], *, pts, width_m: float,
-               grade: float, batter_m: float, lattice_m: float) -> dict:
+               grade: float, batter_m: float, lattice_m: float, held=None) -> dict:
     """The grade ladder, with the line's own branches IN the constraint set.
 
     A rung is taken when its profile is terrain-feasible AND no two branches
@@ -1244,21 +1261,10 @@ def fit_ladder(t: np.ndarray, s: np.ndarray, lo: np.ndarray, hi: np.ndarray,
                                   dy_cap=max(ladder))
 
     def attempt(rung, fit):
-        # THE BOX IS OPENED ONLY WHERE THE CHAIN ALREADY PROVED IT EMPTY.  A
-        # span `fit_profile` found infeasible is carried at its own midpoint
-        # and handed on as residual -- no height there is inside the clamp --
-        # so the join treats it as it treats a deck: bounded by the chain and
-        # nothing else.  MEASURED why it cannot be pinned at the midpoint
-        # instead: T9-wttown-dockshore's residual [765, 771] then emptied
-        # station 765's interval on the ceiling rung and refused the whole
-        # line for a span Crossings already owns.  On a feasible fit this is
-        # the identity.
+        # Residual terrain belongs to Crossings, but that cannot release a
+        # bridge/abutment datum or turn two incompatible flat runs into a ramp.
         y0 = fit["y"]
-        lo_j = np.minimum(lo, y0)
-        hi_j = np.maximum(hi, y0)
-        for a, b in fit["infeasible_spans"]:
-            lo_j[a:b + 1] = -1e6
-            hi_j[a:b + 1] = 1e6
+        lo_j, hi_j = _residual_bounds(lo, hi, y0, fit["infeasible_spans"], held)
         return join_branches(y0, s, rung, lo_j, hi_j,
                              station_pairs(cand, rung))
 
@@ -1935,12 +1941,8 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
             return y.copy(), y.copy()
         if not own:
             return np.full(len(y), -1e6), np.full(len(y), 1e6)
-        lo = np.minimum(np.asarray(lg["lo"], dtype=np.float64), y)
-        hi = np.maximum(np.asarray(lg["hi"], dtype=np.float64), y)
-        for a, b in lg.get("spans") or ():
-            lo[a:b + 1] = -1e6
-            hi[a:b + 1] = 1e6
-        return lo, hi
+        return _residual_bounds(lg["lo"], lg["hi"], y,
+                                lg.get("spans") or (), lg.get("held"))
 
     # THE DESIGN BUDGET OF EVERY READING, i.e. what "ONE DATUM" means for
     # it: the gate's own tier 2 (`junction.budget_allow`, the legs' declared
@@ -1972,6 +1974,9 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
             lo[a:b], hi[a:b] = own_bounds(li)
             if not alive[li]:
                 lo[a:b] = hi[a:b] = Y0[li]
+                # A refused leg's own incompatible chain is no longer part of
+                # the live solve; retaining it would refuse that leg forever.
+                continue
             reach = rung[li] * np.diff(np.asarray(lg["s"], dtype=np.float64))
             chains.append((a, b, np.concatenate([[0.0], np.cumsum(reach)])))
         if len(gu):
