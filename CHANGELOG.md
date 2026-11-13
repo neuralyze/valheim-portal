@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Self-overlap retry costs select the later measured road foot by arc
   distance, not the second column of a spatial lattice-edge witness.
   Reversing the measured pair no longer penalizes the wrong branch.
+- A terminal-pad solve cannot hide an otherwise reroutable self-overlap.
+  Native retries retain the measured refused candidate and offer its later
+  branch to the existing cost-guided search. Every replacement must still
+  satisfy the original pad datum, profile, masks and terminal attachment;
+  a genuinely contradictory arrival remains a hard refusal.
 - Bank trims account for emitted centimetre-coordinate rounding before
   terrain and profile fitting. A contact lost only to rounding may regrow
   along its original removed segment; the original attachment radius,

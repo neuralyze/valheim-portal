@@ -226,6 +226,12 @@ saved-world authority. The existing native alignment, trim and ceiling
 remedies run before rejecting a root, preserving its landing and source
 attachment on every candidate.
 
+If the native pad solve refuses a self-overlapping incoming line, its
+measured candidate remains available to the same adjacency-guidance search.
+This is not pad approval: only a replacement that completes the original
+pad solve and passes the unchanged profile, terminal and physical guards
+can proceed. Exhausted guidance retains the original arrival refusal.
+
 Bank-trim endpoints must meet the same attachment radius after centimetre
 serialization. Rounding-only detachment is corrected along the removed
 original segment before terrain/profile checks, never by widening the gate.

@@ -2283,9 +2283,10 @@ def _chord_guidance_mask(corr, radii, endpoints):
 
 
 class _PadArrivalRefusal(ValueError):
-    def __init__(self, refusal: dict, destinations: dict):
+    def __init__(self, refusal: dict, destinations: dict, *, candidate=None):
         self.refusal = refusal
         self.destinations = destinations
+        self.candidate = candidate
         super().__init__(junction_rejection(refusal)["why"])
 
 
@@ -2418,7 +2419,8 @@ def _fit_pad_arrivals(seg: dict, joint: dict) -> dict:
         binding = refusal["binding"]
         affected = {end: dest for end, dest in destinations.items()
                     if dest["pad"] in binding["segments"]}
-        raise _PadArrivalRefusal(refusal, affected or destinations)
+        raise _PadArrivalRefusal(
+            refusal, affected or destinations, candidate=(seg, joint))
     # The next candidate/global joint solve starts from the profile the solo
     # writer actually judged, with precisely the same physical bounds/ladder.
     joint["y0"] = np.asarray(seg["profile_y"], dtype=np.float64)
@@ -4270,6 +4272,18 @@ def adjacency_guidance(corr: routemod.Corridor, hints) -> np.ndarray:
     return out
 
 
+def _refused_adjacency_candidate(error):
+    """Recover measured geometry for guidance, never an arrival approval."""
+    while error is not None:
+        if isinstance(error, _PadArrivalRefusal) and error.candidate is not None:
+            rec, joint = error.candidate
+            if (profile_constraint_rejection(rec) is None
+                    and self_adjacency_rejection(rec) is not None):
+                return rec, joint
+        error = error.__cause__
+    return None
+
+
 def adjacency_reroute(corr: routemod.Corridor, one, *,
                       initial: tuple[dict, dict] | None = None
                       ) -> tuple[dict, dict]:
@@ -4278,10 +4292,20 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
     `initial` reuses an already measured candidate. Cost hints never make an
     endpoint or a narrow legal passage forbidden.
     """
-    rec, joint = one(None) if initial is None else initial
+    initial_error = None
+    try:
+        rec, joint = one(None) if initial is None else initial
+    except ValueError as exc:
+        candidate = _refused_adjacency_candidate(exc)
+        if candidate is None:
+            raise
+        rec, joint = candidate
+        initial_error = exc
     if (_ADJACENCY_REROUTE_MODE == "off"
             or profile_constraint_rejection(rec) is not None
             or self_adjacency_rejection(rec) is None):
+        if initial_error is not None:
+            raise initial_error
         return rec, joint
     original, last = (rec, joint), rec
     hints = []
@@ -4291,6 +4315,8 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
     price = 1.0
 
     def refused(kind, why):
+        if initial_error is not None:
+            raise initial_error
         rec["adjacency_reroute_refusal"] = {
             "kind": kind, "why": why, "hints": list(hints),
             "depends_on": list(ADJACENCY_REROUTE_DEPENDS_ON)}
@@ -4314,7 +4340,10 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
         except (OverflowError, FloatingPointError) as exc:
             return refused("finite_cost_exhausted", str(exc))
         except ValueError as exc:
-            return refused("candidate_refused", str(exc))
+            candidate = _refused_adjacency_candidate(exc)
+            if candidate is None:
+                return refused("candidate_refused", str(exc))
+            cand, cj = candidate
         physical = profile_constraint_rejection(cand)
         if physical is not None:
             return refused("profile_constraints", physical["why"])
@@ -4379,14 +4408,19 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
     def attempt(kw: dict, by: str) -> tuple[dict, dict] | None:
         nonlocal last_refused
         last_refused = None
+        arrival_error = None
         try:
             cand, j = build(**kw)
         except OverflowError as exc:
             tried.append({"by": by, "guidance_refusal": str(exc)})
             return None
         except ValueError as exc:
-            tried.append({"by": by, "unbuildable": str(exc)[:200]})
-            return None
+            candidate = _refused_adjacency_candidate(exc)
+            if candidate is None or kw.get("fixed_pts") is not None:
+                tried.append({"by": by, "unbuildable": str(exc)[:200]})
+                return None
+            cand, j = candidate
+            arrival_error = exc
         fixed_pts = kw.get("fixed_pts")
         if fixed_pts is not None and not np.array_equal(
                 np.asarray(cand["nodes"]), np.asarray(fixed_pts)):
@@ -4406,6 +4440,8 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
             retry_kw: dict = {}
 
             def one(extra_guidance):
+                if extra_guidance is None and arrival_error is not None:
+                    raise arrival_error
                 retry_kw.clear()
                 retry_kw.update(kw)
                 prior = kw.get("extra_guidance")
@@ -4414,7 +4450,12 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
                     if extra_guidance is None else prior + extra_guidance)
                 return build(**retry_kw)
 
-            cand, j = adjacency_reroute(corr, one, initial=(cand, j))
+            try:
+                cand, j = adjacency_reroute(
+                    corr, one, initial=(cand, j) if arrival_error is None else None)
+            except ValueError as exc:
+                tried.append({"by": by, "unbuildable": str(exc)[:200]})
+                return None
             if cand is not original:
                 kw.update(retry_kw)
             why = refusal(cand)
