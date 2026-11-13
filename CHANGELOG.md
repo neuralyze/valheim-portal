@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bounds and grade ladder, not just the short added arrival spur. A refused
   attachment searches existing eligible contacts on the same pad; fixed
   geometry still refuses rather than being silently re-routed.
+  Declared terminal-pad arrivals remain native solver constraints even when
+  a diagonal cap is outside the ordinary footprint-pair gate. These readings
+  retain actual pad identity, endpoint geometry, physical gap allowance and
+  the native emission margin; nearby foreign pads cannot replace an owner.
 - Protected-ground feedback handles cuts as well as fills, retaining complete
   observed height pairs instead of combining unrelated extrema. Water-route
   hairpins receive the existing adjacency remedy without losing accumulated

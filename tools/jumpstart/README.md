@@ -116,6 +116,14 @@ not proof that the road can reach the datum. A failed searched attachment may
 try the existing eligible contacts on the same pad; fixed geometry cannot
 silently move to another attachment.
 
+An owned arrival is a real constraint even when a corner gap leaves no
+ordinary road/pad collision pair. Its endpoint and declared pad datum enter
+the existing native joint solver with the allowance for the actual
+unauthored gap; the solver reserves its emission margin once. Selection is
+restricted to the pad holding that road node, so a nearby foreign foundation
+cannot substitute for the destination. Native writer and saved-world checks
+remain in force on the complete resulting surface.
+
 Protected-ground feedback uses the largest absolute cut/fill gap from a
 complete observed face pair. It does not combine heights from unrelated
 faces. A water-route retry that develops a hairpin receives the existing

@@ -1654,7 +1654,8 @@ def _joint_readings(legs: list[dict], pads: list[dict], depends_on: tuple, *,
     A foot is `(leg, k0, k1, t)`: the height is `y[k0] + t * (y[k1] -
     y[k0])`, which is exactly how the gate and the writer read it.  Pair
     readings carry the allowance their own instrument applies; pad readings
-    carry the datum."""
+    carry the datum.  Explicit terminal arrivals are readings of real pads
+    even when the terminal ribbon lies outside the geometric gate's band."""
     J = _junction()
     index = {lg["id"]: li for li, lg in enumerate(legs)}
     P = {k: [] for k in ("la", "k0a", "k1a", "ta", "lb", "k0b", "k1b", "tb",
@@ -1698,6 +1699,41 @@ def _joint_readings(legs: list[dict], pads: list[dict], depends_on: tuple, *,
                 ta=float(ta), lb=index[B["id"]], k0b=sb[int(kb0)],
                 k1b=sb[int(kb1)], tb=float(tb), allow=allow, kind=0,
                 x=r["xz"][0], z=r["xz"][1])
+    if "pad_datums" in depends_on:
+        by_pad = {pad["id"]: pad for pad in pads}
+        for li, lg in enumerate(legs):
+            for arrival in lg.get("arrival_readings") or ():
+                pad_id = arrival["pad"]
+                if pad_id not in by_pad:
+                    raise ValueError(
+                        f"{lg['id']}: arrival pad {pad_id!r} is not declared")
+                station = arrival["station"]
+                if (isinstance(station, (bool, np.bool_))
+                        or not isinstance(station, (int, np.integer))
+                        or not 0 <= station < len(lg["y0"])
+                        or station not in (0, len(lg["y0"]) - 1)):
+                    raise ValueError(
+                        f"{lg['id']}: arrival station must be a resolved "
+                        f"terminal index, got {station!r}")
+                datum, allow, x, z = (
+                    float(arrival[k]) for k in ("datum", "allow", "x", "z"))
+                if not all(math.isfinite(v) for v in (datum, allow, x, z)) \
+                        or allow < 0.0:
+                    raise ValueError(
+                        f"{lg['id']}: arrival reading must be finite with "
+                        "a nonnegative allowance")
+                if datum != float(by_pad[pad_id]["datum_y"]):
+                    raise ValueError(
+                        f"{lg['id']}: arrival datum for {pad_id!r} does not "
+                        "match its declared pad")
+                if (x, z) != tuple(map(float, lg["nodes"][station])):
+                    raise ValueError(
+                        f"{lg['id']}: arrival coordinates do not match "
+                        f"terminal station {station}")
+                # Keep the supplied allowance: attempt() reserves the native
+                # emission margin once, just as for geometric pad readings.
+                put(U, la=li, k0a=station, k1a=station, ta=0.0,
+                    datum=datum, allow=allow, pad=pad_id, x=x, z=z)
     if "the_writers_claim_boundary_between_legs" in depends_on:
         R = _writer()
         e = cross_claim_lattice(legs, grade=grade, batter_m=batter_m,
@@ -1769,8 +1805,12 @@ def junction_datums(legs: list[dict], pads: list[dict], *, grade: float,
     emitted), `is_bridge`, `y0` (its own `fit_ladder` profile), `s` (the arc
     its chain limit is taken over), `lo`/`hi` (its own bounds), `spans`
     (terrain-infeasible spans the ladder carried), `cand` (its
-    self-adjacency lattice), `rung` and `ladder`.  `pads`: junction-shaped
-    pad participants with datums.
+    self-adjacency lattice), `rung` and `ladder`.  Optional `arrival_readings`
+    hold `{station, pad, datum, allow, x, z}` at resolved terminal indices;
+    coordinates and datum must match the leg and real pad exactly.  `allow`
+    is the physical allowance before this solver's emission margin.  These
+    participate alongside geometric pad readings when `pad_datums` is on.
+    `pads`: junction-shaped pad participants with datums.
 
     Returns `{"y": {id: profile}, "rung": {id: rung}, "legs": {id:
     verdict}, "refused": [...], "readings": {...}}`.  The legs are taken in

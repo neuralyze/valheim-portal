@@ -124,6 +124,102 @@ class PadArrivalProfileTests(unittest.TestCase):
         np.testing.assert_array_equal(self.corr.forbid, before)
         self.assertEqual(self.anchors, {'target': (-3.5, .5)})
 
+    def _corner_arrival(self):
+        # Both coordinates miss the southwest corner. The semantic arrival
+        # walk reaches the pad, but the actual ribbon has no pad contact.
+        points = [[-45.5, -47.5], [-15.5, -25.5], [-.55, -14.55]]
+        joint = {}
+        with patch.object(N, '_PLAN_PAD_KEEPOUTS', None):
+            seg = N.build_segment(
+                self.field, self.edge, self.corr, [], census=None,
+                fixed_pts=points, joint=joint)
+        walks = self.pads.arrival_walks(seg)
+        self.assertEqual(len(walks), 1)
+        walk = walks[0]
+        self.assertEqual(walk['end'], 'B')
+        self.assertEqual(walk['nums']['destination'], 'terrace')
+        np.testing.assert_allclose(seg['nodes'][-1], points[-1], atol=.001)
+        gate = N.routemod._junction()
+        pad = dict(kind='pad', id='terrace', label='terrace', role='site_pad',
+                   x=self.pad['x'], z=self.pad['z'],
+                   hw=self.pad['hw'], hd=self.pad['hd'], datum_y=50.)
+        ribs = gate.ribbons_from_segments({'segments': [seg]}, 'corner-test')
+        self.assertEqual(
+            gate.find_conflicts(ribs, [pad], ('pad_datums',))['pairs'], [])
+        half = N.routemod.footprint_half_m(seg['width_m'])
+        self.assertGreater(walk['gap_m'], half)
+        allowance = max(
+            0., gate.slide_allow(max(0., walk['gap_m'] - half))
+            - N.routemod.JUNCTION_DATUM_MARGIN_M)
+        self.assertFalse(joint['spans'])
+        return seg, joint, allowance
+
+    def _fit_corner_datum(self, seg, joint, datum):
+        pad = dict(self.pad, datum_y=float(datum))
+        pads = R.pad_keepouts_from_chain([], [], planned=[pad])
+        with patch.object(N, '_PLAN_PAD_KEEPOUTS', lambda: pads):
+            return N._fit_pad_arrivals(seg, joint)
+
+    def test_corner_walk_without_pad_pairs_raises_full_native_profile(self):
+        seg, joint, allowance = self._corner_arrival()
+        before = np.asarray(seg['profile_y']).copy()
+        lo, hi = joint['lo'].copy(), joint['hi'].copy()
+        # Keep the requested endpoint safely below every original upper
+        # bound: a constant profile at this level is a feasibility witness.
+        endpoint_floor = float(np.min(hi)) - .5
+        ladder = tuple(joint['ladder'])
+        self.assertGreater(endpoint_floor, float(np.max(before)) + 1.)
+        datum = endpoint_floor + allowance
+        self._fit_corner_datum(seg, joint, datum)
+        y = np.asarray(seg['profile_y'])
+        self.assertLessEqual(abs(datum - y[-1]), allowance + .002)
+        self.assertGreater(y[-1], before[-1] + 1.)
+        # An endpoint-only repair violates the incoming grade chain. The
+        # native solve must carry the rise into earlier real stations.
+        self.assertTrue(np.any(y[:-1] > before[:-1] + .01))
+        np.testing.assert_array_equal(joint['lo'], lo)
+        np.testing.assert_array_equal(joint['hi'], hi)
+        self.assertTrue(np.all(y >= lo - .001))
+        self.assertTrue(np.all(y <= hi + .001))
+        self.assertIn(seg['grade_limit'], ladder)
+        self.assertEqual(tuple(joint['ladder']), ladder)
+        self.assertLessEqual(seg['grade_limit'], N.routemod.GRADE_CEILING)
+        self.assertTrue(np.all(
+            np.abs(np.diff(y)) <=
+            seg['grade_limit'] * np.diff(joint['s']) + .002))
+
+    def test_closer_foreign_pad_cannot_hide_the_owned_corner_arrival(self):
+        seg, joint, allowance = self._corner_arrival()
+        datum = float(np.min(joint['hi'])) - .5 + allowance
+        owned = dict(self.pad, datum_y=datum)
+        foreign = dict(site_id='foreign', name='foreign', x=-.55, z=-8.55,
+                       hw=1., hd=1., datum_y=44., planned=True)
+        pads = R.pad_keepouts_from_chain([], [], planned=[owned, foreign])
+        # The unrestricted native walk really selects the closer foreign
+        # foundation; post-filtering that walk would lose the owed arrival.
+        self.assertEqual(
+            pads.arrival_walks(seg)[0]['nums']['destination'], 'foreign')
+        before = seg['profile_y'][-1]
+        with patch.object(N, '_PAD_CLAIMS', [owned, foreign]), \
+                patch.object(N, '_PLAN_PAD_KEEPOUTS', lambda: pads):
+            N._fit_pad_arrivals(seg, joint)
+        self.assertLessEqual(abs(datum - seg['profile_y'][-1]),
+                             allowance + .002)
+        self.assertGreater(seg['profile_y'][-1], before + 1.)
+
+    def test_corner_walk_above_native_bounds_is_numerically_refused(self):
+        seg, joint, allowance = self._corner_arrival()
+        datum = float(np.max(joint['hi'])) + allowance + 10.
+        self.assertGreater(datum - allowance, joint['hi'][-1])
+        with self.assertRaises(ValueError) as caught:
+            self._fit_corner_datum(seg, joint, datum)
+        # Refusal must carry the native incompatible numeric interval, not
+        # an UNSHARED topology classification or an accepted low endpoint.
+        binding = caught.exception.refusal['binding']
+        self.assertIn('terrace', binding['segments'])
+        self.assertGreater(binding['interval_there'][0],
+                           binding['interval_there'][1])
+
 
 if __name__ == '__main__':
     unittest.main()

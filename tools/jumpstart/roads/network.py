@@ -2347,10 +2347,24 @@ def _fit_pad_arrivals(seg: dict, joint: dict) -> dict:
     if _PLAN_PAD_KEEPOUTS is None:
         return {}
     keepouts = _PLAN_PAD_KEEPOUTS()
+    level_half = _level_half(seg)
+    walks = []
+    for end, node in (("A", seg["from"]), ("B", seg["to"])):
+        owners = {str(pad["site_id"])
+                  for pad in terminal_pads(node, level_half)}
+        if not owners:
+            continue
+        # A nearby building is not this endpoint's destination. Restrict
+        # selection before asking the native walks, so a closer foreign
+        # pad cannot hide or replace the pad the road actually serves.
+        owned = copy.copy(keepouts)
+        owned.rects = [rect for rect in keepouts.rects if rect[0] in owners]
+        walks.extend(walk for walk in owned.arrival_walks(seg)
+                     if walk["end"] == end)
     destinations = {
         walk["end"].lower(): {
             "pad": walk["nums"]["destination"], "datum_y": walk["datum"]}
-        for walk in keepouts.arrival_walks(seg)}
+        for walk in walks}
     ids = {v["pad"] for v in destinations.values()}
     pads = [
         {"kind": "pad", "id": sid, "label": sid, "role": "site_pad",
@@ -2360,6 +2374,16 @@ def _fit_pad_arrivals(seg: dict, joint: dict) -> dict:
     if not pads:
         return destinations
     sid = seg["id"]
+    # A semantic arrival is still owed when a diagonal cap lies too far
+    # from the pad corner for the ordinary footprint-pair gate to read it.
+    # Feed its actual endpoint and unauthored gap to the SAME native solver.
+    J = routemod._junction()
+    joint["arrival_readings"] = [
+        {"station": 0 if walk["end"] == "A" else len(seg["nodes"]) - 1,
+         "pad": walk["nums"]["destination"], "datum": float(walk["datum"]),
+         "allow": J.slide_allow(max(0.0, float(walk["gap_m"]) - level_half)),
+         "x": float(walk["x"]), "z": float(walk["z"])}
+        for walk in walks]
     result = apply_junction_datums(
         [seg], {sid: joint}, pads,
         depends_on=("pad_datums", "every_participants_own_design_height",
@@ -4827,7 +4851,8 @@ def junction_legs(segments: list[dict], joints: dict[str, dict]) -> list[dict]:
              "spans": joints[sg["id"]]["spans"],
              "cand": joints[sg["id"]]["cand"],
              "rung": joints[sg["id"]]["rung"],
-             "ladder": joints[sg["id"]]["ladder"]}
+             "ladder": joints[sg["id"]]["ladder"],
+             "arrival_readings": joints[sg["id"]].get("arrival_readings", [])}
             for sg in segments]
 
 
