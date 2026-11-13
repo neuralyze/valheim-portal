@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Incoming roads meet terminal-pad datums using the full native profile
+  bounds and grade ladder, not just the short added arrival spur. A refused
+  attachment searches existing eligible contacts on the same pad; fixed
+  geometry still refuses rather than being silently re-routed.
+- Protected-ground feedback handles cuts as well as fills, retaining complete
+  observed height pairs instead of combining unrelated extrema. Water-route
+  hairpins receive the existing adjacency remedy without losing accumulated
+  guidance or their original terminal attachments.
+- Writer-water profile ceilings stay on the exact stations that incurred
+  them. Fixed-profile replays retain terminal-trim and released-abutment
+  ownership without slicing those stations twice, including band-free probes.
+  Temporary station caps and fixed geometry never freeze a later real search.
 - Writer-remedy searches continue when an alternative is refused for an
   overlong crossing on dry terrain, not just when water provides new hints.
   Rejected span footprints receive increasing leg-local per-metre costs,

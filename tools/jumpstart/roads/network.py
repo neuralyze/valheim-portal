@@ -1263,6 +1263,32 @@ def arrival_reach(start_xz, node_xz, pads: list[dict], datums: dict,
     return rec
 
 
+def _arrival_ring_cells(xz, base, corr, pads, level: float,
+                        search_m: float = 200.0):
+    """The existing arrival ring, in nearest-replacement order, uncapped."""
+    ring = chord_slack_m(corr.cell_m) + corr.cell_m * math.sqrt(2.0)
+    i0, j0 = corr.cell_of(float(xz[0]), float(xz[1]))
+    r = int(search_m / corr.cell_m)
+    candidates = []
+    for i in range(max(0, i0 - r), min(corr.m, i0 + r + 1)):
+        for j in range(max(0, j0 - r), min(corr.m, j0 + r + 1)):
+            if corr.wet[i, j] or corr.blocked(i, j):
+                continue
+            x, z = corr.cell_world(i, j)
+            dx, dz = float(xz[0]) - x, float(xz[1]) - z
+            length = math.hypot(dx, dz)
+            if length < 1e-9:
+                continue
+            gap = min((t for q in pads for t in (_ray_into_rect(
+                x, z, dx / length, dz / length, float(q["x"]), float(q["z"]),
+                float(q["hw"]) + level, float(q["hd"]) + level),)
+                if t is not None), default=None)
+            if gap is not None and gap <= ring:
+                candidates.append(((i - base[0]) ** 2 + (j - base[1]) ** 2,
+                                   (i - i0) ** 2 + (j - j0) ** 2, i, j))
+    return [(i, j) for _db, _dn, i, j in sorted(candidates)]
+
+
 def arrival_start(node_id: str, xz, corr, width_m: float,
                   extra_forbid: np.ndarray | None = None, *,
                   claims: list[dict] | None = None,
@@ -1294,27 +1320,8 @@ def arrival_start(node_id: str, xz, corr, width_m: float,
                          width_m, clear)
     if rec0["verdict"] != "OUT OF REACH":
         return base, rec0
-    ring = chord_slack_m(corr.cell_m) + corr.cell_m * math.sqrt(2.0)
-    i0, j0 = corr.cell_of(float(xz[0]), float(xz[1]))
-    r = int(search_m / corr.cell_m)
-    cands = []
-    for i in range(max(0, i0 - r), min(corr.m, i0 + r + 1)):
-        for j in range(max(0, j0 - r), min(corr.m, j0 + r + 1)):
-            if corr.wet[i, j] or corr.blocked(i, j):
-                continue
-            x, z = corr.cell_world(i, j)
-            dx, dz = float(xz[0]) - x, float(xz[1]) - z
-            L = math.hypot(dx, dz)
-            if L < 1e-9:
-                continue
-            gap = min((t for q in mine for t in (_ray_into_rect(
-                x, z, dx / L, dz / L, float(q["x"]), float(q["z"]),
-                float(q["hw"]) + level, float(q["hd"]) + level),)
-                if t is not None), default=None)
-            if gap is not None and gap <= ring:
-                cands.append(((i - base[0]) ** 2 + (j - base[1]) ** 2,
-                              (i - i0) ** 2 + (j - j0) ** 2, i, j))
-    for _db, _dn, i, j in sorted(cands):
+    cands = _arrival_ring_cells(xz, base, corr, mine, level, search_m)
+    for i, j in cands:
         rec = arrival_reach(corr.cell_world(i, j), xz, mine, datums,
                             fld, width_m, clear)
         if rec["verdict"] == "MEETS":
@@ -1704,7 +1711,8 @@ def tracked_build(build, base: dict | None):
     base = base or {}
     used: dict[int, dict] = {}
 
-    def wrapped(*, extra_forbid=None, extra_guidance=None, trim=None, ceiling=None):
+    def wrapped(*, extra_forbid=None, extra_guidance=None, trim=None, ceiling=None,
+                fixed_pts=None, trim_applied=False):
         b_ef, b_tr = base.get("extra_forbid"), base.get("trim")
         ef = (extra_forbid if b_ef is None else b_ef if extra_forbid is None
               else b_ef | extra_forbid)
@@ -1714,7 +1722,11 @@ def tracked_build(build, base: dict | None):
         tr = (trim if not b_tr else
               {k: max(int(b_tr.get(k, 0)), int((trim or {}).get(k, 0)))
                for k in ("a", "b")})
-        rec, j = build(extra_forbid=ef, extra_guidance=eg, trim=tr, ceiling=ceiling)
+        # Preserve ownership/release provenance even when the supplied
+        # geometry already contains the trim and must not be sliced again.
+        rec, j = build(extra_forbid=ef, extra_guidance=eg, trim=tr,
+                       ceiling=ceiling, fixed_pts=fixed_pts,
+                       trim_applied=trim_applied)
         used[id(rec)] = {"extra_forbid": ef, "extra_guidance": eg, "trim": tr}
         return rec, j
     wrapped.used = used
@@ -1946,23 +1958,15 @@ def _writer_water_once(seg: dict, fld, keepouts=None) -> dict:
         k, t, _lat = _foot(nodes, *xz)
         feet[xz] = k if t < 0.5 else k + 1
     # THE KEEP-OUT'S FACES (WALKED_KEEPOUT_DEPENDS_ON): the disc each rim
-    # sample stands in, for the stand-off; a face standing over the limit
-    # ABOVE the disc's ground lowers the stations at its foot by the excess.
-    keepout: dict[tuple, tuple] = {}
+    # sample stands in and its road/ground heights. Preserve cuts as well as
+    # fills when reducing those faces to each disc's stand-off envelope.
+    keepout_faces = []
     for r in keep_rows:
         xz = (int(r["rim_xz"][0]), int(r["rim_xz"][1]))
         k, t, _lat = _foot(nodes, *xz)
         y_foot = float(prof[k] * (1.0 - t) + prof[k + 1] * t)
         feet[xz] = k if t < 0.5 else k + 1
-        if discs:
-            cx, cz, rr = min(discs, key=lambda d: math.hypot(
-                xz[0] - d[0], xz[1] - d[1]) - d[2])
-            key = (round(float(cx), 2), round(float(cz), 2))
-            g_rim = float(r["rim_height_before_m"])
-            old = keepout.get(key)
-            keepout[key] = (key[0], key[1], round(float(rr), 2),
-                            max(y_foot, old[3]) if old else y_foot,
-                            min(g_rim, old[4]) if old else g_rim)
+        keepout_faces.append((*xz, y_foot, float(r["rim_height_before_m"])))
     rows = rows + keep_rows + pad_rows
     steps = len(rows)
     arrivals = pads.arrivals(seg, finished)
@@ -2006,7 +2010,7 @@ def _writer_water_once(seg: dict, fld, keepouts=None) -> dict:
         "_judged": judged,
         "_drops": drops,
         "_feet": feet,
-        "_keepout": sorted(keepout.values()),
+        "_keepout": keepout_standoff_seeds(keepout_faces, discs),
     }
 
 
@@ -2135,18 +2139,40 @@ def water_owner(seg: dict, ww: dict, near_end_m: float) -> dict[str, int]:
     return out
 
 
+def keepout_standoff_seeds(faces, discs) -> list[tuple]:
+    """One observed cut-or-fill height pair per refused protected disc.
+
+    Faces carry `(x, z, road_y, ground_y)`. A cut's batter rises to protected
+    ground just as a fill's batter falls to it. Keep the complete observed
+    pair with greatest absolute gap: combining heights from different faces
+    invents a reach that no refused ray needed.
+    """
+    pairs: dict[tuple, tuple[float, float]] = {}
+    for x, z, road_y, ground_y in faces:
+        if not discs:
+            break
+        cx, cz, r = min(discs, key=lambda d: math.hypot(x - d[0], z - d[1]) - d[2])
+        key = tuple(round(float(v), 2) for v in (cx, cz, r))
+        pair = (float(road_y), float(ground_y))
+        old = pairs.get(key)
+        if old is None or (abs(pair[0] - pair[1]), pair) > (
+                abs(old[0] - old[1]), old):
+            pairs[key] = pair
+    return [(*disc, *pair) for disc, pair in sorted(pairs.items())]
+
+
 def keepout_standoff_forbid(corr: routemod.Corridor, keepout, *,
                             half_m: float, grade: float,
                             reach_m: float) -> np.ndarray:
     """Corridor cells a road may not take, from the POI discs whose face
     the writer refused (`keepout`: `(cx, cz, r, road_y, rim_ground)`): the
     disc grown by the footprint half-width and the run the batter needs to
-    fall from the road to the ground at the disc's edge.  The keep-out form
-    of `route.water_standoff_forbid` (WALKED_KEEPOUT_DEPENDS_ON)."""
+    meet the protected ground, whether the road is cut below or filled above
+    it. The keep-out form of `route.water_standoff_forbid`."""
     out = np.zeros((corr.m, corr.m), dtype=bool)
     slack = corr.cell_m * math.sqrt(0.5)
     for cx, cz, r, y_road, g_rim in keepout:
-        reach = min(max(y_road - g_rim, 0.0) / grade, reach_m)
+        reach = min(abs(y_road - g_rim) / grade, reach_m)
         R = r + half_m + reach + slack
         j0 = max(0, int(math.floor((cx - R - corr.x0) / corr.cell_m)))
         j1 = min(corr.m - 1, int(math.ceil((cx + R - corr.x0) / corr.cell_m)))
@@ -2303,6 +2329,91 @@ def _chord_guidance_mask(corr, radii, endpoints):
     return out
 
 
+class _PadArrivalRefusal(ValueError):
+    def __init__(self, refusal: dict, destinations: dict):
+        self.refusal = refusal
+        self.destinations = destinations
+        super().__init__(junction_rejection(refusal)["why"])
+
+
+def _fit_pad_arrivals(seg: dict, joint: dict) -> dict:
+    """Fit the FULL incoming line to its actual terminal pads, before water.
+
+    A locally feasible added spur says nothing about the incoming stations:
+    their clamp boxes can prevent the climb even on the last legal rung.
+    Use the native junction constraints/closure, not another endpoint solver.
+    Only pads selected by the writer's real arrival walks participate here.
+    """
+    if _PLAN_PAD_KEEPOUTS is None:
+        return {}
+    keepouts = _PLAN_PAD_KEEPOUTS()
+    destinations = {
+        walk["end"].lower(): {
+            "pad": walk["nums"]["destination"], "datum_y": walk["datum"]}
+        for walk in keepouts.arrival_walks(seg)}
+    ids = {v["pad"] for v in destinations.values()}
+    pads = [
+        {"kind": "pad", "id": sid, "label": sid, "role": "site_pad",
+         "x": x, "z": z, "hw": hw, "hd": hd,
+         "datum_y": float(keepouts.by_id[sid]["pad_y"])}
+        for sid, x, z, hw, hd in keepouts.rects if sid in ids]
+    if not pads:
+        return destinations
+    sid = seg["id"]
+    result = apply_junction_datums(
+        [seg], {sid: joint}, pads,
+        depends_on=("pad_datums", "every_participants_own_design_height",
+                    "each_legs_own_bounds_and_branches"))
+    if result["refused"]:
+        refusal = result["refused"][0]
+        binding = refusal["binding"]
+        affected = {end: dest for end, dest in destinations.items()
+                    if dest["pad"] in binding["segments"]}
+        raise _PadArrivalRefusal(refusal, affected or destinations)
+    # The next candidate/global joint solve starts from the profile the solo
+    # writer actually judged, with precisely the same physical bounds/ladder.
+    joint["y0"] = np.asarray(seg["profile_y"], dtype=np.float64)
+    joint["rung"] = float(seg["grade_limit"])
+    return destinations
+
+
+def _pad_arrival_candidates(edge, which, destination, corr, fld, width_m,
+                            extra_forbid):
+    """All existing eligible ring attachments to the SAME terminal pad."""
+    level = routemod.footprint_half_m(width_m)
+    node_id = edge[which]
+    xz = specmod.NODES[node_id]["xz"]
+    claims = pad_claims()
+    mine = [q for q in terminal_pads(node_id, level, claims)
+            if str(q["site_id"]) == destination["pad"]]
+    if not mine:
+        return []
+    ids = {id(q) for q in mine}
+    clear = _spur_clear(corr, [q for q in claims if id(q) not in ids],
+                        level, extra_forbid)
+    # Keep every physical/search mask, including this leg's water stand-off.
+    old_forbid = corr.forbid
+    if extra_forbid is not None:
+        corr.forbid = (extra_forbid if old_forbid is None
+                       else old_forbid | extra_forbid)
+    try:
+        base = corr.nearest_allowed(*xz, 200.0)
+        cells = _arrival_ring_cells(xz, base, corr, mine, level)
+        out = []
+        for cell in cells:
+            point = corr.cell_world(*cell)
+            reach = arrival_reach(
+                point, xz, mine,
+                {destination["pad"]: destination["datum_y"]}, fld, width_m,
+                clear)
+            if (reach["verdict"] == "MEETS"
+                    and reach.get("pad") == destination["pad"]):
+                out.append(tuple(map(float, point)))
+        return out
+    finally:
+        corr.forbid = old_forbid
+
+
 def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   land_only: bool = False,
                   fixed_pts: list | None = None, *,
@@ -2312,7 +2423,89 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   extra_guidance: np.ndarray | None = None,
                   ceiling: dict[int, float] | None = None,
                   trim: dict[str, int] | None = None,
+                  trim_applied: bool = False,
                   line_out: list | None = None) -> dict:
+    """Build/profile against terminal pads; retry a proven bad attachment.
+
+    Local overrides never move another leg's shared anchor. Each candidate
+    repeats A*, crossing clearance, the full profile and native pad closure.
+    Exhaustion names the numerical refusal, not global infeasibility.
+    """
+    from collections import deque                          # noqa: PLC0415
+    pending = deque([{}])
+    seen = {(None, None)}
+    candidates = {}
+    required = {}
+    attempts = []
+    first_refusal = None
+    while pending:
+        ends = pending.popleft()
+        state = {}
+        try:
+            result = _build_with_chord_clearance(
+                fld, edge, corr, pois, land_only, fixed_pts, census=census,
+                joint=state, extra_forbid=extra_forbid,
+                extra_guidance=extra_guidance, ceiling=ceiling, trim=trim,
+                trim_applied=trim_applied, line_out=line_out, _search_ends=ends)
+            destinations = _fit_pad_arrivals(result, state)
+            if any(destinations.get(end, {}).get("pad") != required[end]["pad"]
+                   for end in ends):
+                raise ValueError("alternate attachment no longer reaches "
+                                 "the same terminal pad")
+        except _PadArrivalRefusal as exc:
+            if fixed_pts is not None:
+                raise
+            first_refusal = first_refusal or exc
+            attempts.append({"search_ends": ends, "binding": exc.refusal["binding"]})
+            for end, dest in exc.destinations.items():
+                required.setdefault(end, dest)
+                if required[end]["pad"] != dest["pad"]:
+                    continue
+                key = (end, dest["pad"])
+                if key not in candidates:
+                    width = float(edge.get("width_m") or WIDTH_M[edge["cls"]])
+                    candidates[key] = _pad_arrival_candidates(
+                        edge, end, dest, corr, fld, width, extra_forbid)
+                for point in candidates[key]:
+                    trial = {**ends, end: point}
+                    signature = (trial.get("a"), trial.get("b"))
+                    if signature not in seen:
+                        seen.add(signature)
+                        pending.append(trial)
+            continue
+        except ValueError as exc:
+            if first_refusal is None:
+                raise
+            attempts.append({"search_ends": ends, "refused": str(exc)})
+            continue
+        if attempts:
+            result["pad_arrival_reroute"] = {
+                "attempts": attempts, "search_ends": ends,
+                "destinations": destinations,
+                "why": "the full incoming profile could not meet its pad "
+                       "inside the native bounds/grade ladder; rebuilt from "
+                       "an eligible attachment to the same pad"}
+        if joint is not None:
+            joint.clear()
+            joint.update(state)
+        return result
+    raise ValueError(
+        f"{edge['id']}: eligible same-pad attachment search exhausted after "
+        f"{len(attempts)} full-line refusal(s); {first_refusal}") from first_refusal
+
+
+def _build_with_chord_clearance(fld, edge: dict, corr: routemod.Corridor, pois: list,
+                  land_only: bool = False,
+                  fixed_pts: list | None = None, *,
+                  census: censusmod.Census | None,
+                  joint: dict | None = None,
+                  extra_forbid: np.ndarray | None = None,
+                  extra_guidance: np.ndarray | None = None,
+                  ceiling: dict[int, float] | None = None,
+                  trim: dict[str, int] | None = None,
+                  trim_applied: bool = False,
+                  line_out: list | None = None,
+                  _search_ends: dict | None = None) -> dict:
     """Build a legal alignment, re-searching if a crossing chord cuts a POI.
 
     Extra search clearance is guidance, never a changed physical boundary.
@@ -2332,7 +2525,8 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                 fld, edge, corr, pois, land_only, fixed_pts, census=census,
                 joint=joint, extra_forbid=overlay, extra_guidance=extra_guidance,
                 ceiling=ceiling,
-                trim=trim, line_out=line_out)
+                trim=trim, trim_applied=trim_applied,
+                line_out=line_out, _search_ends=_search_ends)
         except _StraighteningRefusal as exc:
             if fixed_pts is not None:
                 raise
@@ -2395,7 +2589,9 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   extra_guidance: np.ndarray | None = None,
                   ceiling: dict[int, float] | None = None,
                   trim: dict[str, int] | None = None,
-                  line_out: list | None = None) -> tuple[dict, tuple]:
+                  trim_applied: bool = False,
+                  line_out: list | None = None,
+                  _search_ends: dict | None = None) -> tuple[dict, tuple]:
     """Route and profile one leg.
 
     ``fld`` supplies the original measurement for all physical sampling;
@@ -2496,11 +2692,14 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
             corr.forbid = (extra_forbid if shared_forbid is None
                            else shared_forbid | extra_forbid)
         try:
+            ends = _search_ends or {}
             raw = corr.search(
-                search_xz(edge["a"], corr, width_m=width_m, fld=fld,
-                          extra_forbid=extra_forbid),
-                search_xz(edge["b"], corr, width_m=width_m, fld=fld,
-                          extra_forbid=extra_forbid))
+                ends["a"] if "a" in ends else search_xz(
+                    edge["a"], corr, width_m=width_m, fld=fld,
+                    extra_forbid=extra_forbid),
+                ends["b"] if "b" in ends else search_xz(
+                    edge["b"], corr, width_m=width_m, fld=fld,
+                    extra_forbid=extra_forbid))
         finally:
             corr.forbid_all_water = False
             corr.forbid = shared_forbid
@@ -2569,7 +2768,9 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # `writer_water` found it paving.  `s` is sliced, never re-measured, so
     # every station kept keeps the arc its profile was fitted on.
     trim_rec = None
-    if trim and any(trim.values()):
+    # A fixed-profile repair retains trim-owned abutment release below,
+    # but its exact input stations have already been trimmed.
+    if trim and any(trim.values()) and not trim_applied:
         na, nb = int(trim.get("a", 0)), int(trim.get("b", 0))
         if na + nb > len(pts) - 2:
             raise ValueError(f"{edge['id']}: a terminal trim of {na}+{nb} "
@@ -3467,11 +3668,14 @@ def span_retry_guidance(corr: routemod.Corridor, rec: dict) -> np.ndarray | None
     return out if np.any(out) else None
 
 
-def adjacency_reroute(corr: routemod.Corridor, one) -> tuple[dict, dict]:
+def adjacency_reroute(corr: routemod.Corridor, one, *,
+                      initial: tuple[dict, dict] | None = None
+                      ) -> tuple[dict, dict]:
     """ADJACENCY_REROUTE_DEPENDS_ON.  `one(extra_forbid)` builds the leg on
     `corr` with that mask laid over the search (None: none) and returns
-    `(record, joint)`."""
-    rec, joint = one(None)
+    `(record, joint)`. `initial` reuses a candidate already measured by a
+    caller, without repeating its unchanged search and profile fit."""
+    rec, joint = one(None) if initial is None else initial
     if (_ADJACENCY_REROUTE_MODE == "off"
             or self_adjacency_rejection(rec) is None):
         return rec, joint
@@ -3549,7 +3753,46 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
         except ValueError as exc:
             tried.append({"by": by, "unbuildable": str(exc)[:200]})
             return None
+        fixed_pts = kw.get("fixed_pts")
+        if fixed_pts is not None and not np.array_equal(
+                np.asarray(cand["nodes"]), np.asarray(fixed_pts)):
+            tried.append({"by": by, "refused_by_plan": "profile_geometry",
+                          "expected_stations": len(fixed_pts),
+                          "actual_stations": len(cand["nodes"])})
+            return None
+        if fixed_pts is not None and "water_trim" in cur_seg:
+            cand["water_trim"] = dict(cur_seg["water_trim"])
         why = refusal(cand)
+        if why == "self_adjacency" and fixed_pts is None:
+            # A water stand-off can introduce a different hairpin from the
+            # initial route's. Offer it the same existing adjacency remedy,
+            # without losing this leg's accumulated water/span guidance.
+            original = cand
+            original_joint = j
+            retry_kw: dict = {}
+
+            def one(adj):
+                retry_kw.clear()
+                retry_kw.update(kw)
+                ef = kw.get("extra_forbid")
+                retry_kw["extra_forbid"] = (adj if ef is None else ef
+                                            if adj is None else ef | adj)
+                return build(**retry_kw)
+
+            cand, j = adjacency_reroute(corr, one, initial=(cand, j))
+            if cand is not original:
+                edge = {"a": original["from"], "b": original["to"],
+                        "width_m": original["width_m"]}
+                detached = _retry_terminal_rejection(
+                    edge, (original["nodes"][0], original["nodes"][-1]),
+                    cand["nodes"])
+                if detached is not None:
+                    tried.append({"by": f"{by} + adjacency",
+                                  "terminal_refusal": detached})
+                    cand, j = original, original_joint
+                else:
+                    kw.update(retry_kw)
+            why = refusal(cand)
         if why is not None:
             tried.append({"by": by, "refused_by_plan": why,
                           "length_m": cand["length_m"]})
@@ -3560,7 +3803,11 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
                       "drained": cw["drained"], "worst_m": cw["worst_m"],
                       "length_m": cand["length_m"]})
         if _water_score(cw) < _water_score(best["ww"]):
-            best.update(seg=cand, joint=j, ww=cw, by=by, kw=kw)
+            # Station-owned caps and frozen geometry belong to this repair,
+            # not to a later genuine alignment/terminal search.
+            search_kw = {k: v for k, v in kw.items()
+                         if k not in ("fixed_pts", "ceiling", "trim_applied")}
+            best.update(seg=cand, joint=j, ww=cw, by=by, kw=search_kw)
         return cand, cw
 
     # 1. THE ALIGNMENT: off the water's refused bodies and the refused POI
@@ -3579,6 +3826,9 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
             if guidance is not None:
                 kw["extra_guidance"] = guidance
             got = attempt(kw, f"alignment {rnd}")
+            # Keep newly discovered adjacency stand-offs on later water/span
+            # attempts too, not only on the candidate that first needed them.
+            extra = kw["extra_forbid"]
             if got is None:
                 if last_refused is None or last_refused[1] != "span":
                     break
@@ -3645,7 +3895,8 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
             for k, d in cur_ww["_drops"].items():
                 ceiling[k] = min(ceiling.get(k, math.inf),
                                  float(cur_seg["profile_y"][k]) - d)
-            got = attempt({**base_kw, "ceiling": dict(ceiling)},
+            got = attempt({**base_kw, "ceiling": dict(ceiling),
+                           "fixed_pts": cur_seg["nodes"], "trim_applied": True},
                           on_top(f"ceiling {rnd}"))
             if got is None or not _water_score(got[1]):
                 break
@@ -6054,7 +6305,8 @@ def _ww_leg(fld, corr, a, b, width: float = 6.0, grade: float = 0.08):
     """A `build` for `water_route` over a fixture: the corridor search, the
     footprint box and the fit -- `build_segment`'s path with no census, pad
     or crossing to read."""
-    def build(*, extra_forbid=None, extra_guidance=None, trim=None, ceiling=None):
+    def build(*, extra_forbid=None, extra_guidance=None, trim=None, ceiling=None,
+              fixed_pts=None, trim_applied=False):
         local = copy.copy(corr)
         if extra_forbid is not None:
             local.forbid = (extra_forbid if corr.forbid is None
@@ -6062,11 +6314,17 @@ def _ww_leg(fld, corr, a, b, width: float = 6.0, grade: float = 0.08):
         if extra_guidance is not None:
             local.guidance = (extra_guidance if corr.guidance is None
                               else corr.guidance + extra_guidance)
-        raw = local.search(a, b)
-        pts, s = routemod.resample(routemod.simplify(raw, tol_m=SIMPLIFY_TOL_M),
-                                   STATION_M)
+        if fixed_pts is None:
+            raw = local.search(a, b)
+            pts, s = routemod.resample(
+                routemod.simplify(raw, tol_m=SIMPLIFY_TOL_M), STATION_M)
+        else:
+            pts = [tuple(map(float, point)) for point in fixed_pts]
+            s = np.concatenate([[0.0], np.cumsum(
+                np.linalg.norm(np.diff(np.asarray(pts), axis=0), axis=1))])
         s = np.asarray(s, dtype=np.float64)
-        na, nb = (trim or {}).get("a", 0), (trim or {}).get("b", 0)
+        applied_trim = trim if fixed_pts is None else None
+        na, nb = (applied_trim or {}).get("a", 0), (applied_trim or {}).get("b", 0)
         if na + nb > len(pts) - 2:
             raise ValueError("fixture trim leaves no road")
         pts, s = pts[na:len(pts) - nb], s[na:len(s) - nb] - s[na]
@@ -9046,6 +9304,7 @@ def main(*, plan_state: dict | None = None) -> int:
         # see `water_route`.  A leg the writer would lay comes back untouched.
 
         def build_leg(*, extra_forbid=None, extra_guidance=None, trim=None, ceiling=None,
+                      fixed_pts=None, trim_applied=False,
                       _edge=edge, _fld=fld_p, _corr=corridors[key],
                       _retry=seg.get("land_only_retry"),
                       _reprice=seg.get("span_reprice"),
@@ -9062,10 +9321,11 @@ def main(*, plan_state: dict | None = None) -> int:
                 _corr, None if _reprice is None else _reprice["factor"],
                 lambda: build_segment(_fld, _edge, _corr, pois + census_pois,
                                       land_only=_retry is not None,
-                                      census=census, joint=j,
+                                      fixed_pts=fixed_pts, census=census, joint=j,
                                       extra_forbid=ef,
                                       extra_guidance=extra_guidance,
-                                      trim=trim, ceiling=ceiling))
+                                      trim=trim, trim_applied=trim_applied,
+                                      ceiling=ceiling))
             if _retry is not None:
                 rec["land_only_retry"] = _retry
             if _reprice is not None:

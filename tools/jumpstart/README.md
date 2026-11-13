@@ -110,6 +110,25 @@ terminal bearing. Writer checks and protection of earlier built-road arrivals
 use that local bearing, as finished-world acceptance does. A centre coincidence
 does not remove the arrival or relax its step and berm limits.
 
+Incoming-pad feasibility is solved over the whole incoming road using its
+native clamp, crossing and grade constraints. A short arrival spur alone is
+not proof that the road can reach the datum. A failed searched attachment may
+try the existing eligible contacts on the same pad; fixed geometry cannot
+silently move to another attachment.
+
+Protected-ground feedback uses the largest absolute cut/fill gap from a
+complete observed face pair. It does not combine heights from unrelated
+faces. A water-route retry that develops a hairpin receives the existing
+adjacency remedy while retaining its accumulated guidance and real terminal
+attachments.
+
+Profile-only water ceilings belong to their exact judged station geometry.
+Already-trimmed geometry is rebuilt with `trim_applied=True`: station slicing
+is skipped, but the original trim counts still determine released-abutment
+ownership. Both tracked builders and band-free probes carry this contract.
+The published trim provenance survives; fixed stations, replay flags and
+station caps do not leak into a later genuine alignment search.
+
 Straight crossing chords must retain the searched route's generator hard
 clearance. A newly introduced breach triggers another leg-local search using
 additional guidance, then the ordinary crossing, profile and writer checks.
