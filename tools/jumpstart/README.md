@@ -154,11 +154,33 @@ current routing masks. No cached approval is reused. Every candidate still
 repeats the native geometry, held-height and writer checks. Boundary
 ownership is not proof that a complete approach or road is buildable.
 
+The intermediate snapped search contact does not clip a restored bank's
+eligible contact domain. Self-overlapping bank candidates also try the
+remaining owned contacts. If all fail, only a candidate that has passed the
+other terminal and pad-arrival checks may survive as a still-refused input
+to leg-local guidance; its matching joint state is retained.
+
+Nearest-station profile envelopes are sufficient approximations, not proofs
+that no physical profile exists. Solo and joint closure use actual sparse
+lattice-foot interpolation when the envelope fails or its candidate misses
+the current reading budgets. The exact fit retains all native margins,
+grade chains, own bounds and held datums; valid existing profiles keep their
+fast paths. Only mathematical infeasibility earns that refusal. Numerical
+solver failures remain errors, and conflict attribution uses live roads.
+
 Protected-ground feedback uses the largest absolute cut/fill gap from a
 complete observed face pair. It does not combine heights from unrelated
 faces. A water-route retry that develops a hairpin receives the existing
 adjacency remedy while retaining its accumulated guidance and real terminal
 attachments.
+
+Self-overlap feedback prices the measured later foot with ordered additive
+costs; it does not add a physical obstacle or stop after eight candidates.
+Ordinary hard masks, native profile bounds and original terminal attachments
+remain binding. Water/span continuation retains accumulated costs, and north
+rebuilds reconstruct the accepted hints in their original order. Numerical
+cost exhaustion or a failed candidate retains the original refused line;
+neither establishes that every possible alignment is impossible.
 
 Profile-only water ceilings belong to their exact judged station geometry.
 Already-trimmed geometry is rebuilt with `trim_applied=True`: station slicing

@@ -1173,18 +1173,88 @@ def _close_bounds(lo: np.ndarray, hi: np.ndarray, reach: np.ndarray,
     return lo, hi, bool((lo <= hi + 1e-9).all())
 
 
+def _reading_matrix(columns, weights, size):
+    """Fixed sparse interpolation geometry; repeated columns sum exactly."""
+    from scipy.sparse import coo_matrix
+
+    columns, weights = np.asarray(columns), np.asarray(weights)
+    out = coo_matrix(
+        (weights.ravel(), (np.repeat(np.arange(len(columns)), columns.shape[1]),
+                           columns.ravel())), shape=(len(columns), size)).tocsr()
+    out.eliminate_zeros()
+    return out
+
+
+def _exact_reading_profile(y0, lo, hi, chains, readings, lower, upper, *,
+                           closure_only=False):
+    """Fit actual interpolated readings, not sufficient station envelopes.
+
+    A reading is a sparse row of station weights with its original lower and
+    upper limits. Only mathematical infeasibility returns None; numerical or
+    solver failures are not evidence that the physical profile is impossible.
+    """
+    from scipy.optimize import linprog
+    from scipy.sparse import coo_matrix, csr_matrix, eye, hstack, vstack
+
+    y0 = np.asarray(y0, dtype=np.float64)
+    lo, hi = np.asarray(lo, dtype=np.float64), np.asarray(hi, dtype=np.float64)
+    if np.any(lo > hi):
+        return None
+    size = len(y0)
+    lower, upper = np.asarray(lower), np.asarray(upper)
+    starts, reaches = [], []
+    for a, b, reach in chains:
+        if b - a > 1:
+            starts.append(np.arange(a, b - 1))
+            reaches.append(np.diff(reach))
+    ii = np.concatenate(starts) if starts else np.empty(0, dtype=np.int64)
+    limits = np.concatenate(reaches) if reaches else np.empty(0)
+    chain = coo_matrix(
+        (np.tile([-1., 1.], len(ii)),
+         (np.repeat(np.arange(len(ii)), 2),
+          np.column_stack((ii, ii + 1)).ravel())), shape=(len(ii), size)).tocsr()
+    matrix = vstack((readings, -readings, chain, -chain), format="csr")
+    rhs = np.concatenate((upper, -lower, limits, limits))
+    variable_bounds = list(zip(lo, hi))
+    if closure_only:
+        objective = np.zeros(size)
+        problem = matrix
+        problem_rhs = rhs
+    else:
+        # Minimum L1 displacement leaves independent, already-valid terrain
+        # unchanged. Existing fast-path profiles never enter this solver.
+        identity = eye(size, format="csr")
+        problem = vstack((
+            hstack((matrix, csr_matrix((matrix.shape[0], size))), format="csr"),
+            hstack((identity, -identity), format="csr"),
+            hstack((-identity, -identity), format="csr")), format="csr")
+        problem_rhs = np.concatenate((rhs, y0, -y0))
+        objective = np.concatenate((np.zeros(size), np.ones(size)))
+        variable_bounds.extend([(0., None)] * size)
+    fit = linprog(
+        objective, A_ub=problem, b_ub=problem_rhs, bounds=variable_bounds,
+        method="highs", options={"primal_feasibility_tolerance": 1e-9,
+                                  "dual_feasibility_tolerance": 1e-9})
+    if fit.status == 2:
+        return None
+    if not fit.success:
+        raise ValueError(f"exact interpolated profile solve failed: {fit.message}")
+    y = fit.x[:size]
+    if (not np.all(np.isfinite(y)) or np.any(y < lo - 1e-9)
+            or np.any(y > hi + 1e-9) or np.any(matrix @ y > rhs + 1e-9)):
+        raise ValueError("exact interpolated profile solve exceeded its constraints")
+    return y
+
+
 def join_branches(y0, s, grade_max: float, lo, hi, cand: dict) -> dict:
     """Re-profile a line so no two of its branches are out of reach of each
     other, or PROVE that no profile inside `lo/hi` at `grade_max` can.
 
     `y0` is the profile `fit_profile` returned; where it already satisfies
-    every pair it comes back UNCHANGED, byte for byte.  Otherwise the answer
-    is the average of two feasible profiles -- the greatest one never above
-    `y0` and the least one never below it -- so it equals `y0` wherever no
-    pair limit binds, and meets in the middle of each landing where one does:
-    the upper branch cut down half the excess, the lower one raised half.
-    Both are exact shortest-path bounds (`_close_bounds`), and the set of
-    feasible profiles is convex, so their average is feasible too."""
+    every pair it comes back UNCHANGED, byte for byte. The sufficient station
+    envelope keeps its established midpoint fit when it closes. Failure of
+    that approximation is not a physical refusal: exact lattice-foot
+    interpolation constraints must also be infeasible before refusing."""
     y0 = np.asarray(y0, dtype=np.float64)
     s = np.asarray(s, dtype=np.float64)
     viol = self_adjacency_violations(y0, cand)
@@ -1203,23 +1273,34 @@ def join_branches(y0, s, grade_max: float, lo, hi, cand: dict) -> dict:
     I, J = cand["i"], cand["j"]
     allow = cand["allow"] - SELF_ADJACENCY_JOIN_MARGIN_M
     L, U, ok = _close_bounds(lo, hi, reach, I, J, allow)
-    if not ok:
-        empty = np.nonzero(L > U + 1e-9)[0]
-        k = int(empty[0]) if len(empty) else -1
-        return {**base, "verdict": "UNJOINABLE", "y": y0,
-                "pairs_after": len(viol), "worst_after": viol[0] if viol else None,
-                "stations_moved": 0, "max_move_m": 0.0,
-                "proof": {"grade_max": grade_max,
-                          "empty_stations": int(len(empty)),
-                          "first_empty_station": k,
-                          "interval_there": (None if k < 0 else
-                                             [round(float(L[k]), 3),
-                                              round(float(U[k]), 3)])}}
-    _l, A, _ok = _close_bounds(L, np.minimum(U, np.maximum(y0, L)), reach,
-                               I, J, allow)
-    B, _u, _ok = _close_bounds(np.maximum(L, np.minimum(y0, U)), U, reach,
-                               I, J, allow)
-    y = 0.5 * (A + B)
+    y = None
+    if ok:
+        _l, A, _ok = _close_bounds(L, np.minimum(U, np.maximum(y0, L)), reach,
+                                  I, J, allow)
+        B, _u, _ok = _close_bounds(np.maximum(L, np.minimum(y0, U)), U, reach,
+                                  I, J, allow)
+        y = 0.5 * (A + B)
+        if self_adjacency_violations(y, cand):
+            y = None
+    if y is None:
+        edges = cand["edges"]
+        a0, a1, ta = _feet(cand["arcs"], edges["s1"])
+        b0, b1, tb = _feet(cand["arcs"], edges["s2"])
+        exact_allow = cand["allow_e"] - SELF_ADJACENCY_JOIN_MARGIN_M
+        readings = _reading_matrix(
+            np.column_stack((a0, a1, b0, b1)),
+            np.column_stack((1. - ta, ta, -(1. - tb), -tb)), len(s))
+        y = _exact_reading_profile(
+            y0, lo, hi, [(0, len(s), grade_max * s)], readings,
+            -exact_allow, exact_allow)
+        if y is None:
+            return {**base, "verdict": "UNJOINABLE", "y": y0,
+                    "pairs_after": len(viol),
+                    "worst_after": viol[0] if viol else None,
+                    "stations_moved": 0, "max_move_m": 0.0,
+                    "proof": {"grade_max": grade_max,
+                              "exact_interpolation": "INFEASIBLE",
+                              "lattice_edges": len(exact_allow)}}
     after = self_adjacency_violations(y, cand)
     moved = np.abs(y - y0)
     return {**base, "verdict": "JOINED" if not after else "UNJOINABLE",
@@ -1921,6 +2002,20 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
     gb = off[P["lb"]] + nb
     gu = off[U["la"]] + nu
     y0 = np.concatenate(Y0) if Y0 else np.zeros(0)
+    # Exact row geometry is immutable too. Reuse it through every conflict
+    # probe and budget solve instead of re-reading station brackets.
+    from scipy.sparse import vstack
+
+    pair_rows = _reading_matrix(
+        np.column_stack((off[P["la"]] + P["k0a"], off[P["la"]] + P["k1a"],
+                         off[P["lb"]] + P["k0b"], off[P["lb"]] + P["k1b"])),
+        np.column_stack((1. - P["ta"], P["ta"], -(1. - P["tb"]), -P["tb"])),
+        len(y0))
+    pad_rows = _reading_matrix(
+        np.column_stack((off[U["la"]] + U["k0a"], off[U["la"]] + U["k1a"])),
+        np.column_stack((1. - U["ta"], U["ta"])), len(y0))
+    held_p = np.abs(pair_rows @ y0)
+    held_u = pad_rows @ y0
     tight_p = ea0 > JUNCTION_DATUM_EPS_M
     tight_u = eu0 > JUNCTION_DATUM_EPS_M
 
@@ -2017,19 +2112,54 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
             first = np.ones(len(I), dtype=bool)
             first[1:] = (I[1:] != I[:-1]) | (Jn[1:] != Jn[:-1])
             I, Jn, A = I[first], Jn[first], A[first]
+        pa = np.maximum(tgt - JUNCTION_DATUM_MARGIN_M, 0.)
+        pa = np.where(tp, pa, np.maximum(pa, held_p))
+        if len(gu):
+            ua = np.maximum(tgu - JUNCTION_DATUM_MARGIN_M, 0.)
+            ul = np.where(tu, U["datum"] - ua,
+                          np.minimum(U["datum"] - ua, held_u))
+            uh = np.where(tu, U["datum"] + ua,
+                          np.maximum(U["datum"] + ua, held_u))
         L, Uu, ok = _close_joint(lo, hi, chains, I, Jn, A)
-        if not ok:
-            empty = np.nonzero(L > Uu + 1e-9)[0]
-            return None, int(empty[0]) if len(empty) else -1, (L, Uu)
-        if closure_only:
-            return True, -1, None
-        _l, Aup, _ok = _close_joint(L, np.minimum(Uu, np.maximum(y0, L)),
-                                    chains, I, Jn, A)
-        Blo, _u, _ok = _close_joint(np.maximum(L, np.minimum(y0, Uu)), Uu,
-                                    chains, I, Jn, A)
-        y = 0.5 * (Aup + Blo)
-        y = np.where(np.abs(y - y0) <= 1e-9, y0, y)
-        return y, -1, (L, Uu)
+        if ok:
+            _l, Aup, _ok = _close_joint(L, np.minimum(Uu, np.maximum(y0, L)),
+                                       chains, I, Jn, A)
+            Blo, _u, _ok = _close_joint(np.maximum(L, np.minimum(y0, Uu)), Uu,
+                                       chains, I, Jn, A)
+            y = 0.5 * (Aup + Blo)
+            y = np.where(np.abs(y - y0) <= 1e-9, y0, y)
+            pv = np.abs(pair_rows @ y)
+            pairs_ok = np.all(pv[live_p] <= pa[live_p] + 1e-9)
+            pads_ok = True
+            if len(gu):
+                uv = pad_rows @ y
+                pads_ok = (np.all(uv[live_u] >= ul[live_u] - 1e-9)
+                           and np.all(uv[live_u] <= uh[live_u] + 1e-9))
+            if pairs_ok and pads_ok:
+                return (True if closure_only else y), -1, (L, Uu)
+        # Neither an empty approximate box nor a midpoint that misses exact
+        # foot readings establishes infeasibility. Restore original own
+        # bounds before approximate pad limits, then solve the actual rows.
+        exact_lo, exact_hi = np.empty(off[-1]), np.empty(off[-1])
+        for li in range(len(legs)):
+            a, b = int(off[li]), int(off[li + 1])
+            if alive[li]:
+                exact_lo[a:b], exact_hi[a:b] = own_bounds(li)
+            else:
+                exact_lo[a:b] = exact_hi[a:b] = Y0[li]
+        readings = pair_rows[live_p]
+        lower, upper = -pa[live_p], pa[live_p]
+        if len(gu):
+            readings = vstack((readings, pad_rows[live_u]), format="csr")
+            lower = np.concatenate((lower, ul[live_u]))
+            upper = np.concatenate((upper, uh[live_u]))
+        y = _exact_reading_profile(
+            y0, exact_lo, exact_hi, chains, readings, lower, upper,
+            closure_only=closure_only)
+        if y is not None:
+            return (True if closure_only else y), -1, (exact_lo, exact_hi)
+        empty = np.nonzero(exact_lo > exact_hi)[0]
+        return None, int(empty[0]) if len(empty) else -1, (exact_lo, exact_hi)
 
     def leg_of(g):
         return int(np.searchsorted(off, g, side="right") - 1)
@@ -2059,11 +2189,25 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
         `li` outward along every live reading, NEAREST FIRST.  The smallest
         breadth-first prefix that has no profile, then every member but its
         last that the others still fail without, dropped."""
-        if _CONFLICT_SCOPE != "conflict":
-            return component(li)
+        if not alive[li]:
+            li = next(q for q in range(len(legs)) if alive[q])
         order = connected(li, all_adjacency)
         if closes(order, tp, tu, lp, lu):
-            return component(li)
+            # An exact infeasibility has no fabricated empty station. The
+            # old envelope's seed may belong to an unrelated valid component.
+            seen = set(order)
+            for q in range(len(legs)):
+                if not alive[q] or q in seen:
+                    continue
+                other = connected(q, all_adjacency)
+                seen.update(other)
+                if not closes(other, tp, tu, lp, lu):
+                    order = other
+                    break
+            else:
+                raise ValueError("joint solve refused although every live component closes")
+        if _CONFLICT_SCOPE != "conflict":
+            return component(next(q for q in order if alive[q]))
         lo_k, hi_k = 0, len(order)
         while hi_k - lo_k > 1:
             mid = (lo_k + hi_k) // 2
@@ -2140,7 +2284,10 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
                        "allowance_m": round(float(U["allow"][k]), 4),
                        "reading": "pad datum"}
         else:
-            victim = li if chosen is None else chosen
+            victim = (chosen if chosen is not None else
+                      max((q for q in comp if alive[q]),
+                          key=lambda q: (not legs[q].get("pinned"),
+                                         _refuse_order(legs[q]))))
             binding = {"segments": [legs[victim]["id"]], "with": None,
                        "xz": None, "reading": "own bounds"}
         binding.update({
@@ -2151,6 +2298,8 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
             "interval_there": ([round(float(L[bad]), 3),
                                 round(float(Uu[bad]), 3)]
                                if bad >= 0 else None)})
+        if bad < 0:
+            binding["exact_interpolation"] = "INFEASIBLE"
         refused.append({"id": legs[victim]["id"], "binding": binding})
         alive[victim] = False
 

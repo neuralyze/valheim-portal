@@ -25,7 +25,6 @@ class FixedProfileConstraintsTests(unittest.TestCase):
             np.array([True, True, True, True, False]), [.08, .12, .18, .25],
             pts=points, width_m=6., grade=.625, batter_m=12., lattice_m=1.)
         self.assertEqual(fitted['joined']['verdict'], 'REFUSED')
-        self.assertGreater(fitted['joined']['proof']['empty_stations'], 0)
 
     def test_joint_residual_cannot_discard_own_fixed_datums(self):
         s, points, lo, hi = self.fixture()

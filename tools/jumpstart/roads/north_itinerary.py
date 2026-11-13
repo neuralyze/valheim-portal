@@ -467,7 +467,7 @@ def _north_route_builders(net, corr, raw):
     """Use canonical solo remedies, then keep their decisions on water rebuilds."""
     def first(*, trim=None):
         return net.adjacency_reroute(
-            corr, lambda adj: raw(trim=trim, extra_forbid=adj))
+            corr, lambda guidance: raw(trim=trim, extra_guidance=guidance))
 
     rec, joint, base_trim = net.build_past_drowned(first)
     worst = net.span_worst(rec)
@@ -493,15 +493,17 @@ def _north_route_builders(net, corr, raw):
     retry = rec.get("land_only_retry")
     price = rec.get("span_reprice")
 
-    def rebuild(*, extra_forbid=None, **kw):
+    def rebuild(*, extra_forbid=None, extra_guidance=None, **kw):
         if adjacency is not None:
-            mask = net.adjacency_mask(corr, adjacency["discs"])
-            extra_forbid = mask if extra_forbid is None else extra_forbid | mask
+            prior = net.adjacency_guidance(corr, adjacency["hints"])
+            extra_guidance = (prior if extra_guidance is None
+                              else prior + extra_guidance)
         if retry is not None:
             kw["land_only"] = True
         rebuilt, rebuilt_joint = net.at_water_price(
             corr, None if price is None else price["factor"],
-            lambda: raw(extra_forbid=extra_forbid, **kw))
+            lambda: raw(extra_forbid=extra_forbid,
+                        extra_guidance=extra_guidance, **kw))
         for name, value in (("adjacency_reroute", adjacency),
                             ("drowned_terminus", drowned),
                             ("land_only_retry", retry), ("span_reprice", price)):

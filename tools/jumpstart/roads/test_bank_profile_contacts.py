@@ -67,6 +67,22 @@ class BankProfileContactsTests(unittest.TestCase):
         for name, value in before.items():
             np.testing.assert_array_equal(getattr(corr, name), value)
 
+    def test_restored_bank_domain_is_not_clipped_by_an_intermediate_contact(self):
+        corr = _corridor()
+        origin = tuple(map(float, corr.cell_world(*corr.cell_of(0., 0.))))
+        intermediate = (origin[0] + 4 * corr.cell_m, origin[1])
+        edge = dict(a='owned-bank', b='elsewhere', cls='trunk', width_m=6.)
+        node = dict(xz=origin, level_y=30.6, kind='abutment', crossing='C')
+        before = _physical_snapshot(corr)
+        expected = {(origin[0] + dx, origin[1] + dz)
+                    for dx in (-4., 0., 4.) for dz in (-4., 0., 4.)}
+        with patch.object(N.specmod, 'NODES', {'owned-bank': node}):
+            contacts = N._bank_profile_contacts(
+                edge, 'a', corr, intermediate, None)
+        self.assertEqual(set(contacts), expected)
+        for name, value in before.items():
+            np.testing.assert_array_equal(getattr(corr, name), value)
+
 
 if __name__ == '__main__':
     unittest.main()

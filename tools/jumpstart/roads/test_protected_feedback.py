@@ -103,7 +103,47 @@ class ProtectedFeedbackTests(unittest.TestCase):
     def test_end_near_hairpin_cannot_be_detached_by_adjacency_retry(self):
         self._check_water_hairpin(near_terminal=True)
 
-    def _check_water_hairpin(self, *, near_terminal):
+    def test_adjacency_cost_search_reaches_an_expensive_legal_bypass(self):
+        corr, build, a, b = self._numeric_hairpin(outer_cost=10000.)
+        ii, jj = np.mgrid[:corr.m, :corr.m]
+        xx, zz = corr.x0 + jj * corr.cell_m, corr.z0 + ii * corr.cell_m
+        corr.forbid |= (xx == -72.) & (abs(zz) < 30.)
+        physical = corr.forbid.copy()
+        initial, joint = build()
+        self.assertIsNotNone(net.self_adjacency_rejection(initial))
+        result, _ = net.adjacency_reroute(
+            corr, lambda guidance: build(extra_guidance=guidance),
+            initial=(initial, joint))
+        self.assertIsNone(net.self_adjacency_rejection(result))
+        self.assertEqual((tuple(result['nodes'][0]),
+                          tuple(result['nodes'][-1])), (a, b))
+        for point in result['nodes']:
+            self.assertFalse(physical[corr.cell_of(*point)])
+        self.assertLessEqual(max(abs(y - 60.) for y in result['profile_y']), 8.)
+        np.testing.assert_array_equal(corr.forbid, physical)
+        self.assertIsNone(corr.guidance)
+
+    def test_north_water_rebuild_retains_the_guided_legal_path(self):
+        from roads import north_itinerary
+        corr, build, a, b = self._numeric_hairpin()
+        ii, jj = np.mgrid[:corr.m, :corr.m]
+        xx, zz = corr.x0 + jj * corr.cell_m, corr.z0 + ii * corr.cell_m
+        corr.forbid |= (xx == -72.) & (abs(zz) < 30.)
+        physical = corr.forbid.copy()
+        initial, _ = build()
+        self.assertIsNotNone(net.self_adjacency_rejection(initial))
+        routed, _, rebuild = north_itinerary._north_route_builders(net, corr, build)
+        self.assertIsNone(net.self_adjacency_rejection(routed))
+        replay, _ = rebuild()
+        np.testing.assert_array_equal(replay['nodes'], routed['nodes'])
+        np.testing.assert_array_equal(replay['profile_y'], routed['profile_y'])
+        self.assertIsNone(net.self_adjacency_rejection(replay))
+        self.assertEqual((tuple(replay['nodes'][0]), tuple(replay['nodes'][-1])),
+                         (a, b))
+        np.testing.assert_array_equal(corr.forbid, physical)
+        self.assertIsNone(corr.guidance)
+
+    def _numeric_hairpin(self, *, near_terminal=False, outer_cost=0.):
         corr = _corridor()
         ii, jj = np.mgrid[:corr.m, :corr.m]
         xx, zz = corr.x0 + jj * corr.cell_m, corr.z0 + ii * corr.cell_m
@@ -123,15 +163,15 @@ class ProtectedFeedbackTests(unittest.TestCase):
             allowed |= ((zz >= -48.) & (zz <= 8.)
                         & (abs(xx - diagonal_x) <= 2.))
         corr.forbid = ~allowed
-        physical_forbid = corr.forbid.copy()
+        corr.soft = np.where((abs(zz) == 72.) | (xx == 72.), outer_cost, 0.)
         a = (-72., -48.)
         b = (-48., 8.) if near_terminal else (-72., 48.)
         grade, reach, lattice = net.writer_batter()
 
         def build(*, extra_forbid=None, extra_guidance=None,
-                  trim=None, ceiling=None):
-            if trim or ceiling:
-                raise ValueError('rigid-datum fixture cannot trim or lower its pins')
+                  trim=None, ceiling=None, fixed_pts=None, trim_applied=False):
+            if trim or ceiling or fixed_pts is not None or trim_applied:
+                raise ValueError('fixture supports untrimmed alignment searches only')
             local = copy.copy(corr)
             if extra_forbid is not None:
                 local.forbid = corr.forbid | extra_forbid
@@ -155,6 +195,12 @@ class ProtectedFeedbackTests(unittest.TestCase):
                        profile_y=list(fitted['y']), is_bridge=list(free),
                        crossings=[], self_adjacency=fitted['joined'])
             return rec, {}
+        return corr, build, a, b
+
+    def _check_water_hairpin(self, *, near_terminal):
+        corr, build, a, b = self._numeric_hairpin(near_terminal=near_terminal)
+        physical_forbid = corr.forbid.copy()
+        grade, reach, _lattice = net.writer_batter()
 
         original, joint = build()
         original['profile_y'] = [54.] * len(original['nodes'])
@@ -175,26 +221,21 @@ class ProtectedFeedbackTests(unittest.TestCase):
                 hairpin['self_adjacency']['worst_before']['unabsorbable_m'], 0.)
             if near_terminal:
                 moved, _ = net.adjacency_reroute(
-                    corr, lambda adj: build(extra_forbid=overlay | adj),
+                    corr, lambda guidance: build(
+                        extra_forbid=overlay, extra_guidance=guidance),
                     initial=(hairpin, {}))
                 self.assertIsNone(net.self_adjacency_rejection(moved))
-                self.assertGreater(np.linalg.norm(
-                    np.asarray(moved['nodes'][-1]) - np.asarray(b)), 4.)
+                self.assertEqual(tuple(moved['nodes'][-1]), b)
             out, _ = net.water_route(
                 corr.fld, corr, original, joint, build=build,
                 refusal=lambda rec: ('self_adjacency' if
                     net.self_adjacency_rejection(rec) is not None else None))
-            if near_terminal:
-                self.assertEqual(out['writer_water']['verdict'], 'REFUSED')
-                np.testing.assert_array_equal(out['nodes'], original['nodes'])
-            else:
-                self.assertEqual(out['writer_water']['verdict'], 'CLEAR')
-                self.assertIsNone(net.self_adjacency_rejection(out))
+            self.assertEqual(out['writer_water']['verdict'], 'CLEAR')
+            self.assertIsNone(net.self_adjacency_rejection(out))
             self.assertEqual((tuple(out['nodes'][0]), tuple(out['nodes'][-1])),
                              (a, b))
-            if not near_terminal:
-                for point in out['nodes']:
-                    self.assertFalse(overlay[corr.cell_of(*point)])
+            for point in out['nodes']:
+                self.assertFalse(overlay[corr.cell_of(*point)])
             self.assertLessEqual(max(abs(y - 60.) for y in out['profile_y']), 8.)
         finally:
             (net._PLAN_PATCHES, net._PLAN_KEEPOUTS,

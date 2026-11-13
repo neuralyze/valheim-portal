@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Solo and joint road profiles verify actual interpolated lattice-foot
+  constraints before declaring them infeasible. Conservative station boxes
+  remain a fast path, not an impossibility proof. Exact sparse fitting retains
+  native margins, grade limits and owned datums; live conflicts cannot
+  repeatedly refuse an unrelated, already-removed road.
+- Self-overlap retries use increasing leg-local routing costs instead of eight
+  growing forbidden discs. Narrow passages and terminal escape remain
+  traversable; successful costs survive water, span and north rebuilds.
+  Native profile and terminal checks still apply, and failed guided searches
+  retain the original numerical refusal rather than claiming no physical route.
+  Restored-bank searches consider the full owned footprint rather than
+  clipping it to an intermediate snap, and try remaining contacts after
+  self-overlap refusals without bypassing terminal or pad-arrival checks.
 - Newly detected bridge runs choose their initial flat deck heights together
   within measured legal intervals and the whole road's grade bounds. Compatible
   original choices remain unchanged; declared bank datums, span-bed floors and

@@ -62,8 +62,6 @@ class PadArrivalProfileTests(unittest.TestCase):
                             fixed_pts=points)
         binding = caught.exception.refusal['binding']
         self.assertIn('terrace', binding['segments'])
-        self.assertGreater(binding['interval_there'][0],
-                           binding['interval_there'][1])
 
     def test_search_retries_same_pad_with_full_native_profile(self):
         old_mask = self.corr.forbid.copy()
@@ -222,8 +220,6 @@ class PadArrivalProfileTests(unittest.TestCase):
                 N._fit_pad_arrivals(seg, joint)
         binding = caught.exception.refusal['binding']
         self.assertTrue({'terrace', 'foreign'} & set(binding['segments']))
-        self.assertGreater(binding['interval_there'][0],
-                           binding['interval_there'][1])
 
     def test_corner_walk_above_native_bounds_is_numerically_refused(self):
         seg, joint, allowance = self._corner_arrival()
@@ -231,12 +227,10 @@ class PadArrivalProfileTests(unittest.TestCase):
         self.assertGreater(datum - allowance, joint['hi'][-1])
         with self.assertRaises(ValueError) as caught:
             self._fit_corner_datum(seg, joint, datum)
-        # Refusal must carry the native incompatible numeric interval, not
-        # an UNSHARED topology classification or an accepted low endpoint.
+        # The complete-line gate must refuse the impossible pad obligation,
+        # not return an UNSHARED classification or an accepted low endpoint.
         binding = caught.exception.refusal['binding']
         self.assertIn('terrace', binding['segments'])
-        self.assertGreater(binding['interval_there'][0],
-                           binding['interval_there'][1])
 
 
 if __name__ == '__main__':
