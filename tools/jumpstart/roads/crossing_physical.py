@@ -160,9 +160,17 @@ class PhysicalFields:
                                 "geography RoadGraph for each bank")
         self.approach_graphs = near_graph, far_graph
 
-    def routed_approach(self, graph, bank, goal, datum, *, report=None,
+    def routed_approach(self, graph, bank, goal, datum, *, width_m=None,
+                        fixed_prefix=None, probe_m=STATION_M, report=None,
                         _trees=None, _base=None):
         """Production A* plus its water-stand-off reroute, with a fixed bank.
+
+        ``width_m`` is the declared carriageway width; shoulders are included
+        by the canonical footprint sweep. Omission retains the widest crossing
+        class, while a supplied width also controls water stand-off feedback.
+        The native profile keeps its normal station spacing. ``probe_m`` may
+        densify the physical sweep of the returned geometry without imposing
+        extra profile bounds or losing an owned root/entry corner.
 
         Only canonical footprint-wet feedback grows the forbidden mask. There
         is no retry cap: the finite graph either yields a dry routed bench,
@@ -178,18 +186,29 @@ class PhysicalFields:
         base_forbid = corr.forbid
         trees = {} if _trees is None else _trees
         actual = tuple(map(float, bank["xz"]))
+        prefix = ([tuple(map(float, point)) for point in fixed_prefix]
+                  if fixed_prefix is not None else None)
+        if prefix is not None and (not prefix or prefix[0] != actual):
+            raise ValueError("fixed approach prefix must start at its owned bank")
+        search_origin = actual if prefix is None else prefix[-1]
         goal_cell = corr.cell_of(*goal)
         sampler = SimpleNamespace(bilinear=self.generated, contains=self.contains,
                                   sample_many=self.sample_many)
-        width = max(WIDTH_M.values())
+        width = max(WIDTH_M.values()) if width_m is None else width_m
         rounds = 0
         def refuse(reason):
             if report is not None:
                 report.update(refusal=reason, water_reroute_rounds=rounds)
             return None
+        if prefix is not None:
+            fixed_samples, _ = route.resample(
+                prefix, min(probe_m, corr.cell_m / 2.0))
+            if any(corr.blocked(*corr.cell_of(float(x), float(z)))
+                   for x, z in fixed_samples):
+                return refuse("owned fixed approach prefix crosses a forbidden search cell")
         while True:
             try:
-                start = corr.nearest_allowed(*actual)
+                start = corr.nearest_allowed(*search_origin)
             except ValueError:
                 return refuse("no allowed fixed-bank snap under the canonical water mask")
             if corr.blocked(*goal_cell):
@@ -200,17 +219,32 @@ class PhysicalFields:
             raw = tree.path_to(goal_cell)
             if raw is None:
                 return refuse("canonical A* exhausted the allowed graph")
-            if math.dist(actual, raw[0]) > 1e-9:
-                raw = [actual, *raw]
-            points, s = route.resample(
-                route.simplify(raw, tol_m=SIMPLIFY_TOL_M), STATION_M)
+            if prefix is None:
+                if math.dist(actual, raw[0]) > 1e-9:
+                    raw = [actual, *raw]
+                raw = route.simplify(raw, tol_m=SIMPLIFY_TOL_M)
+            else:
+                # Only the searched tail may simplify. In particular, do not
+                # straighten another level run beyond a shore's fixed landing.
+                raw = route.simplify(raw, tol_m=SIMPLIFY_TOL_M)
+                tail = ([prefix[-1], *raw]
+                        if prefix[-1] != tuple(raw[0]) else raw)
+                prefix_points, _ = route.resample(prefix, STATION_M)
+                tail_points, _ = route.resample(tail, STATION_M)
+                points = np.vstack((prefix_points[:-1], tail_points))
+            if prefix is None:
+                points, s = route.resample(raw, STATION_M)
             if len(points) < 2:
                 return refuse("canonical route has fewer than two distinct stations")
-            last = int(np.flatnonzero(np.asarray(s) <= BANK_LEVEL_M)[-1])
-            points = straighten(points, s, 0, last)
-            s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
+            if prefix is None:
+                last = int(np.flatnonzero(np.asarray(s) <= BANK_LEVEL_M)[-1])
+                points = straighten(points, s, 0, last)
+            probes = points
+            if probe_m < STATION_M:
+                probes, _ = route.resample(points, probe_m)
+            probe_s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(probes, axis=0), axis=1))]
             wet = []
-            _low, high, _off = transverse_window(sampler, points, width, wet_at=wet)
+            _low, high, _off = transverse_window(sampler, probes, width, wet_at=wet)
             if not wet:
                 if report is not None:
                     report.update(refusal=None, water_reroute_rounds=rounds)
@@ -218,7 +252,7 @@ class PhysicalFields:
                         "bank_snap_m": math.dist(actual, corr.cell_world(*start)),
                         "water_reroute_rounds": rounds}
             seeds = [(x, z, max(high[k]-route.CUT_FILL_MAX,
-                datum if s[k] <= BANK_LEVEL_M else
+                datum if probe_s[k] <= BANK_LEVEL_M else
                 fieldmod.WATER_LEVEL+route.ROAD_FREEBOARD_M)) for x, z, k in wet]
             extra = route.water_standoff_forbid(
                 corr, seeds, half_m=width/2.0, grade=ribbon.BATTER_GRADE,

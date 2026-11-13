@@ -80,6 +80,52 @@ class WaterfrontApproachTests(unittest.TestCase):
         self.assertEqual(contacts, [])
         np.testing.assert_array_equal(extra, before)
 
+    def test_dry_shore_constructor_cannot_bypass_a_mask_inside_fixed_landing(self):
+        self.field.h.fill(31.1)
+        corr = N.routemod.Corridor(
+            self.field, cell_m=1., grade_max=N.routemod.GRADE_CEILING)
+        corr.forbid = np.zeros((corr.m, corr.m), dtype=bool)
+        corr.unread = np.zeros_like(corr.forbid)
+        result = N.build_segment(
+            self.field, self.edge, corr, [], land_only=True, census=None)
+        self.assertEqual(result['profile_constraints']['verdict'], 'CLEAR')
+        extra = np.zeros_like(corr.forbid)
+        extra[corr.cell_of(.5, 3.5)] = True
+        with self.assertRaises(ValueError):
+            N.build_segment(self.field, self.edge, corr, [], land_only=True,
+                            census=None, extra_forbid=extra)
+
+    def test_both_road_modes_keep_the_owned_six_metre_turn(self):
+        self.field.h.fill(31.1)
+        self.nodes['harbour'].update(
+            arrive_bearing_deg=90., jetty_bearing_deg=270.)
+        self.nodes['inland']['xz'] = (8.5, 1.5)
+        corr = N.routemod.Corridor(
+            self.field, cell_m=1., grade_max=N.routemod.GRADE_CEILING)
+        corr.forbid = np.zeros((corr.m, corr.m), dtype=bool)
+        corr.unread = np.zeros_like(corr.forbid)
+        for land_only in (False, True):
+            with self.subTest(land_only=land_only):
+                result = N.build_segment(
+                    self.field, self.edge, corr, [], land_only=land_only, census=None)
+                self.assertEqual(result['profile_constraints']['verdict'], 'CLEAR')
+                points = np.asarray(result['nodes'], dtype=float)[::-1]
+                arcs = np.r_[0., np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
+                np.testing.assert_array_equal(
+                    points[arcs <= N.BANK_LEVEL_M, 1],
+                    np.full(np.count_nonzero(arcs <= N.BANK_LEVEL_M), .5))
+
+    def test_zero_length_search_is_not_a_constructed_road(self):
+        self.field.h.fill(31.1)
+        self.nodes['harbour']['kind'] = 'extremity'
+        self.nodes['inland']['xz'] = self.nodes['harbour']['xz']
+        corr = N.routemod.Corridor(
+            self.field, cell_m=1., grade_max=N.routemod.GRADE_CEILING)
+        corr.forbid = np.zeros((corr.m, corr.m), dtype=bool)
+        corr.unread = np.zeros_like(corr.forbid)
+        with self.assertRaises(ValueError):
+            N.build_segment(self.field, self.edge, corr, [], census=None)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -291,6 +291,23 @@ def approach(surf, root, bearing, width_m, *, length_m=BANK_LEVEL_M):
             if (not math.isfinite(h) or h < W.WATER_LEVEL
                     or abs(h - DECK_Y) > route.CUT_FILL_MAX):
                 return False
+    # The ordinary ground ribbon has a round cap beyond its terminal root.
+    # Those native integer samples are still road-owned terrain: a dry
+    # root-to-entry strip cannot authorize filling water under the jetty.
+    from ribbon import EDGE_EPS_M
+    radius = route.footprint_half_m(width_m)
+    for z in range(math.ceil(root[1] - radius - EDGE_EPS_M),
+                   math.floor(root[1] + radius + EDGE_EPS_M) + 1):
+        for x in range(math.ceil(root[0] - radius - EDGE_EPS_M),
+                       math.floor(root[0] + radius + EDGE_EPS_M) + 1):
+            dx, dz = x - root[0], z - root[1]
+            if (dx * ux + dz * uz < -EDGE_EPS_M
+                    or math.hypot(dx, dz) > radius + EDGE_EPS_M):
+                continue
+            h = surf.at(float(x), float(z))[0]
+            if (not math.isfinite(h) or h < W.WATER_LEVEL
+                    or abs(h - DECK_Y) > route.CUT_FILL_MAX):
+                return False
     return True
 
 
@@ -299,7 +316,8 @@ def _coverage(fld, anchor, radius=SEARCH_RADIUS_M):
         raise SystemExit(f"REFUSING shore search at {anchor}: {fld.id} does not cover the complete {radius:g}m search plus {FOOTPRINT_MARGIN_M:g}m hull/approach envelope; rerun field.request_for_seed with shores.request_windows, not a clipped search")
 
 
-def _shore_candidates(fld, anchor, *, south=False, component=None, component_mask=None):
+def _shore_candidates(fld, anchor, *, landing_half_m, south=False,
+                      component=None, component_mask=None):
     _coverage(fld, anchor)
     if component_mask is None:
         land = fld.heights > W.WATER_LEVEL
@@ -314,8 +332,13 @@ def _shore_candidates(fld, anchor, *, south=False, component=None, component_mas
         if component_mask.shape != fld.heights.shape:
             raise SystemExit("REFUSING shore component mask on a different measured lattice")
         labels = mask = component_mask
-    shore = mask & ndimage.binary_dilation(
-        fld.heights < W.WATER_LEVEL, structure=ndimage.generate_binary_structure(2, 1))
+    # Roots may sit landward of the water boundary so their whole ground
+    # cap fits. Keep the measured component and search radius, rather than
+    # limiting the population to cells directly adjacent to water.
+    wet = fld.heights < W.WATER_LEVEL
+    shore = (mask & (ndimage.distance_transform_edt(
+        ~wet, sampling=fld.step) <= landing_half_m + fld.step)
+        if wet.any() else np.zeros(mask.shape, dtype=bool))
     ii, jj = np.nonzero(shore)
     xs, zs = fld.world_x(jj), fld.world_z(ii)
     distances = np.hypot(xs - anchor[0], zs - anchor[1])
@@ -426,56 +449,217 @@ def clears_sites(candidate, sites):
     return True
 
 
-def road_preview(graph, surf, node, root, bearing):
-    """Use the actual router and exact interval profile before accepting a shore.
+class _ApproachSamples:
+    """Adapt a sampler, not its terrain, to the shared physical router.
 
-    End runs are pinned, including an S1 source's real level_y. Overlapping or
-    too-short ramps cannot hide a drop by changing the last vertex afterward.
-    This is planning feasibility, not permission to skip the final writer gates.
+    GeneratedSurface chooses each integer corner by its own smallest-patch
+    policy. PhysicalFields' ordinary constructor instead requires agreeing
+    overlapping road.Field vertices; rebuilding it from these water.Fields
+    would silently replace that surface and its dispatch contract.
     """
-    import route
+    def __init__(self, sampler):
+        self.sampler = sampler
+
+    def generated(self, x, z):
+        from crossing_physical import CoverageError
+        if not self.contains(x, z):
+            raise CoverageError(f"unread shore approach sample ({x}, {z})")
+        value = float(self.sampler.bilinear(x, z))
+        if not math.isfinite(value):
+            raise CoverageError(f"nonfinite shore approach sample ({x}, {z})")
+        return value
+
+    def contains(self, x, z):
+        return self.sampler.contains(x, z)
+
+    def sample_many(self, xs, zs):
+        from crossing_physical import CoverageError
+        xs, zs = np.broadcast_arrays(np.asarray(xs, dtype=np.float64),
+                                     np.asarray(zs, dtype=np.float64))
+        bulk = getattr(self.sampler, "sample_many", None)
+        if bulk is None:
+            heights = np.array([self.generated(float(x), float(z))
+                for x, z in zip(xs.flat, zs.flat)], dtype=np.float64).reshape(xs.shape)
+            covered = np.ones(xs.shape, dtype=bool)
+        else:
+            heights, covered = bulk(xs, zs)
+            heights = np.asarray(heights, dtype=np.float64)
+            covered = np.asarray(covered, dtype=bool)
+        if (heights.shape != xs.shape or covered.shape != xs.shape
+                or not covered.all() or not np.isfinite(heights).all()):
+            raise CoverageError("unread/nonfinite full-width shore approach footprint")
+        return heights, covered
+
+
+class _SurfaceApproachSampler:
+    """Keep the exact scalar and optional batch semantics of the supplied shore."""
+    def __init__(self, surface):
+        self.surface = surface
+
+    def bilinear(self, x, z):
+        return self.surface.at(x, z)[0]
+
+    def contains(self, x, z):
+        # Surface.at refuses missing lattice corners instead of clamping them.
+        return math.isfinite(self.bilinear(x, z))
+
+    def sample_many(self, xs, zs):
+        batch = getattr(self.surface, "sample_points", None)
+        points = np.column_stack((xs.ravel(), zs.ravel()))
+        heights = (np.asarray(batch(points), dtype=np.float64) if batch is not None
+                   else np.array([self.bilinear(float(x), float(z))
+                                  for x, z in points], dtype=np.float64))
+        heights = heights.reshape(xs.shape)
+        return heights, np.isfinite(heights)
+
+
+def routed_waterfront_approach(graph, sampler, root, bearing, goal, width_m, *,
+                               level_y=DECK_Y, report=None):
+    """Necessary dry-footprint route, with the owned six-metre landing intact.
+
+    ``sampler`` supplies bilinear/contains and optionally sample_many returning
+    (heights, coverage). No fields are substituted. Nodes run root -> exact
+    entry -> the normal searched goal cell, not an authored point inside a pad.
+    The final native searched constructor must still check every writer gate.
+    """
+    import copy
+    from crossing_physical import CoverageError, PhysicalFields
     ux, uz = A._unit(bearing)
+    root = tuple(map(float, root))
     entry = (root[0] - ux * BANK_LEVEL_M, root[1] - uz * BANK_LEVEL_M)
-    graph.corr.forbid = ~graph.ok
+    physical = _ApproachSamples(sampler)
+    evidence = {} if report is None else report
     try:
-        path = graph.corr.search(tuple(node["xz"]), entry)
-        if not path:
+        # Match Corridor.search's allowed-goal snap without mutating the graph
+        # or losing the caller's current masks/guidance.
+        corr = copy.copy(graph.corr)
+        corr.forbid = ~graph.ok
+        goal_cell = corr.nearest_allowed(*goal)
+        searched_goal = corr.cell_world(*goal_cell)
+        routed = PhysicalFields.routed_approach(
+            physical, graph, dict(xz=root), searched_goal, level_y,
+            width_m=width_m, fixed_prefix=[root, entry], probe_m=1.0,
+            report=evidence)
+        if routed is None:
             return None
-        raw = [tuple(node["xz"]), *path, entry, tuple(root)]
-        clean = [raw[0]]
-        for point in raw[1:]:
-            if math.dist(point, clean[-1]) > 1e-6:
-                clean.append(point)
-        points, arcs = route.resample(clean, spacing_m=1.0)
+        # Keep the exact geometry swept inside canonical feedback. Its profile
+        # stations retain native spacing; the physical sweep is independently
+        # dense. Resampling again could introduce an unmeasured wet corner.
+        return dict(routed, nodes=np.asarray(routed["nodes"], dtype=float).tolist(),
+                    root_xz=list(root), entry_xz=list(entry), width_m=float(width_m),
+                    source_snap_m=math.dist(goal, searched_goal))
+    except CoverageError:
+        raise
+    except (ValueError, IndexError):
+        evidence.update(refusal="no allowed measured shore approach")
+        return None
+
+
+def road_preview(graph, surf, node, root, bearing, width_m, *, level_y=DECK_Y,
+                 source_approaches=None, native_preview=None,
+                 source_id=None, terminal_id=None):
+    """Local measured approach preflight, not the final native named road.
+
+    Canonical installation pads hand off at eligible rooted exterior contacts;
+    their semantic centre and its datum are not exterior road endpoints.
+    Ordinary sources retain their existing real level_y constraint.
+    With real serving context, the native constructor decides dry, ford and
+    bridge feasibility, including its freeboard and held-profile bounds.
+    Context-free dry routing remains available to that constructor's own
+    dry continuation; a dry clamp/grade fit alone cannot authorize a site.
+    """
+    if source_approaches is not None:
+        choices = [(tuple(approach["handoff_xz"]), approach)
+                   for approach in source_approaches]
+        source_level = None
+    else:
+        choices = [(tuple(node["xz"]), None)]
+        source_level = node.get("level_y")
+    if native_preview is not None and source_id is not None and terminal_id is not None:
+        # A dry clamp/grade fit is not the native freeboard/crossing contract.
+        # Contextual selection must pass the real constructor in either mode.
+        # Its dry continuation calls this helper without native context.
+        for _goal, approach_metadata in choices:
+            preview = native_preview(
+                graph=graph, surf=surf, source_id=source_id, source_node=node,
+                terminal_id=terminal_id, root=root, bearing=bearing,
+                width_m=width_m, level_y=level_y,
+                source_approach=approach_metadata)
+            if preview is not None:
+                if approach_metadata is not None:
+                    preview["source_approach"] = approach_metadata
+                return preview
+        return None
+    sampler = _SurfaceApproachSampler(surf)
+    for goal, approach_metadata in choices:
+        evidence = {}
+        routed = routed_waterfront_approach(
+            graph, sampler, root, bearing, goal, width_m,
+            level_y=level_y, report=evidence)
+        if routed is not None:
+            preview = _profile_road_preview(
+                surf, sampler, routed, width_m, level_y, source_level, evidence)
+            if preview is not None:
+                if approach_metadata is not None:
+                    preview["source_approach"] = approach_metadata
+                return preview
+    return None
+
+
+def _profile_road_preview(surf, sampler, routed, width_m, level_y, level, evidence):
+    from types import SimpleNamespace
+    from crossing_physical import CoverageError
+    from crossing_contract import transverse_window
+    try:
+        nodes = list(reversed(routed["nodes"]))
+        points = np.asarray(nodes, dtype=float)
+        arcs = np.r_[0., np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
         terrain = np.array([surf.at(*p)[0] for p in points])
+        physical = _ApproachSamples(sampler)
+        wet = []
+        low, high, off = transverse_window(
+            SimpleNamespace(bilinear=physical.generated, contains=physical.contains,
+                            sample_many=physical.sample_many),
+            points, width_m, wet_at=wet)
+        if off:
+            raise CoverageError("unread profiled shore approach footprint")
+        if wet:
+            return None
         s = np.asarray(arcs)
-        lo, hi = terrain - route.CUT_FILL_MAX, terrain + route.CUT_FILL_MAX
+        lo, hi = high - route.CUT_FILL_MAX, low + route.CUT_FILL_MAX
         target = s >= s[-1] - BANK_LEVEL_M - 1e-6
         source = s <= BANK_LEVEL_M + 1e-6
-        level = node.get("level_y")
-        if level is not None and np.any(source & target) and abs(level-DECK_Y) > 1e-6:
+        if level is not None and np.any(source & target) and abs(level-level_y) > 1e-6:
             return None
-        if np.any((DECK_Y < lo[target]) | (DECK_Y > hi[target])):
+        if np.any((level_y < lo[target]) | (level_y > hi[target])):
             return None
         if level is not None and np.any((level < lo[source]) | (level > hi[source])):
             return None
-        lo[target] = hi[target] = DECK_Y
+        lo[target] = hi[target] = float(level_y)
         if level is not None:
             lo[source] = hi[source] = float(level)
         fit = route.fit_profile(terrain, s, grade_max=route.GRADE_CEILING, lo=lo, hi=hi)
         if fit["infeasible_spans"]:
             return None
         return dict(length_m=float(s[-1]), grade_max=fit["grade_max"],
-                    source_level_y=level, arrival_level_y=DECK_Y,
-                    stations=len(points))
+                    source_level_y=level, arrival_level_y=float(level_y),
+                    stations=len(points), nodes=nodes, width_m=float(width_m),
+                    entry_xz=routed["entry_xz"], source_snap_m=routed["source_snap_m"],
+                    water_reroute_rounds=routed["water_reroute_rounds"],
+                    routing=evidence)
+    except CoverageError:
+        raise
     except (ValueError, IndexError):
         return None
 
 
 def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                component=None, anchor_override=None, accept=None, complete=None,
-               progress=None):
+               progress=None, native_preview=None):
     """Search ALL measured same-component shoreline samples, not a pinned seed."""
+    if native_preview is None:
+        from shore_road_preview import NativeShorePreview
+        native_preview = NativeShorePreview()
     if requirement.get("large_ship") and not requirement.get("vessel"):
         import north_transport
         failures = []
@@ -484,7 +668,7 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                 return solve_site(dict(requirement, vessel=vessel), nodes, fields,
                     graph_factory=graph_factory, surface=surface, component=component,
                     anchor_override=anchor_override, accept=accept, complete=complete,
-                    progress=progress)
+                    progress=progress, native_preview=native_preview)
             except SystemExit as exc:
                 failures.append(dict(vessel=vessel, reason=str(exc)))
         raise SystemExit(f"REFUSING {requirement['id']}: every measured large Odin vessel/shore alternative failed: {failures}")
@@ -532,15 +716,30 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
         labels = complete.labels_for(fld)
         component_mask = (labels == components[0] if len(components) == 1 else
                           np.isin(labels, components))
+    width = requirement["width_tiles"] * 2.0
     candidates, _ = _shore_candidates(fld, search_center,
+                                      landing_half_m=route.footprint_half_m(width),
                                       south=requirement.get("south", False),
                                       component=component, component_mask=component_mask)
     if not candidates:
         raise SystemExit(f"REFUSING {requirement['id']}: no measured shoreline on the required land component within {SEARCH_RADIUS_M:g}m of {anchor_id}; site requirement retained")
     surf = surface or GeneratedSurface(fields)
     xs, zs = np.asarray(candidates).T
-    reachable = _source_reach(graph, anchor, xs, zs)
-    width = requirement["width_tiles"] * 2.0
+    source_approaches = None
+    if source_contact is not None:
+        from shore_sources import footprint_approaches
+        graph, source_approaches = footprint_approaches(
+            graph, node["source_footprint"], source_contact, width, complete=complete)
+        reachable = np.zeros(xs.shape, dtype=bool)
+        source_labels = set()
+        for source_approach in source_approaches:
+            handoff = source_approach["handoff_xz"]
+            label = int(graph.lab[graph.corr.cell_of(*handoff)])
+            if label not in source_labels:
+                reachable |= _source_reach(graph, handoff, xs, zs)
+                source_labels.add(label)
+    else:
+        reachable = _source_reach(graph, anchor, xs, zs)
     vessel = requirement.get("vessel", VESSEL)
     need = WF.VESSELS[vessel]["draught_m"] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M
     bed = A.Bed.applied(lambda x, z: surf.at(x, z)[0], "seed-scoped measured generated Heightmap")
@@ -602,7 +801,11 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                     continue
                 key = root, bearing
                 if key not in road_cache:
-                    road_cache[key] = road_preview(graph, surf, node, root, bearing)
+                    road_cache[key] = road_preview(
+                        graph, surf, node, root, bearing, width,
+                        source_approaches=source_approaches,
+                        native_preview=native_preview, source_id=anchor_id,
+                        terminal_id=requirement.get("node"))
                 if road_cache[key] is None:
                     rejected["road"] += 1
                     continue
@@ -663,8 +866,12 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                         if last_boat_refusal is not None else ""))
 
 
-def derive(nodes, fields, *, ferry_search, complete, progress=None):
+def derive(nodes, fields, *, ferry_search, complete, progress=None,
+           native_preview=None):
     from shore_transport import solve_pair
+    if native_preview is None:
+        from shore_road_preview import NativeShorePreview
+        native_preview = NativeShorePreview(native_writer=True)
     completed = progress.load_completed() if progress is not None else {}
     sites = []
     for requirement in REQUIREMENTS:
@@ -674,7 +881,7 @@ def derive(nodes, fields, *, ferry_search, complete, progress=None):
         if site is None:
             site = solve_site(requirement, nodes, fields, complete=complete,
                 accept=lambda candidate: clears_sites(candidate, sites),
-                progress=progress)
+                progress=progress, native_preview=native_preview)
             if progress is not None:
                 progress.complete_requirement(requirement["id"], site)
         elif (site.get("id") != requirement["id"]
@@ -685,7 +892,7 @@ def derive(nodes, fields, *, ferry_search, complete, progress=None):
     pair = completed.get("ferry-east-isle")
     if pair is None:
         pair = solve_pair(nodes, fields, ferry_search, complete, occupied=sites,
-                          progress=progress)
+                          progress=progress, native_preview=native_preview)
         require_pairs(sites + pair)
         if progress is not None:
             progress.complete_requirement("ferry-east-isle", pair)
@@ -781,7 +988,8 @@ def selftest():
     heights[(xx >= 50) & (xx <= 60) & (abs(zz) < 100)] = DECK_Y
     fld = W.Field("constructed", -0.5, -0.5, n / 2, 1, n, heights,
                   np.ones((n, n), dtype=np.uint8))
-    candidates, _ = _shore_candidates(fld, (0, 0), south=True)
+    candidates, _ = _shore_candidates(
+        fld, (0, 0), landing_half_m=route.footprint_half_m(4.), south=True)
     assert candidates and all(x <= 40 and z < 0 for x, z in candidates)
     try:
         _coverage(fld, (600, 0))
@@ -798,33 +1006,42 @@ def selftest():
     # Real router, rendered sampler, hull footprint and assembled pile/deck
     # support on a constructed coast. Only the fixture's absent POIs are
     # injected; no fake road/hull/support verdict participates.
-    import route
     def fixture_graph(field, cls):
         corr = route.Corridor(field, cell_m=4.0, grade_max=route.GRADE[cls])
         return geography.RoadGraph(field, cls=cls,
             forbid=np.zeros((corr.m, corr.m), dtype=bool))
 
-    # Keep a real berth but give the constructed wooden rail a supportable
-    # shelf. A deeper bed can fail assembly before exercising shore selection.
+    # Two dry road tongues meet real berths; their wider support columns
+    # reach seabed outside the tongues. The second berth lets a wet-centre
+    # source reach a different six-metre landing, not its own short cap.
+    # Elevated inland soil is not another level landing or a buried pier.
     def coast(fid, half):
         n = int(half * 2)
         ax = -half + 0.5 + np.arange(n)
-        _, zz = np.meshgrid(ax, ax)
-        h = np.where(zz <= 0, DECK_Y - zz * 0.1,
-                     np.maximum(25.0, DECK_Y - zz * 0.8))
+        xx, zz = np.meshgrid(ax, ax)
+        radius = route.footprint_half_m(4.)
+        dx = np.minimum(abs(xx), abs(xx - 30.))
+        tongue = DECK_Y - 0.8 * np.maximum(dx - (radius + 1.), 0.)
+        cap = DECK_Y - 0.8 * np.maximum(np.hypot(dx, zz) - radius, 0.)
+        h = np.maximum(25., np.where(zz <= -BANK_LEVEL_M,
+            DECK_Y + 0.1 * (-zz - BANK_LEVEL_M),
+            np.where(zz <= 0., tongue, cap)))
         return W.Field(fid, 0, 0, half, 1, n, h.astype(np.float32),
                        np.ones((n, n), dtype=np.uint8))
     fields = {"trunk-primary": coast("trunk-primary", 200.5),
               "shore-trunk-primary": coast("shore-trunk-primary", 800.5)}
     requirement = dict(next(r for r in REQUIREMENTS if r["node"] == "dock-stathub"))
     nodes = {"stathub": dict(xz=(0, -40), patch="trunk-primary", island="spawn")}
-    first = solve_site(requirement, nodes, fields, graph_factory=fixture_graph)
+    from shore_road_preview import NativeShorePreview
+    native_preview = NativeShorePreview()
+    first = solve_site(requirement, nodes, fields, graph_factory=fixture_graph,
+                       native_preview=native_preview)
     # A rooted town may already publish the expanded measured routing frame.
     # Changing the frame label must not request a nonexistent second expansion.
     expanded_nodes = {"stathub": dict(nodes["stathub"],
                                       patch="shore-trunk-primary")}
     expanded = solve_site(requirement, expanded_nodes, fields,
-                          graph_factory=fixture_graph)
+                          graph_factory=fixture_graph, native_preview=native_preview)
     assert (expanded["root"], expanded["bearing"], expanded["length_m"]) == (
         first["root"], first["bearing"], first["length_m"])
     assert expanded["structural"]["ok"]
@@ -835,18 +1052,23 @@ def selftest():
     water_nodes = {"stathub": dict(nodes["stathub"], xz=(0.0, 4.0))}
     assert complete.at(*water_nodes["stathub"]["xz"]) == 0
     served = solve_site(requirement, water_nodes, fields,
-                        graph_factory=fixture_graph, complete=complete)
+                        graph_factory=fixture_graph, complete=complete,
+                        native_preview=native_preview)
     assert served["rendered_component"] == complete.at(0.0, -40.0) != 0
     assert served["structural"]["ok"]
     # A raised patch under the first jetty's bent is a real seating refusal,
     # not failure of the named shore requirement: search must try alternatives.
     from dataclasses import replace
     obstructed = {}
+    ux, uz = A._unit(first["bearing"])
     for key, source in fields.items():
         xs = source.world_x(np.arange(source.n))[None, :]
         zs = source.world_z(np.arange(source.n))[:, None]
         h = source.heights.copy()
-        h[(abs(xs) <= 3) & (zs >= 3) & (zs <= 5)] = DECK_Y + 0.4
+        dx, dz = xs - first["root"][0], zs - first["root"][1]
+        along, lateral = dx * ux + dz * uz, dx * uz - dz * ux
+        h[(abs(lateral) <= requirement["width_tiles"] + 1)
+          & (along >= 2) & (along <= 6)] = DECK_Y + 0.4
         obstructed[key] = replace(source, heights=h)
     obstruction = GeneratedSurface(obstructed)
     bed = A.Bed.applied(lambda x, z: obstruction.at(x, z)[0], "raised shore bent")
@@ -858,12 +1080,13 @@ def selftest():
     else:
         raise AssertionError("constructed shore did not reject its buried jetty")
     alternative = solve_site(requirement, nodes, obstructed,
-                             graph_factory=fixture_graph)
+                             graph_factory=fixture_graph, native_preview=native_preview)
     assert alternative["structural"]["ok"]
     assert (alternative["root"], alternative["bearing"]) != (
         first["root"], first["bearing"])
     nodes["stathub"]["xz"] = (100, -40)
-    second = solve_site(requirement, nodes, fields, graph_factory=fixture_graph)
+    second = solve_site(requirement, nodes, fields, graph_factory=fixture_graph,
+                        native_preview=native_preview)
     assert first["root"] != second["root"]
     assert first["structural"]["ok"] and first["boat"]["connected"]
     assert first["boat"]["berth_depth_m"] >= (
@@ -875,14 +1098,16 @@ def selftest():
     # Coarse values may nominate survey scope; they cannot become final geometry.
     bad = {"trunk-primary": fields["trunk-primary"]}
     try:
-        solve_site(requirement, nodes, bad, graph_factory=fixture_graph)
+        solve_site(requirement, nodes, bad, graph_factory=fixture_graph,
+                   native_preview=native_preview)
     except SystemExit:
         pass
     else:
         raise AssertionError("missing fine shore survey accepted")
     try:
         solve_site(dict(requirement, survey_patch="unread-explicit-survey"),
-                   nodes, fields, graph_factory=fixture_graph)
+                   nodes, fields, graph_factory=fixture_graph,
+                   native_preview=native_preview)
     except SystemExit:
         pass
     else:
@@ -896,7 +1121,7 @@ def selftest():
         fields["trunk-primary"].heights, fields["trunk-primary"].biomes), "spur")
     too_short = dict(xz=(0.0, -9.0), level_y=DECK_Y+3.625)
     assert road_preview(preview_graph, GeneratedSurface(fields), too_short,
-                        (0.0, 0.0), 0.0) is None
+                        (0.0, 0.0), 0.0, 4.0) is None
     from shore_transport import selftest as transport_selftest
     assert transport_selftest() == 0
     from shore_connectivity import selftest as connectivity_selftest
@@ -917,7 +1142,7 @@ def selftest():
     outside = solve_site(requirement,
         {"stathub": dict(xz=(0, 140), patch="trunk-primary", island="spawn")},
         {"trunk-primary": clipped, "shore-trunk-primary": wide},
-        graph_factory=fixture_graph)
+        graph_factory=fixture_graph, native_preview=native_preview)
     assert not clipped.contains(*outside["root"])
     assert outside["patch"] == outside["measurement_patch"] == wide.id
     assert wide.contains(*outside["anchor_xz"]) and wide.contains(*outside["root"])

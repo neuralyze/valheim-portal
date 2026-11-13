@@ -76,6 +76,7 @@ import precensus as censusmod  # noqa: E402
 # same instrument the consumer does rather than growing a second definition
 # of "the same channel" that could disagree with it.
 import boardwalk  # noqa: E402
+import arrival_geometry  # noqa: E402
 
 # Seed and world are RESOLVED, not literal: `--seed`/`--world` beat `$VH_SEED`/
 # `$VH_WORLD` beat the Ulfsland defaults.  `main()` rebinds both from the
@@ -140,12 +141,6 @@ def _measurement_field(fields: dict, record: dict):
             raise ValueError(f"routing view predates measurement bounds of "
                              f"{patch!r}")
     return source
-
-
-def chord_slack_m(cell_m: float) -> float:
-    """How far a station can stand from the corridor cell centres its search
-    walked: half a cell diagonal plus the simplify tolerance."""
-    return cell_m / math.sqrt(2.0) + SIMPLIFY_TOL_M
 
 
 def plain(o):
@@ -532,21 +527,25 @@ def disjoint_windows(wins: list[list[int]]) -> list[list[int]]:
     return out
 
 
-def straighten_windows(pts, s, windows: list[tuple], abut_windows: list[tuple]):
+def straighten_windows(pts, s, windows: list[tuple], abut_windows: list[tuple], *,
+                       preserve_bank_geometry: bool = False):
     """Straighten every crossing window, then every declared-abutment window,
     over the ranges `disjoint_windows` keeps apart.  Returns `(pts, windows)`,
     with each crossing's `(wa, wb)` narrowed to the part of its window that
-    lies on its own chord.  An abutment window keeps its own range for the
-    height it pins; only the stretch that is straightened can change."""
+    lies on its own chord. An abutment window keeps its own range for the
+    height it pins; only the stretch that is straightened can change.
+    A fixed-profile repair preserves ground-bank stations; structural bridge
+    chords and their obstacle checks remain mandatory."""
     ranges = disjoint_windows(
         [[wa, wb, ia, ib] for _c, ia, ib, wa, wb in windows]
         + [[lo, hi, lo, hi] for *_w, lo, hi in abut_windows])
     nc = len(windows)
     for lo_i, hi_i in ranges[:nc]:
         pts = straighten(pts, s, lo_i, hi_i)
-    for lo_i, hi_i in ranges[nc:]:
-        if hi_i > lo_i:
-            pts = straighten(pts, s, lo_i, hi_i)
+    if not preserve_bank_geometry:
+        for lo_i, hi_i in ranges[nc:]:
+            if hi_i > lo_i:
+                pts = straighten(pts, s, lo_i, hi_i)
     return pts, [(c, ia, ib, max(wa, r[0]), min(wb, r[1]))
                  for (c, ia, ib, wa, wb), r in zip(windows, ranges)]
 
@@ -994,26 +993,6 @@ def terminal_pads(node_id: str, level_half_m: float,
             and abs(nz - float(q["z"])) <= float(q["hd"]) + level_half_m]
 
 
-def _ray_into_rect(ex: float, ez: float, ux: float, uz: float, rx: float,
-                   rz: float, hw: float, hd: float) -> float | None:
-    """How far along the unit ray from (ex, ez) it first enters the rectangle
-    centred (rx, rz) with half-extents (hw, hd): 0 if it starts inside, None
-    if it never does."""
-    t0, t1 = 0.0, math.inf
-    for e, u, c, h in ((ex, ux, rx, hw), (ez, uz, rz, hd)):
-        if abs(u) < 1e-12:
-            if abs(e - c) > h:
-                return None
-            continue
-        a, b = (c - h - e) / u, (c + h - e) / u
-        if a > b:
-            a, b = b, a
-        t0, t1 = max(t0, a), min(t1, b)
-        if t0 > t1:
-            return None
-    return t0
-
-
 def arrival_spur(end_xz, node_xz, pads: list[dict], level_half_m: float,
                  clear=None, station_m: float = STATION_M) -> dict:
     """The stations that carry a terminus from where the search could start
@@ -1034,7 +1013,7 @@ def arrival_spur(end_xz, node_xz, pads: list[dict], level_half_m: float,
         rec["why"] = "the terminus stands on the node"
         return rec
     ux, uz = dx / L, dz / L
-    hits = [t for t in (_ray_into_rect(ex, ez, ux, uz, float(q["x"]),
+    hits = [t for t in (arrival_geometry.ray_into_rect(ex, ez, ux, uz, float(q["x"]),
                                        float(q["z"]),
                                        float(q["hw"]) + level_half_m,
                                        float(q["hd"]) + level_half_m)
@@ -1227,7 +1206,7 @@ def arrival_reach(start_xz, node_xz, pads: list[dict], datums: dict,
     dx, dz = float(node_xz[0]) - ex, float(node_xz[1]) - ez
     L = math.hypot(dx, dz)
     ux, uz = (dx / L, dz / L) if L > 1e-9 else (1.0, 0.0)
-    first = min(((t, q) for q in pads for t in (_ray_into_rect(
+    first = min(((t, q) for q in pads for t in (arrival_geometry.ray_into_rect(
         ex, ez, ux, uz, float(q["x"]), float(q["z"]), float(q["hw"]) + level,
         float(q["hd"]) + level),) if t is not None),
         key=lambda tq: tq[0], default=(None, None))[1]
@@ -1263,32 +1242,6 @@ def arrival_reach(start_xz, node_xz, pads: list[dict], datums: dict,
     return rec
 
 
-def _arrival_ring_cells(xz, base, corr, pads, level: float,
-                        search_m: float = 200.0):
-    """The existing arrival ring, in nearest-replacement order, uncapped."""
-    ring = chord_slack_m(corr.cell_m) + corr.cell_m * math.sqrt(2.0)
-    i0, j0 = corr.cell_of(float(xz[0]), float(xz[1]))
-    r = int(search_m / corr.cell_m)
-    candidates = []
-    for i in range(max(0, i0 - r), min(corr.m, i0 + r + 1)):
-        for j in range(max(0, j0 - r), min(corr.m, j0 + r + 1)):
-            if corr.wet[i, j] or corr.blocked(i, j):
-                continue
-            x, z = corr.cell_world(i, j)
-            dx, dz = float(xz[0]) - x, float(xz[1]) - z
-            length = math.hypot(dx, dz)
-            if length < 1e-9:
-                continue
-            gap = min((t for q in pads for t in (_ray_into_rect(
-                x, z, dx / length, dz / length, float(q["x"]), float(q["z"]),
-                float(q["hw"]) + level, float(q["hd"]) + level),)
-                if t is not None), default=None)
-            if gap is not None and gap <= ring:
-                candidates.append(((i - base[0]) ** 2 + (j - base[1]) ** 2,
-                                   (i - i0) ** 2 + (j - j0) ** 2, i, j))
-    return [(i, j) for _db, _dn, i, j in sorted(candidates)]
-
-
 def arrival_start(node_id: str, xz, corr, width_m: float,
                   extra_forbid: np.ndarray | None = None, *,
                   claims: list[dict] | None = None,
@@ -1320,7 +1273,7 @@ def arrival_start(node_id: str, xz, corr, width_m: float,
                          width_m, clear)
     if rec0["verdict"] != "OUT OF REACH":
         return base, rec0
-    cands = _arrival_ring_cells(xz, base, corr, mine, level, search_m)
+    cands = arrival_geometry.arrival_ring_cells(xz, base, corr, mine, level, search_m)
     for i, j in cands:
         rec = arrival_reach(corr.cell_world(i, j), xz, mine, datums,
                             fld, width_m, clear)
@@ -2280,7 +2233,7 @@ def _check_straightening(before, after, pois, width_m, cell_m):
                 "distance_before_m": float(d0), "distance_m": float(d1),
                 "required_m": need,
                 "writer_required_m": p.gate_m(half),
-                "guidance_radius_m": p.hard_m(half) + chord_slack_m(cell_m)
+                "guidance_radius_m": p.hard_m(half) + arrival_geometry.chord_slack_m(cell_m)
                                      + max(displacement, cell_m)})
     if violations:
         raise _StraighteningRefusal(violations, displacement, (before[0], before[-1]))
@@ -2493,7 +2446,7 @@ def _pad_arrival_candidates(edge, which, destination, corr, fld, width_m,
                        else old_forbid | extra_forbid)
     try:
         base = corr.nearest_allowed(*xz, 200.0)
-        cells = _arrival_ring_cells(xz, base, corr, mine, level)
+        cells = arrival_geometry.arrival_ring_cells(xz, base, corr, mine, level)
         out = []
         for cell in cells:
             point = corr.cell_world(*cell)
@@ -2516,6 +2469,50 @@ def _terminal_contact_key(ends):
                     tuple(tuple(p) for p in value["bank_path"]))
         return None if value is None else tuple(value)
     return key(ends.get("a")), key(ends.get("b"))
+
+
+def _owned_approach_stations(path):
+    """Sample each owned segment without cutting its surveyed bend vertices."""
+    out = [tuple(map(float, path[0]))]
+    for a, b in zip(path, path[1:]):
+        part, _ = routemod.resample([a, b], STATION_M)
+        if len(part) == 1:
+            # Use the native sampler's existing zero-length convention;
+            # trigonometric bank-entry roundoff is not another station.
+            continue
+        out.extend(tuple(map(float, p)) for p in part[1:-1])
+        out.append(tuple(map(float, b)))
+    return out
+
+
+def _bank_trim_endpoint(point, removed, anchor, reach):
+    """Keep a trim's emitted centimetre-grid endpoint inside its owned bank.
+
+    Only repair a contact lost to serialization, along the original removed
+    segment. The rounded result is used BEFORE the physical/profile probes;
+    neither the bank's radius nor its root/datum is changed.
+    """
+    point = np.asarray(point, dtype=np.float64)
+    rounded = np.asarray([round(float(v), 2) for v in point])
+    offset = point - anchor
+    if np.linalg.norm(rounded - anchor) <= reach or np.linalg.norm(offset) > reach:
+        return point
+    delta = np.asarray(removed, dtype=np.float64) - point
+    length2 = float(delta @ delta)
+    # A two-coordinate rounding error is at most half a centimetre per axis.
+    inner = reach - math.hypot(0.005, 0.005)
+    along = float(offset @ delta)
+    residual = float(offset @ offset) - inner * inner
+    discriminant = along * along - length2 * residual
+    if inner <= 0.0 or along >= 0.0 or discriminant < 0.0:
+        raise ValueError("trimmed bank contact has no rounding-safe original segment")
+    fraction = residual / (-along + math.sqrt(discriminant))
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError("trimmed bank contact has no rounding-safe original segment")
+    rounded = np.asarray([round(float(v), 2) for v in point + fraction * delta])
+    if np.linalg.norm(rounded - anchor) > reach:
+        raise ValueError("rounded trimmed endpoint no longer touches its bank")
+    return rounded
 
 
 def _bank_path_allowed(corr, path, extra_forbid):
@@ -2550,10 +2547,31 @@ def _bank_approach_contacts(edge, end, corr, extra_forbid):
                 *corr.nearest_allowed(*entry, 200.0))))
         except ValueError:
             return []
-        path = (root, entry, cell)
-        if not _bank_path_allowed(corr, path, extra_forbid):
-            return []
-        return [{"xz": cell, "bank_path": path, "owner": {"node": node_id}}]
+        # The nearest search cell is not the owned entry itself. Its short
+        # connector can leave too little length for the native freeboard
+        # transition. Try the other cells touching this same inland entry,
+        # keeping the root and its complete six-metre landing in every path.
+        radius = routemod.footprint_half_m(float(
+            edge.get("width_m") or WIDTH_M[edge["cls"]]))
+        i0, j0 = corr.cell_of(*entry)
+        cell_half = corr.cell_m / 2.0
+        r = math.ceil((radius + cell_half) / corr.cell_m)
+        alternatives = []
+        for i in range(max(0, i0-r), min(corr.m, i0+r+1)):
+            for j in range(max(0, j0-r), min(corr.m, j0+r+1)):
+                point = tuple(map(float, corr.cell_world(i, j)))
+                dx = max(0.0, abs(point[0] - entry[0]) - cell_half)
+                dz = max(0.0, abs(point[1] - entry[1]) - cell_half)
+                if point != cell and math.hypot(dx, dz) <= radius:
+                    alternatives.append(point)
+        alternatives.sort(key=lambda p: (math.dist(p, entry), p))
+        out = []
+        for point in (cell, *alternatives):
+            path = (root, entry, point)
+            if _bank_path_allowed(corr, path, extra_forbid):
+                out.append({"xz": point, "bank_path": path,
+                            "owner": {"node": node_id}})
+        return out
     if node.get("kind") != "abutment" or not node.get("crossing"):
         return []
     owner = _declared_bank_owner(node_id)
@@ -2626,6 +2644,8 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     Exhaustion names the numerical refusal, not global infeasibility.
     """
     from collections import deque                          # noqa: PLC0415
+    shore_ends = [end for end in ("a", "b")
+                  if specmod.NODES[edge[end]].get("kind") == "waterfront_terminal"]
     preferred = {}
     if fixed_pts is None:
         for end in ("a", "b"):
@@ -2645,6 +2665,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     original_contacts = None
     required_banks = {}
     adjacency_fallback = None
+    terrain_fallback = None
 
     def queue_banks(result, ends, refusal):
         nonlocal first_refusal
@@ -2723,6 +2744,35 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                    for end in ends if end in required):
                 raise ValueError("alternate attachment no longer reaches "
                                  "the same terminal pad")
+            landing_failure = None
+            for end in (shore_ends if fixed_pts is None else ()):
+                node = specmod.NODES[edge[end]]
+                outward = node.get("jetty_bearing_deg")
+                if outward is None and node.get("arrive_bearing_deg") is not None:
+                    outward = (float(node["arrive_bearing_deg"]) + 180.0) % 360.0
+                points = (iter(result["nodes"]) if end == "a"
+                          else reversed(result["nodes"]))
+                landing_failure = arrival_geometry.fixed_landing_rejection(
+                    points, node["xz"], outward, BANK_LEVEL_M)
+                if landing_failure is not None:
+                    break
+            if landing_failure is not None:
+                first_refusal = first_refusal or ValueError(landing_failure)
+                attempts.append({"search_ends": ends, "gate": "owned_landing",
+                                 "refused": landing_failure})
+                continue
+            if (shore_ends and not land_only and fixed_pts is None
+                    and result.get("residual_infeasible")):
+                # A held terminal can be CLEAR while the intervening terrain
+                # profile is not. Try the existing contacts and dry mode
+                # before retaining this refusal for ordinary span feedback.
+                if terrain_fallback is None:
+                    terrain_fallback = result, state
+                queue_banks(result, ends, {
+                    "gate": "profile",
+                    "why": "full terrain profile remains infeasible at "
+                           f"{result['residual_infeasible']}"})
+                continue
             adjacency = self_adjacency_rejection(result)
             if adjacency is not None and result.get("abutments") and fixed_pts is None:
                 # Only a candidate satisfying every terminal/arrival obligation
@@ -2753,8 +2803,10 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                         pending.append(trial)
             continue
         except ValueError as exc:
-            if first_refusal is None:
+            if first_refusal is None and not (
+                    len(shore_ends) == 1 and fixed_pts is None and not land_only):
                 raise
+            first_refusal = first_refusal or exc
             attempts.append({"search_ends": ends, "refused": str(exc)})
             continue
         if attempts:
@@ -2768,12 +2820,48 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
             joint.clear()
             joint.update(state)
         return result
+    if len(shore_ends) == 1 and fixed_pts is None and not land_only:
+        # A mixed route can invent a crossing beside the fixed shore datum.
+        # Exhausting those contacts must not hide the existing dry-road mode.
+        # Re-enter normally, not through fixed_pts (which denotes a previously
+        # cleared alignment and deliberately has different pad semantics).
+        state = {}
+        try:
+            result = build_segment(
+                fld, edge, corr, pois, True, census=census, joint=state,
+                extra_forbid=extra_forbid, extra_guidance=extra_guidance,
+                ceiling=ceiling, trim=trim, trim_applied=trim_applied,
+                line_out=line_out)
+            if result.get("residual_infeasible"):
+                raise ValueError("dry waterfront profile remains infeasible at "
+                                 f"{result['residual_infeasible']}")
+        except ValueError as exc:
+            attempts.append({"mode": "dry_waterfront", "refused": str(exc)})
+        else:
+            result["waterfront_dry_alternative"] = {
+                "mixed_refusals": attempts,
+                "why": "mixed terminal contacts refused; rebuilt a full-width "
+                       "dry approach through the ordinary searched constructor"}
+            if joint is not None:
+                joint.clear()
+                joint.update(state)
+            return result
     if adjacency_fallback is not None:
         result, state = adjacency_fallback
         result["terminal_contact_refusal"] = {
             "verdict": "REFUSED", "attempts": attempts,
             "why": "eligible bank contacts exhausted; retaining the original "
                    "self-overlap refusal for leg-local guidance"}
+        if joint is not None:
+            joint.clear()
+            joint.update(state)
+        return result
+    if terrain_fallback is not None:
+        result, state = terrain_fallback
+        result["terminal_profile_refusal"] = {
+            "verdict": "REFUSED", "attempts": attempts,
+            "why": "eligible contacts and dry mode exhausted; retaining the "
+                   "original terrain-profile refusal for span feedback"}
         if joint is not None:
             joint.clear()
             joint.update(state)
@@ -3052,19 +3140,60 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
                         raise ValueError(f"{edge['id']}: measured bank path is outside the current routing domain")
                     return contact["xz"]
                 return contact
-            raw = corr.search(target("a"), target("b"))
+            dry_shore = [end for end in ("a", "b")
+                         if specmod.NODES[edge[end]].get("kind") == "waterfront_terminal"]
+            if land_only and len(dry_shore) == 1:
+                import shores
+                from types import SimpleNamespace
+                end = dry_shore[0]
+                other = "b" if end == "a" else "a"
+                bank = specmod.NODES[edge[end]]
+                source = dict(specmod.NODES[edge[other]], xz=target(other))
+                local = copy.copy(corr)
+                graph = SimpleNamespace(
+                    corr=local, ok=(np.ones((corr.m, corr.m), dtype=bool)
+                                    if corr.forbid is None else ~corr.forbid))
+                def shore_sample(x, z):
+                    if not fld.contains(x, z, margin=fld.step / 2.0):
+                        raise ValueError(f"unread dry waterfront footprint ({x}, {z}) "
+                                         f"outside native field {fld.id}")
+                    return (fld.bilinear(x, z),)
+                surface = SimpleNamespace(at=shore_sample)
+                bearing = bank.get("jetty_bearing_deg")
+                if bearing is None:
+                    bearing = (bank["arrive_bearing_deg"] + 180.0) % 360.0
+                preview = shores.road_preview(
+                    graph, surface, source, bank["xz"], bearing, width_m,
+                    level_y=bank["level_y"])
+                if preview is None:
+                    raise ValueError(f"{edge['id']}: full-width dry waterfront "
+                                     "approach refused under current masks and datums")
+                if not _bank_path_allowed(
+                        corr, [bank["xz"], preview["entry_xz"]], extra_forbid):
+                    raise ValueError(f"{edge['id']}: fixed waterfront landing "
+                                     "crosses an active physical routing mask")
+                raw = preview["nodes"]
+                if end == "a":
+                    raw = list(reversed(raw))
+            else:
+                raw = corr.search(target("a"), target("b"))
         finally:
             corr.forbid_all_water = False
             corr.forbid = shared_forbid
-        terminal = corr.last_terminal
+        terminal = None if land_only and len(dry_shore) == 1 else corr.last_terminal
         search_contacts = {"a": list(map(float, raw[0])),
                            "b": list(map(float, raw[-1]))}
         # Match the physical crossing producer: the road really meets the
         # bank, rather than treating the nearest A* cell as that bank.
         raw = list(raw)
+        owned_paths = {}
         for end in ("a", "b"):
             contact = ends.get(end)
             if not isinstance(contact, dict):
+                continue
+            if land_only and len(dry_shore) == 1 and end == dry_shore[0]:
+                # road_preview already retained this root's exact six-metre
+                # approach; appending it again would backtrack over the road.
                 continue
             path = list(contact["bank_path"])
             if end == "a":
@@ -3072,6 +3201,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
             else:
                 path.reverse()
                 raw = raw + path[1:] if np.array_equal(raw[-1], path[0]) else raw + path
+            owned_paths[end] = path
         for end, k in (("a", 0), ("b", -1)):
             node = specmod.NODES[edge[end]]
             if node.get("kind") != "abutment" or not node.get("crossing"):
@@ -3079,8 +3209,10 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
             bank = list(map(float, node["xz"]))
             if not np.array_equal(raw[k], bank):
                 if end == "a":
+                    owned_paths["a"] = [bank, *owned_paths.get("a", [raw[0]])]
                     raw.insert(0, bank)
                 else:
+                    owned_paths["b"] = [*owned_paths.get("b", [raw[-1]]), bank]
                     raw.append(bank)
         # Simplify tolerance is DELIBERATELY tight.  A* returns one node per
         # 4 m cell, i.e. a staircase, and the ribbon is rasterised from
@@ -3089,8 +3221,28 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         # off the cells the POI mask cleared, so the tolerance is 1 m and the
         # mask is dilated to cover it rather than the tolerance being
         # loosened and the breach being discovered afterwards.
-        poly = routemod.simplify(raw, tol_m=SIMPLIFY_TOL_M)
-        pts, s = routemod.resample(poly, STATION_M)
+        if not owned_paths and not (land_only and len(dry_shore) == 1):
+            poly = routemod.simplify(raw, tol_m=SIMPLIFY_TOL_M)
+            pts, s = routemod.resample(poly, STATION_M)
+        else:
+            first = len(owned_paths["a"]) - 1 if "a" in owned_paths else 0
+            last = len(raw) - len(owned_paths["b"]) + 1 if "b" in owned_paths else len(raw)
+            middle = raw[first:last]
+            if land_only and len(dry_shore) == 1:
+                # The free interior already passed canonical 1 m water feedback.
+                # Only newly attached owned bank approaches need sampling.
+                middle_pts = np.asarray(middle, dtype=np.float64)
+            else:
+                poly = routemod.simplify(middle, tol_m=SIMPLIFY_TOL_M)
+                middle_pts, _ = routemod.resample(poly, STATION_M)
+            prefix = _owned_approach_stations(owned_paths["a"])[:-1] if "a" in owned_paths else []
+            suffix = []
+            if "b" in owned_paths:
+                # Phase the native stations outward from the owned root at
+                # either end, not from a snapped search cell toward its bench.
+                suffix = _owned_approach_stations(owned_paths["b"][::-1])[::-1][1:]
+            pts = np.asarray([*prefix, *middle_pts, *suffix], dtype=np.float64)
+            s = np.r_[0., np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
         s = np.asarray(s, dtype=np.float64)
         if line_out is not None:
             line_out[:] = [[round(float(x), 2), round(float(z), 2)]
@@ -3143,8 +3295,9 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # `trim` removes whole stations from an end AFTER the pad edge, so the
     # ribbon's cap -- clamped past the last station, where no station's
     # cross-section ever looks -- stops short of the seed-wet ground
-    # `writer_water` found it paving.  `s` is sliced, never re-measured, so
-    # every station kept keeps the arc its profile was fitted on.
+    # `writer_water` found it paving. Keep the sliced arc unless a bank contact
+    # needs a rounding-safe endpoint; then measure that actual geometry before
+    # any terrain/profile probes. The writer still judges the resulting cap.
     trim_rec = None
     # A fixed-profile repair retains trim-owned abutment release below,
     # but its exact input stations have already been trimmed.
@@ -3154,9 +3307,33 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
             raise ValueError(f"{edge['id']}: a terminal trim of {na}+{nb} "
                              f"station(s) leaves no road")
         cut_m = float(s[na] - s[0]) + float(s[-1] - s[len(pts) - 1 - nb])
-        pts = pts[na:len(pts) - nb]
-        s = np.asarray(s[na:len(s) - nb], dtype=np.float64) - float(s[na])
+        kept = np.asarray(pts[na:len(pts) - nb], dtype=np.float64).copy()
+        adjusted = False
+        for end, cut, k, removed in (("a", na, 0, na - 1),
+                                     ("b", nb, -1, len(pts) - nb)):
+            node = specmod.NODES[edge[end]]
+            if not cut or node.get("level_y") is None:
+                continue
+            point = _bank_trim_endpoint(
+                kept[k], pts[removed], np.asarray(node["xz"], dtype=np.float64),
+                routemod.footprint_half_m(width_m))
+            if np.array_equal(point, kept[k]):
+                continue
+            neighbor = kept[1 if end == "a" else -2]
+            if not _bank_path_allowed(corr, [point, neighbor], extra_forbid):
+                raise ValueError(f"{edge['id']}: rounded trimmed bank contact "
+                                 "is outside the current routing domain")
+            cut_m += (float(np.linalg.norm(point - pts[removed]))
+                      - float(np.linalg.norm(kept[k] - pts[removed])))
+            kept[k] = point
+            adjusted = True
+        pts = kept
+        s = (np.r_[0., np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
+             if adjusted else
+             np.asarray(s[na:len(s) - nb], dtype=np.float64) - float(s[na]))
         trim_rec = {edge["a"]: na, edge["b"]: nb, "trimmed_m": round(cut_m, 1)}
+    if len(pts) < 2 or float(s[-1]) <= float(s[0]):
+        raise ValueError(f"{edge['id']}: search and arrival leave no positive-length road")
     t = np.array([fld.bilinear(x, z) for x, z in pts], dtype=np.float64)
 
     # Pass 1, terrain only: its infeasible spans plus the wet stations ARE the
@@ -3229,7 +3406,8 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # straightening moved the stations.
     free, windows = crossing_windows(pts, s, detected)
     before_straightening = pts
-    pts, windows = straighten_windows(pts, s, windows, abut_windows)
+    pts, windows = straighten_windows(
+        pts, s, windows, abut_windows, preserve_bank_geometry=fixed_pts is not None)
     _check_straightening(before_straightening, pts, pois, width_m, corr.cell_m)
     if windows or abut_windows:
         t = np.array([fld.bilinear(x, z) for x, z in pts], dtype=np.float64)
@@ -4119,10 +4297,11 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
         return original
 
     while True:
-        worst = (last["self_adjacency"].get("worst_before") or {}).get("xz")
-        if not worst or len(worst) < 2:
-            return refused("missing_pair", "self-overlap has no measured foot pair")
-        x, z = map(float, worst[1])
+        witness = last["self_adjacency"].get("worst_before") or {}
+        worst, arcs = witness.get("xz"), witness.get("foot_arc_m")
+        if not worst or len(worst) < 2 or not arcs or len(arcs) < 2:
+            return refused("missing_pair", "self-overlap has no measured foot/arc pair")
+        x, z = map(float, worst[0 if arcs[0] > arcs[1] else 1])
         hint = {"xz": [x, z], "radius_m": radius, "cost_per_m": price}
         mask = adjacency_mask(corr, [(x, z, radius)])
         if not np.any(mask):
@@ -6205,6 +6384,7 @@ def selftest() -> int:
     fails += selftest_crossing_banks()
     fails += selftest_abutment_bench()
     fails += selftest_abutment_released()
+    fails += selftest_bank_trim_rounding()
     fails += selftest_terminal_landing_plan()
     fails += selftest_span_bed()
     fails += selftest_owner_cause()
@@ -7210,7 +7390,7 @@ def _cb_corridor(fld, census, *, confine: bool = True):
     if confine:
         cf, _st = censusmod.census_forbid(
             census, corr.x0, corr.z0, corr.cell_m, corr.m,
-            chord_slack_m=chord_slack_m(corr.cell_m))
+            chord_slack_m=arrival_geometry.chord_slack_m(corr.cell_m))
         forbid = forbid | cf
         corr.unread = cf
     corr.forbid, corr.soft = forbid, soft
@@ -8306,6 +8486,101 @@ def selftest_abutment_released() -> int:
         want("an accepted untrimmed bank meets its declared datum",
              read(kept)["end_y"], 30.6)
     print(f"abutment-released selftest: {fails} failed")
+    return fails
+
+
+def selftest_bank_trim_rounding() -> int:
+    """Fit the actual emitted bank contact, in either orientation, at 2dp."""
+    global _PAD_CLAIMS
+    fails = 0
+
+    def want(label, got, expect=True):
+        nonlocal fails
+        ok = got == expect
+        fails += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} {label}: {got}"
+              + ("" if ok else f"  EXPECTED {expect}"))
+
+    def ground(X, Z):
+        return 35.0 + 0.02 * X + 0.01 * Z
+
+    fld = _ww_field(ground)
+    reach = routemod.footprint_half_m(WIDTH_M["trunk"])
+    saved_pads = _PAD_CLAIMS
+    saved_nodes = {key: specmod.NODES.get(key) for key in ("q-bank", "q-far")}
+    _PAD_CLAIMS = []
+    try:
+        for sign in (-1.0, 1.0):
+            root = np.array([0.0, 0.0])
+            direction = np.array([sign, sign]) / math.sqrt(2.0)
+            line = [root + distance * direction for distance in np.arange(0., 42., 2.)]
+            datum = float(fld.bilinear(*root)) + 0.5
+            specmod.NODES["q-bank"] = {
+                "xz": tuple(root), "kind": "abutment", "level_y": datum,
+                "island": "q", "patch": "q"}
+            specmod.NODES["q-far"] = {
+                "xz": tuple(line[-1]), "kind": "extremity",
+                "island": "q", "patch": "q"}
+            old_endpoint = np.asarray([round(float(v), 2) for v in line[2]])
+            want(f"diagonal {sign:+g}: old emitted contact is detached",
+                 np.linalg.norm(old_endpoint - root) > reach)
+            for end in ("a", "b"):
+                edge = {"id": f"Q-{sign}-{end}", "a": "q-bank", "b": "q-far",
+                        "cls": "trunk", "pri": 3}
+                points = line
+                if end == "b":
+                    edge["a"], edge["b"] = edge["b"], edge["a"]
+                    points = line[::-1]
+                corr = _ww_corridor(fld)
+                joint = {}
+                rec = build_segment(
+                    fld, edge, corr, [], fixed_pts=points, census=None,
+                    trim={end: 2}, joint=joint)
+                k = 0 if end == "a" else -1
+                emitted = np.asarray(rec["nodes"], dtype=np.float64)
+                y = np.asarray(rec["profile_y"])
+                ds = np.linalg.norm(np.diff(emitted, axis=0), axis=1)
+                want(f"{sign:+g}/{end}: final bank reach",
+                     np.linalg.norm(emitted[k] - root) <= reach)
+                want(f"{sign:+g}/{end}: original owned datum",
+                     rec["abutments"][0]["level_y"] == datum
+                     and abs(y[k] - datum) <= 0.0005
+                     and specmod.NODES["q-bank"]["xz"] == tuple(root))
+                want(f"{sign:+g}/{end}: emitted contact was profiled",
+                     0.0 < np.linalg.norm(emitted[k] - line[2]) < 0.02
+                     and abs(np.diff(joint["s"])[0 if end == "a" else -1]
+                             - np.linalg.norm(line[3] - emitted[k])) < 1e-12)
+                tw_lo, tw_hi, off = transverse_window(fld, emitted, WIDTH_M["trunk"])
+                want(f"{sign:+g}/{end}: physical emitted geometry",
+                     not off and bool(np.all(ds > 0.0))
+                     and bool(np.all(np.abs(np.diff(y)) <= rec["grade_limit"] * ds + 0.001))
+                     and bool(np.all(np.maximum(abs(y-tw_lo), abs(y-tw_hi))
+                                     <= routemod.CUT_FILL_MAX))
+                     and not rec["residual_infeasible"]
+                     and profile_constraint_rejection(rec) is None
+                     and self_adjacency_rejection(rec) is None
+                     and _bank_path_allowed(corr, emitted, None))
+                try:
+                    build_segment(
+                        fld, edge, corr, [], fixed_pts=points, census=None,
+                        trim={end: 2}, extra_forbid=np.ones((corr.m, corr.m), dtype=bool))
+                except ValueError as exc:
+                    refused = "outside the current routing domain" in str(exc)
+                else:
+                    refused = False
+                want(f"{sign:+g}/{end}: unchanged active mask refuses contact", refused)
+            want(f"{sign:+g}: legal rounded contacts stay unchanged",
+                 np.array_equal(_bank_trim_endpoint(line[1], root, root, reach), line[1]))
+            want(f"{sign:+g}: genuinely detached contacts are not rescued",
+                 np.array_equal(_bank_trim_endpoint(line[3], line[2], root, reach), line[3]))
+    finally:
+        _PAD_CLAIMS = saved_pads
+        for key, value in saved_nodes.items():
+            if value is None:
+                specmod.NODES.pop(key, None)
+            else:
+                specmod.NODES[key] = value
+    print(f"bank-trim-rounding selftest: {fails} failed")
     return fails
 
 
@@ -9473,7 +9748,7 @@ def main(*, plan_state: dict | None = None) -> int:
                 # (precensus.CENSUS_CONFINE_DEPENDS_ON).
                 cen_forbid, cen_stats = censusmod.census_forbid(
                     census, corr.x0, corr.z0, corr.cell_m, corr.m,
-                    chord_slack_m=chord_slack_m(corr.cell_m))
+                    chord_slack_m=arrival_geometry.chord_slack_m(corr.cell_m))
                 forbid = forbid | cen_forbid
                 arrival_forbid = arrival_forbid | cen_forbid
                 cen_stats["confined"] = True

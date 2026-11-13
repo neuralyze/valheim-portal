@@ -128,7 +128,8 @@ def _endpoint_plan(site, seed, world):
             pos=[boat["x"], boat["y"], boat["z"]], yaw_deg=boat["yaw"])])
 
 
-def solve_pair(nodes, fields, search, complete, *, occupied=(), progress=None):
+def solve_pair(nodes, fields, search, complete, *, occupied=(), progress=None,
+               native_preview=None):
     """Both endpoint/road populations use component-complete rendered identity.
 
     Local labels never certify separation; every destination's identity and
@@ -137,6 +138,9 @@ def solve_pair(nodes, fields, search, complete, *, occupied=(), progress=None):
     import shores as S
     import north_transport as NT
     import worldseed
+    if native_preview is None:
+        from shore_road_preview import NativeShorePreview
+        native_preview = NativeShorePreview()
     source_label = complete.at(*nodes["eastlobe"]["xz"])
     if source_label == 0:
         raise SystemExit("REFUSING ferry: generated east-lobe anchor has no rendered component")
@@ -235,14 +239,15 @@ def solve_pair(nodes, fields, search, complete, *, occupied=(), progress=None):
                     S.solve_site(far_req, far_nodes, fields, component=fine_label,
                                  accept=accept_far, complete=complete,
                                  graph_factory=lambda _field, cls: far_graph,
-                                 progress=progress)
+                                 progress=progress, native_preview=native_preview)
                     return True
                 except SystemExit as exc:
                     last[:] = [str(exc)]
                     return False
             try:
                 S.solve_site(src_req, nodes, fields, accept=accept_source,
-                             complete=complete, progress=progress)
+                             complete=complete, progress=progress,
+                             native_preview=native_preview)
                 return [selected["source"], selected["far"]]
             except SystemExit as exc:
                 failures.append(dict(component=fine_label, fine_component=fine_label,

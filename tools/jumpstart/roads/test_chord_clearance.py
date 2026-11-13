@@ -8,6 +8,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from roads import network as net
+from roads import arrival_geometry
 
 
 class ChordClearanceTests(unittest.TestCase):
@@ -24,7 +25,7 @@ class ChordClearanceTests(unittest.TestCase):
         # Isolate the hard-forbid invariant, independent of soft taste costs.
         self.corr.forbid, _, _ = net.poimod.masks(
             [self.poi], self.corr.x0, self.corr.z0, self.corr.cell_m,
-            self.corr.m, 3., chord_slack_m=net.chord_slack_m(self.corr.cell_m))
+            self.corr.m, 3., chord_slack_m=arrival_geometry.chord_slack_m(self.corr.cell_m))
         self.edge = dict(id='cross-coast', a='south', b='north', cls='trunk', pri=1)
         nodes = {'south':dict(xz=(-60.,-100.), patch='coast', island='land'),
                  'north':dict(xz=(60.,100.), patch='coast', island='land')}
@@ -62,7 +63,7 @@ class ChordClearanceTests(unittest.TestCase):
         self.poi.protected = True
         self.corr.forbid, _, _ = net.poimod.masks(
             [self.poi], self.corr.x0, self.corr.z0, self.corr.cell_m,
-            self.corr.m, 3., chord_slack_m=net.chord_slack_m(self.corr.cell_m))
+            self.corr.m, 3., chord_slack_m=arrival_geometry.chord_slack_m(self.corr.cell_m))
         result = net.build_segment(self.field, self.edge, self.corr, [self.poi], census=None)
         distance = net.poimod.polyline_dist(result['nodes'], [self.poi.x], [self.poi.z])[0]
         self.assertGreaterEqual(distance, self.poi.hard_m(3.))

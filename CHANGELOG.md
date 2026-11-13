@@ -9,6 +9,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Production shore selection repeats the native terrain writer on genuine
+  integer Heightmap patches with the writer's POI discs. A profile-clear
+  candidate uses the existing native alignment/trim/ceiling continuation
+  before the shore search discards its root. Every retry preserves the
+  owned landing and source attachment. Missing measurements, including
+  those first encountered on a retry, remain prerequisites rather than
+  falling back to the smooth field. Final named-road, pad, census and
+  saved-world gates still apply. Initial construction and continuation both
+  restore the caller's import path, including cold native module imports.
+- Self-overlap retry costs select the later measured road foot by arc
+  distance, not the second column of a spatial lattice-edge witness.
+  Reversing the measured pair no longer penalizes the wrong branch.
+- Bank trims account for emitted centimetre-coordinate rounding before
+  terrain and profile fitting. A contact lost only to rounding may regrow
+  along its original removed segment; the original attachment radius,
+  bank datum, masks and final writer checks remain binding.
+- Profile-only repairs retain their recorded ground-bank station geometry.
+  Re-straightening a rounded bank no longer moves its stations and falsely
+  defeats the writer's exact-geometry ceiling guard. Structural bridge
+  chords still straighten and repeat their unchanged obstacle checks.
+- Shore road previews use the actual declared width and measured sampler
+  over the complete owned landing and inland approach. One-metre wet
+  shoulders participate in canonical routing feedback instead of being
+  missed by centre-line checks or discarded as immutable landing failures.
+  After mixed-route terminal contacts exhaust, the road constructor also
+  tries the existing dry mode, repeating searched-arrival, profile, mask
+  and writer checks rather than treating a new route as a proven fixed line.
+  Owned landing bends and native bank-approach vertices survive station
+  generation in both road modes; zero-length results refuse construction.
+  One-metre water probes sweep the actual returned geometry independently
+  of native two-metre profile stations. Bank stations phase outward from
+  the owned root at either end. Residual-infeasible shore profiles continue
+  through eligible contacts and dry mode; exhausted searches retain the
+  original refusal and its matching solve state for native span feedback.
+  Searched candidates cannot silently shift the declared landing geometry.
+  Inland entry retries retain the same six-metre landing while testing all
+  allowed cells whose area touches its footprint, including diagonal cells
+  with centres outside it. A short nearest-cell connector cannot hide
+  another contact that meets the unchanged native grade bounds.
+  Fixed landings also check the seaward ground cap on the native integer
+  lattice, preserving the existing water and cut/fill refusals. Root search
+  includes measured same-component inland seats for that cap rather than
+  requiring every candidate to sit directly beside water. Neither cap
+  ownership nor the terrain writer's water policy is changed.
+  Shore selection uses the actual native constructor for dry approaches,
+  fords and legitimate inland bridges: a dry clamp/grade preview cannot
+  bypass native freeboard and held-profile bounds. Its measured source
+  handoff, masks and fixed landing datum remain binding; the serializable
+  result is local preflight, not full named-road or world acceptance.
 - Waterfront geometry keeps its original timber design first, then tries a
   measured stone-pillar foundation only after an actual support/seating
   refusal. Deeper stone bases carry measured 2 m hardwood caps; stone,

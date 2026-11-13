@@ -187,6 +187,73 @@ on a field's own grid. No sampled values survive the root. Coverage refusals
 restore the same successful scalar prefix, and neither missing coverage nor
 strict NumPy error settings change the scalar result or first refusal.
 
+The ordinary ground ribbon also owns its seaward round terminal cap.
+Landing checks sample that cap on the native integer lattice; a dry
+root-to-entry strip cannot authorize filling water beneath the jetty.
+Candidates may sit landward within the footprint-derived shore band while
+retaining the same measured component, anchor radius and directional rules.
+This is not an exhaustive physical-feasibility bound on all inland roots.
+Every selected root still passes the complete landing, native road, hull,
+support and writer checks. No cap ownership or water policy is relaxed.
+
+Shore road eligibility also follows the complete inland approach at its
+actual declared width, using the same measured surface and canonical
+water-feedback router. The exact root-to-entry landing remains fixed;
+one-metre footprint sampling belongs inside the feedback search so a
+reroutable inland wet shoulder is not mistaken for an impossible landing.
+Neither a centre-line preview nor a cached crossing-width approval is
+sufficient. Mixed-route terminal exhaustion may try the existing dry mode,
+but that route passes through ordinary searched construction and all native
+arrival, profile, physical-mask and writer gates. It is not a fixed-profile
+repair, a newly assigned bank datum or world-construction authorization.
+With a real serving edge and node, shore selection requires the existing
+native constructor for dry, ford and mixed bridge approaches alike. A dry
+clamp/grade fit alone omits native freeboard and held-profile constraints.
+The constructor uses a scope-owned context and the actual measured sampler,
+never a substituted all-dry predicate or an invented source-pad height. A measured
+exterior source handoff does not acquire the semantic centre's pad datum.
+The record retains its local-preflight scope; final named-road construction,
+writer, census and saved-world acceptance are still required. Owned approach
+bends are sampled segment by segment rather than simplified away; a road
+with no positive remaining length cannot be accepted.
+
+Production derivation additionally runs the native integer-lattice writer
+and its POI discs before accepting a candidate. Missing engine patches are
+measurement prerequisites, never permission to resample the routing field.
+The canonical `writer_water` receipt records the local result and selected
+collar; it does not replace the final named road's applied-pad, census or
+saved-world authority. The existing native alignment, trim and ceiling
+remedies run before rejecting a root, preserving its landing and source
+attachment on every candidate.
+
+Bank-trim endpoints must meet the same attachment radius after centimetre
+serialization. Rounding-only detachment is corrected along the removed
+original segment before terrain/profile checks, never by widening the gate.
+Profile-only repairs keep recorded ground-bank geometry and recompute their
+fit distances from it; bank-window rounding must not silently reshape the
+alignment a water ceiling was intended to repair. Structural bridge chords
+still straighten and undergo their original obstacle checks; fixed inputs
+do not authorize a curved bridge through a protected obstacle.
+
+Inland-entry contact enumeration intersects the landing footprint with each
+finite search cell, not only its centre. Diagonal contacts remain eligible
+without moving the root, shortening the landing or bypassing an active mask.
+Physical probe density does not add native profile constraints: one-metre
+water probes sweep the actual returned polyline, while profile stations
+retain native two-metre spacing. Owned bank geometry is sampled outward
+from its root at either road end. A CLEAR held-datum sub-result does not
+hide residual terrain infeasibility: searched shore roads continue through
+eligible contacts and the dry mode. Exhaustion retains the original refused
+record with its own solve state for ordinary native span feedback. Both
+candidate selection and preflight use the same published-coordinate landing
+geometry rule; ordinary fixed-geometry repair still uses its existing gates.
+The inland search entry is not its nearest A* cell. When that short connector
+cannot meet the native profile bounds, the constructor tries other allowed
+contacts touching the same entry footprint without moving the owned root,
+landing or datum. Every alternative repeats the normal physical and profile
+checks.
+
+
 Waterfront candidates first try their unchanged timber foundation. Only an
 actual support or seating refusal permits the measured stone-pillar design;
 all roots, headings, lengths, hull, road and landing checks remain eligible.

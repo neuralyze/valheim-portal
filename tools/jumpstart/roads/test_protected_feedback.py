@@ -123,6 +123,30 @@ class ProtectedFeedbackTests(unittest.TestCase):
         np.testing.assert_array_equal(corr.forbid, physical)
         self.assertIsNone(corr.guidance)
 
+    def test_lattice_edge_order_does_not_reverse_the_later_branch_cost(self):
+        corr, build, a, b = self._numeric_hairpin(outer_cost=100.)
+        ii, jj = np.mgrid[:corr.m, :corr.m]
+        xx, zz = corr.x0 + jj * corr.cell_m, corr.z0 + ii * corr.cell_m
+        corr.forbid |= (xx == -72.) & (abs(zz) < 30.)
+        physical = corr.forbid.copy()
+        initial, joint = build()
+        witness = initial['self_adjacency']['worst_before']
+        # Spatial lattice-edge order is independent of road arc order.
+        # Reverse the complete measured pair, without changing its geometry.
+        if witness['foot_arc_m'][0] < witness['foot_arc_m'][1]:
+            for key in ('cells', 'stations', 'xz', 'foot_arc_m',
+                        'design_y', 'run_past_bench_m'):
+                witness[key] = list(reversed(witness[key]))
+        self.assertGreater(witness['foot_arc_m'][0], witness['foot_arc_m'][1])
+        later = witness['xz'][0]
+        result, _ = net.adjacency_reroute(
+            corr, lambda guidance: build(extra_guidance=guidance),
+            initial=(initial, joint))
+        self.assertIsNone(net.self_adjacency_rejection(result))
+        self.assertEqual(result['adjacency_reroute']['hints'][0]['xz'], later)
+        self.assertEqual((tuple(result['nodes'][0]), tuple(result['nodes'][-1])), (a, b))
+        np.testing.assert_array_equal(corr.forbid, physical)
+
     def test_north_water_rebuild_retains_the_guided_legal_path(self):
         from roads import north_itinerary
         corr, build, a, b = self._numeric_hairpin()

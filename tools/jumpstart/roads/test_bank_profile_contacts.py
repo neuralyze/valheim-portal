@@ -83,6 +83,30 @@ class BankProfileContactsTests(unittest.TestCase):
         for name, value in before.items():
             np.testing.assert_array_equal(getattr(corr, name), value)
 
+    def test_waterfront_entry_includes_cells_whose_area_touches_the_footprint(self):
+        corr = _corridor()
+        origin = tuple(map(float, corr.cell_world(*corr.cell_of(0., 0.))))
+        entry = (origin[0] + 1.5, origin[1] + 1.5)
+        root = (entry[0], entry[1] - N.BANK_LEVEL_M)
+        diagonal = (origin[0] + corr.cell_m, origin[1] + corr.cell_m)
+        outside = (origin[0] + 2 * corr.cell_m, origin[1] + 2 * corr.cell_m)
+        edge = dict(a='shore', b='elsewhere', cls='spur', width_m=4.)
+        node = dict(xz=root, level_y=30.6, kind='waterfront_terminal',
+                    owner='Crossings', arrive_bearing_deg=0.)
+        extra = np.zeros((corr.m, corr.m), dtype=bool)
+        extra[corr.cell_of(*diagonal)] = True
+        before = _physical_snapshot(corr)
+        with patch.object(N.specmod, 'NODES', {'shore': node}):
+            contacts = N._bank_approach_contacts(edge, 'a', corr, None)
+            self.assertIn(diagonal, [c['xz'] for c in contacts])
+            self.assertNotIn(outside, [c['xz'] for c in contacts])
+            masked = N._bank_approach_contacts(edge, 'a', corr, extra)
+            self.assertNotIn(diagonal, [c['xz'] for c in masked])
+        for contact in contacts:
+            np.testing.assert_allclose(contact['bank_path'][:2], [root, entry], atol=1e-8)
+        for name, value in before.items():
+            np.testing.assert_array_equal(getattr(corr, name), value)
+
     def test_waterfront_domain_uses_real_bank_without_claiming_bridge_cap_area(self):
         corr = _corridor()
         origin = tuple(map(float, corr.cell_world(*corr.cell_of(0., 0.))))
