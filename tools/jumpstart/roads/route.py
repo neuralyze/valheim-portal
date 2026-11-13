@@ -983,7 +983,8 @@ def unabsorbable_m(dy, run_sum, grade: float, lattice_m: float):
 
 def self_adjacency_lattice(pts, is_bridge, width_m: float, *, grade: float,
                            batter_m: float, lattice_m: float,
-                           dy_cap: float) -> dict:
+                           dy_cap: float,
+                           terminal_caps: tuple[bool, bool] = (True, True)) -> dict:
     """Every lattice edge between two claims of this line that a profile held
     to `dy_cap` per metre COULD leave unabsorbable, from the writer's own
     claim function, and the STATION pairs that bound them.
@@ -996,13 +997,16 @@ def self_adjacency_lattice(pts, is_bridge, width_m: float, *, grade: float,
 
     Each edge is bound by one difference constraint on the stations NEAREST
     its two feet, slackened per rung by the grade those feet can stand off
-    them -- see `station_pairs`."""
+    them -- see `station_pairs`.  `terminal_caps` only controls the true
+    termini's outside half-planes, using the writer's projection law."""
     R = _writer()
     tc = R.tcdata
     nodes = np.asarray(pts, dtype=np.float64).reshape(-1, 2)
     n = len(nodes)
     br = (np.zeros(n, dtype=bool) if is_bridge is None
           else np.asarray(is_bridge, dtype=bool))
+    caps = ((True, True) if terminal_caps is None
+            else tuple(bool(v) for v in terminal_caps))
     h = footprint_half_m(width_m)
     reach = h + batter_m
     arcs = np.asarray(R.node_arcs(nodes, br), dtype=np.float64)
@@ -1017,7 +1021,7 @@ def self_adjacency_lattice(pts, is_bridge, width_m: float, *, grade: float,
         X = (cx + ax)[None, :] + np.zeros((tc.PITCH, 1))
         Z = (cz + ax)[:, None] + np.zeros((1, tc.PITCH))
         LAT, _y, S = R.lateral_and_y_grid(nodes, zero, br, X, Z, reach,
-                                          grade, h)[:3]
+                                          grade, h, terminal_caps=caps)[:3]
         run = claim_run_m(LAT, h)
         inb = LAT <= reach
         for a, b in (((slice(None), slice(None, -1)),
@@ -1061,7 +1065,7 @@ def self_adjacency_lattice(pts, is_bridge, width_m: float, *, grade: float,
         return k, np.abs(arcs[k] - s)
     n1, d1 = nearest(e["s1"]) if len(e["s1"]) else (np.zeros(0, int), 0.0)
     n2, d2 = nearest(e["s2"]) if len(e["s2"]) else (np.zeros(0, int), 0.0)
-    return {"edges": e, "arcs": arcs, "pts": nodes,
+    return {"edges": e, "arcs": arcs, "pts": nodes, "terminal_caps": caps,
             "near1": np.asarray(n1, dtype=np.int64),
             "near2": np.asarray(n2, dtype=np.int64),
             "dsum": np.asarray(d1 + d2, dtype=np.float64),
@@ -1241,7 +1245,8 @@ def _residual_bounds(lo, hi, y0, spans, held=None):
 
 def fit_ladder(t: np.ndarray, s: np.ndarray, lo: np.ndarray, hi: np.ndarray,
                free: np.ndarray, ladder: list[float], *, pts, width_m: float,
-               grade: float, batter_m: float, lattice_m: float, held=None) -> dict:
+               grade: float, batter_m: float, lattice_m: float, held=None,
+               terminal_caps: tuple[bool, bool] = (True, True)) -> dict:
     """The grade ladder, with the line's own branches IN the constraint set.
 
     A rung is taken when its profile is terrain-feasible AND no two branches
@@ -1258,7 +1263,8 @@ def fit_ladder(t: np.ndarray, s: np.ndarray, lo: np.ndarray, hi: np.ndarray,
     free = np.asarray(free, dtype=bool)
     cand = self_adjacency_lattice(pts, free, width_m, grade=grade,
                                   batter_m=batter_m, lattice_m=lattice_m,
-                                  dy_cap=max(ladder))
+                                  dy_cap=max(ladder),
+                                  terminal_caps=terminal_caps)
 
     def attempt(rung, fit):
         # Residual terrain belongs to Crossings, but that cannot release a
@@ -1520,6 +1526,15 @@ CO_PAVED_DEPENDS_ON = ("every_leg_whose_bench_covers_the_sample",
 _CROSS_CLAIM_MODE = "every_paver"   # every_paver | winner (the shipped key)
 
 
+def _leg_terminal_caps(leg: dict) -> tuple[bool, bool]:
+    """Use explicit leg ownership, then its candidate, then ordinary caps."""
+    caps = leg.get("terminal_caps")
+    if caps is None:
+        cand = leg.get("cand")
+        caps = None if cand is None else cand.get("terminal_caps")
+    return (True, True) if caps is None else tuple(bool(v) for v in caps)
+
+
 def cross_claim_lattice(legs: list[dict], *, grade: float, batter_m: float,
                         lattice_m: float) -> dict:
     """Every 4-adjacent lattice edge whose two samples are claimed by two
@@ -1538,7 +1553,7 @@ def cross_claim_lattice(legs: list[dict], *, grade: float, batter_m: float,
         nodes = np.asarray(lg["nodes"], dtype=np.float64).reshape(-1, 2)
         br = np.asarray(lg["is_bridge"], dtype=bool)
         h = footprint_half_m(float(lg["width_m"]))
-        per.append((nodes, br, h, h + batter_m))
+        per.append((nodes, br, h, h + batter_m, _leg_terminal_caps(lg)))
         if len(nodes) < 2:
             continue
         for z in R.segment_zones([list(p) for p in nodes], list(br),
@@ -1558,9 +1573,10 @@ def cross_claim_lattice(legs: list[dict], *, grade: float, batter_m: float,
         S = np.zeros((len(lis),) + X.shape)
         RUN = np.full((len(lis),) + X.shape, np.inf)
         for n_, li in enumerate(lis):
-            nodes, br, h, reach = per[li]
+            nodes, br, h, reach, caps = per[li]
             lat, _y, s_ = R.lateral_and_y_grid(
-                nodes, np.zeros(len(nodes)), br, X, Z, reach, grade, h)[:3]
+                nodes, np.zeros(len(nodes)), br, X, Z, reach, grade, h,
+                terminal_caps=caps)[:3]
             inb = lat <= reach
             LAT[n_] = np.where(inb, lat, np.inf)
             S[n_] = s_
@@ -1679,7 +1695,8 @@ def _joint_readings(legs: list[dict], pads: list[dict], depends_on: tuple, *,
         doc = {"segments": [{
             "id": lg["id"], "nodes": lg["nodes"], "profile_y": list(lg["y0"]),
             "is_bridge": list(lg["is_bridge"]), "width_m": lg["width_m"],
-            "grade_limit": lg["rung"]} for lg in legs]}
+            "grade_limit": lg["rung"],
+            "terminal_caps": _leg_terminal_caps(lg)} for lg in legs]}
         ribs = J.ribbons_from_segments(doc, "plan")
         by_label = {r["label"]: r for r in ribs}
         terms = tuple(t for t, on in (
@@ -1811,7 +1828,9 @@ def junction_datums(legs: list[dict], pads: list[dict], *, grade: float,
     emitted), `is_bridge`, `y0` (its own `fit_ladder` profile), `s` (the arc
     its chain limit is taken over), `lo`/`hi` (its own bounds), `spans`
     (terrain-infeasible spans the ladder carried), `cand` (its
-    self-adjacency lattice), `rung` and `ladder`.  Optional `arrival_readings`
+    self-adjacency lattice), `rung` and `ladder`.  Optional `terminal_caps`
+    controls true terminal half-planes; missing/None uses the candidate's
+    caps, then ordinary `(True, True)` ownership.  Optional `arrival_readings`
     hold `{station, pad, datum, allow, x, z}` at resolved terminal indices;
     coordinates and datum must match the leg and real pad exactly.  `allow`
     is the physical allowance before this solver's emission margin.  These

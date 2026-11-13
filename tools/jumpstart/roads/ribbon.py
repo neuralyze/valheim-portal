@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import copy
 import hashlib
 import json
 import heapq
@@ -326,7 +327,8 @@ def _adjacent_ground_run(nodes, br, k: int, step: int) -> int | None:
     return None
 
 
-def clamp_ends(nodes, br, k: int) -> tuple[bool, bool]:
+def clamp_ends(nodes, br, k: int, *,
+               terminal_caps: tuple[bool, bool] = (True, True)) -> tuple[bool, bool]:
     """May terrain run `k`'s projection be CLAMPED at its low and high ends?
 
     A CLAMP AT AN END IS A CLAIM ON THE HALF-PLANE PAST IT, and whether that
@@ -355,15 +357,19 @@ def clamp_ends(nodes, br, k: int) -> tuple[bool, bool]:
     on a bank IS the span side, so rejecting rather than clamping at that end
     cuts the fan to the half-disc BEHIND the abutment and leaves the abutment
     itself fully graded.
+    `terminal_caps` may withhold only a true terminus's outside half-plane;
+    interior corners and existing bridge boundaries keep their own rules.
     """
     previous = _adjacent_ground_run(nodes, br, k, -1)
     following = _adjacent_ground_run(nodes, br, k, 1)
-    lo = previous is None or not (br[previous] or br[previous + 1])
-    hi = following is None or not (br[following] or br[following + 1])
+    caps = (True, True) if terminal_caps is None else terminal_caps
+    lo = bool(caps[0]) if previous is None else not (br[previous] or br[previous + 1])
+    hi = bool(caps[1]) if following is None else not (br[following] or br[following + 1])
     return lo, hi
 
 
-def _projection_eligible(nodes, br, k: int, x, z, tt):
+def _projection_eligible(nodes, br, k: int, x, z, tt, *,
+                         terminal_caps: tuple[bool, bool] = (True, True)):
     """Scalar/mask eligibility before clamping, or None if unrestricted.
 
     An internal cap owns only the adjacent runs' Voronoi wedge: behind this
@@ -372,7 +378,7 @@ def _projection_eligible(nodes, br, k: int, x, z, tt):
     True termini keep full caps; bridge boundaries defer to `clamp_ends`, so
     replacing that policy still exercises the shipped projection arithmetic.
     """
-    lo_ok, hi_ok = clamp_ends(nodes, br, k)
+    lo_ok, hi_ok = clamp_ends(nodes, br, k, terminal_caps=terminal_caps)
     ok = None
     for step, permitted, endpoint in ((-1, lo_ok, k), (1, hi_ok, k + 1)):
         interior = None
@@ -394,7 +400,9 @@ def _projection_eligible(nodes, br, k: int, x, z, tt):
 
 
 def lateral_and_y(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
-                  x: float, z: float) -> tuple[float, float] | None:
+                  x: float, z: float, *,
+                  terminal_caps: tuple[bool, bool] = (True, True)
+                  ) -> tuple[float, float] | None:
     """Perpendicular distance from the centreline and the profile height there.
 
     Projects onto each TERRAIN polyline segment and keeps the nearest.  A
@@ -435,7 +443,8 @@ def lateral_and_y(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
             continue
         has_ground_run = True
         tt = ((x - ax) * dx + (z - az) * dz) / L2
-        ok = _projection_eligible(nodes, br, k, x, z, tt)
+        ok = _projection_eligible(nodes, br, k, x, z, tt,
+                                  terminal_caps=terminal_caps)
         if ok is not None and not ok:
             continue
         tt = max(0.0, min(1.0, tt))
@@ -474,7 +483,8 @@ SECOND_CLAIMANT_DEPENDS_ON = ("winner_profile", "claimant_profile",
 def lateral_and_y_grid(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
                        X: np.ndarray, Z: np.ndarray, reach_m: float,
                        absorb_grade: float = BATTER_GRADE,
-                       edge_m: float | None = None
+                       edge_m: float | None = None, *,
+                       terminal_caps: tuple[bool, bool] = (True, True)
                        ) -> tuple[np.ndarray, np.ndarray, np.ndarray,
                                   np.ndarray, np.ndarray, np.ndarray,
                                   np.ndarray, np.ndarray, np.ndarray]:
@@ -598,7 +608,8 @@ def lateral_and_y_grid(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
         seglen = math.sqrt(L2)
         tt = ((X - ax) * dx + (Z - az) * dz) / L2
         # One footprint rule for scalar, winner and second-claimant feet.
-        ok = _projection_eligible(nodes, br, k, X, Z, tt)
+        ok = _projection_eligible(nodes, br, k, X, Z, tt,
+                                  terminal_caps=terminal_caps)
         np.clip(tt, 0.0, 1.0, out=tt)
         px, pz = ax + dx * tt, az + dz * tt
         d = np.hypot(X - px, Z - pz)
@@ -689,7 +700,8 @@ def lateral_and_y_grid(nodes: np.ndarray, prof: np.ndarray, br: np.ndarray,
             if L2 <= 1e-12:
                 continue
             tt = ((X - ax) * dx + (Z - az) * dz) / L2
-            ok = _projection_eligible(nodes, br, k, X, Z, tt)
+            ok = _projection_eligible(nodes, br, k, X, Z, tt,
+                                      terminal_caps=terminal_caps)
             np.clip(tt, 0.0, 1.0, out=tt)
             px, pz = ax + dx * tt, az + dz * tt
             d = np.hypot(X - px, Z - pz)
@@ -1851,8 +1863,9 @@ RIM_BANK_END_DEPENDS_ON = ("the_carriageway's_square_end_at_a_withheld_clamp",
 _RIM_BANK_END_MODE = "claimed"   # claimed | unclaimed (the shipped reading)
 
 
-def bank_ends(nodes, prof, br) -> list[tuple[float, float, float, float,
-                                             float]]:
+def bank_ends(nodes, prof, br, *,
+              terminal_caps: tuple[bool, bool] = (True, True)
+              ) -> list[tuple[float, float, float, float, float]]:
     """`(x, z, ux, uz, y)` for every terrain-run end whose clamp `clamp_ends`
     withholds: the end node, the unit direction pointing PAST it, and the
     profile height there.  See RIM_BANK_END_DEPENDS_ON."""
@@ -1866,7 +1879,7 @@ def bank_ends(nodes, prof, br) -> list[tuple[float, float, float, float,
         if seglen <= 1e-6:
             continue
         ux, uz = (bx - ax) / seglen, (bz - az) / seglen
-        lo_ok, hi_ok = clamp_ends(nodes, br, k)
+        lo_ok, hi_ok = clamp_ends(nodes, br, k, terminal_caps=terminal_caps)
         if not lo_ok:
             out.append((ax, az, -ux, -uz, float(prof[k])))
         if not hi_ok:
@@ -3204,6 +3217,9 @@ def emitted_road_model(seg: dict, batter_m: float) -> dict:
         "nodes": [[float(n[0]), float(n[1])] for n in seg["nodes"]],
         "profile_y": [float(y) for y in seg["profile_y"]],
         "is_bridge": [bool(b) for b in seg["is_bridge"]],
+        "terminal_caps": [bool(b) for b in (
+            (True, True) if seg.get("terminal_caps") is None else seg["terminal_caps"])],
+        "terminal_owners": copy.deepcopy(seg.get("terminal_owners")),
         "width_m": float(seg["width_m"]), "shoulder_m": SHOULDER_M,
         "batter_m": float(batter_m), "batter_grade": BATTER_GRADE,
         "interp": "linear_arclength",
@@ -3219,6 +3235,9 @@ def emitted_road_profile(seg: dict, batter_m: float) -> dict:
                   if not brg],
         "half_width_m": seg["width_m"] / 2.0, "shoulder_m": SHOULDER_M,
         "batter_m": batter_m, "batter_grade": round(BATTER_GRADE, 4),
+        "terminal_caps": [bool(b) for b in (
+            (True, True) if seg.get("terminal_caps") is None else seg["terminal_caps"])],
+        "terminal_owners": copy.deepcopy(seg.get("terminal_owners")),
         "interp": "linear_arclength",
     }
 
@@ -3278,6 +3297,11 @@ def _emitted_road_model_error(model) -> str | None:
             or not all(finite(y) for y in prof)
             or not all(isinstance(b, bool) for b in br)):
         return "invalid emitted station geometry"
+    caps = model.get("terminal_caps")
+    if caps is not None and (
+            not isinstance(caps, (list, tuple)) or len(caps) != 2
+            or not all(isinstance(b, bool) for b in caps)):
+        return "invalid emitted terminal caps"
     if any(not finite(model.get(k)) for k in
            ("width_m", "shoulder_m", "batter_m", "batter_grade")):
         return "missing emitted band parameters"
@@ -3325,7 +3349,8 @@ def foreign_road_band(road_claim_at, models_by_emission: dict, generated_at):
         if gen is None:
             return {"who": who, "paved": True, "surface": None,
                     "lo": None, "hi": None}
-        ly = lateral_and_y(*arr, float(sx), float(sz))
+        ly = lateral_and_y(*arr, float(sx), float(sz),
+                           terminal_caps=model.get("terminal_caps"))
         edge_t = model["width_m"] / 2.0 + model["shoulder_m"]
         if ly is None or ly[0] <= edge_t + EDGE_EPS_M:
             return {"who": who, "paved": True, "surface": gen + d,
@@ -3808,8 +3833,8 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
     claim_of: dict[tuple[int, int], tuple[float, float]] = {}
     # ...AND, FOR THE CLOSURE ONLY, THE SQUARE END OF A RUN AT A BANK: the
     # cells past it no run claims.  See RIM_BANK_END_DEPENDS_ON.
-    ends = (bank_ends(nodes, prof, br) if _RIM_BANK_END_MODE == "claimed"
-            else [])
+    ends = (bank_ends(nodes, prof, br, terminal_caps=seg.get("terminal_caps"))
+            if _RIM_BANK_END_MODE == "claimed" else [])
     grids: dict[tuple[int, int], tuple] = {}
     ax_1d = (np.arange(tcdata.PITCH) - tcdata.PITCH // 2) * tcdata.SCALE
     for zx, zz in zones:
@@ -3821,7 +3846,8 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
         X = (zcx + ax_1d)[None, :] + np.zeros((tcdata.PITCH, 1))
         Z = (zcz + ax_1d)[:, None] + np.zeros((1, tcdata.PITCH))
         LAT, Y, S, SGN, FX, FZ, LAT2, Y2, FLOOR = lateral_and_y_grid(
-            nodes, prof, br, X, Z, reach, BATTER_GRADE, edge)
+            nodes, prof, br, X, Z, reach, BATTER_GRADE, edge,
+            terminal_caps=seg.get("terminal_caps"))
         comps[(zx, zz)] = comp
         if ends:
             RUN_E, Y_E = bank_end_run(ends, X, Z, edge)
@@ -5354,7 +5380,8 @@ def carriageway_plan_y(plan: dict, x: float, z: float,
                np.array(plan["is_bridge"], dtype=bool))
         if cache is not None:
             cache[id(plan)] = arr
-    got = lateral_and_y(*arr, float(x), float(z))
+    got = lateral_and_y(*arr, float(x), float(z),
+                        terminal_caps=plan.get("terminal_caps"))
     if got is None or got[0] > plan["width_m"] / 2.0 + SHOULDER_M + EDGE_EPS_M:
         return None
     return got[1]
@@ -6912,11 +6939,11 @@ def selftest_ribbon_claim_ends(verbose: bool = True) -> dict:
          # NEUTER A -- drop the dependency on WHAT THE POLYLINE DOES past the
          # foot and clamp unconditionally.  This is the state this file
          # shipped in, kept EXECUTABLE rather than described.
-         "neuter_always_clamp": arms(lambda nodes, br, k: (True, True)),
+         "neuter_always_clamp": arms(lambda nodes, br, k, **kw: (True, True)),
          # NEUTER B, THE OTHER DIRECTION -- drop the clamp entirely, which is
          # the state BEFORE the vertex-wedge fix.  It also removes the deck
          # fan, so a one-direction neuter would read it as an improvement.
-         "neuter_never_clamp": arms(lambda nodes, br, k: (False, False))}
+         "neuter_never_clamp": arms(lambda nodes, br, k, **kw: (False, False))}
     assert clamp_ends is shipping
     # SURVIVOR 1: the shipping rule lays NOTHING over the span, and the
     # unconditional clamp lays a fan there.
@@ -7083,8 +7110,9 @@ def selftest_ribbon_beside_itself(verbose: bool = True) -> dict:
     # from the consumer end, and both are run, because a rule that only one
     # of them can turn off is a rule with two homes.
     def blind_grid(nodes, prof, br, X, Z, reach_m,
-                   absorb_grade=BATTER_GRADE, edge_m=None):
-        out = real_grid(nodes, prof, br, X, Z, reach_m, absorb_grade, edge_m)
+                   absorb_grade=BATTER_GRADE, edge_m=None, *, terminal_caps=None):
+        out = real_grid(nodes, prof, br, X, Z, reach_m, absorb_grade, edge_m,
+                        terminal_caps=terminal_caps)
         return out[:8] + (np.full(X.shape, -np.inf, dtype=np.float64),)
 
     # NEUTER -- DROP `the_lateral_run_to_each_of_them`.  The floor stops
@@ -7092,9 +7120,9 @@ def selftest_ribbon_beside_itself(verbose: bool = True) -> dict:
     # held at THAT RUN'S ROAD HEIGHT, and the envelope becomes a step
     # function of "is another run within 21 m" -- a cliff at the reach.
     def no_decay_grid(nodes, prof, br, X, Z, reach_m,
-                      absorb_grade=BATTER_GRADE, edge_m=None):
+                      absorb_grade=BATTER_GRADE, edge_m=None, *, terminal_caps=None):
         return real_grid(nodes, prof, br, X, Z, reach_m, absorb_grade,
-                         reach_m)
+                         reach_m, terminal_caps=terminal_caps)
 
     # NEUTER -- DROP `this_claim_own_ceiling`.  The floor is applied even
     # where it stands ABOVE what this claim's own carriageway edge can reach,
@@ -7116,13 +7144,15 @@ def selftest_ribbon_beside_itself(verbose: bool = True) -> dict:
     # Distance costs nothing, so the claimant kept is whichever run disagrees
     # MOST wherever it stands: a road going uphill 20 m away reads as a wall.
     def loose_grid(nodes, prof, br, X, Z, reach_m,
-                   absorb_grade=BATTER_GRADE, edge_m=None):
+                   absorb_grade=BATTER_GRADE, edge_m=None, *, terminal_caps=None):
         # THE CLAIMANT KEY ONLY.  `absorb_grade` is shared with the fill
         # floor, so passing 0.0 straight through would neuter TWO rules at
         # once and the arm would be measuring their sum.  The floor comes
         # from the shipped call and only `lat2`/`y2` are replaced.
-        out = real_grid(nodes, prof, br, X, Z, reach_m, absorb_grade, edge_m)
-        loose = real_grid(nodes, prof, br, X, Z, reach_m, 0.0, edge_m)
+        out = real_grid(nodes, prof, br, X, Z, reach_m, absorb_grade, edge_m,
+                        terminal_caps=terminal_caps)
+        loose = real_grid(nodes, prof, br, X, Z, reach_m, 0.0, edge_m,
+                          terminal_caps=terminal_caps)
         return out[:6] + (loose[6], loose[7], out[8])
 
     def run(fixture, *, grid=None, reconcile=None, **kw):
@@ -9004,7 +9034,8 @@ PROFILE_FEEDBACK_ROUNDS = 4
 PROFILE_FEEDBACK_MARGIN = 0.97
 
 
-def foot_station(nodes, prof, br, arc, x: float, z: float
+def foot_station(nodes, prof, br, arc, x: float, z: float, *,
+                 terminal_caps: tuple[bool, bool] = (True, True)
                  ) -> tuple[float, float, float] | None:
     """`(lat, y, s)`: distance to the polyline, the profile height at the foot
     and its ARC LENGTH, with `lateral_and_y`'s own clamped projection."""
@@ -9018,7 +9049,8 @@ def foot_station(nodes, prof, br, arc, x: float, z: float
         if l2 <= 1e-12:
             continue
         tt = ((x - ax) * dx + (z - az) * dz) / l2
-        ok = _projection_eligible(nodes, br, k, x, z, tt)
+        ok = _projection_eligible(nodes, br, k, x, z, tt,
+                                  terminal_caps=terminal_caps)
         if ok is not None and not ok:
             continue
         tt = max(0.0, min(1.0, tt))
@@ -9043,7 +9075,8 @@ def rim_claims(seg: dict, rows: list[dict], labels: list[str],
     out = []
     for row, lab in zip(rows, labels):
         got = foot_station(nodes, prof, br, arc, float(row["taken_xz"][0]),
-                           float(row["taken_xz"][1]))
+                           float(row["taken_xz"][1]),
+                           terminal_caps=seg.get("terminal_caps"))
         if got is None:
             continue
         lat, _y, s = got
@@ -9146,6 +9179,8 @@ def built_arrival_segments(records: list[dict], current_name: str) -> list[dict]
                                        for n in (nodes[0], nodes[-1])]
                                       if len(nodes) >= 2 else []),
                 "actor": rec.get("actor"), "seq": rec.get("seq"),
+                "terminal_caps": copy.deepcopy(p["profile"].get("terminal_caps")),
+                "terminal_owners": copy.deepcopy(p["profile"].get("terminal_owners")),
                 "reconcile_authority": False}
     return [s for name, s in latest.items()
             if name != current_name and len(s["nodes"]) >= 2]
@@ -9226,7 +9261,8 @@ def prior_arrival_judgement(seg: dict, prior: list[dict],
                 if was_y is None or now_y is None:
                     continue
                 foot = foot_station(seg["nodes"], seg["profile_y"],
-                                    seg["is_bridge"], arc, x, z)
+                                    seg["is_bridge"], arc, x, z,
+                                    terminal_caps=seg.get("terminal_caps"))
                 if foot is None:
                     continue
                 lat, y, s = foot

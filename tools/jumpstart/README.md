@@ -135,6 +135,20 @@ Incompatible datums remain a numerical refusal, not a ramp under unchanged
 flat-deck metadata. Refusing that leg removes its chain from the live solve;
 unrelated roads remain independently eligible.
 
+At an exactly served, verified Crossings bank, `terminal_caps` records which
+outer ground caps are retained. A withheld cap excludes the ground beyond
+that bank; it does not add a ground station on the opposite shore. The
+constructor binds `terminal_owners` to the actual crossing, both banks,
+datum and physical source. Profile/joint fitting, terrain projection and
+recorded road models retain this boundary; ordinary or unserved terminals
+keep their existing caps. When the bank endpoint is restored, eligible A*
+contacts include native cells whose areas touch its footprint, not just cells
+whose centres lie inside it. Measured approach curves may also enter the
+search as geometry only, evaluated at the current road width and under the
+current routing masks. No cached approval is reused. Every candidate still
+repeats the native geometry, held-height and writer checks. Boundary
+ownership is not proof that a complete approach or road is buildable.
+
 Protected-ground feedback uses the largest absolute cut/fill gap from a
 complete observed face pair. It does not combine heights from unrelated
 faces. A water-route retry that develops a hairpin receives the existing

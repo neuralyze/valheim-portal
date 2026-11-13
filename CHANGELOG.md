@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overwrite each other; incompatible heights refuse with their numerical
   interval instead of turning a declared flat deck into a ramp. Refused
   chains are removed from the live solve without poisoning unrelated roads.
+- Declared, served Crossings banks carry explicit ground-cap ownership through
+  profile fitting, terrain projection, junctions and lossless road models.
+  A road meets the real bank without claiming ground beyond it or appending
+  a fictitious ground station. Ordinary terminals retain their existing caps;
+  closed caps never release fixed datums or physical admission checks.
+  Bank contact searches include intersecting native-cell areas when the exact
+  bank endpoint is restored, without removing water or leg-local masks.
+  Measured bank-approach geometry is also tried as a routing candidate, with
+  current width and physical checks repeated rather than borrowing a cached
+  approval.
 - Protected-ground feedback handles cuts as well as fills, retaining complete
   observed height pairs instead of combining unrelated extrema. Water-route
   hairpins receive the existing adjacency remedy without losing accumulated

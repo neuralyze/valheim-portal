@@ -673,7 +673,8 @@ def census_segment(seg: dict, objects: list[dict], claims: Claims) -> dict:
         cls = classify(o["prefab"])
         if cls not in ("STRUCTURE", "FIXTURE"):
             continue
-        r = RB.lateral_and_y(nodes, prof, br, o["x"], o["z"])
+        r = RB.lateral_and_y(nodes, prof, br, o["x"], o["z"],
+                             terminal_caps=seg.get("terminal_caps"))
         if r is None:
             continue
         lat, road_y = float(r[0]), float(r[1])

@@ -303,6 +303,9 @@ def ribbons_from_segments(doc: dict, source: str) -> list[dict]:
                               float(ab.get("level_run_m") or 0.0),
                               ab.get("level_y")))
         for i, r in enumerate(runs):
+            caps = seg.get("terminal_caps")
+            if caps is None:
+                caps = (True, True)
             arc = [0.0]
             for k in range(1, len(r)):
                 arc.append(arc[-1] + math.hypot(r[k][0] - r[k - 1][0],
@@ -330,8 +333,12 @@ def ribbons_from_segments(doc: dict, source: str) -> list[dict]:
                 "grade_max_measured": seg.get("grade_max_measured"),
                 "xz": [(p[0], p[1]) for p in r],
                 "y": [p[2] for p in r],
+                "is_bridge": [False] * len(r),
                 "arc": arc,
                 "station_index": list(idxs[i]),
+                "terminal_caps": [
+                    bool(caps[0]) if idxs[i][0] == 0 else False,
+                    bool(caps[1]) if idxs[i][-1] == len(nodes) - 1 else False],
                 "fixed": fixed,
                 "why_fixed": why_fixed,
                 "source": source,
@@ -416,18 +423,33 @@ def pads_from_plan(units: list[dict], source: str = "plan") -> list[dict]:
 # reads a 2 m station step as junction disagreement.
 # ---------------------------------------------------------------------------
 
-def _closest_on_run(rib: dict, k: int, px: float, pz: float
+def _closest_on_run(rib: dict, k: int, px: float, pz: float, *,
+                    respect_caps: bool = True
                     ) -> tuple[float, float, float] | None:
     """Closest point of edge k->k+1 to (px,pz): (dist, y_interp, arc)."""
+    import ribbon
     xz = rib["xz"]
     ax, az = xz[k]
     bx, bz = xz[k + 1]
     dx, dz = bx - ax, bz - az
     L2 = dx * dx + dz * dz
     if L2 <= 1e-12:
-        t = 0.0
+        return None
     else:
         t = ((px - ax) * dx + (pz - az) * dz) / L2
+        caps = rib.get("terminal_caps")
+        if respect_caps and caps is not None and not all(caps):
+            br = rib.get("is_bridge")
+            if br is None:
+                br = [False] * len(xz)
+            # Withheld termini also need the adjacent-run wedge rule: a
+            # later collinear run's internal clamp must not revive the cap.
+            # This is per-run eligibility, not a global bank half-plane;
+            # genuine corners and returning branches keep their own feet.
+            ok = ribbon._projection_eligible(
+                xz, br, k, px, pz, t, terminal_caps=caps)
+            if ok is not None and not ok:
+                return None
         t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
     cx, cz = ax + dx * t, az + dz * t
     y = rib["y"][k] + (rib["y"][k + 1] - rib["y"][k]) * t
@@ -462,7 +484,7 @@ def _pad_nearest(pad: dict, px: float, pz: float) -> tuple[float, float]:
 
 
 def _foot_near(rib: dict, k_hint: int, px: float, pz: float,
-               window: int = 8) -> tuple[float, float, float]:
+               window: int = 8) -> tuple[float, float, float] | None:
     """`_y_at_near`, plus the ARC along the run of the foot it read.
 
     The arc is what a plan-time solver needs to turn a pair row into a
@@ -477,24 +499,29 @@ def _foot_near(rib: dict, k_hint: int, px: float, pz: float,
     hi = min(n - 2, k_hint + window)
     best = None
     for k in range(lo, hi + 1):
-        d, y, a = _closest_on_run(rib, k, px, pz)
+        got = _closest_on_run(rib, k, px, pz)
+        if got is None:
+            continue
+        d, y, a = got
         if best is None or d < best[1]:
             best = (y, d, a)
-    if best is None:                             # a 1-station run
-        return rib["y"][0], math.hypot(px - rib["xz"][0][0],
-                                       pz - rib["xz"][0][1]), 0.0
+    if best is None:
+        return None
     return best
 
 
 def _y_at_near(rib: dict, k_hint: int, px: float, pz: float,
-               window: int = 8) -> tuple[float, float]:
+               window: int = 8) -> tuple[float, float] | None:
     """A ribbon's design height at (px,pz), searched around `k_hint`.
 
     Windowed rather than global so the sweep stays linear; `window` stations
     either side is 16 m of road at the 2 m station pitch, which is wider
     than any corridor this gate compares.
     """
-    y, d, _a = _foot_near(rib, k_hint, px, pz, window)
+    got = _foot_near(rib, k_hint, px, pz, window)
+    if got is None:
+        return None
+    y, d, _a = got
     return y, d
 
 
@@ -523,6 +550,180 @@ def shared_point(px: float, pz: float, cx: float, cz: float,
     span = half_a + half_b
     f = 1.0 if span <= 1e-9 else half_a / span
     return px + (cx - px) * f, pz + (cz - pz) * f
+
+
+def _capped_boundary_arrangement(A, a_hint, B, b_hint, px, pz, bxz):
+    """Supporting lines, circles and vertices of the local capped footprints.
+
+    Actual feet validate these analytic candidates; supporting primitives alone
+    grant no ownership. No polygon approximation or spatial sampling is used.
+    """
+    caps_a, caps_b = A.get("terminal_caps"), B.get("terminal_caps")
+    if ((caps_a is None or all(caps_a))
+            and (caps_b is None or all(caps_b))):
+        return None
+    import ribbon
+    lines, circles, candidates = set(), set(), {(px, pz), tuple(bxz)}
+    for rib, hint in ((A, a_hint), (B, b_hint)):
+        radius = rib["half_m"]
+        br = rib.get("is_bridge")
+        if br is None:
+            br = [False] * len(rib["xz"])
+        for k in range(max(0, hint - 8), min(len(rib["xz"]) - 2, hint + 8) + 1):
+            ax, az = rib["xz"][k]
+            bx, bz = rib["xz"][k + 1]
+            dx, dz = bx - ax, bz - az
+            length = math.hypot(dx, dz)
+            if length <= 1e-6:
+                continue
+            ux, uz = dx / length, dz / length
+            side = -uz * ax + ux * az
+            lines.update(((-uz, ux, side - radius), (-uz, ux, side + radius),
+                          (ux, uz, ux * ax + uz * az),
+                          (ux, uz, ux * bx + uz * bz)))
+            for step, (ex, ez) in ((-1, (ax, az)), (1, (bx, bz))):
+                j = ribbon._adjacent_ground_run(rib["xz"], br, k, step)
+                if j is not None:
+                    adx = rib["xz"][j + 1][0] - rib["xz"][j][0]
+                    adz = rib["xz"][j + 1][1] - rib["xz"][j][1]
+                    if adx * adx + adz * adz > 1e-12:
+                        lines.add((adx, adz, adx * ex + adz * ez))
+            circles.update(((ax, az, radius), (bx, bz, radius)))
+            candidates.update(((ax, az), (bx, bz), ((ax + bx) / 2., (az + bz) / 2.)))
+    lines, circles = sorted(lines), sorted(circles)
+    for i, (nx, nz, c) in enumerate(lines):
+        for mx, mz, d in lines[i + 1:]:
+            det = nx * mz - nz * mx
+            if det != 0.:
+                candidates.add(((c * mz - nz * d) / det,
+                                (nx * d - c * mx) / det))
+        for cx, cz, radius in circles:
+            norm2 = nx * nx + nz * nz
+            delta = c - nx * cx - nz * cz
+            h2 = radius * radius - delta * delta / norm2
+            if h2 < -1e-12:
+                continue
+            fx, fz = cx + nx * delta / norm2, cz + nz * delta / norm2
+            along = math.sqrt(max(0., h2) / norm2)
+            candidates.update(((fx - nz * along, fz + nx * along),
+                               (fx + nz * along, fz - nx * along)))
+    for i, (ax, az, ar) in enumerate(circles):
+        for bx, bz, br in circles[i + 1:]:
+            dx, dz = bx - ax, bz - az
+            distance = math.hypot(dx, dz)
+            if distance == 0. or distance > ar + br or distance < abs(ar - br):
+                continue
+            along = (ar * ar - br * br + distance * distance) / (2. * distance)
+            h2 = ar * ar - along * along
+            if h2 < -1e-12:
+                continue
+            fx, fz = ax + along * dx / distance, az + along * dz / distance
+            side = math.sqrt(max(0., h2)) / distance
+            candidates.update(((fx - dz * side, fz + dx * side),
+                               (fx + dz * side, fz - dx * side)))
+    return lines, circles, candidates
+
+
+def _capped_shared_point(A, a_hint, B, b_hint, px, pz, bxz):
+    """An analytic point owned by both capped carriageways, or None."""
+    arrangement = _capped_boundary_arrangement(A, a_hint, B, b_hint, px, pz, bxz)
+    if arrangement is None:
+        return None
+    _lines, _circles, candidates = arrangement
+    qx, qz = shared_point(px, pz, *bxz, A["half_m"], B["half_m"])
+    for x, z in sorted(candidates, key=lambda p: ((p[0] - qx) ** 2
+                                                 + (p[1] - qz) ** 2, p)):
+        fa = _foot_near(A, a_hint, x, z)
+        fb = _foot_near(B, b_hint, x, z)
+        if (fa is not None and fb is not None
+                and fa[1] <= A["half_m"] + 1e-9
+                and fb[1] <= B["half_m"] + 1e-9):
+            return x, z, fa, fb
+    return None
+
+
+def _capped_near_pair(A, a_hint, B, b_hint, px, pz, bxz):
+    """Closest eligible footprint-boundary pair within the existing near limit.
+
+    Disjoint footprints have no shared height-reading point. Boundary minima
+    occur at an arrangement vertex or at a stationary line/circle pair. Keep
+    the two actual reading points and their feet, never an excluded cap foot.
+    """
+    arrangement = _capped_boundary_arrangement(A, a_hint, B, b_hint, px, pz, bxz)
+    if arrangement is None:
+        return None
+    lines, circles, candidates = arrangement
+    caches = ({}, {})
+    best, best_key = None, None
+
+    def foot(side, point):
+        cache = caches[side]
+        if point not in cache:
+            rib, hint = (A, a_hint) if side == 0 else (B, b_hint)
+            got = _foot_near(rib, hint, *point)
+            cache[point] = (got if got is not None
+                            and got[1] <= rib["half_m"] + 1e-9 else None)
+        return cache[point]
+
+    def consider(a, b):
+        nonlocal best, best_key
+        distance = math.hypot(a[0] - b[0], a[1] - b[1])
+        if distance > NEAR_MISS_M:
+            return
+        fa, fb = foot(0, a), foot(1, b)
+        if fa is None or fb is None:
+            return
+        anchor = math.hypot(a[0] - px, a[1] - pz) + math.hypot(
+            b[0] - bxz[0], b[1] - bxz[1])
+        key = (round(distance, 12), anchor, a, b)
+        if best_key is None or key < best_key:
+            best_key = key
+            best = a, b, fa, fb, distance
+
+    def project(point):
+        x, z = point
+        for nx, nz, c in lines:
+            scale = (c - nx * x - nz * z) / (nx * nx + nz * nz)
+            yield x + nx * scale, z + nz * scale
+        for cx, cz, radius in circles:
+            dx, dz = x - cx, z - cz
+            distance = math.hypot(dx, dz)
+            if distance > 0.:
+                yield cx + radius * dx / distance, cz + radius * dz / distance
+                yield cx - radius * dx / distance, cz - radius * dz / distance
+
+    for point in sorted(candidates):
+        owns_a, owns_b = foot(0, point), foot(1, point)
+        if owns_a is None and owns_b is None:
+            continue
+        for other in project(point):
+            if owns_a is not None:
+                consider(point, other)
+            if owns_b is not None:
+                consider(other, point)
+    for nx, nz, c in lines:
+        norm2 = nx * nx + nz * nz
+        for cx, cz, radius in circles:
+            offset = (c - nx * cx - nz * cz) / norm2
+            along = radius / math.sqrt(norm2)
+            for sign in (-1., 1.):
+                circle = cx + sign * nx * along, cz + sign * nz * along
+                line = cx + nx * offset, cz + nz * offset
+                consider(circle, line)
+                consider(line, circle)
+    for i, (ax, az, ar) in enumerate(circles):
+        for bx, bz, br in circles[i + 1:]:
+            dx, dz = bx - ax, bz - az
+            distance = math.hypot(dx, dz)
+            if distance == 0.:
+                continue
+            for sa in (-1., 1.):
+                for sb in (-1., 1.):
+                    a = ax + sa * ar * dx / distance, az + sa * ar * dz / distance
+                    b = bx + sb * br * dx / distance, bz + sb * br * dz / distance
+                    consider(a, b)
+                    consider(b, a)
+    return best
 
 
 # ---------------------------------------------------------------------------
@@ -604,6 +805,11 @@ def find_conflicts(ribbons: list[dict], pads: list[dict],
                    depends_on: tuple = JUNCTION_POPULATION_DEPENDS_ON) -> dict:
     """Every pair of participants that share ground, with its height spread.
 
+    Overlapping capped benches read one shared point. Disjoint capped benches
+    within NEAR_MISS_M read their two closest eligible boundary points, carrying
+    both coordinates and their actual separation; `xz` then locates A's point,
+    not an alleged shared or midpoint surface. Their feet feed the same solver.
+
     One row per (A, B, A's station): exactly one reading per place, and no
     lossy bucketing.  An earlier version kept only the worst row per 4 m
     cell, and MEASURED on the recorded plans that DROPPED the reading the
@@ -628,8 +834,9 @@ def find_conflicts(ribbons: list[dict], pads: list[dict],
 
     # --- ribbon vs ribbon ---------------------------------------------------
     #
-    # ONE ROW PER (A's STATION, B's RUN), AT B's CLOSEST POINT, AND BOTH
-    # HEIGHTS READ AT THE SHARED POINT.  Two earlier versions of this loop
+    # ONE ROW PER (A's STATION, B's RUN), AT THE CLOSEST VALID READING.
+    # Overlaps read a shared point; capped near misses retain both boundary
+    # readings and their positive gap. Two earlier versions of this loop
     # were wrong in the same family of way and both were caught by the
     # PASS-direction fixtures rather than by the fail-direction ones:
     #
@@ -648,8 +855,9 @@ def find_conflicts(ribbons: list[dict], pads: list[dict],
         for i, (px, pz) in enumerate(A["xz"]):
             cx = int(math.floor(px / CELL_M))
             cz = int(math.floor(pz / CELL_M))
-            # per candidate run: (dist, closest point, its edge index)
-            nearest: dict[int, tuple[float, float, float, int]] = {}
+            # Keep all discovered edges: the closest uncapped edge can be a
+            # withheld bank fan, while a farther returning branch owns ground.
+            discovered: dict[int, list[tuple[float, int, float]]] = {}
             seen: set[tuple[int, int]] = set()
             for gx in range(cx - span, cx + span + 1):
                 for gz in range(cz - span, cz + span + 1):
@@ -663,7 +871,10 @@ def find_conflicts(ribbons: list[dict], pads: list[dict],
                             if (bi, kk) in seen:
                                 continue
                             seen.add((bi, kk))
-                            dist, _yb, arcb = _closest_on_run(B, kk, px, pz)
+                            got = _closest_on_run(B, kk, px, pz, respect_caps=False)
+                            if got is None:
+                                continue
+                            dist, _yb, arcb = got
                             if bi == ai:
                                 # Same ribbon: adjacent stations are not a
                                 # junction.  Filtered per EDGE, before the
@@ -673,20 +884,66 @@ def find_conflicts(ribbons: list[dict], pads: list[dict],
                                 if abs(A["arc"][i] - arcb) < (
                                         2 * A["half_m"] + ADJACENT_ARC_PAD_M):
                                     continue
-                            cur = nearest.get(bi)
-                            if cur is None or dist < cur[0]:
-                                nearest[bi] = (dist, kk, arcb)
-            for bi, (dist, kk, _arcb) in nearest.items():
+                            discovered.setdefault(bi, []).append((dist, kk, arcb))
+            for bi, candidates in discovered.items():
                 B = A if bi == ai else ribbons[bi]
-                gap = dist - A["half_m"] - B["half_m"]
-                if gap > NEAR_MISS_M:
+                # Stable distance order preserves the old closest-edge tie
+                # policy, but rejection cannot hide another discovered edge.
+                capped = any(caps is not None and not all(caps)
+                             for caps in (A.get("terminal_caps"), B.get("terminal_caps")))
+                selected, selected_key = None, None
+                for dist, kk, _arcb in sorted(candidates, key=lambda c: c[0]):
+                    gap = dist - A["half_m"] - B["half_m"]
+                    if gap > NEAR_MISS_M:
+                        break
+                    bxz = _closest_xz(B, kk, px, pz)
+                    qx, qz = shared_point(px, pz, bxz[0], bxz[1],
+                                          A["half_m"], B["half_m"])
+                    exact_witness = False
+                    reading_points = None
+                    foot_a = _foot_near(A, i, qx, qz)
+                    foot_b = _foot_near(B, kk, qx, qz)
+                    # A finite foot can belong to a distant returning branch.
+                    # For capped pairs, only membership in BOTH actual benches
+                    # licenses the shared-point fast path; uncapped distance is
+                    # broadphase evidence, never their physical gap.
+                    if (capped and foot_a is not None and foot_b is not None
+                            and foot_a[1] <= A["half_m"] + 1e-9
+                            and foot_b[1] <= B["half_m"] + 1e-9):
+                        gap = 0.0
+                        exact_witness = True
+                        reading_points = ([qx, qz], [qx, qz])
+                    elif capped or foot_a is None or foot_b is None:
+                        witness = _capped_shared_point(A, i, B, kk, px, pz, bxz)
+                        if witness is not None:
+                            qx, qz, foot_a, foot_b = witness
+                            gap = 0.0
+                            reading_points = ([qx, qz], [qx, qz])
+                        else:
+                            pair = _capped_near_pair(A, i, B, kk, px, pz, bxz)
+                            if pair is None:
+                                continue
+                            a_point, b_point, foot_a, foot_b, gap = pair
+                            # The row locator is on A. B's height is read at
+                            # its own boundary, never at an unowned midpoint.
+                            qx, qz = a_point
+                            reading_points = (list(a_point), list(b_point))
+                        exact_witness = True
+                    key = (round(max(0., gap), 12), dist)
+                    if selected_key is None or key < selected_key:
+                        selected_key = key
+                        selected = (dist, gap, qx, qz, foot_a, foot_b,
+                                    exact_witness, reading_points)
+                    # A later capped branch may overlap even when this one
+                    # only comes near. Ordinary rows keep their old selection.
+                    if gap <= 0. or not capped:
+                        break
+                if selected is None:
                     continue
-                # B's closest point, recovered in world XZ
-                bxz = _closest_xz(B, kk, px, pz)
-                qx, qz = shared_point(px, pz, bxz[0], bxz[1],
-                                      A["half_m"], B["half_m"])
-                ya, _da, fa = _foot_near(A, i, qx, qz)
-                yb, _db, fb = _foot_near(B, kk, qx, qz)
+                (dist, gap, qx, qz, foot_a, foot_b,
+                 exact_witness, reading_points) = selected
+                ya, _da, fa = foot_a
+                yb, _db, fb = foot_b
                 rows.append({
                     "a": A["label"], "b": B["label"],
                     "a_kind": "ribbon", "b_kind": "ribbon",
@@ -704,6 +961,12 @@ def find_conflicts(ribbons: list[dict], pads: list[dict],
                     # of, handed to a plan-time solver so it binds this row
                     # and not a re-projection of it.
                     "a_foot_arc": fa, "b_foot_arc": fb,
+                    **({"capped_witness": True} if exact_witness else {}),
+                    **({"reading_basis": ("capped_shared_point" if gap == 0.
+                                          else "capped_boundary_pair"),
+                        "a_reading_xz": reading_points[0],
+                        "b_reading_xz": reading_points[1]}
+                       if reading_points is not None else {}),
                 })
 
     # --- ribbon vs pad ------------------------------------------------------
@@ -734,7 +997,10 @@ def find_conflicts(ribbons: list[dict], pads: list[dict],
                     continue
                 cxz = _pad_nearest(pad, px, pz)
                 qx, qz = shared_point(px, pz, cxz[0], cxz[1], edge, 0.0)
-                ya, _da, fa = _foot_near(A, i, qx, qz)
+                foot_a = _foot_near(A, i, qx, qz)
+                if foot_a is None:
+                    continue
+                ya, _da, fa = foot_a
                 rows.append({
                     "a": A["label"], "b": pad["label"],
                     "a_kind": "ribbon", "b_kind": "pad",
@@ -768,6 +1034,11 @@ def find_conflicts(ribbons: list[dict], pads: list[dict],
         r["impassable"] = r["spread_m"] > r["slide_allow_m"]
         r["over_budget"] = (not r["impassable"]
                             and r["spread_m"] > r["budget_allow_m"])
+        # These coordinates and arcs are solver inputs, not display labels.
+        # Quantising a capped witness can move it out of a skinny intersection
+        # and make its published heights refer to a different physical point.
+        if r.get("capped_witness"):
+            continue
         r["spread_m"] = round(r["spread_m"], 3)
         r["gap_m"] = round(r["gap_m"], 3)
         r["a_y"] = round(r["a_y"], 3)
@@ -789,7 +1060,10 @@ def _height_at(part: dict, px: float, pz: float) -> tuple[float, float] | None:
         ax, az = part["xz"][k]
         if abs(ax - px) > 64.0 or abs(az - pz) > 64.0:
             continue
-        d, y, _arc = _closest_on_run(part, k, px, pz)
+        got = _closest_on_run(part, k, px, pz)
+        if got is None:
+            continue
+        d, y, _arc = got
         if best is None or d < best[1]:
             best = (y, d)
     return best

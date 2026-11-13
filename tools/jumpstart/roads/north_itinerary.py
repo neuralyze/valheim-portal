@@ -517,6 +517,8 @@ def _north_gate_diagnostic(net, rec, gate, fld, pois):
     if gate == "write_gate":
         rec["write_gate"] = net.write_gate(rec, pois, worldseed.seed())
         return net.write_gate_rejection(rec)
+    if gate == "profile_constraints":
+        return net.profile_constraint_rejection(rec)
     if gate == "self_adjacency":
         return net.self_adjacency_rejection(rec)
     if gate == "terminal_landing":
@@ -599,7 +601,8 @@ def _require_source_footprint(seg: dict, source_xz) -> None:
         np.asarray([p[:2] for p in seg["nodes"]], dtype=np.float64),
         np.asarray(seg["profile_y"], dtype=np.float64),
         np.asarray(seg["is_bridge"], dtype=bool),
-        float(source_xz[0]), float(source_xz[1]))
+        float(source_xz[0]), float(source_xz[1]),
+        terminal_caps=seg.get("terminal_caps"))
     half = ribbon.footprint_half_m(float(seg["width_m"]))
     if foot is None or foot[0] > half + ribbon.EDGE_EPS_M:
         raise ValueError(

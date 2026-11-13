@@ -2451,6 +2451,87 @@ def _pad_arrival_candidates(edge, which, destination, corr, fld, width_m,
         corr.forbid = old_forbid
 
 
+def _terminal_contact_key(ends):
+    def key(value):
+        if isinstance(value, dict):
+            return (tuple(value["xz"]),
+                    tuple(tuple(p) for p in value["bank_path"]))
+        return None if value is None else tuple(value)
+    return key(ends.get("a")), key(ends.get("b"))
+
+
+def _bank_path_allowed(corr, path, extra_forbid):
+    samples, _ = routemod.resample(
+        path, min(STATION_M, corr.cell_m / 2.0))
+    for x, z in samples:
+        try:
+            i, j = corr.cell_of(float(x), float(z))
+        except ValueError:
+            return False
+        if (corr.wet[i, j] or corr.blocked(i, j)
+                or corr.water_forbidden[i, j]
+                or corr.forbid_all_water and corr.water[i, j]
+                or extra_forbid is not None and extra_forbid[i, j]):
+            return False
+    return True
+
+
+def _bank_approach_contacts(edge, end, corr, extra_forbid):
+    """Try measured approach geometry, never its cached acceptance verdict."""
+    node_id = edge[end]
+    node = specmod.NODES[node_id]
+    if node.get("kind") != "abutment" or not node.get("crossing"):
+        return []
+    owner = _declared_bank_owner(node_id)
+    out = []
+    for approach in node["measured"]["physical"].get("planned_approaches", []):
+        points = approach.get("nodes", [])
+        bridge = approach.get("is_bridge", [])
+        if (len(points) < 3 or len(bridge) != len(points)
+                or not bridge[-1] or any(bridge[:-1])
+                or not np.array_equal(points[-2], owner["bank_xz"])
+                or not np.array_equal(points[-1], owner["opposite_xz"])):
+            continue
+        # The recorded real opposite-bank bridge marker is NOT ground.
+        path = tuple(tuple(map(float, p[:2])) for p in reversed(points[:-1]))
+        if _bank_path_allowed(corr, path, extra_forbid):
+            out.append({"xz": path[-1], "bank_path": path, "owner": owner})
+    return out
+
+
+def _bank_profile_contacts(edge, end, corr, original, extra_forbid):
+    """Every allowed native cell touching the same bank and old contact."""
+    node = specmod.NODES[edge[end]]
+    if node.get("level_y") is None:
+        return []
+    x, z = map(float, node["xz"])
+    radius = routemod.footprint_half_m(float(
+        edge.get("width_m") or WIDTH_M[edge["cls"]]))
+    i0, j0 = corr.cell_of(x, z)
+    # Restored Crossings banks are the actual road endpoints. The A* contact
+    # is an intermediate cell, so use its area, not only its centre: otherwise
+    # a diagonal cell touching the owned footprint is silently excluded.
+    cell_half = (corr.cell_m / 2.0 if node.get("kind") == "abutment"
+                 and node.get("crossing") else 0.0)
+    r = math.ceil((radius + cell_half) / corr.cell_m)
+
+    def touches(point, anchor):
+        dx = max(0.0, abs(point[0] - anchor[0]) - cell_half)
+        dz = max(0.0, abs(point[1] - anchor[1]) - cell_half)
+        return math.hypot(dx, dz) <= radius
+    out = []
+    for i in range(max(0, i0-r), min(corr.m, i0+r+1)):
+        for j in range(max(0, j0-r), min(corr.m, j0+r+1)):
+            if (corr.wet[i, j] or corr.blocked(i, j)
+                    or extra_forbid is not None and extra_forbid[i, j]):
+                continue
+            point = tuple(map(float, corr.cell_world(i, j)))
+            if touches(point, (x, z)) and touches(point, original):
+                out.append(point)
+    out.sort(key=lambda p: (math.hypot(p[0]-original[0], p[1]-original[1]), p))
+    return out
+
+
 def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   land_only: bool = False,
                   fixed_pts: list | None = None, *,
@@ -2462,10 +2543,10 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   trim: dict[str, int] | None = None,
                   trim_applied: bool = False,
                   line_out: list | None = None) -> dict:
-    """Build/profile against terminal pads; retry a proven bad attachment.
+    """Build/profile against owned terminals; retry another eligible contact.
 
-    Local overrides never move another leg's shared anchor. Each candidate
-    repeats A*, crossing clearance, the full profile and native pad closure.
+    Local overrides never move another leg's shared anchor or terminal datum.
+    Each candidate repeats A*, clearance, full profile and native pad closure.
     Exhaustion names the numerical refusal, not global infeasibility.
     """
     from collections import deque                          # noqa: PLC0415
@@ -2475,6 +2556,9 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     required = {}
     attempts = []
     first_refusal = None
+    original_endpoints = None
+    original_contacts = None
+    required_banks = {}
     while pending:
         ends = pending.popleft()
         state = {}
@@ -2484,9 +2568,68 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                 joint=state, extra_forbid=extra_forbid,
                 extra_guidance=extra_guidance, ceiling=ceiling, trim=trim,
                 trim_applied=trim_applied, line_out=line_out, _search_ends=ends)
+            if original_endpoints is None:
+                original_endpoints = (tuple(result["nodes"][0]),
+                                      tuple(result["nodes"][-1]))
+                original_contacts = result.get("search_contacts")
+            owned = profile_constraint_rejection(result)
+            if owned is not None and result.get("abutments"):
+                if fixed_pts is not None:
+                    raise ValueError(owned["why"])
+                first_refusal = first_refusal or ValueError(owned["why"])
+                attempts.append({"search_ends": ends, **owned})
+                for bank in result["abutments"]:
+                    end = bank["end"]
+                    required_banks.setdefault(end, bank)
+                    key = (end, "bank", bank["node"])
+                    if key not in candidates:
+                        original = (original_contacts[end] if original_contacts
+                                    else original_endpoints[0 if end == "a" else 1])
+                        candidates[key] = _bank_profile_contacts(
+                            edge, end, corr, original, extra_forbid)
+                    current = tuple((result.get("search_contacts") or {}).get(
+                        end, result["nodes"][0 if end == "a" else -1]))
+                    for point in candidates[key]:
+                        if point == current:
+                            continue
+                        trial = {**ends, end: point}
+                        signature = _terminal_contact_key(trial)
+                        if signature not in seen:
+                            seen.add(signature)
+                            pending.append(trial)
+                    approach_key = (end, "measured-approach", bank["node"])
+                    if approach_key not in candidates:
+                        candidates[approach_key] = _bank_approach_contacts(
+                            edge, end, corr, extra_forbid)
+                    for contact in candidates[approach_key]:
+                        trial = {**ends, end: contact}
+                        signature = _terminal_contact_key(trial)
+                        if signature not in seen:
+                            seen.add(signature)
+                            pending.append(trial)
+                print(f"{edge['id']}: completed owned-terminal candidate "
+                      f"{len(attempts)}; {owned['why']}; "
+                      f"{len(pending)} contact candidate(s) remain", flush=True)
+                continue
+            if required_banks:
+                detached = _retry_terminal_rejection(
+                    edge, original_endpoints, result["nodes"])
+                if detached is not None:
+                    raise ValueError(f"bank contact detached: {detached}")
+                for end, bank in required_banks.items():
+                    point = result["nodes"][0 if end == "a" else -1]
+                    anchor = specmod.NODES[bank["node"]]["xz"]
+                    width = float(edge.get("width_m") or WIDTH_M[edge["cls"]])
+                    if math.hypot(point[0]-anchor[0], point[1]-anchor[1]) \
+                            > routemod.footprint_half_m(width):
+                        raise ValueError("rebuilt endpoint no longer touches its bank")
+                    if not any(q["end"] == end and q["node"] == bank["node"]
+                               and q["level_y"] == bank["level_y"]
+                               for q in result.get("abutments") or ()):
+                        raise ValueError("bank contact lost its original owned datum")
             destinations = _fit_pad_arrivals(result, state)
             if any(destinations.get(end, {}).get("pad") != required[end]["pad"]
-                   for end in ends):
+                   for end in ends if end in required):
                 raise ValueError("alternate attachment no longer reaches "
                                  "the same terminal pad")
         except _PadArrivalRefusal as exc:
@@ -2505,7 +2648,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                         edge, end, dest, corr, fld, width, extra_forbid)
                 for point in candidates[key]:
                     trial = {**ends, end: point}
-                    signature = (trial.get("a"), trial.get("b"))
+                    signature = _terminal_contact_key(trial)
                     if signature not in seen:
                         seen.add(signature)
                         pending.append(trial)
@@ -2516,18 +2659,18 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
             attempts.append({"search_ends": ends, "refused": str(exc)})
             continue
         if attempts:
-            result["pad_arrival_reroute"] = {
-                "attempts": attempts, "search_ends": ends,
+            result["terminal_profile_reroute"] = {
+                "attempts": attempts, "search_ends": ends, "banks": required_banks,
                 "destinations": destinations,
-                "why": "the full incoming profile could not meet its pad "
-                       "inside the native bounds/grade ladder; rebuilt from "
-                       "an eligible attachment to the same pad"}
+                "why": "the full incoming profile could not meet fixed terminal "
+                       "constraints inside the native bounds/grade ladder; "
+                       "rebuilt at an eligible contact with the same bank or pad"}
         if joint is not None:
             joint.clear()
             joint.update(state)
         return result
     raise ValueError(
-        f"{edge['id']}: eligible same-pad attachment search exhausted after "
+        f"{edge['id']}: eligible terminal attachment search exhausted after "
         f"{len(attempts)} full-line refusal(s); {first_refusal}") from first_refusal
 
 
@@ -2615,6 +2758,61 @@ def _build_with_chord_clearance(fld, edge: dict, corr: routemod.Corridor, pois: 
                        "unchanged writer-clearance boundary; re-searched "
                        "with leg-local guidance, then rebuilt normally"}
         return result
+
+
+def _declared_bank_owner(node_id):
+    node = specmod.NODES[node_id]
+    crossing_id = node.get("crossing")
+    crossing = next((c for c in specmod.DECLARED_CROSSINGS
+                     if c["crossing_id"] == crossing_id), None)
+    if (crossing is None or crossing.get("owner") != "Crossings"
+            or crossing.get("status") != "declared"):
+        raise ValueError(f"{node_id}: missing declared Crossings bank owner")
+    banks = [crossing["bank_a"], crossing["bank_b"]]
+    matched = [i for i, bank in enumerate(banks) if bank["node"] == node_id]
+    if len(matched) != 1:
+        raise ValueError(f"{node_id}: crossing does not own exactly one bank")
+    bank, opposite = banks[matched[0]], banks[1 - matched[0]]
+    other = specmod.NODES[opposite["node"]]
+    datum = float(node["level_y"])
+    proof = node.get("measured", {}).get("physical", {})
+    if (not np.array_equal(bank["xz"], node["xz"])
+            or float(bank["road_deck_y"]) != datum
+            or other.get("crossing") != crossing_id
+            or not np.array_equal(opposite["xz"], other["xz"])
+            or float(opposite["road_deck_y"]) != float(other["level_y"])
+            or not proof.get("ok") or proof.get("status") != "verified"
+            or not proof.get("source")):
+        raise ValueError(f"{node_id}: declared bank geometry/datum/source mismatch")
+    return {"crossing_id": crossing_id, "node": node_id,
+            "bank_xz": list(map(float, bank["xz"])),
+            "opposite_node": opposite["node"],
+            "opposite_xz": list(map(float, opposite["xz"])),
+            "datum_y": datum, "source": copy.deepcopy(proof["source"])}
+
+
+def _declared_terminal_caps(edge, points, required_y, bridge, abutments):
+    """Bind a withheld ground cap to its actual declared Crossings owner.
+
+    This is boundary ownership, not permission to change a datum or a mask.
+    The required profile still has to satisfy every native held bound.
+    """
+    caps = [True, True]
+    owners = {}
+    for end, k in (("a", 0), ("b", -1)):
+        node_id = edge[end]
+        node = specmod.NODES[node_id]
+        active = next((a for a in abutments
+                       if a["end"] == end and a["node"] == node_id), None)
+        if (active is None or node.get("kind") != "abutment"
+                or not node.get("crossing")
+                or bool(bridge[k])
+                or not np.array_equal(points[k], node["xz"])
+                or float(required_y[k]) != float(node["level_y"])):
+            continue
+        owners[end] = _declared_bank_owner(node_id)
+        caps[0 if end == "a" else 1] = False
+    return tuple(caps), owners
 
 
 def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
@@ -2710,6 +2908,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         corr.guidance = guidance
 
     terminal = None
+    search_contacts = None
     if fixed_pts is not None:
         # Arclength recomputed from the points themselves, never carried over
         # from the file: a station list and an `s` array that disagree is a
@@ -2730,17 +2929,50 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
                            else shared_forbid | extra_forbid)
         try:
             ends = _search_ends or {}
-            raw = corr.search(
-                ends["a"] if "a" in ends else search_xz(
-                    edge["a"], corr, width_m=width_m, fld=fld,
-                    extra_forbid=extra_forbid),
-                ends["b"] if "b" in ends else search_xz(
-                    edge["b"], corr, width_m=width_m, fld=fld,
-                    extra_forbid=extra_forbid))
+            def target(end):
+                if end not in ends:
+                    return search_xz(edge[end], corr, width_m=width_m,
+                                     fld=fld, extra_forbid=extra_forbid)
+                contact = ends[end]
+                if isinstance(contact, dict):
+                    if (contact["owner"]["node"] != edge[end]
+                            or not np.array_equal(
+                                contact["bank_path"][0], specmod.NODES[edge[end]]["xz"])
+                            or not _bank_path_allowed(
+                                corr, contact["bank_path"], extra_forbid)):
+                        raise ValueError(f"{edge['id']}: measured bank path is outside the current routing domain")
+                    return contact["xz"]
+                return contact
+            raw = corr.search(target("a"), target("b"))
         finally:
             corr.forbid_all_water = False
             corr.forbid = shared_forbid
         terminal = corr.last_terminal
+        search_contacts = {"a": list(map(float, raw[0])),
+                           "b": list(map(float, raw[-1]))}
+        # Match the physical crossing producer: the road really meets the
+        # bank, rather than treating the nearest A* cell as that bank.
+        raw = list(raw)
+        for end in ("a", "b"):
+            contact = ends.get(end)
+            if not isinstance(contact, dict):
+                continue
+            path = list(contact["bank_path"])
+            if end == "a":
+                raw = path[:-1] + raw if np.array_equal(path[-1], raw[0]) else path + raw
+            else:
+                path.reverse()
+                raw = raw + path[1:] if np.array_equal(raw[-1], path[0]) else raw + path
+        for end, k in (("a", 0), ("b", -1)):
+            node = specmod.NODES[edge[end]]
+            if node.get("kind") != "abutment" or not node.get("crossing"):
+                continue
+            bank = list(map(float, node["xz"]))
+            if not np.array_equal(raw[k], bank):
+                if end == "a":
+                    raw.insert(0, bank)
+                else:
+                    raw.append(bank)
         # Simplify tolerance is DELIBERATELY tight.  A* returns one node per
         # 4 m cell, i.e. a staircase, and the ribbon is rasterised from
         # segments, so a staircase shows as a scalloped edge from the first
@@ -3174,9 +3406,12 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
                                     routemod.GRADE_CEILING) if g > g_max]
     design_rung = g_max
     sa_grade, sa_batter, sa_lattice = writer_batter()
+    terminal_caps, terminal_owners = _declared_terminal_caps(
+        edge, pts, lo, free, abutments)
     fl = routemod.fit_ladder(t, s, lo, hi, free, ladder, pts=pts,
                              width_m=width_m, grade=sa_grade,
-                             batter_m=sa_batter, lattice_m=sa_lattice, held=held)
+                             batter_m=sa_batter, lattice_m=sa_lattice, held=held,
+                             terminal_caps=terminal_caps)
     fit, g_max = fl["fit"], fl["rung"]
     relaxed_to = (ladder[-1] if not fl["terrain_feasible"]
                   else None if g_max == design_rung else g_max)
@@ -3224,6 +3459,8 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     if joint is not None:
         joint.update({"s": np.asarray(s, dtype=np.float64), "t": t,
                       "lo": lo, "hi": hi, "free": free, "held": held,
+                      "terminal_caps": terminal_caps,
+                      "terminal_owners": copy.deepcopy(terminal_owners),
                       "tw_lo": tw_lo, "tw_hi": tw_hi,
                       "spans": [tuple(v) for v in fit["infeasible_spans"]],
                       "cand": fl["cand"], "rung": float(g_max),
@@ -3265,12 +3502,23 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
 
     near = poimod.near_centreline(pois, pts, half_w)
     violations = [r for r in near if r["violates_hard"]]
+    held_bad = np.flatnonzero(held & ((y < lo - 1e-9) | (y > hi + 1e-9)))
+    profile_constraints = {
+        "verdict": "REFUSED" if len(held_bad) else "CLEAR",
+        "held_stations": int(np.count_nonzero(held)),
+        "bindings": [
+            {"station": int(k), "xz": [float(v) for v in pts[k]],
+             "lower_y": float(lo[k]), "upper_y": float(hi[k]),
+             "profile_y": float(y[k])} for k in held_bad]}
 
     rec = {
         "id": edge["id"], "cls": cls, "pri": edge["pri"],
         "island": a_node["island"], "patch": edge.get("patch", a_node["patch"]),
         "from": edge["a"], "to": edge["b"],
         "why": edge.get("why", ""),
+        "search_contacts": search_contacts,
+        "terminal_caps": terminal_caps,
+        "terminal_owners": terminal_owners,
         **({"transport_access": edge["transport_access"]} if edge.get("transport_access") else {}),
         "width_m": width_m, "station_m": STATION_M,
         "length_m": round(float(s[-1]), 1),
@@ -3310,6 +3558,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
                              (None, g_max)
                              else "self_adjacency"),
         "self_adjacency": self_adjacency,
+        "profile_constraints": profile_constraints,
         **stats,
         "clamp_measured_over": "the LEVEL road footprint, +/-"
                                f"{routemod.footprint_half_m(width_m):g} m of "
@@ -3479,12 +3728,27 @@ def self_adjacency_rejection(seg: dict) -> dict | None:
     }
 
 
+def profile_constraint_rejection(seg):
+    record = seg.get("profile_constraints") or {}
+    if record.get("verdict") != "REFUSED":
+        return None
+    binding = record["bindings"][0]
+    return {"why": (
+        f"owned profile constraint at station {binding['station']}: "
+        f"{binding['lower_y']:.6f} <= y <= {binding['upper_y']:.6f}, "
+        f"candidate y={binding['profile_y']:.6f}; "
+        f"{len(record['bindings'])} owned station(s) refused"),
+        "profile_constraints": record}
+
+
 def plan_refusal(seg: dict, gen_pois: list, seed: str, *, fld,
                  coverage: bool = True) -> str | None:
     """Which of `main`'s per-leg plan-time refusals this leg would earn, by
     name, or None -- so a remedy is never adopted that `main` would then
     refuse for something else.  `coverage=False` is the band-free probe's
     question (CENSUS_BAND_DEPENDS_ON): every refusal EXCEPT unread ground."""
+    if profile_constraint_rejection(seg) is not None:
+        return "profile_constraints"
     if max((c["span_m"] for c in seg["crossings"]), default=0.0) \
             > MAX_BRIDGE_SPAN_M:
         return "span"
@@ -3713,6 +3977,7 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
     caller, without repeating its unchanged search and profile fit."""
     rec, joint = one(None) if initial is None else initial
     if (_ADJACENCY_REROUTE_MODE == "off"
+            or profile_constraint_rejection(rec) is not None
             or self_adjacency_rejection(rec) is None):
         return rec, joint
     original, last, discs = (rec, joint), rec, []
@@ -3725,6 +3990,8 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
         try:
             cand, cj = one(adjacency_mask(corr, discs))
         except ValueError:
+            return original
+        if profile_constraint_rejection(cand) is not None:
             return original
         if self_adjacency_rejection(cand) is None:
             cand["adjacency_reroute"] = {
@@ -4861,6 +5128,8 @@ def junction_legs(segments: list[dict], joints: dict[str, dict]) -> list[dict]:
              "s": joints[sg["id"]]["s"], "lo": joints[sg["id"]]["lo"],
              "hi": joints[sg["id"]]["hi"],
              "held": joints[sg["id"]].get("held"),
+             "terminal_caps": sg.get("terminal_caps"),
+             "terminal_owners": sg.get("terminal_owners", {}),
              "spans": joints[sg["id"]]["spans"],
              "cand": joints[sg["id"]]["cand"],
              "rung": joints[sg["id"]]["rung"],
@@ -7739,23 +8008,36 @@ def selftest_abutment_bench() -> int:
     edge = {"id": "AB", "a": "ab-abutment", "b": "ab-far", "cls": "trunk",
             "pri": 3}
     specmod.NODES["ab-abutment"] = {
-        "island": "ab", "patch": "ab", "kind": "abutment", "level_y": 30.6,
+        "island": "ab", "patch": "ab", "kind": "abutment", "level_y": 32.5,
         "xz": (0.0, 0.0), "ground_y": 31.4}
     specmod.NODES["ab-far"] = {"island": "ab", "patch": "ab",
                                "kind": "extremity", "xz": (80.0, 0.0)}
 
-    def built(mode):
+    def built(mode, *, classification_only=False):
         global _ABUTMENT_BENCH_MODE
         was = _ABUTMENT_BENCH_MODE
         _ABUTMENT_BENCH_MODE = mode
         try:
-            rec = build_segment(fld, edge, corr, [], fixed_pts=line,
-                                census=None, joint={})
+            if classification_only:
+                # A counterfactual detector may expose incompatible owned
+                # datums. Inspect that classification, never admit its road.
+                rec, _ = _build_segment_once(
+                    fld, edge, corr, [], fixed_pts=line, census=None, joint={})
+            else:
+                rec = build_segment(fld, edge, corr, [], fixed_pts=line,
+                                    census=None, joint={})
         finally:
             _ABUTMENT_BENCH_MODE = was
         return rec
     try:
-        keep, drop = built("pinned"), built("detected")
+        keep = built("pinned")
+        drop = built("detected", classification_only=True)
+        try:
+            built("detected")
+        except ValueError:
+            incompatible_refused = True
+        else:
+            incompatible_refused = False
     finally:
         del specmod.NODES["ab-abutment"], specmod.NODES["ab-far"]
     print("case: a declared abutment on a shore (REQUIRED: the freeboard band "
@@ -7772,6 +8054,11 @@ def selftest_abutment_bench() -> int:
     want("the pinned stations 2-3 are no longer deck", (
         keep["is_bridge"][2:4], drop["is_bridge"][2:4]),
         ([False, False], [True, True]))
+    bindings = drop["profile_constraints"]["bindings"]
+    want("the incompatible counterfactual deck cannot move its owned bank",
+         incompatible_refused and bool(bindings)
+         and bindings[0]["lower_y"] > bindings[0]["upper_y"]
+         and bindings[0]["upper_y"] == keep["abutments"][0]["level_y"], True)
     print(f"abutment-bench selftest: {fails} failed")
     return fails
 
@@ -7813,15 +8100,19 @@ def selftest_abutment_released() -> int:
                                "kind": "extremity", "xz": (0.0, 0.0)}
     line = [[float(x), 0.0] for x in range(0, 82, 2)]
 
-    def built(top, trim, mode):
+    def built(top, trim, mode, *, classification_only=False):
         global _ABUTMENT_TRIMMED_END_MODE
         was = _ABUTMENT_TRIMMED_END_MODE
         _ABUTMENT_TRIMMED_END_MODE = mode
         try:
             fld = _ar_field(top)
-            return build_segment(fld, edge, _ww_corridor(fld), [],
-                                 fixed_pts=line, census=None, joint={},
-                                 trim=trim)
+            if classification_only:
+                return _build_segment_once(
+                    fld, edge, _ww_corridor(fld), [], fixed_pts=line,
+                    census=None, joint={}, trim=trim)[0]
+            return build_segment(
+                fld, edge, _ww_corridor(fld), [], fixed_pts=line,
+                census=None, joint={}, trim=trim)
         finally:
             _ABUTMENT_TRIMMED_END_MODE = was
 
@@ -7832,7 +8123,13 @@ def selftest_abutment_released() -> int:
                       for a in rec.get("abutments_released", [])],
             end_y=rec["profile_y"][-1])
     try:
-        kept = built(40.0, None, "released")
+        try:
+            kept = built(40.0, None, "released")
+        except ValueError:
+            no_trim_refused = True
+            kept = built(40.0, None, "released", classification_only=True)
+        else:
+            no_trim_refused = False
         rel = built(40.0, {"b": 16}, "released")
         pin = built(40.0, {"b": 16}, "pinned")
         low_rel = built(33.0, {"b": 16}, "released")
@@ -7858,6 +8155,11 @@ def selftest_abutment_released() -> int:
           "pin stays, however hard)")
     want("pinned, within the clamp over the water", read(kept)["pinned"],
          [("b", True)])
+    want("untrimmed fixed-datum violations are never admitted",
+         no_trim_refused, profile_constraint_rejection(kept) is not None)
+    if not no_trim_refused:
+        want("an accepted untrimmed bank meets its declared datum",
+             read(kept)["end_y"], 30.6)
     print(f"abutment-released selftest: {fails} failed")
     return fails
 
@@ -9474,11 +9776,13 @@ def main(*, plan_state: dict | None = None) -> int:
         # A LINE WHOSE OWN BRANCHES NO EARTHWORK CAN JOIN IS A REJECTED
         # SEGMENT, with its number -- see `self_adjacency_rejection`.  The
         # re-profile that joins the rest already happened in `build_segment`.
-        rej = self_adjacency_rejection(seg)
+        rej = profile_constraint_rejection(seg) or self_adjacency_rejection(seg)
         if rej is not None:
             seg["rejected"] = rej
             rejected.append({"id": seg["id"], **rej})
-            keep_for_census(seg["id"], patch, seg["nodes"], "self-adjacency")
+            keep_for_census(seg["id"], patch, seg["nodes"],
+                            "owned profile" if "profile_constraints" in rej
+                            else "self-adjacency")
             print(f"{seg['id']:22s} p{seg['pri']} REJECTED: {rej['why']}")
             return
         # A LEG THE WRITER WOULD STILL REFUSE ON WATER IS REFUSED HERE, with

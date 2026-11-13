@@ -278,7 +278,8 @@ def lateral_fn(seg: dict):
     br = np.asarray(seg["is_bridge"], dtype=bool)
 
     def f(x: float, z: float):
-        return RB.lateral_and_y(nodes, prof, br, x, z)
+        return RB.lateral_and_y(nodes, prof, br, x, z,
+                                terminal_caps=seg.get("terminal_caps"))
 
     return f
 
@@ -463,7 +464,8 @@ def cover_gaps(seg: dict, per_station, discs: list, frac: float
     # scalar form below rather than assumed equal.
     lat = RB.lateral_and_y_grid(nodes, prof, br, px, pz,
                                 float(per.max()) * (1.0 + frac)
-                                + CENSUS_CELL_M)[0]
+                                + CENSUS_CELL_M,
+                                terminal_caps=seg.get("terminal_caps"))[0]
     inside = (lat <= per[near]) & ~br[near]
     px, pz = px[inside], pz[inside]
     if not px.size:
