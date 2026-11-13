@@ -648,14 +648,12 @@ def build(fields: dict, default_patch: str) -> dict:
     for spec in waterfront_specs():
         fld = fields[spec["measurement_patch"]]
         ground, bed = profiles(fld)
-        if spec["kind"] == "slip":
-            pieces = A.slip(spec["root"], spec["bearing"], spec["length_m"],
-                            spec["inner_width_m"], A.DECK_Y, bed, name=spec["id"])
-        else:
-            pieces = A.jetty(spec["root"], spec["bearing"], spec["length_m"],
-                             A.DECK_Y, bed,
-                             width_tiles=spec.get("width_tiles", 2),
-                             name=spec["id"])
+        import shores
+        pieces = shores.waterfront_pieces(spec, bed)
+        from shore_solids import boat_clearance
+        clearance = boat_clearance(pieces, spec["boat"])
+        if not clearance["ok"]:
+            raise SystemExit(f"{spec['id']}: emitted structure/hull clearance refuses: {clearance}")
         fixt = fixtures_for(fld, spec)
         verdict = A.verify(pieces + fixt, ground, note=spec["id"])
         f = A.facts()
@@ -671,6 +669,8 @@ def build(fields: dict, default_patch: str) -> dict:
             provisional=False,
             root=list(spec["root"]), bearing_deg=spec["bearing"],
             length_m=spec["length_m"], deck_y=A.DECK_Y,
+            pile_prefab=spec.get("pile_prefab", "wood_pole_log_4"),
+            boat_clearance=clearance,
             head_xz=[round(head_x, 1), round(head_z, 1)],
             aim=spec["aim"],
             measured=dict(

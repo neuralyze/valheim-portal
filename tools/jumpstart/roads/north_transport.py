@@ -145,6 +145,9 @@ def validate_itinerary(doc, *, seed, world, for_write=False, path="<itinerary>")
         if terminal["final_departure"]:
             marked.append(tid)
         _terminal_vessels(terminal)
+        if ("pile_prefab" in terminal
+                and terminal["pile_prefab"] not in A.JETTY_PILE_PREFABS):
+            raise SystemExit(f"{tid}: unmeasured dock pile prefab {terminal['pile_prefab']!r}")
     if marked != [final]:
         raise SystemExit(f"{path}: final departure markers disagree")
     seen, paired = set(), set()
@@ -349,6 +352,7 @@ def _hull_usable(depths, vessel):
 
 
 def plan_terminal(itinerary, terminal_id, field, *, actor="NorthTransport", surface=None):
+    import shores as S
     validate_itinerary(itinerary, seed=itinerary.get("seed"), world=itinerary.get("world"))
     if terminal_id not in itinerary["terminals"]:
         raise SystemExit(f"unknown north terminal {terminal_id!r}")
@@ -362,6 +366,7 @@ def plan_terminal(itinerary, terminal_id, field, *, actor="NorthTransport", surf
     bearing = math.degrees(math.atan2(sea[0] - root[0], sea[1] - root[1])) % 360
     ux, uz = A._unit(bearing)
     lx, lz = uz, -ux
+    boat_yaw = float(A.fmt(bearing))
     deck_y = A.DECK_Y
     ground = lambda x, z: surf.at(x, z)[0]
     _root_access(ground(*root), deck_y, terminal_id)
@@ -376,30 +381,47 @@ def plan_terminal(itinerary, terminal_id, field, *, actor="NorthTransport", surf
             bz = root[1] + uz * (length - vf["hull_l"] / 2) - lz * (2 + vf["hull_w"] / 2 + 0.75)
             if abs(bx - root[0]) + vf["hull_l"] / 2 + vf["hull_w"] / 2 > 96 or abs(bz - root[1]) + vf["hull_l"] / 2 + vf["hull_w"] / 2 > 96:
                 continue
-            depths = surf.hull_depths(bearing, bx, bz, vessel)
+            bx, bz = float(A.fmt(bx)), float(A.fmt(bz))
+            depths = surf.hull_depths(boat_yaw, bx, bz, vessel)
             attempts.append(dict(vessel=vessel, length_m=length,
                                  min_depth_m=None if depths is None else depths[0],
                                  connected=False if depths is None else depths[2],
                                  required_depth_m=vf["draught_m"] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M))
-            if _hull_usable(depths, vessel):
-                chosen = (length, bx, bz, depths)
-                break
+            if not _hull_usable(depths, vessel):
+                continue
+            geometry = dict(id=terminal_id, kind="jetty", root=root,
+                            bearing=bearing, length_m=length, width_tiles=2)
+            if "pile_prefab" in terminal:
+                geometry["pile_prefab"] = terminal["pile_prefab"]
+            try:
+                pile_prefab, pieces, verdict = S.select_foundation(geometry, bed)
+            except S.FoundationRefusal as exc:
+                attempts[-1]["foundation_refusals"] = exc.attempts
+                continue
+            from shore_solids import boat_clearance
+            clearance = boat_clearance(pieces,
+                dict(prefab=vessel, x=bx, y=W.WATER_LEVEL, z=bz, yaw=boat_yaw),
+                hulls=WF.measured_hulls(surf))
+            if not clearance["ok"]:
+                attempts[-1].update(pile_prefab=pile_prefab,
+                                    boat_clearance=clearance)
+                continue
+            chosen = (length, bx, bz, depths, pile_prefab, pieces, verdict)
+            break
         if chosen is not None:
             break
     if chosen is None:
         requirement = "large Odin ship" if terminal["final_departure"] else "measured vessel"
-        raise SystemExit(f"{terminal_id}: no connected full-hull berth alongside the dock for an eligible {requirement}; measured candidates={attempts}; no boat may be silently omitted")
-    length, bx, bz, depths = chosen
-    pieces = A.jetty(root, bearing, length, deck_y, bed, width_tiles=2, name=terminal_id)
-    verdict = A.verify(pieces, bed, note=terminal_id)
-    if not verdict["ok"]:
-        raise SystemExit(f"{terminal_id}: dock support refused: {verdict['failures'][:4]}")
+        raise SystemExit(f"{terminal_id}: no connected full-hull berth with supported dock for an eligible {requirement}; measured candidates={attempts}; no boat may be silently omitted")
+    length, bx, bz, depths, pile_prefab, pieces, verdict = chosen
     commands = [A.command(p) for p in pieces]
     dock_op = _plan_op(terminal_id, commands, [root[0], deck_y, root[1]], segment)
-    dock_op["meta"]["structural_verdict"] = verdict
+    dock_op["meta"].update(structural_verdict=verdict, pile_prefab=pile_prefab,
+                           boat_clearance=clearance)
     hull = dict(min_depth_m=depths[0], max_depth_m=depths[1], connected=depths[2], samples=depths[3], required_depth_m=vf["draught_m"] + WF.KEEL_CLEARANCE_M)
-    boat = WF.boat_op(terminal_id, vessel, bx, bz, bearing, hull)
-    boat["params"]["role"] = ROLE
+    boat = WF.boat_op(terminal_id, vessel, bx, bz, boat_yaw, hull)
+    boat["params"].update(role=ROLE, pos=[bx, W.WATER_LEVEL, bz])
+    boat["expect"]["prefab_count"][0]["pos"] = [bx, bz]
     boat["meta"].update(stands_on=[segment], north_terminal=terminal_id)
     walk_length = length - vf["hull_l"] / 2
     walk = [[root[0] + ux * t, root[1] + uz * t] for t in range(int(walk_length) + 1)]
@@ -414,8 +436,10 @@ def plan_terminal(itinerary, terminal_id, field, *, actor="NorthTransport", surf
     return dict(terminal_id=terminal_id, seed=itinerary["seed"], world=itinerary["world"],
                 root_xz=list(root), segment_id=segment,
                 walk_xz=walk, deck_y=deck_y, bearing_deg=bearing,
+                pile_prefab=pile_prefab, length_m=length,
+                boat_clearance=clearance,
                 ops=ops, pieces=_piece_rows(commands),
-                boats=[dict(prefab=vessel, pos=boat["params"]["pos"], yaw_deg=bearing, hull=hull)],
+                boats=[dict(prefab=vessel, pos=boat["params"]["pos"], yaw_deg=boat_yaw, hull=hull)],
                 lighthouse=lighthouse, final_departure=terminal["final_departure"])
 
 

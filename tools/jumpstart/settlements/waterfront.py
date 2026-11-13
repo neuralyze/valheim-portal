@@ -2626,8 +2626,8 @@ def cmd_retire(args) -> int:
             if fld is None or f.half < fld.half:
                 fld = f
     ground, bed = CP.profiles(fld)
-    pieces = A.jetty(s["root"], s["bearing"], s["length_m"], A.DECK_Y, bed,
-                     width_tiles=s.get("width_tiles", 2), name=site)
+    import shores
+    pieces = shores.waterfront_pieces(s, bed)
     keep = [p for p in pieces
             if not any(math.hypot(p.x - tx, p.z - tz) < 0.6
                        for tx, tz in spec["tiles"])]

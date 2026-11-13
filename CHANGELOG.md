@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Waterfront geometry keeps its original timber design first, then tries a
+  measured stone-pillar foundation only after an actual support/seating
+  refusal. Deeper stone bases carry measured 2 m hardwood caps; stone,
+  timber, decks and rails retain their separate two-times support margins.
+  The selected `pile_prefab` survives shore and north publication, native
+  regeneration and operation metadata. Exact rounded pieces repeat physical
+  checks and full measured hull-versus-collider clearance; even a 5 mm keel
+  overlap is refused rather than hidden by a ledger-scale tolerance.
 - Pipeline artifact scope checks use the existing fast safe-YAML loader when
   available, still parsing the complete document and rejecting malformed or
   unsafe content. The saved-world gate inherits the run's selected Valheim

@@ -39,16 +39,15 @@ def plan_site(site, surface):
     ground = lambda x, z: surface.at(x, z)[0]
     NT._root_access(ground(*root), S.DECK_Y, site["id"])
     bed = S.A.Bed.applied(ground, "this seed's rendered field plus current world's ordered applied terrain")
-    pieces = (S.A.slip(root, bearing, site["length_m"], site["inner_width_m"],
-                      S.DECK_Y, bed, name=site["id"])
-              if site["kind"] == "slip" else
-              S.A.jetty(root, bearing, site["length_m"], S.DECK_Y, bed,
-                        width_tiles=site["width_tiles"], name=site["id"]))
-    pieces = S.emitted_pieces(pieces)
+    pieces = S.waterfront_pieces(site, bed)
     verdict = S.A.verify(pieces, bed, note=site["id"])
     if not verdict["ok"]:
         raise SystemExit(f"{site['id']}: actual applied-ground support refuses: {verdict['failures']}")
     boat = site["boat"]
+    from shore_solids import boat_clearance
+    clearance = boat_clearance(pieces, boat, hulls=S.WF.measured_hulls(surface))
+    if not clearance["ok"]:
+        raise SystemExit(f"{site['id']}: actual emitted structure obstructs its measured hull: {clearance}")
     if site.get("large_ship") and boat["prefab"] not in NT.LARGE_VESSELS:
         raise SystemExit(f"{site['id']}: this named north dock requires a measured large Odin vessel")
     depths = surface.hull_depths(boat["yaw"], boat["x"], boat["z"], boat["prefab"])
@@ -58,7 +57,9 @@ def plan_site(site, surface):
     commands = [S.A.command(piece) for piece in pieces]
     dock_op = NT._plan_op(site["id"], commands,
                           [root[0], S.DECK_Y, root[1]], segment or "ferry-east-isle")
-    dock_op["meta"].update(shore_terminal=site["id"], structural_verdict=verdict)
+    dock_op["meta"].update(shore_terminal=site["id"], structural_verdict=verdict,
+                           pile_prefab=site.get("pile_prefab", "wood_pole_log_4"),
+                           boat_clearance=clearance)
     if segment is None:
         dock_op["meta"].update(stands_on=[], shore_ground_source="measured natural destination shoreline",
                                transport_edge="ferry-east-isle")
@@ -91,6 +92,8 @@ def plan_site(site, surface):
     return dict(terminal_id=site["id"], seed=S.worldseed.seed(), world=S.worldseed.world(),
         root_xz=list(root), segment_id=segment, final_departure=False, lighthouse=None,
         walk_xz=walk,
+        pile_prefab=site.get("pile_prefab", "wood_pole_log_4"),
+        boat_clearance=clearance,
         ops=[dock_op, boat_op], pieces=NT._piece_rows(commands),
         boats=[dict(prefab=boat["prefab"], pos=boat_op["params"]["pos"],
                     yaw_deg=boat["yaw"], hull=hull)])

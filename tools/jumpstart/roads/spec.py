@@ -560,6 +560,7 @@ WATERFRONT_SITES = shores.load(required=False)
 CROSSING_TERMINALS: dict[str, dict] = {
     s["node"]: dict(xz=tuple(s["root"]), island=s["island"], patch=s["patch"],
                    arrive_bearing_deg=s["arrive_bearing_deg"],
+                   pile_prefab=s.get("pile_prefab", "wood_pole_log_4"),
                    jetty_bearing_deg=s["bearing"], width_m=s["width_m"],
                    cls=s["cls"], owner="Crossings")
     for s in WATERFRONT_SITES

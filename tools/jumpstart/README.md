@@ -187,6 +187,21 @@ on a field's own grid. No sampled values survive the root. Coverage refusals
 restore the same successful scalar prefix, and neither missing coverage nor
 strict NumPy error settings change the scalar result or first refusal.
 
+Waterfront candidates first try their unchanged timber foundation. Only an
+actual support or seating refusal permits the measured stone-pillar design;
+all roots, headings, lengths, hull, road and landing checks remain eligible.
+Shallow columns stay stone; deeper stone bases terminate under a measured
+2 m `wood_pole_log` cap at the same support elevation. This is a real material
+transition, not a reduced support minimum: every stone, cap, deck and rail
+must retain its own two-times margin. The selected `pile_prefab` is binding
+through shore/north publication, terminal projections, generated models and
+native operation metadata. Regeneration repeats seating, duplicate, support
+and water checks on the rounded emitted pieces. Full measured hulls must also
+clear every generated collider part at the exact berth pose; any positive
+vertical overlap reaches continuous SAT, without the ledger's 1 cm tolerance.
+An intersecting mesh bound remains a conservative refusal, not a clearance
+claim. No foundation selection moves the deck or writes terrain.
+
 The intermediate snapped search contact does not clip a restored bank's
 eligible contact domain. Self-overlapping bank candidates also try the
 remaining owned contacts. If all fail, only a candidate that has passed the

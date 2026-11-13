@@ -1103,8 +1103,9 @@ def select_voyage_vessel(doc, pair, fields, *, surface):
         except (ValueError, SystemExit) as exc:
             failures.append({"vessel": vessel, "reason": str(exc)})
             continue
-        for tid in (pair["a"], pair["b"]):
-            doc["terminals"][tid]["vessel"] = vessel
+        for plan in plans:
+            doc["terminals"][plan["terminal_id"]].update(
+                vessel=vessel, pile_prefab=plan["pile_prefab"])
         return plans, report
     raise ValueError(f"{pair['id']}: no measured vessel supports both berths and "
                      f"the swept sea passage: {json.dumps(failures, sort_keys=True)}")
@@ -1123,7 +1124,7 @@ def select_departure_vessel(doc, fields, *, surface):
         except (ValueError, SystemExit) as exc:
             failures.append({"vessel": vessel, "reason": str(exc)})
             continue
-        doc["terminals"][tid]["vessel"] = vessel
+        doc["terminals"][tid].update(vessel=vessel, pile_prefab=plan["pile_prefab"])
         return plan
     raise ValueError(f"{tid}: no measured LARGE Odin ship supports the berth, "
                      f"dock and lighthouse: {json.dumps(failures, sort_keys=True)}")

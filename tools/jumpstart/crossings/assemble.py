@@ -88,6 +88,10 @@ WATER_LEVEL = 30.0
 # and road surfaces all meet at one number.
 DECK_Y = 30.6
 
+# Ordered waterfront foundation choices. Bounds and structural properties are
+# loaded from the measured corpus, never inferred from a prefab's name.
+JETTY_PILE_PREFABS = ("wood_pole_log_4", "stone_pillar")
+
 # MEASURED table, see module docstring. (maxSupport, minSupport, hLoss, vLoss)
 MATERIAL_PROPS = {
     0: (100.0, 10.0, 0.2, 0.125),            # Wood
@@ -427,9 +431,26 @@ def _unit(bearing_deg: float) -> tuple[float, float]:
     return math.sin(a), math.cos(a)
 
 
+def _jetty_pile_facts(pile_prefab: str) -> PieceFacts:
+    """Refuse a foundation without measured, water-legal supporting solids."""
+    if pile_prefab not in JETTY_PILE_PREFABS:
+        raise ValueError(f"unsupported waterfront pile prefab: {pile_prefab!r}")
+    f = facts().get(pile_prefab)
+    if (f is None or not f.supports or f.material not in MATERIAL_PROPS
+            or f.no_in_water
+            or not all(math.isfinite(v) for v in (*f.lo, *f.hi))
+            or any(hi <= lo for lo, hi in zip(f.lo, f.hi))):
+        raise ValueError(
+            f"waterfront pile {pile_prefab!r} lacks measured, water-legal "
+            "supporting bounds/material")
+    return f
+
+
 def _pile_stack(x: float, z: float, deck_y: float, bed, role: str,
-                embed: float = 1.0, lateral: float = 0.0) -> list[Placed]:
-    """A column of 4 m log piles from just under the deck down past the bed.
+                embed: float = 1.0, lateral: float = 0.0, *,
+                pile_prefab: str = "wood_pole_log_4",
+                yaw: float = 0.0) -> list[Placed]:
+    """A column of measured piles from just under the deck down past the bed.
 
     `embed` is how far the lowest pile's bottom goes BELOW the APPLIED ground,
     and it is the whole point of the column: a piece whose collider overlaps the
@@ -458,14 +479,13 @@ def _pile_stack(x: float, z: float, deck_y: float, bed, role: str,
     rounding rather than by the ground.  The refusal was right about the
     pole and wrong about the cause.
 
-    So the count is chosen as the SMALLEST stack whose lowest pole still
-    breaks the surface, `floor(D/4) + 1` for `D = top_target - ground`, which
-    leaves that pole's top `D mod 4` ABOVE the bed -- never below it, for any
-    D.  That stack's natural foot is `4 - (D mod 4)` under the bed; when it
-    is shallower than `embed`, ONE extra pole is added with its top seated
-    EXACTLY ON the bed, which is a full 4 m of overlap and still zero
-    burial.  The two poles overlap by `4 - (D mod 4)` > 0, so the column
-    stays one connected run for `verify`'s neighbour graph.
+    So the count is chosen as the SMALLEST stack whose lowest pile still
+    breaks the surface, `floor(D/height) + 1` for `D = top_target - ground`,
+    using the selected solid's MEASURED height. Its lowest top stays above
+    the bed. When the natural foot is shallower than `embed`, ONE extra
+    pile is added with its top seated EXACTLY ON the bed. It overlaps the
+    pile above, so the column stays connected for `verify`'s neighbour graph.
+    Timber's measured height remains 4 m and its original geometry is unchanged.
 
     AND THE TWO READINGS ARE DIFFERENT SURFACES, WHICH IS THE THIRD FIX.
     "EXACTLY ON the bed" is zero margin, so it is only true of the bed it
@@ -493,10 +513,10 @@ def _pile_stack(x: float, z: float, deck_y: float, bed, role: str,
     `refuse_on_seating` to name.
     """
     bed = require_applied_bed(bed, f"_pile_stack({role})")
-    f = facts()["wood_pole_log_4"]
-    height = f.hi[1] - f.lo[1]          # 4.0 m, MEASURED
+    f = _jetty_pile_facts(pile_prefab)
+    height = f.hi[1] - f.lo[1]
     ground_top = bed_under(
-        Placed("wood_pole_log_4", x, 0.0, z, 0.0, f"{role}/pile"), bed)
+        Placed(pile_prefab, x, 0.0, z, yaw, f"{role}/pile"), bed)
     ground_foot = min(bed(x, z), ground_top)
     top_target = deck_y - 0.13          # just under a wood_floor's underside
     drop = top_target - ground_top
@@ -505,14 +525,38 @@ def _pile_stack(x: float, z: float, deck_y: float, bed, role: str,
     for k in range(n):
         # place so the solid's top face is exactly `top`: y + f.hi[1] == top
         top = top_target - k * height
-        out.append(Placed("wood_pole_log_4", x, top - f.hi[1], z, 0.0,
+        out.append(Placed(pile_prefab, x, top - f.hi[1], z, yaw,
                           f"{role}/pile", lateral=lateral))
     # The foot this stack reaches on its own, and the one extra pole that
     # buys the asked-for overlap without burying a pole to get it.
     natural_embed = ground_foot - (top_target - n * height)
     if drop >= 0.0 and natural_embed < embed:
-        out.append(Placed("wood_pole_log_4", x, ground_top - f.hi[1], z, 0.0,
+        out.append(Placed(pile_prefab, x, ground_top - f.hi[1], z, yaw,
                           f"{role}/pile", lateral=lateral))
+    return out
+
+
+def _jetty_pile_stack(x, z, deck_y, bed, role, *, lateral, pile_prefab, yaw):
+    """A measured stone base may carry a hardwood cap, not an unsafe top stone.
+
+    Stone and timber retain their own support minima and the full safety factor.
+    Shallow columns remain solid stone; deeper bases stop one measured cap below
+    the unchanged deck. Every resulting piece still passes ordinary verification.
+    """
+    kwargs = dict(lateral=lateral, pile_prefab=pile_prefab, yaw=yaw)
+    if pile_prefab != "stone_pillar":
+        return _pile_stack(x, z, deck_y, bed, role, **kwargs)
+    stone = _jetty_pile_facts(pile_prefab)
+    cap_prefab = "wood_pole_log"
+    cap = facts()[cap_prefab]
+    cap_height = cap.hi[1] - cap.lo[1]
+    stone_height = stone.hi[1] - stone.lo[1]
+    ground = bed_under(Placed(pile_prefab, x, 0.0, z, yaw, role), bed)
+    if deck_y - 0.13 - ground <= cap_height + stone_height:
+        return _pile_stack(x, z, deck_y, bed, role, **kwargs)
+    out = _pile_stack(x, z, deck_y - cap_height, bed, role, **kwargs)
+    out.append(Placed(cap_prefab, x, deck_y - 0.13 - cap.hi[1], z, yaw,
+                      f"{role}/pile", lateral=lateral))
     return out
 
 
@@ -1267,7 +1311,8 @@ def refuse_on_colocated(pieces: list[Placed], name: str) -> dict:
 
 def jetty(root: tuple[float, float], bearing_deg: float, length_m: float,
           deck_y: float, bed_profile, width_tiles: int = 2,
-          bent_spacing_m: float = 4.0, name: str = "jetty") -> list[Placed]:
+          bent_spacing_m: float = 4.0, name: str = "jetty", *,
+          pile_prefab: str = "wood_pole_log_4") -> list[Placed]:
     """A pier running out from the shore over water on piles.
 
     This is the structure the operator called a dock. It is deliberately NOT a
@@ -1278,8 +1323,12 @@ def jetty(root: tuple[float, float], bearing_deg: float, length_m: float,
 
     `bed_profile` MUST be `Bed.applied(...)`; every deck tile is re-tested
     against it before this function returns.
+    `pile_prefab` selects measured supporting solids only; timber retains its
+    original yaw-zero geometry, while stone follows the deck's bearing.
     """
     bed = require_applied_bed(bed_profile, f"jetty({name})")
+    _jetty_pile_facts(pile_prefab)
+    pile_yaw = 0.0 if pile_prefab == "wood_pole_log_4" else bearing_deg
     ux, uz = _unit(bearing_deg)
     lx, lz = uz, -ux
     f_floor = facts()["wood_floor"]
@@ -1313,8 +1362,9 @@ def jetty(root: tuple[float, float], bearing_deg: float, length_m: float,
                         and not _JETTY_STANDS_A_ONE_TILE_COLUMN_TWICE
                         else (-col, col)):
                 px, pz = cx + lx * lat, cz + lz * lat
-                out.extend(_pile_stack(px, pz, deck_y, bed, f"{name}/pile{s}",
-                                       lateral=lat))
+                out.extend(_jetty_pile_stack(px, pz, deck_y, bed, f"{name}/pile{s}",
+                                             lateral=lat, pile_prefab=pile_prefab,
+                                             yaw=pile_yaw))
         # a single-sided rail, on the side away from the berth, so a boat can be
         # boarded from the deck. Handrail on the outboard side only.
         rx = cx + lx * (half_w - 0.2)
@@ -1328,7 +1378,8 @@ def jetty(root: tuple[float, float], bearing_deg: float, length_m: float,
 
 def slip(root: tuple[float, float], bearing_deg: float, length_m: float,
          inner_width_m: float, deck_y: float, bed_profile,
-         name: str = "slip") -> list[Placed]:
+         name: str = "slip", *,
+         pile_prefab: str = "wood_pole_log_4") -> list[Placed]:
     """A boathouse slip: two finger piers with a closed head, open to seaward.
 
     Sizing is MEASURED from the hulls, not chosen: `VikingShip` (the Longship)
@@ -1352,6 +1403,7 @@ def slip(root: tuple[float, float], bearing_deg: float, length_m: float,
     walkway, and every tile of it is travelled way.
     """
     bed = require_applied_bed(bed_profile, f"slip({name})")
+    _jetty_pile_facts(pile_prefab)
     ux, uz = _unit(bearing_deg)
     lx, lz = uz, -ux
     half = inner_width_m / 2.0
@@ -1361,7 +1413,8 @@ def slip(root: tuple[float, float], bearing_deg: float, length_m: float,
         rz = root[1] + lz * side * (half + 1.0)
         out.extend(jetty((rx, rz), bearing_deg, length_m, deck_y, bed,
                          width_tiles=1, bent_spacing_m=4.0,
-                         name=f"{name}/finger{'L' if side < 0 else 'R'}"))
+                         name=f"{name}/finger{'L' if side < 0 else 'R'}",
+                         pile_prefab=pile_prefab))
     # head walkway across the closed end, joining the two fingers
     f_floor = facts()["wood_floor"]
     floor_y = deck_y - f_floor.hi[1]

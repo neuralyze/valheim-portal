@@ -139,7 +139,10 @@ def ops_for(rec: dict, commands: list[str], piece_entries: list[dict],
                   structural_verdict=rec["structural"],
                   measured=rec.get("measured"),
                   continuity=rec.get("continuity"),
-                  why=rec["why"]),
+                  why=rec["why"],
+                  **(dict(pile_prefab=rec["pile_prefab"],
+                          boat_clearance=rec["boat_clearance"])
+                     if "pile_prefab" in rec else {})),
     ))
 
     # 3. SIGN, and its post. A sign is the only thing that makes a structure

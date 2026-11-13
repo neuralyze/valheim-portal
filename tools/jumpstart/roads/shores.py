@@ -246,6 +246,9 @@ def load(*, required=True):
     if len(sites) != len(REQUIREMENTS) + 1 or {s.get("node") for s in sites} != ({r["node"] for r in REQUIREMENTS} | {"ferry-terminal-eastisle"}):
         raise SystemExit(f"REFUSING {path}: missing, duplicate or extra named waterfront requirements")
     require_pairs(sites)
+    if any(site.get("pile_prefab", "wood_pole_log_4") not in A.JETTY_PILE_PREFABS
+           for site in sites):
+        raise SystemExit(f"REFUSING {path}: unmeasured waterfront pile prefab")
     if any(not site.get("rail_from") or site.get("rail_from") not in site.get("rail_post_prefabs", [])
            for site in sites):
         raise SystemExit(f"REFUSING {path}: missing actual physical-plan railpost prefab; rerun shore producer")
@@ -340,6 +343,56 @@ def emitted_pieces(pieces):
     return [replace(p, x=float(A.fmt(p.x)), y=float(A.fmt(p.y)),
                     z=float(A.fmt(p.z)), yaw=float(A.fmt(p.yaw)))
             for p in pieces]
+
+
+def waterfront_pieces(spec, bed):
+    """Regenerate one selected design, on the exact poses the native wire emits."""
+    pile_prefab = spec.get("pile_prefab", "wood_pole_log_4")
+    if pile_prefab not in A.JETTY_PILE_PREFABS:
+        raise ValueError(f"{spec['id']}: unmeasured waterfront pile prefab {pile_prefab!r}")
+    if spec["kind"] == "slip":
+        pieces = A.slip(spec["root"], spec["bearing"], spec["length_m"],
+                        spec["inner_width_m"], DECK_Y, bed,
+                        name=spec["id"], pile_prefab=pile_prefab)
+    else:
+        pieces = A.jetty(spec["root"], spec["bearing"], spec["length_m"],
+                         DECK_Y, bed, width_tiles=spec.get("width_tiles", 2),
+                         name=spec["id"], pile_prefab=pile_prefab)
+    pieces = emitted_pieces(pieces)
+    A.refuse_on_seating(pieces, bed, spec["id"])
+    A.refuse_on_colocated(pieces, spec["id"])
+    return pieces
+
+
+class FoundationRefusal(ValueError):
+    def __init__(self, site, attempts):
+        self.attempts = attempts
+        super().__init__(f"{site}: measured pile foundations refused: {attempts}")
+
+
+def select_foundation(spec, bed):
+    """Timber first; only an actual seating/support refusal permits stone.
+
+    A persisted choice is binding, never authority for skipping physical checks
+    or silently substituting another foundation on changed applied ground.
+    """
+    choices = ((spec["pile_prefab"],) if "pile_prefab" in spec
+               else A.JETTY_PILE_PREFABS)
+    attempts = []
+    for pile_prefab in choices:
+        try:
+            pieces = waterfront_pieces(dict(spec, pile_prefab=pile_prefab), bed)
+        except A.SeatingRefusal as exc:
+            attempts.append(dict(pile_prefab=pile_prefab, seating_refusal=str(exc)))
+            continue
+        verdict = A.verify(pieces, bed, note=spec["id"])
+        if verdict["ok"]:
+            return pile_prefab, pieces, verdict
+        attempts.append(dict(pile_prefab=pile_prefab,
+                             failures=verdict["failures"],
+                             no_in_water_violations=verdict["no_in_water_violations"],
+                             safety_factor=verdict["safety_factor"]))
+    raise FoundationRefusal(spec["id"], attempts)
 
 
 def occupied_bounds(pieces, boat):
@@ -492,7 +545,8 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
     need = WF.VESSELS[vessel]["draught_m"] + WF.KEEL_CLEARANCE_M + WF.BERTH_MARGIN_FLOOR_M
     bed = A.Bed.applied(lambda x, z: surf.at(x, z)[0], "seed-scoped measured generated Heightmap")
     rejected = {"road": 0, "approach": 0, "water": 0, "hull": 0, "support": 0}
-    last_seating_refusal = None
+    last_foundation_refusal = None
+    last_boat_refusal = None
     road_cache = {}
     aim_evaluations = 0
     from shore_rays import ShoreRays
@@ -558,22 +612,17 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                     rejected["hull"] += 1
                     continue
                 inner = WF.VESSELS[vessel]["hull_w"] + 2 * 0.75
+                geometry = dict(requirement, root=list(root), bearing=float(bearing),
+                                length_m=float(length), inner_width_m=inner)
                 try:
-                    pieces = (A.slip(root, bearing, length, inner, DECK_Y, bed,
-                                     name=requirement["id"]) if requirement["kind"] == "slip"
-                              else A.jetty(root, bearing, length, DECK_Y, bed,
-                                           width_tiles=requirement["width_tiles"], name=requirement["id"]))
-                except A.SeatingRefusal as exc:
+                    pile_prefab, pieces, verdict = select_foundation(geometry, bed)
+                except FoundationRefusal as exc:
                     rejected["support"] += 1
-                    last_seating_refusal = str(exc)
-                    continue
-                pieces = emitted_pieces(pieces)
-                verdict = A.verify(pieces, bed, note=requirement["id"])
-                if not verdict["ok"]:
-                    rejected["support"] += 1
+                    last_foundation_refusal = str(exc)
                     continue
                 candidate = dict(requirement, root=list(root), bearing=float(bearing),
                             length_m=float(length), inner_width_m=inner,
+                            pile_prefab=pile_prefab,
                             island=node["island"], patch=fld.id,
                             measurement_patch=fld.id,
                             arrive_bearing_deg=(bearing + 180) % 360,
@@ -587,6 +636,15 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                             sign_text=f"{requirement['id']} - {anchor_id}",
                             aim=dict(root=list(root), bearing=float(bearing),
                                      root_ground_y=surf.at(*root)[0]))
+                from shore_solids import boat_clearance
+                clearance = boat_clearance(pieces, candidate["boat"],
+                                           hulls=WF.measured_hulls(surf))
+                if not clearance["ok"]:
+                    rejected["hull"] += 1
+                    last_boat_refusal = dict(pile_prefab=pile_prefab,
+                                             boat_clearance=clearance)
+                    continue
+                candidate["boat_clearance"] = clearance
                 candidate["road_preview"] = road_cache[key]
                 candidate["occupied_bounds"] = occupied_bounds(pieces, candidate["boat"])
                 candidate.update(rail_metadata(pieces))
@@ -599,8 +657,10 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                     continue
                 return candidate
     raise SystemExit(f"REFUSING {requirement['id']}: all {len(candidates)} measured shore candidates fail production road/approach/water/hull/support criteria: {rejected}; required site remains unmet"
-                     + (f"\nLast seating refusal: {last_seating_refusal}"
-                        if last_seating_refusal is not None else ""))
+                     + (f"\nLast foundation refusal: {last_foundation_refusal}"
+                        if last_foundation_refusal is not None else "")
+                     + (f"\nLast structure/hull refusal: {last_boat_refusal}"
+                        if last_boat_refusal is not None else ""))
 
 
 def derive(nodes, fields, *, ferry_search, complete, progress=None):
@@ -637,6 +697,7 @@ def derive(nodes, fields, *, ferry_search, complete, progress=None):
 def road_nodes(sites):
     out = {s["node"]: dict(xz=tuple(s["root"]), island=s["island"], patch=s["patch"],
         measurement_patch=s["measurement_patch"],
+        pile_prefab=s.get("pile_prefab", "wood_pole_log_4"),
         kind="waterfront_terminal", owner="Crossings", level_y=DECK_Y,
         arrive_bearing_deg=s["arrive_bearing_deg"], jetty_bearing_deg=s["bearing"],
         ribbon_width_m=s["width_m"], keep_clear=[], provenance=s["why"], why=s["why"])
