@@ -176,6 +176,16 @@ sample. Shoulders may use legal grading without meeting the carriageway's
 natural-relief comfort rule. This is a necessary landing check, not approval
 of the whole road. Waterfront alternative contacts retain the real bank's
 domain without acquiring declared bridge-cap ownership.
+On immutable generated terrain, that fixed-landing result is reused only
+within the same root and heading while jetty lengths are evaluated. A new
+root gets a new cache; custom/live surfaces keep their original sampling.
+Full hull, road and structural checks still evaluate their own candidates.
+Ray extensions on that same immutable surface batch only newly requested
+points. Each nonzero-weight integer corner independently selects its measured
+field before the original ordered float64 interpolation; this is not a blend
+on a field's own grid. No sampled values survive the root. Coverage refusals
+restore the same successful scalar prefix, and neither missing coverage nor
+strict NumPy error settings change the scalar result or first refusal.
 
 The intermediate snapped search contact does not clip a restored bank's
 eligible contact domain. Self-overlapping bank candidates also try the

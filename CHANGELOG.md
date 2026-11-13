@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   available, still parsing the complete document and rejecting malformed or
   unsafe content. The saved-world gate inherits the run's selected Valheim
   installation and disposable per-seed sandbox instead of production defaults.
+- Shore searches measure a fixed generated landing once per root and heading,
+  rather than repeating its full footprint for every jetty length. Reuse
+  ends at that root; custom/live surfaces retain fresh sampling, and hull,
+  road, structural checks and candidate order remain unchanged.
+  Generated ray extensions also batch only their missing samples, retaining
+  independent integer-corner field selection and scalar interpolation order.
+  Coverage refusals preserve the successful prefix, and subnormal weights
+  behave like scalar sampling even under NumPy's strict underflow policy.
 - Waterfront roads first try the solved shore's inland approach and exact
   root, in either road direction, instead of losing that geometry to a
   lateral A* snap. Alternative contacts remain eligible; all physical masks,

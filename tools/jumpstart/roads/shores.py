@@ -80,6 +80,9 @@ class GeneratedSurface(WF.Surface):
     def gen_sample(self, sx, sz):
         return self._sampler.gen_sample(sx, sz)
 
+    def sample_points(self, points):
+        return self._sampler.sample_points(points)
+
     def hull_depths(self, bearing, x, z, vessel):
         from types import SimpleNamespace
         hulls = WF.measured_hulls(self)
@@ -497,8 +500,12 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
         if not reached:
             rejected["road"] += 1
             continue
-        rays = (ShoreRays(surf, root, A._unit, W.WATER_LEVEL)
+        rays = (ShoreRays(surf, root, A._unit, W.WATER_LEVEL,
+                          batch=surf.sample_points)
                 if type(surf) is GeneratedSurface else None)
+        # The fixed landing does not change with jetty length. Share only
+        # within this immutable generated root, never across custom/live reads.
+        landing_cache = {} if rays is not None else None
         for length in range(24 if requirement["kind"] in ("slip", "harbour") else 20, 98, 2):
             if rays is not None:
                 aims = rays.aims(length, need)
@@ -531,7 +538,12 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                         "vessel": vessel,
                         "elapsed_seconds": round(time.monotonic() - started, 1),
                         "counters": dict(rejected, aim_evaluations=aim_evaluations)})
-                if not approach(surf, root, bearing, width):
+                landing_ok = None if landing_cache is None else landing_cache.get(bearing)
+                if landing_ok is None:
+                    landing_ok = approach(surf, root, bearing, width)
+                    if landing_cache is not None:
+                        landing_cache[bearing] = landing_ok
+                if not landing_ok:
                     rejected["approach"] += 1
                     continue
                 key = root, bearing

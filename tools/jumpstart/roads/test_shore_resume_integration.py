@@ -35,8 +35,10 @@ class ResumeIntegrationTests(unittest.TestCase):
         half = 800.5
         axis = -half + 0.5 + np.arange(1601)
         z = np.broadcast_to(axis[:, None], (1601, 1601))
+        # Keep the constructed wooden jetty supportable so this case reaches
+        # its nested callback instead of exhausting an invalid deep-bed fixture.
         heights = np.where(z <= 0, S.DECK_Y,
-                           np.maximum(20., S.DECK_Y-z*.8)).astype(np.float32)
+                           np.maximum(25., S.DECK_Y-z*.8)).astype(np.float32)
         field = S.W.Field('shore-trunk-primary', 0, 0, half, 1, 1601, heights,
                           np.ones((1601, 1601), dtype=np.uint8))
         fields = {field.id: field, 'trunk-primary': field}
