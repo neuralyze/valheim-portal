@@ -26,6 +26,15 @@ directory's own `load_preset`, so the two cannot drift. See `worlds/README.md`.
 
 Claims below are marked **MEASURED** (observed on this box) or **INFERRED**.
 
+### Pipeline runtime bindings
+
+Artifact scope checks parse the complete YAML document using the fast safe
+loader when available; malformed tails and unsafe tags still refuse. The
+saved-world gate inherits the pipeline's `--vh-src` and existing disposable
+per-seed sandbox, just as the measuring stages do. It does not select a
+different installation through acceptance defaults. These bindings do not
+replace the complete saved-world gate or make an unbuilt world acceptable.
+
 ### General north transport
 
 The pipeline drives `roads/north.py network` for both route passes. Stage 4
