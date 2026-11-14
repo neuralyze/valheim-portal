@@ -108,6 +108,49 @@ class NativeProfileModelTests(unittest.TestCase):
         C.bind_native_profile_model(record, model)
         C.read_native_profile_model(record)
 
+    def test_complete_illegal_profile_is_physical_refusal_not_missing_inputs(self):
+        points, _ = R.resample(
+            np.array([[0., 0.], [40., 0.], [40., 8.], [0., 8.]]), 2.)
+        record, joint = self.produce(points)
+        original = C.read_native_profile_model(record)
+        proposal = 31. + .10 * original["inputs"]["s"]
+        record["profile_y"] = proposal.tolist()
+        self.assertIsNone(C.refresh_native_profile_model(record, joint))
+        status = record["native_profile_status"]
+        self.assertEqual(status["verdict"], "REFUSED")
+        self.assertGreater(status["constraint"]["excess_m"], 0.)
+        self.assertNotIn("native_profile_model", record)
+        self.assertEqual(self.native.plan_refusal(
+            record, [], "fixture", fld=None, coverage=False),
+            "native_profile_refusal")
+
+    def test_incomplete_native_inputs_remain_a_replan_prerequisite(self):
+        record, joint = self.produce(self.straight())
+        del joint["cand"]
+        self.assertIsNone(C.refresh_native_profile_model(record, joint))
+        self.assertEqual(record["native_profile_status"]["verdict"], "UNPROVEN")
+        self.assertEqual(
+            self.native.native_profile_prerequisite(record)["verdict"],
+            "PREREQUISITE")
+
+    def test_incomplete_lattice_precedes_numeric_profile_refusal(self):
+        points, _ = R.resample(
+            np.array([[0., 0.], [40., 0.], [40., 8.], [0., 8.]]), 2.)
+        record, joint = self.produce(points)
+        self.assertGreater(len(joint["cand"]["edges"]["s1"]), 0)
+        for key in joint["cand"]["edges"]:
+            joint["cand"]["edges"][key] = []
+        for key in ("near1", "near2", "dsum", "allow_e"):
+            joint["cand"][key] = []
+        station = len(record["profile_y"]) // 2
+        record["profile_y"][station] = float(joint["hi"][station]) + 1.
+        self.assertIsNone(C.refresh_native_profile_model(record, joint))
+        self.assertEqual(record["native_profile_status"]["verdict"], "UNPROVEN")
+        self.assertEqual(
+            self.native.native_profile_prerequisite(record)["verdict"],
+            "PREREQUISITE")
+        self.assertNotIn("native_profile_model", record)
+
     def test_truncated_self_inventory_is_a_prerequisite_before_writer_admission(self):
         points, _ = R.resample(
             np.array([[0., 0.], [40., 0.], [40., 8.], [0., 8.]]), 2.)

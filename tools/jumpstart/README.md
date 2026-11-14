@@ -244,6 +244,12 @@ total grade, native self-lattice and published joint/terminal readings.
 cannot buy a terrain repair by violating the original road's grade or
 self-adjacency, and a missing/stale model is a prerequisite, not a clear
 profile. Geometry-changing candidates need their own freshly fitted model.
+A complete measured profile that violates those constraints is instead a
+physical candidate refusal, carrying its offending row, limit and excess.
+Shore selection rejects that candidate and continues; it neither loosens
+the native margin nor treats missing or malformed input as a refusal that
+can be skipped. Constructor, reader and rebinding all verify the complete
+self-lattice inventory before deciding whether a measured profile is illegal.
 Legal changes refresh actual grade and native verdict metadata; neither
 solver success nor a local terrain preview replaces final world acceptance.
 
@@ -256,10 +262,14 @@ can proceed. Exhausted guidance retains the original arrival refusal.
 A new detected crossing may impose a level run that conflicts with an
 existing bank datum. This is a refusal of that candidate, not proof that
 every alignment is impossible. Retry costs follow its latest measured
-contradiction; when the crossing owns that level window, costs target the
-crossing itself rather than the fixed bank. The contradiction's original
-coordinates and bounds remain in the receipt. Writer-water continuation
-uses the same search and repeats every profile, pad and physical guard.
+contradiction; when the crossing owns that level window, costs target its
+measured core path **before chord straightening**, not a chord center that
+the router may never have traversed. The producer retains the exact sampled
+coordinates for both list and array geometry. Costs use the unchanged radius
+and one price over each hint's union footprint; missing or malformed traces
+cannot fall back to an invented path. The physical contradiction coordinates
+and original bounds remain in the receipt. Writer-water continuation uses
+the same search and repeats every profile, pad and physical guard.
 
 The fixed landing is checked before a failed profile or pad solve can
 supply retry geometry. A moved root or reshaped six-metre turn remains a

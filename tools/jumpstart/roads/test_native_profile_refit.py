@@ -87,7 +87,7 @@ class NativeProfileRefitTests(unittest.TestCase):
         y = 30.6 + .25 * np.maximum(arcs - 6., 0.)
         seg = native_segment(profile=y, held=range(4))
         original = copy.deepcopy(seg)
-        result = R.regrade_for_claims(seg, [claim(50., y[25] + 1.)], .08)
+        result = profile_refit.refit_native_profile(seg, [claim(50., y[25] + 1.)])
         # The old shift hat at .08 was legal in its own coordinates, while
         # TOTAL grade exceeded .25. The held datum has already spent all reach.
         self.assertFalse(result['feasible'])
@@ -97,7 +97,7 @@ class NativeProfileRefitTests(unittest.TestCase):
 
     def test_arrival_unpin_cannot_release_native_held_bank_station(self):
         seg = native_segment(profile=np.full(51, 30.6), held=range(4))
-        result = R.regrade_for_claims(seg, [dict(claim(6., 31.6), unpin=3)], .25)
+        result = profile_refit.refit_native_profile(seg, [dict(claim(6., 31.6), unpin=3)])
         self.assertFalse(result['feasible'])
         self.assertEqual(result['profile'][3], 30.6)
 
@@ -106,7 +106,7 @@ class NativeProfileRefitTests(unittest.TestCase):
         model = contract.read_native_profile_model(seg)
         self.assertLess(model['inputs']['lo'][25], 40.)
         self.assertGreater(model['inputs']['hi'][25], 40.)
-        result = R.regrade_for_claims(seg, [claim(50., 41.)], .25)
+        result = profile_refit.refit_native_profile(seg, [claim(50., 41.)])
         self.assertFalse(result['feasible'])
         self.assertEqual(result['refusal_kind'], 'NATIVE_PROFILE_CLAIMS_INFEASIBLE')
         self.assertEqual(result['profile'][25], 40.)
@@ -115,7 +115,7 @@ class NativeProfileRefitTests(unittest.TestCase):
         lo, hi = np.full(51, 33.), np.full(51, 47.)
         hi[25] = 40.2
         seg = native_segment(bounds=(lo, hi))
-        result = R.regrade_for_claims(seg, [claim(50., 40.5)], .08)
+        result = profile_refit.refit_native_profile(seg, [claim(50., 40.5)])
         self.assertFalse(result['feasible'])
         self.assertEqual(result['refusal_kind'], 'NATIVE_PROFILE_CLAIMS_INFEASIBLE')
 
@@ -123,13 +123,13 @@ class NativeProfileRefitTests(unittest.TestCase):
         shared = dict(columns=[24, 25], weights=[.25, .75], lower_y=40.,
                       upper_y=40., kind='published_joint', owner='other-road')
         seg = native_segment(published_readings=[shared])
-        result = R.regrade_for_claims(seg, [claim(49.5, 41.)], .08)
+        result = profile_refit.refit_native_profile(seg, [claim(49.5, 41.)])
         self.assertFalse(result['feasible'])
         self.assertEqual(result['refusal_kind'], 'NATIVE_PROFILE_CLAIMS_INFEASIBLE')
 
     def test_native_freeboard_lower_bound_cannot_be_lowered(self):
         seg = native_segment(profile=np.full(51, 30.6))
-        result = R.regrade_for_claims(seg, [claim(50., 30.4)], .08)
+        result = profile_refit.refit_native_profile(seg, [claim(50., 30.4)])
         self.assertFalse(result['feasible'])
         self.assertEqual(result['refusal_kind'], 'NATIVE_PROFILE_CLAIMS_INFEASIBLE')
 
@@ -158,7 +158,7 @@ class NativeProfileRefitTests(unittest.TestCase):
             [(0, len(points), .25 * model['inputs']['s'])], matrix, target, target)
         self.assertIsNotNone(relaxed)
         self.assertTrue(route.self_adjacency_violations(relaxed, cand))
-        result = R.regrade_for_claims(seg, claims, .08)
+        result = profile_refit.refit_native_profile(seg, claims)
         self.assertFalse(result['feasible'])
         self.assertEqual(result['refusal_kind'], 'NATIVE_PROFILE_CLAIMS_INFEASIBLE')
 
@@ -167,18 +167,17 @@ class NativeProfileRefitTests(unittest.TestCase):
         points += [[2., 40.], [4., 40.], [6., 40.]]
         points += [[6., float(z)] for z in range(38, -2, -2)]
         seg = native_segment(points)
-        incomplete = contract.read_native_profile_model(seg)
+        incomplete = seg['native_profile_model']
         cand = incomplete['self_lattice']
         self.assertGreater(len(cand['edges']['s1']), 0)
         for key in ('near1', 'near2', 'dsum', 'allow_e'):
             cand[key] = cand[key][:0]
         cand['edges'] = {key: values[:0] for key, values in cand['edges'].items()}
-        # Simulate a defective exporter, not profile-only constraint rebinding.
-        # The consumer must reject its schema-valid but incomplete inventory.
-        joint = {**incomplete['inputs'], 'cand': cand,
-                 'native_basis': incomplete['physical_basis']}
-        seg['native_profile_model'] = contract.build_native_profile_model(seg, joint)
-        result = R.regrade_for_claims(seg, [claim(30., 41.)], .08)
+        # Simulate a defective export after the complete constructor succeeds.
+        # A consistent hash must not certify the omitted native restrictions.
+        incomplete['sha256'] = contract._digest(
+            {key: value for key, value in incomplete.items() if key != 'sha256'})
+        result = profile_refit.refit_native_profile(seg, [claim(30., 41.)])
         self.assertFalse(result['feasible'])
         self.assertEqual(result['refusal_kind'], 'NATIVE_PROFILE_CONTEXT_REFUSED')
 
@@ -201,7 +200,7 @@ class NativeProfileRefitTests(unittest.TestCase):
         for seg in variants:
             with self.subTest(binding=seg.get('native_profile_model', {}).get('schema')):
                 before = copy.deepcopy(seg)
-                result = R.regrade_for_claims(seg, [claim(50., 41.)], .08)
+                result = profile_refit.refit_native_profile(seg, [claim(50., 41.)])
                 self.assertFalse(result['feasible'])
                 self.assertEqual(result['refusal_kind'], 'NATIVE_PROFILE_CONTEXT_REFUSED')
                 self.assertEqual(seg, before)
@@ -215,7 +214,7 @@ class NativeProfileRefitTests(unittest.TestCase):
         seg = native_segment(profile=y, held=range(4))
         before = copy.deepcopy(seg)
         measured = claim(49.5, 41.)
-        result = R.regrade_for_claims(seg, [measured], .08)
+        result = profile_refit.refit_native_profile(seg, [measured])
         self.assertTrue(result['feasible'], result)
         self.assertGreater(result['nodes_regraded'], 0)
         self.assertEqual(seg, before)  # Proposal API is read-only.

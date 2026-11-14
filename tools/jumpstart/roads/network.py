@@ -2291,6 +2291,11 @@ class _OwnProfileRefusal(ValueError):
     def __init__(self, refusal, *, candidate=None):
         self.refusal = refusal
         self.candidate = candidate
+        if candidate is not None:
+            record, joint = candidate
+            hint = _grade_propagated_owned_hint(record, joint)
+            if hint is not None:
+                record["profile_constraints"]["grade_propagated"] = hint
         super().__init__(refusal)
 
 
@@ -3410,6 +3415,13 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # straightening moved the stations.
     free, windows = crossing_windows(pts, s, detected)
     before_straightening = pts
+    if fixed_pts is None:
+        # A straight chord may leave the searched path. Route feedback must
+        # price the measured path that produced this crossing, not that chord.
+        for crossing, first, last, _wa, _wb in windows:
+            crossing["search_path_before_chord"] = [
+                [float(x), float(z)]
+                for x, z in before_straightening[first:last + 1]]
     owned_geometry = {
         k: tuple(map(float, point)) for k, point in enumerate(before_straightening)
         if any(len(path) >= 2 and _foot(np.asarray(path), *map(float, point))[2] <= 1e-9
@@ -4099,6 +4111,7 @@ def plan_refusal(seg: dict, gen_pois: list, seed: str, *, fld,
     if seg.get("residual_infeasible"):
         return "residual_infeasible"
     if ((seg.get("terminal_profile_refusal") or {}).get("verdict") == "REFUSED"
+            or (seg.get("native_profile_status") or {}).get("verdict") == "REFUSED"
             or seg.get("verdict") == "REFUSED" or seg.get("status") == "REFUSED"):
         return "native_profile_refusal"
     if profile_constraint_rejection(seg) is not None:
@@ -4327,42 +4340,165 @@ def span_retry_guidance(corr: routemod.Corridor, rec: dict) -> np.ndarray | None
     return out if np.any(out) else None
 
 
+def _crossing_search_path(value):
+    """Return only a finite sampled producer trace; never infer it from a chord."""
+    path = value.get("search_path_before_chord")
+    if not isinstance(path, (list, tuple)) or len(path) < 2:
+        return None
+    try:
+        for point in path:
+            if not isinstance(point, (list, tuple)) or len(point) != 2:
+                return None
+            if any(isinstance(v, (bool, np.bool_))
+                   or not isinstance(v, (int, float, np.integer, np.floating))
+                   or not math.isfinite(v) for v in point):
+                return None
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return path if any(x != path[0][0] or z != path[0][1]
+                       for x, z in path[1:]) else None
+
+
+def _adjacency_hint_discs(hint):
+    """One union footprint per hint, with the existing radius and price."""
+    if "crossing_id" in hint:
+        path = _crossing_search_path(hint)
+        if path is None:
+            raise ValueError("crossing guidance lacks a valid pre-chord search path")
+    else:
+        path = (hint["xz"],)
+    return ((x, z, hint["radius_m"]) for x, z in path)
+
+
 def adjacency_guidance(corr: routemod.Corridor, hints) -> np.ndarray:
     """Reconstruct ordered additive costs without changing traversability."""
     out = np.zeros((corr.m, corr.m), dtype=np.float64)
     for hint in hints:
-        x, z = hint["xz"]
-        mask = adjacency_mask(corr, [(x, z, hint["radius_m"])])
+        mask = adjacency_mask(corr, _adjacency_hint_discs(hint))
         out[mask] += hint["cost_per_m"]
     return out
 
 
+def _grade_propagated_owned_hint(rec, joint):
+    """Retain a native cross-station owner contradiction for routing costs.
+
+    An infeasible fit's midpoint is not a bound. Use only the original
+    inequalities, actual native rung/spans and declared/detected owner inputs.
+    The movable detected crossing is priced; the declared bank stays fixed.
+    Missing evidence leaves the ordinary physical refusal untouched.
+    """
+    if ((rec.get("profile_constraints") or {}).get("verdict") != "REFUSED"
+            or joint.get("terrain_feasible") is not False or not joint.get("spans")):
+        return None
+    try:
+        points = np.asarray(rec["nodes"], dtype=np.float64)
+        arcs = np.asarray(joint["s"], dtype=np.float64)
+        lower, upper = np.asarray(joint["lo"]), np.asarray(joint["hi"])
+        held = np.asarray(joint["held"], dtype=bool)
+        rung = float(joint["rung"])
+        n = len(points)
+        if (points.shape != (n, 2) or any(a.shape != (n,) for a in
+                (arcs, lower, upper, held)) or not 0 < rung <= routemod.GRADE_CEILING
+                or not np.all(np.diff(arcs) >= 0)
+                or not np.array_equal(points, joint["cand"]["pts"])
+                or not np.array_equal(arcs, joint["cand"]["arcs"])):
+            return None
+        basis = joint["native_basis"]
+        crossings = {c["crossing_id"] for c in rec["crossings"]}
+        best = None
+        for owner in basis["held_detected_bank_inputs"]:
+            crossing_id = owner["crossing_id"]
+            if crossing_id not in crossings:
+                continue
+            first, last = int(owner["first"]), int(owner["last"])
+            windows = [w for w in basis["free_crossing_windows"]
+                       if w["crossing_id"] == crossing_id
+                       and w["first_level"] == first and w["last_level"] == last]
+            if (not windows or not 0 <= first <= last < n
+                    or not held[first:last + 1].all()):
+                continue
+            for end, node, datum, bank_first, bank_last in basis["held_abutment_inputs"]:
+                if not 0 <= bank_first <= bank_last < n:
+                    continue
+                for k in range(bank_first, bank_last + 1):
+                    if first <= k <= last or not held[k]:
+                        continue
+                    q = first if k < first else last
+                    span = next(([a, b] for a, b in joint["spans"]
+                                 if a <= min(k, q) and max(k, q) <= b), None)
+                    values = (lower[k], upper[k], lower[q], upper[q],
+                              arcs[k], arcs[q], datum)
+                    if (span is None or not all(math.isfinite(float(v)) for v in values)
+                            or lower[k] > upper[k] or lower[q] > upper[q]
+                            or abs(lower[k] - datum) > 1e-9
+                            or abs(upper[k] - datum) > 1e-9):
+                        continue
+                    reach = rung * abs(float(arcs[q] - arcs[k]))
+                    rising = float(lower[q] - upper[k])
+                    falling = float(lower[k] - upper[q])
+                    required = max(rising, falling)
+                    shortfall = required - reach
+                    if shortfall <= 1e-9 or (best is not None and shortfall <=
+                            best["grade_conflict"]["shortfall_m"]):
+                        continue
+                    lo = float(lower[q] if rising >= falling else lower[k] - reach)
+                    hi = float(upper[k] + reach if rising >= falling else upper[q])
+                    best = {
+                        "kind": "owned_profile_grade", "xz": points[q].tolist(),
+                        "station": q, "lower_y": lo, "upper_y": hi,
+                        "crossing_id": crossing_id,
+                        "grade_conflict": {
+                            "stations": [k, q], "arcs_m": [float(arcs[k]), float(arcs[q])],
+                            "original_bounds": [[float(lower[k]), float(upper[k])],
+                                                [float(lower[q]), float(upper[q])]],
+                            "rung": rung, "required_rise_m": required,
+                            "available_rise_m": reach, "shortfall_m": shortfall,
+                            "native_infeasible_span": span,
+                            "declared_bank": {"end": end, "node": node, "datum_y": datum},
+                            "detected_crossing": copy.deepcopy(owner),
+                            "crossing_window": copy.deepcopy(windows[0])}}
+        return best
+    except (KeyError, TypeError, ValueError, IndexError):
+        return None
+
+
 def _owned_profile_hint(rec):
-    """Price a contradictory interior owner binding, never move its datum."""
+    """Price a proven owner conflict on its searched trace, never move its datum."""
     conflicts = [binding for binding in
                  (rec.get("profile_constraints") or {}).get("bindings", ())
                  if (float(binding["lower_y"]) > float(binding["upper_y"]) + 1e-9
                      and 0 < int(binding["station"]) < len(rec["nodes"]) - 1)]
-    if not conflicts:
-        return None
-    binding = max(conflicts, key=lambda row:
-                  float(row["lower_y"]) - float(row["upper_y"]))
-    hint = {"kind": "owned_profile", "xz": list(binding["xz"]),
-            "station": int(binding["station"]),
-            "lower_y": float(binding["lower_y"]),
-            "upper_y": float(binding["upper_y"])}
+    if conflicts:
+        binding = max(conflicts, key=lambda row:
+                      float(row["lower_y"]) - float(row["upper_y"]))
+        hint = {"kind": "owned_profile", "xz": list(binding["xz"]),
+                "station": int(binding["station"]),
+                "lower_y": float(binding["lower_y"]),
+                "upper_y": float(binding["upper_y"])}
+    else:
+        hint = copy.deepcopy((rec.get("profile_constraints") or {}).get("grade_propagated"))
+        if hint is None or rec["nodes"][hint["station"]] != hint["xz"]:
+            return None
     if rec.get("crossings"):
         points = np.asarray(rec["nodes"], dtype=np.float64)
         arcs = np.r_[0., np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
         _free, windows = crossing_windows(points, arcs, rec["crossings"])
         for crossing, ia, ib, wa, wb in windows:
+            if hint.get("crossing_id", crossing["crossing_id"]) != crossing["crossing_id"]:
+                continue
             if wa <= hint["station"] <= wb:
+                path = _crossing_search_path(crossing)
+                if path is None:
+                    return None
                 # The old bank cannot move. Price the new rigid crossing
                 # whose level run conflicts with it, not the fixed prefix.
                 hint.update(binding_xz=hint["xz"],
                             xz=points[(ia + ib) // 2].tolist(),
-                            crossing_id=crossing["crossing_id"])
+                            crossing_id=crossing["crossing_id"],
+                            search_path_before_chord=copy.deepcopy(path))
                 break
+    if "crossing_id" in hint and "search_path_before_chord" not in hint:
+        return None
     return hint
 
 
@@ -4430,9 +4566,8 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
             if not worst or len(worst) < 2 or not arcs or len(arcs) < 2:
                 return refused("missing_pair", "self-overlap has no measured foot/arc pair")
             hint = {"xz": list(map(float, worst[0 if arcs[0] > arcs[1] else 1]))}
-        x, z = hint["xz"]
         hint.update(radius_m=radius, cost_per_m=price)
-        mask = adjacency_mask(corr, [(x, z, radius)])
+        mask = adjacency_mask(corr, _adjacency_hint_discs(hint))
         if not np.any(mask):
             return refused("outside_corridor", "measured conflict is outside the search grid")
         try:

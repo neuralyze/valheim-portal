@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   feedback solves against that same model, never only the slope of a shift.
   Missing, incomplete or stale models cannot authorize a profile repair.
   Accepted changes refresh their actual grade and self-adjacency receipts.
+  Complete measured profiles that violate a native bound are refused with
+  the exact offending row and excess; they are not mislabeled as missing
+  inputs and cannot abort the entire shoreline candidate search. The shared
+  constructor/read/rebind boundary checks the full lattice inventory before
+  numeric classification: even a consistently truncated export with an
+  illegal profile remains a prerequisite, not a refusal that may be skipped.
+- Native owner-conflict routing preserves the detected crossing's measured
+  path before bridge straightening. Finite retry costs follow that searched
+  path, not a final chord center A* may never traverse. The existing radius,
+  bank datums and physical limits are unchanged; overlapping trace footprints
+  pay one price per hint. Missing or malformed traces cannot invent progress.
 - Native rim closure can solve the implicated movable cells together when
   a sequential pass marks an algorithmic dead end. The continuation retains
   every original water, clamp, ownership and edge bound; an infeasible

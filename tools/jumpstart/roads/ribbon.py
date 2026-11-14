@@ -8811,9 +8811,9 @@ def grade_into_foreign(seg: dict, patches: dict, live,
     # Native station, grade, self-lattice, bank and published joint readings
     # remain binding. A measured foreign surface adds exact interpolated
     # readings; it never grants permission to unpin another physical owner.
-    step = regrade_for_claims(
+    step = profilerefit.refit_native_profile(
         seg, [{"s": c["s"], "h": c["live_y"], "slack": 0.0}
-              for c in claims], grade)
+              for c in claims])
     regraded, moved_max = step["nodes_regraded"], step["max_move_m"]
     conflicts = []
     if step["feasible"]:
@@ -9146,16 +9146,6 @@ def prior_arrival_judgement(seg: dict, prior: list[dict],
     return {"failures": failures, "claims": claims, "checked": checked}
 
 
-def regrade_for_claims(seg: dict, claims: list[dict],
-                       ramp_grade: float) -> dict:
-    """Propose a TOTAL native constrained profile; never mutate the segment.
-
-    `ramp_grade` remains a caller's diagnostic input, not permission to raise
-    the native rung or release original held/bank/joint constraints.
-    """
-    return profilerefit.refit_native_profile(seg, claims)
-
-
 def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
                      rasterise, judge, *, limit_m: float, edge_m: float,
                      rounds: int = PROFILE_FEEDBACK_ROUNDS
@@ -9199,8 +9189,6 @@ def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
         report["caused_after"] = report["caused_before"]
         report["worst_after_m"] = report["worst_before_m"]
         return comps, st, walk, report
-    design = float(seg.get("grade_limit") or 0.08)
-    ramp = min(max(design, 1e-3), BATTER_GRADE)
     walk0_ok = walk.get("verdict") == "WALKABLE"
     # THE LOOP FOLLOWS THE LATEST CANDIDATE AND KEEPS THE BEST: a regrade that
     # clears the rows it was asked about can stand a NEW face where the ramp
@@ -9215,7 +9203,7 @@ def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
                              cur["judged"]["labels"], limit_m, edge_m)
                   + arrival_claims(seg, cur["judged"].get("arrivals") or [])
                   + (cur["judged"].get("prior_arrival_claims") or []))
-        step = regrade_for_claims(seg, claims, ramp)
+        step = profilerefit.refit_native_profile(seg, claims)
         row = {"round": rnd + 1, "claims": len(claims),
                "claims_active": step["claims_active"],
                "feasible": step["feasible"], "why": step["why"],
@@ -11039,10 +11027,10 @@ def selftest_arrival_claims(verbose: bool = True) -> dict:
              "measured": 0.9, "limit": 0.245, "where": (0.0, 0.0)}
     claims = arrival_claims(seg, [berm, other])
     assert len(claims) == 1 and claims[0]["s"] == 0.0, claims
-    fix = regrade_for_claims(seg, claims, 0.08)
+    fix = profilerefit.refit_native_profile(seg, claims)
     pinned = copy.deepcopy(seg)
     _selftest_native_profile(pinned, generated_y=33.0, held=(0, n - 1))
-    shipped = regrade_for_claims(pinned, claims, 0.08)
+    shipped = profilerefit.refit_native_profile(pinned, claims)
     need = 0.348 - 0.9 * 0.245
     assert fix["feasible"] and fix["nodes_regraded"] >= 1, fix
     assert abs(fix["profile"][0] - (33.0 + need)) < 1e-9, fix
@@ -11522,7 +11510,7 @@ def selftest_successive_arrivals(verbose: bool = True) -> dict:
         [dict(records[0], meta={})], "road_successor")
     legacy_j, _height = judge(candidate, legacy)
     assert legacy_j["failures"] and not legacy_j["claims"], legacy_j
-    fix = regrade_for_claims(later, broken["claims"], 0.08)
+    fix = profilerefit.refit_native_profile(later, broken["claims"])
     assert fix["feasible"] and fix["nodes_regraded"], fix
     profilerefit.accept_native_profile(later, fix)
     corrected, corrected_stats = rasterise()

@@ -21,6 +21,14 @@ class NativeProfileModelError(ValueError):
     """A profile cannot be modified without a new complete native solve."""
 
 
+class _NativeProfileViolation(NativeProfileModelError):
+    """Complete measured inputs demonstrate an illegal candidate profile."""
+
+    def __init__(self, reason, constraint):
+        self.constraint = constraint
+        super().__init__(f"{reason}: {constraint}")
+
+
 def _fail(reason):
     raise NativeProfileModelError(
         f"{reason}; replan this exact physical segment with complete native "
@@ -208,6 +216,19 @@ def _normalise(raw):
             _fail("native self lattice restrictions are incomplete")
         if cand["arcs"].shape != (n,) or not np.array_equal(cand["arcs"], arcs):
             _fail("native self lattice arc differs from emitted geometry")
+        # Completeness precedes every numeric decision, including producer
+        # refusals: a consistently truncated export is still unknown input.
+        actual = route.self_adjacency_lattice(
+            nodes, inputs["free"], width,
+            grade=float(cand["grade"]), batter_m=float(cand["batter_m"]),
+            lattice_m=float(cand["lattice_m"]), dy_cap=float(cand["dy_cap"]),
+            terminal_caps=tuple(binding["terminal_caps"]))
+        if (any(not np.array_equal(cand[key], actual[key]) for key in
+                ("arcs", "pts", "near1", "near2", "dsum", "allow_e"))
+                or set(cand["edges"]) != set(actual["edges"])
+                or any(not np.array_equal(cand["edges"][key], actual["edges"][key])
+                       for key in actual["edges"])):
+            _fail("complete native self-lattice inventory differs from emitted geometry")
         for row in model["readings"]:
             columns, weights = row["columns"], row["weights"]
             if (not columns or len(columns) != len(weights)
@@ -263,16 +284,29 @@ def _check_profile(model):
     inputs = model["inputs"]
     if y.shape != inputs["s"].shape or not np.isfinite(y).all():
         _fail("emitted native profile is incomplete")
-    if (np.any(y < inputs["lo"] - 1e-9)
-            or np.any(y > inputs["hi"] + 1e-9)
-            or np.any(np.abs(np.diff(y)) > inputs["rung"]
-                      * np.diff(inputs["s"]) + 1e-9)):
-        _fail("emitted total profile violates original native bounds/grade")
+    def check(values, lower, upper, kind, reason):
+        bad = np.flatnonzero((values < lower - 1e-9)
+                             | (values > upper + 1e-9))
+        if bad.size:
+            k = int(bad[0])
+            below = bool(values[k] < lower[k])
+            raise _NativeProfileViolation(reason, {
+                "kind": kind, "row": k, "value": float(values[k]),
+                "bound": "lower" if below else "upper",
+                "limit": float(lower[k] if below else upper[k]),
+                "excess_m": float(max(lower[k] - values[k], values[k] - upper[k]))})
+
+    reason = "emitted total profile violates original native bounds/grade"
+    check(y, inputs["lo"], inputs["hi"], "bounds", reason)
+    delta = np.abs(np.diff(y))
+    check(delta, np.zeros_like(delta), inputs["rung"] * np.diff(inputs["s"]),
+          "grade", reason)
     matrix, lower, upper = native_profile_readings(model)
-    values = matrix @ y
-    if (np.any(values < lower - 1e-9) or np.any(values > upper + 1e-9)
-            or route.self_adjacency_violations(y, model["self_lattice"])):
-        _fail("emitted total profile violates original native self/owner readings")
+    reason = "emitted total profile violates original native self/owner readings"
+    check(matrix @ y, lower, upper, "self/owner", reason)
+    violations = route.self_adjacency_violations(y, model["self_lattice"])
+    if violations:
+        raise _NativeProfileViolation(reason, violations[0])
 
 
 def build_native_profile_model(seg, joint, *, published_readings=()):
@@ -320,11 +354,16 @@ def build_native_profile_model(seg, joint, *, published_readings=()):
 
 
 def refresh_native_profile_model(seg, joint, *, published_readings=()):
-    """Replace every old variant; incomplete/native-infeasible remains unproven."""
+    """Refuse illegal measured profiles; missing inputs remain unproven."""
     seg.pop("native_profile_model", None)
     try:
         model = build_native_profile_model(seg, joint,
                                            published_readings=published_readings)
+    except _NativeProfileViolation as exc:
+        seg["native_profile_status"] = {
+            "verdict": "REFUSED", "why": str(exc),
+            "constraint": exc.constraint}
+        return None
     except NativeProfileModelError as exc:
         seg["native_profile_status"] = {"verdict": "UNPROVEN", "why": str(exc)}
         return None
@@ -344,22 +383,6 @@ def read_native_profile_model(seg):
     if content.get("binding") != _binding(seg):
         _fail("native profile model geometry/profile/ownership binding mismatch")
     model = _normalise(content)
-    # Validate the complete inventory at the common read boundary, including
-    # planner/shore consumers, not only when a terrain writer later refits it.
-    import route
-    cand = model["self_lattice"]
-    actual = route.self_adjacency_lattice(
-        np.asarray(seg["nodes"], dtype=np.float64),
-        np.asarray(seg["is_bridge"], dtype=bool), float(seg["width_m"]),
-        grade=float(cand["grade"]), batter_m=float(cand["batter_m"]),
-        lattice_m=float(cand["lattice_m"]), dy_cap=float(cand["dy_cap"]),
-        terminal_caps=tuple(seg["terminal_caps"]))
-    if (any(not np.array_equal(cand[key], actual[key]) for key in
-            ("arcs", "pts", "near1", "near2", "dsum", "allow_e"))
-            or set(cand["edges"]) != set(actual["edges"])
-            or any(not np.array_equal(cand["edges"][key], actual["edges"][key])
-                   for key in actual["edges"])):
-        _fail("complete native self-lattice inventory differs from emitted geometry")
     _check_profile(model)
     return model
 

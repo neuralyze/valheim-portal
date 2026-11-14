@@ -36,7 +36,8 @@ class CrossingOwnedGuidanceTests(unittest.TestCase):
             crossings = ([dict(crossing_id='new-crossing', stations=[int(at_crossing[0]),
                           int(at_crossing[-1])])] if len(at_crossing) else [])
             free, windows = N.crossing_windows(points, arcs, crossings)
-            for _, _, _, wa, wb in windows:
+            for crossing, ia, ib, wa, wb in windows:
+                crossing['search_path_before_chord'] = points[ia:ib + 1].tolist()
                 lower[wa:wb+1] = np.maximum(lower[wa:wb+1], 58.)
                 upper[wa:wb+1] = np.minimum(upper[wa:wb+1], 58.)
             fitted = N.routemod.fit_ladder(np.full(len(points), 60.), arcs, lower, upper,
