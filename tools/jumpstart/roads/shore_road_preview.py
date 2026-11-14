@@ -85,11 +85,13 @@ class NativeShorePreview:
     The object is sequential, like the solve scope that owns it.
     """
 
-    def __init__(self, *, native_writer=False):
+    def __init__(self, *, native_writer=False, placed_objects=None, pad_keepouts=None):
         self._kernel = None
         self._spec = None
         self._native_writer = native_writer
         self._native_patches = {}
+        self._placed_objects = placed_objects
+        self._pad_keepouts = pad_keepouts
 
     def _prepare(self):
         if self._kernel is not None:
@@ -173,9 +175,13 @@ class NativeShorePreview:
         kernel._ARRIVAL_STARTS = {}
         kernel._PAD_CLAIMS = []
         kernel._PAD_DATUMS = {}
-        kernel._PLAN_PAD_KEEPOUTS = None
+        kernel._PLAN_PAD_KEEPOUTS = (
+            (lambda: self._pad_keepouts)
+            if self._native_writer and self._pad_keepouts is not None else None)
         kernel._PLAN_PATCHES = kernel.writer_patches if self._native_writer else None
         kernel._PLAN_KEEPOUTS = kernel.writer_keepouts if self._native_writer else None
+        kernel._PLAN_PLACED_OBJECTS = (
+            self._placed_objects if self._native_writer else None)
         kernel._GEN_PATCHES = self._native_patches if self._native_writer else {}
         field = _MeasuredField(graph.corr.fld, surf)
         corridor = copy.copy(graph.corr)
@@ -220,6 +226,10 @@ class NativeShorePreview:
             if field.coverage_failure is not None:
                 raise field.coverage_failure
             why = kernel.plan_refusal(record, [], kernel.SEED, fld=field, coverage=False)
+            if why == "native_profile_prerequisite":
+                raise RuntimeError(
+                    f"native shore profile prerequisite for {record['id']}: "
+                    f"{record['native_profile_status']['why']}")
             if why is not None:
                 return why
             if (record["residual_infeasible"] or record["poi_hard_violations"]
@@ -276,6 +286,8 @@ class NativeShorePreview:
             "source_node": copy.deepcopy(source_node),
             "terminal_node": terminal,
             "source_handoff": copy.deepcopy(source_approach),
+            "placed_objects": (None if self._placed_objects is None
+                               else len(self._placed_objects)),
             "authority_pending": ["full named road", "source pad applied datum/arrival",
                                   "native writer", "census", "saved world"],
             "pad_context": "current graph masks; no world ledger or applied pad datum read"}

@@ -227,6 +227,26 @@ remedies run before rejecting a root, preserving its landing and source
 attachment on every candidate. The entire preview call owns its temporary
 import-path changes, including final rejection checks and error exits.
 
+The candidate's physical context includes individual observed
+ground-freezing object positions and the actual planned/written pad
+provider. The pad provider is prepared before shoreline derivation in the
+planner's data flow, not recomputed from guessed semantic centres inside an
+isolated preview. Checkpoint identity includes pad rectangles, datums,
+written-ground membership and unlaid/undecodable state, as well as the
+measured field and source code. A foundation change invalidates earlier
+completed shoreline results even when the field and rectangles did not move.
+
+Native profile feedback retains the complete model that fitted the road:
+exact emitted geometry, original station bounds, held bank/deck stations,
+total grade, native self-lattice and published joint/terminal readings.
+`profile_contract` validates the full inventory at the shared read boundary;
+`profile_refit` adds measured rim claims to those same inequalities. A fit
+cannot buy a terrain repair by violating the original road's grade or
+self-adjacency, and a missing/stale model is a prerequisite, not a clear
+profile. Geometry-changing candidates need their own freshly fitted model.
+Legal changes refresh actual grade and native verdict metadata; neither
+solver success nor a local terrain preview replaces final world acceptance.
+
 If the native pad solve refuses a self-overlapping incoming line, its
 measured candidate remains available to the same adjacency-guidance search.
 This is not pad approval: only a replacement that completes the original

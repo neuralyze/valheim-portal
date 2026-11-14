@@ -1063,8 +1063,10 @@ def self_adjacency_lattice(pts, is_bridge, width_m: float, *, grade: float,
         km = np.maximum(k - 1, 0)
         k = np.where(np.abs(arcs[km] - s) <= np.abs(arcs[k] - s), km, k)
         return k, np.abs(arcs[k] - s)
-    n1, d1 = nearest(e["s1"]) if len(e["s1"]) else (np.zeros(0, int), 0.0)
-    n2, d2 = nearest(e["s2"]) if len(e["s2"]) else (np.zeros(0, int), 0.0)
+    n1, d1 = (nearest(e["s1"]) if len(e["s1"]) else
+              (np.zeros(0, int), np.zeros(0)))
+    n2, d2 = (nearest(e["s2"]) if len(e["s2"]) else
+              (np.zeros(0, int), np.zeros(0)))
     return {"edges": e, "arcs": arcs, "pts": nodes, "terminal_caps": caps,
             "near1": np.asarray(n1, dtype=np.int64),
             "near2": np.asarray(n2, dtype=np.int64),
@@ -1968,6 +1970,81 @@ def _refuse_order(lg: dict) -> tuple:
     return (int(lg.get("pri") or 0), -float(lg["width_m"]), lg["id"])
 
 
+def _published_profile_readings(legs, rd, profiles, alive, limits):
+    """Export original exact rows and the final shared datums they publish.
+
+    A single-road repair may not silently move a shared reading. Preserve its
+    local foot at the agreed height, and separately retain the actual final
+    pair/pad constraint and its original physical instrument allowance.
+    """
+    if limits is None:
+        return {}
+    pair_allow, pad_lower, pad_upper = limits
+    out = {lg["id"]: [] for li, lg in enumerate(legs) if alive[li]}
+    P, U = rd["pairs"], rd["pads"]
+
+    def foot(table, k, side):
+        return ([int(table["k0" + side][k]), int(table["k1" + side][k])],
+                [1. - float(table["t" + side][k]), float(table["t" + side][k])])
+
+    def value(li, columns, weights):
+        return float(sum(profiles[li][c] * w for c, w in zip(columns, weights)))
+
+    for k in range(len(P["la"])):
+        a, b = int(P["la"][k]), int(P["lb"][k])
+        if not alive[a] or not alive[b]:
+            continue
+        ca, wa = foot(P, k, "a")
+        cb, wb = foot(P, k, "b")
+        allowance = float(pair_allow[k])
+        source = {"kind": int(P["kind"][k]), "xz": [float(P["x"][k]),
+                                                           float(P["z"][k])],
+                  "physical_allowance_m": float(P["allow"][k]),
+                  "solved_allowance_m": allowance,
+                  "participants": [legs[a]["id"], legs[b]["id"]],
+                  "feet": [{"columns": ca, "weights": wa},
+                           {"columns": cb, "weights": wb}]}
+        if a == b:
+            out[legs[a]["id"]].append({
+                "columns": ca + cb, "weights": wa + [-v for v in wb],
+                "lower_y": -allowance, "upper_y": allowance,
+                "kind": "joint_own_reading", "owner": legs[a]["id"],
+                "source": source})
+            continue
+        for li, other, columns, weights, oc, ow in (
+                (a, b, ca, wa, cb, wb), (b, a, cb, wb, ca, wa)):
+            datum, other_datum = value(li, columns, weights), value(other, oc, ow)
+            rows = out[legs[li]["id"]]
+            rows.append({
+                "columns": columns, "weights": weights,
+                "lower_y": other_datum - allowance,
+                "upper_y": other_datum + allowance,
+                "kind": "joint_original_bound", "owner": legs[other]["id"],
+                "source": source})
+            rows.append({
+                "columns": columns, "weights": weights,
+                "lower_y": datum, "upper_y": datum,
+                "kind": "published_joint_datum", "owner": legs[other]["id"],
+                "source": source})
+    for k in range(len(U["la"])):
+        li = int(U["la"][k])
+        if not alive[li]:
+            continue
+        columns, weights = foot(U, k, "a")
+        datum = value(li, columns, weights)
+        source = {"datum_y": float(U["datum"][k]),
+                  "physical_allowance_m": float(U["allow"][k]),
+                  "xz": [float(U["x"][k]), float(U["z"][k])]}
+        for kind, lower, upper in (
+                ("joint_pad_bound", float(pad_lower[k]), float(pad_upper[k])),
+                ("published_pad_datum", datum, datum)):
+            out[legs[li]["id"]].append({
+                "columns": columns, "weights": weights,
+                "lower_y": lower, "upper_y": upper,
+                "kind": kind, "owner": U["pad"][k], "source": source})
+    return out
+
+
 def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
                     depends_on) -> dict:
     own = "each_legs_own_bounds_and_branches" in depends_on
@@ -1977,7 +2054,7 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
     n = [len(lg["y0"]) for lg in legs]
     off = np.concatenate([[0], np.cumsum(n)]).astype(np.int64)
     Y0 = [np.asarray(lg["y0"], dtype=np.float64) for lg in legs]
-    Y0r = [np.round(y, 3) for y in Y0]
+    Y0r = Y0
     rung = [float(lg["rung"]) for lg in legs]
     alive = [True] * len(legs)
     refused: list[dict] = []
@@ -2067,8 +2144,12 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
     # junction and keep their allowance.  Filled once the rungs are final.
     budget_p = P["allow"].copy()
     budget_u = U["allow"].copy()
+    # Preserve the exact limits of the successful FINAL solve. Counts and
+    # rounded report rows cannot reconstruct these interpolated constraints.
+    last_native_limits = None
 
     def attempt(tp, tu, lp, lu, closure_only=False):
+        nonlocal last_native_limits
         r = np.asarray(rung)
         active = np.asarray(alive, dtype=np.bool_)
         live_p = active[P["la"]] & active[P["lb"]]
@@ -2136,6 +2217,10 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
                 pads_ok = (np.all(uv[live_u] >= ul[live_u] - 1e-9)
                            and np.all(uv[live_u] <= uh[live_u] + 1e-9))
             if pairs_ok and pads_ok:
+                if not closure_only:
+                    last_native_limits = (pa.copy(), ul.copy() if len(gu) else
+                                          np.zeros(0), uh.copy() if len(gu)
+                                          else np.zeros(0))
                 return (True if closure_only else y), -1, (L, Uu)
         # Neither an empty approximate box nor a midpoint that misses exact
         # foot readings establishes infeasibility. Restore original own
@@ -2157,6 +2242,10 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
             y0, exact_lo, exact_hi, chains, readings, lower, upper,
             closure_only=closure_only)
         if y is not None:
+            if not closure_only:
+                last_native_limits = (pa.copy(), ul.copy() if len(gu) else
+                                      np.zeros(0), uh.copy() if len(gu)
+                                      else np.zeros(0))
             return (True if closure_only else y), -1, (exact_lo, exact_hi)
         empty = np.nonzero(exact_lo > exact_hi)[0]
         return None, int(empty[0]) if len(empty) else -1, (exact_lo, exact_hi)
@@ -2334,8 +2423,7 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
                 else:
                     refuse(li, comp, bad, bounds, tp, tu)
                 continue
-            Yr = [np.round(y[off[li]:off[li + 1]], 3)
-                  for li in range(len(legs))]
+            Yr = [y[off[li]:off[li + 1]] for li in range(len(legs))]
             ea, eu = _excess(Yr, rd)
             live_p = np.asarray([alive[a] and alive[b]
                                  for a, b in zip(P["la"], P["lb"])],
@@ -2365,6 +2453,7 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
     # instrument's allowance, climbing the ladder and refusing where it must.
     ones_p, ones_u = np.ones(len(P["la"])), np.ones(len(U["la"]))
     y1 = solve(tight_p, tight_u, ones_p, ones_u, climb=True)
+    stage_one_limits = last_native_limits
 
     # STAGE TWO -- ONE DATUM.  At the rungs stage one settled, where two legs
     # MEET -- the junction gate's own pairs between two legs, and a leg
@@ -2468,11 +2557,12 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
         lam_p[:] = 1.0
         lam_u[:] = 1.0
         y = y1
+        last_native_limits = stage_one_limits
     for members in places:
         place_lam.append(max((lam_p if kd == "p" else lam_u)[k]
                              for kd, k in members))
     Yout = [y[off[li]:off[li + 1]] for li in range(len(legs))]
-    Yr = [np.round(v, 3) for v in Yout]
+    Yr = Yout
     ea, eu = _excess(Yr, rd)
     out = {"y": {}, "rung": {}, "legs": {}, "refused": refused,
            "readings": {"pairs": int(len(P["la"])),
@@ -2480,6 +2570,8 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
                         "claim_boundary_edges": int((P["kind"] == 1).sum()),
                         "self_adjacency_edges": int((P["kind"] == 2).sum()),
                         "pad_readings": int(len(U["la"]))}}
+    out["native_profile_readings"] = _published_profile_readings(
+        legs, rd, Yout, alive, last_native_limits)
     live_pf = np.asarray([alive[a] and alive[b]
                           for a, b in zip(P["la"], P["lb"])], dtype=bool)
     # THE POPULATION BY INSTRUMENT, before and after, so a reader can see

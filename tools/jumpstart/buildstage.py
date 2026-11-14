@@ -219,6 +219,30 @@ def _segment_units(s: Scope) -> list[str]:
     return [x["id"] for x in (doc.get("segments") or []) if x.get("id")]
 
 
+def road_requirement_status(s: Scope) -> dict:
+    """Named plan debts, separate from executable physical segment units."""
+    import yaml
+    from accept.sections.roads import named_road_plan_status, named_road_source
+    path = worldseed.segments_path(s.seed)
+    try:
+        doc = yaml.safe_load(path.read_text()) or {}
+        worldseed.require_scope(
+            "named road requirements", path, found_seed=doc.get("seed"),
+            found_world=doc.get("world"), seed_=s.seed, world_=s.world)
+        authored, excluded, no_road = named_road_source(s.seed, s.world)
+        crossing_path = worldseed.crossings_path(s.seed)
+        crossing_doc = yaml.safe_load(crossing_path.read_text()) or {}
+        worldseed.require_scope(
+            "named road declared decks", crossing_path,
+            found_seed=crossing_doc.get("seed"), found_world=crossing_doc.get("world"),
+            seed_=s.seed, world_=s.world)
+        return named_road_plan_status(
+            doc, authored, excluded, no_road, crossing_doc)
+    except (OSError, ValueError, SystemExit) as exc:
+        return {"pass": False, "requirements": [],
+                "source_issues": [f"named road source unresolved: {exc}"]}
+
+
 def _settlement_units(s: Scope) -> list[str]:
     """Every `--site` `settlements/build.py` accepts, read off the SAME plan it
     reads: `plan["towns"]` is keyed by town name and `plan["outliers"]` is a
@@ -2078,6 +2102,7 @@ def _run(rt: Runtime, through: int = 99,
     # the tool, not from the journal.
     refused: dict[str, set[str]] = {}
     worst = 0
+    named_status = None
     if resume and journal.exists():
         try:
             log = json.loads(journal.read_text())
@@ -2123,6 +2148,19 @@ def _run(rt: Runtime, through: int = 99,
                              f"no tool in this tree runs it unattended.\n"
                              f"  {st.manual}\n")
             return 4
+        if st.domain == "segment" and named_status is None:
+            named_status = road_requirement_status(s)
+            log.append({"name": "road_requirements",
+                        "plan": named_status,
+                        "saved_walking_acceptance": False})
+            journal.write_text(json.dumps(log, indent=1))
+            if not named_status["pass"]:
+                worst = worst or 4
+                sys.stderr.write(
+                    "\nUNRESOLVED NAMED ROADS: "
+                    + "; ".join(named_status["source_issues"])
+                    + ". Only actual physical segment units are executable; "
+                    "no terrain write is synthesized for an obligation.\n")
         units = st.units(s) if st.units else []
         if not units:
             log.append({"step": st.ordinal, "name": st.name, "units": 0,
@@ -4316,6 +4354,10 @@ def selftest() -> int:
 # ---------------------------------------------------------------------------
 def _render_order(scope: Scope) -> None:
     print(f"world {scope.world}  seed {scope.seed}")
+    named = road_requirement_status(scope)
+    print(f"named road plan resolved {named['pass']} (not saved walking acceptance)")
+    for why in named["source_issues"]:
+        print(f"        UNRESOLVED {why}")
     for st in BUILD_STEPS:
         units = st.units(scope) if st.units else []
         kind = "INPUT" if st.inherited else ("CMD " if st.argv else "MAN ")

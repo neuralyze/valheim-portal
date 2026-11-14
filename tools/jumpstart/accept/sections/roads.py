@@ -74,6 +74,97 @@ DISPOSAL_MIN_CUT_M = 0.01
 DISPOSAL_PAD_M = 3
 
 
+def receipt_heights(surfaces):
+    """Only dry, measured carriers may supply a saved walking witness."""
+    return {float(y) for y, solid in surfaces
+            if math.isfinite(y) and y > WATER_Y
+            and (solid is None or not solid.n_bounds)}
+
+
+def measured_surface_edges(captured, npos, node_surf, clear_surface=None):
+    """Compose surface choices through the existing intermediate/corner reads."""
+    edges = {}
+    for (a, b), moves in captured.items():
+        start_heights = receipt_heights(node_surf.get(a, []))
+        relation = {(y, y): [(npos[a][0], npos[a][1], y)]
+                    for y in start_heights}
+        for p, sa, q, sb, corners in moves:
+            choices = {}
+            for ya in receipt_heights(sa):
+                for yb in receipt_heights(sb):
+                    if clear_surface is not None and (
+                            not clear_surface(p, ya, q, a, b)
+                            or not clear_surface(q, yb, p, a, b)):
+                        continue
+                    if corners:
+                        for c, sc in corners:
+                            for yc in sorted(receipt_heights(sc)):
+                                if clear_surface is not None and not clear_surface(c, yc, q, a, b):
+                                    continue
+                                if (abs(ya - yc) <= STEP_LIMIT_PER_M * math.dist(p, c)
+                                        and abs(yc - yb) <= STEP_LIMIT_PER_M * math.dist(c, q)):
+                                    choices[(ya, yb)] = [
+                                        (*c, yc), (*q, yb)]
+                                    break
+                            if (ya, yb) in choices:
+                                break
+                    elif abs(ya - yb) <= STEP_LIMIT_PER_M * math.dist(p, q):
+                        choices[(ya, yb)] = [(*q, yb)]
+            following = {}
+            for (source, current), witness in relation.items():
+                for (left, right), steps in choices.items():
+                    if current == left:
+                        following.setdefault((source, right), witness + steps)
+            relation = following
+        destination_heights = receipt_heights(node_surf.get(b, []))
+        relation = {pair: steps for pair, steps in relation.items()
+                    if pair[1] in destination_heights}
+        edges[(a, b)] = relation
+        edges[(b, a)] = {(yb, ya): list(reversed(steps))
+                         for (ya, yb), steps in relation.items()}
+    return edges
+
+
+def continuous_road_witness(parts, adj, surface_edges, node_heights):
+    """Ordinary predecessor walk on saved adjacency, retaining height choice."""
+    if not parts or surface_edges is None or node_heights is None:
+        return None
+    start = parts[0][0]
+    previous = {(0, start, y): (None, []) for y in sorted(node_heights.get(start, ()))}
+    todo = list(previous)
+    for state in todo:
+        i, key, y = state
+        _start, end, allowed = parts[i]
+        if key == end and i == len(parts) - 1:
+            states, steps = [], []
+            while state is not None:
+                states.append(state)
+                state, segment = previous[state]
+                steps.append(segment)
+            witness = []
+            for segment in reversed(steps):
+                for point in segment:
+                    if not witness or point != witness[-1]:
+                        witness.append(point)
+            return [s[1] for s in reversed(states)], witness
+        options = [(i, nxt) for nxt in adj.get(key, ()) if nxt in allowed]
+        if key == end and i + 1 < len(parts):
+            following = parts[i + 1][0]
+            if following == key or following in adj.get(key, ()):
+                options.append((i + 1, following))
+        for j, nxt in options:
+            relations = (surface_edges.get((key, nxt), {}) if nxt != key
+                         else {(y, y): []})
+            for (left, right), steps in relations.items():
+                candidate = (j, nxt, right)
+                if (left != y or right not in node_heights.get(nxt, ())
+                        or candidate in previous):
+                    continue
+                previous[candidate] = (state, steps)
+                todo.append(candidate)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # POPULATION - which roads exist, and where their centrelines run
 # ---------------------------------------------------------------------------
@@ -98,18 +189,372 @@ def built_segments(ledger) -> dict[str, dict]:
         name = p["name"]
         counts[name] += 1
         prof = p["profile"]
+        identity = (d.get("meta") or {}).get("road_identity")
+        identity_ok = (
+            isinstance(identity, dict)
+            and all(isinstance(identity.get(k), str) and identity[k]
+                    for k in ("id", "from", "to", "cls"))
+            and isinstance(identity.get("width_m"), (int, float))
+            and math.isfinite(identity["width_m"])
+            and identity["width_m"] > 0
+            and (d.get("meta") or {}).get("segment") == identity["id"]
+            and name == f"road_{identity['id']}".replace("-", "_")
+            and abs(identity["width_m"] - 2 * float(prof["half_width_m"])) < 1e-6)
         latest[name] = dict(
             name=name,
-            seg=name[len("road_"):].replace("_", "-"),
+            seg=identity["id"] if identity_ok else name[len("road_"):].replace("_", "-"),
+            identity=dict(identity) if identity_ok else None,
+            identity_proven=identity_ok,
             actor=d.get("actor"),
             half_width_m=float(prof["half_width_m"]),
             shoulder_m=float(prof["shoulder_m"]),
             nodes=[(float(a), float(b)) for a, b, *_ in prof["nodes"]])
     for name, s in latest.items():
         s["writes"] = counts[name]
-        parts = s["seg"].split("-")
-        s["code"], s["from"], s["to"] = parts[0], parts[1], parts[-1]
+        if s["identity_proven"]:
+            identity = s["identity"]
+            s["code"] = identity["id"].split("-")[0]
+            s["from"], s["to"] = identity["from"], identity["to"]
+        else:
+            # Historical population remains measurable, but its tokenised
+            # display name is not endpoint authority for a named obligation.
+            parts = s["seg"].split("-")
+            s["code"] = parts[0]
+            s["from"] = parts[1] if len(parts) > 1 else ""
+            s["to"] = parts[-1] if len(parts) > 1 else ""
     return latest
+
+
+def named_road_source(seed, world):
+    """Read the scoped authored inventory; no planner, scanner or world writes."""
+    import importlib.util
+    root = Path(I.HERE).parent / "roads"
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from road_requirements import authored_population, inventory
+    ws = I._worldseed()
+    with ws.scope(seed, world):
+        module_spec = importlib.util.spec_from_file_location(
+            "_accepted_road_spec", root / "spec.py")
+        source = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(source)
+        authored = authored_population(source)
+        _edges, excluded = inventory(source)
+    return authored, excluded, dict(source.NO_ROAD)
+
+
+def named_road_plan_status(doc, authored, excluded=None, no_road=None,
+                           crossing_doc=None):
+    """Plan debts only: PLANNED here does not certify a saved walk."""
+    scope = doc.get("road_requirement_scope") or {}
+    issues = []
+    expected = {r["id"]: r for r in authored}
+    rows = doc.get("road_requirements")
+    if not isinstance(rows, list):
+        rows = []
+        issues.append("road_requirements missing")
+    counts = Counter(r.get("id") for r in rows if isinstance(r, dict))
+    if (scope.get("complete") is not True
+            or scope.get("basis") != "complete_unfiltered_authored_population"
+            or scope.get("only") or scope.get("pri")
+            or len(scope.get("authored_ids", [])) != len(expected)
+            or set(scope.get("authored_ids", [])) != set(expected)
+            or len(scope.get("selected_ids", [])) != len(expected)
+            or set(scope.get("selected_ids", [])) != set(expected)):
+        issues.append("incomplete or mismatched authored source population")
+    if excluded is not None:
+        evidence = scope.get("excluded_inputs") or []
+        if (len(evidence) != len(excluded)
+                or {r.get("id"): r.get("why") for r in evidence} != excluded):
+            issues.append("excluded input evidence mismatch")
+    if no_road is not None and scope.get("no_road") != no_road:
+        issues.append("no-road input evidence mismatch")
+    for rid in sorted(set(expected) - set(counts)):
+        issues.append(f"missing requirement {rid}")
+    physical = Counter(s.get("id") for s in doc.get("segments") or [])
+    decks = defaultdict(list)
+    if crossing_doc is not None:
+        for crossing in crossing_doc.get("declared") or []:
+            decks[crossing.get("crossing_id")].append(crossing)
+    for row in rows:
+        if not isinstance(row, dict):
+            issues.append("malformed requirement row")
+            continue
+        rid = row.get("id")
+        if rid not in expected or counts[rid] != 1:
+            issues.append(f"foreign or duplicate requirement {rid}")
+        elif any(row.get(k) != expected[rid].get(k)
+                 for k in ("from", "to", "cls", "width_m", "pri")):
+            issues.append(f"authored identity mismatch {rid}")
+        if row.get("status") != "PLANNED":
+            issues.append(f"{rid}: {row.get('why') or 'requirement unresolved'}")
+        elif not row.get("parts"):
+            issues.append(f"{rid}: no physical parts")
+        cursor = row.get("from")
+        seen = set()
+        parts = row.get("parts") or []
+        if not isinstance(parts, list):
+            issues.append(f"{rid}: malformed parts")
+            continue
+        for part in parts:
+            if not isinstance(part, dict):
+                issues.append(f"{rid}: malformed part")
+                continue
+            key = (part.get("kind"), part.get("id"))
+            if key in seen or part.get("from") != cursor:
+                issues.append(f"{rid}: duplicate or unordered parts")
+            seen.add(key)
+            cursor = part.get("to")
+            if part.get("kind") == "road":
+                if physical[part.get("id")] != 1:
+                    issues.append(f"{rid}: missing or duplicate physical part {part.get('id')}")
+                    continue
+                road = next(s for s in doc["segments"] if s.get("id") == part["id"])
+                reverse = part.get("reverse")
+                ends = (road.get("to"), road.get("from")) if reverse else (
+                    road.get("from"), road.get("to"))
+                from road_requirements import class_adequate
+                if (not isinstance(reverse, bool)
+                        or (part.get("from"), part.get("to")) != ends
+                        or not class_adequate(road.get("cls"), row.get("cls"))
+                        or float(road.get("width_m", 0)) < row.get("width_m", math.inf)
+                        or road.get("junction_datum", {}).get("verdict") == "REFUSED"
+                        or road.get("census", {}).get("verdict") == "PROVISIONAL"):
+                    issues.append(f"{rid}: inadequate or mismatched physical part {part['id']}")
+            elif part.get("kind") == "declared_crossing":
+                if crossing_doc is not None:
+                    candidates = decks.get(part.get("id"), [])
+                    if len(candidates) != 1:
+                        issues.append(f"{rid}: missing or duplicate declared deck {part.get('id')}")
+                    else:
+                        crossing = candidates[0]
+                        banks = tuple((crossing.get(end) or {}).get("node")
+                                      for end in ("bank_a", "bank_b"))
+                        if ((part.get("from"), part.get("to")) not in (banks, banks[::-1])
+                                or None in banks
+                                or crossing.get("owner") != "Crossings"
+                                or crossing.get("status") != "declared"):
+                            issues.append(f"{rid}: mismatched declared deck {part.get('id')}")
+            else:
+                issues.append(f"{rid}: unknown part kind {part.get('kind')}")
+        if cursor != row.get("to"):
+            issues.append(f"{rid}: parts do not reach destination")
+    return dict(source_issues=issues, requirements=rows,
+                **{"pass": not issues})
+
+
+def named_road_requirements(doc, authored, segs, adj, part_nodes, declarations,
+                            span_rows, *, surface_edges=None,
+                            node_heights=None) -> dict:
+    """Prove ordered obligations on saved WALKING edges, never journey edges.
+
+    ``part_nodes`` contains the actual sampled first/last keys (None when
+    unread), in physical orientation. No key is manufactured from an id.
+    """
+    plan = named_road_plan_status(doc, authored)
+    issues = list(plan["source_issues"])
+    scope = doc.get("road_requirement_scope") or {}
+    expected = {r["id"]: r for r in authored}
+    rows = plan["requirements"]
+    counts = Counter(r.get("id") for r in rows if isinstance(r, dict))
+    physical = defaultdict(list)
+    for s in segs.values():
+        physical[s["seg"]].append(s)
+    planned = defaultdict(list)
+    for s in doc.get("segments") or []:
+        planned[s.get("id")].append(s)
+    decks = defaultdict(list)
+    for d in declarations:
+        decks[d["id"]].append(d)
+    measured = {r["crossing"]: r for r in span_rows}
+
+    def path(start, end, allowed):
+        if start is None or end is None or start not in allowed or end not in allowed:
+            return None
+        previous = {start: None}
+        todo = [start]
+        for cur in todo:
+            if cur == end:
+                result = []
+                while cur is not None:
+                    result.append(cur)
+                    cur = previous[cur]
+                return result[::-1]
+            for nxt in adj.get(cur, ()):
+                if nxt in allowed and nxt not in previous:
+                    previous[nxt] = cur
+                    todo.append(nxt)
+        return None
+
+    results = []
+    for r in rows:
+        if not isinstance(r, dict):
+            issues.append("malformed requirement row")
+            continue
+        rid = r.get("id")
+        reasons = []
+        source = expected.get(rid)
+        if source is None or counts[rid] != 1:
+            reasons.append("foreign or duplicate requirement")
+        elif any(r.get(k) != source.get(k)
+                 for k in ("from", "to", "cls", "width_m", "pri")):
+            reasons.append("authored endpoint/class/width/priority mismatch")
+        if r.get("status") != "PLANNED":
+            reasons.append(r.get("why") or "requirement not planned")
+        parts = r.get("parts")
+        if not isinstance(parts, list) or not parts:
+            reasons.append("no physical parts")
+            parts = []
+        cursor = r.get("from")
+        previous_end = None
+        walked = []
+        walk_parts = []
+        seen = set()
+        for p in parts:
+            if not isinstance(p, dict):
+                reasons.append("malformed physical part")
+                continue
+            kind, pid = p.get("kind"), p.get("id")
+            key = (kind, pid)
+            if key in seen or p.get("from") != cursor:
+                reasons.append("duplicate or unordered physical part")
+            seen.add(key)
+            cursor = p.get("to")
+            ends = part_nodes.get(key)
+            if not ends:
+                reasons.append(f"missing saved part or endpoint mapping {pid}")
+                continue
+            if kind == "road":
+                candidates = physical.get(pid, [])
+                plans = planned.get(pid, [])
+                if len(candidates) != 1 or len(plans) != 1:
+                    reasons.append(f"missing or duplicate physical road {pid}")
+                    continue
+                s, plan = candidates[0], plans[0]
+                identity = s.get("identity")
+                if not s.get("identity_proven") or not identity:
+                    reasons.append(f"unproven legacy road identity {pid}")
+                    continue
+                if (any(identity.get(k) != plan.get(k)
+                        for k in ("id", "from", "to", "cls", "width_m"))
+                        or plan.get("status", "PLANNED") != "PLANNED"):
+                    reasons.append(f"physical road identity mismatch {pid}")
+                reverse = p.get("reverse")
+                if not isinstance(reverse, bool):
+                    reasons.append(f"missing road direction {pid}")
+                wanted = (identity["to"], identity["from"]) if reverse else (
+                    identity["from"], identity["to"])
+                if (p.get("from"), p.get("to")) != wanted:
+                    reasons.append(f"physical endpoint mismatch {pid}")
+                from road_requirements import class_adequate
+                if (not class_adequate(identity["cls"], r.get("cls"))
+                        or identity["width_m"] < r.get("width_m", math.inf)
+                        or 2 * s["half_width_m"] < r.get("width_m", math.inf)):
+                    reasons.append(f"inadequate road class/width {pid}")
+                start, end, allowed = ends
+                if reverse:
+                    start, end = end, start
+            elif kind == "declared_crossing":
+                candidates = decks.get(pid, [])
+                saved = measured.get(pid)
+                if len(candidates) != 1:
+                    reasons.append(f"missing or duplicate declared deck {pid}")
+                    continue
+                d = candidates[0]
+                banks = (d.get("from"), d.get("to"))
+                actual = (p.get("from"), p.get("to"))
+                if actual not in (banks, banks[::-1]) or None in banks:
+                    reasons.append(f"declared bank identity mismatch {pid}")
+                if (d.get("status") != "declared"
+                        or d.get("owner") != "Crossings"
+                        or d.get("declaration_status") != "declared"
+                        or d.get("width_m") is None
+                        or d["width_m"] < r.get("width_m", math.inf)
+                        or not saved or not saved.get("pass")
+                        or not saved.get("width_contract", {}).get("pass")):
+                    reasons.append(f"unproven or inadequate saved deck {pid}")
+                start, end, allowed = ends
+                if actual == banks[::-1]:
+                    start, end = end, start
+            else:
+                reasons.append(f"unknown physical part kind {kind}")
+                continue
+            proof = path(start, end, allowed)
+            if proof is None:
+                reasons.append(f"no saved walking path through {pid}")
+            if (previous_end is not None
+                    and start != previous_end
+                    and start not in adj.get(previous_end, ())):
+                reasons.append(f"no saved walking handoff to {pid}")
+            previous_end = end
+            walk_parts.append((start, end, allowed))
+            if proof:
+                walked.extend(proof)
+        if cursor != r.get("to"):
+            reasons.append("parts do not reach authored destination")
+        continuous = continuous_road_witness(
+            walk_parts, adj, surface_edges, node_heights)
+        if continuous is None:
+            reasons.append("continuous measured surface-choice witness unresolved")
+            surface_witness = []
+        else:
+            walked, surface_witness = continuous
+        results.append(dict(id=rid, **{"from": r.get("from"), "to": r.get("to")},
+                            **{"pass": not reasons and not issues},
+                            why=reasons, walking_nodes=walked,
+                            surface_witness=surface_witness))
+    return dict(scope=scope, source_issues=issues, requirements=results,
+                **{"pass": not issues and len(results) == len(expected)
+                   and all(r["pass"] for r in results)})
+
+
+def saved_deck_width(crossing, beds, grid, surfaces) -> dict:
+    """Declared width measured on saved tight collider cross-sections."""
+    width = crossing.get("width_m")
+    if not isinstance(width, (int, float)) or not math.isfinite(width) or width <= 0:
+        return {"pass": False, "why": "missing declared deck width", "unproved": []}
+    ax, az = crossing["a"]
+    bx, bz = crossing["b"]
+    length = math.hypot(bx - ax, bz - az)
+    if length <= 0:
+        return {"pass": False, "why": "degenerate deck identity", "unproved": []}
+    ux, uz = -(bz - az) / length, (bx - ax) / length
+    half = width / 2
+    unproved = []
+    supported_heights = {}
+    for k, (x, z) in enumerate(crossing["samples"]):
+        bed = beds[k]
+        # The real banks' adjacent road parts own their dry carriageways.
+        if bed is not None and math.isfinite(bed) and bed > WATER_Y:
+            continue
+        centre_heights = {round(y, 6) for y, carrier in surfaces[k]
+                          if carrier is not None and not carrier.n_bounds}
+        by_height = defaultdict(list)
+        for solid in grid.near(x, z, half):
+            # Bounds can refuse a route, but never supply a missing floor.
+            if not solid.known or solid.n_bounds:
+                continue
+            top = solid.level_top()
+            if top is None or round(top, 6) not in centre_heights:
+                continue
+            interval = solid.lateral_span(x, z, ux, uz, half)
+            if interval is not None:
+                by_height[round(top, 6)].append(interval)
+        covered = False
+        for height, intervals in by_height.items():
+            end = -half
+            for lo, hi in sorted(intervals):
+                if lo > end + 1e-9:
+                    break
+                end = max(end, hi)
+            if end >= half - 1e-9:
+                covered = True
+                supported_heights.setdefault(k, []).append(height)
+        if not covered:
+            unproved.append(k)
+    return {"pass": not unproved, "width_m": width, "unproved": unproved,
+            "supported_heights": supported_heights,
+            "instrument": "saved tight collider lateral_span at each wet crossing metre"}
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +843,18 @@ def crossing_spans(ctx) -> tuple[list[dict], list[Finding]]:
         if cid:
             rows[cid] = ("declared", c)
     out = []
+    from roads.boardwalk import declared_deck_width
+    handoffs = defaultdict(set)
+    for handoff in doc.get("abutment_handoffs") or []:
+        if handoff.get("ribbon_width_m") is not None:
+            handoffs[handoff.get("node")].add(float(handoff["ribbon_width_m"]))
+    for source in ("declared", "detected"):
+        counts = Counter(c.get("crossing_id") for c in doc.get(source) or [])
+        for cid, count in counts.items():
+            if count > 1:
+                refusals.append(Finding(
+                    check="road_requirements", ok=False,
+                    message=f"duplicate {source} crossing identity {cid}"))
     for cid, (status, c) in sorted(rows.items()):
         a = tuple(float(v) for v in c["bank_a"]["xz"])
         b = tuple(float(v) for v in c["bank_b"]["xz"])
@@ -408,6 +865,11 @@ def crossing_spans(ctx) -> tuple[list[dict], list[Finding]]:
             joins = [c["segment_id"]]
         out.append(dict(
             id=cid, joins=joins, status=status,
+            owner=c.get("owner"), declaration_status=c.get("status"),
+            **{"from": c["bank_a"].get("node"), "to": c["bank_b"].get("node")},
+            width_m=(c.get("ribbon_width_m") or declared_deck_width({
+                end: handoffs.get(c[end].get("node"), set())
+                for end in ("bank_a", "bank_b")})),
             segment_id=c.get("segment_id"),
             a=a, b=b, span_m=span,
             deck_y=c.get("contract_deck_y")
@@ -415,7 +877,7 @@ def crossing_spans(ctx) -> tuple[list[dict], list[Finding]]:
             or c["bank_a"].get("road_deck_y"),
             samples=[(a[0] + (b[0] - a[0]) * k / n,
                       a[1] + (b[1] - a[1]) * k / n) for k in range(n + 1)]))
-    return out, []
+    return out, refusals
 
 
 CORRIDOR_CELL_M = 4.0
@@ -2463,7 +2925,8 @@ BRIDGE_JUDGES_CORNERS = True
 
 
 def near_miss_bridges(npos: dict, node_surf: dict, comp: dict, seg_of: dict,
-                      read_ground, surfaces_at) -> tuple[list[tuple], dict]:
+                      read_ground, surfaces_at, *, candidate_edges=None,
+                      captured_walks=None) -> tuple[list[tuple], dict]:
     """Which near misses are actually joined ground, MEASURED not assumed.
 
     `read_ground(points)` takes `[(label, x, z), ...]` and returns
@@ -2514,6 +2977,8 @@ def near_miss_bridges(npos: dict, node_surf: dict, comp: dict, seg_of: dict,
     for key, rows in per_pair.items():
         rows.sort()
         cands.extend((d, a, b) for d, a, b in rows[:BRIDGE_TRIES])
+    if candidate_edges is not None:
+        cands = list(candidate_edges)
 
     # 2. ONE BATCH, AND IT IS A LATTICE WALK, NOT A STRAIGHT LINE.
     #
@@ -2578,7 +3043,7 @@ def near_miss_bridges(npos: dict, node_surf: dict, comp: dict, seg_of: dict,
                          "tan(38 deg) as every other step in this section. "
                          "A move with no readable corner is UNRESOLVED and "
                          "refuses the bridge; so does an unread sample."}
-    if not want:
+    if not want and captured_walks is None:
         return [], {**pop, "bridged": 0, "refused": [], "refused_total": 0,
                     "unread": 0}
     beds = read_ground([(lb, x, z) for lb, (x, z) in want.items()])
@@ -2604,6 +3069,13 @@ def near_miss_bridges(npos: dict, node_surf: dict, comp: dict, seg_of: dict,
     edges: list[tuple] = []
     refusals: list[dict] = []
     for d, a, b, walk, corners in lines:
+        if captured_walks is not None:
+            captured_walks[(a, b)] = [
+                (pt, vsurf(pt, plb) or [], qt, vsurf(qt, qlb) or [],
+                 [((cx, cz), vsurf((cx, cz), clb) or [])
+                  for clb, cx, cz in corners[i]])
+                for i, ((pt, plb), (qt, qlb)) in
+                enumerate(zip(walk, walk[1:]))]
         broke = None
         for i in range(len(walk) - 1):
             pt, plb = walk[i]
@@ -3042,6 +3514,25 @@ def run(ctx) -> SectionResult:
     segs = built_segments(ctx.ledger)
     report: dict = {}
     findings: list[Finding] = I.north_road_population(ctx, segs)
+    requirement_doc, corpus_debts = I.read_scoped_corpus(
+        ctx, "named road requirements",
+        resolve=lambda seed: I._worldseed().segments_path(seed),
+        produced_by="roads/network.py", check="road_requirements")
+    findings += corpus_debts
+    authored = []
+    if not corpus_debts:
+        try:
+            seed, world = I.run_scope(ctx)
+            authored, excluded, no_road = named_road_source(seed, world)
+            plan_status = named_road_plan_status(
+                requirement_doc, authored, excluded, no_road)
+            report["road_requirement_plan"] = plan_status
+            for why in plan_status["source_issues"]:
+                findings.append(Finding(
+                    check="road_requirements", ok=False, message=why))
+        except (OSError, ValueError, SystemExit) as exc:
+            findings.append(Finding(check="road_requirements", ok=False,
+                                    message=f"authored source unresolved: {exc}"))
     if not segs:
         return SectionResult(
             findings=findings + [Finding(
@@ -3051,7 +3542,7 @@ def run(ctx) -> SectionResult:
                 numbers=dict(segments=0), where=None,
                 population="terrain_write records with role=road_segment in "
                            f"{ctx.ledger}")],
-            report=dict(segments=0))
+            report={**report, "segments": 0})
 
     # --- stations -----------------------------------------------------------
     stations: dict[str, list[tuple[float, float, float]]] = {}
@@ -3921,6 +4412,7 @@ def run(ctx) -> SectionResult:
 
     node_keys: dict[str, str] = {}
     adj: dict[str, list[str]] = defaultdict(list)
+    requirement_part_nodes = {}
     blocked_set = {(r["segment"], r["station"]) for r in blocked_built}
     blocked_rec = {(r["segment"], r["station"]): r for r in blocked_built}
     # WHICH SEGMENT EACH GRAPH NODE BELONGS TO, and every transition the walk
@@ -4003,6 +4495,12 @@ def run(ctx) -> SectionResult:
             node_keys[s["from"]] = node_keys.get(s["from"]) or f"{i}|0"
             node_keys[s["to"]] = (node_keys.get(s["to"])
                                   or f"{i}|{len(chain)-1}")
+        first = st_node.get(f"{i}|0")
+        last = st_node.get(f"{i}|{len(stations[name])-1}")
+        requirement_part_nodes[("road", s["seg"])] = (
+            f"{i}|{first}" if first is not None else None,
+            f"{i}|{last}" if last is not None else None,
+            {f"{i}|{k}" for k in range(len(chain))})
     # the deck's own nodes, and the metre-by-metre verdict on each span
     span_rows = []
     for ci, c in enumerate(declared):
@@ -4033,6 +4531,8 @@ def run(ctx) -> SectionResult:
             else:
                 broke.append(k)
         live = [k for k in keys if k is not None]
+        requirement_part_nodes[("declared_crossing", c["id"])] = (
+            keys[0] if keys else None, keys[-1] if keys else None, set(live))
         # AND THE CROSSING'S OWN PREMISE, on the SAME beds.  See
         # `crossing_premise` - free, because `span_bed` is already read.
         beds = [span_bed[f"x{ci}|{k}"] for k in range(len(c["samples"]))
@@ -4074,6 +4574,10 @@ def run(ctx) -> SectionResult:
             span_m=round(c["span_m"], 1),
             samples=len(c["samples"]), samples_unread=unread,
             deck_datum_y=c["deck_y"],
+            width_contract=saved_deck_width(
+                c, [span_bed.get(f"x{ci}|{k}")
+                    for k in range(len(c["samples"]))], grid,
+                [node_surf.get(key, []) for key in keys]),
             carried_by_a_piece=sum(
                 1 for k in live
                 if any(s is not None for _y, s in node_surf[k])),
@@ -4150,6 +4654,84 @@ def run(ctx) -> SectionResult:
         adj[kb].append(ka)
     if bridge_edges:
         comp, comps = components()
+    if authored:
+        needed_keys = set()
+        native_widths = {
+            ("road", s["seg"]): 2 * s["half_width_m"] for s in segs.values()}
+        native_widths.update({
+            ("declared_crossing", c["id"]): c.get("width_m") for c in declared})
+        width_at_key = {}
+        for identity, mapped in requirement_part_nodes.items():
+            width = native_widths.get(identity)
+            if width is not None:
+                for key in mapped[2]:
+                    width_at_key[key] = width
+        for requirement in requirement_doc.get("road_requirements") or []:
+            for part in requirement.get("parts") or []:
+                mapped = requirement_part_nodes.get((part.get("kind"), part.get("id")))
+                if mapped:
+                    needed_keys.update(mapped[2])
+        receipt_positions = {key: npos[key] for key in needed_keys}
+        candidate_edges = [
+            (math.dist(npos[a], npos[b]), a, b)
+            for a in sorted(needed_keys) for b in sorted(adj.get(a, ()))
+            if a < b and b in needed_keys]
+        captured = {}
+
+        def receipt_ground(points):
+            missing = [(lb, x, z) for lb, x, z in points
+                       if (x, z) not in vheight]
+            got = ctx.ground(missing) if missing else {}
+            for lb, x, z in points:
+                if (x, z) in vheight:
+                    got[lb] = vheight[(x, z)]
+            return got
+
+        _edges, receipt_measurements = near_miss_bridges(
+            receipt_positions, node_surf, {}, seg_of, receipt_ground,
+            lambda x, z, bed: I.surfaces_at(x, z, bed, grid, cen.walker_radius),
+            candidate_edges=candidate_edges, captured_walks=captured)
+        def receipt_clear_surface(point, y, other, a, b):
+            width = min(width_at_key.get(a, 0), width_at_key.get(b, 0))
+            distance = math.dist(point, other)
+            if width <= 0:
+                return False
+            if distance == 0:
+                return True
+            ux = -(other[1] - point[1]) / distance
+            uz = (other[0] - point[0]) / distance
+            blockers = I.blockers_at(
+                *point, y, ux, uz, width / 2, grid, clearable, not_property)
+            if any(not solid.known for _lo, _hi, solid in blockers):
+                return False
+            intervals = [(lo, hi) for lo, hi, solid in blockers
+                         if solid.name in build_pieces and not solid.bounds_only]
+            return I.widest_gap(intervals, width / 2) >= 2 * cen.walker_radius
+
+        surface_edges = measured_surface_edges(
+            captured, npos, node_surf, receipt_clear_surface)
+        node_heights = {key: receipt_heights(node_surf.get(key, []))
+                        for key in needed_keys}
+        for ci, crossing in enumerate(declared):
+            width = span_rows[ci]["width_contract"]
+            for k, heights in width.get("supported_heights", {}).items():
+                key = f"x{ci}|{k}"
+                node_heights[key] = {
+                    y for y in node_heights.get(key, ()) if round(y, 6) in heights}
+        obligation_report = named_road_requirements(
+            requirement_doc, authored, segs, adj, requirement_part_nodes,
+            declared, span_rows, surface_edges=surface_edges,
+            node_heights=node_heights)
+        obligation_report["measurements"] = receipt_measurements
+        report["road_requirements"] = obligation_report
+        for row in obligation_report["requirements"]:
+            findings.append(Finding(
+                check="road_requirements", ok=row["pass"],
+                message=f"{row['id']}: " + (
+                    "saved ordered walking path proved" if row["pass"]
+                    else "; ".join(row["why"] or obligation_report["source_issues"])),
+                numbers=dict(requirement=row["id"],
+                             walking_nodes=len(row["walking_nodes"]))))
     # Preserve the physical walking graph and its component census. A ferry
     # is NOT a bridge or a walkable step: only independently accepted saved
     # docks/boats/access/full-hull sea passages enter this journey graph.

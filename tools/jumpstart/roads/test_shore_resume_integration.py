@@ -10,6 +10,7 @@ from unittest.mock import patch
 import numpy as np
 import poi
 import route
+import ribbon
 import shores as S
 from shore_basis import checkpoint_basis
 from shore_progress import ShoreProgress
@@ -30,6 +31,39 @@ class ResumeIntegrationTests(unittest.TestCase):
                 after = checkpoint_basis(root/'field.bin', {'sha256': 'unchanged-field'}, {}, requirements)
                 resumed = ShoreProgress(root/'progress.json', after)
             self.assertEqual(resumed.load_completed(), {})
+
+    def test_changed_pad_datum_or_effective_ground_invalidates_completed_geometry(self):
+        for change in ("datum", "effective_ground"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                rects = [("dock", 0., 0., 4., 4.)]
+                info = {"dock": {"pad_y": 30.6, "levelled": change != "datum"}}
+                pads = ribbon.PadKeepOut(
+                    rects, [], by_id=info,
+                    levelled={} if change == "datum" else {(0, 0): "dock"})
+                requirements = [dict(id="dock", node="dock", anchor="anchor")]
+                with patch("sys.argv", ["shore-search"]):
+                    before = checkpoint_basis(
+                        root/"field.bin", {"sha256": "unchanged-field"}, {},
+                        requirements, pad_keepouts=pads)
+                    path = root/"progress.json"
+                    progress = ShoreProgress(path, before)
+                    accepted = {"id": "dock", "accepted": True}
+                    progress.complete_requirement("dock", accepted)
+                    self.assertEqual(ShoreProgress(path, before).load_completed(),
+                                     {"dock": accepted})
+                    if change == "datum":
+                        self.assertEqual(pads.finished_y(0., 0.), 30.6)
+                        pads.by_id["dock"]["pad_y"] = 34.
+                        self.assertEqual(pads.finished_y(0., 0.), 34.)
+                    else:
+                        self.assertEqual(pads.contains(0., 0.), "dock")
+                        pads.levelled = {(1, 0): "dock"}
+                        self.assertIsNone(pads.contains(0., 0.))
+                    after = checkpoint_basis(
+                        root/"field.bin", {"sha256": "unchanged-field"}, {},
+                        requirements, pad_keepouts=pads)
+                    self.assertEqual(ShoreProgress(path, after).load_completed(), {})
 
     def test_source_context_is_restored_after_nested_candidate_refusal(self):
         half = 800.5

@@ -77,6 +77,8 @@ import precensus as censusmod  # noqa: E402
 # of "the same channel" that could disagree with it.
 import boardwalk  # noqa: E402
 import arrival_geometry  # noqa: E402
+import road_requirements  # noqa: E402
+import profile_contract  # noqa: E402
 
 # Seed and world are RESOLVED, not literal: `--seed`/`--world` beat `$VH_SEED`/
 # `$VH_WORLD` beat the Ulfsland defaults.  `main()` rebinds both from the
@@ -560,16 +562,16 @@ def declare_banks(c: dict, pts, t, tw_lo, ia: int, ib: int, wa: int,
     coordinate is kept as `detected_xz`, so the move can be audited."""
     ax, az = pts[wa]
     bx, bz = pts[wb]
-    c["centreline_straight_from_to"] = [[round(ax, 2), round(az, 2)],
-                                        [round(bx, 2), round(bz, 2)]]
+    c["centreline_straight_from_to"] = [[float(ax), float(az)],
+                                      [float(bx), float(bz)]]
     n = len(pts)
     if _CROSSING_BANKS_MODE != "detected":
         for end, k in (("bank_a", ia), ("bank_b", ib)):
             b = c[end]
             b["detected_xz"] = list(b["xz"])
-            b["xz"] = [round(float(pts[k][0]), 2), round(float(pts[k][1]), 2)]
-            b["ground_y"] = round(float(t[k]), 2)
-            b["footprint_min_y"] = round(float(tw_lo[k]), 2)
+            b["xz"] = [float(pts[k][0]), float(pts[k][1])]
+            b["ground_y"] = float(t[k])
+            b["footprint_min_y"] = float(tw_lo[k])
             b["station"] = int(k)
         (pa, qa), (pb, qb) = c["bank_a"]["xz"], c["bank_b"]["xz"]
         c["span_m"] = round(math.hypot(pb - pa, qb - qa), 2)
@@ -1688,6 +1690,7 @@ def tracked_build(build, base: dict | None):
 
 _PLAN_PATCHES = None
 _PLAN_PAD_KEEPOUTS = None
+_PLAN_PLACED_OBJECTS = None
 
 
 def writer_patches(_fld, zones) -> dict:
@@ -1825,6 +1828,7 @@ def _writer_water_once(seg: dict, fld, keepouts=None) -> dict:
     discs = ([tuple(map(float, d)) for d in src(list(zones))]
              if src is not None and _WALKED_KEEPOUT_MODE == "poi" else [])
     comps, st = ribbonmod.stamp(seg, patches, list(zones), pads,
+                                placed_objects=_PLAN_PLACED_OBJECTS,
                                 poi_keepouts=discs)
     def ground(x, z):
         return ribbonmod.appliedmod.generated_at(patches, float(x), float(z))
@@ -2495,34 +2499,6 @@ def _owned_approach_stations(path):
     return out
 
 
-def _bank_trim_endpoint(point, removed, anchor, reach):
-    """Keep a trim's emitted centimetre-grid endpoint inside its owned bank.
-
-    Only repair a contact lost to serialization, along the original removed
-    segment. The rounded result is used BEFORE the physical/profile probes;
-    neither the bank's radius nor its root/datum is changed.
-    """
-    point = np.asarray(point, dtype=np.float64)
-    rounded = np.asarray([round(float(v), 2) for v in point])
-    offset = point - anchor
-    if np.linalg.norm(rounded - anchor) <= reach or np.linalg.norm(offset) > reach:
-        return point
-    delta = np.asarray(removed, dtype=np.float64) - point
-    length2 = float(delta @ delta)
-    # A two-coordinate rounding error is at most half a centimetre per axis.
-    inner = reach - math.hypot(0.005, 0.005)
-    along = float(offset @ delta)
-    residual = float(offset @ offset) - inner * inner
-    discriminant = along * along - length2 * residual
-    if inner <= 0.0 or along >= 0.0 or discriminant < 0.0:
-        raise ValueError("trimmed bank contact has no rounding-safe original segment")
-    fraction = residual / (-along + math.sqrt(discriminant))
-    if not 0.0 <= fraction <= 1.0:
-        raise ValueError("trimmed bank contact has no rounding-safe original segment")
-    rounded = np.asarray([round(float(v), 2) for v in point + fraction * delta])
-    if np.linalg.norm(rounded - anchor) > reach:
-        raise ValueError("rounded trimmed endpoint no longer touches its bank")
-    return rounded
 
 
 def _bank_path_allowed(corr, path, extra_forbid):
@@ -2662,6 +2638,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     Each candidate repeats A*, clearance, full profile and native pad closure.
     Exhaustion names the numerical refusal, not global infeasibility.
     """
+    land_only = land_only or bool(edge.get("requirement_approach"))
     from collections import deque                          # noqa: PLC0415
     from itertools import product                          # noqa: PLC0415
     shore_ends = [end for end in ("a", "b")
@@ -3146,6 +3123,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
 
     terminal = None
     search_contacts = None
+    owned_paths = {}
     if fixed_pts is not None:
         # Arclength recomputed from the points themselves, never carried over
         # from the file: a station list and an `s` array that disagree is a
@@ -3226,7 +3204,6 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         # Match the physical crossing producer: the road really meets the
         # bank, rather than treating the nearest A* cell as that bank.
         raw = list(raw)
-        owned_paths = {}
         for end in ("a", "b"):
             contact = ends.get(end)
             if not isinstance(contact, dict):
@@ -3285,8 +3262,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
             s = np.r_[0., np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
         s = np.asarray(s, dtype=np.float64)
         if line_out is not None:
-            line_out[:] = [[round(float(x), 2), round(float(z), 2)]
-                           for x, z in pts]
+            line_out[:] = [[float(x), float(z)] for x, z in pts]
 
     # ---- THE ARRIVAL, before the pad edge and the fit (ARRIVAL_DEPENDS_ON) --
     # A searched line ends where the search could START, outside the pad's
@@ -3302,8 +3278,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
                 np.hypot(np.diff([p[0] for p in pts]),
                          np.diff([p[1] for p in pts])))])
             if line_out is not None:
-                line_out[:] = [[round(float(x), 2), round(float(z), 2)]
-                               for x, z in pts]
+                line_out[:] = [[float(x), float(z)] for x, z in pts]
         del arrival["pts"]
 
     # ---- THE PAD EDGE, before anything is fitted to this geometry ----------
@@ -3347,33 +3322,22 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
             raise ValueError(f"{edge['id']}: a terminal trim of {na}+{nb} "
                              f"station(s) leaves no road")
         cut_m = float(s[na] - s[0]) + float(s[-1] - s[len(pts) - 1 - nb])
-        kept = np.asarray(pts[na:len(pts) - nb], dtype=np.float64).copy()
-        adjusted = False
-        for end, cut, k, removed in (("a", na, 0, na - 1),
-                                     ("b", nb, -1, len(pts) - nb)):
-            node = specmod.NODES[edge[end]]
-            if not cut or node.get("level_y") is None:
-                continue
-            point = _bank_trim_endpoint(
-                kept[k], pts[removed], np.asarray(node["xz"], dtype=np.float64),
-                routemod.footprint_half_m(width_m))
-            if np.array_equal(point, kept[k]):
-                continue
-            neighbor = kept[1 if end == "a" else -2]
-            if not _bank_path_allowed(corr, [point, neighbor], extra_forbid):
-                raise ValueError(f"{edge['id']}: rounded trimmed bank contact "
-                                 "is outside the current routing domain")
-            cut_m += (float(np.linalg.norm(point - pts[removed]))
-                      - float(np.linalg.norm(kept[k] - pts[removed])))
-            kept[k] = point
-            adjusted = True
-        pts = kept
-        s = (np.r_[0., np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]
-             if adjusted else
-             np.asarray(s[na:len(s) - nb], dtype=np.float64) - float(s[na]))
+        pts = np.asarray(pts[na:len(pts) - nb], dtype=np.float64).copy()
+        # Lossless output needs no centimetre-grid contact adjustment. Keep
+        # the original station and still honour its active routing masks.
+        for end, cut, k, neighbor in (("a", na, 0, 1), ("b", nb, -1, -2)):
+            if cut and specmod.NODES[edge[end]].get("level_y") is not None:
+                if not _bank_path_allowed(corr, [pts[k], pts[neighbor]], extra_forbid):
+                    raise ValueError(f"{edge['id']}: trimmed bank contact "
+                                     "is outside the current routing domain")
+        s = np.asarray(routemod._writer().node_arcs(
+            pts, np.zeros(len(pts), dtype=bool)), dtype=np.float64)
         trim_rec = {edge["a"]: na, edge["b"]: nb, "trimmed_m": round(cut_m, 1)}
     if len(pts) < 2 or float(s[-1]) <= float(s[0]):
         raise ValueError(f"{edge['id']}: search and arrival leave no positive-length road")
+    # The initial crossing/owned-level inventory uses the same actual station
+    # distances as the final native solve, not resampling-path distances.
+    s = np.asarray(routemod._writer().node_arcs(pts, None), dtype=np.float64)
     t = np.array([fld.bilinear(x, z) for x, z in pts], dtype=np.float64)
 
     # Pass 1, terrain only: its infeasible spans plus the wet stations ARE the
@@ -3446,44 +3410,37 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # straightening moved the stations.
     free, windows = crossing_windows(pts, s, detected)
     before_straightening = pts
+    owned_geometry = {
+        k: tuple(map(float, point)) for k, point in enumerate(before_straightening)
+        if any(len(path) >= 2 and _foot(np.asarray(path), *map(float, point))[2] <= 1e-9
+               for path in owned_paths.values())}
     pts, windows = straighten_windows(
-        pts, s, windows, abut_windows, preserve_bank_geometry=fixed_pts is not None)
+        pts, s, windows, abut_windows,
+        preserve_bank_geometry=fixed_pts is not None or bool(owned_paths))
+    if fixed_pts is not None and not np.array_equal(pts, before_straightening):
+        raise ValueError(f"{edge['id']}: native crossing chord changes fixed input geometry; "
+                         "replan the physical crossing alignment")
+    if any(tuple(map(float, pts[k])) != point for k, point in owned_geometry.items()):
+        raise ValueError(f"{edge['id']}: crossing chord changes a surveyed owned approach; "
+                         "replan without moving the owned bank path")
     _check_straightening(before_straightening, pts, pois, width_m, corr.cell_m)
-    if windows or abut_windows:
-        t = np.array([fld.bilinear(x, z) for x, z in pts], dtype=np.float64)
-        # ...AND `s` IS RE-MEASURED, because `straighten` MOVED the stations.
-        #
-        # MEASURED, and this is a defect the plan file has been carrying:
-        # `straighten` replaces a curved run with its CHORD while keeping the
-        # station indices, so the real spacing inside a straightened window
-        # drops below `STATION_M` and the pre-straighten `s` overstates the
-        # line.  Over the six northern legs the stored `length_m` overstates
-        # the actual polyline by 184.8 m -- N2 by 78.3 m (4.6 %), N3 18.1 m
-        # (2.3 %), N1 47.3 m (1.5 %) -- and the overstatement scales with
-        # `bridged_stations`, which is exactly what a chord-replacement
-        # explanation predicts (N2 has 221 of them, N0b has 0 and is out by
-        # 1.9 m).
-        #
-        # Two consequences, and the second is the one that matters:
-        #   * every quoted length was long;
-        #   * the profile was fitted with `|dy| <= grade * ds` against a ds
-        #     that no longer existed, so the achieved grade inside a
-        #     straightened window is steeper than the limit that was applied
-        #     to it -- by up to the same ratio, concentrated precisely at the
-        #     bridge approaches where the chord replacement happened.
-        #
-        # The verdict the built legs were accepted on is unaffected and stays
-        # the authority: `ribbon.py` walks the centreline at 0.5 m using the
-        # real xz positions on the APPLIED surface, so it measured true
-        # distances and its WALKABLE readings (0.2592 / 0.1836 / 0.1864
-        # against the 0.781 slide limit) were never based on this `s`.  What
-        # was wrong was the PLAN's arithmetic, and quoting a plan length as a
-        # walked distance is the same class of error as everything else
-        # tonight: a number certified about one object, consumed as though it
-        # were about another.
-        s = np.concatenate([[0.0], np.cumsum(
-            np.hypot(np.diff([p[0] for p in pts]),
-                     np.diff([p[1] for p in pts])))])
+    # Preserve the exact routed/owned geometry. Optional writer nudges are
+    # not physical acceptance predicates and must not reshape an owned path.
+    fixed_geometry = np.asarray(free, dtype=bool).copy()
+    for *_owner, first, last in abut_windows:
+        fixed_geometry[first:last + 1] = True
+    if owned_geometry:
+        fixed_geometry[list(owned_geometry)] = True
+    lattice_preparation = {"mode": "fixed_input_unchanged" if fixed_pts is not None
+                           else "native_search_geometry", "moves": 0,
+                           "fixed_owner_stations": np.flatnonzero(fixed_geometry).tolist(),
+                           "shared_run_context": "writer_actual_predecessor_claims_required"}
+    # Fit the exact emitted geometry, including corner-cutting between native
+    # resampled stations and straightened crossing chords. The writer's arc
+    # law also supplies self-lattice feet; do not use pre-resampling distances
+    # or a differently rounded reconstruction for the total-grade chain.
+    t = np.array([fld.bilinear(x, z) for x, z in pts], dtype=np.float64)
+    s = np.asarray(routemod._writer().node_arcs(pts, free), dtype=np.float64)
 
     # ONE constraint set.  Every special case -- bridge deck, level bank run,
     # abutment height owned by Crossings, ordinary cut and fill -- becomes a
@@ -3622,8 +3579,8 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         # like the bank floor; what it cannot reach is recorded, never forced.
         span_bed = None
         if _SPAN_BED_MODE == "lattice" and lvl["H"] is not None:
-            a_xz = (round(float(pts[ia][0]), 2), round(float(pts[ia][1]), 2))
-            b_xz = (round(float(pts[ib][0]), 2), round(float(pts[ib][1]), 2))
+            a_xz = (float(pts[ia][0]), float(pts[ia][1]))
+            b_xz = (float(pts[ib][0]), float(pts[ib][1]))
             sb = span_bed_floor(a_xz, b_xz, lattice_ground(fld, a_xz, b_xz))
             floor_y = sb["floor_y"]
             if floor_y is not None:
@@ -3642,14 +3599,14 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         c.update({
             "status": "detected", "ribbon_width_m": width_m,
             "bank_level_run_m": BANK_LEVEL_M,
-            "required_deck_y": round(H, 3) if H is not None else None,
+            "required_deck_y": float(H) if H is not None else None,
             "single_H_both_banks": bool(single),
-            "legal_deck_y_interval": [round(h_lo, 3), round(h_hi, 3)],
+            "legal_deck_y_interval": [float(h_lo), float(h_hi)],
         })
         declare_banks(c, pts, t, tw_lo, ia, ib, wa, wb)
-        c["bank_a"].update({"road_deck_y": round(H, 3) if H is not None else None,
+        c["bank_a"].update({"road_deck_y": float(H) if H is not None else None,
                             "bearing_deg": round(brg, 1)})
-        c["bank_b"].update({"road_deck_y": round(H, 3) if H is not None else None,
+        c["bank_b"].update({"road_deck_y": float(H) if H is not None else None,
                             "bearing_deg": round((brg + 180.0) % 360.0, 1)})
         c["why_terrain_failed"] = c.pop("reason", c.get("why_terrain_failed"))
         if span_bed is not None:
@@ -3657,7 +3614,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         bank_level.append({"crossing_id": c["crossing_id"],
                            "level_at_y": c["required_deck_y"],
                            "single_H_both_banks": bool(single),
-                           "legal_interval": [round(h_lo, 3), round(h_hi, 3)]})
+                           "legal_interval": [float(h_lo), float(h_hi)]})
         if single:
             level_choices.append({
                 "first": wa, "last": wb, "lower_y": h_lo, "upper_y": h_hi,
@@ -3687,7 +3644,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
             "within_clamp": bool(worst <= CF),
             "ribbon_width_m": width_m,
             "outbound_bearing_deg": round(brg, 2),
-            "ribbon_end_xz": [round(pts[k_end][0], 2), round(pts[k_end][1], 2)],
+            "ribbon_end_xz": [float(pts[k_end][0]), float(pts[k_end][1])],
         })
 
     # THE WALKED-RAY CEILING (route.WALKED_WET_DEPENDS_ON), and ONLY on the
@@ -3743,10 +3700,10 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         _hold_profile(lo, hi, held,
                       slice(choice["first"], choice["last"] + 1), H)
         crossing = choice["crossing"]
-        crossing["required_deck_y"] = round(H, 3)
-        crossing["bank_a"]["road_deck_y"] = round(H, 3)
-        crossing["bank_b"]["road_deck_y"] = round(H, 3)
-        choice["bank_level"]["level_at_y"] = round(H, 3)
+        crossing["required_deck_y"] = float(H)
+        crossing["bank_a"]["road_deck_y"] = float(H)
+        crossing["bank_b"]["road_deck_y"] = float(H)
+        choice["bank_level"]["level_at_y"] = float(H)
     design_rung = g_max
     sa_grade, sa_batter, sa_lattice = writer_batter()
     terminal_caps, terminal_owners = _declared_terminal_caps(
@@ -3799,19 +3756,48 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     stats = profile_stats(y, s, t, tw_lo, tw_hi, free)
     relief = (tw_hi - tw_lo)[terr]
     relief_infeasible = int((relief > 2.0 * routemod.CLAMP_M).sum())
+    native_joint = {
+        "s": np.asarray(s, dtype=np.float64), "t": t,
+        "lo": lo, "hi": hi, "free": free, "held": held,
+        "terminal_caps": terminal_caps,
+        "terminal_owners": copy.deepcopy(terminal_owners),
+        "tw_lo": tw_lo, "tw_hi": tw_hi,
+        "spans": [tuple(v) for v in fit["infeasible_spans"]],
+        "cand": fl["cand"], "rung": float(g_max),
+        "ladder": [float(g) for g in ladder],
+        "design_rung": float(design_rung),
+        "terrain_rung": fl["terrain_rung"],
+        "terrain_feasible": fl["terrain_feasible"],
+        "y0": np.asarray(y, dtype=np.float64),
+        "native_basis": {
+            "producer": "network._build_segment_once",
+            "measurement_field": fld.id,
+            "geometry_arcs": fl["cand"]["arcs"],
+            "geometry_preparation": lattice_preparation,
+            "held_abutment_inputs": copy.deepcopy(abut_windows),
+            "free_crossing_windows": [{
+                "crossing_id": c["crossing_id"], "first_free": ia, "last_free": ib,
+                "first_level": wa, "last_level": wb}
+                for c, ia, ib, wa, wb in windows],
+            "held_detected_bank_inputs": [{
+                "first": q["first"], "last": q["last"],
+                "lower_y": q["lower_y"], "upper_y": q["upper_y"],
+                "preferred_y": q["preferred_y"],
+                "published_y": q["crossing"]["required_deck_y"],
+                "crossing_id": q["crossing"]["crossing_id"]}
+                for q in level_choices],
+            "joint_water_ceiling_inputs": {},
+            "grade_ceiling": routemod.GRADE_CEILING,
+            "grade_class_design": routemod.GRADE[cls],
+            "grade_override": edge.get("grade_max"),
+            "walked_water_ceiling_inputs": copy.deepcopy(ceiling),
+            "water_level": WATER_LEVEL,
+            "road_freeboard_m": routemod.ROAD_FREEBOARD_M,
+            "deck_clearance_m": routemod.DECK_CLEARANCE_M,
+            "cut_fill_max_m": CF, "clamp_m": routemod.CLAMP_M,
+            "self_join_margin_m": routemod.SELF_ADJACENCY_JOIN_MARGIN_M}}
     if joint is not None:
-        joint.update({"s": np.asarray(s, dtype=np.float64), "t": t,
-                      "lo": lo, "hi": hi, "free": free, "held": held,
-                      "terminal_caps": terminal_caps,
-                      "terminal_owners": copy.deepcopy(terminal_owners),
-                      "tw_lo": tw_lo, "tw_hi": tw_hi,
-                      "spans": [tuple(v) for v in fit["infeasible_spans"]],
-                      "cand": fl["cand"], "rung": float(g_max),
-                      "ladder": [float(g) for g in ladder],
-                      "design_rung": float(design_rung),
-                      "terrain_rung": fl["terrain_rung"],
-                      "terrain_feasible": fl["terrain_feasible"],
-                      "y0": np.asarray(y, dtype=np.float64)})
+        joint.update(native_joint)
 
     # Second-pass infeasibility: a span the ONE constraint set could not satisfy
     # is terrain that cannot be built, and it goes to Crossings too.  Reported
@@ -3921,9 +3907,9 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         "residual_infeasible": residual,
         "poi_within_keepout": near[:12],
         "poi_hard_violations": violations,
-        "nodes": [[round(x, 2), round(z, 2)] for x, z in pts],
-        "profile_y": [round(float(v), 3) for v in y],
-        "terrain_y": [round(float(v), 3) for v in t],
+        "nodes": [[float(x), float(z)] for x, z in pts],
+        "profile_y": [float(v) for v in y],
+        "terrain_y": [float(v) for v in t],
         "is_bridge": [bool(v) for v in free],
     }
     if ceiling_rec is not None:
@@ -3938,6 +3924,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         rec["terminal_reach"] = {
             "node": edge["b"] if terminal["end"] == "goal" else edge["a"],
             **{k: v for k, v in terminal.items() if k != "cell"}}
+    profile_contract.refresh_native_profile_model(rec, native_joint)
     return rec, (pts[0], pts[-1])
 
 
@@ -4086,12 +4073,34 @@ def profile_constraint_rejection(seg):
         "profile_constraints": record}
 
 
+def native_profile_prerequisite(seg: dict) -> dict | None:
+    """Missing complete inputs are a replan prerequisite, not impossibility.
+
+    Candidate stations remain available for surveys and diagnosis. They are
+    not physical/model admission merely because an older held-only report
+    says CLEAR.
+    """
+    try:
+        profile_contract.read_native_profile_model(seg)
+    except profile_contract.NativeProfileModelError as exc:
+        seg.pop("native_profile_model", None)
+        seg["native_profile_status"] = {"verdict": "UNPROVEN", "why": str(exc)}
+        return {"id": seg.get("id"), "verdict": "PREREQUISITE",
+                "why": str(exc), "native_profile_status": seg["native_profile_status"]}
+    return None
+
+
 def plan_refusal(seg: dict, gen_pois: list, seed: str, *, fld,
                  coverage: bool = True) -> str | None:
     """Which of `main`'s per-leg plan-time refusals this leg would earn, by
     name, or None -- so a remedy is never adopted that `main` would then
     refuse for something else.  `coverage=False` is the band-free probe's
     question (CENSUS_BAND_DEPENDS_ON): every refusal EXCEPT unread ground."""
+    if seg.get("residual_infeasible"):
+        return "residual_infeasible"
+    if ((seg.get("terminal_profile_refusal") or {}).get("verdict") == "REFUSED"
+            or seg.get("verdict") == "REFUSED" or seg.get("status") == "REFUSED"):
+        return "native_profile_refusal"
     if profile_constraint_rejection(seg) is not None:
         return "profile_constraints"
     if max((c["span_m"] for c in seg["crossings"]), default=0.0) \
@@ -4108,6 +4117,24 @@ def plan_refusal(seg: dict, gen_pois: list, seed: str, *, fld,
         return "write_gate"
     if self_adjacency_rejection(seg) is not None:
         return "self_adjacency"
+    if native_profile_prerequisite(seg) is not None:
+        return "native_profile_prerequisite"
+    return None
+
+
+def requirement_refusal(seg: dict, gen_pois: list, seed: str, *, fld) -> str | None:
+    """Final requirement admission delegates to the native physical gates."""
+    if seg.get("rejected"):
+        return str(seg["rejected"].get("why", "native rejection"))
+    if (seg.get("junction_datum") or {}).get("verdict") == "REFUSED":
+        return "junction_datum"
+    if (seg.get("census") or {}).get("verdict") == "PROVISIONAL":
+        return "provisional census"
+    refusal = plan_refusal(seg, gen_pois, seed, fld=fld)
+    if refusal is not None:
+        return refusal
+    if water_rejection(seg, final=True) is not None:
+        return "writer_water"
     return None
 
 
@@ -5026,21 +5053,23 @@ def node_anchors(edges: list[dict], nodes: dict,
     served by more than one carriageway width.  `corridor_of(patch, cls)` is
     the corridor a leg of that class is searched in; `measurement_of(patch)`
     supplies the original terrain for its physical arrival test."""
-    classes: dict[str, dict[str, str]] = {}
+    classes: dict[str, dict[tuple[str, float], str]] = {}
     for e in edges:
         patch = e.get("patch", nodes[e["a"]]["patch"])
         for nid in (e["a"], e["b"]):
-            classes.setdefault(nid, {}).setdefault(e["cls"], patch)
+            width = float(e.get("width_m") or WIDTH_M[e["cls"]])
+            classes.setdefault(nid, {}).setdefault((e["cls"], width), patch)
     out: dict[str, tuple[float, float]] = {}
     for nid, by_cls in classes.items():
-        if len({WIDTH_M[c] for c in by_cls}) < 2:
+        if len({width for _cls, width in by_cls}) < 2:
             continue
-        cls = max(sorted(by_cls), key=lambda c: WIDTH_M[c])
-        corr = corridor_of(by_cls[cls], cls)
+        cls, width = max(sorted(by_cls), key=lambda c: c[1])
+        patch = by_cls[(cls, width)]
+        corr = corridor_of(patch, cls)
         try:
             (i, j), _rec = arrival_start(
-                nid, nodes[nid]["xz"], corr, WIDTH_M[cls],
-                fld=measurement_of(by_cls[cls]))
+                nid, nodes[nid]["xz"], corr, width,
+                fld=measurement_of(patch))
         except ValueError:
             continue
         x, z = corr.cell_world(i, j)
@@ -5641,20 +5670,33 @@ def apply_junction_datums(segments: list[dict], joints: dict[str, dict],
     for sg in segments:
         sid = sg["id"]
         if sid in refused or sid not in res["legs"]:
+            sg.pop("native_profile_model", None)
+            sg["native_profile_status"] = {
+                "verdict": "UNPROVEN",
+                "why": "native joint closure refused this segment; replan required"}
             continue
         v = res["legs"][sid]
         j = joints[sid]
-        if v["verdict"] == "UNSHARED":
-            continue
-        if v["stations_moved"] or v["rung"] != j["rung"]:
+        if not np.array_equal(res["y"][sid], sg["profile_y"]):
             y = np.asarray(res["y"][sid], dtype=np.float64)
             sg.update(profile_stats(y, j["s"], j["t"], j["tw_lo"],
                                     j["tw_hi"], j["free"]))
-            sg["profile_y"] = [round(float(q), 3) for q in y]
+            sg["profile_y"] = [float(q) for q in y]
         if v["rung"] != j["rung"]:
             sg["grade_limit"] = v["rung"]
             sg["grade_relaxed_to"] = v["rung"]
             sg["grade_relaxed_by"] = "junction"
+        published = res.get("native_profile_readings", {}).get(sid)
+        if published is None:
+            sg.pop("native_profile_model", None)
+            sg["native_profile_status"] = {
+                "verdict": "UNPROVEN",
+                "why": "joint solve did not export complete native readings; replan required"}
+        else:
+            profile_contract.refresh_native_profile_model(
+                sg, j, published_readings=published)
+        if v["verdict"] == "UNSHARED":
+            continue
         sg["junction_datum"] = {
             **v,
             "depends_on": list(depends_on if depends_on is not None
@@ -5720,9 +5762,15 @@ def junction_with_caps(segments: list[dict], joints: dict[str, dict],
     import copy                                             # noqa: PLC0415
     saved = {sid: np.array(joints[sid]["hi"], dtype=np.float64, copy=True)
              for sid in caps}
+    saved_basis = {
+        sid: copy.deepcopy(joints[sid]["native_basis"]["joint_water_ceiling_inputs"])
+        for sid in caps if "native_basis" in joints[sid]}
     for sid, ks in caps.items():
         for k, v in ks.items():
             joints[sid]["hi"][k] = v
+        if sid in saved_basis:
+            joints[sid]["native_basis"]["joint_water_ceiling_inputs"].update(
+                {str(k): float(v) for k, v in ks.items()})
 
     def resolve() -> dict:
         for sg in segments:
@@ -5742,6 +5790,8 @@ def junction_with_caps(segments: list[dict], joints: dict[str, dict],
         if undo:
             for sid in sorted(undo):
                 joints[sid]["hi"] = saved[sid]
+                if sid in saved_basis:
+                    joints[sid]["native_basis"]["joint_water_ceiling_inputs"] = saved_basis[sid]
                 withheld.append(sid)
             jd = resolve()
     jd["water_caps_withheld"] = withheld
@@ -6791,11 +6841,9 @@ def selftest_junction_datum() -> int:
          sorted({v["datum"].split(":")[0] for i, v in res["legs"].items()
                  if i != "Z-lone"}), ["ONE DATUM (lambda 0)"])
     lone_after = next(sg for sg in segs if sg["id"] == "Z-lone")
-    same = (yaml.safe_dump(plain(lone_after), sort_keys=False)
-            == yaml.safe_dump(plain(lone[0]), sort_keys=False))
-    want("SURVIVOR: a leg meeting nothing",
-         f"{res['legs']['Z-lone']['verdict']}, record "
-         f"{'IDENTICAL' if same else 'CHANGED'}", "UNSHARED, record IDENTICAL")
+    want("independent road keeps its exact geometry and total profile",
+         all(np.array_equal(lone_after[key], lone[0][key])
+             for key in ("nodes", "profile_y", "is_bridge")), True)
 
     print("case: NEUTER -- no joint solve (the plan the build was handed)")
     segs0, res0 = _jd_net(temple_net, depends_on=())
@@ -6803,10 +6851,9 @@ def selftest_junction_datum() -> int:
          _jd_gate_at(segs0, *at),
          "REFUSED T1/T13 1.862, T1/T3 1.629, T1/T5 1.862")
     lone0 = next(sg for sg in segs0 if sg["id"] == "Z-lone")
-    want("SURVIVOR under the neuter: the leg meeting nothing",
-         "IDENTICAL" if yaml.safe_dump(plain(lone0), sort_keys=False)
-         == yaml.safe_dump(plain(lone[0]), sort_keys=False) else "CHANGED",
-         "IDENTICAL")
+    want("independent road remains physically unchanged without joint solving",
+         all(np.array_equal(lone0[key], lone[0][key])
+             for key in ("nodes", "profile_y", "is_bridge")), True)
 
     print("case: ORDER -- the same network handed in two orders")
     fwd = list(temple_net)
@@ -8668,14 +8715,14 @@ def selftest_bank_trim_rounding() -> int:
                      rec["abutments"][0]["level_y"] == datum
                      and abs(y[k] - datum) <= 0.0005
                      and specmod.NODES["q-bank"]["xz"] == tuple(root))
-                want(f"{sign:+g}/{end}: emitted contact was profiled",
-                     0.0 < np.linalg.norm(emitted[k] - line[2]) < 0.02
+                want(f"{sign:+g}/{end}: exact input contact was profiled",
+                     np.array_equal(emitted[k], line[2])
                      and abs(np.diff(joint["s"])[0 if end == "a" else -1]
                              - np.linalg.norm(line[3] - emitted[k])) < 1e-12)
                 tw_lo, tw_hi, off = transverse_window(fld, emitted, WIDTH_M["trunk"])
                 want(f"{sign:+g}/{end}: physical emitted geometry",
                      not off and bool(np.all(ds > 0.0))
-                     and bool(np.all(np.abs(np.diff(y)) <= rec["grade_limit"] * ds + 0.001))
+                     and bool(np.all(np.abs(np.diff(y)) <= rec["grade_limit"] * ds + 1e-9))
                      and bool(np.all(np.maximum(abs(y-tw_lo), abs(y-tw_hi))
                                      <= routemod.CUT_FILL_MAX))
                      and not rec["residual_infeasible"]
@@ -8691,10 +8738,6 @@ def selftest_bank_trim_rounding() -> int:
                 else:
                     refused = False
                 want(f"{sign:+g}/{end}: unchanged active mask refuses contact", refused)
-            want(f"{sign:+g}: legal rounded contacts stay unchanged",
-                 np.array_equal(_bank_trim_endpoint(line[1], root, root, reach), line[1]))
-            want(f"{sign:+g}: genuinely detached contacts are not rescued",
-                 np.array_equal(_bank_trim_endpoint(line[3], line[2], root, reach), line[3]))
     finally:
         _PAD_CLAIMS = saved_pads
         for key, value in saved_nodes.items():
@@ -9586,10 +9629,23 @@ def main(*, plan_state: dict | None = None) -> int:
     args = ap.parse_args()
 
     global SEED, WORLD, _PLAN_KEEPOUTS, _PLAN_PATCHES, _PLAN_PAD_KEEPOUTS
+    global _PLAN_PLACED_OBJECTS
     SEED, WORLD = worldseed.apply(args)
+    if args.provisional and args.census:
+        raise SystemExit("--provisional and --census are the two ends of the "
+                         "same pipeline; pass one")
+    census = (None if args.provisional
+              else censusmod.require(Path(args.census) if args.census else None,
+                                     world=WORLD, seed=SEED))
+    _PLAN_PLACED_OBJECTS = None if census is None else census.placed_positions()
     import importlib
+    import ribbon as ribbonmod                             # noqa: PLC0415
+    plan_pads = ribbonmod.pad_keepouts_from_chain(
+        [], [], planned=ribbonmod.planned_pad_claims(str(WORLD), str(SEED)))
+    _PLAN_PAD_KEEPOUTS = lambda: plan_pads
     import shores
-    shores.produce(args.field)
+    shores.produce(args.field, placed_objects=_PLAN_PLACED_OBJECTS,
+                   pad_keepouts=plan_pads)
     importlib.reload(specmod)
     # A SITE A PERSON DECLARED IS A NODE THIS PLAN MUST ROUTE TO.  A published
     # site set that does not carry it is not "a plan with one node fewer": it is
@@ -9602,10 +9658,6 @@ def main(*, plan_state: dict | None = None) -> int:
     # (WALKED_KEEPOUT_DEPENDS_ON).
     _PLAN_KEEPOUTS = writer_keepouts
     _PLAN_PATCHES = writer_patches
-    import ribbon as ribbonmod                             # noqa: PLC0415
-    plan_pads = ribbonmod.pad_keepouts_from_chain(
-        [], [], planned=ribbonmod.planned_pad_claims(str(WORLD), str(SEED)))
-    _PLAN_PAD_KEEPOUTS = lambda: plan_pads
 
     # THE FIELD MUST BE THIS SEED'S FIELD.  PatchScan stamps the seed name
     # into the header and `load` used to discard it; with --seed a live
@@ -9624,12 +9676,6 @@ def main(*, plan_state: dict | None = None) -> int:
     # file still has a job -- `precensus.py replay` turns it into a census
     # artefact with its coverage and its date attached, which is the form in
     # which it can be checked instead of trusted.
-    if args.provisional and args.census:
-        raise SystemExit("--provisional and --census are the two ends of the "
-                         "same pipeline; pass one")
-    census = (None if args.provisional
-              else censusmod.require(Path(args.census) if args.census else None,
-                                     world=WORLD, seed=SEED))
     pois = poimod.load()
     census_pois = [] if census is None else census.pois()
     if census is not None:
@@ -9784,6 +9830,14 @@ def main(*, plan_state: dict | None = None) -> int:
     edges = [e for e in specmod.EDGES
              if (not args.only or e["id"] in args.only)
              and (not args.pri or e["pri"] in args.pri)]
+    authored_roads, excluded_roads = road_requirements.inventory(specmod)
+    selected_road_ids = [e["id"] for e in edges]
+    approach_edges = road_requirements.approaches(
+        edges, specmod.NODES, specmod.DECLARED_CROSSINGS, WIDTH_M)
+    # Declare all alternatives before anchors; route ordinary authored ground
+    # first, then real approaches through the identical native admission path.
+    edges = [e for e in edges if specmod.NODES[e["a"]]["island"]
+             == specmod.NODES[e["b"]]["island"]] + approach_edges
     if args.order == "reverse":
         edges = edges[::-1]
     # WHAT THE JOINT SOLVE NEEDS OF EACH LEG, kept beside the record rather
@@ -10269,7 +10323,8 @@ def main(*, plan_state: dict | None = None) -> int:
         admit(seg, joint)
 
     for edge in edges:
-        route_edge(edge)
+        if not edge.get("requirement_approach"):
+            route_edge(edge)
 
     # ---- EVERY LEG THE PLAN LAYS IS WALKABLE FROM THE ROOT ----------------
     # (ORPHAN_JOIN_DEPENDS_ON).  A partial run (--only / --pri) has no
@@ -10346,12 +10401,12 @@ def main(*, plan_state: dict | None = None) -> int:
     # after the spec's own, in the order they were refused or derived.
     rank = {e["id"]: i for i, e in enumerate(
         list(specmod.EDGES) + [fe["edge"] for fe in specmod.FOREIGN_EDGES]
-        + join_edges)}
+        + approach_edges + join_edges)}
     segments.sort(key=lambda sg: rank[sg["id"]])
     unroutable.sort(key=lambda r: rank[r["id"]])
     rejected.sort(key=lambda r: rank[r["id"]])
     corr_rank = {}
-    for e in specmod.EDGES:
+    for e in list(specmod.EDGES) + approach_edges:
         k = f"{e.get('patch', specmod.NODES[e['a']]['patch'])}:{e['cls']}"
         corr_rank.setdefault(k, len(corr_rank))
     poi_masked = {k: poi_masked[k]
@@ -10401,148 +10456,170 @@ def main(*, plan_state: dict | None = None) -> int:
             del water_cache[k]
         return out, j
 
-    jd, reremedied = remedied_after_joint(
-        segments, joints, water_judged, solve=solve_network, water=water_now,
-        remedy=remedy_leg)
-    jd_before = gate_before["v"]
-    for m in reremedied:
-        jr = m["joint_refusal"]
-        print(f"{m['id']:22s} WATER AFTER JOINT round {m['round']}: "
-              f"{jr['steps']} step(s) ({jr['keepout_steps']} poi) / "
-              f"{jr['drained']} drain(s), worst {jr['worst_m']} m at "
-              f"{jr['worst_at']} on the joint-solved profile -> "
-              f"{m['remedy']}, {m['length_m']} m; key = "
-              f"network.WATER_REREMEDY_DEPENDS_ON")
-    # A PROVISIONAL PLAN KEEPS A REFUSED LEG, WITH ITS REFUSAL ON IT.  That
-    # line exists only so `precensus.py survey` knows where to read, and
-    # ribbon.py refuses to pave it anyway; dropping it here would leave its
-    # corridor unread, and the census-confined route at stage 11 -- which
-    # MEASURED on Fresh42 routes T9 differently and joins it -- would then be
-    # refused as UNCENSUSED for a disagreement on a line nobody builds.
-    kept_refused = set()
-    for rec in jd["refused"]:
-        rej = junction_rejection(rec)
-        if census is None:
-            kept_refused.add(rec["id"])
-            sg = next(s for s in segments if s["id"] == rec["id"])
-            sg["junction_datum"] = {"verdict": "REFUSED", **rej}
-            print(f"{rec['id']:22s} REFUSED (kept: provisional line, for "
-                  f"the census to read): {rej['why']}")
-            continue
-        rejected.append({"id": rec["id"], **rej})
-        print(f"{rec['id']:22s} REJECTED: {rej['why']}")
-    gone = {r["id"] for r in jd["refused"]} - kept_refused
-    if gone:
-        segments = [sg for sg in segments if sg["id"] not in gone]
-        rejected.sort(key=lambda r: rank[r["id"]])
-    jd_after = junction_population(segments, jd_pads)
-    junction_datum = {
-        "depends_on": list(_JUNCTION_DATUM_DEPENDS_ON),
-        "rule": routemod.JUNCTION_DATUM_RULE,
-        "tool": "roads/route.py::junction_datums",
-        "readings": jd["readings"],
-        "population": jd.get("population"),
-        "places": jd.get("places"),
-        "pads": {"participants": len(jd_pads),
-                 "without_a_datum": sorted(jd_pads_missing)},
-        "gate_before": jd_before,
-        "gate_after": jd_after,
-        "legs": {sid: f"{v['verdict']} -- {v['datum']}"
-                 for sid, v in sorted(jd["legs"].items())},
-        "refused": [{"id": r["id"], **r["binding"]} for r in jd["refused"]],
-    }
-    print(f"junction datum at PLAN time: gate before -- "
-          f"{jd_before['pairs_sharing_ground']} pairs in "
-          f"{jd_before['places']} shared places, "
-          f"{jd_before['places_over_allowance']} place(s) / "
-          f"{jd_before['impassable_pairs']} pair(s) over the allowance; "
-          f"after -- {jd_after['pairs_sharing_ground']} pairs in "
-          f"{jd_after['places']} places, "
-          f"{jd_after['places_over_allowance']} / "
-          f"{jd_after['impassable_pairs']} over; "
-          f"{sum(1 for v in jd['legs'].values() if v['verdict'] == 'JOINED')}"
-          f" leg(s) joined, "
-          f"{sum(1 for v in jd['legs'].values() if v['verdict'] == 'AGREED')}"
-          f" agreed as designed, "
-          f"{sum(1 for v in jd['legs'].values() if v['verdict'] == 'UNSHARED')}"
-          f" share no ground, {len(jd['refused'])} REJECTED; places where "
-          f"legs meet: {(jd.get('places') or {}).get('count')}, at ONE "
-          f"DATUM {(jd.get('places') or {}).get('at_one_datum')}; key = "
-          f"route.JUNCTION_DATUM_DEPENDS_ON {_JUNCTION_DATUM_DEPENDS_ON}")
-    for sid, v in sorted(jd["legs"].items()):
-        if v["verdict"] == "UNSHARED":
-            continue
-        wb, wa = v["worst_before"] or {}, v["worst_after"] or {}
-        print(f"   {sid:24s} {v['verdict']:7s} with {len(v['shares_ground_with'])}"
-              f" participant(s), {v['over_allowance_before']} -> "
-              f"{v['over_allowance_after']} reading(s) over the allowance, "
-              f"{v['over_design_budget_before']} -> "
-              f"{v['over_design_budget_after']} over the design budget; worst "
-              f"{wb.get('spread_m')} m at {wb.get('xz')} ({wb.get('reading')})"
-              f" -> {wa.get('spread_m')} m; moved {v['stations_moved']} st "
-              f"<= {v['max_move_m']} m, rung {v['rung_design']} -> {v['rung']};"
-              f" {v['datum'].split(':')[0]}")
+    junction_datum = {}
+    jd = {}
+    water_refused = []
 
-    # ---- THE WRITER'S WATER AGAIN, ON THE PROFILE THAT WILL BE EMITTED -----
-    # The joint solve moves profiles inside each leg's own bounds, and a
-    # walked-ray ceiling is in those bounds -- but a leg the solve RAISED
-    # beside water is re-asked, because the verdict is about the plan that
-    # is written, not the one that was routed.
-    for sg in segments:
-        rec = sg.get("writer_water")
-        if rec is None:
-            continue
-        if sg["profile_y"] != water_judged.get(sg["id"]):
-            key = (sg["id"], tuple(sg["profile_y"]))
-            if key not in water_cache:
-                sg.pop("connection_collar", None)
-                water_cache[key] = writer_water(
-                    sg, _measurement_field(flds, sg))
-            fw = water_cache[key]
-            # The collar is re-decided on the profile that will be EMITTED,
-            # and the leg records it for ribbon.stamp (COLLAR_CHOICE).
-            if fw.get("collar") is False:
-                sg["connection_collar"] = False
-            else:
-                sg.pop("connection_collar", None)
-            # keepout_steps rides along: the rejection line prints it, and a
-            # dropped key printed "(0 poi)" on a leg refused BY a POI disc.
-            rec["after_junction"] = {k: fw[k] for k in (
-                "verdict", "steps", "drained", "worst_m", "worst_at",
-                "keepout_steps", "pad_steps", "arrival_failures")}
-            rec["after_junction"].update(judged_public(fw))
-            if fw["verdict"] == "REFUSED":
-                rec["residual_owner"] = water_owner(
-                    sg, fw, routemod.footprint_half_m(float(sg["width_m"]))
-                    + writer_batter()[1])
-        final = rec.get("after_junction") or rec
-        rec["final_verdict"] = final_verdict(final)
-    water_refused = [sg for sg in segments
-                     if (sg.get("writer_water") or {}).get("final_verdict")
-                     == "REFUSED"]
-    print(f"writer water at PLAN time: "
-          f"{sum(1 for sg in segments if 'writer_water' in sg) - len(water_refused)}"
-          f" leg(s) the writer lays clear of water, "
-          f"{sum(1 for sg in segments if (sg.get('writer_water') or {}).get('remedy', 'as routed') != 'as routed')}"
-          f" moved or re-profiled to get there, {len(water_refused)} still "
-          f"REFUSED; key = route.WALKED_WET_DEPENDS_ON")
-    for sg in water_refused:
-        rec = sg["writer_water"]
-        fin = rec.get("after_junction") or rec
-        print(f"   REFUSED {sg['id']} {fin['steps']} water step(s), "
-              f"{fin['drained']} drain(s), worst {fin['worst_m']} m at "
-              f"{fin['worst_at']} after {rec['remedy']} (the joint solve "
-              f"moved it)")
-    # REFUSED AFTER THE JOINT SOLVE IS REFUSED, exactly as a junction
-    # refusal is -- and a PROVISIONAL plan keeps it for the census.
-    if census is not None and water_refused:
-        gone_w = {sg["id"] for sg in water_refused}
+    def close_native_population() -> None:
+        nonlocal segments, junction_datum, jd, water_refused
+        jd, reremedied = remedied_after_joint(
+            segments, joints, water_judged, solve=solve_network, water=water_now,
+            remedy=remedy_leg)
+        jd_before = gate_before["v"]
+        for m in reremedied:
+            jr = m["joint_refusal"]
+            print(f"{m['id']:22s} WATER AFTER JOINT round {m['round']}: "
+                  f"{jr['steps']} step(s) ({jr['keepout_steps']} poi) / "
+                  f"{jr['drained']} drain(s), worst {jr['worst_m']} m at "
+                  f"{jr['worst_at']} on the joint-solved profile -> "
+                  f"{m['remedy']}, {m['length_m']} m; key = "
+                  f"network.WATER_REREMEDY_DEPENDS_ON")
+        # A PROVISIONAL PLAN KEEPS A REFUSED LEG, WITH ITS REFUSAL ON IT.  That
+        # line exists only so `precensus.py survey` knows where to read, and
+        # ribbon.py refuses to pave it anyway; dropping it here would leave its
+        # corridor unread, and the census-confined route at stage 11 -- which
+        # MEASURED on Fresh42 routes T9 differently and joins it -- would then be
+        # refused as UNCENSUSED for a disagreement on a line nobody builds.
+        kept_refused = set()
+        for rec in jd["refused"]:
+            rej = junction_rejection(rec)
+            if census is None:
+                kept_refused.add(rec["id"])
+                sg = next(s for s in segments if s["id"] == rec["id"])
+                sg["junction_datum"] = {"verdict": "REFUSED", **rej}
+                print(f"{rec['id']:22s} REFUSED (kept: provisional line, for "
+                      f"the census to read): {rej['why']}")
+                continue
+            rejected.append({"id": rec["id"], **rej})
+            print(f"{rec['id']:22s} REJECTED: {rej['why']}")
+        gone = {r["id"] for r in jd["refused"]} - kept_refused
+        if gone:
+            segments = [sg for sg in segments if sg["id"] not in gone]
+            rejected.sort(key=lambda r: rank[r["id"]])
+        jd_after = junction_population(segments, jd_pads)
+        junction_datum = {
+            "depends_on": list(_JUNCTION_DATUM_DEPENDS_ON),
+            "rule": routemod.JUNCTION_DATUM_RULE,
+            "tool": "roads/route.py::junction_datums",
+            "readings": jd["readings"],
+            "population": jd.get("population"),
+            "places": jd.get("places"),
+            "pads": {"participants": len(jd_pads),
+                     "without_a_datum": sorted(jd_pads_missing)},
+            "gate_before": jd_before,
+            "gate_after": jd_after,
+            "legs": {sid: f"{v['verdict']} -- {v['datum']}"
+                     for sid, v in sorted(jd["legs"].items())},
+            "refused": [{"id": r["id"], **r["binding"]} for r in jd["refused"]],
+        }
+        print(f"junction datum at PLAN time: gate before -- "
+              f"{jd_before['pairs_sharing_ground']} pairs in "
+              f"{jd_before['places']} shared places, "
+              f"{jd_before['places_over_allowance']} place(s) / "
+              f"{jd_before['impassable_pairs']} pair(s) over the allowance; "
+              f"after -- {jd_after['pairs_sharing_ground']} pairs in "
+              f"{jd_after['places']} places, "
+              f"{jd_after['places_over_allowance']} / "
+              f"{jd_after['impassable_pairs']} over; "
+              f"{sum(1 for v in jd['legs'].values() if v['verdict'] == 'JOINED')}"
+              f" leg(s) joined, "
+              f"{sum(1 for v in jd['legs'].values() if v['verdict'] == 'AGREED')}"
+              f" agreed as designed, "
+              f"{sum(1 for v in jd['legs'].values() if v['verdict'] == 'UNSHARED')}"
+              f" share no ground, {len(jd['refused'])} REJECTED; places where "
+              f"legs meet: {(jd.get('places') or {}).get('count')}, at ONE "
+              f"DATUM {(jd.get('places') or {}).get('at_one_datum')}; key = "
+              f"route.JUNCTION_DATUM_DEPENDS_ON {_JUNCTION_DATUM_DEPENDS_ON}")
+        for sid, v in sorted(jd["legs"].items()):
+            if v["verdict"] == "UNSHARED":
+                continue
+            wb, wa = v["worst_before"] or {}, v["worst_after"] or {}
+            print(f"   {sid:24s} {v['verdict']:7s} with {len(v['shares_ground_with'])}"
+                  f" participant(s), {v['over_allowance_before']} -> "
+                  f"{v['over_allowance_after']} reading(s) over the allowance, "
+                  f"{v['over_design_budget_before']} -> "
+                  f"{v['over_design_budget_after']} over the design budget; worst "
+                  f"{wb.get('spread_m')} m at {wb.get('xz')} ({wb.get('reading')})"
+                  f" -> {wa.get('spread_m')} m; moved {v['stations_moved']} st "
+                  f"<= {v['max_move_m']} m, rung {v['rung_design']} -> {v['rung']};"
+                  f" {v['datum'].split(':')[0]}")
+
+        # ---- THE WRITER'S WATER AGAIN, ON THE PROFILE THAT WILL BE EMITTED -----
+        # The joint solve moves profiles inside each leg's own bounds, and a
+        # walked-ray ceiling is in those bounds -- but a leg the solve RAISED
+        # beside water is re-asked, because the verdict is about the plan that
+        # is written, not the one that was routed.
+        for sg in segments:
+            rec = sg.get("writer_water")
+            if rec is None:
+                continue
+            if sg["profile_y"] != water_judged.get(sg["id"]):
+                key = (sg["id"], tuple(sg["profile_y"]))
+                if key not in water_cache:
+                    sg.pop("connection_collar", None)
+                    water_cache[key] = writer_water(
+                        sg, _measurement_field(flds, sg))
+                fw = water_cache[key]
+                # The collar is re-decided on the profile that will be EMITTED,
+                # and the leg records it for ribbon.stamp (COLLAR_CHOICE).
+                if fw.get("collar") is False:
+                    sg["connection_collar"] = False
+                else:
+                    sg.pop("connection_collar", None)
+                # keepout_steps rides along: the rejection line prints it, and a
+                # dropped key printed "(0 poi)" on a leg refused BY a POI disc.
+                rec["after_junction"] = {k: fw[k] for k in (
+                    "verdict", "steps", "drained", "worst_m", "worst_at",
+                    "keepout_steps", "pad_steps", "arrival_failures")}
+                rec["after_junction"].update(judged_public(fw))
+                if fw["verdict"] == "REFUSED":
+                    rec["residual_owner"] = water_owner(
+                        sg, fw, routemod.footprint_half_m(float(sg["width_m"]))
+                        + writer_batter()[1])
+            final = rec.get("after_junction") or rec
+            rec["final_verdict"] = final_verdict(final)
+        water_refused = [sg for sg in segments
+                         if (sg.get("writer_water") or {}).get("final_verdict")
+                         == "REFUSED"]
+        print(f"writer water at PLAN time: "
+              f"{sum(1 for sg in segments if 'writer_water' in sg) - len(water_refused)}"
+              f" leg(s) the writer lays clear of water, "
+              f"{sum(1 for sg in segments if (sg.get('writer_water') or {}).get('remedy', 'as routed') != 'as routed')}"
+              f" moved or re-profiled to get there, {len(water_refused)} still "
+              f"REFUSED; key = route.WALKED_WET_DEPENDS_ON")
         for sg in water_refused:
-            rej = water_rejection(sg, final=True)
-            sg["rejected"] = rej
-            rejected.append({"id": sg["id"], **rej})
-        segments = [sg for sg in segments if sg["id"] not in gone_w]
-        rejected.sort(key=lambda r: rank[r["id"]])
+            rec = sg["writer_water"]
+            fin = rec.get("after_junction") or rec
+            print(f"   REFUSED {sg['id']} {fin['steps']} water step(s), "
+                  f"{fin['drained']} drain(s), worst {fin['worst_m']} m at "
+                  f"{fin['worst_at']} after {rec['remedy']} (the joint solve "
+                  f"moved it)")
+        # REFUSED AFTER THE JOINT SOLVE IS REFUSED, exactly as a junction
+        # refusal is -- and a PROVISIONAL plan keeps it for the census.
+        if census is not None and water_refused:
+            gone_w = {sg["id"] for sg in water_refused}
+            for sg in water_refused:
+                rej = water_rejection(sg, final=True)
+                sg["rejected"] = rej
+                rejected.append({"id": sg["id"], **rej})
+            segments = [sg for sg in segments if sg["id"] not in gone_w]
+            rejected.sort(key=lambda r: rank[r["id"]])
+        segments.sort(key=lambda sg: rank[sg["id"]])
+
+    def resolve_current_requirements() -> list[dict]:
+        rows, _scope = road_requirements.resolve(
+            authored_roads, selected_road_ids, excluded_roads, segments,
+            specmod.DECLARED_CROSSINGS, WIDTH_M, _served_nodes,
+            boardwalk.declared_deck_width, failures=unroutable + rejected,
+            refusal_of=lambda sg: requirement_refusal(
+                sg, pois, SEED, fld=_measurement_field(flds, sg)))
+        return rows
+
+    road_requirements.complete_approaches(
+        [e for e in specmod.EDGES if e["id"] in selected_road_ids],
+        specmod.NODES, specmod.DECLARED_CROSSINGS, WIDTH_M,
+        resolve_current=resolve_current_requirements, route=route_edge,
+        close=close_native_population)
 
     # ---- WHERE THE CENSUS MUST STILL READ (CENSUS_BAND_DEPENDS_ON) ---------
     wanted = None
@@ -10608,10 +10685,20 @@ def main(*, plan_state: dict | None = None) -> int:
     detected, duplicate_census = boardwalk.collapse_duplicate_declarations(
         detected_raw)
 
+    requirement_rows, requirement_scope = road_requirements.resolve(
+        authored_roads, selected_road_ids, excluded_roads, segments,
+        specmod.DECLARED_CROSSINGS, WIDTH_M, _served_nodes,
+        boardwalk.declared_deck_width, only=args.only, pri=args.pri,
+        no_road=specmod.NO_ROAD, failures=unroutable + rejected,
+        refusal_of=lambda sg: requirement_refusal(
+            sg, pois, SEED, fld=_measurement_field(flds, sg)))
+
     doc = {
         "schema_version": 2, "owner": "RoadNet", "world": WORLD, "seed": SEED,
         "connection_requirements": specmod.connection_requirements(),
         "waterfront_requirements": specmod.REQUIRED_TRANSPORT,
+        "road_requirements": requirement_rows,
+        "road_requirement_scope": requirement_scope,
         # A MEASUREMENT OF ONE SEED'S LAND, AND IT WAS EMITTED FOR EVERY SEED.
         # MEASURED 2026-09-22: a Fresh42 plan carried this sentence verbatim --
         # "spawn island + west isle joined by two bridges", 5.4559 km2, bbox
@@ -10771,7 +10858,9 @@ def main(*, plan_state: dict | None = None) -> int:
             # `route.JUNCTION_DATUM_DEPENDS_ON`.
             "junction_datum_joined": sum(
                 1 for v in jd["legs"].values() if v["verdict"] == "JOINED"),
-            "junction_datum_rejected": len(jd["refused"]),
+            "junction_datum_rejected": len(
+                {r["id"] for r in jd["refused"]}
+                | {r["id"] for r in rejected if "junction_binding" in r}),
             # THE WRITER'S WATER, at plan time: how many legs had to move or
             # re-profile so the writer need not refuse their batter into
             # water, and how many it still would -- route.WALKED_WET_DEPENDS_ON.

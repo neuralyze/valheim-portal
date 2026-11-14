@@ -2059,6 +2059,12 @@ def status(scope: Scope, stages: tuple[Stage, ...] = STAGES) -> list[dict]:
                      "writes_world": st.writes_world, "present": present,
                      "producer": prod,
                      "satisfied": present and prod["state"] == CURRENT})
+        if (_PRESENCE_MODE == "real"
+                and any(a.label == "segments" and a.path.exists() for a in mine)):
+            from buildstage import road_requirement_status
+            named = road_requirement_status(scope)
+            rows[-1]["road_requirements"] = named
+            rows[-1]["satisfied"] = rows[-1]["satisfied"] and named["pass"]
     return rows
 
 

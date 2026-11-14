@@ -19,6 +19,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saved-world gates still apply. The complete preview call restores the
   caller's import path, including cold imports during final verdict checks
   as well as initial construction and continuation.
+- Native road records carry their complete original profile constraints:
+  exact emitted geometry, station bounds, held bank/deck datums, total grade,
+  native self-lattice and published joint/terminal readings. Terrain-profile
+  feedback solves against that same model, never only the slope of a shift.
+  Missing, incomplete or stale models cannot authorize a profile repair.
+  Accepted changes refresh their actual grade and self-adjacency receipts.
+- Native rim closure can solve the implicated movable cells together when
+  a sequential pass marks an algorithmic dead end. The continuation retains
+  every original water, clamp, ownership and edge bound; an infeasible
+  coupled system leaves the refusal intact.
+- Census records preserve individual observed ground-freezing positions,
+  rather than substituting body-cluster centroids. Native road and shore
+  previews receive those actual positions and the actual planned/written
+  pad provider. Shore checkpoints include pad datums and effective ground
+  membership, so changed future foundations cannot reuse old approvals.
+- Named road obligations remain distinct from emitted physical parts.
+  Declared crossing decks may be shared by multiple walking journeys, but
+  missing ground, rejected final parts, narrow decks and disconnected
+  handoffs cannot satisfy a name. Saved-world proof walks the full ordered
+  ground/deck path; portal or boat access does not substitute for a road.
 - Self-overlap retry costs select the later measured road foot by arc
   distance, not the second column of a spatial lattice-edge witness.
   Reversing the measured pair no longer penalizes the wrong branch.

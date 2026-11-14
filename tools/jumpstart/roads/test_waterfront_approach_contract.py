@@ -110,10 +110,9 @@ class WaterfrontApproachTests(unittest.TestCase):
                     self.field, self.edge, corr, [], land_only=land_only, census=None)
                 self.assertEqual(result['profile_constraints']['verdict'], 'CLEAR')
                 points = np.asarray(result['nodes'], dtype=float)[::-1]
-                arcs = np.r_[0., np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
-                np.testing.assert_array_equal(
-                    points[arcs <= N.BANK_LEVEL_M, 1],
-                    np.full(np.count_nonzero(arcs <= N.BANK_LEVEL_M), .5))
+                self.assertIsNone(N.arrival_geometry.fixed_landing_rejection(
+                    points, self.nodes['harbour']['xz'],
+                    self.nodes['harbour']['jetty_bearing_deg'], N.BANK_LEVEL_M))
 
     def test_moved_landing_cannot_supply_owned_profile_retry_geometry(self):
         self.field.h.fill(31.1)

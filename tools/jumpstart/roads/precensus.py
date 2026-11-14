@@ -406,9 +406,12 @@ class Census:
     # at the grain the quantity actually has; `measured_utc` remains the
     # artefact-wide claim and the conservative fallback for a census that
     # carries no per-zone times, because NONE MAY NOT STAND FOR AN ANSWER.
-    # LAST in the field order on purpose: every positional `Census(...)` in
-    # this tree passes `failed_reads` and `stats` by position.
+    # Keep after the historical positional fields; new observation payloads
+    # append below without changing failed_reads/stats/per-zone arguments.
     zones_censused_utc: dict[str, str] = dc_field(default_factory=dict)
+    # The writer freezes individual observed positions, not cluster centroids.
+    # None is an older/unmeasured population; [] is a measured empty one.
+    observed_objects: list[dict] | None = None
 
     def __post_init__(self) -> None:
         self._cellset = {tuple(c) for c in self.cells}
@@ -421,6 +424,24 @@ class Census:
 
     def pois(self) -> list[poimod.Poi]:
         return [b.as_poi() for b in self.bodies]
+
+    def placed_positions(self) -> list[tuple[float, float]]:
+        """The native writer's ground-freezing objects, never body centroids."""
+        if self.observed_objects is None:
+            raise SystemExit("census has no observed object positions; "
+                             "re-survey before native terrain planning")
+        import ribbon as ribbonmod                       # noqa: PLC0415
+        out = []
+        for obj in self.observed_objects:
+            prefab = obj["prefab"]
+            if ((prefab or "").startswith(ENGINE_PREFIX)
+                    or not ribbonmod.batter_freezes_on(prefab)):
+                continue
+            x, z = float(obj["x"]), float(obj["z"])
+            if not (math.isfinite(x) and math.isfinite(z)):
+                raise ValueError("non-finite observed ground-freezing position")
+            out.append((x, z))
+        return out
 
     def widest_hard_m(self, half_width_m: float) -> tuple[float, str]:
         if not self.bodies:
@@ -441,6 +462,7 @@ class Census:
             "zones_generated_utc": self.zones_generated_utc,
             "zones_censused_utc": self.zones_censused_utc,
             "bodies": [b.to_json() for b in self.bodies],
+            "observed_objects": self.observed_objects,
             "failed_reads": self.failed_reads,
             "stats": self.stats,
             "contract": (
@@ -475,7 +497,8 @@ class Census:
             dict(d.get("zones_generated_utc") or {}),
             list(d.get("failed_reads") or []),
             dict(d.get("stats") or {}),
-            dict(d.get("zones_censused_utc") or {}))
+            dict(d.get("zones_censused_utc") or {}),
+            d.get("observed_objects"))
 
     def save(self, path: Path) -> str:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -547,6 +570,9 @@ class Census:
         gen: dict[str, str] = {}
         read: dict[str, str] = {}
         failed: list[dict] = []
+        observed: list[dict] | None = (
+            [] if all(p.observed_objects is not None for p in parts) else None)
+        seen_observations: set[tuple] = set()
         for p in parts:
             for c in p.cells:
                 t = (int(c[0]), int(c[1]))
@@ -566,6 +592,12 @@ class Census:
                 if key not in seen_bodies:
                     seen_bodies.add(key)
                     bodies.append(b)
+            if observed is not None:
+                for obj in p.observed_objects:
+                    key = (obj["prefab"], obj["x"], obj["y"], obj["z"])
+                    if key not in seen_observations:
+                        seen_observations.add(key)
+                        observed.append(obj)
             for k, v in p.zones_generated_utc.items():
                 # The EARLIEST generation time for a zone two surveys both saw:
                 # freshness compares it against measured_utc, and the earlier
@@ -598,7 +630,13 @@ class Census:
                  sum(int(p.stats.get("band_cells_in_an_ungenerated_zone") or 0)
                      for p in parts),
              "bodies_blocking": sum(1 for b in bodies if b.blocking)},
-            read)
+            read, observed)
+
+
+def observed_objects_of(objects) -> list[dict]:
+    """Keep the actual positions before clustering loses their separation."""
+    return [{"prefab": obj["prefab"], "x": obj["x"], "y": obj["y"],
+             "z": obj["z"]} for obj in objects]
 
 
 def bodies_from_objects(objects, ground_of, name_prefix: str,
@@ -1151,7 +1189,8 @@ def survey(srv, nodes, *, band_half_m: float = BAND_HALF_M,
                "cells": len(cells), "zones": len(zones),
                "bodies": len(bodies),
                "bodies_blocking": sum(1 for b in bodies if b.blocking)},
-        zones_censused_utc=read_utc)
+        zones_censused_utc=read_utc,
+        observed_objects=observed_objects_of(objects.values()))
 
 
 # THE REPLAYED CENSUS'S COVERAGE IS A PROPERTY OF THE FILE, NOT A PARAMETER.
@@ -1384,7 +1423,8 @@ def census_from_save(tsv: Path, nodes, *, band_half_m: float = BAND_HALF_M,
                "objects_in_band": len(mine),
                "bodies": len(bodies),
                "bodies_blocking": sum(1 for b in bodies if b.blocking),
-               "save_fingerprint": fingerprint})
+               "save_fingerprint": fingerprint},
+        observed_objects=observed_objects_of(mine))
 
 
 # ---------------------------------------------------------------------------
@@ -1870,6 +1910,9 @@ def reusable_census(existing: "Census | None", run_dir: Path, *, world: str,
         return None, (f"the census on disk was read at band half "
                       f"{existing.band_half_m} m, this survey reads "
                       f"{band_half_m} m")
+    if existing.observed_objects is None:
+        return None, ("the census kept clustered bodies but not their observed "
+                      "positions; re-survey before native terrain planning")
     gens = ledger_zone_generations(run_dir)
     zones = [tuple(z) for z in (existing.zones
                                 or zones_for_cells(existing.cells))]
@@ -2668,7 +2711,7 @@ def selftest() -> int:
         prior = Census("FIX", "FIX", "2026-01-01T10:00:00Z", "FIXTURE",
                        BAND_HALF_M, read, [], zones_for_cells(read), {}, [],
                        {}, {f"{z[0]},{z[1]}": "2026-01-01T10:00:00Z"
-                            for z in zones_for_cells(read)})
+                            for z in zones_for_cells(read)}, observed_objects=[])
 
         def reads(run_dir: Path) -> int:
             base, _why = reusable_census(prior, run_dir, world="FIX",

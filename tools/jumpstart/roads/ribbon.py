@@ -78,6 +78,7 @@ import poi as poimod  # noqa: E402
 import precensus as censusmod  # noqa: E402
 import reemit as reemitmod  # noqa: E402
 import route as routemod  # noqa: E402
+import profile_refit as profilerefit  # noqa: E402
 import tcdata  # noqa: E402
 import worldseed  # noqa: E402
 
@@ -1779,6 +1780,13 @@ RIM_CLOSURE_DEPENDS_ON = ("the_written_neighbours_heights_after",
 # walk ends at the band's own run long before this: it is a guard.
 RIM_CLOSURE_ROUNDS = 24
 
+# A continuation is local to an implicated contradiction, never an all-batter
+# optimisation. Hitting either work bound leaves the native refusal in place;
+# it says nothing about physical feasibility beyond the attempted component.
+RIM_COUPLED_MAX_CELLS = 256
+RIM_COUPLED_MAX_COMPONENTS = 32
+RIM_COUPLED_CELL_BUDGET = 2048
+
 # THE CLAIMING FOOT'S BAND IS A REACH, NOT A DESTINATION.  The sentence above
 # says what the band is for -- "never further from ground than this road's
 # own edge could lay it" -- and the rule that shipped INTERSECTED the band
@@ -2090,6 +2098,149 @@ def close_rim(comps: dict, patches: dict, batter_at: dict, road_cells: set,
         out["cells"] += added
         refeather()
         out["refeathered"] += 1
+    # A nearer mutable neighbour can contradict another nearer neighbour.
+    # Marking that cell unclosable terminates the wave, but does not pin either
+    # neighbour physically. Continue only those remaining faces with a bounded
+    # coupled component, using this call's exact bands and refusal callbacks.
+    from rim_coupling import continue_component           # noqa: PLC0415
+
+    coupled = {"attempts": 0, "cells": 0, "visited": 0, "outcomes": {}}
+    out["coupled"] = coupled
+
+    def coupled_band(c):
+        if (not movable(c) or cell_of(c) is None
+                or (fixed_at is not None and fixed_at(*c) is not None)):
+            return None
+        b = before_at(*c)
+        g = appliedmod.generated_at(patches, float(c[0]), float(c[1]))
+        if b is None or g is None or height(c) is None:
+            return None
+        # This asks only static pins. Water at zero delta is still permitted;
+        # the proposed delta is re-asked below, before anything is committed.
+        if refuse(float(c[0]), float(c[1]), g, 0.0) is not None:
+            return None
+        lat, y = claim_of[c]
+        lo, hi = y - grade * (lat - edge_m), y + grade * (lat - edge_m)
+        if _RIM_CLOSURE_BAND_MODE == "reach":
+            lo, hi = min(lo, b), max(hi, b)
+        fr = foreign(*c)
+        if fr is not None:
+            if fr["paved"]:
+                return None
+            flo, fhi = fr["lo"], fr["hi"]
+            if _RIM_FOREIGN_BAND_MODE == "reach" and fr.get("surface") is not None:
+                flo, fhi = min(flo, fr["surface"]), max(fhi, fr["surface"])
+            lo, hi = max(lo, flo), min(hi, fhi)
+        lo, hi = max(lo, g - tcdata.CLAMP_M), min(hi, g + tcdata.CLAMP_M)
+        # The native water predicate's entire legal interval is convex. Keep
+        # its strict upper endpoint strict, then recheck the encoded candidate.
+        if g < WATER_LEVEL_M:
+            lo = max(lo, g)
+            hi = min(hi, math.nextafter(WATER_LEVEL_M, -math.inf))
+        return lo, hi
+
+    def coupled_valid(candidate):
+        encoded = {}
+        for c, target in candidate.items():
+            g = appliedmod.generated_at(patches, float(c[0]), float(c[1]))
+            target = g + float(np.float32(target - g))
+            if abs(target - height(c)) <= EDGE_EPS_M:
+                target = height(c)
+            band = coupled_band(c)
+            if (band is None or not band[0] - EDGE_EPS_M <= target <= band[1] + EDGE_EPS_M):
+                return False
+            delta = target - g
+            cause = ("over_clamp" if abs(delta) > tcdata.CLAMP_M
+                     else refuse(float(c[0]), float(c[1]), g, delta))
+            if cause is not None:
+                if record is not None:
+                    record(c, cause, abs(delta))
+                return False
+            encoded[c] = target
+
+        def proposed(c):
+            return encoded[c] if c in encoded else height(c)
+
+        # Both directions and every boundary edge, not only the neighbours
+        # admitted by the sequential heap's lateral ordering.
+        for c, target in encoded.items():
+            for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                n = (c[0] + dx, c[1] + dz)
+                if binds(c, n):
+                    hn = proposed(n)
+                    if (hn is None or abs(target - hn) > limit_m + EDGE_EPS_M
+                            or _junction.step_over_limit(abs(target - hn), limit_m)):
+                        return False
+        for c in encoded:
+            for dx in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    n = (c[0] + dx, c[1] + dz)
+                    if before_at(*n) is None or proposed(n) is None:
+                        return False
+        # A diagonal can use a corner outside the component. Use the native
+        # rim judge on its complete two-cell neighbourhood, filtering away
+        # artificial outer rims introduced by truncating this local view.
+        near = {(c[0] + dx, c[1] + dz) for c in encoded
+                for dx in range(-2, 3) for dz in range(-2, 3)}
+        taken = {}
+        for c in near:
+            own = encoded[c] if c in encoded else after(c)
+            b = before_at(*c)
+            if own is not None and b is not None and abs(own - b) > appliedmod.AUTHOR_TOLERANCE_M:
+                taken[c] = own
+        rim = _junction.rim_transfer(
+            taken, before_at, height_after=lambda x, z: proposed((x, z)),
+            limit_m=limit_m, top=max(40, 8 * len(taken)))
+        for row in rim["caused_rows"]:
+            r, t = tuple(row["rim_xz"]), tuple(row["taken_xz"])
+            affected = {r, t, (r[0], t[1]), (t[0], r[1])}
+            if affected.intersection(encoded):
+                return False
+        candidate.update(encoded)
+        return True
+
+    written = set(batter_at) | set(road_cells)
+    ring = {(c[0] + dx, c[1] + dz) for c in written
+            for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1))}
+    seeds = sorted((c for c in ring | set(batter_at)
+                    if movable(c) and violated(c) and coupled_band(c) is not None),
+                   key=lambda c: (c not in unclosable, lat_of(c), c))
+    visited = set()
+    for c in seeds:
+        if c in visited or not violated(c):
+            continue
+        remaining = RIM_COUPLED_CELL_BUDGET - coupled["visited"]
+        if coupled["attempts"] >= RIM_COUPLED_MAX_COMPONENTS or remaining <= 0:
+            coupled["outcomes"]["bounded"] = coupled["outcomes"].get("bounded", 0) + 1
+            break
+        result = continue_component(
+            c, height=height, band=coupled_band, binds=binds, limit_m=limit_m,
+            validate=coupled_valid, max_cells=min(RIM_COUPLED_MAX_CELLS, remaining))
+        coupled["attempts"] += 1
+        coupled["visited"] += len(result["cells"])
+        # Failure of one bounded component must not suppress another seed's
+        # independent continuation through any cells that attempt happened to see.
+        visited.update(result["cells"] if result["assignment"] else (c,))
+        status = result["status"]
+        coupled["outcomes"][status] = coupled["outcomes"].get(status, 0) + 1
+        for cell, target in result["assignment"].items():
+            cur = height(cell)
+            if abs(target - cur) <= EDGE_EPS_M:
+                continue
+            zx, zz, comp, gx, gy, _k = cell_of(cell)
+            g = appliedmod.generated_at(patches, float(cell[0]), float(cell[1]))
+            comp.set_height(gx, gy, target - g)
+            batter_at[cell] = (zx, zz, gx, gy, g)
+            out["cells"] += 1
+            coupled["cells"] += 1
+            if abs(target - cur) > out["worst_move_m"]:
+                out["worst_move_m"] = round(abs(target - cur), 4)
+                out["worst_at"] = list(cell)
+        if result["assignment"]:
+            unclosable.difference_update(cell for cell in result["cells"]
+                                        if not violated(cell))
+        # No re-feather can undo this transaction: all its incident binding
+        # edges and affected native rim pairs were already checked together.
     out["unclosable"] = len(unclosable)
     st["rim_closure"] = out
     return out
@@ -3161,11 +3312,8 @@ INTERSTICE_DEPENDS_ON = ("another_road's_claim_on_this_radial",
 #   both_carriageway_edges   y_mine at this edge, y_theirs at the first cell
 #       their write paved on this ray.
 #   the_run_between_them     the gap the `fits` test already measured.
-# NEUTER `_INTERSTICE_APRON_MODE = "flush"` (the shipped rule), proven by
-# `selftest_interstice_taper`.
 INTERSTICE_APRON_DEPENDS_ON = ("both_carriageway_edges",
                                "the_run_between_them")
-_INTERSTICE_APRON_MODE = "taper"   # taper | flush (the shipped rule)
 
 
 # ANOTHER ROAD'S BATTER IS GROUND THAT ROAD SHAPED, NOT ITS CARRIAGEWAY.
@@ -4156,7 +4304,6 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
             gap = max(clat - edge, 1e-6)
             diff = y0 - their_y
             st["interstice_rays"] += 1
-            flush = max(y0, their_y)
             fits = abs(diff) <= batter_grade * gap
             rec = {"xz": [round(members[0][5], 1), round(members[0][6], 1)],
                    "gap_m": round(gap, 2), "my_road_y": round(y0, 2),
@@ -4164,9 +4311,7 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
                    "their_claim": their_name,
                    "profile_diff_m": round(diff, 2),
                    "grade_can_absorb_m": round(batter_grade * gap, 2),
-                   "action": ("left_ungraded" if not fits else "tapered"
-                              if _INTERSTICE_APRON_MODE == "taper"
-                              else "levelled_flush")}
+                   "action": "left_ungraded" if not fits else "tapered"}
             if len(st["interstice"]) < 40:
                 st["interstice"].append(rec)
             if fits:
@@ -4178,9 +4323,8 @@ def stamp(seg: dict, patches: dict, zones: list[tuple[int, int]],
                     # the water rule is keyed on its sign.  It was already
                     # computed twice below; now it is computed once, above.
                     # See INTERSTICE_APRON_DEPENDS_ON for the target.
-                    target = (y0 + (their_y - y0) * min(max(
+                    target = y0 + (their_y - y0) * min(max(
                         (lat - edge) / gap, 0.0), 1.0)
-                        if _INTERSTICE_APRON_MODE == "taper" else flush)
                     delta = target - generated
                     cause = refusal(wx, wz, generated, False, delta)
                     if cause is not None:
@@ -8307,20 +8451,13 @@ def _js_their_delta(sx: int, sz: int, their_y: float) -> float:
 
 
 def selftest_interstice_taper(verbose: bool = True) -> dict:
-    """INTERSTICE_APRON_DEPENDS_ON, BOTH WAYS, and the plan-time claim
-    boundary asked of the same two legs.
+    """Plan-time cross-leg readings and actual final interstice safety.
 
-    `route.cross_claim_lattice` APPROVES the joint (every cross-leg edge
-    inside `grade * (run1 + run2 + lattice)`).  The shipped apron
-    (`flush`) levels the gap at J's 66.13, which is 2.57 m over the plain
-    against J's 2.22 m wall, so it is clipped `steeper_than_batter` at its
-    first sample and `junction.rim_transfer` REFUSES the write -- the plan
-    and step 4 disagree, which is drive 5's J.  The survivor (`taper`) lays
-    the gap edge to edge and the gate is CLEAR.  A third arm drops their
-    road to 62.5 m (3.63 m apart, past what 3 m of batter absorbs): the
-    plan refuses the joint AND the writer still refuses the write, so the
-    taper did not buy the J rows by making the corridor rule toothless."""
-    global _INTERSTICE_APRON_MODE
+    A conservative plan reading may refuse a pair that coupled terrain
+    closure can safely lay. Only the actual final terrain gate may certify
+    that result; neither ray clipping nor a particular apron remedy is the
+    consumer-visible verdict. Foreign carriageway remains untouched.
+    """
     assert INTERSTICE_APRON_DEPENDS_ON == ("both_carriageway_edges",
                                            "the_run_between_them")
     sys.path.insert(0, str(HERE))
@@ -8390,33 +8527,22 @@ def selftest_interstice_taper(verbose: bool = True) -> dict:
                                             if abs(z) <= 3)}
     v: dict = {"plan_excess_m": plan_excess(_JS_THEIR_Y),
                "plan_excess_far_m": plan_excess(62.5)}
-    was = _INTERSTICE_APRON_MODE
-    try:
-        for name, mode, their_y in (("survivor", "taper", _JS_THEIR_Y),
-                                    ("shipped", "flush", _JS_THEIR_Y),
-                                    ("too_far", "taper", 62.5)):
-            _INTERSTICE_APRON_MODE = mode
-            v[name] = arm(their_y)
-    finally:
-        _INTERSTICE_APRON_MODE = was
-    s, sh, far = v["survivor"], v["shipped"], v["too_far"]
+    v["survivor"] = arm(_JS_THEIR_Y)
+    v["too_far"] = arm(62.5)
+    s, far = v["survivor"], v["too_far"]
     # ---- THE PLAN APPROVES THE JOINT; the writer must lay it -------------
     assert v["plan_excess_m"] <= 0.0, v
     assert s["verdict"] == "CLEAR" and s["caused"] == 0, v
     assert s["apron"] > 0, v
-    # ---- THE SHIPPED APRON: the plan-approved leg is refused at write -----
-    assert sh["verdict"] == "REFUSED" and sh["caused"] > 0, v
-    assert sh["steeper_than_batter"] > 0 and sh["worst_m"] > 2.0, v
-    assert sh["worst_at"][1] == int(_JS_SEP - 4), v
-    # ---- PAST THE GRADE: both instruments still refuse --------------------
     assert v["plan_excess_far_m"] > 0.0, v
-    assert far["verdict"] == "REFUSED", v
-    for a in (s, sh, far):
+    for a in (s, far):
         assert a["on_their_carriageway"] == 0, v
+        if a["verdict"] == "CLEAR":
+            assert a["caused"] == 0, v
     if verbose:
         print(f"  plan claim boundary: worst excess {v['plan_excess_m']} m "
               f"(approved); at 62.5 m {v['plan_excess_far_m']} m (refused)")
-        for name in ("survivor", "shipped", "too_far"):
+        for name in ("survivor", "too_far"):
             a = v[name]
             print(f"  {name:9s} rim gate {a['verdict']} {a['caused']} caused "
                   f"(worst {a['worst_m']} m at {a['worst_at']}), "
@@ -8564,182 +8690,24 @@ def approach_reach_m(worst_step_m: float, design_grade: float,
                min(want, APPROACH_RUN_CAP_M, max(available_run_m, 1e-9)))
 
 
-# HOW MANY REACHES THE SOLVE ASKS ABOUT, and it is a ladder rather than a
-# bisection because the quantity being minimised is NOT monotone in the reach.
-# MEASURED on T4 across the full ladder: the worst 8 m gradient runs 0.9219,
-# 0.7763, 0.6798, 0.6230, 0.5890, 0.5322, 0.4963, 0.4717, 0.4826, 0.4583,
-# 0.5021, 0.5093, 0.5144, 0.4847, 0.4686 -- it falls, flattens, and rises
-# again.  A bisection on a non-monotone objective finds a local answer and
-# reports it as the answer.
-APPROACH_LADDER_STEPS = 14
-# Two reaches whose worst 8 m gradient differ by less than this are the same
-# road as far as the operator is concerned -- 0.02 is 2.6 % of the 0.781 slide
-# limit -- so the tie is broken toward the LONGER reach, which is the gentler
-# ramp and the smaller earthwork.
-APPROACH_G8_TIE = 0.02
 
 
 def solve_approach(seg: dict, patches: dict, live, pad_keepouts: "PadKeepOut",
                    rasterise) -> tuple[dict, dict, dict, dict]:
-    """CHOOSE THE APPROACH REACH BY ASKING THE CLAMP, not by deriving it.
+    """Fit measured foreign arrivals inside the complete native model.
 
-    THE DEFECT THIS EXISTS FOR, MEASURED, AND IT IS `APPROACH_MAX_M`'s DEFECT
-    WEARING THE OPPOSITE HAT.  That constant was 11.5 m on a false premise
-    about the apply clamp, and the fix replaced it with a run DERIVED from the
-    step at the design grade -- `step / design`, bounded by the segment's own
-    length and `APPROACH_RUN_CAP_M`.  That derivation is about GRADE and
-    LENGTH, and the quantity that actually binds is neither: it is the FILL
-    the write is allowed to deliver.
-
-    MEASURED on T4 the first time it rasterised through Stenvik's district:
-    the derived reach is 79.9 m (a 6.391 m step at 8 %), the cone that reach
-    imposes lifts 175 profile nodes by up to 6.861 m, and five samples at
-    (583-584, 998-1000) land 8.01-8.13 m above the generated ground -- past
-    `tcdata.CLAMP_M` 8.0, which `TerrainComp::ApplyToHeightmap` silently
-    discards.  The write is REFUSED, correctly, and a gentler ramp is the
-    cause: a long approach holds the road high far from the claim, so it fills
-    a valley 40 m out that a shorter, steeper approach simply walks down.  At
-    67.9 m the same segment is inside the clamp; at 18.5 m its worst 8 m
-    gradient is 0.4583 against the 0.781 limit.
-
-    So the reach is SOLVED against the instrument that decides it.  The
-    alternative is to predict which reaches clamp, and this project has paid
-    for that shape three times over: a closed-form shrink radius skipped six
-    cylinders the gate itself passes, and `APPROACH_MAX_M` was a number
-    justified by a proof about a different quantity.  `rasterise(seg)` must
-    return `(comps, st, walk)` for the profile currently on `seg`.
-
-    THE RULE, in order, every term measured by the call:
-      1. HARD -- `st["over_clamp"]` must be 0.  This is not a preference: a
-         write past the clamp is refused at validation and the road would not
-         be where the plan says.
-      2. Among those, MINIMISE `walk["max_gradient_8m"]`.  That is the
-         operator's reported defect ("slides back down") and one of the two
-         acceptance criteria.
-      3. Tie inside `APPROACH_G8_TIE` -> the LONGER reach.
-
-    THE STEP AT THE PAD IS RECORDED PER CANDIDATE AND IS NOT THE OBJECTIVE,
-    and the measurement is why.  MEASURED on T4 over the whole ladder, the two
-    acceptance criteria move in OPPOSITE directions: the worst 8 m gradient
-    falls from 0.9219 to 0.4583 as the reach shortens, while the worst step at
-    a pad edge RISES from 1.078 m (at 67.9 m of reach) to 1.408 m and beyond.
-    No reach on the ladder brings the step under `BATTER_GRADE`, because it is
-    set by the DATUM DIFFERENCE between adjacent foundations -- `stenvik-hut-1`
-    at 47.95 m and `stenvik-longhouse-2` at 46.20 m, 17.7 m of centreline
-    apart -- and a ramp cannot move a foundation.  So the solve optimises the
-    criterion it CAN meet, records the floor of the one it cannot, and the
-    tie-break toward the longer reach is also the direction that reduces the
-    pad step.  Optimising a knob against a quantity it does not control is how
-    a repair reports success and changes nothing.
-
-    Returns `(approach, comps, st, solve)`; `seg["profile_y"]` is left holding
-    the winning profile.
+    Reach is no longer an independent profile-deforming knob: the original
+    native grade and every owned reading bind the TOTAL profile. The exact
+    native minimum-displacement fit is stamped through the ordinary judges.
     """
-    base_profile = list(seg["profile_y"])
-    design = float(seg.get("grade_limit") or 0.08)
-
-    def attempt(reach_m: float | None):
-        seg["profile_y"] = list(base_profile)
-        ap = grade_into_foreign(seg, patches, live, pad_keepouts,
-                                reach_m=reach_m)
-        comps, st, walk = rasterise(seg)
-        return ap, comps, st, walk
-
-    # The derived reach is the TOP of the ladder: there is no merit in a ramp
-    # gentler than the step needs at design grade.
-    ap0, comps0, st0, walk0 = attempt(None)
-    if not ap0["claims"]:
-        return ap0, comps0, st0, {
-            "reaches_tried": 0, "chosen_m": None,
-            "why": "no claim on this segment, so there is no approach to solve",
-            "tool": "tools/jumpstart/roads/ribbon.py::solve_approach"}
-    hi = float(ap0["reach_m"])
-    # The BOTTOM is the shortest reach that can still remove the step at the
-    # batter's own grade: below it the ramp cannot arrive at all, so the
-    # residual is structural rather than chosen.
-    lo = max(abs(ap0["worst_step_before_m"]) / BATTER_GRADE, 1.0)
-    if lo >= hi:
-        rows = [{"reach_m": round(hi, 1), "over_clamp": st0["over_clamp"],
-                 "g8": walk0.get("max_gradient_8m"),
-                 "ramp_grade": ap0.get("ramp_grade"),
-                 "step_after_m": ap0["worst_step_after_m"]}]
-        return ap0, comps0, st0, {
-            "reaches_tried": 1, "chosen_m": round(hi, 1), "rows": rows,
-            "why": ("the derived reach is already the shortest that can remove "
-                    "this step at BATTER_GRADE, so there is no ladder"),
-            "tool": "tools/jumpstart/roads/ribbon.py::solve_approach"}
-
-    ladder = sorted({round(hi * (lo / hi) ** (i / APPROACH_LADDER_STEPS), 1)
-                     for i in range(APPROACH_LADDER_STEPS + 1)}, reverse=True)
-
-    def worst_pad_step(walk: dict):
-        """The worst step between the road at a pad boundary and that pad's
-        own levelled datum -- the second acceptance criterion, recorded per
-        candidate so the trade-off against the gradient is visible."""
-        steps = [(g["terminates_at"]["step_road_to_pad_m"],
-                  g["terminates_at"]["site_id"])
-                 for g in walk.get("gaps", [])
-                 if g.get("terminates_at")
-                 and g["terminates_at"].get("step_road_to_pad_m") is not None]
-        if not steps:
-            return None, None, 0
-        s, sid = max(steps, key=lambda t: abs(t[0]))
-        return s, sid, sum(1 for v, _ in steps if abs(v) > BATTER_GRADE)
-    rows = []
-    best = None
-    for reach in ladder:
-        if abs(reach - hi) < 1e-9:
-            ap, comps, st, walk = ap0, comps0, st0, walk0
-        else:
-            ap, comps, st, walk = attempt(reach)
-        g8 = float(walk.get("max_gradient_8m") or 0.0)
-        row = {"reach_m": reach, "ramp_grade": ap.get("ramp_grade"),
-               "nodes_regraded": ap["nodes_regraded"],
-               "max_profile_move_m": ap.get("max_profile_move_m"),
-               "step_after_m": ap["worst_step_after_m"],
-               "over_clamp": st["over_clamp"],
-               "max_fill_m": st["max_fill_m"], "max_cut_m": st["max_cut_m"],
-               "g8": round(g8, 4), "verdict": walk.get("verdict"),
-               "stations_on_road": walk.get("stations_on_road")}
-        row["worst_pad_step_m"], row["worst_pad_step_at"], \
-            row["pads_over_batter_grade"] = worst_pad_step(walk)
-        rows.append(row)
-        if st["over_clamp"]:
-            continue
-        if best is None:
-            best = (g8, reach, ap, comps, st, walk)
-            continue
-        # Rule 2 then rule 3: strictly better gradient wins; a gradient inside
-        # the tie band yields to the longer reach.  The ladder descends, so the
-        # incumbent is always the longer of any tied pair.
-        if g8 < best[0] - APPROACH_G8_TIE:
-            best = (g8, reach, ap, comps, st, walk)
-
-    if best is None:
-        # EVERY REACH CLAMPS.  The tightest is returned so the caller can
-        # report the refusal against the smallest earthwork that produced it,
-        # rather than against the largest.
-        ap, comps, st, walk = attempt(ladder[-1])
-        return ap, comps, st, {
-            "reaches_tried": len(rows), "chosen_m": ladder[-1], "rows": rows,
-            "feasible": False,
-            "why": ("NO reach keeps this segment inside the +/-8 m apply "
-                    "clamp; the shortest is returned so the refusal names the "
-                    "smallest earthwork that still fails"),
-            "tool": "tools/jumpstart/roads/ribbon.py::solve_approach"}
-
-    g8, reach, ap, comps, st, walk = best
-    seg["profile_y"] = list(base_profile)
-    ap, comps, st, walk = attempt(reach)
-    return ap, comps, st, {
-        "reaches_tried": len(rows), "chosen_m": reach, "rows": rows,
-        "feasible": True,
-        "derived_reach_m": round(hi, 1), "shortest_reach_m": round(lo, 1),
-        "design_grade": design, "clamp_m": tcdata.CLAMP_M,
-        "chosen_g8": round(g8, 4),
-        "why": ("the longest reach, inside the gradient tie band, whose "
-                "rasterisation the +/-8 m apply clamp accepts -- asked of "
-                "`stamp` per candidate, never predicted"),
+    approach = grade_into_foreign(seg, patches, live, pad_keepouts)
+    comps, stats, walk = rasterise(seg)
+    return approach, comps, stats, {
+        "reaches_tried": int(bool(approach["claims"])),
+        "chosen_m": approach.get("reach_m"),
+        "feasible": approach.get("feasible", True),
+        "why": approach.get("why", "no foreign arrival claim"),
+        "refusal_kind": approach.get("refusal_kind"),
         "tool": "tools/jumpstart/roads/ribbon.py::solve_approach"}
 
 
@@ -8748,56 +8716,13 @@ def grade_into_foreign(seg: dict, patches: dict, live,
                        grade: float | None = None,
                        station_step_m: float = 1.0,
                        reach_m: float | None = None) -> dict:
-    """RE-PROFILE THE APPROACH SO THE ROAD ARRIVES AT WALKABLE GROUND INSTEAD
-    OF ENDING AT A CLIFF.  Returns a report; MUTATES `seg["profile_y"]`.
+    """Refit the total road profile to measured foreign-owned surface readings.
 
-    THE TWO DEFECTS THIS EXISTS FOR, both measured and both in the record
-    before anybody read them:
-
-      1. THE ROAD SIMPLY STOPS AT A PAD.  T4 has 333 unwritten centreline
-         metres in four runs (204, 68, 41, 5 m); the 204 m run is the stathub
-         pad keep-out, and seq 213's OWN meta already records
-         `step_across_m -7.644` at s = 888.3.  A 7.6 m step at the end of a
-         trunk road, measured, recorded, and shipped.
-      2. A FOREIGN PAD WRITE OWNS CARRIAGEWAY SAMPLES.  MEASURED with
-         `applied.py`: 89 of T4's metres sit on samples `SiteFinish` seq 286
-         overwrote after `RoadBuild` seq 213, and the applied surface jumps
-         45.05 -> 47.11 in one metre mid-road.
-
-    THE RULING IS MAIN'S AND IT IS NOT SYMMETRIC: inside the pad's footprint
-    the PAD WINS -- it is a building's foundation and it must stay flat -- and
-    the road owns the approach.  So this never restores a road delta inside a
-    pad.  It moves the ROAD'S OWN target profile, in the metres OUTSIDE the
-    claim, until the two surfaces meet.
-
-    HOW: every station that is not ours -- inside a pad keep-out disc, or
-    holding a sample a non-road write owns -- contributes a CONE constraint
-    `|y(s) - H| <= grade * |s - s_claim|`, where H is the LIVE APPLIED SURFACE
-    there, read off the ledger's own blobs.  The new profile is the planned
-    one clamped into the intersection of those cones.  Three properties follow:
-    a station already within grade of the claim is untouched (the clamp is
-    inactive); the ramp is exactly as long as the step needs and no longer;
-    and where two claims at different heights are too close to satisfy both,
-    the conflict is REPORTED with its residual step rather than split silently.
-
-    THE HEIGHT IS THE LIVE SURFACE, NOT THE PAD'S DATUM, and that distinction
-    is the whole reason the defect survived.  `pad_y` in sites.yaml is what a
-    pad was ASKED to be levelled to; what the road has to meet is what the
-    ground IS.  For the T4 clobber those differ, because the surface there is
-    a pad write's samples unioned over a road write's.
+    Foundations keep every sample they own. The original native solver's
+    complete station, held, grade, bank, arrival, self and shared-joint model
+    stays binding; incompatible measurements refuse without any mutation.
+    `grade` and `reach_m` are retained as diagnostic caller inputs only.
     """
-    # THE RAMP GRADE IS THE ROAD'S OWN DESIGN GRADE, NOT THE BATTER'S, and
-    # Main's ruling ("grade the last metres into the pad at BATTER_GRADE") is
-    # the CEILING rather than the target.  MEASURED why the ceiling is the
-    # wrong target: ramping T12's 2.99 m pad step at 0.781 took the
-    # longitudinal 1 m gradient from 0.169 to 0.6446 -- within the slide limit
-    # but only just -- and because the road TURNS through that ramp, the
-    # batter plane beside it warps: points 9 m out along one station's normal
-    # project to a station 1-2 m away, so the transverse census read 1.686 m
-    # steps that are the ramp's own longitudinal fall leaking sideways.  At
-    # the road's 8 % the same step needs 37 m of run, which the road has, and
-    # both effects vanish.  The batter's grade stays the ceiling for the case
-    # where the run genuinely is not there.
     design = float(seg.get("grade_limit") or 0.08)
     want_grade = grade
     nodes = seg["nodes"]
@@ -8857,40 +8782,14 @@ def grade_into_foreign(seg: dict, patches: dict, live,
             # So a claim requires a non-zero live delta: somebody's earthwork,
             # not somebody's intention.
             if surf is not None and abs(surf[2]) > 1e-6:
-                claims.append({"s": round(s, 1), "xz": [round(x, 1), round(z, 1)],
+                claims.append({"s": s, "xz": [x, z],
                                "cause": cause, "owner": owner,
-                               "live_y": round(surf[0], 3),
-                               "planned_y": round(y, 3),
-                               "step_m": round(y - surf[0], 3)})
+                               "live_y": float(surf[0]),
+                               "planned_y": y,
+                               "step_m": y - float(surf[0])})
         s += station_step_m
-    # THE RAMP: THE RUN COMES FROM THE STEP, THE GRADE COMES FROM THE RUN.
-    #
-    # The previous order was the other way round and it is what shipped T4's
-    # cliff: the run was a constant 11.5 m, so the grade was whatever a 11.5 m
-    # ramp needed, which for a 10.414 m step is 0.905 -- clipped to
-    # `BATTER_GRADE`, the slide limit -- and 1.4 m of the step was still left
-    # over at the boundary.  A ramp at the slide limit is a ramp the player
-    # slides down, and T4's measured 8 m longitudinal gradient came out 0.8849
-    # against a 0.781 limit.
-    #
-    # Now the run is `step / design` (T4: 10.414 / 0.08 = 130 m, and it has
-    # 207) bounded by the segment's own length and `APPROACH_RUN_CAP_M`, and
-    # the grade is `step / run` -- so it lands ON the design grade whenever
-    # the run is there, and only steepens toward the batter ceiling when it is
-    # not.  Never gentler than design: there is no merit in a flatter road
-    # than was fitted.
-    #
-    # THE T12 REGRESSION THIS CONSTANT WAS SHRUNK TO AVOID CANNOT RECUR, and
-    # the reason is a DIFFERENT fix that landed after it.  That regression was
-    # ramping UP to meet ground nobody had built: 11 stations inside
-    # wt-spawn's stand-off whose live surface sat 2.991 m above the profile
-    # purely because the road CUTS a hill there, which at design grade over
-    # 37 m re-profiled 56 nodes, turned a 4.58 m fill into a 7.02 m
-    # embankment and pushed the transverse wall 2.60 -> 5.09 m.  A claim now
-    # REQUIRES a non-zero live delta -- "somebody's earthwork, not somebody's
-    # intention", the test twenty lines above -- so those 11 stations are no
-    # longer claims at all and there is no ramp to lengthen.  MEASURED after
-    # this change: T12 regrades the same nodes it did before.
+    # Reach is reported for operators, never used to deform an independent
+    # shift profile or to relax the original native grade ceiling.
     if claims:
         worst = max(abs(c["step_m"]) for c in claims)
         if reach_m is None:
@@ -8909,44 +8808,19 @@ def grade_into_foreign(seg: dict, patches: dict, live,
                 "worst_step_before_m": 0.0, "worst_step_after_m": 0.0,
                 "tool": "tools/jumpstart/roads/ribbon.py::grade_into_foreign"}
 
-    # ---- clamp the profile into every claim's cone ----------------------
-    regraded = 0
-    moved_max = 0.0
-    conflicts: list[dict] = []
-    for i in range(len(nodes)):
-        if br[i]:
-            continue
-        si = arc[i]
-        lo, hi = -1e30, 1e30
-        lo_c = hi_c = None
-        for c in claims:
-            d = abs(si - c["s"])
-            if d > reach_m:
-                continue
-            h = c["live_y"]
-            if h - grade * d > lo:
-                lo, lo_c = h - grade * d, c
-            if h + grade * d < hi:
-                hi, hi_c = h + grade * d, c
-        if lo_c is None and hi_c is None:
-            continue
-        want = prof[i]
-        if lo > hi:
-            # TWO CLAIMS AT DIFFERENT HEIGHTS TOO CLOSE TOGETHER: no profile
-            # satisfies both at grade.  Meet them halfway and record the
-            # residual, because a silent split is how a 2 m step gets shipped.
-            mid = (lo + hi) / 2.0
-            conflicts.append({"node": i, "s": round(si, 1),
-                              "between": [lo_c["xz"], hi_c["xz"]],
-                              "residual_step_m": round((lo - hi) / 2.0, 3)})
-            new = mid
-        else:
-            new = min(max(want, lo), hi)
-        if abs(new - want) > 1e-6:
-            prof[i] = new
-            regraded += 1
-            moved_max = max(moved_max, abs(new - want))
-    seg["profile_y"] = prof
+    # Native station, grade, self-lattice, bank and published joint readings
+    # remain binding. A measured foreign surface adds exact interpolated
+    # readings; it never grants permission to unpin another physical owner.
+    step = regrade_for_claims(
+        seg, [{"s": c["s"], "h": c["live_y"], "slack": 0.0}
+              for c in claims], grade)
+    regraded, moved_max = step["nodes_regraded"], step["max_move_m"]
+    conflicts = []
+    if step["feasible"]:
+        prof = step["profile"]
+        profilerefit.accept_native_profile(seg, step)
+    else:
+        profilerefit.record_native_profile_refusal(seg, step)
 
     worst_before = max(abs(c["step_m"]) for c in claims)
     # AFTER, on the regraded profile, by the same instrument.
@@ -8972,21 +8846,22 @@ def grade_into_foreign(seg: dict, patches: dict, live,
         "worst_step_before_m": round(worst_before, 3),
         "worst_step_after_m": round(max(after) if after else 0.0, 3),
         "conflicts": conflicts,
-        "ramp_grade": round(grade, 4),
-        "ramp_grade_is": ("the segment's own design grade"
-                          if abs(grade - design) < 1e-9
-                          else "steeper than design, capped at BATTER_GRADE"),
+        "feasible": step["feasible"],
+        "why": step["why"],
+        "refusal_kind": step.get("refusal_kind"),
+        "ramp_grade": float(seg.get("grade_limit") or design),
+        "ramp_grade_is": "the original native total-profile rung",
+        "requested_ramp_grade": grade,
         "design_grade": design,
         "batter_grade_ceiling": round(BATTER_GRADE, 4),
         "reach_m": round(reach_m, 1),
         "claims_detail": claims[:80],
         "method": ("MEASURED: the live applied surface from the ledger's own "
-                   "blobs (union per zone in file order + generated, blended "
-                   "bilinearly as Heightmap renders it) at every 1 m station "
-                   "the road does not own, then the planned profile clamped "
-                   "into each claim's +/-BATTER_GRADE cone. The pad keeps "
-                   "every sample it owns; only the ROAD's target height "
-                   "moves."),
+                   "blobs at every claimed station; TOTAL profile refitted "
+                   "with the original native exact solver, original station "
+                   "bounds, held/bank/joint readings, grade and self-lattice. "
+                   "Incompatible claims refuse this candidate without "
+                   "moving the pad or weakening native constraints."),
         "tool": "tools/jumpstart/roads/ribbon.py::grade_into_foreign",
     }
 
@@ -9009,14 +8884,9 @@ def grade_into_foreign(seg: dict, patches: dict, live,
 # does it for EVERY row the rim gate charges, from the rows themselves:
 #   claim   `(s, H, slack)` per caused row: the foot station of the taken
 #           sample, the ground the rim sample stands at, and the slack above.
-#   hat     the profile moves toward `H` by the excess, `|y(s) - H| - slack`,
-#           at the claim's station and by `ramp_grade` less per metre of
-#           station either way: the ramp is as long as the excess needs.
-#   pins    a bridged node, its neighbours and the two ends are datums other
-#           writes and decks stand on and are never moved; a hat that would
-#           have to bend between them at more than the ramp grade is
-#           INFEASIBLE and nothing is regraded -- the refusal then stands, with
-#           its numbers.
+# TOTAL native fitting, not an additive shift hat: original held stations,
+# bank/arrival bounds, grade/rungs, own self-lattice and published joint
+# readings stay binding. A measured claim cannot unpin a physical owner.
 #   judge   each candidate is re-stamped and re-judged by the SAME gate
 #           (`judge_rim`) and kept only if it leaves FEWER caused rows (or the
 #           same count and a lower worst) and no walkable road stops being
@@ -9109,8 +8979,10 @@ def arrival_claims(seg: dict, arrivals: list[dict],
     `limit` of the walker's half-capsule, and the carriageway END is what the
     berm is measured from.  The claim asks the end node `measured - margin *
     limit` higher -- the hump the gate then reads is the berm over a higher
-    end -- and UNPINS that end node: arriving is exactly what an end is for.
-    Other arrival findings are not berms and are not claims."""
+    end. This is a measured reading, not authority to release a native held
+    end, bank bound or published joint datum. Berms and risers contribute
+    readings; other arrival findings remain the gate's refusals.
+    """
     n = len(seg["nodes"])
     arc = node_arcs(seg["nodes"], seg["is_bridge"])
     out = []
@@ -9131,7 +9003,7 @@ def arrival_claims(seg: dict, arrivals: list[dict],
             sign = 1.0 if float(f["rise_m"]) > 0 else -1.0
             out.append({"s": arc[idx],
                         "h": float(seg["profile_y"][idx]) + sign * need,
-                        "slack": 0.0, "unpin": idx, "lat": 0.0,
+                        "slack": 0.0, "lat": 0.0,
                         "label": f"arrival riser at pad {f.get('destination')}",
                         "rim_xz": list(f.get("where") or ()), "taken_xz": [],
                         "step_m": f["measured"]})
@@ -9140,7 +9012,7 @@ def arrival_claims(seg: dict, arrivals: list[dict],
         if need <= 0.0 or seg["is_bridge"][idx]:
             continue
         out.append({"s": arc[idx], "h": float(seg["profile_y"][idx]) + need,
-                    "slack": 0.0, "unpin": idx, "lat": 0.0,
+                    "slack": 0.0, "lat": 0.0,
                     "label": f"arrival berm at pad {f.get('destination')}",
                     "rim_xz": list(f.get("where") or ()), "taken_xz": [],
                     "step_m": f["measured"]})
@@ -9270,84 +9142,18 @@ def prior_arrival_judgement(seg: dict, prior: list[dict],
                          "lat": lat, "label": "preserve arrival of " + road["id"],
                          "rim_xz": [x, z], "taken_xz": [x, z],
                          "step_m": abs(was_y - now_y)}
-                if abs(s - arc[0]) < 1e-9:
-                    claim["unpin"] = 0
-                elif abs(s - arc[-1]) < 1e-9:
-                    claim["unpin"] = len(arc) - 1
                 claims.append(claim)
     return {"failures": failures, "claims": claims, "checked": checked}
 
 
 def regrade_for_claims(seg: dict, claims: list[dict],
                        ramp_grade: float) -> dict:
-    """`{feasible, profile, nodes_regraded, max_move_m, claims_active, why}`:
-    the profile `seg` would carry with a hat of `ramp_grade` toward every
-    claim that its station's height violates.  Never mutates `seg`.  Datum
-    nodes (bridged, their neighbours, the two ends) do not move, and a hat
-    that has to bend at more than the ramp grade to honour that is INFEASIBLE.
+    """Propose a TOTAL native constrained profile; never mutate the segment.
+
+    `ramp_grade` remains a caller's diagnostic input, not permission to raise
+    the native rung or release original held/bank/joint constraints.
     """
-    nodes, br = seg["nodes"], seg["is_bridge"]
-    prof = [float(y) for y in seg["profile_y"]]
-    n = len(nodes)
-    arc = node_arcs(nodes, br)
-    pinned = [bool(br[i]) or i == 0 or i == n - 1
-              or (i > 0 and bool(br[i - 1]))
-              or (i < n - 1 and bool(br[i + 1])) for i in range(n)]
-    for c in claims:
-        if "unpin" in c:
-            pinned[c["unpin"]] = False
-    up, down = [0.0] * n, [0.0] * n
-    active = 0
-    for c in claims:
-        k = 0
-        while k < n - 2 and arc[k + 1] <= c["s"]:
-            k += 1
-        span = max(arc[k + 1] - arc[k], 1e-9)
-        f = min(max((c["s"] - arc[k]) / span, 0.0), 1.0)
-        y = prof[k] + (prof[k + 1] - prof[k]) * f
-        excess = abs(y - c["h"]) - c["slack"]
-        if excess <= 1e-6:
-            continue
-        active += 1
-        # THE APEX IS SOLVED, NOT PADDED: the height AT the station is
-        # interpolated between the two nodes either side of it, so the hat is
-        # lifted by exactly the amount that makes that interpolation equal
-        # the excess -- `2 f (1 - f) span` of ramp, zero at a node.
-        apex = excess + ramp_grade * 2.0 * f * (1.0 - f) * span
-        toward = up if y < c["h"] else down
-        for i in range(n):
-            hat = apex - ramp_grade * abs(arc[i] - c["s"])
-            if hat > toward[i]:
-                toward[i] = hat
-    shift = [up[i] - down[i] for i in range(n)]
-    if not active:
-        return {"feasible": False, "profile": prof, "nodes_regraded": 0,
-                "max_move_m": 0.0, "claims_active": 0,
-                "why": "every claim is inside its cone: the profile is not "
-                       "what leaves these rows"}
-    for i in range(n):
-        if pinned[i] and abs(shift[i]) > 1e-9:
-            shift[i] = 0.0
-    for i in range(n - 1):
-        ds = max(arc[i + 1] - arc[i], 1e-9)
-        if abs(shift[i + 1] - shift[i]) > ramp_grade * ds + 1e-6:
-            return {"feasible": False, "profile": prof, "nodes_regraded": 0,
-                    "max_move_m": round(max(abs(v) for v in shift), 3),
-                    "claims_active": active,
-                    "why": (f"the hat has to bend by "
-                            f"{abs(shift[i + 1] - shift[i]):.3f} m over "
-                            f"{ds:.2f} m of station between node {i} and "
-                            f"{i + 1}, more than the {ramp_grade:.3f} ramp "
-                            f"grade, because the datum node at the "
-                            f"{'bridge' if any(bool(br[j]) or (j > 0 and br[j - 1]) or (j < n - 1 and br[j + 1]) for j in (i, i + 1) if pinned[j]) else 'end'} is pinned "
-                            f"there")}
-    moved = [i for i in range(n) if abs(shift[i]) > 1e-9]
-    return {"feasible": True,
-            "profile": [prof[i] + shift[i] for i in range(n)],
-            "nodes_regraded": len(moved),
-            "max_move_m": round(max((abs(shift[i]) for i in moved),
-                                    default=0.0), 3),
-            "claims_active": active, "why": "regraded"}
+    return profilerefit.refit_native_profile(seg, claims)
 
 
 def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
@@ -9361,6 +9167,21 @@ def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
     holding the best profile found (the one it was given when no candidate
     beat it).  See PROFILE_FEEDBACK_DEPENDS_ON."""
     base = list(seg["profile_y"])
+    profile_metadata = ("native_profile_model", "native_profile_status",
+                        "profile_constraints", "self_adjacency",
+                        "grade_max_measured", "grade_p95", "grade_mean")
+
+    def metadata():
+        return {k: copy.deepcopy(seg[k]) for k in profile_metadata if k in seg}
+
+    def restore(meta):
+        for key in profile_metadata:
+            if key in meta:
+                seg[key] = copy.deepcopy(meta[key])
+            else:
+                seg.pop(key, None)
+
+    base_metadata = metadata()
     judged = judge(comps, st)
 
     def owed(j):
@@ -9372,8 +9193,8 @@ def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
               "caused_before": owed(judged),
               "worst_before_m": judged["rim"]["worst_caused_m"],
               "nodes_regraded": 0, "max_move_m": 0.0}
-    best = {"prof": base, "comps": comps, "st": st, "walk": walk,
-            "judged": judged}
+    best = {"prof": base, "metadata": base_metadata, "comps": comps, "st": st,
+            "walk": walk, "judged": judged}
     if _PROFILE_FEEDBACK_MODE != "regrade" or not owed(judged):
         report["caused_after"] = report["caused_before"]
         report["worst_after_m"] = report["worst_before_m"]
@@ -9389,6 +9210,7 @@ def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
     cur = best
     for rnd in range(max(int(rounds), 0)):
         seg["profile_y"] = list(cur["prof"])
+        restore(cur["metadata"])
         claims = (rim_claims(seg, cur["judged"]["rim"]["caused_rows"],
                              cur["judged"]["labels"], limit_m, edge_m)
                   + arrival_claims(seg, cur["judged"].get("arrivals") or [])
@@ -9397,13 +9219,14 @@ def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
         row = {"round": rnd + 1, "claims": len(claims),
                "claims_active": step["claims_active"],
                "feasible": step["feasible"], "why": step["why"],
+               "refusal_kind": step.get("refusal_kind"),
                "nodes_regraded": step["nodes_regraded"],
                "max_move_m": step["max_move_m"],
                "caused_from": owed(cur["judged"])}
         report["rounds"].append(row)
         if not step["feasible"] or not step["nodes_regraded"]:
             break
-        seg["profile_y"] = step["profile"]
+        profilerefit.accept_native_profile(seg, step)
         c2, s2, w2 = rasterise(seg)
         j2 = judge(c2, s2)
         got, was = j2["rim"], best["judged"]["rim"]
@@ -9415,8 +9238,9 @@ def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
             row["why"] = "regraded, and the road stopped being walkable"
         row.update(caused_to=owed(j2), worst_to_m=got["worst_caused_m"],
                    kept=keeps)
-        cur = {"prof": list(step["profile"]), "comps": c2, "st": s2,
-               "walk": w2, "judged": j2}
+        cur = {"prof": list(step["profile"]),
+               "metadata": metadata(),
+               "comps": c2, "st": s2, "walk": w2, "judged": j2}
         if keeps:
             best = cur
             report["nodes_regraded"] = sum(
@@ -9427,6 +9251,9 @@ def profile_feedback(seg: dict, comps: dict, st: dict, walk: dict,
         if not owed(j2) and keeps:
             break
     seg["profile_y"] = list(best["prof"])
+    restore(best["metadata"])
+    if report["rounds"]:
+        profilerefit.record_native_profile_refusal(seg, report["rounds"][-1])
     report["caused_after"] = owed(best["judged"])
     report["worst_after_m"] = best["judged"]["rim"]["worst_caused_m"]
     return best["comps"], best["st"], best["walk"], report
@@ -10261,6 +10088,18 @@ def road_unit_meta(segment_id: str) -> dict:
     return {"segment": segment_id}
 
 
+def road_identity_meta(seg: dict) -> dict:
+    """Authored physical identity, never recovered from a display name."""
+    identity = {key: seg[key] for key in ("id", "from", "to", "cls", "width_m")}
+    if (not all(isinstance(identity[k], str) and identity[k]
+                for k in ("id", "from", "to", "cls"))
+            or not math.isfinite(float(identity["width_m"]))
+            or float(identity["width_m"]) <= 0):
+        raise ValueError("road write requires exact physical endpoint/class/width identity")
+    identity["width_m"] = float(identity["width_m"])
+    return {**road_unit_meta(seg["id"]), "road_identity": identity}
+
+
 def selftest_road_unit_key(verbose: bool = True) -> dict:
     """A road record must name its segment WHERE THE REPLAY READS IT.
 
@@ -10978,6 +10817,56 @@ def _pf_nodes(half_m: float) -> list:
     return [(-half_m + 4.0 * i, 0.0) for i in range(n + 1)]
 
 
+def _selftest_native_profile(seg: dict, *, generated_y: float,
+                             held: tuple[int, ...]) -> None:
+    """Author a complete numeric native problem for constructed selftests only."""
+    seg.update(cls="spur", terminal_caps=[True, True],
+               terminal_owners=[None, None])
+    pts = np.asarray(seg["nodes"], dtype=np.float64)
+    s = np.r_[0., np.cumsum(np.hypot(*np.diff(pts, axis=0).T))]
+    n = len(s)
+    ground = np.full(n, generated_y)
+    lo = np.maximum(ground - routemod.CUT_FILL_MAX,
+                    WATER_LEVEL_M + routemod.ROAD_FREEBOARD_M)
+    hi = ground + routemod.CUT_FILL_MAX
+    held_mask = np.zeros(n, dtype=bool)
+    for k in held:
+        lo[k] = hi[k] = seg["profile_y"][k]
+        held_mask[k] = True
+    rung = float(seg["grade_limit"])
+    cand = routemod.self_adjacency_lattice(
+        pts, np.asarray(seg["is_bridge"], dtype=bool), seg["width_m"],
+        grade=BATTER_GRADE, batter_m=BATTER_MAX_M, lattice_m=1.,
+        dy_cap=rung, terminal_caps=(True, True))
+    joint = dict(
+        s=s, t=ground, lo=lo, hi=hi, tw_lo=ground, tw_hi=ground,
+        held=held_mask, free=np.asarray(seg["is_bridge"], dtype=bool),
+        ladder=[rung], design_rung=rung, cand=cand, terminal_owners=[None, None],
+        spans=[],
+        native_basis=dict(
+            producer="constructed exact native selftest problem",
+            measurement_field="constant numeric selftest ground",
+            geometry_preparation={"source": "authored exact points"},
+            held_abutment_inputs=[["constructed-bank", int(k), int(k)]
+                                  for k in np.flatnonzero(held_mask)],
+            held_detected_bank_inputs=[], free_crossing_windows=[],
+            walked_water_ceiling_inputs=[],
+            geometry_arcs=cand["arcs"], water_level=WATER_LEVEL_M,
+            road_freeboard_m=routemod.ROAD_FREEBOARD_M,
+            deck_clearance_m=routemod.DECK_CLEARANCE_M,
+            cut_fill_max_m=routemod.CUT_FILL_MAX, clamp_m=routemod.CLAMP_M,
+            self_join_margin_m=routemod.SELF_ADJACENCY_JOIN_MARGIN_M))
+    model = profilerefit.contract.build_native_profile_model(seg, joint)
+    seg["native_profile_model"] = model
+    normal = profilerefit.contract.read_native_profile_model(seg)
+    matrix, lower, upper = profilerefit.contract.native_profile_readings(normal)
+    fitted = routemod._exact_reading_profile(
+        seg["profile_y"], lo, hi, [(0, n, rung * s)], matrix, lower, upper)
+    assert fitted is not None, "constructed native baseline must be feasible"
+    seg["profile_y"] = fitted.tolist()
+    profilerefit.contract.bind_native_profile_model(seg, normal)
+
+
 def _pf_fixture(half_m: float):
     """`(seg, rasterise, judge)` over the constructed fill, through the
     SHIPPING `stamp` and `junction.rim_transfer`."""
@@ -10987,6 +10876,7 @@ def _pf_fixture(half_m: float):
            "profile_y": [_PF_Y] * len(nodes),
            "is_bridge": [False] * len(nodes), "width_m": 6.0,
            "grade_limit": 0.08}
+    _selftest_native_profile(seg, generated_y=_PF_GROUND, held=(0, len(nodes) - 1))
 
     def rasterise(sg):
         st = _rasterise(sg["nodes"], 0.0, ground,
@@ -11038,6 +10928,7 @@ def _pa_fixture():
            "profile_y": [_PA_Y] * len(nodes),
            "is_bridge": [False] * len(nodes), "width_m": 6.0,
            "grade_limit": 0.08}
+    _selftest_native_profile(seg, generated_y=_PA_PLAIN, held=(0, len(nodes) - 1))
 
     def rasterise(sg):
         st = _rasterise(sg["nodes"], 0.0, lambda x, z: _PA_PLAIN,
@@ -11132,29 +11023,26 @@ def selftest_profile_feedback(verbose: bool = True) -> dict:
 
 
 def selftest_arrival_claims(verbose: bool = True) -> dict:
-    """THE ARRIVAL BERM IS A CLAIM ON THE CARRIAGEWAY END (the fourth face of
-    PROFILE_FEEDBACK_DEPENDS_ON).  The gate's `terminus_berm` finding says the
-    ground between a road's end and the pad it arrives at stands `measured`
-    over the road's last station against a `limit`; the end is a datum node
-    and a regrade that keeps it pinned cannot move the one thing the berm is
-    measured from -- the shipped reading -- while the arrival claim unpins
-    exactly that end, raises it by the excess over 0.9 of the limit and ramps
-    back at the design grade.  Only a berm is a claim, and a bridged end is
-    never one.  Pure: a constructed segment and the finding's own keys."""
+    """Measured arrival claims can move only native-authorized profile freedom.
+
+    A free end can meet the measured berm; the identical claim cannot release
+    a native held end. Claim-local `unpin` is not ownership authority.
+    """
     n = 30
     seg = {"id": "fixture", "nodes": [[4.0 * i, 0.0] for i in range(n)],
            "profile_y": [33.0] * n, "is_bridge": [False] * n,
-           "width_m": 6.0}
+           "width_m": 6.0, "grade_limit": 0.08}
+    _selftest_native_profile(seg, generated_y=33.0, held=(n - 1,))
     berm = {"end": "A", "check": "terminus_berm", "destination": "wt",
             "measured": 0.348, "limit": 0.245, "where": (-109.0, -892.0)}
     other = {"end": "A", "check": "terminus_datum", "destination": "wt",
              "measured": 0.9, "limit": 0.245, "where": (0.0, 0.0)}
     claims = arrival_claims(seg, [berm, other])
-    assert len(claims) == 1 and claims[0]["unpin"] == 0, claims
+    assert len(claims) == 1 and claims[0]["s"] == 0.0, claims
     fix = regrade_for_claims(seg, claims, 0.08)
-    shipped = regrade_for_claims(
-        seg, [{k: v for k, v in c.items() if k != "unpin"} for c in claims],
-        0.08)
+    pinned = copy.deepcopy(seg)
+    _selftest_native_profile(pinned, generated_y=33.0, held=(0, n - 1))
+    shipped = regrade_for_claims(pinned, claims, 0.08)
     need = 0.348 - 0.9 * 0.245
     assert fix["feasible"] and fix["nodes_regraded"] >= 1, fix
     assert abs(fix["profile"][0] - (33.0 + need)) < 1e-9, fix
@@ -11179,12 +11067,12 @@ def selftest_arrival_claims(verbose: bool = True) -> dict:
         _ARRIVAL_STEP_MODE = "claim"
     bridged = dict(seg, is_bridge=[True] + [False] * (n - 1))
     assert arrival_claims(bridged, [berm]) == []
-    assert arrival_claims(seg, [dict(berm, end="B")])[0]["unpin"] == n - 1
+    assert arrival_claims(seg, [dict(berm, end="B")])[0]["s"] == 4.0 * (n - 1)
     if verbose:
         print(f"  berm 0.348 over a 0.245 limit: end raised "
               f"{round(fix['profile'][0] - 33.0, 4)} m by the claim, "
               f"{shipped['nodes_regraded']} node(s) moved with the end "
-              f"pinned (the shipped reading)")
+              f"held by the original native model")
         print("ribbon arrival-claims selftest OK")
     return {"claims": claims, "fix": fix["max_move_m"]}
 
@@ -11582,6 +11470,7 @@ def selftest_successive_arrivals(verbose: bool = True) -> dict:
              "nodes": [[0.0, float(z)] for z in range(-40, 41, 2)],
              "profile_y": [40.0] * 41, "is_bridge": [False] * 41,
              "width_m": 2.0, "length_m": 80.0, "grade_limit": 0.08}
+    _selftest_native_profile(later, generated_y=40.0, held=(0, 40))
     zones = sorted(set(segment_zones(old["nodes"], old["is_bridge"], 2.0))
                    | set(segment_zones(later["nodes"], later["is_bridge"], 2.0))
                    | pads.approach_zones(old))
@@ -11635,7 +11524,7 @@ def selftest_successive_arrivals(verbose: bool = True) -> dict:
     assert legacy_j["failures"] and not legacy_j["claims"], legacy_j
     fix = regrade_for_claims(later, broken["claims"], 0.08)
     assert fix["feasible"] and fix["nodes_regraded"], fix
-    later["profile_y"] = fix["profile"]
+    profilerefit.accept_native_profile(later, fix)
     corrected, corrected_stats = rasterise()
     fixed, fixed_height = judge(corrected)
     assert not fixed["failures"], fixed
@@ -12026,6 +11915,14 @@ def main() -> int:
               f"nothing for the ground writer to write; the deck step "
               f"(boardwalk.py) builds this unit (FULLY_BRIDGED_DEPENDS_ON)")
         return 0
+    try:
+        profilerefit.require_native_profile(seg)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise SystemExit(
+            "REFUSING BEFORE THE WRITE: native profile context is not "
+            f"authoritative: {exc}. Replan with a complete geometry-bound "
+            "native_profile_model; primitive stamp diagnostics do not "
+            "authorize a new terrain write.") from exc
     if args.no_connection_collar:
         seg["connection_collar"] = False
     # THE RECORD, TAKEN BEFORE ANYTHING CAN MUTATE IT.  `solve_approach` and
@@ -12739,28 +12636,11 @@ def main() -> int:
         road_claim_at, road_models_from_records(live.led.records()),
         lambda sx, sz: appliedmod.generated_at(patches, float(sx), float(sz)))
 
-    # SHARED CORRIDORS (SNAP_SHARED_DEPENDS_ON): lie on the built leg.
-    _nodes_before = [list(n) for n in seg["nodes"]]
-    _snapped = snap_shared_runs(
-        seg["nodes"], seg["is_bridge"],
-        built_road_lines(plans_by_write, road_claim_at, my_name))
-    _nudged = nudge_off_half_lattice(seg["nodes"], seg["is_bridge"])
-    if (_snapped or _nudged) and (
-            set(segment_zones(seg["nodes"], seg["is_bridge"], seg["width_m"],
-                              batter_m=batter_m))
-            - set(zones)):
-        # The zones were scanned from the nodes as given: a move that needs
-        # a zone nobody scanned is not made.
-        seg["nodes"][:] = _nodes_before
-        _snapped = _nudged = 0
-    if _nudged:
-        print(f"half-lattice: {_nudged} node(s) of {seg['id']} moved "
-              f"{HALF_LATTICE_NUDGE_M} m so no station sits on a half-lattice "
-              f"line [HALF_LATTICE_DEPENDS_ON]")
-    if _snapped:
-        print(f"shared corridor: {_snapped} station(s) of {seg['id']} lay "
-              f"within {SNAP_SHARED_M} m of a built leg and are now ON its "
-              f"centreline [SNAP_SHARED_DEPENDS_ON]")
+    # The native model binds the exact geometry. Snapping and half-lattice
+    # nudging are optional producer preprocessing, not physical acceptance
+    # predicates: do not move a bound line, or refuse it merely because a
+    # helper prefers another one. Judge this unchanged geometry through the
+    # actual stamp/codec/rim/arrival/walk/water/clamp/body gates below.
 
     # THE RASTERISER, AS A FUNCTION OF THE PROFILE, so the approach solve can
     # ASK the clamp and the gradient about a candidate reach instead of
@@ -12909,19 +12789,9 @@ def main() -> int:
           f"(worst move {approach.get('max_profile_move_m')} m); step into the "
           f"claim {approach['worst_step_before_m']} -> "
           f"{approach['worst_step_after_m']} m")
-    print(f"approach reach SOLVED against the clamp: "
-          f"{reach_solve.get('reaches_tried')} candidate(s) between "
-          f"{reach_solve.get('shortest_reach_m')} and "
-          f"{reach_solve.get('derived_reach_m')} m, chose "
-          f"{reach_solve.get('chosen_m')} m "
-          f"(ramp grade {approach.get('ramp_grade')}, 8 m gradient "
-          f"{reach_solve.get('chosen_g8')}); {reach_solve.get('why')}")
-    for r in (reach_solve.get("rows") or []):
-        print(f"     reach {r['reach_m']:>7} grade {r['ramp_grade']:<7} "
-              f"over_clamp {r['over_clamp']:<4} fill {r['max_fill_m']:<7} "
-              f"g8 {r['g8']:<7} pad_step {str(r.get('worst_pad_step_m')):<7} "
-              f"({r.get('pads_over_batter_grade')} over {BATTER_GRADE:.3f}) "
-              f"{r['verdict']}")
+    print(f"approach TOTAL native refit: "
+          f"feasible={reach_solve.get('feasible')}, original rung "
+          f"{approach.get('ramp_grade')}; {reach_solve.get('why')}")
     for c in approach.get("conflicts", [])[:5]:
         print("   CONFLICT", c)
     # THE SAMPLES THIS WRITE WROTE, snapshotted BEFORE the union carries
@@ -13569,8 +13439,7 @@ def main() -> int:
           f"{st['samples_batter_in_pad_standoff']} batter samples inside a pad "
           f"stand-off; interstice {st['interstice_rays']} rays "
           f"({st['interstice_apron']} apron(s) "
-          f"{'tapered' if _INTERSTICE_APRON_MODE == 'taper' else 'levelled flush'}"
-          f" edge to edge, "
+          f"tapered edge to edge, "
           f"{st['interstice_left_ungraded']} left ungraded; "
           f"{st['interstice_taper_closes_first']} more whose own taper "
           f"closed short of the other road, graded as ordinary batter -- "
@@ -13655,6 +13524,9 @@ def main() -> int:
                                           in prior_by_zone[(zx, zz)]]
             entries[-1]["merge_policy"] = "union"
 
+    # This is write authorization, not the primitive read-only stamp API.
+    # Recheck the accepted profile/model pair after all feedback and collars.
+    profilerefit.require_native_profile(seg)
     plan = {
         "segment": seg["id"], "zones": len(entries),
         "zdo_cost": len(entries),
@@ -13711,7 +13583,9 @@ def main() -> int:
                             "prefabs": ["_TerrainCompiler"],
                             "blobs": [e["blob_sha256"] for e in entries]},
                "expect": {"terrain_compiler": True},
-               "meta": {"road_model": emitted_road_model(seg, batter_m)},
+               "meta": {**road_identity_meta(seg),
+                        "road_model": emitted_road_model(seg, batter_m),
+                        "native_profile_model": copy.deepcopy(seg["native_profile_model"])},
                "prev": "0" * 64}
         if args.preflight_out:
             pf = Path(args.preflight_out)
@@ -13994,8 +13868,9 @@ def main() -> int:
                       "prefabs": ["_TerrainCompiler"],
                       "blobs": shas},
             expect={"terrain_compiler": True},
-            meta={**road_unit_meta(seg["id"]),
+            meta={**road_identity_meta(seg),
                   "road_model": emitted_road_model(seg, batter_m),
+                  "native_profile_model": copy.deepcopy(seg["native_profile_model"]),
                   "grade_limit": seg["grade_limit"],
                   "grade_max_measured": seg["grade_max_measured"],
                   "crossings_handed_to_Crossings": [c["crossing_id"]
