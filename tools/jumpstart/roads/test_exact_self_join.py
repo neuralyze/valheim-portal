@@ -232,6 +232,60 @@ class ExactSelfJoinTests(unittest.TestCase):
         self.assertEqual([row['id'] for row in result['refused']], [leg['id']])
         np.testing.assert_array_equal(result['y'][other['id']], other['y0'])
 
+    def margin_legs(self):
+        # Ten native turn stations, integer-translated to preserve lattice
+        # phase. The incoming profile fits the physical allowance, but not
+        # its existing 1 cm safety margin; a legal nearby profile exists.
+        points = np.array([
+            [-25.9680374315354, .0319625684645],
+            [-27.3822509939085, -1.3822509939087],
+            [-29.3334777586296, -1.5], [-31.3334777586296, -1.5],
+            [-31.5, -1.5], [-32.5574495561975, -1.1654424983785],
+            [-34.4642904295558, -.56215327778],
+            [-35.3095269530372, -2.3747688518533],
+            [-36.1547634765186, -4.1873844259267], [-37., -6.]])
+        s = np.r_[0., np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
+        y = np.array([1.838718925211695, 1.80760252782994, 1.31890843155145,
+                      .81890843155145, .77727787120884, .5, 0., 0., 0., 0.])
+        free = np.zeros(len(s), dtype=bool)
+        lo, hi = np.full(len(s), .4), np.full(len(s), 10.)
+        lo[-4:] = hi[-4:] = 0.
+        held = np.zeros(len(s), dtype=bool)
+        held[-4:] = True
+        cand = R.self_adjacency_lattice(
+            points, free, 6., grade=.7812856265067174, batter_m=21.,
+            lattice_m=1., dy_cap=.25, terminal_caps=(False, False))
+        leg = dict(id='margin-turn', cls='spur', pri=1, width_m=6.,
+                   nodes=points, is_bridge=free, s=s, lo=lo, hi=hi, y0=y,
+                   spans=[], rung=.25, ladder=[.25], cand=cand, held=held,
+                   terminal_caps=(False, False))
+        return leg
+
+    def test_joint_preserves_native_self_margin_without_moving_owned_datums(self):
+        leg = self.margin_legs()
+        result = R.junction_datums([leg], [], grade=.7812856265067174,
+                                  batter_m=21., lattice_m=1.)
+        self.assertEqual(result['refused'], [])
+        y, cand = result['y'][leg['id']], leg['cand']
+        a = np.interp(cand['edges']['s1'], leg['s'], y)
+        b = np.interp(cand['edges']['s2'], leg['s'], y)
+        limit = np.maximum(cand['allow_e'] - R.SELF_ADJACENCY_JOIN_MARGIN_M, 0.)
+        self.assertTrue(np.all(np.abs(a-b) <= limit + 1e-9))
+        np.testing.assert_array_equal(y[leg['held']], leg['lo'][leg['held']])
+        self.assertTrue(np.all(y >= leg['lo'] - 1e-9))
+        self.assertTrue(np.all(y <= leg['hi'] + 1e-9))
+        self.assertTrue(np.all(np.abs(np.diff(y)) <= .25*np.diff(leg['s']) + 1e-9))
+
+    def test_joint_refuses_when_owned_profile_cannot_keep_native_self_margin(self):
+        leg = self.margin_legs()
+        leg['lo'] = leg['hi'] = leg['y0']
+        original = leg['y0'].copy()
+        result = R.junction_datums([leg], [], grade=.7812856265067174,
+                                  batter_m=21., lattice_m=1.)
+        self.assertEqual([row['id'] for row in result['refused']], [leg['id']])
+        self.assertNotIn(leg['id'], result['y'])
+        np.testing.assert_array_equal(leg['y0'], original)
+
 
 if __name__ == '__main__':
     unittest.main()

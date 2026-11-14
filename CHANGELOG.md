@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constructor/read/rebind boundary checks the full lattice inventory before
   numeric classification: even a consistently truncated export with an
   illegal profile remains a prerequisite, not a refusal that may be skipped.
+- Joint profile fitting preserves each leg's original native self-join safety
+  margin in every budget and conflict attempt. A near-boundary old profile
+  cannot spend that margin merely because it is physically joinable: the
+  existing solver fits a legal profile or refuses an immovable one.
 - Native owner-conflict routing preserves the detected crossing's measured
   path before bridge straightening. Finite retry costs follow that searched
   path, not a final chord center A* may never traverse. The existing radius,

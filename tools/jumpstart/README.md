@@ -250,6 +250,10 @@ Shore selection rejects that candidate and continues; it neither loosens
 the native margin nor treats missing or malformed input as a refusal that
 can be skipped. Constructor, reader and rebinding all verify the complete
 self-lattice inventory before deciding whether a measured profile is illegal.
+Joint fitting also retains that same native self-join safety margin in every
+budget and conflict attempt. Existing near-boundary own readings do not
+relax it; a feasible profile is fitted inside the original bounds, while an
+immovable violating profile remains refused.
 Legal changes refresh actual grade and native verdict metadata; neither
 solver success nor a local terrain preview replaces final world acceptance.
 

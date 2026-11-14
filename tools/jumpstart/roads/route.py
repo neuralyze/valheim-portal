@@ -2150,6 +2150,9 @@ def _junction_joint(legs, pads, *, grade, batter_m, lattice_m,
 
     def attempt(tp, tu, lp, lu, closure_only=False):
         nonlocal last_native_limits
+        # A leg's own native safety margin is not a negotiable junction
+        # budget. Keeping an old near-boundary reading must not spend it.
+        tp = tp | (P["la"] == P["lb"])
         r = np.asarray(rung)
         active = np.asarray(alive, dtype=np.bool_)
         live_p = active[P["la"]] & active[P["lb"]]
