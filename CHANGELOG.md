@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Declared banks try their existing measured approach before an arbitrary
   snap. A failed preferred contact still permits the ordinary search and
   other eligible contacts, with all original datums and masks retained.
+- Measured declared-bank handoffs also offer the allowed neighboring search
+  cells touching that same entry footprint. A disconnected nearest cell
+  cannot hide a buildable measured approach; both terminal contact families
+  remain available even when the first search finds no route. The exact
+  original handoff, ordinary fallback, owned path and native gates remain.
 - Bank trims account for emitted centimetre-coordinate rounding before
   terrain and profile fitting. A contact lost only to rounding may regrow
   along its original removed segment; the original attachment radius,

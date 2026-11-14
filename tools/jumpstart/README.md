@@ -250,6 +250,12 @@ contribute an owned-profile or self-overlap recovery witness.
 Declared banks first offer their existing measured approach geometry.
 Mask eligibility is not route or profile approval: a failed preferred
 contact must not hide the ordinary search or remaining eligible contacts.
+The same measured handoff also offers every allowed search-cell area that
+touches its existing entry footprint. These alternatives retain the
+measured bank path and are tried even after a disconnected nearest-cell
+search; they do not relocate the bank, widen the footprint or waive a
+physical check. When both ends have measured approaches, their contact
+combinations remain eligible alongside the original ordinary fallback.
 
 Bank-trim endpoints must meet the same attachment radius after centimetre
 serialization. Rounding-only detachment is corrected along the removed

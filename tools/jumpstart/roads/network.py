@@ -2541,6 +2541,35 @@ def _bank_path_allowed(corr, path, extra_forbid):
     return True
 
 
+def _owned_bank_entry_contacts(corr, path, width_m, owner, extra_forbid):
+    """Every allowed search-cell area touching the same measured entry."""
+    entry = path[-1]
+    try:
+        cell = tuple(map(float, corr.cell_world(
+            *corr.nearest_allowed(*entry, 200.0))))
+    except ValueError:
+        return []
+    radius = routemod.footprint_half_m(width_m)
+    i0, j0 = corr.cell_of(*entry)
+    cell_half = corr.cell_m / 2.0
+    r = math.ceil((radius + cell_half) / corr.cell_m)
+    alternatives = []
+    for i in range(max(0, i0-r), min(corr.m, i0+r+1)):
+        for j in range(max(0, j0-r), min(corr.m, j0+r+1)):
+            point = tuple(map(float, corr.cell_world(i, j)))
+            dx = max(0.0, abs(point[0] - entry[0]) - cell_half)
+            dz = max(0.0, abs(point[1] - entry[1]) - cell_half)
+            if point != cell and math.hypot(dx, dz) <= radius:
+                alternatives.append(point)
+    alternatives.sort(key=lambda p: (math.dist(p, entry), p))
+    out = []
+    for point in (cell, *alternatives):
+        connected = path if point == entry else (*path, point)
+        if _bank_path_allowed(corr, connected, extra_forbid):
+            out.append({"xz": point, "bank_path": connected, "owner": owner})
+    return out
+
+
 def _bank_approach_contacts(edge, end, corr, extra_forbid):
     """Try owned terminal approach geometry, never a cached acceptance verdict."""
     node_id = edge[end]
@@ -2552,36 +2581,9 @@ def _bank_approach_contacts(edge, end, corr, extra_forbid):
         angle = math.radians(float(node["arrive_bearing_deg"]))
         entry = (root[0] + BANK_LEVEL_M * math.sin(angle),
                  root[1] + BANK_LEVEL_M * math.cos(angle))
-        try:
-            cell = tuple(map(float, corr.cell_world(
-                *corr.nearest_allowed(*entry, 200.0))))
-        except ValueError:
-            return []
-        # The nearest search cell is not the owned entry itself. Its short
-        # connector can leave too little length for the native freeboard
-        # transition. Try the other cells touching this same inland entry,
-        # keeping the root and its complete six-metre landing in every path.
-        radius = routemod.footprint_half_m(float(
-            edge.get("width_m") or WIDTH_M[edge["cls"]]))
-        i0, j0 = corr.cell_of(*entry)
-        cell_half = corr.cell_m / 2.0
-        r = math.ceil((radius + cell_half) / corr.cell_m)
-        alternatives = []
-        for i in range(max(0, i0-r), min(corr.m, i0+r+1)):
-            for j in range(max(0, j0-r), min(corr.m, j0+r+1)):
-                point = tuple(map(float, corr.cell_world(i, j)))
-                dx = max(0.0, abs(point[0] - entry[0]) - cell_half)
-                dz = max(0.0, abs(point[1] - entry[1]) - cell_half)
-                if point != cell and math.hypot(dx, dz) <= radius:
-                    alternatives.append(point)
-        alternatives.sort(key=lambda p: (math.dist(p, entry), p))
-        out = []
-        for point in (cell, *alternatives):
-            path = (root, entry, point)
-            if _bank_path_allowed(corr, path, extra_forbid):
-                out.append({"xz": point, "bank_path": path,
-                            "owner": {"node": node_id}})
-        return out
+        width = float(edge.get("width_m") or WIDTH_M[edge["cls"]])
+        return _owned_bank_entry_contacts(
+            corr, (root, entry), width, {"node": node_id}, extra_forbid)
     if node.get("kind") != "abutment" or not node.get("crossing"):
         return []
     owner = _declared_bank_owner(node_id)
@@ -2598,6 +2600,13 @@ def _bank_approach_contacts(edge, end, corr, extra_forbid):
         path = tuple(tuple(map(float, p[:2])) for p in reversed(points[:-1]))
         if _bank_path_allowed(corr, path, extra_forbid):
             out.append({"xz": path[-1], "bank_path": path, "owner": owner})
+            # Keep the original exact handoff first. A coarse nearest-cell
+            # failure must not hide another cell touching that same entry.
+            width = float(edge.get("width_m") or WIDTH_M[edge["cls"]])
+            exact = _terminal_contact_key({"a": out[-1]})
+            out.extend(contact for contact in _owned_bank_entry_contacts(
+                corr, path, width, owner, extra_forbid)
+                if _terminal_contact_key({"a": contact}) != exact)
     return out
 
 
@@ -2654,19 +2663,31 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     Exhaustion names the numerical refusal, not global infeasibility.
     """
     from collections import deque                          # noqa: PLC0415
+    from itertools import product                          # noqa: PLC0415
     shore_ends = [end for end in ("a", "b")
                   if specmod.NODES[edge[end]].get("kind") == "waterfront_terminal"]
     preferred = {}
+    measured_contacts = {}
     if fixed_pts is None:
         for end in ("a", "b"):
             if specmod.NODES[edge[end]].get("kind") in ("waterfront_terminal", "abutment"):
                 contacts = _bank_approach_contacts(edge, end, corr, extra_forbid)
                 if contacts:
                     preferred[end] = contacts[0]
+                    measured_contacts[end] = contacts
     # Keep the solved shore's inland bearing/root before trying an arbitrary
     # cell beside it. Every candidate still runs the complete physical checks.
     pending = deque([preferred, {}] if preferred else [{}])
     seen = {_terminal_contact_key(ends) for ends in pending}
+    if measured_contacts:
+        choices = [(*measured_contacts.get(end, ()), None) for end in ("a", "b")]
+        for pair in product(*choices):
+            trial = {end: contact for end, contact in zip(("a", "b"), pair)
+                     if contact is not None}
+            signature = _terminal_contact_key(trial)
+            if signature not in seen:
+                seen.add(signature)
+                pending.append(trial)
     candidates = {}
     required = {}
     attempts = []
