@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   branch to the existing cost-guided search. Every replacement must still
   satisfy the original pad datum, profile, masks and terminal attachment;
   a genuinely contradictory arrival remains a hard refusal.
+- Owned-profile refusals retain the latest measured candidate for route
+  continuation. A new crossing whose level run conflicts with a held bank
+  is re-priced at its actual crossing, not at the immovable bank. Native
+  writer-water retries use this continuation as well as self-overlap
+  guidance; failed profiles never become accepted roads.
+- Declared banks try their existing measured approach before an arbitrary
+  snap. A failed preferred contact still permits the ordinary search and
+  other eligible contacts, with all original datums and masks retained.
 - Bank trims account for emitted centimetre-coordinate rounding before
   terrain and profile fitting. A contact lost only to rounding may regrow
   along its original removed segment; the original attachment radius,

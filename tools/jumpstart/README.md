@@ -233,6 +233,18 @@ This is not pad approval: only a replacement that completes the original
 pad solve and passes the unchanged profile, terminal and physical guards
 can proceed. Exhausted guidance retains the original arrival refusal.
 
+A new detected crossing may impose a level run that conflicts with an
+existing bank datum. This is a refusal of that candidate, not proof that
+every alignment is impossible. Retry costs follow its latest measured
+contradiction; when the crossing owns that level window, costs target the
+crossing itself rather than the fixed bank. The contradiction's original
+coordinates and bounds remain in the receipt. Writer-water continuation
+uses the same search and repeats every profile, pad and physical guard.
+
+Declared banks first offer their existing measured approach geometry.
+Mask eligibility is not route or profile approval: a failed preferred
+contact must not hide the ordinary search or remaining eligible contacts.
+
 Bank-trim endpoints must meet the same attachment radius after centimetre
 serialization. Rounding-only detachment is corrected along the removed
 original segment before terrain/profile checks, never by widening the gate.

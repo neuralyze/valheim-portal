@@ -2282,6 +2282,14 @@ def _chord_guidance_mask(corr, radii, endpoints):
     return out
 
 
+class _OwnProfileRefusal(ValueError):
+    """A measured candidate, not the search domain, violates an owned profile."""
+    def __init__(self, refusal, *, candidate=None):
+        self.refusal = refusal
+        self.candidate = candidate
+        super().__init__(refusal)
+
+
 class _PadArrivalRefusal(ValueError):
     def __init__(self, refusal: dict, destinations: dict, *, candidate=None):
         self.refusal = refusal
@@ -2651,7 +2659,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     preferred = {}
     if fixed_pts is None:
         for end in ("a", "b"):
-            if specmod.NODES[edge[end]].get("kind") == "waterfront_terminal":
+            if specmod.NODES[edge[end]].get("kind") in ("waterfront_terminal", "abutment"):
                 contacts = _bank_approach_contacts(edge, end, corr, extra_forbid)
                 if contacts:
                     preferred[end] = contacts[0]
@@ -2663,6 +2671,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
     required = {}
     attempts = []
     first_refusal = None
+    last_owned_refusal = None
     original_endpoints = None
     original_contacts = None
     required_banks = {}
@@ -2723,6 +2732,8 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
             if owned is not None and result.get("abutments"):
                 if fixed_pts is not None:
                     raise ValueError(owned["why"])
+                last_owned_refusal = _OwnProfileRefusal(owned["why"], candidate=(result, state))
+                first_refusal = first_refusal or last_owned_refusal
                 queue_banks(result, ends, owned)
                 continue
             if required_banks:
@@ -2787,7 +2798,11 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
             if fixed_pts is not None:
                 raise
             first_refusal = first_refusal or exc
-            attempts.append({"search_ends": ends, "binding": exc.refusal["binding"]})
+            if exc.candidate is not None and exc.candidate[0].get("abutments"):
+                queue_banks(exc.candidate[0], ends, {
+                    "gate": "pad_arrival", "why": str(exc)})
+            else:
+                attempts.append({"search_ends": ends, "binding": exc.refusal["binding"]})
             for end, dest in exc.destinations.items():
                 required.setdefault(end, dest)
                 if required[end]["pad"] != dest["pad"]:
@@ -2805,7 +2820,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                         pending.append(trial)
             continue
         except ValueError as exc:
-            if first_refusal is None and not (
+            if first_refusal is None and not ends and not (
                     len(shore_ends) == 1 and fixed_pts is None and not land_only):
                 raise
             first_refusal = first_refusal or exc
@@ -2870,7 +2885,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
         return result
     raise ValueError(
         f"{edge['id']}: eligible terminal attachment search exhausted after "
-        f"{len(attempts)} full-line refusal(s); {first_refusal}") from first_refusal
+        f"{len(attempts)} full-line refusal(s); {first_refusal}") from (last_owned_refusal or first_refusal)
 
 
 def _build_with_chord_clearance(fld, edge: dict, corr: routemod.Corridor, pois: list,
@@ -4272,14 +4287,48 @@ def adjacency_guidance(corr: routemod.Corridor, hints) -> np.ndarray:
     return out
 
 
+def _owned_profile_hint(rec):
+    """Price a contradictory interior owner binding, never move its datum."""
+    conflicts = [binding for binding in
+                 (rec.get("profile_constraints") or {}).get("bindings", ())
+                 if (float(binding["lower_y"]) > float(binding["upper_y"]) + 1e-9
+                     and 0 < int(binding["station"]) < len(rec["nodes"]) - 1)]
+    if not conflicts:
+        return None
+    binding = max(conflicts, key=lambda row:
+                  float(row["lower_y"]) - float(row["upper_y"]))
+    hint = {"kind": "owned_profile", "xz": list(binding["xz"]),
+            "station": int(binding["station"]),
+            "lower_y": float(binding["lower_y"]),
+            "upper_y": float(binding["upper_y"])}
+    if rec.get("crossings"):
+        points = np.asarray(rec["nodes"], dtype=np.float64)
+        arcs = np.r_[0., np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
+        _free, windows = crossing_windows(points, arcs, rec["crossings"])
+        for crossing, ia, ib, wa, wb in windows:
+            if wa <= hint["station"] <= wb:
+                # The old bank cannot move. Price the new rigid crossing
+                # whose level run conflicts with it, not the fixed prefix.
+                hint.update(binding_xz=hint["xz"],
+                            xz=points[(ia + ib) // 2].tolist(),
+                            crossing_id=crossing["crossing_id"])
+                break
+    return hint
+
+
 def _refused_adjacency_candidate(error):
-    """Recover measured geometry for guidance, never an arrival approval."""
+    """Recover measured failing geometry for costs, never physical approval."""
     while error is not None:
-        if isinstance(error, _PadArrivalRefusal) and error.candidate is not None:
-            rec, joint = error.candidate
-            if (profile_constraint_rejection(rec) is None
-                    and self_adjacency_rejection(rec) is not None):
-                return rec, joint
+        if isinstance(error, (_PadArrivalRefusal, _OwnProfileRefusal)):
+            candidate = error.candidate
+            if candidate is not None:
+                rec, joint = candidate
+                if isinstance(error, _OwnProfileRefusal):
+                    if _owned_profile_hint(rec) is not None:
+                        return rec, joint
+                elif (profile_constraint_rejection(rec) is None
+                      and self_adjacency_rejection(rec) is not None):
+                    return rec, joint
         error = error.__cause__
     return None
 
@@ -4287,10 +4336,10 @@ def _refused_adjacency_candidate(error):
 def adjacency_reroute(corr: routemod.Corridor, one, *,
                       initial: tuple[dict, dict] | None = None
                       ) -> tuple[dict, dict]:
-    """`one(extra_guidance)` builds this leg under its unchanged hard masks.
+    """Re-search measured own-branch/level conflicts under unchanged hard masks.
 
-    `initial` reuses an already measured candidate. Cost hints never make an
-    endpoint or a narrow legal passage forbidden.
+    Each cost hint follows the latest actual failing geometry, rather than
+    repeatedly pricing an unrelated earlier foot. No failed profile is accepted.
     """
     initial_error = None
     try:
@@ -4301,9 +4350,10 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
             raise
         rec, joint = candidate
         initial_error = exc
+    physical = profile_constraint_rejection(rec)
     if (_ADJACENCY_REROUTE_MODE == "off"
-            or profile_constraint_rejection(rec) is not None
-            or self_adjacency_rejection(rec) is None):
+            or (physical is not None and _owned_profile_hint(rec) is None)
+            or (physical is None and self_adjacency_rejection(rec) is None)):
         if initial_error is not None:
             raise initial_error
         return rec, joint
@@ -4323,15 +4373,18 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
         return original
 
     while True:
-        witness = last["self_adjacency"].get("worst_before") or {}
-        worst, arcs = witness.get("xz"), witness.get("foot_arc_m")
-        if not worst or len(worst) < 2 or not arcs or len(arcs) < 2:
-            return refused("missing_pair", "self-overlap has no measured foot/arc pair")
-        x, z = map(float, worst[0 if arcs[0] > arcs[1] else 1])
-        hint = {"xz": [x, z], "radius_m": radius, "cost_per_m": price}
+        hint = _owned_profile_hint(last)
+        if hint is None:
+            witness = last["self_adjacency"].get("worst_before") or {}
+            worst, arcs = witness.get("xz"), witness.get("foot_arc_m")
+            if not worst or len(worst) < 2 or not arcs or len(arcs) < 2:
+                return refused("missing_pair", "self-overlap has no measured foot/arc pair")
+            hint = {"xz": list(map(float, worst[0 if arcs[0] > arcs[1] else 1]))}
+        x, z = hint["xz"]
+        hint.update(radius_m=radius, cost_per_m=price)
         mask = adjacency_mask(corr, [(x, z, radius)])
         if not np.any(mask):
-            return refused("outside_corridor", "measured foot is outside the search grid")
+            return refused("outside_corridor", "measured conflict is outside the search grid")
         try:
             with np.errstate(over="raise", invalid="raise"):
                 guidance[mask] += price
@@ -4344,14 +4397,18 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
             if candidate is None:
                 return refused("candidate_refused", str(exc))
             cand, cj = candidate
-        physical = profile_constraint_rejection(cand)
-        if physical is not None:
-            return refused("profile_constraints", physical["why"])
         detached = _retry_terminal_rejection(
             {"a": rec["from"], "b": rec["to"], "width_m": rec["width_m"]},
             (rec["nodes"][0], rec["nodes"][-1]), cand["nodes"])
         if detached is not None:
             return refused("terminal_attachment", detached)
+        physical = profile_constraint_rejection(cand)
+        if physical is not None:
+            if _owned_profile_hint(cand) is None:
+                return refused("candidate_refused", physical["why"])
+            last = cand
+            price *= 2.0
+            continue
         print(f"{rec['id']}: completed adjacency candidate {len(hints)} "
               f"self={cand['self_adjacency']['verdict']}", flush=True)
         if self_adjacency_rejection(cand) is None:
@@ -4359,7 +4416,7 @@ def adjacency_reroute(corr: routemod.Corridor, one, *,
                 "depends_on": list(ADJACENCY_REROUTE_DEPENDS_ON),
                 "rounds": len(hints), "hints": list(hints),
                 "as_routed_length_m": rec["length_m"],
-                "why": "re-searched the refused branches with additive costs; "
+                "why": "re-searched measured branch/owner conflicts with additive costs; "
                        "physical masks and original terminal attachments retained"}
             return cand, cj
         last = cand
@@ -4431,10 +4488,11 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
         if fixed_pts is not None and "water_trim" in cur_seg:
             cand["water_trim"] = dict(cur_seg["water_trim"])
         why = refusal(cand)
-        if why == "self_adjacency" and fixed_pts is None:
-            # A water stand-off can introduce a different hairpin from the
-            # initial route's. Offer it the same existing adjacency remedy,
-            # without losing this leg's accumulated water/span guidance.
+        if fixed_pts is None and (
+                why == "self_adjacency" or _owned_profile_hint(cand) is not None):
+            # A water stand-off can introduce a different branch conflict or
+            # a rigid crossing beside a held bank. Re-search that measured
+            # conflict without losing accumulated water/span guidance.
             original = cand
             original_joint = j
             retry_kw: dict = {}
