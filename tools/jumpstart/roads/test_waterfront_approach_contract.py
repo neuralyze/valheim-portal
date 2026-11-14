@@ -115,6 +115,26 @@ class WaterfrontApproachTests(unittest.TestCase):
                     points[arcs <= N.BANK_LEVEL_M, 1],
                     np.full(np.count_nonzero(arcs <= N.BANK_LEVEL_M), .5))
 
+    def test_moved_landing_cannot_supply_owned_profile_retry_geometry(self):
+        self.field.h.fill(31.1)
+        axis = np.arange(self.field.n, dtype=float) - self.field.n / 2 + .5
+        x, z = np.meshgrid(axis, axis)
+        self.field.h[(abs(x) <= 12.) & (abs(z) <= 8.)] = 28.
+        corr = N.routemod.Corridor(
+            self.field, cell_m=4., grade_max=N.routemod.GRADE_CEILING)
+        corr.forbid = np.zeros((corr.m, corr.m), dtype=bool)
+        corr.unread = np.zeros_like(corr.forbid)
+        corr.soft = np.full((corr.m, corr.m), .125)
+        extra = np.zeros_like(corr.forbid)
+        extra[corr.cell_of(.5, 3.5)] = True
+        before = _physical_snapshot(corr)
+        with self.assertRaises(ValueError) as refused:
+            N.build_segment(
+                self.field, self.edge, corr, [], census=None, extra_forbid=extra)
+        self.assertIsNone(N._refused_adjacency_candidate(refused.exception))
+        for name, values in before.items():
+            np.testing.assert_array_equal(getattr(corr, name), values)
+
     def test_zero_length_search_is_not_a_constructed_road(self):
         self.field.h.fill(31.1)
         self.nodes['harbour']['kind'] = 'extremity'

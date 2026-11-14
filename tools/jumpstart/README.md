@@ -241,6 +241,12 @@ crossing itself rather than the fixed bank. The contradiction's original
 coordinates and bounds remain in the receipt. Writer-water continuation
 uses the same search and repeats every profile, pad and physical guard.
 
+The fixed landing is checked before a failed profile or pad solve can
+supply retry geometry. A moved root or reshaped six-metre turn remains a
+geometric refusal: changing heights or raising route costs cannot repair
+that attachment. Only candidates that retain the existing landing may
+contribute an owned-profile or self-overlap recovery witness.
+
 Declared banks first offer their existing measured approach geometry.
 Mask eligibility is not route or profile approval: a failed preferred
 contact must not hide the ordinary search or remaining eligible contacts.

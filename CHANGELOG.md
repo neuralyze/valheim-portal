@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is re-priced at its actual crossing, not at the immovable bank. Native
   writer-water retries use this continuation as well as self-overlap
   guidance; failed profiles never become accepted roads.
+- A refused profile can enter route-cost recovery only while its shoreline
+  root and owned six-metre landing are still intact. The existing landing
+  gate now runs before retaining a profile or pad refusal, so a snapped or
+  reshaped fallback cannot replace a valid attachment as the retry basis.
 - Declared banks try their existing measured approach before an arbitrary
   snap. A failed preferred contact still permits the ordinary search and
   other eligible contacts, with all original datums and masks retained.

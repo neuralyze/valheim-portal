@@ -2724,6 +2724,25 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                 joint=state, extra_forbid=extra_forbid,
                 extra_guidance=extra_guidance, ceiling=ceiling, trim=trim,
                 trim_applied=trim_applied, line_out=line_out, _search_ends=ends)
+            # Recovery must not price a candidate that already lost its
+            # owned landing: another profile cannot repair that geometry.
+            landing_failure = None
+            for end in (shore_ends if fixed_pts is None else ()):
+                node = specmod.NODES[edge[end]]
+                outward = node.get("jetty_bearing_deg")
+                if outward is None and node.get("arrive_bearing_deg") is not None:
+                    outward = (float(node["arrive_bearing_deg"]) + 180.0) % 360.0
+                points = (iter(result["nodes"]) if end == "a"
+                          else reversed(result["nodes"]))
+                landing_failure = arrival_geometry.fixed_landing_rejection(
+                    points, node["xz"], outward, BANK_LEVEL_M)
+                if landing_failure is not None:
+                    break
+            if landing_failure is not None:
+                first_refusal = first_refusal or ValueError(landing_failure)
+                attempts.append({"search_ends": ends, "gate": "owned_landing",
+                                 "refused": landing_failure})
+                continue
             if original_endpoints is None:
                 original_endpoints = (tuple(result["nodes"][0]),
                                       tuple(result["nodes"][-1]))
@@ -2757,23 +2776,6 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                    for end in ends if end in required):
                 raise ValueError("alternate attachment no longer reaches "
                                  "the same terminal pad")
-            landing_failure = None
-            for end in (shore_ends if fixed_pts is None else ()):
-                node = specmod.NODES[edge[end]]
-                outward = node.get("jetty_bearing_deg")
-                if outward is None and node.get("arrive_bearing_deg") is not None:
-                    outward = (float(node["arrive_bearing_deg"]) + 180.0) % 360.0
-                points = (iter(result["nodes"]) if end == "a"
-                          else reversed(result["nodes"]))
-                landing_failure = arrival_geometry.fixed_landing_rejection(
-                    points, node["xz"], outward, BANK_LEVEL_M)
-                if landing_failure is not None:
-                    break
-            if landing_failure is not None:
-                first_refusal = first_refusal or ValueError(landing_failure)
-                attempts.append({"search_ends": ends, "gate": "owned_landing",
-                                 "refused": landing_failure})
-                continue
             if (shore_ends and not land_only and fixed_pts is None
                     and result.get("residual_infeasible")):
                 # A held terminal can be CLEAR while the intervening terrain
