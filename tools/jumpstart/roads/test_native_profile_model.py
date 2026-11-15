@@ -60,6 +60,33 @@ class NativeProfileModelTests(unittest.TestCase):
             y0, inputs["lo"], inputs["hi"],
             [(0, len(y0), inputs["rung"] * inputs["s"])], matrix, lower, upper)
 
+    def test_roundoff_cannot_shorten_the_native_bank_level_run(self):
+        direction = np.array([np.cos(.37), np.sin(.37)])
+        points = np.array([17.3, 13.7]) + np.arange(0., 16., 2.)[:, None]*direction
+        record, _ = self.produce(points, height=42., held=40.)
+        self.assertAlmostEqual(record["profile_y"][3], 40., places=9)
+        model = C.read_native_profile_model(record)
+        fitted = self.solve(model, np.asarray(record["profile_y"]),
+                            extra_column=4, extra_lower=40.1)
+        self.assertIsNotNone(fitted)
+        self.assertAlmostEqual(fitted[3], 40., places=9)
+        self.assertGreaterEqual(fitted[4], 40.1-1e-9)
+
+    def test_native_interpolation_does_not_spend_the_last_fraction_of_bank_run(self):
+        distances = np.array([0., 2., 4., 5.9, 7.9, 9.9, 11.9, 13.9])
+        direction = np.array([np.cos(.37), np.sin(.37)])
+        points = np.array([17.3, 13.7]) + distances[:, None]*direction
+        record, _ = self.produce(points, height=42., held=40.)
+        model = C.read_native_profile_model(record)
+        self.assertAlmostEqual(np.interp(6., model["inputs"]["s"],
+                                        record["profile_y"]), 40., places=9)
+        fitted = self.solve(model, np.asarray(record["profile_y"]),
+                            extra_column=5, extra_lower=40.1)
+        self.assertIsNotNone(fitted)
+        self.assertAlmostEqual(np.interp(6., model["inputs"]["s"], fitted),
+                               40., places=9)
+        self.assertGreaterEqual(fitted[5], 40.1-1e-9)
+
     def test_lossless_emitted_geometry_held_bank_and_total_grade_inventory(self):
         record, joint = self.produce(self.straight(), held=30.6)
         packet = json.loads(json.dumps(record, allow_nan=False))

@@ -94,7 +94,7 @@ FIELD_BIN = "/tmp/roads/h1m.bin"
 # the deck is a pinch the operator sees at every bridge.
 from crossing_contract import (
     WIDTH_M, BANK_LEVEL_M, STATION_M, SIMPLIFY_TOL_M,
-    straighten, transverse_window)
+    bank_level_mask, straighten, transverse_window)
 # Crossings' MEASURED absolute span ceiling: 72 m free span at a 3x safety
 # factor on an iron stringer under the deck, 96 m absolute, from its own
 # implementation of WearNTear::UpdateSupport.  Beyond this a "bridge" is not a
@@ -3382,9 +3382,9 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         if node.get("level_y") is None:
             continue
         if which == "a":
-            sel = np.nonzero(s <= s[0] + BANK_LEVEL_M)[0]
+            sel = np.nonzero(bank_level_mask(s, s[0]))[0]
         else:
-            sel = np.nonzero(s >= s[-1] - BANK_LEVEL_M)[0]
+            sel = np.nonzero(bank_level_mask(s, s[-1]))[0]
         # ABUTMENT_TRIMMED_END_DEPENDS_ON: an end the terminal trim moved off
         # its node, whose bench the clamp cannot hold at the datum, is an
         # ordinary road end.

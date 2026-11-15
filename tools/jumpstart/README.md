@@ -257,6 +257,14 @@ immovable violating profile remains refused.
 Legal changes refresh actual grade and native verdict metadata; neither
 solver success nor a local terrain preview replaces final world acceptance.
 
+The declared bank's six-metre level run applies to the entire interpolated
+profile, not just station centres strictly inside a floating-point interval.
+Producer pin proofs and native route fitting share the boundary selection.
+When a boundary falls between stations, its outside bracket must also hold
+the datum so interpolation cannot start a slope early. This adds no height,
+grade, clamp or bank-datum allowance; an incompatible footprint is refused
+with the actual bound rather than silently shortening the run.
+
 If the native pad solve refuses a self-overlapping incoming line, its
 measured candidate remains available to the same adjacency-guidance search.
 This is not pad approval: only a replacement that completes the original

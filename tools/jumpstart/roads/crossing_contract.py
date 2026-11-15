@@ -13,6 +13,25 @@ SIMPLIFY_TOL_M = 1.0
 TANGENT_MIN_NORM_M = 1e-9
 
 
+def bank_level_mask(arcs, bank_arc: float) -> np.ndarray:
+    """Station support for the whole interpolated declared bank-level run.
+
+    Include roundoff-sized boundary differences and, when the boundary lies
+    between stations, its outer bracket. Otherwise interpolation would start
+    a slope inside the six-metre run. No physical allowance is relaxed.
+    """
+    arcs = np.asarray(arcs, dtype=np.float64)
+    selected = np.abs(arcs-bank_arc) <= BANK_LEVEL_M+1e-9
+    indices = np.flatnonzero(selected)
+    if len(indices):
+        first, last = indices[0], indices[-1]
+        if first > 0 and bank_arc-arcs[first] < BANK_LEVEL_M-1e-9:
+            selected[first-1] = True
+        if last+1 < len(arcs) and arcs[last]-bank_arc < BANK_LEVEL_M-1e-9:
+            selected[last+1] = True
+    return selected
+
+
 def footprint_offsets(width_m: float, lat_step_m: float = 0.5) -> np.ndarray:
     """Exact mandatory lateral probes shared by sweeps and necessary proofs."""
     extent = routemod.footprint_half_m(width_m)

@@ -19,7 +19,7 @@ import route
 import worldseed
 from crossing_contract import (
     BANK_LEVEL_M, WIDTH_M, STATION_M, SIMPLIFY_TOL_M,
-    straighten, transverse_window)
+    bank_level_mask, straighten, transverse_window)
 
 
 class CoverageError(ValueError):
@@ -237,7 +237,7 @@ class PhysicalFields:
             if len(points) < 2:
                 return refuse("canonical route has fewer than two distinct stations")
             if prefix is None:
-                last = int(np.flatnonzero(np.asarray(s) <= BANK_LEVEL_M)[-1])
+                last = int(np.flatnonzero(bank_level_mask(s, s[0]))[-1])
                 points = straighten(points, s, 0, last)
             probes = points
             if probe_m < STATION_M:
@@ -251,8 +251,9 @@ class PhysicalFields:
                 return {"nodes": points, "goal_xz": list(map(float, goal)),
                         "bank_snap_m": math.dist(actual, corr.cell_world(*start)),
                         "water_reroute_rounds": rounds}
+            level_probes = bank_level_mask(probe_s, probe_s[0])
             seeds = [(x, z, max(high[k]-route.CUT_FILL_MAX,
-                datum if probe_s[k] <= BANK_LEVEL_M else
+                datum if level_probes[k] else
                 fieldmod.WATER_LEVEL+route.ROAD_FREEBOARD_M)) for x, z, k in wet]
             extra = route.water_standoff_forbid(
                 corr, seeds, half_m=width/2.0, grade=ribbon.BATTER_GRADE,
@@ -705,7 +706,7 @@ class PhysicalFields:
         width = max(WIDTH_M.values())
         sampler = SimpleNamespace(bilinear=self.generated,contains=self.contains,
                                   sample_many=self.sample_many)
-        pinned_road = arc[:-1] >= arc[-2]-BANK_LEVEL_M
+        pinned_road = bank_level_mask(arc[:-1], arc[-2])
         first = max(int(np.flatnonzero(pinned_road)[0])-1,0)
         neighbourhood = np.asarray(road[first:],dtype="<f8")
         held = pinned_road[first:]
@@ -735,7 +736,7 @@ class PhysicalFields:
         lo,hi = np.r_[high-route.CUT_FILL_MAX,datum],np.r_[low+route.CUT_FILL_MAX,datum]
         bridge = np.zeros(len(points),dtype=bool)
         bridge[-1] = True
-        pinned = (~bridge) & (arc >= arc[-2]-BANK_LEVEL_M)
+        pinned = (~bridge) & bank_level_mask(arc, arc[-2])
         lo[~bridge & ~pinned] = np.maximum(lo[~bridge & ~pinned],
             fieldmod.WATER_LEVEL+route.ROAD_FREEBOARD_M)
         lo[pinned],hi[pinned] = np.maximum(lo[pinned],datum),np.minimum(hi[pinned],datum)

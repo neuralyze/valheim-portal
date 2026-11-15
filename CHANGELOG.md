@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   margin in every budget and conflict attempt. A near-boundary old profile
   cannot spend that margin merely because it is physically joinable: the
   existing solver fits a legal profile or refuses an immovable one.
+- Declared bank approaches retain the complete six-metre level run, including
+  floating-point arc boundaries and boundaries between profile stations.
+  Necessary pin checks, native fitting and water-feedback seed heights use
+  the same station support; interpolation cannot begin a slope inside the
+  declared run. Bank datums, path geometry and all physical limits remain
+  unchanged, and an incompatible bank footprint is still refused by number.
 - Native owner-conflict routing preserves the detected crossing's measured
   path before bridge straightening. Finite retry costs follow that searched
   path, not a final chord center A* may never traverse. The existing radius,
