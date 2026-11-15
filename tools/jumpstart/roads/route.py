@@ -1846,12 +1846,23 @@ def _joint_readings(legs: list[dict], pads: list[dict], depends_on: tuple, *,
                                 lattice_m=lattice_m)
         arcs = [np.asarray(R.node_arcs(lg["nodes"], lg["is_bridge"]))
                 for lg in legs]
+        # Each leg's station array is fixed for this reading inventory.
+        # Batch its feet, then scatter back without reordering native rows.
+        feet = []
+        for leg_ids, positions in ((e["la"], e["s1"]), (e["lb"], e["s2"])):
+            k0 = np.empty(len(positions), dtype=np.int64)
+            k1 = np.empty(len(positions), dtype=np.int64)
+            t = np.empty(len(positions), dtype=np.float64)
+            for li in np.unique(leg_ids):
+                selected = leg_ids == li
+                k0[selected], k1[selected], t[selected] = _feet(
+                    arcs[int(li)], positions[selected])
+            feet.append((k0, k1, t))
+        (a0, a1, ta), (b0, b1, tb) = feet
         for k in range(len(e["s1"])):
             la, lb = int(e["la"][k]), int(e["lb"][k])
-            a0, a1, ta = _feet(arcs[la], e["s1"][k])
-            b0, b1, tb = _feet(arcs[lb], e["s2"][k])
-            put(P, la=la, k0a=int(a0), k1a=int(a1), ta=float(ta), lb=lb,
-                k0b=int(b0), k1b=int(b1), tb=float(tb),
+            put(P, la=la, k0a=int(a0[k]), k1a=int(a1[k]), ta=float(ta[k]), lb=lb,
+                k0b=int(b0[k]), k1b=int(b1[k]), tb=float(tb[k]),
                 allow=float(grade * (e["run1"][k] + e["run2"][k]
                                      + lattice_m)),
                 kind=1, x=float(e["x1"][k]), z=float(e["z1"][k]))

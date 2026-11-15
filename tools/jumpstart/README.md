@@ -257,6 +257,11 @@ immovable violating profile remains refused.
 Legal changes refresh actual grade and native verdict metadata; neither
 solver success nor a local terrain preview replaces final world acceptance.
 
+Cross-road junction feet are interpolated in per-leg batches and scattered
+back to the original native pair order. Batching does not prune pairs or
+change their station brackets, weights or physical allowances. Pad, arrival
+and each road's own branch constraints remain part of the same full solve.
+
 The declared bank's six-metre level run applies to the entire interpolated
 profile, not just station centres strictly inside a floating-point interval.
 Producer pin proofs and native route fitting share the boundary selection.

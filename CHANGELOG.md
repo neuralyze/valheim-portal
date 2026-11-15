@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   margin in every budget and conflict attempt. A near-boundary old profile
   cannot spend that margin merely because it is physically joinable: the
   existing solver fits a legal profile or refuses an immovable one.
+- Global junction assembly batches cross-road station-foot interpolation by
+  leg instead of constructing scalar NumPy intermediates for every pair.
+  It preserves every native pair, original row order, station bracket,
+  interpolation weight and physical allowance; no constraints are pruned.
 - Declared bank approaches retain the complete six-metre level run, including
   floating-point arc boundaries and boundaries between profile stations.
   Necessary pin checks, native fitting and water-feedback seed heights use
