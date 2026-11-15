@@ -294,6 +294,25 @@ which actions need an operator, and the evidence rules. `AGENTS.md` is **not** i
 checkout excludes that file locally because the build system generates it, so anything
 written there would be overwritten and would never reach a clone.
 
+### Native road-planning continuation
+
+The [road constructor](tools/jumpstart/roads/network.py) keeps crossing detection
+lower-rung-first. Only when a proposed crossing chord would displace a surveyed
+owned approach does it retry higher detector rungs from that road's original
+permitted grade ladder, in the original order. Fixed-input geometry is not
+rerouted; wet-footprint detection and the existing geometry and physical guards
+remain binding. Owned bank datums and the complete six-metre level runs do not
+change.
+
+Owner-conflict continuation also retains a bank-to-terrain grade witness when
+the original bounds contradict even the maximum original class/override ladder
+rung. Only nonheld, nonfree terrain can supply the movable station; matching
+native geometry and an actual infeasible span are required. The witness feeds
+the existing additive route costs, without changing masks, costs, radii or
+physical limits. It does not authorize an infeasible profile or establish
+named-road, network or saved-world acceptance.
+
+
 ## How it works
 
 The portal publishes Steam-authorized, immutable Valheim profile definitions and

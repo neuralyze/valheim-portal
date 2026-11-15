@@ -8,6 +8,82 @@ import network as N
 import test_protected_feedback as P
 
 
+class OwnedTerrainContinuationTests(unittest.TestCase):
+    def fixture(self, *, rise=9., free=False, held=False, ladder=(.12, .18, .25)):
+        points = np.c_[np.arange(0., 42., 2.), np.zeros(21)]
+        arcs = points[:, 0].copy()
+        terrain = np.full(len(points), 60.)
+        terrain[5] = 54. + rise + 7.
+        lower, upper = terrain - 7., terrain + 7.
+        lower[:4] = upper[:4] = 54.
+        owners = np.zeros(len(points), dtype=bool)
+        owners[:4] = True
+        owners[5] = held
+        bridge = np.zeros(len(points), dtype=bool)
+        bridge[5] = free
+        grade, reach, lattice = N.writer_batter()
+        fit = N.routemod.fit_ladder(
+            terrain, arcs, lower, upper, bridge, list(ladder), pts=points,
+            width_m=6., grade=grade, batter_m=reach, lattice_m=lattice, held=owners)
+        y = np.asarray(fit['y'])
+        bad = np.flatnonzero((y < lower - 1e-9) | (y > upper + 1e-9))
+        record = dict(
+            nodes=points.tolist(), crossings=[], width_m=6., profile_y=y.tolist(),
+            profile_constraints=dict(verdict='REFUSED' if len(bad) else 'CLEAR',
+                                     bindings=[dict(
+                                         station=int(k), xz=points[k].tolist(),
+                                         lower_y=float(lower[k]), upper_y=float(upper[k]),
+                                         profile_y=float(y[k])) for k in bad]))
+        joint = dict(
+            s=arcs, lo=lower, hi=upper, held=owners, free=bridge,
+            rung=fit['rung'], ladder=[.12, .18, .25],
+            terrain_feasible=fit['terrain_feasible'],
+            spans=fit['fit']['infeasible_spans'], cand=fit['cand'],
+            native_basis=dict(held_abutment_inputs=[['a', 'declared-bank', 54., 0, 3]],
+                              held_detected_bank_inputs=[], free_crossing_windows=[]))
+        return record, joint, fit
+
+    def test_noncrossing_terrain_conflict_prices_only_movable_station(self):
+        record, joint, fit = self.fixture()
+        self.assertFalse(fit['terrain_feasible'])
+        self.assertEqual(record['profile_constraints']['verdict'], 'REFUSED')
+        before = {key: joint[key].copy() for key in ('s', 'lo', 'hi', 'held', 'free')}
+        cause = N._OwnProfileRefusal('native owner terrain contradiction',
+                                    candidate=(record, joint))
+        hint = N._owned_profile_hint(record)
+        self.assertIsNotNone(hint)
+        self.assertEqual(hint['station'], 5)
+        self.assertEqual(hint['xz'], [10., 0.])
+        self.assertNotIn('crossing_id', hint)
+        self.assertEqual(hint['grade_conflict']['rung'], .25)
+        self.assertAlmostEqual(hint['grade_conflict']['available_rise_m'], 1.)
+        self.assertAlmostEqual(hint['grade_conflict']['shortfall_m'], 8.)
+        self.assertEqual(hint['grade_conflict']['declared_bank']['datum_y'], 54.)
+        self.assertIsNotNone(N._refused_adjacency_candidate(cause))
+        for key, original in before.items():
+            np.testing.assert_array_equal(joint[key], original)
+
+    def test_free_or_held_terrain_never_fabricates_movable_hint(self):
+        for flags in ({'free': True}, {'held': True}):
+            with self.subTest(**flags):
+                record, joint, _ = self.fixture(**flags)
+                self.assertIsNone(N._grade_propagated_owned_hint(record, joint))
+
+    def test_reachable_at_max_original_rung_is_not_a_terrain_conflict(self):
+        record, joint, fit = self.fixture(rise=.8, ladder=(.12,))
+        self.assertFalse(fit['terrain_feasible'])
+        self.assertEqual(record['profile_constraints']['verdict'], 'REFUSED')
+        self.assertIsNone(N._grade_propagated_owned_hint(record, joint))
+
+    def test_missing_original_ladder_or_mismatched_native_geometry_is_not_evidence(self):
+        record, joint, _ = self.fixture()
+        for altered in ({k: v for k, v in joint.items() if k != 'ladder'},
+                        {**joint, 'free': np.zeros(2, dtype=bool)},
+                        {**joint, 's': joint['s'] + 1.}):
+            with self.subTest(keys=tuple(altered)):
+                self.assertIsNone(N._grade_propagated_owned_hint(record, altered))
+
+
 class OwnedGradeGuidanceTests(unittest.TestCase):
     def fixture(self, *, movable=True, chord=False, trace=True):
         corr, _, entry, goal = P.ProtectedFeedbackTests()._numeric_hairpin(outer_cost=1000.)

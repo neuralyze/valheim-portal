@@ -55,6 +55,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path, not a final chord center A* may never traverse. The existing radius,
   bank datums and physical limits are unchanged; overlapping trace footprints
   pay one price per hint. Missing or malformed traces cannot invent progress.
+- Crossing detection remains lower-rung-first. A chord that would displace a
+  surveyed owned approach may retry only higher detector rungs from the road's
+  original permitted grade ladder, in its original order. Fixed-input geometry,
+  wet-footprint detection, bank datums, complete six-metre level runs and all
+  existing physical guards remain unchanged.
+- Owner-conflict guidance also retains bank-to-nonheld/nonfree terrain
+  contradictions from the original bounds, matching native geometry and an
+  actual infeasible span, proven at the maximum original class/override ladder
+  rung. These witnesses feed the existing additive-cost continuation without
+  changing its costs, radii or masks, accepting an infeasible profile, or
+  implying named-road, network or saved-world acceptance.
 - Native rim closure can solve the implicated movable cells together when
   a sequential pass marks an algorithmic dead end. The continuation retains
   every original water, clamp, ownership and edge bound; an infeasible

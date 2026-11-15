@@ -3113,6 +3113,9 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # of grade on a bridge approach is worse for the operator than a short ramp.
     # Overrides are recorded per segment and are never silent.
     g_max = float(edge.get("grade_max") or routemod.GRADE[cls])
+    ladder = [g_max] + [g for g in (routemod.GRADE["spur"],
+                                    routemod.GRADE["mountain"],
+                                    routemod.GRADE_CEILING) if g > g_max]
 
     if extra_guidance is not None:
         guidance = np.asarray(extra_guidance, dtype=np.float64)
@@ -3404,37 +3407,44 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
                 continue
         abut_windows.append((which, node_id, float(node["level_y"]),
                              int(sel.min()), int(sel.max())))
-    fit1 = routemod.fit_profile(t, s, g_max)
-    detected, _flag, fords = routemod.find_crossings(
-        edge["id"], pts, s, t, fit1["infeasible_spans"],
-        t_foot=abutment_bench_dry(tw0_lo, abut_windows))
-
-    # Geometry second: mark the deck stations, straighten each crossing window
-    # and each declared-abutment window over ranges that never overlap
-    # (CROSSING_BANKS_DEPENDS_ON), then re-sample the terrain because
-    # straightening moved the stations.
-    free, windows = crossing_windows(pts, s, detected)
     before_straightening = pts
-    if fixed_pts is None:
-        # A straight chord may leave the searched path. Route feedback must
-        # price the measured path that produced this crossing, not that chord.
-        for crossing, first, last, _wa, _wb in windows:
-            crossing["search_path_before_chord"] = [
-                [float(x), float(z)]
-                for x, z in before_straightening[first:last + 1]]
     owned_geometry = {
         k: tuple(map(float, point)) for k, point in enumerate(before_straightening)
         if any(len(path) >= 2 and _foot(np.asarray(path), *map(float, point))[2] <= 1e-9
                for path in owned_paths.values())}
-    pts, windows = straighten_windows(
-        pts, s, windows, abut_windows,
-        preserve_bank_geometry=fixed_pts is not None or bool(owned_paths))
-    if fixed_pts is not None and not np.array_equal(pts, before_straightening):
-        raise ValueError(f"{edge['id']}: native crossing chord changes fixed input geometry; "
-                         "replan the physical crossing alignment")
-    if any(tuple(map(float, pts[k])) != point for k, point in owned_geometry.items()):
-        raise ValueError(f"{edge['id']}: crossing chord changes a surveyed owned approach; "
-                         "replan without moving the owned bank path")
+    for detector_rung in ladder:
+        # Preserve the ordinary lower-design inventory unless its chord
+        # would move a surveyed owner. Only then ask the next ORIGINAL rung
+        # about the same measured line; wet footprints remain detector inputs
+        # at every rung. This is not permission to re-shape a fixed input.
+        fit1 = routemod.fit_profile(t, s, detector_rung)
+        detected, _flag, fords = routemod.find_crossings(
+            edge["id"], pts, s, t, fit1["infeasible_spans"],
+            t_foot=abutment_bench_dry(tw0_lo, abut_windows))
+
+        # Geometry second: straighten the proposed crossing and declared-bank
+        # windows, then retain only a candidate preserving its owned stations.
+        free, windows = crossing_windows(pts, s, detected)
+        if fixed_pts is None:
+            # Costs follow the actual searched trace, never its new chord.
+            for crossing, first, last, _wa, _wb in windows:
+                crossing["search_path_before_chord"] = [
+                    [float(x), float(z)]
+                    for x, z in before_straightening[first:last + 1]]
+        proposed_pts, windows = straighten_windows(
+            pts, s, windows, abut_windows,
+            preserve_bank_geometry=fixed_pts is not None or bool(owned_paths))
+        if fixed_pts is not None and not np.array_equal(proposed_pts, before_straightening):
+            raise ValueError(f"{edge['id']}: native crossing chord changes fixed input geometry; "
+                             "replan the physical crossing alignment")
+        if any(tuple(map(float, proposed_pts[k])) != point
+               for k, point in owned_geometry.items()):
+            if detector_rung != ladder[-1]:
+                continue
+            raise ValueError(f"{edge['id']}: crossing chord changes a surveyed owned approach; "
+                             "replan without moving the owned bank path")
+        pts = proposed_pts
+        break
     _check_straightening(before_straightening, pts, pois, width_m, corr.cell_m)
     # Preserve the exact routed/owned geometry. Optional writer nudges are
     # not physical acceptance predicates and must not reshape an owned path.
@@ -3701,9 +3711,6 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     # way it answers terrain: re-profile (a landing at the turn, the legs
     # carrying the climb it gave up) at the lowest rung that can, or return
     # the line REFUSED with its number for `main` to reject.
-    ladder = [g_max] + [g for g in (routemod.GRADE["spur"],
-                                    routemod.GRADE["mountain"],
-                                    routemod.GRADE_CEILING) if g > g_max]
     heights = _choose_bank_levels(lo, hi, held, s, level_choices, ladder)
     for index, choice in enumerate(level_choices):
         # An impossible whole-line choice remains a physical refusal; retain
@@ -4384,7 +4391,8 @@ def _grade_propagated_owned_hint(rec, joint):
 
     An infeasible fit's midpoint is not a bound. Use only the original
     inequalities, actual native rung/spans and declared/detected owner inputs.
-    The movable detected crossing is priced; the declared bank stays fixed.
+    Price the movable crossing or terrain, never the declared bank. Terrain
+    must contradict even the maximum rung of the original permitted ladder.
     Missing evidence leaves the ordinary physical refusal untouched.
     """
     if ((rec.get("profile_constraints") or {}).get("verdict") != "REFUSED"
@@ -4457,6 +4465,61 @@ def _grade_propagated_owned_hint(rec, joint):
                             "declared_bank": {"end": end, "node": node, "datum_y": datum},
                             "detected_crossing": copy.deepcopy(owner),
                             "crossing_window": copy.deepcopy(windows[0])}}
+        if best is not None:
+            return best
+
+        # A dry terrain clamp can strand the same immutable bank without
+        # creating any detected crossing. Prove that original inequality at
+        # the maximum ORIGINAL permitted rung before pricing its movable foot.
+        free = np.asarray(joint["free"], dtype=bool)
+        ladder = np.asarray(joint["ladder"], dtype=np.float64)
+        if (free.shape != (n,) or ladder.ndim != 1 or not ladder.size
+                or not np.all(np.isfinite(ladder))
+                or not np.all((ladder > 0.) & (ladder <= routemod.GRADE_CEILING))
+                or rung not in ladder):
+            return None
+        terrain_rung = float(np.max(ladder))
+        movable = np.flatnonzero(~held & ~free)
+        for end, node, datum, bank_first, bank_last in basis["held_abutment_inputs"]:
+            if not 0 <= bank_first <= bank_last < n:
+                continue
+            for k in range(bank_first, bank_last + 1):
+                if (not held[k] or not math.isfinite(float(datum))
+                        or not math.isfinite(float(lower[k]))
+                        or not math.isfinite(float(upper[k]))
+                        or abs(lower[k] - datum) > 1e-9
+                        or abs(upper[k] - datum) > 1e-9):
+                    continue
+                for q in movable:
+                    q = int(q)
+                    span = next(([a, b] for a, b in joint["spans"]
+                                 if a <= min(k, q) and max(k, q) <= b), None)
+                    if (span is None or lower[q] > upper[q]
+                            or not all(math.isfinite(float(v)) for v in
+                                       (lower[q], upper[q], arcs[k], arcs[q]))):
+                        continue
+                    reach = terrain_rung * abs(float(arcs[q] - arcs[k]))
+                    rising = float(lower[q] - upper[k])
+                    falling = float(lower[k] - upper[q])
+                    required = max(rising, falling)
+                    shortfall = required - reach
+                    if shortfall <= 1e-9 or (best is not None and shortfall <=
+                            best["grade_conflict"]["shortfall_m"]):
+                        continue
+                    best = {
+                        "kind": "owned_profile_grade", "xz": points[q].tolist(),
+                        "station": q,
+                        "lower_y": float(lower[q] if rising >= falling else lower[k] - reach),
+                        "upper_y": float(upper[k] + reach if rising >= falling else upper[q]),
+                        "grade_conflict": {
+                            "stations": [k, q], "arcs_m": [float(arcs[k]), float(arcs[q])],
+                            "original_bounds": [[float(lower[k]), float(upper[k])],
+                                                [float(lower[q]), float(upper[q])]],
+                            "rung": terrain_rung, "required_rise_m": required,
+                            "available_rise_m": reach, "shortfall_m": shortfall,
+                            "native_infeasible_span": span,
+                            "declared_bank": {"end": end, "node": node, "datum_y": datum},
+                            "movable_terrain": {"station": q}}}
         return best
     except (KeyError, TypeError, ValueError, IndexError):
         return None
