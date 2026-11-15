@@ -89,6 +89,27 @@ class ResumeIntegrationTests(unittest.TestCase):
                         [], [], planned=[claim]))
             self.assertEqual(ShoreProgress(path, after).load_completed(), {})
 
+    def test_changed_observed_body_invalidates_completed_shore(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            requirements = [dict(id="dock", node="dock", anchor="anchor")]
+            body = poi.Poi("observed-rock", 80., 40., 30.2, 0., True, 1)
+            with patch("sys.argv", ["shore-search"]):
+                before = checkpoint_basis(
+                    root/"field.bin", {"sha256": "unchanged-field"}, {},
+                    requirements, known_pois=[body])
+                path = root/"progress.json"
+                progress = ShoreProgress(path, before)
+                accepted = {"id": "dock"}
+                progress.complete_requirement("dock", accepted)
+                self.assertEqual(ShoreProgress(path, before).load_completed(),
+                                 {"dock": accepted})
+                body.x, body.z = 3., 1.
+                after = checkpoint_basis(
+                    root/"field.bin", {"sha256": "unchanged-field"}, {},
+                    requirements, known_pois=[body])
+            self.assertEqual(ShoreProgress(path, after).load_completed(), {})
+
     def test_source_context_is_restored_after_nested_candidate_refusal(self):
         half = 800.5
         axis = -half + 0.5 + np.arange(1601)

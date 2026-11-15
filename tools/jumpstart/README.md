@@ -248,6 +248,14 @@ physical contact witness; expanding the routing reservation neither moves
 the installation nor grants an applied pad height. Other planned pads stay
 hard exclusions during source-handoff enumeration.
 
+When planning has an observed Census, shore selection also receives its protected
+body POIs, not just individual ground-freezing positions. Native preflight retains
+the canonical body exclusions and costs, and rejects an obstructed fixed landing
+before publication so ordinary site selection can continue. Bodies with zero
+walker-blocking pieces are not discarded. Checkpoints bind the actual POI content;
+changed body geometry cannot reuse an earlier completed shore. This remains
+provisional preflight, not full-band coverage, freshness or saved-world acceptance.
+
 
 Native profile feedback retains the complete model that fitted the road:
 exact emitted geometry, original station bounds, held bank/deck stations,

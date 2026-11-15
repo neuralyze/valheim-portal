@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cells, not the old raw-pad ring hidden inside the installation batter.
   Their contact witness still belongs to the original rooted writer
   rectangle, and other planned pads remain excluded.
+- Known Census bodies now constrain native shore selection as protected POIs,
+  rather than supplying only individual ground-freezing positions. An obstructed
+  fixed landing is rejected before publication; existing site search continues
+  without moving the landing or weakening body exclusions. Checkpoints bind
+  body content, and these local checks do not claim Census or world acceptance.
 - Writer-water continuation can advance through the original eligible
   bank-contact combinations after the existing repairs still refuse a
   candidate. It preserves first-contact/profile ordering, immutable landing

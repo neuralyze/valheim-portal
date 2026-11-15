@@ -171,7 +171,7 @@ def _semantic_anchors(nodes):
             for k, v in nodes.items() if k in wanted}
 
 
-def produce(field_path, *, placed_objects=None, pad_keepouts=None):
+def produce(field_path, *, placed_objects=None, pad_keepouts=None, known_pois=()):
     """Stage-9 pre-import producer, after actual stage-7/8 semantic placements."""
     global _PREPARED_SCOPE, _PREPARED_SITES
     import hashlib
@@ -199,14 +199,15 @@ def produce(field_path, *, placed_objects=None, pad_keepouts=None):
     from shore_progress import ShoreProgress
     progress = ShoreProgress(publication_path().with_suffix(".progress.json"),
         checkpoint_basis(field_path, manifest, nodes, REQUIREMENTS,
-                         placed_objects=placed_objects, pad_keepouts=pad_keepouts))
+                         placed_objects=placed_objects, pad_keepouts=pad_keepouts,
+                         known_pois=known_pois))
     try:
         from shore_road_preview import NativeShorePreview
         sites = derive(nodes, fields, ferry_search=manifest.get("ferry_search"),
                        complete=complete, progress=progress, pad_keepouts=pad_keepouts,
                        native_preview=NativeShorePreview(
                            native_writer=True, placed_objects=placed_objects,
-                           pad_keepouts=pad_keepouts))
+                           pad_keepouts=pad_keepouts, known_pois=known_pois))
     except (Exception, SystemExit) as exc:
         progress({"phase": "failed", "error": str(exc)})
         raise

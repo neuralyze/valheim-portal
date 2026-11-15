@@ -10148,7 +10148,8 @@ def main(*, plan_state: dict | None = None) -> int:
     _PLAN_PAD_KEEPOUTS = lambda: plan_pads
     import shores
     shores.produce(args.field, placed_objects=_PLAN_PLACED_OBJECTS,
-                   pad_keepouts=plan_pads)
+                   pad_keepouts=plan_pads,
+                   known_pois=() if census is None else census.pois())
     importlib.reload(specmod)
     # A SITE A PERSON DECLARED IS A NODE THIS PLAN MUST ROUTE TO.  A published
     # site set that does not carry it is not "a plan with one node fewer": it is

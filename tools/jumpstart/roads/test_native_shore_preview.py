@@ -117,6 +117,36 @@ class NativeShorePreviewTests(unittest.TestCase):
             float(np.max(abs(np.diff(profile)) / np.diff(arcs))),
             record['grade_limit'] + .0011)
 
+    def test_observed_body_rejects_owned_root_without_moving_or_unprotecting_it(self):
+        import poi
+        graph, surface, source = mixed_channel_fixture(
+            inland_channel=False, cell_m=4.)
+        body = poi.Poi("observed-rock", 3., 1., 30.2, 0., True, 1)
+        original = graph.corr.forbid.copy()
+        result = native_call(NativeShorePreview(known_pois=[body]),
+                             graph, surface, source)
+        self.assertIsNone(result)
+        np.testing.assert_array_equal(graph.corr.forbid, original)
+        self.assertTrue(body.protected)
+
+    def test_distant_observed_body_preserves_full_owned_landing_and_provisional_scope(self):
+        import poi
+        graph, surface, source = mixed_channel_fixture(
+            inland_channel=False, cell_m=4.)
+        body = poi.Poi("observed-rock", 80., 40., 30.2, 0., True, 1)
+        result = native_call(NativeShorePreview(known_pois=[body]),
+                             graph, surface, source)
+        self.assertIsNotNone(result)
+        record = result["native_approach"]
+        self.assertEqual(record["census"]["verdict"], "PROVISIONAL")
+        points = np.asarray(record["nodes"])
+        arcs = np.r_[0., np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
+        landing = arcs >= arcs[-1] - S.BANK_LEVEL_M - 1e-8
+        np.testing.assert_array_equal(points[-1], [0., 0.])
+        np.testing.assert_allclose(points[landing, 0], 0., atol=1e-8)
+        np.testing.assert_allclose(np.asarray(record["profile_y"])[landing],
+                                   30.6, atol=.0005)
+
     def test_planned_installation_margin_rejects_an_owned_landing(self):
         import ribbon
         graph, surface, source = mixed_channel_fixture(

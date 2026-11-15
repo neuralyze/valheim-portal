@@ -7,7 +7,7 @@ import sys
 
 
 def checkpoint_basis(field_path, manifest, nodes, requirements, *,
-                     placed_objects=None, pad_keepouts=None):
+                     placed_objects=None, pad_keepouts=None, known_pois=()):
     import assemble
     import geography
     import worldseed
@@ -62,6 +62,9 @@ def checkpoint_basis(field_path, manifest, nodes, requirements, *,
         pad_keepouts_sha256=(None if pad_context is None else
             hashlib.sha256(json.dumps(
                 pad_context, sort_keys=True, allow_nan=False).encode()).hexdigest()),
+        known_pois_sha256=hashlib.sha256(json.dumps(
+            [vars(poi) for poi in known_pois],
+            sort_keys=True, allow_nan=False).encode()).hexdigest(),
         preset=os.environ.get('VH_NORTH_PRESET', 'pre-kall'),
         requirement_ids=[r['id'] for r in requirements if r['node'] != 'ferry-east']
                         + ['ferry-east-isle'])

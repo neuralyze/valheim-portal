@@ -85,13 +85,16 @@ class NativeShorePreview:
     The object is sequential, like the solve scope that owns it.
     """
 
-    def __init__(self, *, native_writer=False, placed_objects=None, pad_keepouts=None):
+    def __init__(self, *, native_writer=False, placed_objects=None, pad_keepouts=None,
+                 known_pois=()):
         self._kernel = None
         self._spec = None
         self._native_writer = native_writer
         self._native_patches = {}
         self._placed_objects = placed_objects
         self._pad_keepouts = pad_keepouts
+        self._known_pois = [copy.copy(poi) for poi in known_pois]
+        self._known_masks = {}
 
     def _prepare(self):
         if self._kernel is not None:
@@ -194,6 +197,22 @@ class NativeShorePreview:
             kernel._PAD_CLAIMS, corridor.x0, corridor.z0,
             corridor.cell_m, corridor.m,
             kernel.routemod.footprint_half_m(float(width_m)))
+        if self._known_pois:
+            key = (corridor.x0, corridor.z0, corridor.cell_m, corridor.m,
+                   float(width_m))
+            if key not in self._known_masks:
+                hard, soft, _ = kernel.poimod.masks(
+                    self._known_pois, corridor.x0, corridor.z0,
+                    corridor.cell_m, corridor.m, float(width_m) / 2.0)
+                self._known_masks[key] = hard, soft
+            hard, soft = self._known_masks[key]
+            corridor.forbid |= hard
+            arrival_forbid = getattr(corridor, "arrival_forbid", None)
+            corridor.arrival_forbid = (
+                hard.copy() if arrival_forbid is None else arrival_forbid | hard)
+            corridor.soft = (
+                soft.copy() if corridor.soft is None
+                else np.maximum(corridor.soft, soft))
         corridor.last_terminal = None
         # Keep the caller's guidance, POI/physical masks and native water/span
         # model. Only the native constructor decides whether water is bridged.
@@ -223,7 +242,8 @@ class NativeShorePreview:
             try:
                 joint = {}
                 record = kernel.build_segment(
-                    field, edge, corridor, [], census=None, joint=joint, **kwargs)
+                    field, edge, corridor, self._known_pois,
+                    census=None, joint=joint, **kwargs)
                 return record, joint
             finally:
                 sys.path[:] = old_path
@@ -231,7 +251,8 @@ class NativeShorePreview:
         def rejection(record):
             if field.coverage_failure is not None:
                 raise field.coverage_failure
-            why = kernel.plan_refusal(record, [], kernel.SEED, fld=field, coverage=False)
+            why = kernel.plan_refusal(
+                record, self._known_pois, kernel.SEED, fld=field, coverage=False)
             if why == "native_profile_prerequisite":
                 raise RuntimeError(
                     f"native shore profile prerequisite for {record['id']}: "
