@@ -117,6 +117,45 @@ class NativeShorePreviewTests(unittest.TestCase):
             float(np.max(abs(np.diff(profile)) / np.diff(arcs))),
             record['grade_limit'] + .0011)
 
+    def test_planned_installation_margin_rejects_an_owned_landing(self):
+        import ribbon
+        graph, surface, source = mixed_channel_fixture(
+            inland_channel=False, cell_m=4.)
+        pads = ribbon.pad_keepouts_from_chain([], [], planned=[
+            dict(site_id='landing-neighbour', name='landing-neighbour',
+                 role='installation_pad', x=12., z=0., hw=1., hd=2.,
+                 datum_y=30.6)])
+        # The pad rectangle misses the lane. Its canonical installation
+        # batter reservation still contains the immutable six-metre landing.
+        self.assertIsNone(pads.contains(0., 0.))
+        original_mask = graph.corr.forbid.copy()
+        result = native_call(NativeShorePreview(pad_keepouts=pads),
+                             graph, surface, source)
+        self.assertIsNone(result)
+        np.testing.assert_array_equal(graph.corr.forbid, original_mask)
+
+    def test_distant_planned_pad_keeps_a_complete_owned_landing(self):
+        import ribbon
+        graph, surface, source = mixed_channel_fixture(
+            inland_channel=False, cell_m=4.)
+        pads = ribbon.pad_keepouts_from_chain([], [], planned=[
+            dict(site_id='distant-pad', name='distant-pad',
+                 role='installation_pad', x=60., z=-40., hw=1., hd=2.,
+                 datum_y=31.4)])
+        result = native_call(NativeShorePreview(pad_keepouts=pads),
+                             graph, surface, source)
+        self.assertIsNotNone(result)
+        record = result['native_approach']
+        self.assertEqual(record['profile_constraints']['verdict'], 'CLEAR')
+        self.assertEqual(record['self_adjacency']['verdict'], 'CLEAR')
+        points = np.asarray(record['nodes'])
+        arcs = np.r_[0., np.cumsum(np.linalg.norm(np.diff(points, axis=0), axis=1))]
+        landing = arcs >= arcs[-1] - S.BANK_LEVEL_M - 1e-8
+        np.testing.assert_array_equal(points[-1], [0., 0.])
+        np.testing.assert_allclose(points[landing, 0], 0., atol=1e-8)
+        np.testing.assert_allclose(np.asarray(record['profile_y'])[landing],
+                                   30.6, atol=.0005)
+
     def test_coarse_coast_tries_inland_contacts_without_moving_owned_root(self):
         n = 257
         axis = np.arange(n, dtype=float) - n // 2

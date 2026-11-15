@@ -231,10 +231,23 @@ The candidate's physical context includes individual observed
 ground-freezing object positions and the actual planned/written pad
 provider. The pad provider is prepared before shoreline derivation in the
 planner's data flow, not recomputed from guessed semantic centres inside an
-isolated preview. Checkpoint identity includes pad rectangles, datums,
-written-ground membership and unlaid/undecodable state, as well as the
-measured field and source code. A foundation change invalidates earlier
-completed shoreline results even when the field and rectangles did not move.
+isolated preview. Standalone shore/crossing production derives it from the
+actual planned layout when the caller has not supplied one. Its original,
+unrounded pad claims also supply the native
+preview's canonical routing mask, including installation batter reservations.
+The immutable six-metre landing and the route must be legal in that same
+mask before a shore candidate is retained; a writer-only pad keep-out does
+not establish routing eligibility. Checkpoint identity includes these raw
+claims and construction roles, pad rectangles, datums, written-ground
+membership and unlaid/undecodable state, as well as the measured field and
+source code. A foundation change invalidates earlier completed shoreline
+results even when the field and rectangles did not move.
+Installation source handoffs use the exterior of those actual reserved
+cells as well. Their original rooted writer rectangle still determines the
+physical contact witness; expanding the routing reservation neither moves
+the installation nor grants an applied pad height. Other planned pads stay
+hard exclusions during source-handoff enumeration.
+
 
 Native profile feedback retains the complete model that fitted the road:
 exact emitted geometry, original station bounds, held bank/deck stations,
@@ -269,6 +282,24 @@ When a boundary falls between stations, its outside bracket must also hold
 the datum so interpolation cannot start a slope early. This adds no height,
 grade, clamp or bank-datum allowance; an incompatible footprint is refused
 with the actual bound rather than silently shortening the run.
+
+After the existing writer-water repairs still refuse an optional bank-entry
+connector, continuation can try another combination from the original native
+contact catalogue. The fixed root, bearing and full six-metre landing do not
+move. A different pad-ring contact at the other end is a distinct combination.
+Selected-contact metadata must match the actual road geometry; missing or
+stale metadata cannot authorize an inferred retry. Exclusions belong only to
+that water-continuation call, not a later joint or routing-cost solve. Every
+replacement repeats the native model, terminal, pad and terrain guards;
+exhaustion preserves a physical refusal, not an all-route impossibility.
+If the added conservative water standoff alone blocks an otherwise legal
+owned landing, continuation can price that extra reservation as a finite
+per-metre cost instead. Canonical POI, pad, unread-ground and keep-out
+exclusions remain hard. The actual raw search trace records whether that
+cost was paid; an unobserved trace or repeated paid path and refusals stops
+that continuation without declaring every possible alignment impossible.
+Every alternate contact still repeats the complete native and writer gates.
+
 
 If the native pad solve refuses a self-overlapping incoming line, its
 measured candidate remains available to the same adjacency-guidance search.

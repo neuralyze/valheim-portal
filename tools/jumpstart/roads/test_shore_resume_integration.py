@@ -65,6 +65,30 @@ class ResumeIntegrationTests(unittest.TestCase):
                         requirements, pad_keepouts=pads)
                     self.assertEqual(ShoreProgress(path, after).load_completed(), {})
 
+    def test_changed_pad_routing_role_invalidates_completed_geometry(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            claim = dict(site_id="neighbour", name="neighbour",
+                         role="site_pad", x=12., z=0., hw=1., hd=2.,
+                         datum_y=30.6)
+            requirements = [dict(id="dock", node="dock", anchor="anchor")]
+            with patch("sys.argv", ["shore-search"]):
+                before = checkpoint_basis(
+                    root/"field.bin", {"sha256": "unchanged-field"}, {},
+                    requirements, pad_keepouts=ribbon.pad_keepouts_from_chain(
+                        [], [], planned=[claim]))
+                path = root/"progress.json"
+                progress = ShoreProgress(path, before)
+                progress.complete_requirement("dock", {"id": "dock"})
+                # The same rectangle now precedes roads and reserves an
+                # installation batter margin. Its old landing cannot be reused.
+                claim["role"] = "installation_pad"
+                after = checkpoint_basis(
+                    root/"field.bin", {"sha256": "unchanged-field"}, {},
+                    requirements, pad_keepouts=ribbon.pad_keepouts_from_chain(
+                        [], [], planned=[claim]))
+            self.assertEqual(ShoreProgress(path, after).load_completed(), {})
+
     def test_source_context_is_restored_after_nested_candidate_refusal(self):
         half = 800.5
         axis = -half + 0.5 + np.arange(1601)

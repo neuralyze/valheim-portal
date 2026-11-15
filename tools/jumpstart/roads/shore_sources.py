@@ -77,28 +77,43 @@ def footprint_contact(complete, footprint: dict) -> dict:
                 sample_step_m=float(tcdata.SCALE))
 
 
-def footprint_approaches(graph, footprint: dict, contact: dict, width_m: float, *, complete):
+def footprint_approaches(graph, footprint: dict, contact: dict, width_m: float, *,
+                        complete, pad_keepouts=None):
     """Native exterior ring on the canonical pad's measured rooted contact side.
 
-    The returned graph adds only the pad's level-footprint/chord-clearance mask.
-    Its inherited connectivity labels remain a necessary over-approximation;
-    the full-width router must still search every proposed approach it needs.
+    The returned graph retains the planner's complete pad reservations,
+    including the source installation's batter. Its inherited connectivity
+    labels remain a necessary over-approximation; the full-width router must
+    still search every proposed approach it needs.
     No applied pad height or arrival-datum feasibility is inferred here.
     """
     import copy
     from scipy.spatial import cKDTree
     import arrival_geometry
     import route
+    import network
 
     corr = copy.copy(graph.corr)
     level = route.footprint_half_m(width_m)
     x, z = map(float, footprint['xz'])
     hw, hd = float(footprint['width_m']) / 2, float(footprint['depth_m']) / 2
-    pad = dict(x=x, z=z, hw=hw, hd=hd)
-    grow = level + arrival_geometry.chord_slack_m(corr.cell_m)
-    axis = np.arange(corr.m) * corr.cell_m
-    masked = ((np.abs(corr.x0 + axis[None, :] - x) <= hw + grow)
-              & (np.abs(corr.z0 + axis[:, None] - z) <= hd + grow))
+    pad = dict(x=x, z=z, hw=hw, hd=hd, role='installation_pad')
+    masked = network.pad_forbid_mask(
+        [pad], corr.x0, corr.z0, corr.cell_m, corr.m, level)
+    ii, jj = np.nonzero(masked)
+    if not len(ii):
+        return graph, []
+    # Enumerate outside the actual reserved cells, not the raw pad's old
+    # ring, which can lie entirely inside its installation batter. The raw
+    # writer rectangle below still decides contact and ownership.
+    left, right = corr.x0 + jj.min() * corr.cell_m, corr.x0 + jj.max() * corr.cell_m
+    bottom, top = corr.z0 + ii.min() * corr.cell_m, corr.z0 + ii.max() * corr.cell_m
+    ring_pad = dict(x=(left + right) / 2, z=(bottom + top) / 2,
+                    hw=(right - left) / 2, hd=(top - bottom) / 2)
+    if pad_keepouts is not None:
+        masked |= network.pad_forbid_mask(
+            pad_keepouts.routing_claims, corr.x0, corr.z0, corr.cell_m,
+            corr.m, level)
     routed_graph = copy.copy(graph)
     routed_graph.corr = corr
     routed_graph.ok = graph.ok & ~masked
@@ -116,7 +131,7 @@ def footprint_approaches(graph, footprint: dict, contact: dict, width_m: float, 
     witness_reach = float(contact['sample_step_m']) / 2.0
     approaches = []
     for cell in arrival_geometry.arrival_ring_cells(
-            (x, z), base, corr, [pad], level):
+            (x, z), base, corr, [ring_pad], 0.0):
         ex, ez = corr.cell_world(*cell)
         dx, dz = x - ex, z - ez
         length = math.hypot(dx, dz)

@@ -188,6 +188,11 @@ def produce(field_path, *, placed_objects=None, pad_keepouts=None):
             raise SystemExit("REFUSING shore production: coarse request grid changed since this fine scan; rerun field.request_for_seed so every alternative is measured")
     grid = F._site_finder().load_grid(grid_path)
     worldseed.require_scope("shore coarse request grid", grid_path, found_seed=grid.get("seed"))
+    if pad_keepouts is None:
+        import ribbon
+        pad_keepouts = ribbon.pad_keepouts_from_chain(
+            [], [], planned=ribbon.planned_pad_claims(
+                worldseed.world(), worldseed.seed()))
     from shore_connectivity import CompleteLand
     complete = CompleteLand.from_fields(fields, manifest)
     from shore_basis import checkpoint_basis
@@ -198,7 +203,7 @@ def produce(field_path, *, placed_objects=None, pad_keepouts=None):
     try:
         from shore_road_preview import NativeShorePreview
         sites = derive(nodes, fields, ferry_search=manifest.get("ferry_search"),
-                       complete=complete, progress=progress,
+                       complete=complete, progress=progress, pad_keepouts=pad_keepouts,
                        native_preview=NativeShorePreview(
                            native_writer=True, placed_objects=placed_objects,
                            pad_keepouts=pad_keepouts))
@@ -660,11 +665,11 @@ def _profile_road_preview(surf, sampler, routed, width_m, level_y, level, eviden
 
 def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                component=None, anchor_override=None, accept=None, complete=None,
-               progress=None, native_preview=None):
+               progress=None, native_preview=None, pad_keepouts=None):
     """Search ALL measured same-component shoreline samples, not a pinned seed."""
     if native_preview is None:
         from shore_road_preview import NativeShorePreview
-        native_preview = NativeShorePreview()
+        native_preview = NativeShorePreview(pad_keepouts=pad_keepouts)
     if requirement.get("large_ship") and not requirement.get("vessel"):
         import north_transport
         failures = []
@@ -673,7 +678,8 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                 return solve_site(dict(requirement, vessel=vessel), nodes, fields,
                     graph_factory=graph_factory, surface=surface, component=component,
                     anchor_override=anchor_override, accept=accept, complete=complete,
-                    progress=progress, native_preview=native_preview)
+                    progress=progress, native_preview=native_preview,
+                    pad_keepouts=pad_keepouts)
             except SystemExit as exc:
                 failures.append(dict(vessel=vessel, reason=str(exc)))
         raise SystemExit(f"REFUSING {requirement['id']}: every measured large Odin vessel/shore alternative failed: {failures}")
@@ -734,7 +740,8 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
     if source_contact is not None:
         from shore_sources import footprint_approaches
         graph, source_approaches = footprint_approaches(
-            graph, node["source_footprint"], source_contact, width, complete=complete)
+            graph, node["source_footprint"], source_contact, width,
+            complete=complete, pad_keepouts=pad_keepouts)
         reachable = np.zeros(xs.shape, dtype=bool)
         source_labels = set()
         for source_approach in source_approaches:
@@ -872,11 +879,11 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
 
 
 def derive(nodes, fields, *, ferry_search, complete, progress=None,
-           native_preview=None):
+           native_preview=None, pad_keepouts=None):
     from shore_transport import solve_pair
     if native_preview is None:
         from shore_road_preview import NativeShorePreview
-        native_preview = NativeShorePreview(native_writer=True)
+        native_preview = NativeShorePreview(native_writer=True, pad_keepouts=pad_keepouts)
     completed = progress.load_completed() if progress is not None else {}
     sites = []
     for requirement in REQUIREMENTS:
@@ -886,7 +893,8 @@ def derive(nodes, fields, *, ferry_search, complete, progress=None,
         if site is None:
             site = solve_site(requirement, nodes, fields, complete=complete,
                 accept=lambda candidate: clears_sites(candidate, sites),
-                progress=progress, native_preview=native_preview)
+                progress=progress, native_preview=native_preview,
+                pad_keepouts=pad_keepouts)
             if progress is not None:
                 progress.complete_requirement(requirement["id"], site)
         elif (site.get("id") != requirement["id"]
@@ -897,7 +905,8 @@ def derive(nodes, fields, *, ferry_search, complete, progress=None,
     pair = completed.get("ferry-east-isle")
     if pair is None:
         pair = solve_pair(nodes, fields, ferry_search, complete, occupied=sites,
-                          progress=progress, native_preview=native_preview)
+                          progress=progress, native_preview=native_preview,
+                          pad_keepouts=pad_keepouts)
         require_pairs(sites + pair)
         if progress is not None:
             progress.complete_requirement("ferry-east-isle", pair)

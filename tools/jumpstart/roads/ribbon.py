@@ -2435,16 +2435,20 @@ class PadKeepOut:
         return flattenmod.stamps(x - cx, hw) and flattenmod.stamps(z - cz, hd)
 
     __slots__ = ("rects", "unlaid", "discs", "by_id", "levelled",
-                 "undecodable")
+                 "undecodable", "routing_claims")
 
     def __init__(self, rects: list[tuple[str, float, float, float, float]],
                  discs: list[tuple[str, float, float, float]],
                  by_id: dict[str, dict] | None = None,
                  levelled: dict[tuple[int, int], str] | None = None,
                  undecodable: list[dict] | None = None,
-                 laid_sites: set[str] | None = None):
+                 laid_sites: set[str] | None = None,
+                 routing_claims: list[dict] | None = None):
         self.rects = rects
         self.discs = discs
+        # Preserve the actual claim records, including construction role and
+        # unrounded geometry, for the planner's canonical routing reservation.
+        self.routing_claims = routing_claims or []
         # THE FOUNDATION'S OWN RECORD, for the junction report.  Kept beside
         # the hot tuple list rather than in it: `contains` is asked once per
         # lattice sample over a 1.5 km ribbon and has no business unpacking a
@@ -2869,6 +2873,10 @@ def pad_keepouts_from_chain(sites: list[dict], records: list[dict],
             "pad_y": target_of.get(q["seq"]), "levelled": True,
             "datum_source": "the pad's own terrain_write target_y"}
     claimed_sites = {q["site_id"] for q in claims}
+    routing_claims = [
+        dict(q, datum_y=target_of.get(q["seq"])) for q in claims]
+    routing_claims.extend(dict(q) for q in planned or ()
+                          if str(q["site_id"]) not in claimed_sites)
     # THE PLANNED PADS, where nothing is written for that pad: a declared
     # rectangle that has levelled nothing, exactly as a written pad that
     # levelled nothing is kept.  See PAD_KEEPOUT_DEPENDS_ON.
@@ -2902,7 +2910,8 @@ def pad_keepouts_from_chain(sites: list[dict], records: list[dict],
             "levelled": False,
             "datum_source": ("settlements/sites.yaml pad_y -- DECLARED, this "
                              "site has no pad in the chain yet")}
-    return PadKeepOut(rects, discs, by_id, levelled, undecodable, laid_sites)
+    return PadKeepOut(rects, discs, by_id, levelled, undecodable, laid_sites,
+                      routing_claims=routing_claims)
 
 
 # A RIM SAMPLE INSIDE A PAD THE BUILD HAS NOT LAID YET IS JUDGED AGAINST THE

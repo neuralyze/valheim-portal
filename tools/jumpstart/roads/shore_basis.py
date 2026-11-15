@@ -49,7 +49,8 @@ def checkpoint_basis(field_path, manifest, nodes, requirements, *,
         "discs": pad_keepouts.discs, "by_id": pad_keepouts.by_id,
         "levelled": [[x, z, owner] for (x, z), owner in
                      sorted(pad_keepouts.levelled.items())],
-        "undecodable": pad_keepouts.undecodable}
+        "undecodable": pad_keepouts.undecodable,
+        "routing_claims": pad_keepouts.routing_claims}
     basis = dict(seed=worldseed.seed(), world=worldseed.world(),
         field=str(Path(field_path).resolve()),
         field_sha256=manifest['sha256'], field_manifest=manifest,

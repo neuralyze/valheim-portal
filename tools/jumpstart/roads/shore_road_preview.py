@@ -173,7 +173,9 @@ class NativeShorePreview:
         # inherit a previous root, far access anchor, pad claim or datum.
         kernel._NODE_ANCHORS = {source_id: goal} if source_approach is not None else {}
         kernel._ARRIVAL_STARTS = {}
-        kernel._PAD_CLAIMS = []
+        kernel._PAD_CLAIMS = (
+            copy.deepcopy(self._pad_keepouts.routing_claims)
+            if self._pad_keepouts is not None else [])
         kernel._PAD_DATUMS = {}
         kernel._PLAN_PAD_KEEPOUTS = (
             (lambda: self._pad_keepouts)
@@ -188,6 +190,10 @@ class NativeShorePreview:
         corridor.forbid = np.logical_not(graph.ok)
         if graph.corr.forbid is not None:
             corridor.forbid |= graph.corr.forbid
+        corridor.forbid |= kernel.pad_forbid_mask(
+            kernel._PAD_CLAIMS, corridor.x0, corridor.z0,
+            corridor.cell_m, corridor.m,
+            kernel.routemod.footprint_half_m(float(width_m)))
         corridor.last_terminal = None
         # Keep the caller's guidance, POI/physical masks and native water/span
         # model. Only the native constructor decides whether water is bridged.

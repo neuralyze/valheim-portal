@@ -1667,7 +1667,7 @@ def tracked_build(build, base: dict | None):
     used: dict[int, dict] = {}
 
     def wrapped(*, extra_forbid=None, extra_guidance=None, trim=None, ceiling=None,
-                fixed_pts=None, trim_applied=False):
+                fixed_pts=None, trim_applied=False, bank_contacts_excluded=None):
         b_ef, b_tr = base.get("extra_forbid"), base.get("trim")
         ef = (extra_forbid if b_ef is None else b_ef if extra_forbid is None
               else b_ef | extra_forbid)
@@ -1679,9 +1679,11 @@ def tracked_build(build, base: dict | None):
                for k in ("a", "b")})
         # Preserve ownership/release provenance even when the supplied
         # geometry already contains the trim and must not be sliced again.
+        contact_kw = ({"bank_contacts_excluded": bank_contacts_excluded}
+                      if bank_contacts_excluded is not None else {})
         rec, j = build(extra_forbid=ef, extra_guidance=eg, trim=tr,
                        ceiling=ceiling, fixed_pts=fixed_pts,
-                       trim_applied=trim_applied)
+                       trim_applied=trim_applied, **contact_kw)
         used[id(rec)] = {"extra_forbid": ef, "extra_guidance": eg, "trim": tr}
         return rec, j
     wrapped.used = used
@@ -2490,6 +2492,65 @@ def _terminal_contact_key(ends):
     return key(ends.get("a")), key(ends.get("b"))
 
 
+def _bank_contact_geometry(seg):
+    keys = ("id", "from", "to", "cls", "width_m", "nodes", "is_bridge",
+            "terminal_caps", "terminal_owners")
+    return hashlib.sha256(json.dumps(
+        {key: seg.get(key) for key in keys}, sort_keys=True,
+        separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+def _read_bank_contacts(seg):
+    """No inferred contact authority on old, trimmed or mismatched geometry."""
+    metadata = seg.get("bank_contacts")
+    if (not isinstance(metadata, dict)
+            or metadata.get("geometry_sha256") != _bank_contact_geometry(seg)):
+        return None
+    selected = metadata.get("selected")
+    if (isinstance(selected, dict)
+            and any(isinstance(contact, dict) for contact in selected.values())):
+        return selected
+    return None
+
+
+def _water_standoff_blocks_owned_path(seg, corr, water_forbid, hard_forbid):
+    """Only an additional water heuristic may be paid across a legal owner path."""
+    for contact in (_read_bank_contacts(seg) or {}).values():
+        if not isinstance(contact, dict):
+            continue
+        path = contact.get("fixed_path")
+        if (path and _bank_path_allowed(corr, path, hard_forbid)
+                and not _bank_path_allowed(corr, path, water_forbid | hard_forbid)):
+            return True
+    return False
+
+
+def _paid_water_trace(seg, corr, guidance):
+    """Read the actual guided search, never the subsequently owned/resampled road."""
+    trace = seg.get("search_trace") or {}
+    if (trace.get("source") != "Corridor.search"
+            or trace.get("grid") != [corr.x0, corr.z0, corr.m, corr.cell_m]
+            or trace.get("nodes") is None):
+        return None
+    paid_m, paid_cost, edges = 0., 0., 0
+    for a, b in zip(trace["nodes"], trace["nodes"][1:]):
+        try:
+            i, j = corr.cell_of(*b)
+        except ValueError:
+            return None
+        cost = float(guidance[i, j])
+        if cost > 0.:
+            distance = math.dist(a, b)
+            paid_m += distance
+            paid_cost += distance * cost
+            edges += 1
+    return {"paid_water_edges": edges, "paid_water_m": paid_m,
+            "paid_water_cost": paid_cost,
+            "native_guidance_cost": trace["guidance_paid_cost"],
+            "path_sha256": hashlib.sha256(json.dumps(
+                trace["nodes"], separators=(",", ":")).encode()).hexdigest()}
+
+
 def _owned_approach_stations(path):
     """Sample each owned segment without cutting its surveyed bend vertices."""
     out = [tuple(map(float, path[0]))]
@@ -2547,7 +2608,8 @@ def _owned_bank_entry_contacts(corr, path, width_m, owner, extra_forbid):
     for point in (cell, *alternatives):
         connected = path if point == entry else (*path, point)
         if _bank_path_allowed(corr, connected, extra_forbid):
-            out.append({"xz": point, "bank_path": connected, "owner": owner})
+            out.append({"xz": point, "bank_path": connected,
+                        "fixed_path": path, "owner": owner})
     return out
 
 
@@ -2580,7 +2642,8 @@ def _bank_approach_contacts(edge, end, corr, extra_forbid):
         # The recorded real opposite-bank bridge marker is NOT ground.
         path = tuple(tuple(map(float, p[:2])) for p in reversed(points[:-1]))
         if _bank_path_allowed(corr, path, extra_forbid):
-            out.append({"xz": path[-1], "bank_path": path, "owner": owner})
+            out.append({"xz": path[-1], "bank_path": path,
+                        "fixed_path": path, "owner": owner})
             # Keep the original exact handoff first. A coarse nearest-cell
             # failure must not hide another cell touching that same entry.
             width = float(edge.get("width_m") or WIDTH_M[edge["cls"]])
@@ -2636,12 +2699,16 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   ceiling: dict[int, float] | None = None,
                   trim: dict[str, int] | None = None,
                   trim_applied: bool = False,
+                  bank_contacts_excluded: list[dict] | None = None,
                   line_out: list | None = None) -> dict:
     """Build/profile against owned terminals; retry another eligible contact.
 
     Local overrides never move another leg's shared anchor or terminal datum.
     Each candidate repeats A*, clearance, full profile and native pad closure.
     Exhaustion names the numerical refusal, not global infeasibility.
+    `bank_contacts_excluded` is a solve-local list of exact optional contact
+    combinations already refused by the writer. It neither changes the native
+    eligible catalog nor grants any new contact, geometry or physical bound.
     """
     land_only = land_only or bool(edge.get("requirement_approach"))
     from collections import deque                          # noqa: PLC0415
@@ -2650,6 +2717,8 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                   if specmod.NODES[edge[end]].get("kind") == "waterfront_terminal"]
     preferred = {}
     measured_contacts = {}
+    excluded = {_terminal_contact_key(contacts)
+                for contacts in (bank_contacts_excluded or []) if contacts}
     if fixed_pts is None:
         for end in ("a", "b"):
             if specmod.NODES[edge[end]].get("kind") in ("waterfront_terminal", "abutment"):
@@ -2659,7 +2728,8 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                     measured_contacts[end] = contacts
     # Keep the solved shore's inland bearing/root before trying an arbitrary
     # cell beside it. Every candidate still runs the complete physical checks.
-    pending = deque([preferred, {}] if preferred else [{}])
+    pending = deque(ends for ends in ([preferred, {}] if preferred else [{}])
+                    if _terminal_contact_key(ends) not in excluded)
     seen = {_terminal_contact_key(ends) for ends in pending}
     if measured_contacts:
         choices = [(*measured_contacts.get(end, ()), None) for end in ("a", "b")]
@@ -2667,7 +2737,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
             trial = {end: contact for end, contact in zip(("a", "b"), pair)
                      if contact is not None}
             signature = _terminal_contact_key(trial)
-            if signature not in seen:
+            if signature not in seen and signature not in excluded:
                 seen.add(signature)
                 pending.append(trial)
     candidates = {}
@@ -2701,7 +2771,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                     continue
                 trial = {**ends, end: point}
                 signature = _terminal_contact_key(trial)
-                if signature not in seen:
+                if signature not in seen and signature not in excluded:
                     seen.add(signature)
                     pending.append(trial)
             approach_key = (end, "measured-approach", bank["node"])
@@ -2711,7 +2781,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
             for contact in candidates[approach_key]:
                 trial = {**ends, end: contact}
                 signature = _terminal_contact_key(trial)
-                if signature not in seen:
+                if signature not in seen and signature not in excluded:
                     seen.add(signature)
                     pending.append(trial)
         print(f"{edge['id']}: completed owned-terminal candidate "
@@ -2820,7 +2890,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                 for point in candidates[key]:
                     trial = {**ends, end: point}
                     signature = _terminal_contact_key(trial)
-                    if signature not in seen:
+                    if signature not in seen and signature not in excluded:
                         seen.add(signature)
                         pending.append(trial)
             continue
@@ -2838,6 +2908,14 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                 "why": "the full incoming profile could not meet fixed terminal "
                        "constraints inside the native bounds/grade ladder; "
                        "rebuilt at an eligible contact with the same bank or pad"}
+        selected = {
+            end: copy.deepcopy(contact) for end, contact in ends.items()
+            if (not isinstance(contact, dict) or np.array_equal(
+                contact["xz"], (result.get("search_contacts") or {}).get(end)))}
+        if any(isinstance(contact, dict) for contact in selected.values()):
+            result["bank_contacts"] = {
+                "geometry_sha256": _bank_contact_geometry(result),
+                "selected": selected}
         if joint is not None:
             joint.clear()
             joint.update(state)
@@ -2853,7 +2931,7 @@ def build_segment(fld, edge: dict, corr: routemod.Corridor, pois: list,
                 fld, edge, corr, pois, True, census=census, joint=state,
                 extra_forbid=extra_forbid, extra_guidance=extra_guidance,
                 ceiling=ceiling, trim=trim, trim_applied=trim_applied,
-                line_out=line_out)
+                line_out=line_out, bank_contacts_excluded=bank_contacts_excluded)
             if result.get("residual_infeasible"):
                 raise ValueError("dry waterfront profile remains infeasible at "
                                  f"{result['residual_infeasible']}")
@@ -3132,6 +3210,7 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
     terminal = None
     search_contacts = None
     owned_paths = {}
+    search_trace = None
     if fixed_pts is not None:
         # Arclength recomputed from the points themselves, never carried over
         # from the file: a station list and an `s` array that disagree is a
@@ -3203,6 +3282,17 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
                     raw = list(reversed(raw))
             else:
                 raw = corr.search(target("a"), target("b"))
+                if corr.guidance is not None:
+                    # Capture from THIS actual local corridor immediately, before
+                    # ownership connectors, simplification or station resampling.
+                    paid = sum(math.dist(a, b) * float(
+                        corr.guidance[corr.cell_of(*b)])
+                               for a, b in zip(raw, raw[1:]))
+                    search_trace = {
+                        "source": "Corridor.search",
+                        "grid": [corr.x0, corr.z0, corr.m, corr.cell_m],
+                        "nodes": [list(map(float, point)) for point in raw],
+                        "guidance_paid_cost": paid}
         finally:
             corr.forbid_all_water = False
             corr.forbid = shared_forbid
@@ -3931,6 +4021,11 @@ def _build_segment_once(fld, edge: dict, corr: routemod.Corridor, pois: list,
         "terrain_y": [float(v) for v in t],
         "is_bridge": [bool(v) for v in free],
     }
+    if corr.guidance is not None:
+        rec["search_trace"] = (search_trace if search_trace is not None else {
+            "source": "delegated_or_fixed_geometry_search_unobserved",
+            "grid": [corr.x0, corr.z0, corr.m, corr.cell_m],
+            "nodes": None, "guidance_paid_cost": None})
     if ceiling_rec is not None:
         rec["water_ceiling"] = ceiling_rec
     if trim_rec is not None:
@@ -4705,6 +4800,7 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
     grade, reach, _lattice = writer_batter()
     half = routemod.footprint_half_m(float(seg["width_m"]))
     ww0 = writer_water(seg, fld)
+    cur_seg = seg
     best = {"seg": seg, "joint": joint, "ww": ww0, "by": "as routed",
             "kw": {}}
     tried: list[dict] = []
@@ -4735,6 +4831,10 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
             return None
         if fixed_pts is not None and "water_trim" in cur_seg:
             cand["water_trim"] = dict(cur_seg["water_trim"])
+        if fixed_pts is not None and _read_bank_contacts(cur_seg) is not None:
+            metadata = cur_seg["bank_contacts"]
+            if metadata["geometry_sha256"] == _bank_contact_geometry(cand):
+                cand["bank_contacts"] = copy.deepcopy(metadata)
         why = refusal(cand)
         if fixed_pts is None and (
                 why == "self_adjacency" or _owned_profile_hint(cand) is not None):
@@ -4778,7 +4878,8 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
             # Station-owned caps and frozen geometry belong to this repair,
             # not to a later genuine alignment/terminal search.
             search_kw = {k: v for k, v in kw.items()
-                         if k not in ("fixed_pts", "ceiling", "trim_applied")}
+                         if k not in ("fixed_pts", "ceiling", "trim_applied",
+                                      "bank_contacts_excluded")}
             best.update(seg=cand, joint=j, ww=cw, by=by, kw=search_kw)
         return cand, cw
 
@@ -4886,6 +4987,191 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
                       "length_m": t_rec["length_m"]})
         best.update(seg=t_rec, joint=t_j, ww=t_ww, kw=t_kw,
                     by=f"{best['by']} + terminal trim")
+    # Existing profile/trim remedies keep first refusal. Only then advance an
+    # optional connector; the owned root, full landing and native catalog stay.
+    # Exclusions live in this one unchanged search context, never in best.kw
+    # or tracked_build.used for a later joint/profile/cost solve.
+    soft_reports = []
+    soft_contexts = set()
+
+    def water_mask(reading):
+        return routemod.water_standoff_forbid(
+            corr, reading["_seeds"], half_m=half, grade=grade, reach_m=reach)
+
+    def keepout_mask(reading):
+        return keepout_standoff_forbid(
+            corr, reading.get("_keepout") or (),
+            half_m=half, grade=grade, reach_m=reach)
+
+    def changed_context(base_kw, kw):
+        for name in ("extra_forbid", "extra_guidance", "trim"):
+            old, new = base_kw.get(name), kw.get(name)
+            if old is new:
+                continue
+            if isinstance(old, np.ndarray) or isinstance(new, np.ndarray):
+                if not np.array_equal(old, new):
+                    return True
+            elif old != new:
+                return True
+        return False
+
+    def contact_context(current, water, base_kw, label, *, compose=False,
+                        soft_masks=None):
+        """Exclusions apply only to this one cost/mask/trim context."""
+        excluded_contacts = []
+        excluded_keys = set()
+        cases = [(current, water)]
+        while _water_score(water):
+            if soft_masks is not None:
+                wet, hard, soft = soft_masks
+                if (np.any(water_mask(water) & ~wet)
+                        or np.any(keepout_mask(water) & ~hard)):
+                    return "reservation_grew", len(excluded_contacts), cases
+                paid = _paid_water_trace(current, corr, soft)
+                tried[-1]["paid_water_search"] = paid
+                if paid is None:
+                    return "unobserved_native_search", len(excluded_contacts), cases
+            selected = _read_bank_contacts(current)
+            if selected is None:
+                return "no_geometry_bound_contact", len(excluded_contacts), cases
+            key = _terminal_contact_key(selected)
+            if key in excluded_keys:
+                return "repeated_contact", len(excluded_contacts), cases
+            excluded_keys.add(key)
+            excluded_contacts.append(copy.deepcopy(selected))
+            kw = {**base_kw, "bank_contacts_excluded": excluded_contacts}
+            got = attempt(kw, f"{label} bank contact {len(excluded_contacts)}")
+            if got is None:
+                if compose:
+                    soft_water(current, water, base_kw)
+                    if not _water_score(best["ww"]):
+                        return "clear", len(excluded_contacts), cases
+                return "constructor_or_plan_refused", len(excluded_contacts), cases
+            current, water = got
+            cases.append((current, water))
+            tried[-1]["bank_contacts"] = copy.deepcopy(_read_bank_contacts(current))
+            if not _water_score(water):
+                return "clear", len(excluded_contacts), cases
+            if changed_context(base_kw, kw):
+                return "remedy_context_changed", len(excluded_contacts), cases
+            if compose:
+                # This actual alternative may be worse than the globally best
+                # road. Its own refused water, not best.ww, must guide its retry.
+                soft_water(current, water, base_kw)
+                if not _water_score(best["ww"]):
+                    return "clear", len(excluded_contacts), cases
+        return "clear", len(excluded_contacts), cases
+
+    def soft_water(current, water, base_kw):
+        """Pay only the additional water heuristic across a legal fixed path."""
+        wet = water_mask(water)
+        hard = keepout_mask(water)
+        if base_kw.get("extra_forbid") is not None:
+            hard = hard | base_kw["extra_forbid"]
+        if not _water_standoff_blocks_owned_path(current, corr, wet, hard):
+            return
+        base_guide = base_kw.get("extra_guidance")
+        context = (
+            hashlib.sha256(wet.tobytes()).digest(),
+            hashlib.sha256(hard.tobytes()).digest(),
+            None if base_guide is None else hashlib.sha256(base_guide.tobytes()).digest(),
+            json.dumps(base_kw.get("trim"), sort_keys=True))
+        if context in soft_contexts:
+            return
+        soft_contexts.add(context)
+        report = {"current_steps": water["steps"],
+                  "best_steps": best["ww"]["steps"], "rounds": [],
+                  "scope": "additional water heuristic only; canonical and keep-out masks stay hard"}
+        soft_reports.append(report)
+        soft = np.zeros((corr.m, corr.m), dtype=np.float64)
+        price = 1.
+        seen = set()
+        while True:
+            if not _water_standoff_blocks_owned_path(current, corr, wet, hard):
+                report["stop"] = "owned_path_no_longer_eligible"
+                return
+            if not math.isfinite(price):
+                report["stop"] = "finite_cost_exhausted"
+                return
+            used_wet, used_hard = wet, hard
+            try:
+                with np.errstate(over="raise", invalid="raise"):
+                    # Do not mutate an earlier candidate's accepted kwargs.
+                    soft = soft.copy()
+                    soft[wet] += price
+                    guide = soft if base_guide is None else base_guide + soft
+            except (OverflowError, FloatingPointError) as exc:
+                report.update(stop="finite_cost_exhausted", why=str(exc))
+                return
+            kw = {k: v for k, v in base_kw.items()
+                  if k != "bank_contacts_excluded"}
+            kw.update(extra_guidance=guide,
+                      extra_forbid=hard if np.any(hard) else base_kw.get("extra_forbid"))
+            row = {"round": len(report["rounds"]) + 1,
+                   "increment_per_m": price, "cost_max_per_m": float(guide.max()),
+                   "water_cells": int(np.count_nonzero(wet)),
+                   "hard_keepout_and_base_cells": int(np.count_nonzero(hard))}
+            report["rounds"].append(row)
+            got = attempt(kw, f"soft water {row['round']}")
+            if got is None:
+                report["stop"] = "constructor_or_plan_refused"
+                return
+            candidate, reading = got
+            if not _water_score(reading):
+                cases, stop, count = [(candidate, reading)], "clear", 0
+            else:
+                stop, count, cases = contact_context(
+                    candidate, reading, kw, f"soft water {row['round']}",
+                    soft_masks=(wet, hard, soft))
+            paid = [_paid_water_trace(rec, corr, soft) for rec, _reading in cases]
+            row.update(contact_stop=stop, combinations_refused_by_water=count,
+                       paid_searches=paid,
+                       readings=[{"steps": r["steps"], "drained": r["drained"]}
+                                 for _rec, r in cases])
+            if not _water_score(best["ww"]):
+                report["stop"] = "clear"
+                return
+            if stop in ("remedy_context_changed", "unobserved_native_search"):
+                report["stop"] = stop
+                return
+            if any(p is None for p in paid):
+                report["stop"] = "unobserved_native_search"
+                return
+            grew = False
+            for rec, r in cases:
+                more_water, more_hard = water_mask(r), keepout_mask(r)
+                grew |= bool(np.any(more_water & ~wet) or np.any(more_hard & ~hard))
+                wet = wet | more_water
+                hard = hard | more_hard
+                current = rec
+            if grew:
+                # A new reservation is a new context, even if the old cost did
+                # not reach it. Enforce it before trying another contact.
+                price *= 2.
+                continue
+            if not any(p["paid_water_m"] > 0. for p in paid):
+                report["stop"] = "no_paid_water_progress"
+                return
+            signature = (
+                hashlib.sha256(used_wet.tobytes()).digest(),
+                hashlib.sha256(used_hard.tobytes()).digest(),
+                tuple((p["path_sha256"],
+                       _terminal_contact_key(_read_bank_contacts(rec) or {}),
+                       tuple((x, z) for x, z, _y in r["_seeds"]))
+                      for p, (rec, r) in zip(paid, cases)))
+            if signature in seen:
+                report["stop"] = "repeated_paid_trace_and_refusals"
+                return
+            seen.add(signature)
+            price *= 2.
+
+    bank_retry, bank_count = None, 0
+    if _water_score(best["ww"]) and _read_bank_contacts(best["seg"]) is not None:
+        original_best = best["seg"]
+        bank_retry, bank_count, _cases = contact_context(
+            original_best, best["ww"], dict(best["kw"]), "optional", compose=True)
+        if best["seg"] is not original_best:
+            t_note = None
     out = best["seg"]
     if best["ww"].get("collar") is False:
         out["connection_collar"] = False
@@ -4904,6 +5190,13 @@ def water_route(fld, corr: routemod.Corridor, seg: dict, joint: dict, *,
                          else "terminal trim and ceiling only -- the NEUTER"),
         "tried": tried,
     }
+    if bank_retry is not None:
+        out["writer_water"]["bank_contact_retry"] = {
+            "combinations_refused_by_water": bank_count,
+            "stop": bank_retry,
+            "scope": "this native eligible contact catalog and search context only"}
+    if soft_reports:
+        out["writer_water"]["soft_water_standoff"] = soft_reports
     out["writer_water"].update(judged_public(best["ww"]))
     if _water_score(best["ww"]):
         out["writer_water"]["residual_owner"] = water_owner(
@@ -10377,7 +10670,7 @@ def main(*, plan_state: dict | None = None) -> int:
         # see `water_route`.  A leg the writer would lay comes back untouched.
 
         def build_leg(*, extra_forbid=None, extra_guidance=None, trim=None, ceiling=None,
-                      fixed_pts=None, trim_applied=False,
+                      fixed_pts=None, trim_applied=False, bank_contacts_excluded=None,
                       _edge=edge, _fld=fld_p, _corr=corridors[key],
                       _retry=seg.get("land_only_retry"),
                       _reprice=seg.get("span_reprice"),
@@ -10396,7 +10689,8 @@ def main(*, plan_state: dict | None = None) -> int:
                                       extra_forbid=extra_forbid,
                                       extra_guidance=guide,
                                       trim=trim, trim_applied=trim_applied,
-                                      ceiling=ceiling))
+                                      ceiling=ceiling,
+                                      bank_contacts_excluded=bank_contacts_excluded))
             if _retry is not None:
                 rec["land_only_retry"] = _retry
             if _reprice is not None:

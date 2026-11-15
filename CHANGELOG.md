@@ -19,6 +19,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saved-world gates still apply. The complete preview call restores the
   caller's import path, including cold imports during final verdict checks
   as well as initial construction and continuation.
+- Shore candidates use the same planned-pad routing reservations as the final
+  road planner, including installation batter margins. A landing inside a
+  reserved pad corridor is rejected before it can become a fixed shore root.
+  The pad provider retains original unrounded claims and construction roles;
+  changing those claims invalidates completed shore checkpoints even when
+  the nominal rectangles and measured terrain have not moved. Standalone
+  shore/crossing production also derives the real planned-pad context rather
+  than silently omitting routing reservations.
+  Installation source handoffs are selected outside the canonical reserved
+  cells, not the old raw-pad ring hidden inside the installation batter.
+  Their contact witness still belongs to the original rooted writer
+  rectangle, and other planned pads remain excluded.
+- Writer-water continuation can advance through the original eligible
+  bank-contact combinations after the existing repairs still refuse a
+  candidate. It preserves first-contact/profile ordering, immutable landing
+  geometry and every native/terrain gate. Contact exclusions distinguish
+  the other end's pad-ring choice, bind to actual candidate geometry, and
+  never persist into a later joint or routing-cost solve.
+  When only the additional conservative water standoff blocks a legal owned
+  landing, continuation may price that heuristic as finite per-metre costs.
+  Canonical hard masks remain intact, and actual raw search traces distinguish
+  paid progress from repeated geometry or unobserved delegated paths.
 - Native road records carry their complete original profile constraints:
   exact emitted geometry, station bounds, held bank/deck datums, total grade,
   native self-lattice and published joint/terminal readings. Terrain-profile

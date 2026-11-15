@@ -146,19 +146,12 @@ class RootedExteriorApproachTests(unittest.TestCase):
         self.root = (48., 0.)
 
     def test_rooted_writer_contact_selects_real_exterior_not_semantic_rock_or_root(self):
-        import arrival_geometry
-
         self.assertNotEqual(self.complete.at(*self.node['xz']), self.contact['component'])
         self.assertTrue(self.approaches)
         corr = self.masked.corr
         level = S.route.footprint_half_m(4.)
-        pad = dict(x=0., z=20., hw=32., hd=32.)
-        ring = set(arrival_geometry.arrival_ring_cells(
-            self.node['xz'], corr.nearest_allowed(*self.node['xz']),
-            corr, [pad], level))
         for approach in self.approaches:
             ex, ez = approach['handoff_xz']
-            self.assertIn(corr.cell_of(ex, ez), ring)
             self.assertTrue(abs(ex) > 32. + level or abs(ez - 20.) > 32. + level)
             self.assertEqual(self.complete.at(*approach['contact_xz']),
                              self.contact['component'])
@@ -179,6 +172,46 @@ class RootedExteriorApproachTests(unittest.TestCase):
             self.assertTrue(abs(x) > 32. + level or abs(z - 20.) > 32. + level)
         np.testing.assert_array_equal(self.graph.ok, self.original_ok)
         self.assertIsNone(self.graph.corr.forbid)
+
+    def test_installation_handoffs_clear_the_canonical_batter_reservation(self):
+        import network
+
+        corr = self.masked.corr
+        claim = dict(x=0., z=20., hw=32., hd=32.,
+                     role='installation_pad')
+        reserved = network.pad_forbid_mask(
+            [claim], corr.x0, corr.z0, corr.cell_m, corr.m,
+            S.route.footprint_half_m(4.))
+        self.assertTrue(self.approaches)
+        for approach in self.approaches:
+            cell = corr.cell_of(*approach['handoff_xz'])
+            self.assertFalse(reserved[cell],
+                             'source handoff lies inside its installation batter')
+            self.assertEqual(self.complete.at(*approach['contact_xz']),
+                             self.contact['component'])
+        np.testing.assert_array_equal(self.graph.ok, self.original_ok)
+
+    def test_source_handoffs_preserve_other_planned_pad_reservations(self):
+        import network
+        import ribbon
+        from shore_sources import footprint_approaches
+
+        first = self.approaches[0]['handoff_xz']
+        claim = dict(site_id='other-pad', name='other-pad',
+                     x=first[0], z=first[1], hw=.1, hd=.1,
+                     role='settlement_pad', datum_y=S.DECK_Y)
+        pads = ribbon.pad_keepouts_from_chain([], [], planned=[claim])
+        masked, approaches = footprint_approaches(
+            self.graph, self.footprint, self.contact, 4.,
+            complete=self.complete, pad_keepouts=pads)
+        reserved = network.pad_forbid_mask(
+            [claim], masked.corr.x0, masked.corr.z0,
+            masked.corr.cell_m, masked.corr.m, S.route.footprint_half_m(4.))
+        self.assertTrue(approaches)
+        self.assertNotIn(first, [a['handoff_xz'] for a in approaches])
+        for approach in approaches:
+            self.assertFalse(reserved[masked.corr.cell_of(*approach['handoff_xz'])])
+        np.testing.assert_array_equal(self.graph.ok, self.original_ok)
 
     def test_isolated_nearest_exterior_keeps_uncapped_alternate_contacts(self):
         self.assertGreater(len(self.approaches), 1)
