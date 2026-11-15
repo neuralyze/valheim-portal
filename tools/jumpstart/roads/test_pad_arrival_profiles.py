@@ -97,6 +97,72 @@ class PadArrivalProfileTests(unittest.TestCase):
         self.assertTrue(all(row['spread_m'] <= row['slide_allow_m'] + 1e-6
                             for row in rows))
 
+    def _probe_unread_pad(self, physical_arrival):
+        physical_search = self.corr.forbid | physical_arrival
+        unread = np.ones_like(physical_search)
+        self.corr.forbid = physical_search | unread
+        self.corr.arrival_forbid = physical_arrival | unread
+        self.corr.unread = unread
+        confined = (self.corr.forbid, self.corr.arrival_forbid, self.corr.unread)
+        _, z = np.meshgrid(np.arange(self.corr.m), np.arange(self.corr.m))
+        centre_row = self.corr.cell_of(-3.5, .5)[0]
+        guidance = np.where(np.abs(z-centre_row) > 1, 1000., 0.)
+
+        def build(**kwargs):
+            joint = {}
+            segment = N.build_segment(
+                self.field, self.edge, self.corr, [], census=None, joint=joint,
+                extra_guidance=guidance, **kwargs)
+            return segment, joint
+
+        # Exercise the actual whole-line fitter and native pad constraints.
+        # Water continuation is independent of this pad-attachment unit.
+        with patch.object(N, '_PLAN_PLACED_OBJECTS', []):
+            result = N.band_free_probe(
+                self.corr, physical_search, build,
+                free_arrival_forbid=physical_arrival,
+                water=lambda segment, joint, _build: (segment, joint),
+                refusal=lambda segment: (
+                    N.profile_constraint_rejection(segment)
+                    or N.native_profile_prerequisite(segment)
+                    or N.self_adjacency_rejection(segment)))
+        self.assertIs(self.corr.forbid, confined[0])
+        self.assertIs(self.corr.arrival_forbid, confined[1])
+        self.assertIs(self.corr.unread, confined[2])
+        return result
+
+    def test_census_free_probe_can_fit_an_uncensused_alternate_pad_attachment(self):
+        result = self._probe_unread_pad(np.zeros_like(self.corr.forbid))
+        self.assertEqual(result['verdict'], 'SERVABLE', result)
+        segment, joint = result['_rec'], result['_joint']
+        x, z = segment['nodes'][-1]
+        gap = np.hypot(max(abs(x-14.5)-10., 0.), max(abs(z-.5)-10., 0.))
+        self.assertLessEqual(gap, N._level_half(segment)+N.ARRIVAL_EPS_M+1e-9)
+        y = np.asarray(segment['profile_y'])
+        self.assertTrue(np.all(y >= joint['lo']-.001))
+        self.assertTrue(np.all(y <= joint['hi']+.001))
+        self.assertTrue(np.all(np.abs(np.diff(y)) <=
+                               segment['grade_limit']*np.diff(joint['s'])+.002))
+        gate = N.routemod._junction()
+        ribs = gate.ribbons_from_segments({'segments': [segment]}, 'test')
+        pad = dict(kind='pad', id='terrace', label='terrace', role='site_pad',
+                   x=14.5, z=.5, hw=10., hd=10., datum_y=50.)
+        rows = gate.find_conflicts(ribs, [pad], ('pad_datums',))['pairs']
+        self.assertTrue(rows)
+        self.assertTrue(all(row['spread_m'] <= row['slide_allow_m']+1e-6
+                            for row in rows))
+        self.assertEqual(self.anchors, {'target': (-3.5, .5)})
+        self.assertEqual(self.pad['datum_y'], 50.)
+
+    def test_census_free_probe_cannot_erase_a_poi_overlapping_unread_ground(self):
+        blocked = np.abs(np.arange(self.corr.m)[:, None] -
+                         self.corr.cell_of(-3.5, .5)[0]) > 1
+        physical_arrival = np.broadcast_to(blocked, self.corr.forbid.shape).copy()
+        result = self._probe_unread_pad(physical_arrival)
+        self.assertEqual(result['verdict'], 'UNROUTABLE', result)
+        self.assertEqual(self.anchors, {'target': (-3.5, .5)})
+        self.assertEqual(self.pad['datum_y'], 50.)
+
     def test_no_eligible_same_pad_escape_remains_numerically_refused(self):
         # Census/POI-style exclusion leaves only a thin west approach. The
         # retry may not remove that mask or escape to an unrelated pad.

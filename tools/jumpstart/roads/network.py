@@ -4969,11 +4969,13 @@ def _pad_pending_joint(rec: dict) -> bool:
         and not fin.get("drained") and not fin.get("keepout_steps"))
 
 
-def band_free_probe(corr: routemod.Corridor, free_forbid, build, *, water,
-                    refusal) -> dict:
-    """Route one leg as if every cell were read: `corr.forbid` swapped for
-    `free_forbid` (the same masks, the bodies the census found included,
-    the census confinement left off) for exactly this call.
+def band_free_probe(corr: routemod.Corridor, free_forbid, build, *,
+                    free_arrival_forbid, water, refusal) -> dict:
+    """Route one leg with Census confinement off in search AND pad arrivals.
+
+    Both supplied masks retain physical POIs and measured bodies; the arrival
+    mask excludes served pads exactly as in `main`, not by subtracting unread
+    bits from a combined mask. All confined state is restored after the call.
 
     `build(**kw)` returns `(record, joint)` for the leg on `corr` as it
     stands, and is asked exactly as the plan asks it: past a drowned
@@ -4983,7 +4985,10 @@ def band_free_probe(corr: routemod.Corridor, free_forbid, build, *, water,
     `refusal(record)` is `plan_refusal(..., coverage=False)`.
     SERVABLE means the line passes every refusal but unread ground."""
     confined, unread = corr.forbid, corr.unread
+    had_arrival = hasattr(corr, "arrival_forbid")
+    arrival = getattr(corr, "arrival_forbid", None)
     corr.forbid, corr.unread = free_forbid, None
+    corr.arrival_forbid = free_arrival_forbid
     try:
         rec, joint, base = build_past_drowned(build)
         rec, joint = water(rec, joint, keep_trim(build, base))
@@ -4991,6 +4996,10 @@ def band_free_probe(corr: routemod.Corridor, free_forbid, build, *, water,
         return {"verdict": "UNROUTABLE", "why": str(exc)[:240]}
     finally:
         corr.forbid, corr.unread = confined, unread
+        if had_arrival:
+            corr.arrival_forbid = arrival
+        else:
+            del corr.arrival_forbid
     out = {"length_m": rec["length_m"],
            "stations": len(rec["nodes"]),
            "stations_unread": (rec.get("census") or {}).get(
@@ -7782,6 +7791,7 @@ def selftest_census_band() -> int:
         except ValueError:
             pass
         p = band_free_probe(corr, free, _cb_build(corr, cen, a, b),
+                            free_arrival_forbid=free,
                             water=lambda rec, j, _b: (rec, j),
                             refusal=lambda rec: None)
         cw = census_wanted([], [{"id": "fixture",
@@ -7933,6 +7943,7 @@ def selftest_census_adopt() -> int:
         cen = _cb_census(cells, [body])
         corr, free = _cb_corridor(fld, cen)
         p = band_free_probe(corr, free, _cb_build(corr, cen, a, b),
+                            free_arrival_forbid=free,
                             water=lambda rec, j, _b: (rec, j),
                             refusal=lambda rec: None)
         return cen, {**p, "patch": "fx"}
@@ -8955,6 +8966,7 @@ def selftest_terminal_landing_plan() -> int:
                "bank_b": {"xz": [50.0, 0.0]}}]}
     probed = band_free_probe(
         corr, corr.forbid, lambda **_kw: (rec, {}),
+        free_arrival_forbid=getattr(corr, "arrival_forbid", None),
         water=lambda seg, joint, _build: (seg, joint),
         refusal=lambda seg: plan_refusal(seg, [], "FIXTURE", fld=fld,
                                          coverage=False))
@@ -9832,6 +9844,7 @@ def main(*, plan_state: dict | None = None) -> int:
     out_dir = Path(args.out)
     corridors: dict[tuple[str, str], routemod.Corridor] = {}
     free_forbids: dict[tuple[str, str], np.ndarray] = {}
+    free_arrival_forbids: dict[tuple[str, str], np.ndarray] = {}
     segments = []
     unroutable: list[dict] = []
     rejected: list[dict] = []
@@ -9896,6 +9909,7 @@ def main(*, plan_state: dict | None = None) -> int:
             return rec, j
         got = band_free_probe(
             corr, free_forbids[key], build,
+            free_arrival_forbid=free_arrival_forbids[key],
             water=lambda rec, j, b: water_route(
                 fld_p, corr, rec, j, build=b,
                 refusal=lambda c: plan_refusal(c, pois, SEED, fld=fld_p,
@@ -10048,6 +10062,7 @@ def main(*, plan_state: dict | None = None) -> int:
             # probe (CENSUS_BAND_DEPENDS_ON): the bodies the census FOUND
             # stay out, the ground it has not read is let in.
             free_forbids[key] = forbid
+            free_arrival_forbids[key] = arrival_forbid
             cen_stats = {"confined": False,
                          "why": "provisional run: nothing has been read yet"}
             if census is not None and not args.census_band_free:

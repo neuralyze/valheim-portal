@@ -382,6 +382,13 @@ ownership. Both tracked builders and band-free probes carry this contract.
 The published trim provenance survives; fixed stations, replay flags and
 station caps do not leak into a later genuine alignment search.
 
+Census-free feasibility probes remove unread confinement from both search
+and pad-arrival clearance. They receive the original physical masks
+separately: subtracting unread bits from a combined mask could erase a real
+POI exclusion where the two overlap. Known bodies and other sites' pads
+remain protected. Search, arrival and unread state are restored afterward;
+final route adoption still requires actual station and band coverage.
+
 Straight crossing chords must retain the searched route's generator hard
 clearance. A newly introduced breach triggers another leg-local search using
 additional guidance, then the ordinary crossing, profile and writer checks.

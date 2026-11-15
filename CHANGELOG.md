@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leg instead of constructing scalar NumPy intermediates for every pair.
   It preserves every native pair, original row order, station bracket,
   interpolation weight and physical allowance; no constraints are pruned.
+- Census-free feasibility probes remove unread-ground confinement from pad
+  arrivals as well as the route search. The original physical arrival mask
+  retains POIs and known bodies, including exclusions overlapping unread
+  ground; other pads and every native profile/arrival rule still apply.
+  Confined masks are restored before final routing or Census adoption.
 - Declared bank approaches retain the complete six-metre level run, including
   floating-point arc boundaries and boundaries between profile stations.
   Necessary pin checks, native fitting and water-feedback seed heights use
