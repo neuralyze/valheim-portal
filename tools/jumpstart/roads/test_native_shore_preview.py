@@ -117,6 +117,41 @@ class NativeShorePreviewTests(unittest.TestCase):
             float(np.max(abs(np.diff(profile)) / np.diff(arcs))),
             record['grade_limit'] + .0011)
 
+    def test_ordinary_source_resnap_keeps_its_measured_pad_connection(self):
+        import network
+        import ribbon
+
+        graph, surface, source = mixed_channel_fixture(
+            inland_channel=False, cell_m=4.)
+        pad = dict(site_id="source-pad", name="source-pad", x=0., z=-100.,
+                   hw=4., hd=4., role="settlement_pad", datum_y=30.6)
+        pads = ribbon.pad_keepouts_from_chain([], [], planned=[pad])
+        corridor = graph.corr
+        graph.ok[:] = True
+        corridor.forbid = network.pad_forbid_mask(
+            [pad], corridor.x0, corridor.z0, corridor.cell_m, corridor.m,
+            S.route.footprint_half_m(4.))
+        i, j = corridor.nearest_allowed(*source["xz"])
+        graph.ok[i-2:i+3, j-2:j+3] = False
+        graph.ok[i, j] = True
+        corridor.forbid |= ~graph.ok
+
+        preview = NativeShorePreview(pad_keepouts=pads)
+        result = native_call(preview, graph, surface, source)
+        self.assertIsNotNone(result, "the reachable snap reconnects to the same pad")
+        record = result["native_approach"]
+        reach = record["terminal_reach"]
+        self.assertEqual(reach["node"], SOURCE_ID)
+        self.assertEqual(reach["end"], "start")
+        self.assertEqual(tuple(reach["requested_xz"]), source["xz"])
+        self.assertEqual(tuple(reach["snapped_xz"]), corridor.cell_world(i, j))
+        end = record["pad_edge"]["arrival"]["ends"][SOURCE_ID]
+        self.assertEqual(end["pads"], [pad["site_id"]])
+        self.assertAlmostEqual(end["gap_after_m"], network.ARRIVAL_EPS_M, places=2)
+        self.assertGreater(end["added_stations"], 0)
+        self.assertEqual(record["nodes"][end["added_stations"]], reach["moved_to_xz"])
+        self.assertEqual(record["nodes"][-1], [0., 0.])
+
     def test_observed_body_rejects_owned_root_without_moving_or_unprotecting_it(self):
         import poi
         graph, surface, source = mixed_channel_fixture(

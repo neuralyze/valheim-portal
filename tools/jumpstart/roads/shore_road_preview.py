@@ -95,6 +95,7 @@ class NativeShorePreview:
         self._pad_keepouts = pad_keepouts
         self._known_pois = [copy.copy(poi) for poi in known_pois]
         self._known_masks = {}
+        self.last_source_refusal = None
 
     def _prepare(self):
         if self._kernel is not None:
@@ -120,6 +121,7 @@ class NativeShorePreview:
     def __call__(self, *, graph, surf, source_id, source_node, terminal_id,
                  root, bearing, width_m, level_y, source_approach=None):
         old_path = sys.path[:]
+        self.last_source_refusal = None
         try:
             return self._evaluate(
                 graph=graph, surf=surf, source_id=source_id,
@@ -128,6 +130,66 @@ class NativeShorePreview:
                 source_approach=source_approach)
         finally:
             sys.path[:] = old_path
+
+    def _source_resnap(self, kernel, record, source_id, origin, expected, width_m):
+        """Allow a reachable ordinary-source snap only with its own intact pad spur."""
+        reach = record.get("terminal_reach") or {}
+        moved = reach.get("moved_to_xz")
+        if (reach.get("end") != "start" or reach.get("node") != source_id
+                or not np.array_equal(reach.get("requested_xz"), origin)
+                or not np.array_equal(reach.get("snapped_xz"), expected)
+                or moved is None
+                or not np.array_equal(moved, (record.get("search_contacts") or {}).get("a"))):
+            return expected
+        end = ((record.get("pad_edge") or {}).get("arrival") or {}).get("ends", {}).get(source_id, {})
+        if (end.get("mode") != "spur" or not end.get("added_stations")
+                or end.get("blocked_by") is not None or end.get("standoff_m", 0.0)):
+            return expected
+        pads = kernel.terminal_pads(source_id, kernel.routemod.footprint_half_m(width_m))
+        if not pads or end.get("pads") != [str(p["site_id"]) for p in pads]:
+            return expected
+        if self._native_writer:
+            readings = record["native_profile_model"]["inputs"]["arrival_readings"]
+            if not any(row["station"] == 0 and row["pad"] in end["pads"]
+                       for row in readings):
+                return expected
+        return moved
+
+    @staticmethod
+    def _source_attachment(kernel, record, points, source_id, node_xz, expected, tolerance):
+        # The searched line starts AFTER any spur prepended at its source.
+        arrival = (record.get("pad_edge") or {}).get("arrival") or {}
+        end = (arrival.get("ends") or {}).get(source_id) or {}
+        station = int(end.get("added_stations", 0))
+        if not 0 <= station < len(points):
+            return dict(why="source spur station is outside the road", station=station)
+        gap = math.dist(points[station], expected)
+        if gap > tolerance:
+            return dict(why="no attachment at the recorded source station",
+                        station=station, gap_m=gap, tolerance_m=tolerance)
+        if end.get("blocked_by") is not None:
+            return dict(why="the arrival spur stops short of its pad",
+                        blocked_by=end["blocked_by"], gap_after_m=end.get("gap_after_m"))
+        if not station:
+            return None
+        direction = np.asarray(node_xz, dtype=float) - np.asarray(expected, dtype=float)
+        distance = math.hypot(*direction)
+        if distance <= tolerance or end.get("gap_before_m") is None:
+            return dict(why="source spur has no pad-edge ray", distance_m=distance)
+        direction /= distance
+        rel = points[:station] - expected
+        along = rel @ direction
+        lateral = rel[:, 0] * direction[1] - rel[:, 1] * direction[0]
+        reach = (float(end["gap_before_m"]) - kernel.ARRIVAL_EPS_M
+                 - float(end.get("standoff_m", 0.0)))
+        max_lateral = float(np.abs(lateral).max())
+        if (max_lateral > tolerance or float(along.min()) <= tolerance
+                or np.any(np.diff(along) >= 0.0)
+                or abs(float(along[0]) - reach) > 0.005 + tolerance):
+            return dict(why="the spur leaves the pad ray or stops short",
+                        max_lateral_m=max_lateral, first_station_along_m=float(along[0]),
+                        pad_edge_along_m=reach, tolerance_m=tolerance)
+        return None
 
     def _evaluate(self, *, graph, surf, source_id, source_node, terminal_id,
                   root, bearing, width_m, level_y, source_approach=None):
@@ -225,6 +287,7 @@ class NativeShorePreview:
                           > kernel.routemod.CUT_FILL_MAX)
                 or not kernel._bank_path_allowed(corridor, [root, entry], None)):
             return None
+        ordinary_origin = None
         try:
             if source_approach is not None or (
                     source.get("kind") == "abutment" and source.get("crossing")):
@@ -235,6 +298,10 @@ class NativeShorePreview:
                 expected_source = np.asarray(
                     corridor.cell_world(*corridor.nearest_allowed(*origin)),
                     dtype=float)
+                if (tuple(origin) == goal and source_level is None
+                        and source["kind"] not in ("abutment", "waterfront_terminal")
+                        and not source.get("crossing")):
+                    ordinary_origin = origin
         except ValueError:
             return None
         def build(**kwargs):
@@ -272,7 +339,13 @@ class NativeShorePreview:
                        and bank["level_run_m"] == BANK_LEVEL_M
                        for bank in record["abutments"]):
                 return "held_landing"
-            if np.linalg.norm(points[0] - expected_source) > tolerance:
+            expected = expected_source
+            if ordinary_origin is not None:
+                expected = self._source_resnap(
+                    kernel, record, source_id, ordinary_origin, expected, float(width_m))
+            self.last_source_refusal = self._source_attachment(
+                kernel, record, points, source_id, source["xz"], expected, tolerance)
+            if self.last_source_refusal is not None:
                 return "source_attachment"
             return None
 
@@ -308,6 +381,8 @@ class NativeShorePreview:
         if rejection(record) is not None:
             return None
         points = np.asarray(record["nodes"], dtype=float)
+        arrival = (record.get("pad_edge") or {}).get("arrival") or {}
+        source_station = (arrival.get("ends") or {}).get(source_id, {}).get("added_stations", 0)
         record["preflight_scope"] = {
             "kind": "local measured approach preflight",
             "source_node": copy.deepcopy(source_node),
@@ -321,7 +396,7 @@ class NativeShorePreview:
         return _plain(dict(length_m=record["length_m"], grade_max=record["grade_max_measured"],
                     source_level_y=source_level, arrival_level_y=float(level_y),
                     stations=len(points), nodes=record["nodes"], width_m=float(width_m),
-                    entry_xz=list(entry), source_snap_m=math.dist(points[0], goal),
+                    entry_xz=list(entry), source_snap_m=math.dist(points[source_station], goal),
                     water_reroute_rounds=len(record.get("writer_water", {}).get("tried", [])),
                     routing={"mode": "native_mixed", "refusal": None,
                              "scope": "local measured approach preflight"},

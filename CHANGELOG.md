@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that bearing. A shallow or disconnected berth is rejected without a road
   preview. A later usable length can still request a road; unread hulls and
   live surfaces retain the existing road-first behavior.
+- Native shore previews recognize the road's actual start after a verified
+  arrival spur. An ordinary source may use its recorded reachable resnap only
+  when the spur still meets the same pad; explicit handoffs and landing datums
+  do not move, and a native writer still requires the pad arrival reading.
 - Writer-water continuation can advance through the original eligible
   bank-contact combinations after the existing repairs still refuse a
   candidate. It preserves first-contact/profile ordering, immutable landing
