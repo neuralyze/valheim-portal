@@ -1318,8 +1318,8 @@ def jetty(root: tuple[float, float], bearing_deg: float, length_m: float,
     This is the structure the operator called a dock. It is deliberately NOT a
     flattened pad with a building on it: the pad is the `early-dock` defect,
     where the flatten removed the water from under the footprint and the pier
-    then read as floating. Every station here stands on piles driven into the
-    bed and there is no terrain write anywhere in its footprint.
+    then read as floating. Piles support the deck where the bed does not;
+    there is no terrain write anywhere in its footprint.
 
     `bed_profile` MUST be `Bed.applied(...)`; every deck tile is re-tested
     against it before this function returns.
@@ -1333,6 +1333,7 @@ def jetty(root: tuple[float, float], bearing_deg: float, length_m: float,
     lx, lz = uz, -ux
     f_floor = facts()["wood_floor"]
     floor_y = deck_y - f_floor.hi[1]
+    underside = floor_y + f_floor.lo[1]
     offsets = [(i - (width_tiles - 1) / 2) * 2.0 for i in range(width_tiles)]
     half_w = (width_tiles * 2.0) / 2.0
     out: list[Placed] = []
@@ -1362,9 +1363,27 @@ def jetty(root: tuple[float, float], bearing_deg: float, length_m: float,
                         and not _JETTY_STANDS_A_ONE_TILE_COLUMN_TWICE
                         else (-col, col)):
                 px, pz = cx + lx * lat, cz + lz * lat
-                out.extend(_jetty_pile_stack(px, pz, deck_y, bed, f"{name}/pile{s}",
-                                             lateral=lat, pile_prefab=pile_prefab,
-                                             yaw=pile_yaw))
+                role = f"{name}/pile{s}"
+                column = _jetty_pile_stack(px, pz, deck_y, bed, role,
+                                           lateral=lat, pile_prefab=pile_prefab,
+                                           yaw=pile_yaw)
+                # An outer tile can rest on a bank knob without burying its
+                # travelled surface. Keep the tile; do not spawn an invisible
+                # pole where the bed already carries it. Require the same
+                # contact and burial on the millimetre-rounded wire, too.
+                if len(column) == 1 and bed(px, pz) >= underside:
+                    pole = column[0]
+                    top_offset = facts()[pole.prefab].hi[1]
+                    if bed_under(pole, bed) - (pole.y + top_offset) > PIECE_TOP_BURIED_TOL_M:
+                        x, z = float(fmt(px)), float(fmt(pz))
+                        wire_floor = float(fmt(floor_y)) + f_floor.lo[1]
+                        if bed(x, z) >= wire_floor:
+                            wire_pole = Placed(pole.prefab, x, float(fmt(pole.y)), z,
+                                               float(fmt(pole.yaw)), pole.role)
+                            if (bed_under(wire_pole, bed) - (wire_pole.y + top_offset)
+                                    > PIECE_TOP_BURIED_TOL_M):
+                                continue
+                out.extend(column)
         # a single-sided rail, on the side away from the berth, so a boat can be
         # boarded from the deck. Handrail on the outboard side only.
         rx = cx + lx * (half_w - 0.2)

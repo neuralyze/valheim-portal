@@ -47,6 +47,28 @@ class WaterfrontFoundationTests(unittest.TestCase):
         self.assertTrue(proof["ok"], proof)
         self.assertEqual(proof["safety_factor"], 2.0)
 
+    def test_grounded_outer_jetty_tile_needs_no_buried_pile(self):
+        # An outer floor square straddles a bank knob, while the centre
+        # walkway and opposite foundation are still over open water.
+        bed = A.Bed.applied(
+            lambda x, z: A.DECK_Y + 0.8 if abs(x - 2.0) < 0.45 and abs(z - 4.0) < 0.45 else 28.0,
+            "one grounded outer tile on a measured bank knob")
+        for prefab in A.JETTY_PILE_PREFABS:
+            with self.subTest(prefab=prefab):
+                pieces = emitted(A.jetty((0., 0.), 0., 8., A.DECK_Y, bed,
+                                         width_tiles=3, pile_prefab=prefab))
+                self.assert_seated(pieces, bed)
+                proof = A.verify(pieces, bed)
+                self.assertTrue(proof["ok"], proof)
+                floor = next(p for p in pieces if p.role.endswith("/deck")
+                             and (p.x, p.z) == (2., 4.))
+                self.assertTrue(floor.on_terrain)
+                self.assertAlmostEqual(floor.y + A.facts()["wood_floor"].hi[1],
+                                       A.DECK_Y, places=3)
+                columns = {(p.x, p.z) for p in pieces if p.role.endswith("/pile")}
+                self.assertNotIn((2., 4.), columns)
+                self.assertIn((-2., 4.), columns)
+
     def test_deep_timber_refuses_but_stone_supports_identical_deck_and_rails(self):
         bed = flat_bed(20.0)
         choices = {}

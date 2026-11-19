@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fixed landing is rejected before publication; existing site search continues
   without moving the landing or weakening body exclusions. Checkpoints bind
   body content, and these local checks do not claim Census or world acceptance.
+- Jetty decks keep their planned tiles when measured bank terrain already
+  carries a tile and would bury its entire support pole. The check uses both
+  planned and emitted poses; water-side piles, whole-deck seating, and
+  structural support checks are unchanged.
 - Writer-water continuation can advance through the original eligible
   bank-contact combinations after the existing repairs still refuse a
   candidate. It preserves first-contact/profile ordering, immutable landing
