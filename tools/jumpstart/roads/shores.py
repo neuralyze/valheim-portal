@@ -28,6 +28,7 @@ import assemble as A
 from settlements import waterfront as WF
 
 from crossing_contract import BANK_LEVEL_M, footprint_offsets
+from shore_sampling import MissingGeneratedCoverage
 from shore_scope import SEARCH_RADIUS_M, FOOTPRINT_MARGIN_M, request_windows
 DECK_Y = geography.DECK_DATUM_Y
 VESSEL = "VikingShip"
@@ -813,6 +814,19 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                     rejected["approach"] += 1
                     continue
                 key = root, bearing
+                # A fully measured berth refusal cannot be rescued by a road.
+                # Leave unread or live hulls in the original road-first order.
+                measured_hull = rays is not None and key not in road_cache
+                if measured_hull:
+                    bx, bz = _boat_pose(root, bearing, length, requirement["kind"], width, vessel)
+                    try:
+                        depths = surf.hull_depths(bearing, bx, bz, vessel)
+                    except MissingGeneratedCoverage:
+                        measured_hull = False
+                    else:
+                        if depths and not (depths[2] and depths[3] and depths[0] >= need):
+                            rejected["hull"] += 1
+                            continue
                 if key not in road_cache:
                     road_cache[key] = road_preview(
                         graph, surf, node, root, bearing, width,
@@ -822,8 +836,9 @@ def solve_site(requirement, nodes, fields, *, graph_factory=None, surface=None,
                 if road_cache[key] is None:
                     rejected["road"] += 1
                     continue
-                bx, bz = _boat_pose(root, bearing, length, requirement["kind"], width, vessel)
-                depths = surf.hull_depths(bearing, bx, bz, vessel)
+                if not measured_hull:
+                    bx, bz = _boat_pose(root, bearing, length, requirement["kind"], width, vessel)
+                    depths = surf.hull_depths(bearing, bx, bz, vessel)
                 if not (depths and depths[2] and depths[3] and depths[0] >= need):
                     rejected["hull"] += 1
                     continue

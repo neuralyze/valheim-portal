@@ -58,6 +58,45 @@ class LandingReuseTests(unittest.TestCase):
         self.assertTrue(result['boat']['connected'])
         self.assertLessEqual(max(counts.values()), 1)
 
+    def test_native_heightmap_debt_is_requested_only_for_a_usable_berth(self):
+        fields = constructed_coast()
+        surface = S.GeneratedSurface(fields)
+        # The road cap is dry, but short slips place the hull on the side shoal.
+        root = (0., -3.)
+        requirement = dict(id='physical-shoal', anchor='source', kind='slip',
+                           cls='spur', width_tiles=2)
+        nodes = {'source': dict(xz=(0., -40.), patch='coast', island='spawn')}
+        progress = {}
+        road_preview = S.road_preview
+        vessel = S.VESSEL
+        need = (S.WF.VESSELS[vessel]['draught_m'] + S.WF.KEEL_CLEARANCE_M
+                + S.WF.BERTH_MARGIN_FLOOR_M)
+
+        def check_road(graph, surf, node, root, bearing, width, **kwargs):
+            bx, bz = S._boat_pose(root, bearing, progress['length'], 'slip', width, vessel)
+            hull = surf.hull_depths(bearing, bx, bz, vessel)
+            if not (hull and hull[2] and hull[3] and hull[0] >= need):
+                raise RuntimeError('Heightmap prerequisite for an unusable berth')
+            return road_preview(graph, surf, node, root, bearing, width, **kwargs)
+
+        with (patch.object(S, '_shore_candidates', return_value=([root], None)),
+              patch.object(S, 'road_preview', check_road)):
+            result = S.solve_site(requirement, nodes, fields, graph_factory=plain_graph,
+                                  surface=surface, progress=progress.update)
+        self.assertEqual(result['root'], list(root))
+        self.assertGreaterEqual(result['boat']['berth_depth_m'], need)
+        self.assertTrue(result['structural']['ok'])
+
+        def missing_road(*args, **kwargs):
+            check_road(*args, **kwargs)
+            raise RuntimeError('Heightmap prerequisite for a usable berth')
+
+        with (patch.object(S, '_shore_candidates', return_value=([root], None)),
+              patch.object(S, 'road_preview', missing_road),
+              self.assertRaisesRegex(RuntimeError, 'Heightmap prerequisite for a usable berth')):
+            S.solve_site(requirement, nodes, fields, graph_factory=plain_graph,
+                         surface=surface, progress=progress.update)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carries a tile and would bury its entire support pole. The check uses both
   planned and emitted poses; water-side piles, whole-deck seating, and
   structural support checks are unchanged.
+- Shore selection checks fully measured berths before building a road for
+  that bearing. A shallow or disconnected berth is rejected without a road
+  preview. A later usable length can still request a road; unread hulls and
+  live surfaces retain the existing road-first behavior.
 - Writer-water continuation can advance through the original eligible
   bank-contact combinations after the existing repairs still refuse a
   candidate. It preserves first-contact/profile ordering, immutable landing

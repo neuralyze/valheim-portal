@@ -14,6 +14,10 @@ import numpy as np
 from roads.field_index import FieldEntry, FieldIndex
 
 
+class MissingGeneratedCoverage(SystemExit):
+    """The measured field does not cover a requested sample or footprint."""
+
+
 class GeneratedSampler:
     """Select exactly as waterfront.Surface, without an all-field point scan.
 
@@ -45,7 +49,7 @@ class GeneratedSampler:
     def _entry_for(self, x: float, z: float, margin: float) -> FieldEntry:
         best = self._index.find(x, z, margin)
         if best is None:
-            raise SystemExit(
+            raise MissingGeneratedCoverage(
                 f"({x}, {z}) is in no patch of {self.field_names}; widen the "
                 f"request and re-run run_patchscan.sh rather than guessing a "
                 f"height")
